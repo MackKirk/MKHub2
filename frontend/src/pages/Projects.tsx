@@ -440,6 +440,7 @@ function convertParamsToRules(params: URLSearchParams): FilterRule[] {
 
 export default function Projects(){
   const location = useLocation();
+  const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const queryParam = searchParams.get('q') || '';
   
@@ -557,10 +558,6 @@ export default function Projects(){
   const clients = clientsData?.items || clientsData || [];
   const arr = data||[];
   const [pickerOpen, setPickerOpen] = useState<{ open:boolean, clientId?:string, projectId?:string }|null>(null);
-
-  // Check permissions
-  const { data: me } = useQuery({ queryKey:['me'], queryFn: ()=>api<any>('GET','/auth/me') });
-  const hasEditPermission = (me?.roles||[]).includes('admin') || (me?.permissions||[]).includes('business:projects:write');
 
   // Filter Builder Configuration
   const filterFields: FieldConfig[] = useMemo(() => [
@@ -703,75 +700,92 @@ export default function Projects(){
 
   return (
     <div>
-      <div className="bg-slate-200/50 rounded-[12px] border border-slate-200 flex items-center justify-between py-4 px-6 mb-6">
-        <div>
-          <div className="text-xl font-bold text-gray-900 tracking-tight mb-0.5">Projects</div>
-          <div className="text-sm text-gray-500 font-medium">List, search and manage projects</div>
-        </div>
-        <div className="text-right">
-          <div className="text-xs text-gray-400 mb-1.5 font-medium uppercase tracking-wide">Today</div>
-          <div className="text-sm font-semibold text-gray-700">{todayLabel}</div>
+      {/* Title Bar - same layout and font sizes as ProjectDetail / Opportunities */}
+      <div className="rounded-xl border bg-white p-4 mb-4">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3 flex-1">
+            <button
+              onClick={() => navigate('/business')}
+              className="p-1.5 rounded hover:bg-gray-100 transition-colors flex items-center justify-center"
+              title="Back to Business"
+            >
+              <svg className="w-4 h-4 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+              </svg>
+            </button>
+            <div>
+              <div className="text-sm font-semibold text-gray-900">Projects</div>
+              <div className="text-xs text-gray-500 mt-0.5">List, search and manage projects</div>
+            </div>
+          </div>
+          <div className="text-right">
+            <div className="text-[10px] font-medium text-gray-500 uppercase tracking-wide">Today</div>
+            <div className="text-xs font-semibold text-gray-700 mt-0.5">{todayLabel}</div>
+          </div>
         </div>
       </div>
-      {/* Filter Bar */}
-      <div className="mb-3 rounded-lg border border-gray-200 bg-white shadow-sm overflow-hidden">
-        {/* Primary Row: Global Search + Actions */}
-        <div className="px-6 py-4 bg-white">
+
+      {/* Filter Bar - same rounded-xl area as Opportunities */}
+      <div className="rounded-xl border bg-white p-4 mb-4">
+        <div>
           <div className="flex items-center gap-4">
             {/* View Toggle Button */}
-            <div className="flex items-center border border-gray-200 rounded-md overflow-hidden">
+            <div className="flex items-center border border-gray-200 rounded-lg overflow-hidden">
               <button
                 onClick={() => setViewMode('list')}
-                className={`px-3 py-2.5 text-sm font-medium transition-colors duration-150 ${
+                className={`p-2.5 text-sm font-medium transition-colors duration-150 ${
                   viewMode === 'list'
-                    ? 'bg-gray-100 text-gray-900'
-                    : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'
+                    ? 'bg-gray-900 text-white'
+                    : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50 bg-white'
                 }`}
                 title="List view"
               >
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
                 </svg>
               </button>
               <button
                 onClick={() => setViewMode('cards')}
-                className={`px-3 py-2.5 text-sm font-medium transition-colors duration-150 border-l border-gray-200 ${
+                className={`p-2.5 text-sm font-medium transition-colors duration-150 border-l border-gray-200 ${
                   viewMode === 'cards'
-                    ? 'bg-gray-100 text-gray-900'
-                    : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'
+                    ? 'bg-gray-900 text-white'
+                    : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50 bg-white'
                 }`}
                 title="Card view"
               >
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z" />
                 </svg>
               </button>
             </div>
 
-            {/* Global Search - Dominant, large */}
+            {/* Global Search */}
             <div className="flex-1">
               <div className="relative">
                 <input 
-                  className="w-full border border-gray-200 rounded-md px-4 py-2.5 pl-10 text-sm bg-gray-50/50 text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-1 focus:ring-gray-300 focus:border-gray-300 focus:bg-white transition-all duration-150" 
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2 pl-9 text-sm bg-gray-50/50 text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-1 focus:ring-gray-300 focus:border-gray-300 focus:bg-white transition-all duration-150" 
                   placeholder="Search by project name, code, or client name..." 
                   value={q} 
                   onChange={e=>setQ(e.target.value)} 
                 />
-                <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
                 </svg>
               </div>
             </div>
 
-            {/* + Filters Button - Opens Modal */}
+            {/* Filters Button */}
             <button 
               onClick={()=>setIsFilterModalOpen(true)}
-              className="px-3 py-2.5 text-sm font-medium text-gray-600 hover:text-gray-900 transition-colors duration-150 whitespace-nowrap"
+              className="px-3 py-1.5 rounded-full text-sm font-medium text-gray-600 hover:text-gray-900 bg-white border border-gray-200 hover:border-gray-300 transition-colors duration-150 whitespace-nowrap inline-flex items-center gap-1.5"
             >
-              + Filters
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z" />
+              </svg>
+              Filters
             </button>
 
-            {/* Clear Filters - Only when active */}
+            {/* Clear - Only when active */}
             {hasActiveFilters && (
               <button 
                 onClick={()=>{
@@ -780,9 +794,9 @@ export default function Projects(){
                   setSearchParams(params);
                   refetch();
                 }} 
-                className="px-3 py-2.5 text-sm font-medium text-gray-600 hover:text-gray-900 transition-colors duration-150 whitespace-nowrap"
+                className="px-3 py-1.5 rounded-full text-sm font-medium text-gray-500 hover:text-gray-700 border border-gray-200 hover:border-gray-300 transition-colors duration-150 whitespace-nowrap"
               >
-                Clear Filters
+                Clear
               </button>
             )}
           </div>
@@ -809,6 +823,8 @@ export default function Projects(){
           ))}
         </div>
       )}
+      {/* List area - same rounded-xl border bg-white as Opportunities */}
+      <div className="rounded-xl border bg-white p-4">
       <LoadingOverlay isLoading={isInitialLoading} text="Loading projects...">
         {viewMode === 'cards' ? (
           <div 
@@ -834,11 +850,7 @@ export default function Projects(){
                     projectStatuses={projectStatuses}
                   />
                 ))
-              ) : (
-                <div className="col-span-2 p-8 text-center text-gray-500 rounded-xl border bg-white">
-                  No projects found matching your criteria.
-                </div>
-              )}
+              ) : null}
           </div>
         ) : (
           <div 
@@ -849,10 +861,23 @@ export default function Projects(){
               transition: 'opacity 400ms ease-out, transform 400ms ease-out'
             }}
           >
+            {/* Column headers - same style as Opportunities list */}
+            <div 
+              className="grid grid-cols-[10fr_3fr_3fr_4fr_4fr_4fr_auto] gap-2 sm:gap-3 lg:gap-4 items-center px-4 py-2 bg-gray-50 border-b border-gray-200 rounded-t-lg min-w-[800px] text-[10px] font-semibold text-gray-700"
+              aria-hidden
+            >
+              <div className="min-w-0" title="Project name, code and client">Project</div>
+              <div className="min-w-0" title="Start date">Start</div>
+              <div className="min-w-0" title="Estimated completion">ETA</div>
+              <div className="min-w-0" title="Project administrator">Project Admin</div>
+              <div className="min-w-0" title="Estimated or actual value">Value</div>
+              <div className="min-w-0" title="Current status">Status</div>
+              <div className="min-w-0 w-28" title="Quick access to Files, Proposal, Reports, etc." aria-hidden />
+            </div>
             {isLoading && !arr.length ? (
               <>
                 {[1, 2, 3, 4, 5, 6].map(i => (
-                  <div key={i} className="h-20 bg-gray-100 animate-pulse rounded-lg" />
+                  <div key={i} className="h-20 bg-gray-100 animate-pulse rounded-lg min-w-[800px]" />
                 ))}
               </>
             ) : arr.length > 0 ? (
@@ -864,14 +889,16 @@ export default function Projects(){
                     projectStatuses={projectStatuses}
                   />
                 ))
-              ) : (
-                <div className="p-8 text-center text-gray-500 rounded-xl border bg-white">
-                  No projects found matching your criteria.
-                </div>
-              )}
+              ) : null}
+          </div>
+        )}
+        {!isInitialLoading && arr.length === 0 && (
+          <div className="p-8 text-center text-sm text-gray-500">
+            No projects found matching your criteria.
           </div>
         )}
       </LoadingOverlay>
+      </div>
       {pickerOpen?.open && (
         <ImagePicker isOpen={true} onClose={()=>setPickerOpen(null)} clientId={String(pickerOpen?.clientId||'')} targetWidth={800} targetHeight={300} allowEdit={true} onConfirm={async(blob)=>{
           try{
@@ -923,7 +950,6 @@ const getDivisionIcon = (label: string): string => {
 function ProjectListItem({ project, projectDivisions, projectStatuses }:{ project: Project, projectDivisions?: any[], projectStatuses: any[] }){
   const navigate = useNavigate();
   
-  // Use client name from project data
   const clientName = project.client_display_name || project.client_name || '';
   const status = project.status_label || '';
   const statusLabel = String(status || '').trim();
@@ -932,11 +958,9 @@ function ProjectListItem({ project, projectDivisions, projectStatuses }:{ projec
   const eta = (project.date_eta || '').slice(0,10);
   const projectAdminId = project.project_admin_id || null;
   
-  // Calculate total from proposals (original + change orders)
   const proposalsTotal = useProposalsTotal(project.id);
   const estimatedValue = proposalsTotal > 0 ? proposalsTotal : (project.service_value || 0);
   
-  // Get employees data for avatars
   const { data: employeesData } = useQuery({ 
     queryKey:['employees-for-projects-list'], 
     queryFn: ()=> api<any[]>('GET','/employees'), 
@@ -944,24 +968,31 @@ function ProjectListItem({ project, projectDivisions, projectStatuses }:{ projec
   });
   const employees = employeesData || [];
   
-  // Resolve Project Admin employee for avatar
   const projectAdmin = useMemo(() => {
     if (!projectAdminId) return null;
     return employees.find((e: any) => String(e.id) === String(projectAdminId)) || null;
   }, [projectAdminId, employees]);
 
+  // Quick access buttons - same style as Opportunities list
+  const tabButtons = [
+    { key: 'files', icon: '📁', label: 'Files', tab: 'files' },
+    { key: 'proposal', icon: '📄', label: 'Proposal', tab: 'proposal' },
+    { key: 'reports', icon: '📋', label: 'Reports', tab: 'reports' },
+    { key: 'dispatch', icon: '👷', label: 'Workload', tab: 'dispatch' },
+  ];
+
   return (
     <Link 
       to={`/projects/${encodeURIComponent(String(project.id))}`} 
-      className="group border rounded-lg bg-white p-4 hover:shadow-md transition-all duration-200 min-w-[800px]"
+      className="group border border-gray-200 rounded-xl bg-white p-4 hover:shadow-md hover:border-gray-300 transition-all duration-200 min-w-[800px] block"
     >
-      <div className="grid grid-cols-[10fr_3fr_3fr_3fr_3fr_3fr] gap-2 sm:gap-3 lg:gap-4 items-center overflow-hidden">
-        {/* Coluna 1: Name, Code, Client */}
+      <div className="grid grid-cols-[10fr_3fr_3fr_4fr_4fr_4fr_auto] gap-2 sm:gap-3 lg:gap-4 items-center overflow-hidden">
+        {/* Coluna 1: Name, Code, Client - header já mostra "Project" */}
         <div className="min-w-0">
-          <div className="font-semibold text-base text-gray-900 group-hover:text-[#7f1010] transition-colors truncate">
+          <div className="text-sm font-bold text-gray-900 group-hover:text-[#7f1010] transition-colors truncate">
             {project.name || 'Project'}
           </div>
-          <div className="flex items-center gap-2 mt-1 text-sm text-gray-600">
+          <div className="flex items-center gap-2 mt-0.5 text-xs text-gray-600">
             <span className="truncate">{project.code || '—'}</span>
             {clientName && (
               <>
@@ -972,51 +1003,70 @@ function ProjectListItem({ project, projectDivisions, projectStatuses }:{ projec
           </div>
         </div>
 
-        {/* Coluna 2: Start */}
-        <div className="min-w-0">
-          <div className="text-xs text-gray-500 mb-0.5">Start</div>
-          <div className="font-medium text-gray-900 whitespace-nowrap text-sm truncate">{start || '—'}</div>
+        {/* Coluna 2: Start (só valor) */}
+        <div className="min-w-0 flex items-center">
+          <span className="font-semibold text-gray-900 text-xs whitespace-nowrap truncate">{start || '—'}</span>
         </div>
 
-        {/* Coluna 3: ETA */}
-        <div className="min-w-0">
-          <div className="text-xs text-gray-500 mb-0.5">ETA</div>
-          <div className="font-medium text-gray-900 whitespace-nowrap text-sm truncate">{eta || '—'}</div>
+        {/* Coluna 3: ETA (só valor) */}
+        <div className="min-w-0 flex items-center">
+          <span className="font-semibold text-gray-900 text-xs whitespace-nowrap truncate">{eta || '—'}</span>
         </div>
 
-        {/* Coluna 4: Avatares (Project Admin) */}
-        <div className="min-w-0">
-          <div className="text-xs text-gray-500 mb-0.5">Project Admin</div>
+        {/* Coluna 4: Project Admin (só valor) */}
+        <div className="min-w-0 flex items-center">
           {!projectAdmin ? (
-            <div className="text-gray-400 text-xs">—</div>
+            <span className="text-xs font-semibold text-gray-400">—</span>
           ) : (
-            <div className="flex items-center gap-1.5 min-w-0">
+            <div className="flex items-center gap-2 min-w-0">
               <UserAvatar user={projectAdmin} size="w-5 h-5" showTooltip={true} />
-              <div className="font-medium text-gray-900 text-xs truncate min-w-0">{getUserDisplayName(projectAdmin)}</div>
+              <span className="font-semibold text-gray-900 text-xs truncate min-w-0">{getUserDisplayName(projectAdmin)}</span>
             </div>
           )}
         </div>
 
-        {/* Coluna 5: Value */}
-        <div className="min-w-0">
-          <div className="text-xs text-gray-500 mb-0.5">Value</div>
-          <div className="font-semibold text-[#7f1010] whitespace-nowrap text-sm truncate">
+        {/* Coluna 5: Value (só valor) */}
+        <div className="min-w-0 flex items-center">
+          <span className="font-semibold text-[#7f1010] whitespace-nowrap text-xs truncate">
             {estimatedValue > 0 ? `$${estimatedValue.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : '—'}
-          </div>
+          </span>
         </div>
 
         {/* Coluna 6: Status */}
         <div className="min-w-0">
           <span
             className={[
-              'inline-flex items-center gap-1 px-2 lg:px-3 py-1.5 rounded-full text-xs font-medium border shadow-sm',
-              'backdrop-blur-sm border-gray-200 text-gray-800',
+              'inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium border border-gray-200',
+              'backdrop-blur-sm text-gray-800',
             ].join(' ')}
             title={status}
             style={{ backgroundColor: statusColor, color: '#000' }}
           >
             <span className="truncate">{status || '—'}</span>
           </span>
+        </div>
+
+        {/* Coluna 7: Quick access */}
+        <div className="flex items-center gap-1.5 flex-shrink-0" onClick={(e) => e.preventDefault()}>
+          {tabButtons.map((btn) => (
+            <button
+              key={btn.key}
+              type="button"
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                navigate(`/projects/${encodeURIComponent(String(project.id))}?tab=${btn.tab}`);
+              }}
+              className="relative group/btn w-8 h-8 rounded-lg bg-gray-100 hover:bg-gray-200 border border-gray-200 hover:border-gray-300 flex items-center justify-center text-sm transition-all hover:scale-[1.05]"
+              title={btn.label}
+            >
+              {btn.icon}
+              <span className="absolute left-1/2 -translate-x-1/2 bottom-full mb-1 px-2 py-1 bg-gray-900 text-white text-xs rounded whitespace-nowrap opacity-0 group-hover/btn:opacity-100 pointer-events-none z-20 transition-opacity">
+                {btn.label}
+                <span className="absolute -bottom-1 left-1/2 -translate-x-1/2 w-2 h-2 bg-gray-900 rotate-45" />
+              </span>
+            </button>
+          ))}
         </div>
       </div>
     </Link>
@@ -1152,7 +1202,7 @@ function ProjectListCard({ project, projectDivisions, projectStatuses }:{ projec
     return icons;
   }, [projectDivIds, projectDivisions, calculatedPercentages]);
 
-  // Tab icons and navigation
+  // Tab icons and navigation - same style as Opportunities cards (w-8 h-8 rounded-lg)
   const tabButtons = [
     { key: 'reports', icon: '📝', label: 'Reports', tab: 'reports' },
     { key: 'dispatch', icon: '👷', label: 'Workload', tab: 'dispatch' },
@@ -1165,12 +1215,11 @@ function ProjectListCard({ project, projectDivisions, projectStatuses }:{ projec
   return (
     <Link 
       to={`/projects/${encodeURIComponent(String(project.id))}`} 
-      className="group rounded-xl border bg-white hover:border-gray-200 hover:shadow-md hover:-translate-y-0.5 block h-full transition-all duration-200 relative"
+      className="group rounded-xl border border-gray-200 bg-white hover:border-gray-300 hover:shadow-md hover:-translate-y-0.5 block h-full transition-all duration-200 relative"
     >
       <div className="p-4 flex flex-col gap-3">
         {/* Top row: thumb + title */}
         <div className="flex gap-4">
-          {/* Image (smaller) */}
           <div className="w-24 h-20 flex-shrink-0">
             <div className="w-full h-full bg-gray-100 rounded-lg overflow-hidden relative">
               <img className="w-full h-full object-cover" src={src} alt={project.name || 'Project'} />
@@ -1179,16 +1228,16 @@ function ProjectListCard({ project, projectDivisions, projectStatuses }:{ projec
           </div>
 
           <div className="flex-1 min-w-0">
-            <div className="text-xs text-gray-500 truncate min-w-0">{clientName || 'No client'}</div>
+            <div className="text-[10px] font-medium text-gray-500 uppercase tracking-wide truncate min-w-0">{clientName || 'No client'}</div>
             <div className="min-w-0">
-              <div className="font-semibold text-base text-gray-900 group-hover:text-[#7f1010] transition-colors whitespace-normal break-words">
+              <div className="text-sm font-bold text-gray-900 group-hover:text-[#7f1010] transition-colors whitespace-normal break-words">
                 {project.name || 'Project'}
               </div>
-              <div className="text-xs text-gray-600 break-words">{project.code || '—'}</div>
+              <div className="text-xs font-semibold text-gray-900 break-words">{project.code || '—'}</div>
             </div>
 
-            {/* Icons row (right below code) */}
-            <div className="mt-2 flex items-center gap-1.5 flex-wrap">
+            {/* Quick access - same style as Opportunities (w-8 h-8 rounded-lg) */}
+            <div className="mt-2 flex items-center gap-2 flex-wrap">
               {tabButtons.map((btn) => (
                 <button
                   key={btn.key}
@@ -1197,7 +1246,7 @@ function ProjectListCard({ project, projectDivisions, projectStatuses }:{ projec
                     e.stopPropagation();
                     navigate(`/projects/${encodeURIComponent(String(project.id))}?tab=${btn.tab}`);
                   }}
-                  className="relative group/btn w-6 h-6 rounded-md bg-gray-100 hover:bg-gray-200 border border-gray-200 hover:border-gray-300 flex items-center justify-center text-xs transition-all hover:scale-[1.05]"
+                  className="relative group/btn w-8 h-8 rounded-lg bg-gray-100 hover:bg-gray-200 border border-gray-200 hover:border-gray-300 flex items-center justify-center text-sm transition-all hover:scale-[1.05]"
                   title={btn.label}
                 >
                   {btn.icon}
@@ -1217,38 +1266,37 @@ function ProjectListCard({ project, projectDivisions, projectStatuses }:{ projec
             <div className="flex-1 h-3 bg-gray-200 rounded-full overflow-hidden">
               <div className="h-full bg-brand-red rounded-full transition-all" style={{ width: `${progress}%` }} />
             </div>
-            <span className="text-sm font-semibold text-gray-700 w-12 text-right">{progress}%</span>
+            <span className="text-xs font-semibold text-gray-700 w-12 text-right">{progress}%</span>
           </div>
         </div>
 
-        {/* Separator */}
         <div className="border-t border-black/5" />
 
-        {/* Fields (same info as before, simple text) */}
-        <div className="grid grid-cols-2 gap-3 text-sm">
+        {/* Fields - labels text-[10px] font-medium text-gray-500 uppercase, values text-xs font-semibold (same as Opportunities) */}
+        <div className="grid grid-cols-2 gap-3">
           <div className="min-w-0">
-            <div className="text-xs text-gray-500">Start Date</div>
-            <div className="font-medium text-gray-900 truncate">{start || '—'}</div>
+            <div className="text-[10px] font-medium text-gray-500 uppercase tracking-wide mb-0.5">Start Date</div>
+            <div className="text-xs font-semibold text-gray-900 truncate">{start || '—'}</div>
           </div>
           <div className="min-w-0">
-            <div className="text-xs text-gray-500">ETA</div>
-            <div className="font-medium text-gray-900 truncate">{eta || '—'}</div>
+            <div className="text-[10px] font-medium text-gray-500 uppercase tracking-wide mb-0.5">ETA</div>
+            <div className="text-xs font-semibold text-gray-900 truncate">{eta || '—'}</div>
           </div>
           <div className="min-w-0">
-            <div className="text-xs text-gray-500 mb-1.5">Project Admin</div>
+            <div className="text-[10px] font-medium text-gray-500 uppercase tracking-wide mb-0.5">Project Admin</div>
             {!projectAdmin ? (
-              <div className="text-gray-400 text-xs">—</div>
+              <div className="text-xs font-semibold text-gray-400">—</div>
             ) : (
               <div className="flex items-center gap-2">
-                <UserAvatar user={projectAdmin} size="w-6 h-6" showTooltip={true} />
-                <div className="font-medium text-gray-900 text-xs truncate">{getUserDisplayName(projectAdmin)}</div>
+                <UserAvatar user={projectAdmin} size="w-5 h-5" showTooltip={true} />
+                <div className="text-xs font-semibold text-gray-900 truncate">{getUserDisplayName(projectAdmin)}</div>
               </div>
             )}
           </div>
           <div className="min-w-0">
-            <div className="text-xs text-gray-500 mb-1.5">Estimated Value</div>
-            <div className="h-6 flex items-center">
-              <div className="font-semibold text-[#7f1010] truncate w-full">
+            <div className="text-[10px] font-medium text-gray-500 uppercase tracking-wide mb-0.5">Estimated Value</div>
+            <div className="h-5 flex items-center">
+              <div className="text-xs font-semibold text-[#7f1010] truncate w-full">
                 {estimatedValue > 0 ? `$${estimatedValue.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : '—'}
               </div>
             </div>
@@ -1256,12 +1304,11 @@ function ProjectListCard({ project, projectDivisions, projectStatuses }:{ projec
         </div>
         {actualValue > 0 && (
           <div>
-            <div className="text-xs text-gray-500">Actual Value</div>
-            <div className="font-semibold text-[#7f1010]">${actualValue.toLocaleString()}</div>
+            <div className="text-[10px] font-medium text-gray-500 uppercase tracking-wide mb-0.5">Actual Value</div>
+            <div className="text-xs font-semibold text-[#7f1010]">${actualValue.toLocaleString()}</div>
           </div>
         )}
 
-        {/* Separator */}
         <div className="border-t border-black/5" />
 
         {/* Bottom row: divisions (left) + status (right) */}
@@ -1271,10 +1318,10 @@ function ProjectListCard({ project, projectDivisions, projectStatuses }:{ projec
               <div className="flex items-center gap-2 flex-wrap">
                 {divisionIcons.map((div, idx) => (
                   <div key={idx} className="relative group/icon flex flex-col items-center" title={div.label}>
-                    <div className="text-xl cursor-pointer hover:scale-110 transition-transform">
+                    <div className="text-base cursor-pointer hover:scale-110 transition-transform">
                       {div.icon}
                     </div>
-                    <div className="text-xs text-gray-600 font-bold mt-0.5">
+                    <div className="text-[10px] font-semibold text-gray-600 mt-0.5">
                       {Math.round(div.percentage || 0)}%
                     </div>
                     <div className="absolute left-0 bottom-full mb-1 px-2 py-1 bg-gray-900 text-white text-xs rounded whitespace-nowrap opacity-0 group-hover/icon:opacity-100 transition-opacity pointer-events-none z-10">
@@ -1296,15 +1343,15 @@ function ProjectListCard({ project, projectDivisions, projectStatuses }:{ projec
                 )}
               </div>
             ) : (
-              <div className="text-xs text-gray-400">No division</div>
+              <div className="text-xs font-semibold text-gray-400">No division</div>
             )}
           </div>
 
           <div className="relative flex-shrink-0">
             <span
               className={[
-                'inline-flex items-center gap-1 px-2 py-1 rounded-full text-[11px] leading-4 font-medium border shadow-sm',
-                'backdrop-blur-sm border-gray-200 text-gray-800',
+                'inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium border border-gray-200',
+                'backdrop-blur-sm text-gray-800',
               ].join(' ')}
               title={status}
               style={{ backgroundColor: statusColor, color: '#000' }}

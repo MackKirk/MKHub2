@@ -1572,17 +1572,15 @@ export default function ProjectDetail(){
                 }
               }} 
               disabled={!isComplete}
-              className={`w-full px-6 py-4 rounded-xl font-semibold text-base shadow-md transition-all duration-200 flex items-center justify-center gap-3 ${
+              className={`w-full border-2 border-dashed rounded-lg p-2.5 transition-all text-center bg-white flex items-center justify-center gap-2 min-h-[60px] ${
                 isComplete 
-                  ? 'bg-gradient-to-r from-green-600 to-green-700 hover:from-green-700 hover:to-green-800 text-white hover:shadow-lg cursor-pointer' 
-                  : 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                  ? 'border-green-300 hover:border-green-600 hover:bg-green-50 cursor-pointer' 
+                  : 'border-gray-300 cursor-not-allowed'
               }`}
               title={missingMessage || 'Convert this opportunity to an active project'}
             >
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-              </svg>
-              <span>Convert to Project</span>
+              <span className={`text-lg ${isComplete ? 'text-green-500' : 'text-gray-400'}`}>+</span>
+              <span className={`font-medium text-xs ${isComplete ? 'text-green-700' : 'text-gray-500'}`}>Convert to Project</span>
             </button>
             {!isComplete && (
               <p className="mt-2 text-xs text-gray-600 text-center">
