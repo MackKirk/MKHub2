@@ -1510,7 +1510,6 @@ By signing the accompanying proposal, the Owner agrees to these Terms and Condit
             </svg>
           </div>
           {sectionsExpanded.sections && (
-<<<<<<< HEAD
           <div className="p-4">
           <div className="space-y-3">
             {sections.map((s:any, idx:number)=> {
@@ -1518,11 +1517,6 @@ By signing the accompanying proposal, the Owner agrees to these Terms and Condit
               const isDragging = draggingSection === idx;
               
               return (
-=======
-          <div className="p-3">
-          <div className="space-y-2">
-            {sections.map((s:any, idx:number)=> (
->>>>>>> 1b4e22e1fde40c7bfe0bef50dacda9a9653d0ffd
               <div key={s.id||idx} className="relative">
                 {/* Placeholder above - Trello style empty space */}
                 {placeholderPos === 'above' && (
@@ -1540,19 +1534,12 @@ By signing the accompanying proposal, the Owner agrees to these Terms and Condit
                 
                 {/* Section content - hidden if being dragged */}
                 <div
-<<<<<<< HEAD
-                   className={`border rounded p-3 transition-all duration-300 ${
-                     isDragging 
-                       ? 'opacity-50 scale-95' 
-                       : 'hover:shadow-sm'
-=======
                    className={`rounded-lg border border-gray-200 p-2.5 transition-all ${
                      draggingSection === idx ? 'opacity-50 scale-95' : ''
                    } ${
                      dragOverSection === idx && !disabled && draggingSection !== idx 
                        ? 'ring-2 ring-slate-400 ring-opacity-50 bg-slate-100/50' 
                        : ''
->>>>>>> 1b4e22e1fde40c7bfe0bef50dacda9a9653d0ffd
                    }`}
                    onDragOver={!disabled ? (e)=>{ e.preventDefault(); onSectionDragOver(idx, e); } : undefined}
                    onDragLeave={!disabled ? (e)=>{
@@ -1819,7 +1806,6 @@ By signing the accompanying proposal, the Owner agrees to these Terms and Condit
               </div>
             )}
             {!disabled && (
-<<<<<<< HEAD
               <div 
                 className="flex items-center gap-2"
                 onDragOver={(e) => {
@@ -1842,15 +1828,6 @@ By signing the accompanying proposal, the Owner agrees to these Terms and Condit
                 <button className="px-3 py-1.5 rounded bg-gray-100 text-base" onClick={()=> setSections(arr=> [...arr, { id: 'sec_'+Math.random().toString(36).slice(2), type:'text', title:'', text:'' }])}>+ Text Section</button>
                 <button className="px-3 py-1.5 rounded bg-gray-100 text-base" onClick={()=> setSections(arr=> [...arr, { id: 'sec_'+Math.random().toString(36).slice(2), type:'images', title:'', images: [] }])}>+ Images Section</button>
               </div>
-=======
-              <button 
-                className="mt-3 w-full border-2 border-dashed border-gray-300 rounded-lg p-2.5 hover:border-brand-red hover:bg-gray-50 transition-all text-center bg-white flex items-center justify-center disabled:opacity-60"
-                onClick={() => setShowSectionTypeModal(true)}
-              >
-                <div className="text-lg text-gray-400 mr-2">+</div>
-                <div className="font-medium text-xs text-gray-700">Add Section</div>
-              </button>
->>>>>>> 1b4e22e1fde40c7bfe0bef50dacda9a9653d0ffd
             )}
           </div>
           </div>
