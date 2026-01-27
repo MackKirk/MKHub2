@@ -149,6 +149,97 @@ function getUserDisplayName(user: any): string {
   return user?.name || user?.username || 'Unknown';
 }
 
+// Tooltip component for division icons - uses fixed positioning to avoid being cut off
+function DivisionTooltip({ label, percentage, icon }: { label: string; percentage: number; icon: string }) {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [position, setPosition] = useState<{ top: number; left: number; arrowClass: string } | null>(null);
+  const [isHovered, setIsHovered] = useState(false);
+
+  useEffect(() => {
+    if (!isHovered || !containerRef.current) {
+      setPosition(null);
+      return;
+    }
+
+    const updatePosition = () => {
+      if (containerRef.current) {
+        const rect = containerRef.current.getBoundingClientRect();
+        const tooltipWidth = 200; // Estimate tooltip width
+        const tooltipHeight = 30; // Estimate tooltip height
+        const spaceBelow = window.innerHeight - rect.bottom;
+        const spaceAbove = rect.top;
+        const spaceLeft = rect.left;
+        const spaceRight = window.innerWidth - rect.right;
+        
+        // Show above if not enough space below, otherwise show below
+        const showAbove = spaceBelow < tooltipHeight + 10 && spaceAbove > spaceBelow;
+        
+        // Calculate horizontal position to avoid cutting off
+        let left = rect.left + (rect.width / 2) + window.scrollX;
+        const minLeft = 8; // Minimum distance from left edge
+        const maxLeft = window.innerWidth - tooltipWidth - 8; // Maximum distance from right edge
+        
+        // Adjust if tooltip would be cut off on the left
+        if (left - (tooltipWidth / 2) < minLeft) {
+          left = minLeft + (tooltipWidth / 2);
+        }
+        // Adjust if tooltip would be cut off on the right
+        if (left + (tooltipWidth / 2) > window.innerWidth - 8) {
+          left = maxLeft + (tooltipWidth / 2);
+        }
+        
+        setPosition({
+          top: showAbove 
+            ? rect.top + window.scrollY - tooltipHeight - 8
+            : rect.bottom + window.scrollY + 4,
+          left: left - (tooltipWidth / 2),
+          arrowClass: showAbove ? 'bottom-0 top-auto' : '-top-1'
+        });
+      }
+    };
+
+    updatePosition();
+    window.addEventListener('scroll', updatePosition, true);
+    window.addEventListener('resize', updatePosition);
+
+    return () => {
+      window.removeEventListener('scroll', updatePosition, true);
+      window.removeEventListener('resize', updatePosition);
+    };
+  }, [isHovered]);
+
+  return (
+    <>
+      <div
+        ref={containerRef}
+        onMouseEnter={() => setIsHovered(true)}
+        onMouseLeave={() => setIsHovered(false)}
+        className="relative group/icon flex flex-col items-center"
+        title={label}
+      >
+        <div className="text-base transition-transform hover:scale-110">
+          {icon}
+        </div>
+        <div className="text-[10px] font-semibold mt-0.5 text-gray-600">
+          {percentage}%
+        </div>
+      </div>
+      {isHovered && position && (
+        <div
+          className="fixed px-2 py-1 bg-gray-900 text-white text-xs rounded whitespace-nowrap pointer-events-none z-[100] shadow-lg"
+          style={{
+            top: `${position.top}px`,
+            left: `${position.left}px`,
+          }}
+        >
+          {label}
+          <div className={`absolute ${position.arrowClass} left-1/2 -translate-x-1/2 w-2 h-2 bg-gray-900 rotate-45`}></div>
+        </div>
+      )}
+    </>
+  );
+}
+
 // Tooltip component for on-site leads with multiple divisions - uses fixed positioning to appear above footer
 function LeadTooltip({ employee, divisions, children }: { employee: any; divisions: string[]; children: React.ReactElement }) {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -442,7 +533,15 @@ export default function ProjectDetail(){
     });
   }, [baseAvailableTabs, hasTabPermission, me]);
 
-  const handleTabClick = async (newTab: typeof availableTabs[number] | 'estimate') => {
+  const handleTabClick = async (newTab: typeof availableTabs[number] | 'estimate' | null) => {
+    // If clicking Overview, set tab to null
+    if (newTab === null) {
+      setTab(null);
+      nav(location.pathname, { replace: true });
+      setIsHeroCollapsed(false);
+      return;
+    }
+    
     // Check permission for the tab being accessed
     if (newTab !== 'overview' && !hasTabPermission(newTab)) {
       toast.error('You do not have permission to access this tab');
@@ -465,17 +564,32 @@ export default function ProjectDetail(){
         if (saved) {
           setTab(newTab);
           nav(`${location.pathname}?tab=${newTab}`, { replace: true });
+          // Collapse hero section when selecting a tab (except when going back to overview)
+          if (newTab !== 'overview') {
+            setIsHeroCollapsed(true);
+          }
         }
       } else if (result === 'discard') {
         // Discard changes and leave
         setTab(newTab);
         nav(`${location.pathname}?tab=${newTab}`, { replace: true });
+        // Collapse hero section when selecting a tab (except when going back to overview)
+        if (newTab !== 'overview') {
+          setIsHeroCollapsed(true);
+        }
       }
       // If cancelled, do nothing (stay on estimate tab)
     } else {
       // No unsaved changes or not leaving estimate tab, proceed normally
       setTab(newTab);
       nav(`${location.pathname}?tab=${newTab}`, { replace: true });
+      // Collapse hero section when selecting a tab (except when going back to overview)
+      if (newTab !== 'overview') {
+        setIsHeroCollapsed(true);
+      } else {
+        // Expand hero section when going back to overview
+        setIsHeroCollapsed(false);
+      }
     }
   };
 
@@ -531,210 +645,238 @@ export default function ProjectDetail(){
   return (
     <div>
       {/* Title Bar */}
-      <div className="bg-slate-200/50 rounded-[12px] border border-slate-200 flex items-center justify-between py-4 px-6 mb-6">
-        <div className="flex items-center gap-4 flex-1">
-          <button
-            onClick={() => {
-              // If on a tab, go back to primary page; otherwise go to list
-              if (tab && tab !== 'overview') {
-                setTab(null);
-                nav(location.pathname, { replace: true });
-              } else {
-                nav(proj?.is_bidding ? '/opportunities' : '/projects');
-              }
-            }}
-            className="p-2 rounded-lg hover:bg-gray-200 transition-colors flex items-center justify-center"
-            title={tab && tab !== 'overview' ? 'Back to Overview' : (proj?.is_bidding ? 'Back to Opportunities' : 'Back to Projects')}
-          >
-            <svg className="w-5 h-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
-            </svg>
-          </button>
-          <div>
-            <div className="text-xl font-bold text-gray-900 tracking-tight mb-0.5">
-              {getPageTitle(proj, tab)}
+      <div className="rounded-xl border bg-white p-4 mb-4">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3 flex-1">
+            <button
+              onClick={() => {
+                // If on a tab, go back to primary page; otherwise go to list
+                if (tab && tab !== 'overview') {
+                  setTab(null);
+                  nav(location.pathname, { replace: true });
+                } else {
+                  nav(proj?.is_bidding ? '/opportunities' : '/projects');
+                }
+              }}
+              className="p-1.5 rounded hover:bg-gray-100 transition-colors flex items-center justify-center"
+              title={tab && tab !== 'overview' ? 'Back to Overview' : (proj?.is_bidding ? 'Back to Opportunities' : 'Back to Projects')}
+            >
+              <svg className="w-4 h-4 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+              </svg>
+            </button>
+            <div className="w-8 h-8 rounded bg-blue-100 flex items-center justify-center flex-shrink-0">
+              <svg className="w-5 h-5 text-blue-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+              </svg>
             </div>
-            <div className="text-sm text-gray-500 font-medium">{getPageDescription(proj, tab)}</div>
+            <div>
+              <div className="text-sm font-semibold text-gray-900">
+                {getPageTitle(proj, tab)}
+              </div>
+              <div className="text-xs text-gray-500 mt-0.5">{getPageDescription(proj, tab)}</div>
+            </div>
           </div>
-        </div>
-        <div className="text-right">
-          <div className="text-xs text-gray-400 mb-1.5 font-medium uppercase tracking-wide">Today</div>
-          <div className="text-sm font-semibold text-gray-700">{todayLabel}</div>
+          <div className="text-right">
+            <div className="text-[10px] font-medium text-gray-500 uppercase tracking-wide">Today</div>
+            <div className="text-xs font-semibold text-gray-700 mt-0.5">{todayLabel}</div>
+          </div>
         </div>
       </div>
 
       {/* Hero Section - Based on Mockup */}
-      {isHeroCollapsed ? (
-        /* Collapsed View - Single Line */
-        <div className="mb-4 rounded-xl border bg-white overflow-visible relative">
-          <div className="p-4">
-            <div className="flex items-center justify-between gap-4">
-              <div className="flex-1 min-w-0">
-                <h3 className="text-lg font-semibold text-gray-900 truncate">{proj?.name||'—'}</h3>
-              </div>
-              <div className="flex items-center gap-6 flex-shrink-0 pr-10">
-                {/* Progress - only show for projects, not opportunities */}
-                {!proj?.is_bidding && (
-                  <div className="flex items-center gap-3">
-                    <div className="w-24 h-2 bg-gray-200 rounded-full overflow-hidden">
-                      <div className="h-full bg-brand-red rounded-full transition-all" style={{ width: `${Math.max(0,Math.min(100,Number(proj?.progress||0)))}%` }} />
-                    </div>
-                    <span className="text-sm font-semibold text-gray-700 w-10 text-right">{Math.max(0,Math.min(100,Number(proj?.progress||0)))}%</span>
-                  </div>
-                )}
-                {/* Project Admin for projects, Estimators for opportunities */}
+      <div className={`transition-all ${isHeroCollapsed ? 'duration-[1200ms]' : 'duration-[1800ms]'} ease-in-out ${isHeroCollapsed ? 'mb-2' : 'mb-4'}`}>
+      <div className="relative" style={{ minHeight: isHeroCollapsed ? 'auto' : 'auto' }}>
+        {/* Expanded View - Full Hero Section (defines container height when expanded) */}
+        <div className={`rounded-xl border bg-white overflow-hidden transition-all ${isHeroCollapsed ? 'duration-[1200ms]' : 'duration-[1800ms]'} ease-in-out ${
+          isHeroCollapsed 
+            ? 'opacity-0 max-h-0 pointer-events-none relative' 
+            : 'opacity-100 max-h-[2000px] pointer-events-auto relative'
+        }`} style={{
+          transitionProperty: 'max-height, opacity',
+          transitionDuration: isHeroCollapsed ? '1200ms, 300ms' : '1800ms, 300ms',
+          transitionTimingFunction: 'ease-in-out, ease-in-out'
+        }}>
+          <div className="p-3 overflow-visible">
+            <div className="flex gap-3 items-start">
+              {/* Left Section - Image and Project Divisions */}
+              <div className="w-48 flex-shrink-0 overflow-visible">
+                {/* Image */}
+                <div className="w-48 h-36 rounded-xl border overflow-hidden group relative mb-2 overflow-visible">
+                  <img src={cover} className="w-full h-full object-cover" />
+                  <button onClick={()=>setPickerOpen(true)} className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center text-white transition-opacity text-xs">✏️ Change</button>
+                </div>
+                
+                {/* Project Divisions below image */}
                 {(() => {
-                  if (proj?.is_bidding) {
-                    // For opportunities: show estimators
-                    const estimatorIds = proj?.estimator_ids || (proj?.estimator_id ? [proj.estimator_id] : []);
-                    const estimators = estimatorIds
-                      .map((id: string) => employees?.find((e: any) => String(e.id) === String(id)))
-                      .filter(Boolean);
-                    
-                    if (estimators.length === 0) {
-                      return <div className="text-sm text-gray-400">—</div>;
+                  const projectDivIds = Array.isArray(proj?.project_division_ids) ? proj.project_division_ids : [];
+                  if (projectDivIds.length === 0) return null;
+                  
+                  // Get division icons helper
+                  const getDivisionIcon = (label: string): string => {
+                    const iconMap: Record<string, string> = {
+                      'Concrete': '🏗️',
+                      'Framing': '🔨',
+                      'Roofing': '🏠',
+                      'Siding': '🧱',
+                      'Windows': '🪟',
+                      'Doors': '🚪',
+                      'Electrical': '⚡',
+                      'Plumbing': '🚿',
+                      'HVAC': '❄️',
+                      'Insulation': '🧊',
+                      'Drywall': '📐',
+                      'Painting': '🎨',
+                      'Flooring': '🪵',
+                      'Landscaping': '🌳',
+                    };
+                    for (const [key, icon] of Object.entries(iconMap)) {
+                      if (label.toLowerCase().includes(key.toLowerCase())) return icon;
                     }
+                    return '📦';
+                  };
+                  
+                  // Calculate percentages from proposals (same logic as ProjectDivisionsHeroSection)
+                  const calculatedPercentages: Record<string, number> = {};
+                  projectDivIds.forEach((id: string) => {
+                    calculatedPercentages[String(id)] = 0;
+                  });
+                  
+                  // Get pricing items from proposals
+                  const latestProposal = (proposals||[]).slice().sort((a,b)=>{
+                    const ad = a.created_at ? new Date(a.created_at).getTime() : 0;
+                    const bd = b.created_at ? new Date(b.created_at).getTime() : 0;
+                    return bd-ad;
+                  })[0];
+                  const savedPricingItems = latestProposal?.data?.additional_costs || [];
+                  const pricingItems = Array.isArray(livePricingItems) ? livePricingItems : savedPricingItems;
+                  
+                  if (pricingItems.length > 0) {
+                    const divisionTotals: { [key: string]: number } = {};
+                    pricingItems.forEach((item: any) => {
+                      if (item.division_id) {
+                        const divId = String(item.division_id);
+                        const value = (item.value || 0) * (parseInt(item.quantity || '1', 10) || 1);
+                        divisionTotals[divId] = (divisionTotals[divId] || 0) + value;
+                      }
+                    });
                     
-                    if (estimators.length === 1) {
-                      const est = estimators[0];
-                      return (
-                        <div className="flex items-center gap-2">
-                          <UserAvatar user={est} size="w-8 h-8" showTooltip={true} />
-                          <div className="text-sm font-medium text-gray-700">{getUserDisplayName(est)}</div>
-                        </div>
-                      );
+                    const total = Object.values(divisionTotals).reduce((a, b) => a + b, 0);
+                    if (total > 0) {
+                      projectDivIds.forEach(id => {
+                        const idStr = String(id);
+                        calculatedPercentages[idStr] = divisionTotals[idStr] ? (divisionTotals[idStr] / total) * 100 : 0;
+                      });
                     }
-                    
-                    // Multiple estimators - show only avatars
-                    return (
-                      <div className="flex items-center gap-2">
-                        {estimators.map((est: any) => (
-                          <UserAvatar key={est.id} user={est} size="w-8 h-8" showTooltip={true} />
-                        ))}
-                      </div>
-                    );
-                  } else {
-                    // For projects: show Project Admin
-                    const adminId = proj?.project_admin_id;
-                    if (!adminId) {
-                      return <div className="text-sm text-gray-400">—</div>;
-                    }
-                    
-                    const projectAdmin = employees?.find((e: any) => String(e.id) === String(adminId));
-                    if (!projectAdmin) {
-                      return <div className="text-sm text-gray-400">—</div>;
-                    }
-                    
-                    return (
-                      <div className="flex items-center gap-2">
-                        <UserAvatar user={projectAdmin} size="w-8 h-8" showTooltip={true} />
-                        <div className="text-sm font-medium text-gray-700">{getUserDisplayName(projectAdmin)}</div>
-                      </div>
-                    );
                   }
+                  
+                  const divisionItems = projectDivIds.map((divId: string) => {
+                    const div = projectDivisions?.find((d: any) => String(d.id) === String(divId));
+                    if (div) {
+                      return {
+                        icon: getDivisionIcon(div.label),
+                        label: div.label,
+                        id: String(div.id),
+                        percentage: calculatedPercentages[String(divId)] || 0
+                      };
+                    }
+                    // Check subdivisions
+                    for (const d of (projectDivisions || [])) {
+                      for (const sub of (d.subdivisions || [])) {
+                        if (String(sub.id) === String(divId)) {
+                          return {
+                            icon: getDivisionIcon(d.label),
+                            label: `${d.label} - ${sub.label}`,
+                            id: String(sub.id),
+                            percentage: calculatedPercentages[String(divId)] || 0
+                          };
+                        }
+                      }
+                    }
+                    return null;
+                  }).filter(Boolean);
+                  
+                  if (divisionItems.length === 0) return null;
+                  
+                  return (
+                    <div className="flex items-center justify-center gap-2 flex-wrap">
+                      {divisionItems.map((div: any) => (
+                        <DivisionTooltip key={div.id} label={div.label} percentage={Math.round(div.percentage || 0)} icon={div.icon} />
+                      ))}
+                    </div>
+                  );
                 })()}
               </div>
-            </div>
-          </div>
-          
-          {/* Expand button - aligned with middle of card */}
-          <button
-            onClick={() => setIsHeroCollapsed(!isHeroCollapsed)}
-            className="absolute top-1/2 -translate-y-1/2 right-4 p-1.5 text-gray-600 hover:text-gray-900 transition-colors"
-            title="Expand"
-          >
-            <svg 
-              className="w-5 h-5" 
-              fill="none" 
-              stroke="currentColor" 
-              viewBox="0 0 24 24"
-            >
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-            </svg>
-          </button>
-        </div>
-      ) : (
-        /* Expanded View - Full Hero Section */
-        <div className="mb-4 rounded-xl border bg-white overflow-hidden relative">
-          <div className="p-6">
-            <div className="flex gap-6 items-start">
-              {/* Left Section - Image (centered within its column) */}
-              <div className="w-64 flex-shrink-0 self-stretch flex items-center justify-center">
-                <div className="w-64 h-48 rounded-xl border overflow-hidden group relative">
-                  <img src={cover} className="w-full h-full object-cover" />
-                  <button onClick={()=>setPickerOpen(true)} className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center text-white transition-opacity">✏️ Change</button>
+              
+              {/* Right Section - General Information */}
+              <div className="flex-1 min-w-0">
+                <div className="mb-2">
+                <div className="flex items-center gap-1.5">
+                  <h3 
+                    className="text-sm font-bold text-gray-900 cursor-text"
+                    onClick={() => hasEditPermission && setEditProjectNameModal(true)}
+                  >
+                    {proj?.name || 'Untitled Project'}
+                  </h3>
+                  {hasEditPermission && (
+                    <button
+                      onClick={() => setEditProjectNameModal(true)}
+                      className="text-gray-400 hover:text-[#7f1010] transition-colors"
+                      title="Edit Project Name"
+                    >
+                      <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                      </svg>
+                    </button>
+                  )}
                 </div>
               </div>
               
-              {/* Middle Section - General Information */}
-              <div className="flex-1 min-w-0">
-                <div className="mb-4">
-                  <div className="flex items-center gap-1.5">
-                    <h3 
-                      className="font-semibold text-lg cursor-text"
-                      onClick={() => hasEditPermission && setEditProjectNameModal(true)}
-                    >
-                      {proj?.name || 'Untitled Project'}
-                    </h3>
-                    {hasEditPermission && (
-                      <button
-                        onClick={() => setEditProjectNameModal(true)}
-                        className="text-gray-400 hover:text-[#7f1010] transition-colors"
-                        title="Edit Project Name"
-                      >
-                        <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                        </svg>
-                      </button>
-                    )}
-                  </div>
-                </div>
-
-                {/* Align by columns */}
-                <div className="grid grid-cols-3 gap-6">
+              {/* Align by columns */}
+              <div className="grid grid-cols-3 gap-x-3 gap-y-1.5">
                   {/* Column 1 */}
                   <div className="min-w-0">
                     {/* Code */}
-                    <div className="mb-4">
-                      <label className="text-xs text-gray-600 block mb-1">Code</label>
-                      <div className="text-sm font-medium">{proj?.code || '—'}</div>
+                    <div>
+                      <span className="text-[10px] font-medium text-gray-500 uppercase tracking-wide">Code</span>
+                      <div className="text-xs font-semibold text-gray-900 mt-0.5">{proj?.code || '—'}</div>
                     </div>
 
                     {/* Customer - only show for projects */}
                     {!proj?.is_bidding && (
-                      <div className="mb-4">
-                        <div className="text-xs text-gray-600 mb-1">Customer</div>
+                      <div>
+                        <span className="text-[10px] font-medium text-gray-500 uppercase tracking-wide">Customer</span>
                         {proj?.client_id ? (
                           <Link
                             to={`/customers/${encodeURIComponent(String(proj.client_id))}`}
-                            className="text-sm font-medium text-[#7f1010] hover:text-[#a31414] hover:underline break-words"
+                            className="text-xs font-semibold text-[#7f1010] hover:text-[#a31414] hover:underline break-words mt-0.5 block"
                           >
                             {proj?.client_display_name || proj?.client_name || 'View Customer'}
                           </Link>
                         ) : (
-                          <div className="text-sm font-medium text-gray-400">—</div>
+                          <div className="text-xs font-semibold text-gray-400 mt-0.5">—</div>
                         )}
                       </div>
                     )}
 
                     {/* Site - only show for projects */}
                     {!proj?.is_bidding && (
-                      <div className="mb-4">
-                        <div className="flex items-center gap-1.5 mb-1">
-                          <label className="text-xs text-gray-600 block">Site</label>
+                      <div>
+                        <div className="flex items-center gap-1.5 mb-1.5">
+                          <span className="text-[10px] font-medium text-gray-500 uppercase tracking-wide">Site</span>
                           {hasEditPermission && (
                             <button
                               onClick={() => setEditSiteModal(true)}
-                              className="text-gray-400 hover:text-[#7f1010] transition-colors"
+                              className="p-0.5 text-gray-400 hover:text-[#7f1010] transition-colors"
                               title="Edit Site"
                             >
-                              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
                               </svg>
                             </button>
                           )}
                         </div>
-                        <div className="text-sm font-medium">
+                        <div className="text-xs font-semibold text-gray-900">
                           {(() => {
                             const siteName = proj?.site_name;
                             const addressLine1 = proj?.site_address_line1 || proj?.address;
@@ -778,21 +920,21 @@ export default function ProjectDetail(){
 
                     {/* Status */}
                     <div>
-                      <div className="flex items-center gap-1.5 mb-2">
-                        <label className="text-xs text-gray-600 block">Status</label>
+                      <div className="flex items-center gap-1.5 mb-1.5">
+                        <span className="text-[10px] font-medium text-gray-500 uppercase tracking-wide">Status</span>
                         {hasEditPermission && (
                           <button
                             onClick={() => setEditStatusModal(true)}
-                            className="text-gray-400 hover:text-[#7f1010] transition-colors"
+                            className="p-0.5 text-gray-400 hover:text-[#7f1010] transition-colors"
                             title="Edit Status"
                           >
-                            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
                             </svg>
                           </button>
                         )}
                       </div>
-                      <span className="px-3 py-1.5 rounded text-sm font-medium inline-block" style={{ backgroundColor: statusColor, color: '#000' }}>
+                      <span className="px-2 py-0.5 rounded text-[10px] font-medium inline-block" style={{ backgroundColor: statusColor, color: '#000' }}>
                         {statusLabel || '—'}
                       </span>
                       {statusLabel && <StatusTimer project={proj} />}
@@ -803,39 +945,39 @@ export default function ProjectDetail(){
                   <div className="min-w-0">
                     {/* Customer - only show for opportunities */}
                     {proj?.is_bidding && (
-                      <div className="mb-4">
-                        <div className="text-xs text-gray-600 mb-1">Customer</div>
+                      <div>
+                        <span className="text-[10px] font-medium text-gray-500 uppercase tracking-wide">Customer</span>
                         {proj?.client_id ? (
                           <Link
                             to={`/customers/${encodeURIComponent(String(proj.client_id))}`}
-                            className="text-sm font-medium text-[#7f1010] hover:text-[#a31414] hover:underline break-words"
+                            className="text-xs font-semibold text-[#7f1010] hover:text-[#a31414] hover:underline break-words mt-0.5 block"
                           >
                             {proj?.client_display_name || proj?.client_name || 'View Customer'}
                           </Link>
                         ) : (
-                          <div className="text-sm font-medium text-gray-400">—</div>
+                          <div className="text-xs font-semibold text-gray-400 mt-0.5">—</div>
                         )}
                       </div>
                     )}
 
                     {/* Site - only show for opportunities */}
                     {proj?.is_bidding && (
-                      <div className="mb-4">
-                        <div className="flex items-center gap-1.5 mb-1">
-                          <label className="text-xs text-gray-600 block">Site</label>
+                      <div>
+                        <div className="flex items-center gap-1.5 mb-1.5">
+                          <span className="text-[10px] font-medium text-gray-500 uppercase tracking-wide">Site</span>
                           {hasEditPermission && (
                             <button
                               onClick={() => setEditSiteModal(true)}
-                              className="text-gray-400 hover:text-[#7f1010] transition-colors"
+                              className="p-0.5 text-gray-400 hover:text-[#7f1010] transition-colors"
                               title="Edit Site"
                             >
-                              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
                               </svg>
                             </button>
                           )}
                         </div>
-                        <div className="text-sm font-medium">
+                        <div className="text-xs font-semibold text-gray-900">
                           {(() => {
                             const siteName = proj?.site_name;
                             const addressLine1 = proj?.site_address_line1 || proj?.address;
@@ -879,43 +1021,43 @@ export default function ProjectDetail(){
 
                     {/* Lead Source - only show for opportunities */}
                     {proj?.is_bidding && (
-                      <div className="mb-4">
-                        <div className="flex items-center gap-1.5 mb-1">
-                          <label className="text-xs text-gray-600 block">Lead Source</label>
+                      <div>
+                        <div className="flex items-center gap-1.5 mb-1.5">
+                          <span className="text-[10px] font-medium text-gray-500 uppercase tracking-wide">Lead Source</span>
                           {hasEditPermission && (
                             <button
                               onClick={() => setEditLeadSourceModal(true)}
-                              className="text-gray-400 hover:text-[#7f1010] transition-colors"
+                              className="p-0.5 text-gray-400 hover:text-[#7f1010] transition-colors"
                               title="Edit Lead Source"
                             >
-                              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
                               </svg>
                             </button>
                           )}
                         </div>
-                        <div className="text-sm font-medium">{proj?.lead_source || '—'}</div>
+                        <div className="text-xs font-semibold text-gray-900">{proj?.lead_source || '—'}</div>
                       </div>
                     )}
 
                     {/* Lead Source - only show for projects, at top of column 2 */}
                     {!proj?.is_bidding && (
-                      <div className="mb-4">
-                        <div className="flex items-center gap-1.5 mb-1">
-                          <label className="text-xs text-gray-600 block">Lead Source</label>
+                      <div>
+                        <div className="flex items-center gap-1.5 mb-1.5">
+                          <span className="text-[10px] font-medium text-gray-500 uppercase tracking-wide">Lead Source</span>
                           {hasEditPermission && (
                             <button
                               onClick={() => setEditLeadSourceModal(true)}
-                              className="text-gray-400 hover:text-[#7f1010] transition-colors"
+                              className="p-0.5 text-gray-400 hover:text-[#7f1010] transition-colors"
                               title="Edit Lead Source"
                             >
-                              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
                               </svg>
                             </button>
                           )}
                         </div>
-                        <div className="text-sm font-medium">{proj?.lead_source || '—'}</div>
+                        <div className="text-xs font-semibold text-gray-900">{proj?.lead_source || '—'}</div>
                       </div>
                     )}
 
@@ -998,16 +1140,16 @@ export default function ProjectDetail(){
                   <div className="min-w-0">
                     {/* Estimators - for opportunities, show in column 3 */}
                     {proj?.is_bidding && (
-                      <div className="mb-6">
-                        <div className="flex items-center gap-1.5 mb-2">
-                          <label className="text-xs text-gray-600 block">Estimators</label>
+                      <div>
+                        <div className="flex items-center gap-1.5 mb-1.5">
+                          <span className="text-[10px] font-medium text-gray-500 uppercase tracking-wide">Estimators</span>
                           {hasEditPermission && (
                             <button
                               onClick={() => setEditEstimatorModal(true)}
-                              className="text-gray-400 hover:text-[#7f1010] transition-colors"
+                              className="p-0.5 text-gray-400 hover:text-[#7f1010] transition-colors"
                               title="Edit Estimators"
                             >
-                              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
                               </svg>
                             </button>
@@ -1020,16 +1162,16 @@ export default function ProjectDetail(){
                             .filter(Boolean);
                           
                           if (estimators.length === 0) {
-                            return <div className="text-sm text-gray-400">—</div>;
+                            return <div className="text-xs text-gray-400">—</div>;
                           }
                           
                           if (estimators.length === 1) {
                             const est = estimators[0];
                             return (
-                              <div className="flex items-center gap-3">
-                                <UserAvatar user={est} size="w-8 h-8" showTooltip={true} />
+                              <div className="flex items-center gap-2">
+                                <UserAvatar user={est} size="w-6 h-6" showTooltip={true} />
                                 <div className="flex-1 min-w-0">
-                                  <div className="text-sm font-medium truncate">{getUserDisplayName(est)}</div>
+                                  <div className="text-xs font-semibold text-gray-900 truncate">{getUserDisplayName(est)}</div>
                                 </div>
                               </div>
                             );
@@ -1037,9 +1179,9 @@ export default function ProjectDetail(){
                           
                           // Multiple estimators - show only avatars
                           return (
-                            <div className="flex items-center gap-2 flex-wrap">
+                            <div className="flex items-center gap-1.5 flex-wrap">
                               {estimators.map((est: any) => (
-                                <UserAvatar key={est.id} user={est} size="w-8 h-8" showTooltip={true} />
+                                <UserAvatar key={est.id} user={est} size="w-6 h-6" showTooltip={true} />
                               ))}
                             </div>
                           );
@@ -1049,16 +1191,16 @@ export default function ProjectDetail(){
 
                     {/* Estimators - only show for projects, not opportunities */}
                     {!proj?.is_bidding && (
-                      <div className="mb-6">
-                        <div className="flex items-center gap-1.5 mb-2">
-                          <label className="text-xs text-gray-600 block">Estimators</label>
+                      <div>
+                        <div className="flex items-center gap-1.5 mb-1.5">
+                          <span className="text-[10px] font-medium text-gray-500 uppercase tracking-wide">Estimators</span>
                           {hasEditPermission && (
                             <button
                               onClick={() => setEditEstimatorModal(true)}
-                              className="text-gray-400 hover:text-[#7f1010] transition-colors"
+                              className="p-0.5 text-gray-400 hover:text-[#7f1010] transition-colors"
                               title="Edit Estimators"
                             >
-                              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
                               </svg>
                             </button>
@@ -1071,16 +1213,16 @@ export default function ProjectDetail(){
                             .filter(Boolean);
                           
                           if (estimators.length === 0) {
-                            return <div className="text-sm text-gray-400">—</div>;
+                            return <div className="text-xs text-gray-400">—</div>;
                           }
                           
                           if (estimators.length === 1) {
                             const est = estimators[0];
                             return (
-                              <div className="flex items-center gap-3">
-                                <UserAvatar user={est} size="w-8 h-8" showTooltip={true} />
+                              <div className="flex items-center gap-2">
+                                <UserAvatar user={est} size="w-6 h-6" showTooltip={true} />
                                 <div className="flex-1 min-w-0">
-                                  <div className="text-sm font-medium truncate">{getUserDisplayName(est)}</div>
+                                  <div className="text-xs font-semibold text-gray-900 truncate">{getUserDisplayName(est)}</div>
                                 </div>
                               </div>
                             );
@@ -1088,9 +1230,9 @@ export default function ProjectDetail(){
                           
                           // Multiple estimators - show only avatars
                           return (
-                            <div className="flex items-center gap-2 flex-wrap">
+                            <div className="flex items-center gap-1.5 flex-wrap">
                               {estimators.map((est: any) => (
-                                <UserAvatar key={est.id} user={est} size="w-8 h-8" showTooltip={true} />
+                                <UserAvatar key={est.id} user={est} size="w-6 h-6" showTooltip={true} />
                               ))}
                             </div>
                           );
@@ -1098,23 +1240,19 @@ export default function ProjectDetail(){
                       </div>
                     )}
 
-                    {/* Project Divisions - for opportunities, show in column 3 below Estimators */}
-                    {proj?.is_bidding && (
-                      <ProjectDivisionsHeroSection projectId={String(id)} proj={proj} hasEditPermission={hasEditPermission} livePricingItems={livePricingItems} />
-                    )}
 
                     {/* Project Admin - Only show for projects, not opportunities */}
                     {!proj?.is_bidding && (
-                      <div className="mb-6">
-                        <div className="flex items-center gap-1.5 mb-2">
-                          <label className="text-xs text-gray-600 block">Project Admin</label>
+                      <div>
+                        <div className="flex items-center gap-1.5 mb-1.5">
+                          <span className="text-[10px] font-medium text-gray-500 uppercase tracking-wide">Project Admin</span>
                           {hasEditPermission && (
                             <button
                               onClick={() => setEditProjectAdminModal(true)}
-                              className="text-gray-400 hover:text-[#7f1010] transition-colors"
+                              className="p-0.5 text-gray-400 hover:text-[#7f1010] transition-colors"
                               title="Edit Project Admin"
                             >
-                              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
                               </svg>
                             </button>
@@ -1123,12 +1261,12 @@ export default function ProjectDetail(){
                         {(() => {
                           const adminId = proj?.project_admin_id;
                           const admin = adminId ? employees?.find((e: any) => String(e.id) === String(adminId)) : null;
-                          if (!admin) return <div className="text-sm text-gray-400">—</div>;
+                          if (!admin) return <div className="text-xs text-gray-400">—</div>;
                           return (
-                            <div className="flex items-center gap-3">
-                              <UserAvatar user={admin} size="w-8 h-8" showTooltip={true} />
+                            <div className="flex items-center gap-2">
+                              <UserAvatar user={admin} size="w-6 h-6" showTooltip={true} />
                               <div className="flex-1 min-w-0">
-                                <div className="text-sm font-medium truncate">{getUserDisplayName(admin)}</div>
+                                <div className="text-xs font-semibold text-gray-900 truncate">{getUserDisplayName(admin)}</div>
                               </div>
                             </div>
                           );
@@ -1138,16 +1276,16 @@ export default function ProjectDetail(){
 
                     {/* On-site Leads */}
                     {!proj?.is_bidding && (
-                      <div className="mb-6">
-                        <div className="flex items-center gap-1.5 mb-2">
-                          <label className="text-xs text-gray-600 block">On-site Leads</label>
+                      <div>
+                        <div className="flex items-center gap-1.5 mb-1.5">
+                          <span className="text-[10px] font-medium text-gray-500 uppercase tracking-wide">On-site Leads</span>
                           {hasEditPermission && (
                             <button
                               onClick={() => setShowOnSiteLeadsModal(true)}
-                              className="text-gray-400 hover:text-[#7f1010] transition-colors"
+                              className="p-0.5 text-gray-400 hover:text-[#7f1010] transition-colors"
                               title="Edit On-site Leads"
                             >
-                              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
                               </svg>
                             </button>
@@ -1194,20 +1332,20 @@ export default function ProjectDetail(){
                           const uniqueLeads = Array.from(leadMap.values());
                           
                           if (uniqueLeads.length === 0) {
-                            return <div className="text-sm text-gray-400">—</div>;
+                            return <div className="text-xs text-gray-400">—</div>;
                           }
                           
                           if (uniqueLeads.length === 1) {
                             const { employee, divisions } = uniqueLeads[0];
                             return (
-                              <div className="flex items-center gap-3">
+                              <div className="flex items-center gap-2">
                                 <LeadTooltip employee={employee} divisions={divisions}>
                                   <div className="relative group/lead">
-                                    <UserAvatar user={employee} size="w-8 h-8" showTooltip={false} />
+                                    <UserAvatar user={employee} size="w-6 h-6" showTooltip={false} />
                                   </div>
                                 </LeadTooltip>
                                 <div className="flex-1 min-w-0">
-                                  <div className="text-sm font-medium truncate">{getUserDisplayName(employee)}</div>
+                                  <div className="text-xs font-semibold text-gray-900 truncate">{getUserDisplayName(employee)}</div>
                                 </div>
                               </div>
                             );
@@ -1215,11 +1353,11 @@ export default function ProjectDetail(){
                           
                           // Multiple leads - show only avatars (one per unique employee)
                           return (
-                            <div className="flex items-center gap-2 flex-wrap">
+                            <div className="flex items-center gap-1.5 flex-wrap">
                               {uniqueLeads.map(({ employee, divisions }) => (
                                 <LeadTooltip key={employee.id} employee={employee} divisions={divisions}>
                                   <div className="relative group/lead">
-                                    <UserAvatar user={employee} size="w-8 h-8" showTooltip={false} />
+                                    <UserAvatar user={employee} size="w-6 h-6" showTooltip={false} />
                                   </div>
                                 </LeadTooltip>
                               ))}
@@ -1229,10 +1367,6 @@ export default function ProjectDetail(){
                       </div>
                     )}
 
-                    {/* Project Divisions - for projects, show in column 3 below On-site Leads */}
-                    {!proj?.is_bidding && (
-                      <ProjectDivisionsHeroSection projectId={String(id)} proj={proj} hasEditPermission={hasEditPermission} livePricingItems={livePricingItems} />
-                    )}
                   </div>
                 </div>
               </div>
@@ -1242,29 +1376,127 @@ export default function ProjectDetail(){
           {/* Collapse button - bottom right corner of card */}
           <button
             onClick={() => setIsHeroCollapsed(!isHeroCollapsed)}
-            className="absolute bottom-2 right-2 p-1.5 text-gray-600 hover:text-gray-900 transition-colors"
+            className="absolute bottom-2 right-2 p-1 rounded hover:bg-gray-100 transition-colors text-gray-500 hover:text-gray-700"
             title="Collapse"
           >
             <svg 
-              className="w-5 h-5" 
+              className="w-3 h-3 transition-transform rotate-180" 
               fill="none" 
               stroke="currentColor" 
               viewBox="0 0 24 24"
             >
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" />
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
             </svg>
           </button>
         </div>
-      )}
+        
+        {/* Collapsed View - Single Line (defines container height when collapsed, overlays when visible) */}
+        <div className={`rounded-xl border bg-white overflow-hidden transition-all ${isHeroCollapsed ? 'duration-[1200ms]' : 'duration-[1800ms]'} ease-in-out absolute top-0 left-0 right-0 ${
+          isHeroCollapsed 
+            ? 'opacity-100 min-h-[60px] max-h-[200px] pointer-events-auto z-10' 
+            : 'opacity-0 max-h-0 pointer-events-none z-0'
+        }`} style={{
+          transitionProperty: 'max-height, opacity',
+          transitionDuration: isHeroCollapsed ? '1200ms, 300ms' : '1800ms, 300ms',
+          transitionTimingFunction: 'ease-in-out, ease-in-out'
+        }}>
+          <div className="p-3">
+            <div className="flex items-center justify-between gap-4">
+              <div className="flex-1 min-w-0">
+                <h3 className="text-sm font-bold text-gray-900 truncate">{proj?.name||'—'}</h3>
+              </div>
+              <div className="flex items-center gap-4 flex-shrink-0 pr-8">
+                {/* Progress - only show for projects, not opportunities */}
+                {!proj?.is_bidding && (
+                  <div className="flex items-center gap-2">
+                    <div className="w-20 h-1.5 bg-gray-200 rounded-full overflow-hidden">
+                      <div className="h-full bg-brand-red rounded-full transition-all" style={{ width: `${Math.max(0,Math.min(100,Number(proj?.progress||0)))}%` }} />
+                    </div>
+                    <span className="text-xs font-semibold text-gray-700 w-8 text-right">{Math.max(0,Math.min(100,Number(proj?.progress||0)))}%</span>
+                  </div>
+                )}
+                {/* Project Admin for projects, Estimators for opportunities */}
+                {(() => {
+                  if (proj?.is_bidding) {
+                    // For opportunities: show estimators
+                    const estimatorIds = proj?.estimator_ids || (proj?.estimator_id ? [proj.estimator_id] : []);
+                    const estimators = estimatorIds
+                      .map((id: string) => employees?.find((e: any) => String(e.id) === String(id)))
+                      .filter(Boolean);
+                    
+                    if (estimators.length === 0) {
+                      return <div className="text-xs text-gray-400">—</div>;
+                    }
+                    
+                    if (estimators.length === 1) {
+                      const est = estimators[0];
+                      return (
+                        <div className="flex items-center gap-2">
+                          <UserAvatar user={est} size="w-6 h-6" showTooltip={true} />
+                          <div className="text-xs font-semibold text-gray-700">{getUserDisplayName(est)}</div>
+                        </div>
+                      );
+                    }
+                    
+                    // Multiple estimators - show only avatars
+                    return (
+                      <div className="flex items-center gap-1.5">
+                        {estimators.map((est: any) => (
+                          <UserAvatar key={est.id} user={est} size="w-6 h-6" showTooltip={true} />
+                        ))}
+                      </div>
+                    );
+                  } else {
+                    // For projects: show Project Admin
+                    const adminId = proj?.project_admin_id;
+                    if (!adminId) {
+                      return <div className="text-xs text-gray-400">—</div>;
+                    }
+                    
+                    const projectAdmin = employees?.find((e: any) => String(e.id) === String(adminId));
+                    if (!projectAdmin) {
+                      return <div className="text-xs text-gray-400">—</div>;
+                    }
+                    
+                    return (
+                      <div className="flex items-center gap-2">
+                        <UserAvatar user={projectAdmin} size="w-6 h-6" showTooltip={true} />
+                        <div className="text-xs font-semibold text-gray-700">{getUserDisplayName(projectAdmin)}</div>
+                      </div>
+                    );
+                  }
+                })()}
+              </div>
+            </div>
+          </div>
+          
+          {/* Expand button - bottom right corner */}
+          <button
+            onClick={() => setIsHeroCollapsed(!isHeroCollapsed)}
+            className="absolute bottom-2 right-2 p-1 rounded hover:bg-gray-100 transition-colors text-gray-500 hover:text-gray-700"
+            title="Expand"
+          >
+            <svg 
+              className="w-3 h-3 transition-transform" 
+              fill="none" 
+              stroke="currentColor" 
+              viewBox="0 0 24 24"
+            >
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+            </svg>
+          </button>
+        </div>
+      </div>
+      </div>
 
-      {/* Tab Cards */}
+      {/* Tab Cards - Always visible */}
+      <div className={`mb-4 transition-all duration-[1200ms] ease-in-out ${isHeroCollapsed ? 'mt-16' : 'mt-0'}`}>
+        <ProjectTabCards availableTabs={availableTabs} onTabClick={handleTabClick} proj={proj} currentTab={tab} />
+      </div>
+
+      {/* Calendar and Costs Cards - Only show on overview */}
       {!tab && (
         <>
-          <div className="mb-4">
-            <ProjectTabCards availableTabs={availableTabs} onTabClick={handleTabClick} proj={proj} />
-          </div>
-
-          {/* Calendar and Costs Cards */}
           {!proj?.is_bidding && (
             <>
               <div className="mb-4 grid md:grid-cols-2 gap-4">
@@ -1401,21 +1633,34 @@ export default function ProjectDetail(){
             // Show tab content
             <>
               {tab==='overview' && (
-                <div className="grid md:grid-cols-3 gap-4">
-                  <ProjectGeneralInfoCard projectId={String(id)} proj={proj||{}} files={files||[]} hasEditPermission={hasEditPermission} />
-                  <ProjectQuickEdit projectId={String(id)} proj={proj||{}} settings={settings||{}} />
-                  <ProjectContactCard projectId={String(id)} proj={proj||{}} clientId={proj?.client_id ? String(proj.client_id) : undefined} clientFiles={clientFiles||[]} />
+                <div className="space-y-4">
+                  {/* Main Overview Section Card */}
                   <div className="rounded-xl border bg-white p-4">
-                    <h4 className="font-semibold mb-2">Estimated Time of Completion</h4>
-                    <ProjectEtaEdit projectId={String(id)} proj={proj||{}} settings={settings||{}} />
-                  </div>
-                  <ProjectCostsSummary projectId={String(id)} proposals={proposals||[]} />
-                  {!proj?.is_bidding && (
-                    <div className="md:col-span-3 rounded-xl border bg-white p-4">
-                      <h4 className="font-semibold mb-2">Workload</h4>
-                      <CalendarMock title="Project Calendar" projectId={String(id)} hasEditPermission={hasEditPermission} />
+                    <div className="flex items-center gap-2 mb-4">
+                      <div className="w-8 h-8 rounded bg-green-100 flex items-center justify-center">
+                        <svg className="w-5 h-5 text-green-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+                        </svg>
+                      </div>
+                      <h2 className="text-sm font-semibold text-gray-900">Overview</h2>
                     </div>
-                  )}
+                  </div>
+                  <div className="grid md:grid-cols-3 gap-4">
+                    <ProjectGeneralInfoCard projectId={String(id)} proj={proj||{}} files={files||[]} hasEditPermission={hasEditPermission} />
+                    <ProjectQuickEdit projectId={String(id)} proj={proj||{}} settings={settings||{}} />
+                    <ProjectContactCard projectId={String(id)} proj={proj||{}} clientId={proj?.client_id ? String(proj.client_id) : undefined} clientFiles={clientFiles||[]} />
+                    <div className="rounded-xl border bg-white p-4">
+                      <h4 className="text-sm font-semibold text-gray-900 mb-2">Estimated Time of Completion</h4>
+                      <ProjectEtaEdit projectId={String(id)} proj={proj||{}} settings={settings||{}} />
+                    </div>
+                    <ProjectCostsSummary projectId={String(id)} proposals={proposals||[]} />
+                    {!proj?.is_bidding && (
+                      <div className="md:col-span-3 rounded-xl border bg-white p-4">
+                        <h4 className="text-sm font-semibold text-gray-900 mb-2">Workload</h4>
+                        <CalendarMock title="Project Calendar" projectId={String(id)} hasEditPermission={hasEditPermission} />
+                      </div>
+                    )}
+                  </div>
                 </div>
               )}
 
@@ -2086,18 +2331,31 @@ function ReportsTabEnhanced({ projectId, items, onRefresh }:{ projectId:string, 
   };
 
   return (
-    <div className="flex flex-col h-full">
-      {/* Two-column layout */}
-      <div className="flex-1 flex gap-4 min-h-0">
-        {/* Left sidebar - Reports list (30%) */}
-        <div className="w-[30%] flex flex-col border rounded-xl bg-white overflow-hidden">
+    <div className="space-y-4">
+      {/* Main Reports Section Card */}
+      <div className="rounded-xl border bg-white p-4">
+        <div className="flex items-center gap-2 mb-4">
+          <div className="w-8 h-8 rounded bg-orange-100 flex items-center justify-center">
+            <svg className="w-5 h-5 text-orange-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+            </svg>
+          </div>
+          <h2 className="text-sm font-semibold text-gray-900">Reports</h2>
+        </div>
+      </div>
+
+      <div className="flex flex-col h-full">
+        {/* Two-column layout */}
+        <div className="flex-1 flex gap-4 min-h-0">
+          {/* Left sidebar - Reports list (30%) */}
+          <div className="w-[30%] flex flex-col border rounded-xl bg-white overflow-hidden">
           <div className="overflow-y-auto flex-1">
             {/* Category Filter Dropdown - Inside the card, above New Report button */}
             <div className="p-3 border-b">
               <select
                 value={selectedCategoryFilter}
                 onChange={(e) => setSelectedCategoryFilter(e.target.value)}
-                className="w-full px-3 py-2 rounded border border-gray-300 bg-white text-sm font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-brand-red focus:border-transparent"
+                className="w-full rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-1 focus:ring-gray-400 focus:border-gray-400"
               >
                 <option value="">All Reports ({categoryCounts[''] || 0})</option>
                 {commercialCategories.length > 0 && (
@@ -2145,8 +2403,8 @@ function ReportsTabEnhanced({ projectId, items, onRefresh }:{ projectId:string, 
                     onClick={() => setShowCreateModal(true)}
                     className="border-2 border-dashed border-gray-300 rounded-lg p-4 hover:border-brand-red hover:bg-gray-50 transition-all text-center bg-white flex flex-col items-center justify-center min-h-[120px] cursor-pointer"
                   >
-                    <div className="text-3xl text-gray-400 mb-2">+</div>
-                    <div className="font-medium text-sm text-gray-700">New Report</div>
+                    <div className="text-lg text-gray-400 mb-1.5">+</div>
+                    <div className="font-medium text-xs text-gray-700">New Report</div>
                   </div>
                 </div>
               )}
@@ -2168,18 +2426,18 @@ function ReportsTabEnhanced({ projectId, items, onRefresh }:{ projectId:string, 
                   <div className="flex items-start gap-2">
                     <img src={authorInfo.avatar} className="w-8 h-8 rounded-full flex-shrink-0" alt={authorInfo.name} />
                     <div className="flex-1 min-w-0">
-                      <div className={`font-semibold text-sm mb-1 ${isSelected ? 'text-gray-900' : 'text-gray-800'}`}>
+                      <div className={`font-semibold text-xs mb-1 ${isSelected ? 'text-gray-900' : 'text-gray-800'}`}>
                         {r.title || 'Untitled Report'}
                       </div>
-                      <div className="text-xs text-gray-500 mb-1">
+                      <div className="text-[10px] text-gray-500 mb-1">
                         {authorInfo.name}
                       </div>
                       {preview && (
-                        <div className="text-xs text-gray-600 line-clamp-2 mb-1">
+                        <div className="text-[10px] text-gray-600 line-clamp-2 mb-1">
                           {preview}
                         </div>
                       )}
-                      <div className="flex items-center gap-2 text-xs text-gray-400 mt-1">
+                      <div className="flex items-center gap-2 text-[10px] text-gray-400 mt-1">
                         <span>
                           {reportDate ? reportDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : ''}
                         </span>
@@ -2212,7 +2470,7 @@ function ReportsTabEnhanced({ projectId, items, onRefresh }:{ projectId:string, 
             )}
             </div>
           </div>
-        </div>
+          </div>
 
         {/* Right panel - Report content (70%) */}
         <div className="flex-1 border rounded-xl bg-white overflow-hidden flex flex-col">
@@ -2225,18 +2483,18 @@ function ReportsTabEnhanced({ projectId, items, onRefresh }:{ projectId:string, 
             return (
               <>
                 {/* Header */}
-                <div className="p-4 border-b bg-gray-50 flex-shrink-0">
+                <div className="p-3 border-b bg-gray-50 flex-shrink-0">
                   <div className="flex items-start justify-between gap-4">
                     <div className="flex-1">
-                      <h2 className="text-xl font-semibold text-gray-900 mb-2">
+                      <h2 className="text-sm font-semibold text-gray-900 mb-2">
                         {selectedReport.title || 'Untitled Report'}
                       </h2>
                       <div className="flex items-center gap-3 flex-wrap">
                         <div className="flex items-center gap-2">
-                          <img src={authorInfo.avatar} className="w-8 h-8 rounded-full" alt={authorInfo.name} />
+                          <img src={authorInfo.avatar} className="w-6 h-6 rounded-full" alt={authorInfo.name} />
                           <div>
-                            <div className="text-sm font-medium text-gray-900">{authorInfo.name}</div>
-                            <div className="text-xs text-gray-500">
+                            <div className="text-xs font-medium text-gray-900">{authorInfo.name}</div>
+                            <div className="text-[10px] text-gray-500">
                               {reportDate ? reportDate.toLocaleDateString('en-US', { 
                                 weekday: 'long',
                                 month: 'long', 
@@ -2249,7 +2507,7 @@ function ReportsTabEnhanced({ projectId, items, onRefresh }:{ projectId:string, 
                           </div>
                         </div>
                         {selectedReport.category_id && (
-                          <span className="px-2 py-1 rounded bg-blue-100 text-blue-700 text-xs font-medium">
+                          <span className="px-2 py-0.5 rounded bg-blue-100 text-blue-700 text-[10px] font-medium">
                             {categoryLabel}
                           </span>
                         )}
@@ -2274,14 +2532,14 @@ function ReportsTabEnhanced({ projectId, items, onRefresh }:{ projectId:string, 
                               toast.error(_e.message || 'Failed to approve report');
                             }
                           }}
-                          className="px-3 py-1.5 rounded bg-green-600 hover:bg-green-700 text-white text-sm flex-shrink-0"
+                          className="px-2.5 py-1.5 rounded bg-green-600 hover:bg-green-700 text-white text-xs font-medium flex-shrink-0"
                           title="Approve report"
                         >
                           ✓ Approve
                         </button>
                       )}
                       {selectedReport.financial_type === 'estimate-changes' && selectedReport.approval_status && (
-                        <span className={`px-3 py-1.5 rounded text-sm flex-shrink-0 ${
+                        <span className={`px-2.5 py-1.5 rounded text-xs font-medium flex-shrink-0 ${
                           selectedReport.approval_status === 'approved' ? 'bg-green-100 text-green-700' :
                           selectedReport.approval_status === 'pending' ? 'bg-yellow-100 text-yellow-700' :
                           'bg-gray-100 text-gray-700'
@@ -2310,7 +2568,7 @@ function ReportsTabEnhanced({ projectId, items, onRefresh }:{ projectId:string, 
                               toast.error('Failed to delete report');
                             }
                           }}
-                          className="px-3 py-1.5 rounded text-gray-500 hover:bg-red-50 hover:text-red-600 text-sm flex-shrink-0"
+                          className="px-2.5 py-1.5 rounded text-gray-500 hover:bg-red-50 hover:text-red-600 text-xs font-medium flex-shrink-0"
                           title="Delete report"
                         >
                           🗑️ Delete
@@ -2321,18 +2579,18 @@ function ReportsTabEnhanced({ projectId, items, onRefresh }:{ projectId:string, 
                 </div>
 
                 {/* Content */}
-                <div className="p-6 overflow-y-auto flex-1">
+                <div className="p-4 overflow-y-auto flex-1">
                   {/* Financial value display */}
                   {(selectedReport.financial_type === 'additional-income' || selectedReport.financial_type === 'additional-expense') && selectedReport.financial_value !== undefined && (
-                    <div className={`mb-4 p-4 rounded-lg border ${
+                    <div className={`mb-4 p-3 rounded-lg border ${
                       selectedReport.financial_type === 'additional-expense' 
                         ? 'bg-red-50 border-red-200' 
                         : 'bg-blue-50 border-blue-200'
                     }`}>
-                      <div className="text-sm font-semibold text-gray-700 mb-1">
+                      <div className="text-xs font-semibold text-gray-700 mb-1">
                         {selectedReport.financial_type === 'additional-income' ? 'Additional Income' : 'Expense'}
                       </div>
-                      <div className="text-2xl font-bold text-gray-900">
+                      <div className="text-lg font-bold text-gray-900">
                         ${(selectedReport.financial_value || 0).toFixed(2)}
                       </div>
                     </div>
@@ -2382,18 +2640,18 @@ function ReportsTabEnhanced({ projectId, items, onRefresh }:{ projectId:string, 
                       : Object.keys(itemsBySection).sort();
                     
                     return (
-                      <div className="mb-4 p-4 bg-gray-50 border border-gray-200 rounded-lg">
+                      <div className="mb-4 p-3 bg-gray-50 border border-gray-200 rounded-lg">
                         <div className="flex items-center justify-between mb-3">
-                          <div className="text-sm font-semibold text-gray-700">Change Order Summary</div>
+                          <div className="text-xs font-semibold text-gray-700">Change Order Summary</div>
                           {selectedReport.approval_status === 'approved' && (
-                            <span className="text-xs text-green-600 font-medium">✓ Items have been added to the project estimate</span>
+                            <span className="text-[10px] text-green-600 font-medium">✓ Items have been added to the project estimate</span>
                           )}
                         </div>
                         
                         {items.length === 0 ? (
                           <div className="text-xs text-gray-500">No items in this estimate change.</div>
                         ) : (
-                          <div className="space-y-4">
+                          <div className="space-y-3">
                             {orderedSections.map((section: string) => {
                               const sectionItems = itemsBySection[section] || [];
                               const sectionName = sectionNames[section] || section || 'Other';
@@ -2401,20 +2659,20 @@ function ReportsTabEnhanced({ projectId, items, onRefresh }:{ projectId:string, 
                               
                               return (
                                 <div key={section} className="border border-gray-200 rounded bg-white">
-                                  <div className="px-3 py-2 bg-gray-100 border-b border-gray-200">
+                                  <div className="px-2.5 py-2 bg-gray-100 border-b border-gray-200">
                                     <div className="text-xs font-semibold text-gray-700">{sectionName}</div>
                                   </div>
                                   <div className="divide-y divide-gray-100">
                                     {sectionItems.map((item: any, idx: number) => {
                                       const itemTotal = calculateItemTotalWithMarkup(item);
                                       return (
-                                        <div key={idx} className="px-3 py-2">
+                                        <div key={idx} className="px-2.5 py-2">
                                           <div className="flex items-start justify-between gap-4">
                                             <div className="flex-1 min-w-0">
-                                              <div className="text-sm font-medium text-gray-900 mb-1">
+                                              <div className="text-xs font-medium text-gray-900 mb-1">
                                                 {item.name || 'Unnamed Item'}
                                               </div>
-                                              <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-gray-600">
+                                              <div className="flex flex-wrap gap-x-4 gap-y-1 text-[10px] text-gray-600">
                                                 <span>
                                                   <span className="font-medium">Qty:</span> {item.quantity || 0} {item.unit || ''}
                                                 </span>
@@ -2453,12 +2711,12 @@ function ReportsTabEnhanced({ projectId, items, onRefresh }:{ projectId:string, 
                                                 )}
                                               </div>
                                               {item.description && (
-                                                <div className="text-xs text-gray-500 mt-1 italic">
+                                                <div className="text-[10px] text-gray-500 mt-1 italic">
                                                   {item.description}
                                                 </div>
                                               )}
                                             </div>
-                                            <div className="text-sm font-semibold text-gray-900 whitespace-nowrap">
+                                            <div className="text-xs font-semibold text-gray-900 whitespace-nowrap">
                                               ${itemTotal.toFixed(2)}
                                             </div>
                                           </div>
@@ -2467,7 +2725,7 @@ function ReportsTabEnhanced({ projectId, items, onRefresh }:{ projectId:string, 
                                     })}
                                   </div>
                                   {sectionItems.length > 1 && (
-                                    <div className="px-3 py-2 bg-gray-50 border-t border-gray-200 flex justify-end">
+                                    <div className="px-2.5 py-2 bg-gray-50 border-t border-gray-200 flex justify-end">
                                       <div className="text-xs font-semibold text-gray-700">
                                         Section Total: ${sectionTotal.toFixed(2)}
                                       </div>
@@ -2479,7 +2737,7 @@ function ReportsTabEnhanced({ projectId, items, onRefresh }:{ projectId:string, 
                             
                             <div className="pt-2 border-t border-gray-300">
                               <div className="flex justify-end">
-                                <div className="text-sm font-bold text-gray-900">
+                                <div className="text-xs font-bold text-gray-900">
                                   Grand Total: ${grandTotal.toFixed(2)}
                                 </div>
                               </div>
@@ -2491,23 +2749,23 @@ function ReportsTabEnhanced({ projectId, items, onRefresh }:{ projectId:string, 
                   })()}
                   
                   <div className="prose max-w-none">
-                    <div className="text-gray-800 whitespace-pre-wrap leading-relaxed">
+                    <div className="text-xs text-gray-800 whitespace-pre-wrap leading-relaxed">
                       {selectedReport.description || 'No description provided.'}
                     </div>
                   </div>
 
                   {/* Attachments */}
                   {attachments.length > 0 && (
-                    <div className="mt-6 pt-6 border-t">
-                      <h3 className="text-sm font-semibold text-gray-900 mb-3">Attachments ({attachments.length})</h3>
+                    <div className="mt-4 pt-4 border-t">
+                      <h3 className="text-xs font-semibold text-gray-900 mb-2">Attachments ({attachments.length})</h3>
                       <div className="flex flex-wrap gap-2">
                         {attachments.map((a: any, i: number) => (
                           <button
                             key={i}
                             onClick={() => handleAttachmentClick(a)}
-                            className="flex items-center gap-2 px-3 py-2 rounded border bg-white hover:bg-gray-50 text-sm text-gray-700 transition-colors"
+                            className="flex items-center gap-2 px-2.5 py-1.5 rounded border bg-white hover:bg-gray-50 text-xs text-gray-700 transition-colors"
                           >
-                            <span className="text-lg">{getAttachmentIcon(a.content_type || '', a.original_name || '')}</span>
+                            <span className="text-sm">{getAttachmentIcon(a.content_type || '', a.original_name || '')}</span>
                             <span>{a.original_name || 'attachment'}</span>
                           </button>
                         ))}
@@ -2525,6 +2783,7 @@ function ReportsTabEnhanced({ projectId, items, onRefresh }:{ projectId:string, 
               </div>
             </div>
           )}
+        </div>
         </div>
       </div>
 
@@ -2550,7 +2809,7 @@ function ReportsTabEnhanced({ projectId, items, onRefresh }:{ projectId:string, 
                 onClick={() => setPreviewAttachment(null)}
                 className="text-2xl font-bold text-gray-400 hover:text-gray-600"
               >
-                ×
+                &times;
               </button>
             </div>
             <div className="p-4 overflow-auto max-h-[calc(90vh-80px)]">
@@ -2903,6 +3162,9 @@ function ProjectFilesTabEnhanced({ projectId, files, onRefresh }:{ projectId:str
   const [uploadQueue, setUploadQueue] = useState<Array<{id:string, file:File, progress:number, status:'pending'|'uploading'|'success'|'error', error?:string}>>([]);
   const [previewImage, setPreviewImage] = useState<{ url:string, name:string }|null>(null);
   const [previewPdf, setPreviewPdf] = useState<{ url:string, name:string }|null>(null);
+  const [previewExcel, setPreviewExcel] = useState<{ url:string, name:string }|null>(null);
+  const [sortBy, setSortBy] = useState<'uploaded_at' | 'name' | 'type'>('uploaded_at');
+  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
   
   // Check permissions for files
   const { data: me } = useQuery({ queryKey:['me'], queryFn: ()=>api<any>('GET','/auth/me') });
@@ -2967,9 +3229,51 @@ function ProjectFilesTabEnhanced({ projectId, files, onRefresh }:{ projectId:str
     }
   }, [selectedCategory, visibleCategories]);
 
+  const getFileTypeLabel = (f: ProjectFile): string => {
+    const name = String(f.original_name || '');
+    const ext = (name.includes('.') ? name.split('.').pop() : '').toLowerCase();
+    const ct = String(f.content_type || '').toLowerCase();
+    if (f.is_image || ct.startsWith('image/')) return 'Image';
+    if (ct.includes('pdf') || ext === 'pdf') return 'PDF';
+    if (['xlsx', 'xls', 'csv'].includes(ext) || ct.includes('excel') || ct.includes('spreadsheet')) return 'Excel';
+    if (['doc', 'docx'].includes(ext) || ct.includes('word')) return 'Word';
+    if (['ppt', 'pptx'].includes(ext) || ct.includes('powerpoint')) return 'PowerPoint';
+    return ext.toUpperCase() || 'File';
+  };
+
   const currentFiles = useMemo(() => {
-    return filesByCategory[selectedCategory] || [];
-  }, [filesByCategory, selectedCategory]);
+    const files = filesByCategory[selectedCategory] || [];
+    const sorted = [...files].sort((a, b) => {
+      let aVal: any;
+      let bVal: any;
+      
+      if (sortBy === 'uploaded_at') {
+        aVal = a.uploaded_at || '';
+        bVal = b.uploaded_at || '';
+      } else if (sortBy === 'name') {
+        aVal = (a.original_name || a.file_object_id || '').toLowerCase();
+        bVal = (b.original_name || b.file_object_id || '').toLowerCase();
+      } else if (sortBy === 'type') {
+        aVal = getFileTypeLabel(a).toLowerCase();
+        bVal = getFileTypeLabel(b).toLowerCase();
+      }
+      
+      if (aVal < bVal) return sortOrder === 'asc' ? -1 : 1;
+      if (aVal > bVal) return sortOrder === 'asc' ? 1 : -1;
+      return 0;
+    });
+    
+    return sorted;
+  }, [filesByCategory, selectedCategory, sortBy, sortOrder]);
+  
+  const handleSort = (column: 'uploaded_at' | 'name' | 'type') => {
+    if (sortBy === column) {
+      setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc');
+    } else {
+      setSortBy(column);
+      setSortOrder('asc');
+    }
+  };
 
   const iconFor = (f:ProjectFile)=>{
     const name = String(f.original_name||'');
@@ -2983,6 +3287,47 @@ function ProjectFilesTabEnhanced({ projectId, files, onRefresh }:{ projectId:str
     if (['zip','rar','7z'].includes(ext) || ct.includes('zip')) return { label:'ZIP', color:'bg-gray-700' };
     if (is('txt')) return { label:'TXT', color:'bg-gray-500' };
     return { label: (ext||'FILE').toUpperCase().slice(0,4), color:'bg-gray-600' };
+  };
+
+  const getFileType = (f: ProjectFile): 'image' | 'pdf' | 'excel' | 'other' => {
+    const name = String(f.original_name || '');
+    const ext = (name.includes('.') ? name.split('.').pop() : '').toLowerCase();
+    const ct = String(f.content_type || '').toLowerCase();
+    const is = (x: string) => ct.includes(x) || ext === x;
+    
+    if (f.is_image || ct.startsWith('image/')) return 'image';
+    if (is('pdf')) return 'pdf';
+    if (['xlsx', 'xls', 'csv'].includes(ext) || ct.includes('excel') || ct.includes('spreadsheet')) return 'excel';
+    return 'other';
+  };
+
+  const handleFilePreview = async (f: ProjectFile) => {
+    const fileType = getFileType(f);
+    const name = f.original_name || f.file_object_id;
+    
+    try {
+      const r: any = await api('GET', `/files/${f.file_object_id}/download`);
+      const url = r.download_url || '';
+      
+      if (!url) {
+        toast.error('Preview not available');
+        return;
+      }
+
+      if (fileType === 'image') {
+        setPreviewImage({ url, name });
+      } else if (fileType === 'pdf') {
+        setPreviewPdf({ url, name });
+      } else if (fileType === 'excel') {
+        // For Excel files, open in Office Online editor
+        setPreviewExcel({ url, name });
+      } else {
+        // For other files, try to open in new tab
+        window.open(url, '_blank');
+      }
+    } catch (_e) {
+      toast.error('Preview not available');
+    }
   };
 
   const fetchDownloadUrl = async (fid:string)=>{
@@ -3087,24 +3432,35 @@ function ProjectFilesTabEnhanced({ projectId, files, onRefresh }:{ projectId:str
 
   return (
     <div className="space-y-4">
-      <div className="rounded-xl border bg-white overflow-hidden">
-        <div className="flex h-[calc(100vh-300px)]">
-          {/* Left Sidebar - Categories */}
-          <div className="w-64 border-r bg-gray-50 flex flex-col">
-            <div className="p-4 border-b">
-              <div className="text-sm font-semibold text-gray-700 mb-2">File Categories</div>
-            </div>
+      {/* Main Files Section Card */}
+      <div className="rounded-xl border bg-white p-4">
+        <div className="flex items-center gap-2 mb-4">
+          <div className="w-8 h-8 rounded bg-blue-100 flex items-center justify-center">
+            <svg className="w-5 h-5 text-blue-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
+            </svg>
+          </div>
+          <h2 className="text-sm font-semibold text-gray-900">Files</h2>
+        </div>
+        
+        <div className="rounded-xl border bg-white overflow-hidden">
+          <div className="flex h-[calc(100vh-400px)]">
+            {/* Left Sidebar - Categories */}
+            <div className="w-64 border-r bg-gray-50 flex flex-col">
+              <div className="p-3 border-b">
+                <div className="text-xs font-semibold text-gray-700">File Categories</div>
+              </div>
             <div className="flex-1 overflow-y-auto">
               <button
                 onClick={() => setSelectedCategory('all')}
-                className={`w-full text-left px-4 py-3 border-b hover:bg-white transition-colors ${
+                className={`w-full text-left px-3 py-2 border-b hover:bg-white transition-colors ${
                   selectedCategory === 'all' ? 'bg-white border-l-4 border-l-brand-red font-semibold' : 'text-gray-700'
                 }`}
               >
                 <div className="flex items-center gap-2">
-                  <span>📁</span>
-                  <span>All Files</span>
-                  <span className="ml-auto text-xs text-gray-500">({filesByCategory['all']?.length || 0})</span>
+                  <span className="text-xs">📁</span>
+                  <span className="text-xs">All Files</span>
+                  <span className="ml-auto text-[10px] text-gray-500">({filesByCategory['all']?.length || 0})</span>
                 </div>
               </button>
               {visibleCategories.map((cat: any) => {
@@ -3141,14 +3497,14 @@ function ProjectFilesTabEnhanced({ projectId, files, onRefresh }:{ projectId:str
                         setDraggedFileId(null);
                       }
                     } : undefined}
-                    className={`w-full text-left px-4 py-3 border-b hover:bg-white transition-colors ${
+                    className={`w-full text-left px-3 py-2 border-b hover:bg-white transition-colors ${
                       selectedCategory === cat.id ? 'bg-white border-l-4 border-l-brand-red font-semibold' : 'text-gray-700'
                     } ${isDragging && canEditCategory ? 'bg-blue-50' : ''} ${!canEditCategory ? 'opacity-70' : ''}`}
                   >
                     <div className="flex items-center gap-2">
-                      <span>{cat.icon || '📁'}</span>
-                      <span>{cat.name}</span>
-                      <span className="ml-auto text-xs text-gray-500">({count})</span>
+                      <span className="text-xs">{cat.icon || '📁'}</span>
+                      <span className="text-xs">{cat.name}</span>
+                      <span className="ml-auto text-[10px] text-gray-500">({count})</span>
                     </div>
                   </button>
                 );
@@ -3156,14 +3512,14 @@ function ProjectFilesTabEnhanced({ projectId, files, onRefresh }:{ projectId:str
               {filesByCategory['uncategorized']?.length > 0 && (
                 <button
                   onClick={() => setSelectedCategory('uncategorized')}
-                  className={`w-full text-left px-4 py-3 border-b hover:bg-white transition-colors ${
+                  className={`w-full text-left px-3 py-2 border-b hover:bg-white transition-colors ${
                     selectedCategory === 'uncategorized' ? 'bg-white border-l-4 border-l-brand-red font-semibold' : 'text-gray-700'
                   }`}
                 >
                   <div className="flex items-center gap-2">
-                    <span>📦</span>
-                    <span>Uncategorized</span>
-                    <span className="ml-auto text-xs text-gray-500">({filesByCategory['uncategorized']?.length || 0})</span>
+                    <span className="text-xs">📦</span>
+                    <span className="text-xs">Uncategorized</span>
+                    <span className="ml-auto text-[10px] text-gray-500">({filesByCategory['uncategorized']?.length || 0})</span>
                   </div>
                 </button>
               )}
@@ -3203,7 +3559,7 @@ function ProjectFilesTabEnhanced({ projectId, files, onRefresh }:{ projectId:str
             } : undefined}
           >
             <div className="mb-3 flex items-center justify-between">
-              <div className="text-sm font-semibold">
+              <div className="text-xs font-semibold">
                 {selectedCategory === 'all' ? 'All Files' : 
                  selectedCategory === 'uncategorized' ? 'Uncategorized Files' :
                  visibleCategories.find((c: any) => c.id === selectedCategory)?.name || 'Files'}
@@ -3212,7 +3568,7 @@ function ProjectFilesTabEnhanced({ projectId, files, onRefresh }:{ projectId:str
               {canEditFiles && (
                 <button
                   onClick={() => setShowUpload(true)}
-                  className="px-3 py-1.5 rounded bg-brand-red text-white text-sm"
+                  className="px-2 py-1 rounded bg-brand-red text-white text-xs"
                 >
                   + Upload File
                 </button>
@@ -3221,100 +3577,156 @@ function ProjectFilesTabEnhanced({ projectId, files, onRefresh }:{ projectId:str
 
             <div className="rounded-lg border overflow-hidden bg-white">
               {currentFiles.length > 0 ? (
-                <div className="divide-y">
-                  {currentFiles.map((f) => {
-                    const icon = iconFor(f);
-                    const isImg = f.is_image || String(f.content_type || '').startsWith('image/');
-                    const name = f.original_name || f.file_object_id;
-                    
-                    return (
-                      <div
-                        key={f.id}
-                        draggable={canEditFiles}
-                        onDragStart={() => canEditFiles && setDraggedFileId(f.id)}
-                        onDragEnd={() => setDraggedFileId(null)}
-                        className={`flex items-center gap-3 px-3 py-2 hover:bg-gray-50 ${canEditFiles ? 'cursor-move' : ''}`}
-                      >
-                        {isImg ? (
-                          <div 
-                            className="w-16 h-16 rounded-lg overflow-hidden bg-gray-100 cursor-pointer flex-shrink-0"
-                            onClick={async () => {
-                              try {
-                                const r: any = await api('GET', `/files/${f.file_object_id}/download`);
-                                const url = r.download_url || '';
-                                if (url) {
-                                  setPreviewImage({ url, name });
-                                }
-                              } catch (_e) {
-                                toast.error('Preview not available');
-                              }
-                            }}
-                          >
-                            <img 
-                              src={`/files/${f.file_object_id}/thumbnail?w=64`}
-                              alt={name}
-                              className="w-full h-full object-cover"
-                            />
-                          </div>
-                        ) : (
-                          <div className={`w-10 h-12 rounded-lg ${icon.color} text-white flex items-center justify-center text-[10px] font-extrabold select-none flex-shrink-0`}>
-                            {icon.label}
-                          </div>
-                        )}
-                        <div className="flex-1 min-w-0">
-                          <div className="font-medium truncate">{name}</div>
-                          <div className="text-[11px] text-gray-500">
-                            {(f.uploaded_at || '').slice(0, 10)}
-                            {f.category && (
-                              <span className="ml-2">• {categories?.find((c: any) => c.id === f.category)?.name || f.category}</span>
+                <div className="overflow-x-auto">
+                  <table className="w-full">
+                    <thead className="bg-gray-50 border-b">
+                      <tr>
+                        <th className="px-3 py-2 text-left text-[10px] font-semibold text-gray-700 w-12"></th>
+                        <th 
+                          className="px-3 py-2 text-left text-[10px] font-semibold text-gray-700 cursor-pointer hover:bg-gray-100 select-none"
+                          onClick={() => handleSort('name')}
+                        >
+                          <div className="flex items-center gap-1">
+                            Name
+                            {sortBy === 'name' && (
+                              <span className="text-xs">{sortOrder === 'asc' ? '↑' : '↓'}</span>
                             )}
                           </div>
-                        </div>
-                        <div className="ml-auto flex items-center gap-1">
-                          <button
-                            onClick={async () => {
-                              const url = await fetchDownloadUrl(f.file_object_id);
-                              if (url) window.open(url, '_blank');
-                            }}
-                            title="Download"
-                            className="p-2 rounded hover:bg-gray-100"
+                        </th>
+                        <th 
+                          className="px-3 py-2 text-left text-[10px] font-semibold text-gray-700 cursor-pointer hover:bg-gray-100 select-none"
+                          onClick={() => handleSort('type')}
+                        >
+                          <div className="flex items-center gap-1">
+                            Type
+                            {sortBy === 'type' && (
+                              <span className="text-xs">{sortOrder === 'asc' ? '↑' : '↓'}</span>
+                            )}
+                          </div>
+                        </th>
+                        <th 
+                          className="px-3 py-2 text-left text-[10px] font-semibold text-gray-700 cursor-pointer hover:bg-gray-100 select-none"
+                          onClick={() => handleSort('uploaded_at')}
+                        >
+                          <div className="flex items-center gap-1">
+                            Upload Date
+                            {sortBy === 'uploaded_at' && (
+                              <span className="text-xs">{sortOrder === 'asc' ? '↑' : '↓'}</span>
+                            )}
+                          </div>
+                        </th>
+                        <th className="px-3 py-2 text-left text-[10px] font-semibold text-gray-700 w-24">Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y">
+                      {currentFiles.map((f) => {
+                        const icon = iconFor(f);
+                        const isImg = f.is_image || String(f.content_type || '').startsWith('image/');
+                        const name = f.original_name || f.file_object_id;
+                        
+                        return (
+                          <tr
+                            key={f.id}
+                            draggable={canEditFiles}
+                            onDragStart={() => canEditFiles && setDraggedFileId(f.id)}
+                            onDragEnd={() => setDraggedFileId(null)}
+                            className={`hover:bg-gray-50 ${canEditFiles ? 'cursor-move' : ''}`}
                           >
-                            ⬇️
-                          </button>
-                          {canEditFiles && (
-                            <>
-                              <button
-                                onClick={() => {
-                                  const newCat = prompt('Move to category (leave empty for uncategorized):');
-                                  if (newCat !== null) {
-                                    handleMoveFile(f.id, newCat || 'uncategorized');
-                                  }
-                                }}
-                                title="Move to category"
-                                className="p-2 rounded hover:bg-gray-100"
-                              >
-                                📦
-                              </button>
-                              <button
-                                onClick={() => handleDeleteFile(f.id)}
-                                title="Delete"
-                                className="p-2 rounded hover:bg-red-50 text-red-600"
-                              >
-                                🗑️
-                              </button>
-                            </>
-                          )}
-                        </div>
-                      </div>
-                    );
-                  })}
+                            <td className="px-3 py-2">
+                              {isImg ? (
+                                <div 
+                                  className="w-10 h-10 rounded-lg overflow-hidden bg-gray-100 cursor-pointer flex-shrink-0"
+                                  onClick={() => handleFilePreview(f)}
+                                >
+                                  <img 
+                                    src={`/files/${f.file_object_id}/thumbnail?w=64`}
+                                    alt={name}
+                                    className="w-full h-full object-cover"
+                                  />
+                                </div>
+                              ) : (
+                                <div 
+                                  className={`w-8 h-10 rounded-lg ${icon.color} text-white flex items-center justify-center text-[10px] font-extrabold select-none flex-shrink-0 cursor-pointer`}
+                                  onClick={() => handleFilePreview(f)}
+                                >
+                                  {icon.label}
+                                </div>
+                              )}
+                            </td>
+                            <td 
+                              className="px-3 py-2 cursor-pointer"
+                              onClick={() => handleFilePreview(f)}
+                            >
+                              <div className="text-xs font-semibold truncate max-w-xs">{name}</div>
+                            </td>
+                            <td 
+                              className="px-3 py-2 cursor-pointer"
+                              onClick={() => handleFilePreview(f)}
+                            >
+                              <div className="text-xs text-gray-600">{getFileTypeLabel(f)}</div>
+                            </td>
+                            <td 
+                              className="px-3 py-2 cursor-pointer"
+                              onClick={() => handleFilePreview(f)}
+                            >
+                              <div className="text-xs text-gray-600">
+                                {f.uploaded_at ? new Date(f.uploaded_at).toLocaleDateString('pt-BR') : '-'}
+                              </div>
+                            </td>
+                            <td className="px-3 py-2">
+                              <div className="flex items-center gap-0.5">
+                                <button
+                                  onClick={async (e) => {
+                                    e.stopPropagation();
+                                    const url = await fetchDownloadUrl(f.file_object_id);
+                                    if (url) window.open(url, '_blank');
+                                  }}
+                                  title="Download"
+                                  className="p-1 rounded hover:bg-gray-100 text-xs"
+                                >
+                                  ⬇️
+                                </button>
+                                {canEditFiles && (
+                                  <>
+                                    <button
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        const newCat = prompt('Move to category (leave empty for uncategorized):');
+                                        if (newCat !== null) {
+                                          handleMoveFile(f.id, newCat || 'uncategorized');
+                                        }
+                                      }}
+                                      title="Move to category"
+                                      className="p-1 rounded hover:bg-gray-100 text-xs"
+                                    >
+                                      📦
+                                    </button>
+                                    <button
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        handleDeleteFile(f.id);
+                                      }}
+                                      title="Delete"
+                                      className="p-1 rounded hover:bg-red-50 text-red-600 text-xs"
+                                    >
+                                      🗑️
+                                    </button>
+                                  </>
+                                )}
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
                 </div>
               ) : (
-                <div className="px-3 py-8 text-center text-gray-500">
-                  <div className="text-4xl mb-3">📁</div>
-                  <div className="text-sm">No files in this category</div>
+                <div className="px-3 py-6 text-center text-gray-500">
+                  <div className="text-2xl mb-2">📁</div>
+                  <div className="text-xs">No files in this category</div>
                   {canEditFiles && (
-                    <div className="text-xs mt-1">Drag and drop files here or click "Upload File"</div>
+                    <div className="text-[10px] mt-1">Drag and drop files here or click "Upload File"</div>
                   )}
                 </div>
               )}
@@ -3322,15 +3734,16 @@ function ProjectFilesTabEnhanced({ projectId, files, onRefresh }:{ projectId:str
           </div>
         </div>
       </div>
+      </div>
 
       {/* Upload Modal */}
       {showUpload && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50" onClick={(e) => e.target === e.currentTarget && setShowUpload(false)}>
           <div className="bg-white rounded-xl w-full max-w-md p-4" onClick={(e) => e.stopPropagation()}>
-            <div className="text-lg font-semibold mb-2">Upload Files</div>
+            <div className="text-sm font-semibold mb-3">Upload Files</div>
             <div className="space-y-3">
               <div>
-                <div className="text-xs text-gray-600 mb-1">Files (multiple files supported)</div>
+                <div className="text-xs font-medium text-gray-600 mb-1.5">Files (multiple files supported)</div>
                 <input
                   type="file"
                   multiple
@@ -3341,17 +3754,17 @@ function ProjectFilesTabEnhanced({ projectId, files, onRefresh }:{ projectId:str
                       await uploadMultiple(Array.from(fileList));
                     }
                   }}
-                  className="w-full"
+                  className="w-full text-xs"
                 />
               </div>
-              <div className="text-xs text-gray-500">
+              <div className="text-[10px] text-gray-500">
                 You can also drag and drop files directly onto the category area
               </div>
             </div>
             <div className="mt-4 flex justify-end gap-2">
               <button
                 onClick={() => setShowUpload(false)}
-                className="px-3 py-2 rounded border"
+                className="px-3 py-1.5 rounded border text-xs"
               >
                 Cancel
               </button>
@@ -3363,18 +3776,18 @@ function ProjectFilesTabEnhanced({ projectId, files, onRefresh }:{ projectId:str
       {/* Upload Progress */}
       {uploadQueue.length > 0 && (
         <div className="fixed bottom-4 right-4 bg-white rounded-lg shadow-2xl border w-80 max-h-96 overflow-hidden z-50">
-          <div className="p-3 border-b bg-gray-50 flex items-center justify-between">
-            <div className="font-semibold text-sm">Upload Progress</div>
+          <div className="p-2.5 border-b bg-gray-50 flex items-center justify-between">
+            <div className="font-semibold text-xs">Upload Progress</div>
             <button
               onClick={() => setUploadQueue([])}
-              className="text-gray-500 hover:text-gray-700 text-xs"
+              className="text-gray-500 hover:text-gray-700 text-[10px]"
             >
               Clear
             </button>
           </div>
           <div className="overflow-y-auto max-h-80">
             {uploadQueue.map((u) => (
-              <div key={u.id} className="p-3 border-b">
+              <div key={u.id} className="p-2.5 border-b">
                 <div className="flex items-start gap-2 mb-1">
                   <div className="flex-1 min-w-0">
                     <div className="text-xs font-medium truncate" title={u.file.name}>{u.file.name}</div>
@@ -3409,21 +3822,139 @@ function ProjectFilesTabEnhanced({ projectId, files, onRefresh }:{ projectId:str
       {/* Image Preview Modal */}
       {previewImage && (
         <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4" onClick={() => setPreviewImage(null)}>
-          <div className="max-w-4xl max-h-[90vh] bg-white rounded-lg overflow-hidden" onClick={(e) => e.stopPropagation()}>
-            <div className="p-4 border-b flex items-center justify-between">
-              <h3 className="font-semibold">{previewImage.name}</h3>
-              <button
-                onClick={() => setPreviewImage(null)}
-                className="text-2xl font-bold text-gray-400 hover:text-gray-600"
-              >
-                ×
-              </button>
+          <div className="w-full h-full max-w-[95vw] max-h-[95vh] bg-white rounded-lg overflow-hidden flex flex-col" onClick={(e) => e.stopPropagation()}>
+            <div className="p-3 border-b flex items-center justify-between flex-shrink-0">
+              <h3 className="text-sm font-semibold">{previewImage.name}</h3>
+              <div className="flex items-center gap-2">
+                <a
+                  href={previewImage.url}
+                  download={previewImage.name}
+                  className="text-xs px-2 py-1 rounded border hover:bg-gray-50"
+                  title="Download"
+                >
+                  ⬇️
+                </a>
+                <button
+                  onClick={() => {
+                    const printWindow = window.open();
+                    if (printWindow) {
+                      printWindow.document.write(`
+                        <html>
+                          <head><title>${previewImage.name}</title></head>
+                          <body style="margin:0; text-align:center;">
+                            <img src="${previewImage.url}" style="max-width:100%; height:auto;" onload="window.print();" />
+                          </body>
+                        </html>
+                      `);
+                      printWindow.document.close();
+                    }
+                  }}
+                  className="text-xs px-2 py-1 rounded border hover:bg-gray-50"
+                  title="Print"
+                >
+                  🖨️
+                </button>
+                <a
+                  href={previewImage.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-xs px-2 py-1 rounded border hover:bg-gray-50"
+                  title="Open in new tab"
+                >
+                  🔗
+                </a>
+                <button
+                  onClick={() => setPreviewImage(null)}
+                  className="text-lg font-bold text-gray-400 hover:text-gray-600 w-6 h-6"
+                >
+                  ×
+                </button>
+              </div>
             </div>
-            <div className="p-4 overflow-auto max-h-[calc(90vh-80px)]">
+            <div className="flex-1 overflow-auto p-3 min-h-0 flex items-center justify-center">
               <img
                 src={previewImage.url}
                 alt={previewImage.name}
-                className="max-w-full h-auto"
+                className="max-w-full max-h-full h-auto object-contain"
+              />
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* PDF Preview Modal */}
+      {previewPdf && (
+        <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4" onClick={() => setPreviewPdf(null)}>
+          <div className="w-full h-full max-w-[95vw] max-h-[95vh] bg-white rounded-lg overflow-hidden flex flex-col" onClick={(e) => e.stopPropagation()}>
+            <div className="p-3 border-b flex items-center justify-between flex-shrink-0">
+              <h3 className="text-sm font-semibold">{previewPdf.name}</h3>
+              <div className="flex items-center gap-2">
+                <a
+                  href={previewPdf.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-xs px-2 py-1 rounded border hover:bg-gray-50"
+                  title="Open in new tab"
+                >
+                  🔗
+                </a>
+                <button
+                  onClick={() => setPreviewPdf(null)}
+                  className="text-lg font-bold text-gray-400 hover:text-gray-600 w-6 h-6"
+                >
+                  ×
+                </button>
+              </div>
+            </div>
+            <div className="flex-1 overflow-hidden min-h-0">
+              <iframe
+                src={previewPdf.url}
+                className="w-full h-full border-0"
+                title={previewPdf.name}
+              />
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Excel Preview/Edit Modal */}
+      {previewExcel && (
+        <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4" onClick={() => setPreviewExcel(null)}>
+          <div className="w-full h-full max-w-[95vw] max-h-[95vh] bg-white rounded-lg overflow-hidden flex flex-col" onClick={(e) => e.stopPropagation()}>
+            <div className="p-3 border-b flex items-center justify-between flex-shrink-0">
+              <h3 className="text-sm font-semibold">{previewExcel.name}</h3>
+              <div className="flex items-center gap-2">
+                <a
+                  href={previewExcel.url}
+                  download={previewExcel.name}
+                  className="text-xs px-2 py-1 rounded border hover:bg-gray-50"
+                  title="Download"
+                >
+                  ⬇️
+                </a>
+                <a
+                  href={previewExcel.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-xs px-2 py-1 rounded border hover:bg-gray-50"
+                  title="Open in new tab"
+                >
+                  🔗
+                </a>
+                <button
+                  onClick={() => setPreviewExcel(null)}
+                  className="text-lg font-bold text-gray-400 hover:text-gray-600 w-6 h-6"
+                >
+                  ×
+                </button>
+              </div>
+            </div>
+            <div className="flex-1 overflow-hidden min-h-0">
+              <iframe
+                src={`https://view.officeapps.live.com/op/embed.aspx?src=${encodeURIComponent(previewExcel.url)}`}
+                className="w-full h-full border-0"
+                title={previewExcel.name}
+                allow="fullscreen"
               />
             </div>
           </div>
@@ -3591,129 +4122,141 @@ function ProjectProposalTab({ projectId, clientId, siteId, proposals, statusLabe
 
   return (
     <div className="space-y-4">
-      {/* Tabs for proposals */}
-      {(organizedProposals.original || organizedProposals.changeOrders.length > 0 || (!isBidding && hasEditProposalPermission && organizedProposals.original)) && (
-        <div className="border-b border-gray-200">
-          <nav className="-mb-px flex space-x-8" aria-label="Tabs">
-            {organizedProposals.original && (
-              <button
-                onClick={() => setSelectedTab('proposal')}
-                className={`whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm ${
-                  selectedTab === 'proposal'
-                    ? 'border-brand-red text-brand-red'
-                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-                }`}
-              >
-                Proposal
-              </button>
-            )}
-            {organizedProposals.changeOrders.map((co) => {
-              const approvalStatus = co.approval_status || (co.approved_report_id ? 'approved' : null);
-              const isApproved = approvalStatus === 'approved';
-              const isPending = approvalStatus === 'pending';
-              
-              return (
+      {/* Main Proposal Section Card */}
+      <div className="rounded-xl border bg-white p-4">
+        <div className="flex items-center gap-2 mb-4">
+          <div className="w-8 h-8 rounded bg-purple-100 flex items-center justify-center">
+            <svg className="w-5 h-5 text-purple-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+            </svg>
+          </div>
+          <h2 className="text-sm font-semibold text-gray-900">Proposal</h2>
+        </div>
+
+        {/* Tabs for proposals */}
+        {(organizedProposals.original || organizedProposals.changeOrders.length > 0 || (!isBidding && hasEditProposalPermission && organizedProposals.original)) && (
+          <div className="border-b border-gray-200 mb-4">
+            <nav className="-mb-px flex space-x-4" aria-label="Tabs">
+              {organizedProposals.original && (
                 <button
-                  key={co.id}
-                  onClick={() => setSelectedTab(`change-order-${co.change_order_number}`)}
-                  className={`whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm flex items-center gap-2 ${
-                    selectedTab === `change-order-${co.change_order_number}`
+                  onClick={() => setSelectedTab('proposal')}
+                  className={`whitespace-nowrap py-2 px-2 border-b-2 font-semibold text-xs ${
+                    selectedTab === 'proposal'
                       ? 'border-brand-red text-brand-red'
                       : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
                   }`}
                 >
-                  <span>Change Order {co.change_order_number}</span>
-                  {isApproved && (
-                    <span className="text-xs px-1.5 py-0.5 rounded bg-green-100 text-green-700">✓</span>
-                  )}
-                  {isPending && (
-                    <span className="text-xs px-1.5 py-0.5 rounded bg-yellow-100 text-yellow-700">⏳</span>
-                  )}
+                  Proposal
                 </button>
-              );
-            })}
-            {/* Create Change Order tab - only show in projects (not opportunities) */}
-            {!isBidding && hasEditProposalPermission && organizedProposals.original && (
-              <button
-                onClick={handleCreateChangeOrder}
-                className={`whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm ${
-                  selectedTab === 'create-change-order'
-                    ? 'border-brand-red text-brand-red'
-                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-                }`}
-              >
-                + Create Change Order
-              </button>
-            )}
-          </nav>
-        </div>
-      )}
+              )}
+              {organizedProposals.changeOrders.map((co) => {
+                const approvalStatus = co.approval_status || (co.approved_report_id ? 'approved' : null);
+                const isApproved = approvalStatus === 'approved';
+                const isPending = approvalStatus === 'pending';
+                
+                return (
+                  <button
+                    key={co.id}
+                    onClick={() => setSelectedTab(`change-order-${co.change_order_number}`)}
+                    className={`whitespace-nowrap py-2 px-2 border-b-2 font-semibold text-xs flex items-center gap-1.5 ${
+                      selectedTab === `change-order-${co.change_order_number}`
+                        ? 'border-brand-red text-brand-red'
+                        : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                    }`}
+                  >
+                    <span>Change Order {co.change_order_number}</span>
+                    {isApproved && (
+                      <span className="text-[10px] px-1 py-0.5 rounded bg-green-100 text-green-700">✓</span>
+                    )}
+                    {isPending && (
+                      <span className="text-[10px] px-1 py-0.5 rounded bg-yellow-100 text-yellow-700">⏳</span>
+                    )}
+                  </button>
+                );
+              })}
+              {/* Create Change Order tab - only show in projects (not opportunities) */}
+              {!isBidding && hasEditProposalPermission && organizedProposals.original && (
+                <button
+                  onClick={handleCreateChangeOrder}
+                  className={`whitespace-nowrap py-2 px-2 border-b-2 font-semibold text-xs ${
+                    selectedTab === 'create-change-order'
+                      ? 'border-brand-red text-brand-red'
+                      : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                  }`}
+                >
+                  + Create Change Order
+                </button>
+              )}
+            </nav>
+          </div>
+        )}
       
-      {/* Proposal Form */}
-      {selectedTab === 'create-change-order' ? (
-        // Show empty form for creating new Change Order
-        <div className="text-center py-8 text-gray-500">
-          <p className="mb-4">Click the "+ Create Change Order" tab to create a new Change Order.</p>
-          <p className="text-sm">The Change Order will be created with General Information from the original Proposal.</p>
-        </div>
-      ) : isLoadingProposal && selectedProposal ? (
-        <div className="h-24 bg-gray-100 animate-pulse rounded"/>
-      ) : (
-        <ProposalForm 
-          mode={selectedProposal ? 'edit' : 'new'} 
-          clientId={clientId} 
-          siteId={siteId} 
-          projectId={projectId} 
-          initial={proposalData || null}
-          disabled={!canEdit}
-          showRestrictionWarning={!canEdit && (!!statusLabel || (selectedTab.startsWith('change-order-') && selectedProposal?.approval_status === 'approved'))}
-          restrictionMessage={
-            !canEdit && selectedTab.startsWith('change-order-') && selectedProposal?.approval_status === 'approved'
-              ? 'This Change Order has been approved and cannot be edited.'
-              : !canEdit && statusLabel && !selectedTab.startsWith('change-order-')
-              ? `This project has status "${statusLabel}" which does not allow editing proposals or estimates.`
-              : undefined
-          }
-          onPricingItemsChange={onPricingItemsChange}
-          onSave={async ()=>{
-            // Always refetch proposals list after save to get the updated/created proposal
-            await refetchProposals();
-            // Force refetch of project proposals to ensure UI updates
-            queryClient.invalidateQueries({ queryKey: ['projectProposals', projectId] });
-            
-            // Check if current tab still exists after refetch
-            const updatedProposals = await api<Proposal[]>('GET', `/proposals?project_id=${encodeURIComponent(String(projectId))}`);
-            const updatedOrganized = {
-              original: updatedProposals.find(p => !p.is_change_order) || null,
-              changeOrders: updatedProposals
-                .filter(p => p.is_change_order)
-                .sort((a, b) => (a.change_order_number || 0) - (b.change_order_number || 0))
-            };
-            
-            // If current Change Order was deleted, switch to Proposal tab
-            if (selectedTab.startsWith('change-order-')) {
-              const orderNum = parseInt(selectedTab.replace('change-order-', ''));
-              const stillExists = updatedOrganized.changeOrders.some(co => co.change_order_number === orderNum);
-              if (!stillExists) {
-                setSelectedTab('proposal');
+        {/* Proposal Form */}
+        {selectedTab === 'create-change-order' ? (
+          // Show empty form for creating new Change Order
+          <div className="text-center py-6 text-gray-500">
+            <p className="mb-3 text-xs">Click the "+ Create Change Order" tab to create a new Change Order.</p>
+            <p className="text-[10px]">The Change Order will be created with General Information from the original Proposal.</p>
+          </div>
+        ) : isLoadingProposal && selectedProposal ? (
+          <div className="h-20 bg-gray-100 animate-pulse rounded"/>
+        ) : (
+          <ProposalForm 
+            mode={selectedProposal ? 'edit' : 'new'} 
+            clientId={clientId} 
+            siteId={siteId} 
+            projectId={projectId} 
+            initial={proposalData || null}
+            disabled={!canEdit}
+            showRestrictionWarning={!canEdit && (!!statusLabel || (selectedTab.startsWith('change-order-') && selectedProposal?.approval_status === 'approved'))}
+            restrictionMessage={
+              !canEdit && selectedTab.startsWith('change-order-') && selectedProposal?.approval_status === 'approved'
+                ? 'This Change Order has been approved and cannot be edited.'
+                : !canEdit && statusLabel && !selectedTab.startsWith('change-order-')
+                ? `This project has status "${statusLabel}" which does not allow editing proposals or estimates.`
+                : undefined
+            }
+            onPricingItemsChange={onPricingItemsChange}
+            onSave={async ()=>{
+              // Always refetch proposals list after save to get the updated/created proposal
+              await refetchProposals();
+              // Force refetch of project proposals to ensure UI updates
+              queryClient.invalidateQueries({ queryKey: ['projectProposals', projectId] });
+              
+              // Check if current tab still exists after refetch
+              const updatedProposals = await api<Proposal[]>('GET', `/proposals?project_id=${encodeURIComponent(String(projectId))}`);
+              const updatedOrganized = {
+                original: updatedProposals.find(p => !p.is_change_order) || null,
+                changeOrders: updatedProposals
+                  .filter(p => p.is_change_order)
+                  .sort((a, b) => (a.change_order_number || 0) - (b.change_order_number || 0))
+              };
+              
+              // If current Change Order was deleted, switch to Proposal tab
+              if (selectedTab.startsWith('change-order-')) {
+                const orderNum = parseInt(selectedTab.replace('change-order-', ''));
+                const stillExists = updatedOrganized.changeOrders.some(co => co.change_order_number === orderNum);
+                if (!stillExists) {
+                  setSelectedTab('proposal');
+                }
               }
-            }
-            
-            // If we now have a proposal, refetch its full data
-            if (Array.isArray(updatedProposals) && updatedProposals.length > 0) {
-              const updatedProposal = updatedProposals.find(p => p.id === selectedProposal?.id) || updatedProposals[0];
-              // Invalidate the proposal query to trigger refetch
-              queryClient.invalidateQueries({ queryKey: ['proposal', updatedProposal.id] });
-              // Force a refetch of the proposal data
-              queryClient.refetchQueries({ queryKey: ['proposal', updatedProposal.id] });
-            }
-            // Also refetch the proposals list query
-            queryClient.refetchQueries({ queryKey: ['projectProposals', projectId] });
-            // Invalidate project query to refresh division percentages in ProjectDivisionsHeroSection
-            queryClient.invalidateQueries({ queryKey: ['project', projectId] });
-          }}
-        />
-      )}
+              
+              // If we now have a proposal, refetch its full data
+              if (Array.isArray(updatedProposals) && updatedProposals.length > 0) {
+                const updatedProposal = updatedProposals.find(p => p.id === selectedProposal?.id) || updatedProposals[0];
+                // Invalidate the proposal query to trigger refetch
+                queryClient.invalidateQueries({ queryKey: ['proposal', updatedProposal.id] });
+                // Force a refetch of the proposal data
+                queryClient.refetchQueries({ queryKey: ['proposal', updatedProposal.id] });
+              }
+              // Also refetch the proposals list query
+              queryClient.refetchQueries({ queryKey: ['projectProposals', projectId] });
+              // Invalidate project query to refresh division percentages in ProjectDivisionsHeroSection
+              queryClient.invalidateQueries({ queryKey: ['project', projectId] });
+            }}
+          />
+        )}
+      </div>
     </div>
   );
 }
@@ -6196,47 +6739,49 @@ function ProjectTeamCard({ projectId, employees }: { projectId: string, employee
   );
 }
 
-function ProjectTabCards({ availableTabs, onTabClick, proj }: { 
+function ProjectTabCards({ availableTabs, onTabClick, proj, currentTab }: { 
   availableTabs: readonly ('overview'|'reports'|'dispatch'|'timesheet'|'files'|'proposal'|'estimate'|'orders')[], 
-  onTabClick: (tab: typeof availableTabs[number]) => void,
-  proj: any 
+  onTabClick: (tab: typeof availableTabs[number] | 'overview' | null) => void,
+  proj: any,
+  currentTab: 'overview'|'general'|'reports'|'dispatch'|'timesheet'|'files'|'photos'|'proposal'|'estimate'|'orders'|null
 }){
-  const tabConfig: Record<string, { label: string, icon: string, description: string, color: string }> = {
-    reports: { label: 'Reports', icon: '📝', description: 'Project reports and updates', color: 'bg-green-100 text-green-600' },
-    dispatch: { label: 'Workload', icon: '👷', description: 'Employee shifts and workload management', color: 'bg-purple-100 text-purple-600' },
-    timesheet: { label: 'Timesheet', icon: '⏰', description: 'Time tracking and hours', color: 'bg-orange-100 text-orange-600' },
-    files: { label: 'Files', icon: '📁', description: 'Documents, photos and files', color: 'bg-gray-100 text-gray-600' },
-    proposal: { label: 'Proposal', icon: '📄', description: 'Project proposals', color: 'bg-indigo-100 text-indigo-600' },
-    estimate: { label: 'Estimate', icon: '💰', description: 'Cost estimates and budgets', color: 'bg-yellow-100 text-yellow-600' },
-    orders: { label: 'Orders', icon: '🛒', description: 'Purchase orders and supplies', color: 'bg-red-100 text-red-600' },
+  const tabConfig: Record<string, { label: string, icon: string }> = {
+    overview: { label: 'Overview', icon: '📊' },
+    reports: { label: 'Reports', icon: '📝' },
+    dispatch: { label: 'Workload', icon: '👷' },
+    timesheet: { label: 'Timesheet', icon: '⏰' },
+    files: { label: 'Files', icon: '📁' },
+    proposal: { label: 'Proposal', icon: '📄' },
+    estimate: { label: 'Estimate', icon: '💰' },
+    orders: { label: 'Orders', icon: '🛒' },
   };
 
-  // Filter out 'overview' from available tabs since we're already on overview
-  const tabsToShow = availableTabs.filter(t => t !== 'overview');
+  // Include 'overview' and filter available tabs
+  const tabsToShow: (typeof availableTabs[number] | 'overview')[] = ['overview', ...availableTabs.filter(t => t !== 'overview')];
 
   return (
-    <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-2 xl:grid-cols-3 gap-3">
-      {tabsToShow.map(tabKey => {
-        const config = tabConfig[tabKey];
-        if (!config) return null;
-        return (
-          <button
-            key={tabKey}
-            onClick={() => onTabClick(tabKey)}
-            className="rounded-lg border bg-white p-4 hover:shadow-md transition-all text-left group"
-          >
-            <div className="flex items-center gap-3">
-              <div className={`w-12 h-12 rounded-lg ${config.color} flex items-center justify-center text-xl flex-shrink-0 group-hover:scale-110 transition-transform`}>
-                {config.icon}
-              </div>
-              <div className="flex-1 min-w-0">
-                <div className="font-semibold text-base text-gray-900 mb-0.5">{config.label}</div>
-                <div className="text-xs text-gray-500 line-clamp-1">{config.description}</div>
-              </div>
-            </div>
-          </button>
-        );
-      })}
+    <div className="rounded-xl border bg-white p-3">
+      <div className="flex flex-wrap gap-2">
+        {tabsToShow.map(tabKey => {
+          const config = tabConfig[tabKey];
+          if (!config) return null;
+          const isActive = (currentTab === null && tabKey === 'overview') || currentTab === tabKey;
+          return (
+            <button
+              key={tabKey}
+              onClick={() => onTabClick(tabKey === 'overview' ? null : tabKey)}
+              className={`flex-1 min-w-[120px] px-3 py-1.5 text-sm font-bold rounded-lg border transition-colors flex items-center justify-center gap-1.5 ${
+                isActive
+                  ? 'bg-red-50 text-red-700 border-red-300 hover:bg-red-100 hover:border-red-400'
+                  : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50 hover:border-gray-400'
+              }`}
+            >
+              <span className="text-xs leading-none">{config.icon}</span>
+              {config.label}
+            </button>
+          );
+        })}
+      </div>
     </div>
   );
 }
@@ -6275,21 +6820,21 @@ function ProjectQuickEdit({ projectId, proj, settings }:{ projectId:string, proj
   };
   return (
     <div className="rounded-xl border bg-white p-4">
-      <h4 className="font-semibold mb-2">Quick Edit</h4>
-      <div className="grid grid-cols-2 gap-3 text-sm">
+      <h4 className="text-sm font-semibold text-gray-900 mb-2">Quick Edit</h4>
+      <div className="grid grid-cols-2 gap-3">
         <div>
-          <label className="text-xs text-gray-600">Status</label>
-          <select className="w-full border rounded px-2 py-1.5" value={status} onChange={e=>setStatus(e.target.value)}>
+          <label className="text-xs font-medium text-gray-600 mb-1.5">Status</label>
+          <select className="w-full rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-gray-900 focus:ring-1 focus:ring-gray-400 focus:border-gray-400" value={status} onChange={e=>setStatus(e.target.value)}>
             <option value="">Select...</option>
             {statuses.map((s:any)=> <option key={s.label} value={s.label}>{s.label}</option>)}
           </select>
         </div>
         <div>
-          <label className="text-xs text-gray-600">Progress</label>
-          <div className="flex items-center gap-2"><input type="range" min={0} max={100} value={progress} onChange={e=>setProgress(Number(e.target.value||0))} className="flex-1" /><span className="w-10 text-right">{progress}%</span></div>
+          <label className="text-xs font-medium text-gray-600 mb-1.5">Progress</label>
+          <div className="flex items-center gap-2"><input type="range" min={0} max={100} value={progress} onChange={e=>setProgress(Number(e.target.value||0))} className="flex-1" /><span className="w-10 text-right text-xs">{progress}%</span></div>
         </div>
         <div className="col-span-2">
-          <label className="text-xs text-gray-600">Divisions</label>
+          <label className="text-xs font-medium text-gray-600 mb-1.5">Divisions</label>
           <div className="flex flex-wrap gap-2 mt-1">
             {divs.map((id)=>{
               const d = divisions.find((x:any)=> String(x.id||x.label||x.value)===id);
@@ -6306,7 +6851,7 @@ function ProjectQuickEdit({ projectId, proj, settings }:{ projectId:string, proj
           </div>
         </div>
         <div className="col-span-2">
-          <label className="text-xs text-gray-600 mb-2 block">Project Divisions</label>
+          <label className="text-xs font-medium text-gray-600 mb-1.5 block">Project Divisions</label>
           <div className="space-y-2 max-h-64 overflow-y-auto border rounded p-2">
             {(projectDivisions||[]).map((div:any)=>{
               const divId = String(div.id);
@@ -7776,7 +8321,7 @@ function ProjectGeneralInfoCard({ projectId, proj, files, hasEditPermission }:{ 
   return (
     <div className="rounded-xl border bg-white p-4">
       <div className="flex items-start justify-between mb-4">
-        <h4 className="font-semibold">General Information</h4>
+        <h4 className="text-sm font-semibold text-gray-900">General Information</h4>
         {/* Division icons at top right */}
         {divisionIcons.length > 0 && (
           <div className="flex items-center gap-2 flex-shrink-0">
@@ -7799,11 +8344,11 @@ function ProjectGeneralInfoCard({ projectId, proj, files, hasEditPermission }:{ 
           </div>
         )}
       </div>
-      <div className="space-y-4 text-sm">
+      <div className="space-y-3">
         {/* Project Image */}
         <div>
-          <div className="flex items-center justify-between mb-2">
-            <label className="text-xs text-gray-600">Project Image</label>
+          <div className="flex items-center justify-between mb-1.5">
+            <label className="text-xs font-medium text-gray-600">Project Image</label>
             <button
               onClick={() => setPickerOpen(true)}
               className="text-xs text-[#7f1010] hover:text-[#a31414] font-medium"
@@ -7829,8 +8374,8 @@ function ProjectGeneralInfoCard({ projectId, proj, files, hasEditPermission }:{ 
 
         {/* Project Name - Editable */}
         <div>
-          <div className="flex items-center gap-1.5 mb-1">
-            <label className="text-xs text-gray-600 block">Project Name</label>
+          <div className="flex items-center gap-1.5 mb-1.5">
+            <label className="text-xs font-medium text-gray-600 block">Project Name</label>
             {!editingName && hasEditPermission && (
               <button
                 onClick={() => setEditingName(true)}
@@ -7849,7 +8394,7 @@ function ProjectGeneralInfoCard({ projectId, proj, files, hasEditPermission }:{ 
                 type="text"
                 value={projectName}
                 onChange={e => setProjectName(e.target.value)}
-                className="w-full border rounded px-3 py-2 text-sm"
+                className="w-full rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-gray-900 focus:ring-1 focus:ring-gray-400 focus:border-gray-400"
                 placeholder="Project name"
                 autoFocus
               />
@@ -7877,14 +8422,14 @@ function ProjectGeneralInfoCard({ projectId, proj, files, hasEditPermission }:{ 
               </div>
             </div>
           ) : (
-            <div className="text-sm font-medium text-gray-800">{proj?.name || proj?.site_name || '—'}</div>
+            <div className="text-sm font-semibold text-gray-900">{proj?.name || proj?.site_name || '-'}</div>
           )}
         </div>
 
         {/* ETA - Editable */}
         <div>
-          <div className="flex items-center gap-1.5 mb-1">
-            <label className="text-xs text-gray-600 block">ETA</label>
+          <div className="flex items-center gap-1.5 mb-1.5">
+            <label className="text-xs font-medium text-gray-600 block">ETA</label>
             {!editingEta && hasEditPermission && (
               <button
                 onClick={() => setEditingEta(true)}
@@ -7903,7 +8448,7 @@ function ProjectGeneralInfoCard({ projectId, proj, files, hasEditPermission }:{ 
                 type="date"
                 value={eta}
                 onChange={e => setEta(e.target.value)}
-                className="w-full border rounded px-3 py-2 text-sm"
+                className="w-full rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-gray-900 focus:ring-1 focus:ring-gray-400 focus:border-gray-400"
                 autoFocus
               />
               <div className="flex items-center gap-2">
@@ -7927,23 +8472,23 @@ function ProjectGeneralInfoCard({ projectId, proj, files, hasEditPermission }:{ 
               </div>
             </div>
           ) : (
-            <div className="text-sm font-medium text-gray-800">{eta || '—'}</div>
+            <div className="text-sm font-semibold text-gray-900">{eta || '-'}</div>
           )}
         </div>
         
         <div className="grid grid-cols-2 gap-3">
           {fields.map((item)=> (
             <div key={item.label}>
-              <div className="text-xs text-gray-600">{item.label}</div>
-              <div className="mt-1 text-gray-800">{item.value}</div>
+              <div className="text-xs font-medium text-gray-600 mb-1.5">{item.label}</div>
+              <div className="text-sm font-semibold text-gray-900">{item.value || '-'}</div>
             </div>
           ))}
         </div>
         
         {/* Project Divisions Section */}
         <div>
-          <div className="flex items-center gap-1.5 mb-1">
-            <label className="text-xs text-gray-600 block">Project Divisions</label>
+          <div className="flex items-center gap-1.5 mb-1.5">
+            <label className="text-xs font-medium text-gray-600 block">Project Divisions</label>
             {!editingDivisions && hasEditPermission && (
               <button
                 onClick={() => setEditingDivisions(true)}
@@ -8071,9 +8616,9 @@ function ProjectGeneralInfoCard({ projectId, proj, files, hasEditPermission }:{ 
         </div>
 
         <div>
-          <label className="text-xs text-gray-600">Description</label>
+          <label className="text-xs font-medium text-gray-600 mb-1.5 block">Description</label>
           <textarea
-            className="mt-1 w-full border rounded px-3 py-2 text-sm min-h-[120px] resize-y"
+            className="w-full rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-gray-900 focus:ring-1 focus:ring-gray-400 focus:border-gray-400 min-h-[120px] resize-y"
             placeholder="Add notes or general information about this project..."
             value={description}
             onChange={e=>setDescription(e.target.value)}
@@ -8083,7 +8628,7 @@ function ProjectGeneralInfoCard({ projectId, proj, files, hasEditPermission }:{ 
           <button
             onClick={handleSave}
             disabled={saving}
-            className="px-3 py-2 rounded bg-brand-red text-white disabled:opacity-60"
+            className="px-2.5 py-1.5 rounded bg-brand-red text-white text-xs font-medium disabled:opacity-60"
           >
             {saving ? 'Saving...' : 'Save'}
           </button>
@@ -8126,7 +8671,7 @@ function ProjectContactCard({ projectId, proj, clientId, clientFiles }:{ project
   const displayPhone = currentContact?.phone || proj?.contact_phone || '';
   return (
     <div className="rounded-xl border bg-white p-4">
-      <h4 className="font-semibold mb-2">Contact</h4>
+      <h4 className="text-sm font-semibold text-gray-900 mb-2">Contact</h4>
       <div className="space-y-3">
         <div className="flex items-center gap-3">
           {photoUrl ? (
@@ -8135,7 +8680,7 @@ function ProjectContactCard({ projectId, proj, clientId, clientFiles }:{ project
             <span className="w-12 h-12 rounded bg-gray-200 inline-block" />
           )}
           <div>
-            <div className="text-sm text-gray-700">{displayName}</div>
+            <div className="text-sm font-semibold text-gray-900">{displayName}</div>
             {(displayEmail || displayPhone) ? (
               <div className="text-xs text-gray-600">
                 {displayEmail}
@@ -8148,9 +8693,9 @@ function ProjectContactCard({ projectId, proj, clientId, clientFiles }:{ project
           </div>
         </div>
         <div>
-          <label className="text-xs text-gray-600">Customer contact</label>
+          <label className="text-xs font-medium text-gray-600 mb-1.5 block">Customer contact</label>
           <select
-            className="w-full border rounded px-2 py-1.5 mt-1"
+            className="w-full rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-gray-900 focus:ring-1 focus:ring-gray-400 focus:border-gray-400"
             value={contactId}
             onChange={e=>setContactId(e.target.value)}
             disabled={!contacts?.length}
@@ -8165,7 +8710,7 @@ function ProjectContactCard({ projectId, proj, clientId, clientFiles }:{ project
           <button
             onClick={handleSave}
             disabled={saving}
-            className="px-3 py-2 rounded bg-brand-red text-white disabled:opacity-60"
+            className="px-2.5 py-1.5 rounded bg-brand-red text-white text-xs font-medium disabled:opacity-60"
           >
             {saving ? 'Saving...' : 'Save'}
           </button>
@@ -8197,7 +8742,7 @@ function ProjectEtaEdit({ projectId, proj, settings }:{ projectId:string, proj:a
   if(!isEditing){
     return (
       <div className="flex items-center gap-2">
-        <div className="text-sm text-gray-700 flex-1">{(proj?.date_eta||'').slice(0,10)||'-'}</div>
+        <div className="text-sm font-semibold text-gray-900 flex-1">{(proj?.date_eta||'').slice(0,10)||'-'}</div>
         {canEdit && (
           <button onClick={()=>setIsEditing(true)} className="text-gray-500 hover:text-gray-700" title="Edit ETA">
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>
@@ -8209,7 +8754,7 @@ function ProjectEtaEdit({ projectId, proj, settings }:{ projectId:string, proj:a
   
   return (
     <div className="flex items-center gap-2">
-      <input type="date" className="flex-1 border rounded px-2 py-1 text-sm" value={eta} onChange={e=>setEta(e.target.value)} />
+      <input type="date" className="flex-1 rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-gray-900 focus:ring-1 focus:ring-gray-400 focus:border-gray-400" value={eta} onChange={e=>setEta(e.target.value)} />
       <button onClick={async()=>{
         try{
           await api('PATCH', `/projects/${projectId}`, { date_eta: eta||null });
@@ -8217,8 +8762,8 @@ function ProjectEtaEdit({ projectId, proj, settings }:{ projectId:string, proj:a
           toast.success('ETA updated');
           setIsEditing(false);
         }catch(_e){ toast.error('Failed to update'); }
-      }} className="px-2 py-1 rounded bg-brand-red text-white text-xs">Save</button>
-      <button onClick={()=>{ setIsEditing(false); setEta((proj?.date_eta||'').slice(0,10)); }} className="px-2 py-1 rounded bg-gray-100 text-xs">Cancel</button>
+      }} className="px-2.5 py-1.5 rounded bg-brand-red text-white text-xs font-medium">Save</button>
+      <button onClick={()=>{ setIsEditing(false); setEta((proj?.date_eta||'').slice(0,10)); }} className="px-2.5 py-1.5 rounded bg-gray-100 text-gray-700 text-xs font-medium">Cancel</button>
     </div>
   );
 }
@@ -8335,8 +8880,8 @@ function ProjectCostsSummary({ projectId, proposals }:{ projectId:string, propos
   if (!hasPricingData) {
     return (
       <div className="rounded-xl border bg-white p-4">
-        <h4 className="font-semibold mb-2">Costs Summary</h4>
-        <div className="text-sm text-gray-600">No proposal pricing available</div>
+        <h4 className="text-sm font-semibold text-gray-900 mb-2">Costs Summary</h4>
+        <div className="text-xs text-gray-600">No proposal pricing available</div>
       </div>
     );
   }
@@ -8351,22 +8896,22 @@ function ProjectCostsSummary({ projectId, proposals }:{ projectId:string, propos
   
   return (
     <div className="rounded-xl border bg-white p-4">
-      <h4 className="font-semibold mb-3">Costs Summary</h4>
+      <h4 className="text-sm font-semibold text-gray-900 mb-3">Costs Summary</h4>
       
       {/* Items in columns */}
       <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 mb-4">
         {itemsToDisplay.map((item, idx) => (
           <div key={idx} className="text-center">
-            <div className="text-xs text-gray-600 mb-1">{item.label}</div>
-            <div className="text-lg font-semibold text-gray-900">${item.value.toFixed(2)}</div>
+            <div className="text-xs font-medium text-gray-600 mb-1">{item.label}</div>
+            <div className="text-sm font-semibold text-gray-900">${item.value.toFixed(2)}</div>
           </div>
         ))}
       </div>
       
       {/* Grand Total in a row below */}
       <div className="flex items-center justify-between pt-3 border-t-2 border-gray-300">
-        <div className="text-base font-semibold text-gray-900">Total</div>
-        <div className="text-2xl font-bold text-brand-red">${grandTotal.toFixed(2)}</div>
+        <div className="text-sm font-semibold text-gray-900">Total</div>
+        <div className="text-lg font-bold text-brand-red">${grandTotal.toFixed(2)}</div>
       </div>
     </div>
   );

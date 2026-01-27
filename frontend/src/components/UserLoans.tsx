@@ -153,223 +153,254 @@ export default function UserLoans({ userId, canEdit = true }: { userId: string; 
   };
 
   return (
-    <div className="rounded-xl border bg-white p-4">
+    <div className="space-y-6 pb-24">
       {/* Summary Cards */}
-      <div className="grid md:grid-cols-3 gap-4 mb-6">
-        <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg">
-          <div className="text-sm text-blue-600 font-medium">Total Loaned</div>
-          <div className="text-2xl font-bold text-blue-900">
-            {summary ? formatCurrency(summary.total_loaned) : '-'}
+      <div className="grid md:grid-cols-3 gap-4">
+        <div className="rounded-xl border bg-white p-4">
+          <div className="flex items-center gap-2 mb-3">
+            <div className="w-8 h-8 rounded bg-blue-100 flex items-center justify-center">
+              <svg className="w-5 h-5 text-blue-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+            </div>
+            <h5 className="text-sm font-semibold text-blue-900">Total Loaned</h5>
+          </div>
+          <div className="text-sm font-semibold text-blue-900">
+            {summary ? formatCurrency(summary.total_loaned) : '—'}
           </div>
         </div>
-        <div className="p-4 bg-green-50 border border-green-200 rounded-lg">
-          <div className="text-sm text-green-600 font-medium">Total Paid</div>
-          <div className="text-2xl font-bold text-green-900">
-            {summary ? formatCurrency(summary.total_paid) : '-'}
+        <div className="rounded-xl border bg-white p-4">
+          <div className="flex items-center gap-2 mb-3">
+            <div className="w-8 h-8 rounded bg-green-100 flex items-center justify-center">
+              <svg className="w-5 h-5 text-green-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+            </div>
+            <h5 className="text-sm font-semibold text-green-900">Total Paid</h5>
+          </div>
+          <div className="text-sm font-semibold text-green-900">
+            {summary ? formatCurrency(summary.total_paid) : '—'}
           </div>
         </div>
-        <div className="p-4 bg-orange-50 border border-orange-200 rounded-lg">
-          <div className="text-sm text-orange-600 font-medium">Total Outstanding</div>
-          <div className="text-2xl font-bold text-orange-900">
-            {summary ? formatCurrency(summary.total_outstanding) : '-'}
+        <div className="rounded-xl border bg-white p-4">
+          <div className="flex items-center gap-2 mb-3">
+            <div className="w-8 h-8 rounded bg-orange-100 flex items-center justify-center">
+              <svg className="w-5 h-5 text-orange-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+            </div>
+            <h5 className="text-sm font-semibold text-orange-900">Total Outstanding</h5>
+          </div>
+          <div className="text-sm font-semibold text-orange-900">
+            {summary ? formatCurrency(summary.total_outstanding) : '—'}
           </div>
         </div>
       </div>
 
-      {/* Header with Create Button */}
-      <div className="flex items-center justify-between mb-4">
-        <h3 className="text-lg font-semibold">Loans</h3>
-        <div className="flex items-center gap-4">
+      {/* Loans Section */}
+      <div className="rounded-xl border bg-white p-4">
+        {/* Header with Create Button */}
+        <div className="mb-4 flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <input
-              type="checkbox"
-              id="show-closed"
-              checked={showClosedLoans}
-              onChange={(e) => setShowClosedLoans(e.target.checked)}
-              className="w-4 h-4 rounded border-gray-300 text-brand-red focus:ring-brand-red"
-            />
-            <label htmlFor="show-closed" className="text-sm font-medium text-gray-700 cursor-pointer">
-              Show "Closed" Loans
-            </label>
+            <div className="w-8 h-8 rounded bg-purple-100 flex items-center justify-center">
+              <svg className="w-5 h-5 text-purple-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+            </div>
+            <h5 className="text-sm font-semibold text-purple-900">Loans</h5>
           </div>
-          {canEdit && (
-            <button
-              onClick={() => setShowCreateModal(true)}
-              className="px-4 py-2 bg-[#d11616] text-white rounded-lg font-semibold hover:bg-[#b01414] transition-colors"
-            >
-              + Create Loan
-            </button>
-          )}
-        </div>
-      </div>
-
-      {/* Filters */}
-      <div className="mb-4 rounded-xl border bg-white p-4">
-        <div className="grid grid-cols-12 gap-4 items-end">
-          <div className="col-span-2">
-            <label className="block text-sm font-medium text-gray-700 mb-1">Start Date</label>
-            <input
-              type="date"
-              value={filterDateFrom}
-              onChange={(e) => setFilterDateFrom(e.target.value)}
-              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
-            />
-          </div>
-          <div className="col-span-2">
-            <label className="block text-sm font-medium text-gray-700 mb-1">End Date</label>
-            <input
-              type="date"
-              value={filterDateTo}
-              onChange={(e) => setFilterDateTo(e.target.value)}
-              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
-            />
-          </div>
-          <div className="col-span-2">
-            <label className="block text-sm font-medium text-gray-700 mb-1">Status</label>
-            <select
-              value={filterStatus}
-              onChange={(e) => setFilterStatus(e.target.value)}
-              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
-            >
-              <option value="">All Statuses</option>
-              <option value="Active">Active</option>
-              <option value="Closed">Closed</option>
-              <option value="Cancelled">Cancelled</option>
-            </select>
-          </div>
-          <div className="col-span-4">
-            <label className="block text-sm font-medium text-gray-700 mb-1">Amount Range</label>
+          <div className="flex items-center gap-4">
             <div className="flex items-center gap-2">
               <input
-                type="number"
-                step="0.01"
-                min="0"
-                value={filterAmountMin}
-                onChange={(e) => setFilterAmountMin(e.target.value)}
-                placeholder="Min"
-                className="flex-1 rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                type="checkbox"
+                id="show-closed"
+                checked={showClosedLoans}
+                onChange={(e) => setShowClosedLoans(e.target.checked)}
+                className="w-3.5 h-3.5 rounded border-gray-300 text-brand-red focus:ring-brand-red"
               />
-              <span className="text-gray-500">-</span>
-              <input
-                type="number"
-                step="0.01"
-                min="0"
-                value={filterAmountMax}
-                onChange={(e) => setFilterAmountMax(e.target.value)}
-                placeholder="Max"
-                className="flex-1 rounded-lg border border-gray-300 px-3 py-2 text-sm"
-              />
+              <label htmlFor="show-closed" className="text-xs font-medium text-gray-700 cursor-pointer">
+                Show "Closed" Loans
+              </label>
             </div>
-          </div>
-          {(filterStatus || filterDateFrom || filterDateTo || filterAmountMin || filterAmountMax) && (
-            <div className="col-span-2">
+            {canEdit && (
               <button
-                onClick={() => {
-                  setFilterStatus('');
-                  setFilterDateFrom('');
-                  setFilterDateTo('');
-                  setFilterAmountMin('');
-                  setFilterAmountMax('');
-                }}
-                className="w-full px-3 py-2 text-sm rounded-lg bg-gray-200 hover:bg-gray-300 text-gray-700 font-medium transition-colors"
+                onClick={() => setShowCreateModal(true)}
+                className="px-2 py-1 text-xs bg-[#d11616] text-white rounded-lg font-medium hover:bg-[#b01414] transition-colors"
               >
-                Clear Filters
+                + Create Loan
               </button>
-            </div>
-          )}
+            )}
+          </div>
         </div>
-      </div>
 
-      {/* Loans Table */}
-      <div className="rounded-xl border bg-white overflow-hidden">
-        <table className="w-full text-sm">
-          <thead className="bg-gray-50">
-            <tr>
-              <th className="p-3 text-left font-semibold text-gray-700">Date</th>
-              <th className="p-3 text-left font-semibold text-gray-700">Amount</th>
-              <th className="p-3 text-left font-semibold text-gray-700">Remaining</th>
-              <th className="p-3 text-left font-semibold text-gray-700">Status</th>
-              <th className="p-3 text-left font-semibold text-gray-700">Created By</th>
-              <th className="p-3 text-left font-semibold text-gray-700">Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            {!loans ? (
+        {/* Filters */}
+        <div className="mb-4 space-y-4">
+          <div className="grid grid-cols-12 gap-4 items-end">
+            <div className="col-span-2">
+              <label className="block text-xs font-medium text-gray-600 mb-1.5">Start Date</label>
+              <input
+                type="date"
+                value={filterDateFrom}
+                onChange={(e) => setFilterDateFrom(e.target.value)}
+                className="w-full rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-gray-900 focus:ring-1 focus:ring-gray-400 focus:border-gray-400"
+              />
+            </div>
+            <div className="col-span-2">
+              <label className="block text-xs font-medium text-gray-600 mb-1.5">End Date</label>
+              <input
+                type="date"
+                value={filterDateTo}
+                onChange={(e) => setFilterDateTo(e.target.value)}
+                className="w-full rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-gray-900 focus:ring-1 focus:ring-gray-400 focus:border-gray-400"
+              />
+            </div>
+            <div className="col-span-2">
+              <label className="block text-xs font-medium text-gray-600 mb-1.5">Status</label>
+              <select
+                value={filterStatus}
+                onChange={(e) => setFilterStatus(e.target.value)}
+                className="w-full rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-gray-900 focus:ring-1 focus:ring-gray-400 focus:border-gray-400"
+              >
+                <option value="">All Statuses</option>
+                <option value="Active">Active</option>
+                <option value="Closed">Closed</option>
+                <option value="Cancelled">Cancelled</option>
+              </select>
+            </div>
+            <div className="col-span-4">
+              <label className="block text-xs font-medium text-gray-600 mb-1.5">Amount Range</label>
+              <div className="flex items-center gap-2">
+                <input
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  value={filterAmountMin}
+                  onChange={(e) => setFilterAmountMin(e.target.value)}
+                  placeholder="Min"
+                  className="flex-1 rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-gray-900 focus:ring-1 focus:ring-gray-400 focus:border-gray-400"
+                />
+                <span className="text-xs text-gray-500">-</span>
+                <input
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  value={filterAmountMax}
+                  onChange={(e) => setFilterAmountMax(e.target.value)}
+                  placeholder="Max"
+                  className="flex-1 rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-gray-900 focus:ring-1 focus:ring-gray-400 focus:border-gray-400"
+                />
+              </div>
+            </div>
+            {(filterStatus || filterDateFrom || filterDateTo || filterAmountMin || filterAmountMax) && (
+              <div className="col-span-2">
+                <button
+                  onClick={() => {
+                    setFilterStatus('');
+                    setFilterDateFrom('');
+                    setFilterDateTo('');
+                    setFilterAmountMin('');
+                    setFilterAmountMax('');
+                  }}
+                  className="w-full px-2 py-1 text-xs rounded-lg bg-gray-200 hover:bg-gray-300 text-gray-700 font-medium transition-colors"
+                >
+                  Clear Filters
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Loans Table */}
+        <div className="rounded-xl border overflow-hidden">
+          <table className="w-full">
+            <thead className="bg-gray-50">
               <tr>
-                <td colSpan={6} className="p-4 text-center text-gray-500">
-                  <div className="h-6 bg-gray-100 animate-pulse rounded" />
-                </td>
+                <th className="p-2.5 text-left text-xs font-medium text-gray-600">Date</th>
+                <th className="p-2.5 text-left text-xs font-medium text-gray-600">Amount</th>
+                <th className="p-2.5 text-left text-xs font-medium text-gray-600">Remaining</th>
+                <th className="p-2.5 text-left text-xs font-medium text-gray-600">Status</th>
+                <th className="p-2.5 text-left text-xs font-medium text-gray-600">Created By</th>
+                <th className="p-2.5 text-left text-xs font-medium text-gray-600">Actions</th>
               </tr>
-            ) : filteredLoans.length === 0 ? (
-              <tr>
-                <td colSpan={6} className="p-4 text-center text-gray-500">
-                  {loans.length === 0 ? 'No loans found' : 'No loans match the filters'}
-                </td>
-              </tr>
-            ) : (
-              filteredLoans.map((loan) => (
-                <tr key={loan.id} className="border-t border-gray-200 hover:bg-gray-50 transition-colors">
-                  <td className="p-3 text-gray-900">{formatDate(loan.loan_date)}</td>
-                  <td className="p-3 font-medium text-gray-900">{formatCurrency(loan.loan_amount)}</td>
-                  <td className="p-3 text-gray-900">{formatCurrency(loan.remaining_balance)}</td>
-                  <td className="p-3">
-                    <span
-                      className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                        loan.status === 'Active'
-                          ? 'bg-green-100 text-green-800'
-                          : loan.status === 'Closed'
-                          ? 'bg-gray-100 text-gray-800'
-                          : 'bg-red-100 text-red-800'
-                      }`}
-                    >
-                      {loan.status}
-                    </span>
-                  </td>
-                  <td className="p-3 text-gray-600">{loan.created_by?.username || '-'}</td>
-                  <td className="p-3">
-                    <div className="flex items-center gap-2">
-                      <button
-                        onClick={() => setShowLoanDetail(loan.id)}
-                        className="px-3 py-1.5 text-xs font-medium rounded-lg bg-gray-100 hover:bg-gray-200 text-gray-700 transition-colors"
-                      >
-                        View
-                      </button>
-                      {canEdit && loan.status === 'Active' && (
-                        <>
-                          <button
-                            onClick={() => {
-                              setSelectedLoanId(loan.id);
-                              setShowPaymentModal(true);
-                            }}
-                            className="px-3 py-1.5 text-xs font-medium rounded-lg bg-blue-100 hover:bg-blue-200 text-blue-700 transition-colors"
-                          >
-                            + Add Payment
-                          </button>
-                          {loan.remaining_balance <= 0 && (
-                            <button
-                              onClick={async () => {
-                                const result = await confirm({
-                                  message: 'Are you sure you want to close this loan?',
-                                  title: 'Close Loan',
-                                });
-                                if (result === 'confirm') {
-                                  await handleCloseLoan(loan.id);
-                                }
-                              }}
-                              className="px-3 py-1.5 text-xs font-medium rounded-lg bg-orange-100 hover:bg-orange-200 text-orange-700 transition-colors"
-                            >
-                              Close
-                            </button>
-                          )}
-                        </>
-                      )}
-                    </div>
+            </thead>
+            <tbody>
+              {!loans ? (
+                <tr>
+                  <td colSpan={6} className="p-4 text-center text-xs text-gray-500">
+                    <div className="h-6 bg-gray-100 animate-pulse rounded" />
                   </td>
                 </tr>
-              ))
-            )}
-          </tbody>
-        </table>
+              ) : filteredLoans.length === 0 ? (
+                <tr>
+                  <td colSpan={6} className="p-4 text-center text-xs text-gray-500">
+                    {loans.length === 0 ? 'No loans found' : 'No loans match the filters'}
+                  </td>
+                </tr>
+              ) : (
+                filteredLoans.map((loan) => (
+                  <tr key={loan.id} className="border-t border-gray-200 hover:bg-gray-50 transition-colors">
+                    <td className="p-2.5 text-xs text-gray-900">{formatDate(loan.loan_date)}</td>
+                    <td className="p-2.5 text-xs font-semibold text-gray-900">{formatCurrency(loan.loan_amount)}</td>
+                    <td className="p-2.5 text-xs text-gray-900">{formatCurrency(loan.remaining_balance)}</td>
+                    <td className="p-2.5">
+                      <span
+                        className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium ${
+                          loan.status === 'Active'
+                            ? 'bg-green-100 text-green-800'
+                            : loan.status === 'Closed'
+                            ? 'bg-gray-100 text-gray-800'
+                            : 'bg-red-100 text-red-800'
+                        }`}
+                      >
+                        {loan.status}
+                      </span>
+                    </td>
+                    <td className="p-2.5 text-xs text-gray-600">{loan.created_by?.username || '—'}</td>
+                    <td className="p-2.5">
+                      <div className="flex items-center gap-1.5">
+                        <button
+                          onClick={() => setShowLoanDetail(loan.id)}
+                          className="px-2 py-1 text-[10px] font-medium rounded-lg bg-gray-100 hover:bg-gray-200 text-gray-700 transition-colors"
+                        >
+                          View
+                        </button>
+                        {canEdit && loan.status === 'Active' && (
+                          <>
+                            <button
+                              onClick={() => {
+                                setSelectedLoanId(loan.id);
+                                setShowPaymentModal(true);
+                              }}
+                              className="px-2 py-1 text-[10px] font-medium rounded-lg bg-blue-100 hover:bg-blue-200 text-blue-700 transition-colors"
+                            >
+                              + Payment
+                            </button>
+                            {loan.remaining_balance <= 0 && (
+                              <button
+                                onClick={async () => {
+                                  const result = await confirm({
+                                    message: 'Are you sure you want to close this loan?',
+                                    title: 'Close Loan',
+                                  });
+                                  if (result === 'confirm') {
+                                    await handleCloseLoan(loan.id);
+                                  }
+                                }}
+                                className="px-2 py-1 text-[10px] font-medium rounded-lg bg-orange-100 hover:bg-orange-200 text-orange-700 transition-colors"
+                              >
+                                Close
+                              </button>
+                            )}
+                          </>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
       </div>
 
       {/* Create Loan Modal */}
@@ -490,46 +521,46 @@ function CreateLoanModal({ userId, onClose }: { userId: string; onClose: () => v
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
       <div className="w-[600px] max-w-[95vw] bg-white rounded-xl shadow-lg overflow-hidden flex flex-col max-h-[90vh]">
-        <div className="bg-gradient-to-br from-[#7f1010] to-[#a31414] text-white p-6 rounded-t-xl flex items-center justify-between">
-          <div className="text-2xl font-extrabold">Create Loan</div>
-          <button onClick={onClose} className="text-white/80 hover:text-white text-2xl font-bold w-8 h-8 flex items-center justify-center rounded hover:bg-white/10">
+        <div className="bg-gradient-to-br from-[#7f1010] to-[#a31414] text-white p-4 rounded-t-xl flex items-center justify-between">
+          <div className="text-lg font-extrabold">Create Loan</div>
+          <button onClick={onClose} className="text-white/80 hover:text-white text-xl font-bold w-6 h-6 flex items-center justify-center rounded hover:bg-white/10">
             ×
           </button>
         </div>
-        <div className="flex-1 overflow-y-auto p-6 space-y-4">
+        <div className="flex-1 overflow-y-auto p-4 space-y-4">
           <div>
-            <label className="block text-sm font-medium mb-1">Loan Amount *</label>
+            <label className="block text-xs font-medium text-gray-600 mb-1.5">Loan Amount *</label>
             <input
               type="number"
               step="0.01"
               min="0"
-              className="w-full border rounded px-3 py-2"
+              className="w-full rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-gray-900 focus:ring-1 focus:ring-gray-400 focus:border-gray-400"
               value={loanAmount}
               onChange={(e) => setLoanAmount(e.target.value)}
               placeholder="0.00"
             />
           </div>
           <div>
-            <label className="block text-sm font-medium mb-1">Fees (%)</label>
+            <label className="block text-xs font-medium text-gray-600 mb-1.5">Fees (%)</label>
             <input
               type="number"
               step="0.01"
               min="0"
               max="100"
-              className="w-full border rounded px-3 py-2"
+              className="w-full rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-gray-900 focus:ring-1 focus:ring-gray-400 focus:border-gray-400"
               value={fees}
               onChange={(e) => setFees(e.target.value)}
               placeholder="0.00"
             />
-            <div className="text-xs text-gray-500 mt-1">Interest rate percentage to be added to the loan amount</div>
+            <div className="text-[10px] text-gray-500 mt-1">Interest rate percentage to be added to the loan amount</div>
           </div>
           {loanAmount && parseFloat(loanAmount) > 0 && (
             <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg">
-              <div className="text-sm text-blue-600 font-medium mb-1">Total Loan Amount</div>
-              <div className="text-2xl font-bold text-blue-900">
+              <div className="text-xs text-blue-600 font-medium mb-1">Total Loan Amount</div>
+              <div className="text-sm font-semibold text-blue-900">
                 {formatCurrency(totalLoanAmount)}
               </div>
-              <div className="text-xs text-blue-700 mt-1">
+              <div className="text-[10px] text-blue-700 mt-1">
                 Base: {formatCurrency(parseFloat(loanAmount) || 0)} 
                 {fees && parseFloat(fees) > 0 && (
                   <> + Fees ({parseFloat(fees) || 0}%): {formatCurrency((parseFloat(loanAmount) || 0) * (parseFloat(fees) || 0) / 100)}</>
@@ -538,18 +569,18 @@ function CreateLoanModal({ userId, onClose }: { userId: string; onClose: () => v
             </div>
           )}
           <div>
-            <label className="block text-sm font-medium mb-1">Agreement Date *</label>
+            <label className="block text-xs font-medium text-gray-600 mb-1.5">Agreement Date *</label>
             <input
               type="date"
-              className="w-full border rounded px-3 py-2"
+              className="w-full rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-gray-900 focus:ring-1 focus:ring-gray-400 focus:border-gray-400"
               value={agreementDate}
               onChange={(e) => setAgreementDate(e.target.value)}
             />
           </div>
           <div>
-            <label className="block text-sm font-medium mb-1">Payment Method *</label>
+            <label className="block text-xs font-medium text-gray-600 mb-1.5">Payment Method *</label>
             <select
-              className="w-full border rounded px-3 py-2"
+              className="w-full rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-gray-900 focus:ring-1 focus:ring-gray-400 focus:border-gray-400"
               value={paymentMethod}
               onChange={(e) => setPaymentMethod(e.target.value)}
             >
@@ -558,9 +589,9 @@ function CreateLoanModal({ userId, onClose }: { userId: string; onClose: () => v
             </select>
           </div>
           <div>
-            <label className="block text-sm font-medium mb-1">Status</label>
+            <label className="block text-xs font-medium text-gray-600 mb-1.5">Status</label>
             <select
-              className="w-full border rounded px-3 py-2"
+              className="w-full rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-gray-900 focus:ring-1 focus:ring-gray-400 focus:border-gray-400"
               value={status}
               onChange={(e) => setStatus(e.target.value)}
             >
@@ -570,9 +601,9 @@ function CreateLoanModal({ userId, onClose }: { userId: string; onClose: () => v
             </select>
           </div>
           <div>
-            <label className="block text-sm font-medium mb-1">Notes</label>
+            <label className="block text-xs font-medium text-gray-600 mb-1.5">Notes</label>
             <textarea
-              className="w-full border rounded px-3 py-2"
+              className="w-full rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-gray-900 focus:ring-1 focus:ring-gray-400 focus:border-gray-400"
               rows={3}
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
@@ -580,10 +611,10 @@ function CreateLoanModal({ userId, onClose }: { userId: string; onClose: () => v
             />
           </div>
         </div>
-        <div className="px-6 py-4 border-t bg-gray-50 flex items-center justify-end gap-2">
+        <div className="px-4 py-3 border-t bg-gray-50 flex items-center justify-end gap-2">
           <button
             onClick={onClose}
-            className="px-4 py-2 rounded bg-gray-200 hover:bg-gray-300"
+            className="px-3 py-1.5 text-xs rounded bg-gray-200 hover:bg-gray-300"
             disabled={saving}
           >
             Cancel
@@ -591,7 +622,7 @@ function CreateLoanModal({ userId, onClose }: { userId: string; onClose: () => v
           <button
             onClick={handleSubmit}
             disabled={saving}
-            className="px-4 py-2 rounded bg-brand-red text-white hover:bg-red-700 disabled:opacity-50"
+            className="px-3 py-1.5 text-xs rounded bg-brand-red text-white hover:bg-red-700 disabled:opacity-50"
           >
             {saving ? 'Creating...' : 'Create Loan'}
           </button>
@@ -716,43 +747,43 @@ function AddPaymentModal({
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
       <div className="w-[500px] max-w-[95vw] bg-white rounded-xl shadow-lg overflow-hidden flex flex-col max-h-[90vh]">
-        <div className="bg-gradient-to-br from-[#7f1010] to-[#a31414] text-white p-6 rounded-t-xl flex items-center justify-between">
-          <div className="text-2xl font-extrabold">Add Payment</div>
-          <button onClick={onClose} className="text-white/80 hover:text-white text-2xl font-bold w-8 h-8 flex items-center justify-center rounded hover:bg-white/10">
+        <div className="bg-gradient-to-br from-[#7f1010] to-[#a31414] text-white p-4 rounded-t-xl flex items-center justify-between">
+          <div className="text-lg font-extrabold">Add Payment</div>
+          <button onClick={onClose} className="text-white/80 hover:text-white text-xl font-bold w-6 h-6 flex items-center justify-center rounded hover:bg-white/10">
             ×
           </button>
         </div>
         <div className="flex-1 overflow-y-auto p-6 space-y-4">
           <div>
-            <label className="block text-sm font-medium mb-1">Payment Date *</label>
+            <label className="block text-xs font-medium text-gray-600 mb-1.5">Payment Date *</label>
             <input
               type="date"
-              className="w-full border rounded px-3 py-2"
+              className="w-full rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-gray-900 focus:ring-1 focus:ring-gray-400 focus:border-gray-400"
               value={paymentDate}
               onChange={(e) => setPaymentDate(e.target.value)}
             />
           </div>
           <div>
-            <label className="block text-sm font-medium mb-1">Payment Amount *</label>
+            <label className="block text-xs font-medium text-gray-600 mb-1.5">Payment Amount *</label>
             <input
               type="number"
               step="0.01"
               min="0"
-              className="w-full border rounded px-3 py-2"
+              className="w-full rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-gray-900 focus:ring-1 focus:ring-gray-400 focus:border-gray-400"
               value={paymentAmount}
               onChange={(e) => setPaymentAmount(e.target.value)}
               placeholder="0.00"
             />
             {loan && loan.remaining_balance > 0 && (
-              <div className="text-xs text-gray-500 mt-1">
+              <div className="text-[10px] text-gray-500 mt-1">
                 Remaining balance: {formatCurrency(loan.remaining_balance)}
               </div>
             )}
           </div>
           <div>
-            <label className="block text-sm font-medium mb-1">Payment Method *</label>
+            <label className="block text-xs font-medium text-gray-600 mb-1.5">Payment Method *</label>
             <select
-              className="w-full border rounded px-3 py-2"
+              className="w-full rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-gray-900 focus:ring-1 focus:ring-gray-400 focus:border-gray-400"
               value={paymentMethod}
               onChange={(e) => setPaymentMethod(e.target.value)}
             >
@@ -761,9 +792,9 @@ function AddPaymentModal({
             </select>
           </div>
           <div>
-            <label className="block text-sm font-medium mb-1">Notes</label>
+            <label className="block text-xs font-medium text-gray-600 mb-1.5">Notes</label>
             <textarea
-              className="w-full border rounded px-3 py-2"
+              className="w-full rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-gray-900 focus:ring-1 focus:ring-gray-400 focus:border-gray-400"
               rows={3}
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
@@ -771,10 +802,10 @@ function AddPaymentModal({
             />
           </div>
         </div>
-        <div className="px-6 py-4 border-t bg-gray-50 flex items-center justify-end gap-2">
+        <div className="px-4 py-3 border-t bg-gray-50 flex items-center justify-end gap-2">
           <button
             onClick={onClose}
-            className="px-4 py-2 rounded bg-gray-200 hover:bg-gray-300"
+            className="px-3 py-1.5 text-xs rounded bg-gray-200 hover:bg-gray-300"
             disabled={saving}
           >
             Cancel
@@ -782,7 +813,7 @@ function AddPaymentModal({
           <button
             onClick={handleSubmit}
             disabled={saving}
-            className="px-4 py-2 rounded bg-brand-red text-white hover:bg-red-700 disabled:opacity-50"
+            className="px-3 py-1.5 text-xs rounded bg-brand-red text-white hover:bg-red-700 disabled:opacity-50"
           >
             {saving ? 'Adding...' : 'Add Payment'}
           </button>
@@ -895,9 +926,9 @@ function LoanDetailView({
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
       <div className="w-[800px] max-w-[95vw] max-h-[90vh] bg-white rounded-lg shadow-lg overflow-hidden flex flex-col">
-        <div className="px-4 py-3 border-b font-semibold flex items-center justify-between">
-          <span>Loan Details</span>
-          <button onClick={onClose} className="text-gray-500 hover:text-gray-700">
+        <div className="px-4 py-3 border-b flex items-center justify-between">
+          <span className="text-sm font-semibold text-gray-900">Loan Details</span>
+          <button onClick={onClose} className="text-gray-500 hover:text-gray-700 text-lg">
             ✕
           </button>
         </div>
@@ -905,33 +936,33 @@ function LoanDetailView({
           {/* Loan Info */}
           <div className="grid md:grid-cols-2 gap-4">
             <div>
-              <div className="text-sm text-gray-600">Loan Amount</div>
-              <div className="font-semibold text-lg flex items-baseline gap-2 flex-wrap">
+              <div className="text-xs font-medium text-gray-600 mb-1.5">Loan Amount</div>
+              <div className="text-sm font-semibold text-gray-900 flex items-baseline gap-2 flex-wrap">
                 <span>{formatCurrency(loan.loan_amount)}</span>
                 {loan.base_amount && loan.fees_percent && loan.fees_percent > 0 && (
-                  <span className="text-xs font-normal text-gray-500 leading-tight">
+                  <span className="text-[10px] font-normal text-gray-500 leading-tight">
                     ({formatCurrency(loan.base_amount)} + {formatCurrency((loan.base_amount * loan.fees_percent) / 100)} Fees ({loan.fees_percent}%))
                   </span>
                 )}
               </div>
             </div>
             <div>
-              <div className="text-sm text-gray-600">Remaining Balance</div>
-              <div className="font-semibold text-lg">{formatCurrency(loan.remaining_balance)}</div>
+              <div className="text-xs font-medium text-gray-600 mb-1.5">Remaining Balance</div>
+              <div className="text-sm font-semibold text-gray-900">{formatCurrency(loan.remaining_balance)}</div>
             </div>
             <div>
-              <div className="text-sm text-gray-600">Agreement Date</div>
-              <div>{formatDate(loan.loan_date)}</div>
+              <div className="text-xs font-medium text-gray-600 mb-1.5">Agreement Date</div>
+              <div className="text-sm font-semibold text-gray-900">{formatDate(loan.loan_date)}</div>
             </div>
             <div>
-              <div className="text-sm text-gray-600">Payment Method</div>
-              <div>{loan.payment_method || '-'}</div>
+              <div className="text-xs font-medium text-gray-600 mb-1.5">Payment Method</div>
+              <div className="text-sm font-semibold text-gray-900">{loan.payment_method || '—'}</div>
             </div>
             <div>
-              <div className="text-sm text-gray-600">Status</div>
+              <div className="text-xs font-medium text-gray-600 mb-1.5">Status</div>
               <div>
                 <span
-                  className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                  className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium ${
                     loan.status === 'Active'
                       ? 'bg-green-100 text-green-800'
                       : loan.status === 'Closed'
@@ -944,13 +975,13 @@ function LoanDetailView({
               </div>
             </div>
             <div>
-              <div className="text-sm text-gray-600">Created By</div>
-              <div>{loan.created_by?.username || '-'}</div>
+              <div className="text-xs font-medium text-gray-600 mb-1.5">Created By</div>
+              <div className="text-sm font-semibold text-gray-900">{loan.created_by?.username || '—'}</div>
             </div>
             {loan.notes && (
               <div className="md:col-span-2">
-                <div className="text-sm text-gray-600">Notes</div>
-                <div className="text-sm">{loan.notes}</div>
+                <div className="text-xs font-medium text-gray-600 mb-1.5">Notes</div>
+                <div className="text-xs text-gray-900">{loan.notes}</div>
               </div>
             )}
           </div>
@@ -960,14 +991,14 @@ function LoanDetailView({
             <div className="flex gap-2">
               <button
                 onClick={() => setShowPaymentModal(true)}
-                className="px-4 py-2 rounded bg-blue-600 text-white hover:bg-blue-700"
+                className="px-2 py-1 text-xs rounded bg-blue-600 text-white hover:bg-blue-700"
               >
                 + Add Payment
               </button>
               {loan.remaining_balance <= 0 && (
                 <button
                   onClick={handleCloseLoan}
-                  className="px-4 py-2 rounded bg-orange-600 text-white hover:bg-orange-700"
+                  className="px-2 py-1 text-xs rounded bg-orange-600 text-white hover:bg-orange-700"
                 >
                   Close Loan
                 </button>
@@ -977,29 +1008,29 @@ function LoanDetailView({
 
           {/* Payments Table */}
           <div>
-            <h4 className="font-semibold mb-2">Payments</h4>
+            <h4 className="text-xs font-semibold text-gray-900 mb-2">Payments</h4>
             {loan.payments.length === 0 ? (
-              <div className="text-sm text-gray-500">No payments recorded</div>
+              <div className="text-xs text-gray-500">No payments recorded</div>
             ) : (
               <div className="overflow-x-auto">
-                <table className="w-full text-sm">
+                <table className="w-full">
                   <thead className="bg-gray-50">
                     <tr>
-                      <th className="p-2 text-left">Date</th>
-                      <th className="p-2 text-left">Amount</th>
-                      <th className="p-2 text-left">Method</th>
-                      <th className="p-2 text-left">Balance After</th>
-                      <th className="p-2 text-left">Recorded By</th>
+                      <th className="p-2 text-left text-xs font-medium text-gray-600">Date</th>
+                      <th className="p-2 text-left text-xs font-medium text-gray-600">Amount</th>
+                      <th className="p-2 text-left text-xs font-medium text-gray-600">Method</th>
+                      <th className="p-2 text-left text-xs font-medium text-gray-600">Balance After</th>
+                      <th className="p-2 text-left text-xs font-medium text-gray-600">Recorded By</th>
                     </tr>
                   </thead>
                   <tbody>
                     {loan.payments.map((payment) => (
-                      <tr key={payment.id} className="border-t">
-                        <td className="p-2">{formatDate(payment.payment_date)}</td>
-                        <td className="p-2 font-medium">{formatCurrency(payment.payment_amount)}</td>
-                        <td className="p-2">{payment.payment_method || '-'}</td>
-                        <td className="p-2">{formatCurrency(payment.balance_after)}</td>
-                        <td className="p-2 text-gray-600">{payment.created_by?.username || '-'}</td>
+                      <tr key={payment.id} className="border-t border-gray-200">
+                        <td className="p-2 text-xs text-gray-900">{formatDate(payment.payment_date)}</td>
+                        <td className="p-2 text-xs font-semibold text-gray-900">{formatCurrency(payment.payment_amount)}</td>
+                        <td className="p-2 text-xs text-gray-900">{payment.payment_method || '—'}</td>
+                        <td className="p-2 text-xs text-gray-900">{formatCurrency(payment.balance_after)}</td>
+                        <td className="p-2 text-xs text-gray-600">{payment.created_by?.username || '—'}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -1010,17 +1041,17 @@ function LoanDetailView({
 
           {/* History/Activities */}
           <div>
-            <h4 className="font-semibold mb-2">History / Activities</h4>
+            <h4 className="text-xs font-semibold text-gray-900 mb-2">History / Activities</h4>
             <div className="space-y-2">
               {activities.map((activity, idx) => (
-                <div key={idx} className="text-sm border-l-2 border-gray-200 pl-3 py-1">
+                <div key={idx} className="text-xs border-l-2 border-gray-200 pl-3 py-1">
                   <div className="flex items-center gap-2">
-                    <span className="font-medium">{activity.description}</span>
+                    <span className="font-medium text-gray-900">{activity.description}</span>
                     {activity.user && (
                       <span className="text-gray-500">by {activity.user}</span>
                     )}
                   </div>
-                  <div className="text-xs text-gray-500">{formatDate(activity.date)}</div>
+                  <div className="text-[10px] text-gray-500">{formatDate(activity.date)}</div>
                 </div>
               ))}
             </div>

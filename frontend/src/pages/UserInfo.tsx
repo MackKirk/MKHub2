@@ -90,7 +90,7 @@ function SyncBambooHRButton({ userId, onSuccess }: { userId: string; onSuccess?:
     <button
       onClick={handleSync}
       disabled={syncing}
-      className="px-4 py-2 rounded-lg bg-white/20 hover:bg-white/30 text-white border border-white/30 text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+      className="px-3 py-1.5 rounded-lg bg-gray-100 hover:bg-gray-200 text-gray-700 border border-gray-300 text-xs font-medium disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 transition-colors"
       title="Sync user data from BambooHR"
     >
       {syncing ? (
@@ -180,8 +180,8 @@ function ProjectFilesCategoriesModal({
               className="mt-1 w-4 h-4 rounded border-gray-300 text-brand-red focus:ring-brand-red"
             />
             <div className="min-w-0">
-              <div className="font-medium text-sm">Allow all categories</div>
-              <div className="text-xs text-gray-500">If enabled, this user can access all file categories.</div>
+              <div className="text-xs font-medium text-gray-900">Allow all categories</div>
+              <div className="text-[10px] text-gray-500">If enabled, this user can access all file categories.</div>
             </div>
           </label>
 
@@ -648,20 +648,28 @@ const UserPermissions = forwardRef<UserPermissionsRef, { userId: string; onDirty
         }}
       />
       <div className="rounded-xl border bg-white p-4">
-        <div className="mb-4">
-          <h3 className="text-lg font-semibold mb-1">User Permissions</h3>
-          <p className="text-sm text-gray-600">
-            {canEdit 
-              ? "Manage granular permissions for this user. Permissions from roles are combined with these overrides. Permissions marked with [WIP] are not yet implemented in the system."
-              : "View permissions assigned to this user. You have view-only access and cannot modify permissions."
-            }
-          </p>
+        {/* Header */}
+        <div className="mb-4 flex items-center gap-2">
+          <div className="w-8 h-8 rounded bg-amber-100 flex items-center justify-center">
+            <svg className="w-5 h-5 text-amber-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
+            </svg>
+          </div>
+          <div className="flex-1">
+            <h5 className="text-sm font-semibold text-amber-900">User Permissions</h5>
+            <p className="text-xs text-gray-600 mt-0.5">
+              {canEdit 
+                ? "Manage granular permissions for this user. Permissions from roles are combined with these overrides. Permissions marked with [WIP] are not yet implemented in the system."
+                : "View permissions assigned to this user. You have view-only access and cannot modify permissions."
+              }
+            </p>
+          </div>
         </div>
 
         {/* Admin Access Section */}
-        <div className="mb-6 p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
+        <div className="mb-6 p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
           {canEdit ? (
-            <label className="inline-flex items-start gap-3 cursor-pointer">
+            <label className="inline-flex items-start gap-2 cursor-pointer">
               <input 
                 id="admin-checkbox"
                 type="checkbox" 
@@ -670,42 +678,42 @@ const UserPermissions = forwardRef<UserPermissionsRef, { userId: string; onDirty
                 onChange={e=>{ 
                   setIsAdminLocal(e.target.checked);
                 }} 
-                className="mt-1 w-4 h-4 rounded border-gray-300 text-brand-red focus:ring-brand-red disabled:opacity-50 disabled:cursor-not-allowed"
+                className="mt-0.5 w-3.5 h-3.5 rounded border-gray-300 text-brand-red focus:ring-brand-red disabled:opacity-50 disabled:cursor-not-allowed"
               />
             <div className="flex-1">
-              <div className="font-semibold text-yellow-900 flex items-center gap-2">
+              <div className="text-xs font-semibold text-yellow-900 flex items-center gap-2">
                 Administrator Access
-                <span className="text-xs px-1.5 py-0.5 bg-yellow-100 text-yellow-800 rounded border border-yellow-300">
+                <span className="text-[10px] px-1 py-0.5 bg-yellow-100 text-yellow-800 rounded border border-yellow-300">
                   System Role
                 </span>
               </div>
-              <div className="text-xs text-yellow-800 mt-1">
+              <div className="text-[10px] text-yellow-800 mt-1">
                 ⚠️ <strong>Warning:</strong> This user will have access to all areas of the system and will be able to delete sensitive information. Only grant this to trusted users.
               </div>
               {isAdminLocal && (
-                <div className="text-xs text-yellow-700 mt-2 font-medium">
+                <div className="text-[10px] text-yellow-700 mt-2 font-medium">
                   ⚠️ When admin is enabled, all permission checks are bypassed. Individual permissions below are ignored.
                 </div>
               )}
             </div>
           </label>
           ) : (
-            <div className="inline-flex items-start gap-3">
+            <div className="inline-flex items-start gap-2">
               <input 
                 id="admin-checkbox"
                 type="checkbox" 
                 checked={isAdminLocal}
                 disabled
-                className="mt-1 w-4 h-4 rounded border-gray-300 text-brand-red opacity-50"
+                className="mt-0.5 w-3.5 h-3.5 rounded border-gray-300 text-brand-red opacity-50"
               />
               <div className="flex-1">
-                <div className="font-semibold text-yellow-900 flex items-center gap-2">
+                <div className="text-xs font-semibold text-yellow-900 flex items-center gap-2">
                   Administrator Access
-                  <span className="text-xs px-1.5 py-0.5 bg-yellow-100 text-yellow-800 rounded border border-yellow-300">
+                  <span className="text-[10px] px-1 py-0.5 bg-yellow-100 text-yellow-800 rounded border border-yellow-300">
                     System Role
                   </span>
                 </div>
-                <div className="text-xs text-yellow-800 mt-1">
+                <div className="text-[10px] text-yellow-800 mt-1">
                   Status: {isAdminLocal ? 'Enabled' : 'Disabled'}
                 </div>
               </div>
@@ -833,12 +841,12 @@ const UserPermissions = forwardRef<UserPermissionsRef, { userId: string; onDirty
                 <div key={cat.category.id} className="border rounded-lg overflow-hidden">
                   {/* Category Header with Arrow */}
                   <div 
-                    className="p-4 cursor-pointer hover:bg-gray-50 transition-colors flex items-center gap-3"
+                    className="p-3 cursor-pointer hover:bg-gray-50 transition-colors flex items-center gap-2"
                     onClick={toggleExpand}
                   >
-                    <div className="flex-shrink-0 w-5 h-5 flex items-center justify-center">
+                    <div className="flex-shrink-0 w-4 h-4 flex items-center justify-center">
                       <svg 
-                        className={`w-4 h-4 text-gray-600 transition-transform ${isExpanded ? 'rotate-90' : ''}`}
+                        className={`w-3 h-3 text-gray-600 transition-transform ${isExpanded ? 'rotate-90' : ''}`}
                         fill="none" 
                         stroke="currentColor" 
                         viewBox="0 0 24 24"
@@ -847,9 +855,9 @@ const UserPermissions = forwardRef<UserPermissionsRef, { userId: string; onDirty
                       </svg>
                     </div>
                     <div className="flex-1">
-                      <h4 className="font-semibold text-base">{cat.category.label}</h4>
+                      <h4 className="text-xs font-semibold text-gray-900">{cat.category.label}</h4>
                       {cat.category.description && (
-                        <p className="text-xs text-gray-500 mt-1">{cat.category.description}</p>
+                        <p className="text-[10px] text-gray-500 mt-0.5">{cat.category.description}</p>
                       )}
                     </div>
                   </div>
@@ -876,13 +884,13 @@ const UserPermissions = forwardRef<UserPermissionsRef, { userId: string; onDirty
                           });
                           
                           return (
-                            <div key={area} className="border rounded-lg p-3 bg-gray-50">
-                              <div className="text-sm font-semibold text-gray-700 mb-3">{areaLabel}</div>
-                              <div className="grid md:grid-cols-2 gap-3">
+                            <div key={area} className="border rounded-lg p-2.5 bg-gray-50">
+                              <div className="text-xs font-semibold text-gray-700 mb-2">{areaLabel}</div>
+                              <div className="grid md:grid-cols-2 gap-2.5">
                                 {/* View Permissions Column */}
                                 {viewPerms.length > 0 && (
-                                  <div className="space-y-2">
-                                    <div className="text-xs font-semibold text-gray-600 mb-2 uppercase tracking-wide">View</div>
+                                  <div className="space-y-1.5">
+                                    <div className="text-[10px] font-semibold text-gray-600 mb-1.5 uppercase tracking-wide">View</div>
                                     {viewPerms.map((perm: any) => {
                                       const isViewPermission = perm.key.startsWith('hr:users:view:');
                                       const canEnable = canEdit && (!isViewPermission || canEnableEditPermission(perm.key, permissions));
@@ -890,26 +898,26 @@ const UserPermissions = forwardRef<UserPermissionsRef, { userId: string; onDirty
                                       return (
                                       <label
                                         key={perm.id}
-                                        className={`flex items-start gap-2 p-2 rounded bg-white ${canEnable ? 'hover:bg-gray-50 cursor-pointer' : 'cursor-default'} ${isSubPermission ? 'ml-6' : ''}`}
+                                        className={`flex items-start gap-1.5 p-1.5 rounded bg-white ${canEnable ? 'hover:bg-gray-50 cursor-pointer' : 'cursor-default'} ${isSubPermission ? 'ml-4' : ''}`}
                                       >
                                         <input
                                           type="checkbox"
                                           checked={permissions[perm.key] || false}
                                           onChange={() => canEnable && handleToggle(perm.key)}
                                           disabled={!canEnable}
-                                          className="mt-1 w-4 h-4 rounded border-gray-300 text-brand-red focus:ring-brand-red flex-shrink-0 disabled:opacity-50 disabled:cursor-not-allowed"
+                                          className="mt-0.5 w-3.5 h-3.5 rounded border-gray-300 text-brand-red focus:ring-brand-red flex-shrink-0 disabled:opacity-50 disabled:cursor-not-allowed"
                                         />
                                         <div className="flex-1 min-w-0">
-                                          <div className="font-medium text-sm flex items-center gap-2">
+                                          <div className="text-xs font-medium text-gray-900 flex items-center gap-1.5">
                                             <span className="truncate">{perm.label}</span>
                                             {!IMPLEMENTED_PERMISSIONS.has(perm.key) && (
-                                              <span className="text-xs px-1.5 py-0.5 bg-yellow-100 text-yellow-800 rounded border border-yellow-300 flex-shrink-0">
+                                              <span className="text-[10px] px-1 py-0.5 bg-yellow-100 text-yellow-800 rounded border border-yellow-300 flex-shrink-0">
                                                 [WIP]
                                               </span>
                                             )}
                                           </div>
                                           {perm.description && (
-                                            <div className="text-xs text-gray-500 mt-0.5 line-clamp-1">{perm.description}</div>
+                                            <div className="text-[10px] text-gray-500 mt-0.5 line-clamp-1">{perm.description}</div>
                                           )}
                                         </div>
                                       </label>
@@ -919,34 +927,34 @@ const UserPermissions = forwardRef<UserPermissionsRef, { userId: string; onDirty
                                 )}
                                 {/* Edit Permissions Column */}
                                 {editPerms.length > 0 && (
-                                  <div className="space-y-2">
-                                    <div className="text-xs font-semibold text-gray-600 mb-2 uppercase tracking-wide">Edit</div>
+                                  <div className="space-y-1.5">
+                                    <div className="text-[10px] font-semibold text-gray-600 mb-1.5 uppercase tracking-wide">Edit</div>
                                     {editPerms.map((perm: any) => {
                                       const isEditPermission = perm.key.startsWith('hr:users:edit:') || perm.key === 'hr:users:write';
                                       const canEnable = canEdit && (!isEditPermission || canEnableEditPermission(perm.key, permissions));
                                       return (
                                         <label
                                           key={perm.id}
-                                          className={`flex items-start gap-2 p-2 rounded bg-white ${canEnable ? 'hover:bg-gray-50 cursor-pointer' : 'cursor-default'}`}
+                                          className={`flex items-start gap-1.5 p-1.5 rounded bg-white ${canEnable ? 'hover:bg-gray-50 cursor-pointer' : 'cursor-default'}`}
                                         >
                                           <input
                                             type="checkbox"
                                             checked={permissions[perm.key] || false}
                                             onChange={() => canEnable && handleToggle(perm.key)}
                                             disabled={!canEnable}
-                                            className="mt-1 w-4 h-4 rounded border-gray-300 text-brand-red focus:ring-brand-red flex-shrink-0 disabled:opacity-50 disabled:cursor-not-allowed"
+                                            className="mt-0.5 w-3.5 h-3.5 rounded border-gray-300 text-brand-red focus:ring-brand-red flex-shrink-0 disabled:opacity-50 disabled:cursor-not-allowed"
                                           />
                                           <div className="flex-1 min-w-0">
-                                            <div className="font-medium text-sm flex items-center gap-2">
+                                            <div className="text-xs font-medium text-gray-900 flex items-center gap-1.5">
                                               <span className="truncate">{perm.label}</span>
                                               {!IMPLEMENTED_PERMISSIONS.has(perm.key) && (
-                                                <span className="text-xs px-1.5 py-0.5 bg-yellow-100 text-yellow-800 rounded border border-yellow-300 flex-shrink-0">
+                                                <span className="text-[10px] px-1 py-0.5 bg-yellow-100 text-yellow-800 rounded border border-yellow-300 flex-shrink-0">
                                                   [WIP]
                                                 </span>
                                               )}
                                             </div>
                                             {perm.description && (
-                                              <div className="text-xs text-gray-500 mt-0.5 line-clamp-1">{perm.description}</div>
+                                              <div className="text-[10px] text-gray-500 mt-0.5 line-clamp-1">{perm.description}</div>
                                             )}
                                           </div>
                                         </label>
@@ -970,35 +978,35 @@ const UserPermissions = forwardRef<UserPermissionsRef, { userId: string; onDirty
                             const editPerms = areaPerms.filter((p: any) => p.key.includes(':write'));
                             
                             return (
-                              <div className="border rounded-lg p-3 bg-gray-50">
-                                <div className="text-sm font-semibold text-gray-700 mb-3">Customers</div>
-                                <div className="grid md:grid-cols-2 gap-3">
+                              <div className="border rounded-lg p-2.5 bg-gray-50">
+                                <div className="text-xs font-semibold text-gray-700 mb-2">Customers</div>
+                                <div className="grid md:grid-cols-2 gap-2.5">
                                   {viewPerms.length > 0 && (
-                                    <div className="space-y-2">
-                                      <div className="text-xs font-semibold text-gray-600 mb-2 uppercase tracking-wide">View</div>
+                                    <div className="space-y-1.5">
+                                      <div className="text-[10px] font-semibold text-gray-600 mb-1.5 uppercase tracking-wide">View</div>
                                       {viewPerms.map((perm: any) => (
                                         <label
                                           key={perm.id}
-                                          className="flex items-start gap-2 p-2 rounded bg-white hover:bg-gray-50 cursor-pointer"
+                                          className="flex items-start gap-1.5 p-1.5 rounded bg-white hover:bg-gray-50 cursor-pointer"
                                         >
                                           <input
                                             type="checkbox"
                                             checked={permissions[perm.key] || false}
                                             onChange={() => canEdit && handleToggle(perm.key)}
                                             disabled={!canEdit}
-                                            className="mt-1 w-4 h-4 rounded border-gray-300 text-brand-red focus:ring-brand-red flex-shrink-0 disabled:opacity-50 disabled:cursor-not-allowed"
+                                            className="mt-0.5 w-3.5 h-3.5 rounded border-gray-300 text-brand-red focus:ring-brand-red flex-shrink-0 disabled:opacity-50 disabled:cursor-not-allowed"
                                           />
                                           <div className="flex-1 min-w-0">
-                                            <div className="font-medium text-sm flex items-center gap-2">
+                                            <div className="text-xs font-medium text-gray-900 flex items-center gap-1.5">
                                               <span className="truncate">{perm.label}</span>
                                               {!IMPLEMENTED_PERMISSIONS.has(perm.key) && (
-                                                <span className="text-xs px-1.5 py-0.5 bg-yellow-100 text-yellow-800 rounded border border-yellow-300 flex-shrink-0">
+                                                <span className="text-[10px] px-1 py-0.5 bg-yellow-100 text-yellow-800 rounded border border-yellow-300 flex-shrink-0">
                                                   [WIP]
                                                 </span>
                                               )}
                                             </div>
                                             {perm.description && (
-                                              <div className="text-xs text-gray-500 mt-0.5 line-clamp-1">{perm.description}</div>
+                                              <div className="text-[10px] text-gray-500 mt-0.5 line-clamp-1">{perm.description}</div>
                                             )}
                                           </div>
                                         </label>
@@ -1006,33 +1014,33 @@ const UserPermissions = forwardRef<UserPermissionsRef, { userId: string; onDirty
                                     </div>
                                   )}
                                   {editPerms.length > 0 && (
-                                    <div className="space-y-2">
-                                      <div className="text-xs font-semibold text-gray-600 mb-2 uppercase tracking-wide">Edit</div>
+                                    <div className="space-y-1.5">
+                                      <div className="text-[10px] font-semibold text-gray-600 mb-1.5 uppercase tracking-wide">Edit</div>
                                       {editPerms.map((perm: any) => {
                                         const canEnable = canEdit && canEnableEditPermission(perm.key, permissions);
                                         return (
                                         <label
                                           key={perm.id}
-                                          className={`flex items-start gap-2 p-2 rounded bg-white ${canEnable ? 'hover:bg-gray-50 cursor-pointer' : 'cursor-default'}`}
+                                          className={`flex items-start gap-1.5 p-1.5 rounded bg-white ${canEnable ? 'hover:bg-gray-50 cursor-pointer' : 'cursor-default'}`}
                                         >
                                           <input
                                             type="checkbox"
                                             checked={permissions[perm.key] || false}
                                             onChange={() => canEnable && handleToggle(perm.key)}
                                             disabled={!canEnable}
-                                            className="mt-1 w-4 h-4 rounded border-gray-300 text-brand-red focus:ring-brand-red flex-shrink-0 disabled:opacity-50 disabled:cursor-not-allowed"
+                                            className="mt-0.5 w-3.5 h-3.5 rounded border-gray-300 text-brand-red focus:ring-brand-red flex-shrink-0 disabled:opacity-50 disabled:cursor-not-allowed"
                                           />
                                           <div className="flex-1 min-w-0">
-                                            <div className="font-medium text-sm flex items-center gap-2">
+                                            <div className="text-xs font-medium text-gray-900 flex items-center gap-1.5">
                                               <span className="truncate">{perm.label}</span>
                                               {!IMPLEMENTED_PERMISSIONS.has(perm.key) && (
-                                                <span className="text-xs px-1.5 py-0.5 bg-yellow-100 text-yellow-800 rounded border border-yellow-300 flex-shrink-0">
+                                                <span className="text-[10px] px-1 py-0.5 bg-yellow-100 text-yellow-800 rounded border border-yellow-300 flex-shrink-0">
                                                   [WIP]
                                                 </span>
                                               )}
                                             </div>
                                             {perm.description && (
-                                              <div className="text-xs text-gray-500 mt-0.5 line-clamp-1">{perm.description}</div>
+                                              <div className="text-[10px] text-gray-500 mt-0.5 line-clamp-1">{perm.description}</div>
                                             )}
                                           </div>
                                         </label>
@@ -1057,36 +1065,36 @@ const UserPermissions = forwardRef<UserPermissionsRef, { userId: string; onDirty
                           const editPerms = areaPerms.filter((p: any) => p.key.includes(':write'));
                           
                           return (
-                            <div key={area} className="border rounded-lg p-3 bg-gray-50">
-                              <div className="text-sm font-semibold text-gray-700 mb-3">{areaLabel}</div>
-                              <div className="grid md:grid-cols-2 gap-3">
+                            <div key={area} className="border rounded-lg p-2.5 bg-gray-50">
+                              <div className="text-xs font-semibold text-gray-700 mb-2">{areaLabel}</div>
+                              <div className="grid md:grid-cols-2 gap-2.5">
                                 {/* View Permissions Column */}
                                 {viewPerms.length > 0 && (
-                                  <div className="space-y-2">
-                                    <div className="text-xs font-semibold text-gray-600 mb-2 uppercase tracking-wide">View</div>
+                                  <div className="space-y-1.5">
+                                    <div className="text-[10px] font-semibold text-gray-600 mb-1.5 uppercase tracking-wide">View</div>
                                     {viewPerms.map((perm: any) => (
                                       <label
                                         key={perm.id}
-                                        className="flex items-start gap-2 p-2 rounded bg-white hover:bg-gray-50 cursor-pointer"
+                                        className="flex items-start gap-1.5 p-1.5 rounded bg-white hover:bg-gray-50 cursor-pointer"
                                       >
                                         <input
                                           type="checkbox"
                                           checked={permissions[perm.key] || false}
                                           onChange={() => canEdit && handleToggle(perm.key)}
                                           disabled={!canEdit}
-                                          className="mt-1 w-4 h-4 rounded border-gray-300 text-brand-red focus:ring-brand-red flex-shrink-0 disabled:opacity-50 disabled:cursor-not-allowed"
+                                          className="mt-0.5 w-3.5 h-3.5 rounded border-gray-300 text-brand-red focus:ring-brand-red flex-shrink-0 disabled:opacity-50 disabled:cursor-not-allowed"
                                         />
                                         <div className="flex-1 min-w-0">
-                                          <div className="font-medium text-sm flex items-center gap-2">
+                                          <div className="text-xs font-medium text-gray-900 flex items-center gap-1.5">
                                             <span className="truncate">{perm.label}</span>
                                             {!IMPLEMENTED_PERMISSIONS.has(perm.key) && (
-                                              <span className="text-xs px-1.5 py-0.5 bg-yellow-100 text-yellow-800 rounded border border-yellow-300 flex-shrink-0">
+                                              <span className="text-[10px] px-1 py-0.5 bg-yellow-100 text-yellow-800 rounded border border-yellow-300 flex-shrink-0">
                                                 [WIP]
                                               </span>
                                             )}
                                           </div>
                                           {perm.description && (
-                                            <div className="text-xs text-gray-500 mt-0.5 line-clamp-1">{perm.description}</div>
+                                            <div className="text-[10px] text-gray-500 mt-0.5 line-clamp-1">{perm.description}</div>
                                           )}
                                         </div>
                                       </label>
@@ -1095,31 +1103,31 @@ const UserPermissions = forwardRef<UserPermissionsRef, { userId: string; onDirty
                                 )}
                                 {/* Edit Permissions Column */}
                                 {editPerms.length > 0 && (
-                                  <div className="space-y-2">
-                                    <div className="text-xs font-semibold text-gray-600 mb-2 uppercase tracking-wide">Edit</div>
+                                  <div className="space-y-1.5">
+                                    <div className="text-[10px] font-semibold text-gray-600 mb-1.5 uppercase tracking-wide">Edit</div>
                                     {editPerms.map((perm: any) => (
                                       <label
                                         key={perm.id}
-                                        className="flex items-start gap-2 p-2 rounded bg-white hover:bg-gray-50 cursor-pointer"
+                                        className="flex items-start gap-1.5 p-1.5 rounded bg-white hover:bg-gray-50 cursor-pointer"
                                       >
                                         <input
                                           type="checkbox"
                                           checked={permissions[perm.key] || false}
                                           onChange={() => canEdit && handleToggle(perm.key)}
                                           disabled={!canEdit}
-                                          className="mt-1 w-4 h-4 rounded border-gray-300 text-brand-red focus:ring-brand-red flex-shrink-0 disabled:opacity-50 disabled:cursor-not-allowed"
+                                          className="mt-0.5 w-3.5 h-3.5 rounded border-gray-300 text-brand-red focus:ring-brand-red flex-shrink-0 disabled:opacity-50 disabled:cursor-not-allowed"
                                         />
                                         <div className="flex-1 min-w-0">
-                                          <div className="font-medium text-sm flex items-center gap-2">
+                                          <div className="text-xs font-medium text-gray-900 flex items-center gap-1.5">
                                             <span className="truncate">{perm.label}</span>
                                             {!IMPLEMENTED_PERMISSIONS.has(perm.key) && (
-                                              <span className="text-xs px-1.5 py-0.5 bg-yellow-100 text-yellow-800 rounded border border-yellow-300 flex-shrink-0">
+                                              <span className="text-[10px] px-1 py-0.5 bg-yellow-100 text-yellow-800 rounded border border-yellow-300 flex-shrink-0">
                                                 [WIP]
                                               </span>
                                             )}
                                           </div>
                                           {perm.description && (
-                                            <div className="text-xs text-gray-500 mt-0.5 line-clamp-1">{perm.description}</div>
+                                            <div className="text-[10px] text-gray-500 mt-0.5 line-clamp-1">{perm.description}</div>
                                           )}
                                         </div>
                                       </label>
@@ -1143,36 +1151,36 @@ const UserPermissions = forwardRef<UserPermissionsRef, { userId: string; onDirty
                           const editPerms = areaPerms.filter((p: any) => p.key.includes(':write'));
                           
                           return (
-                            <div key={area} className="border rounded-lg p-3 bg-gray-50">
-                              <div className="text-sm font-semibold text-gray-700 mb-3">{areaLabel}</div>
-                              <div className="grid md:grid-cols-2 gap-3">
+                            <div key={area} className="border rounded-lg p-2.5 bg-gray-50">
+                              <div className="text-xs font-semibold text-gray-700 mb-2">{areaLabel}</div>
+                              <div className="grid md:grid-cols-2 gap-2.5">
                                 {/* View Permissions Column */}
                                 {viewPerms.length > 0 && (
-                                  <div className="space-y-2">
-                                    <div className="text-xs font-semibold text-gray-600 mb-2 uppercase tracking-wide">View</div>
+                                  <div className="space-y-1.5">
+                                    <div className="text-[10px] font-semibold text-gray-600 mb-1.5 uppercase tracking-wide">View</div>
                                     {viewPerms.map((perm: any) => (
                                       <label
                                         key={perm.id}
-                                        className="flex items-start gap-2 p-2 rounded bg-white hover:bg-gray-50 cursor-pointer"
+                                        className="flex items-start gap-1.5 p-1.5 rounded bg-white hover:bg-gray-50 cursor-pointer"
                                       >
                                         <input
                                           type="checkbox"
                                           checked={permissions[perm.key] || false}
                                           onChange={() => canEdit && handleToggle(perm.key)}
                                           disabled={!canEdit}
-                                          className="mt-1 w-4 h-4 rounded border-gray-300 text-brand-red focus:ring-brand-red flex-shrink-0 disabled:opacity-50 disabled:cursor-not-allowed"
+                                          className="mt-0.5 w-3.5 h-3.5 rounded border-gray-300 text-brand-red focus:ring-brand-red flex-shrink-0 disabled:opacity-50 disabled:cursor-not-allowed"
                                         />
                                         <div className="flex-1 min-w-0">
-                                          <div className="font-medium text-sm flex items-center gap-2">
+                                          <div className="text-xs font-medium text-gray-900 flex items-center gap-1.5">
                                             <span className="truncate">{perm.label}</span>
                                             {!IMPLEMENTED_PERMISSIONS.has(perm.key) && (
-                                              <span className="text-xs px-1.5 py-0.5 bg-yellow-100 text-yellow-800 rounded border border-yellow-300 flex-shrink-0">
+                                              <span className="text-[10px] px-1 py-0.5 bg-yellow-100 text-yellow-800 rounded border border-yellow-300 flex-shrink-0">
                                                 [WIP]
                                               </span>
                                             )}
                                           </div>
                                           {perm.description && (
-                                            <div className="text-xs text-gray-500 mt-0.5 line-clamp-1">{perm.description}</div>
+                                            <div className="text-[10px] text-gray-500 mt-0.5 line-clamp-1">{perm.description}</div>
                                           )}
                                         </div>
                                       </label>
@@ -1181,31 +1189,31 @@ const UserPermissions = forwardRef<UserPermissionsRef, { userId: string; onDirty
                                 )}
                                 {/* Edit Permissions Column */}
                                 {editPerms.length > 0 && (
-                                  <div className="space-y-2">
-                                    <div className="text-xs font-semibold text-gray-600 mb-2 uppercase tracking-wide">Edit</div>
+                                  <div className="space-y-1.5">
+                                    <div className="text-[10px] font-semibold text-gray-600 mb-1.5 uppercase tracking-wide">Edit</div>
                                     {editPerms.map((perm: any) => (
                                       <label
                                         key={perm.id}
-                                        className="flex items-start gap-2 p-2 rounded bg-white hover:bg-gray-50 cursor-pointer"
+                                        className="flex items-start gap-1.5 p-1.5 rounded bg-white hover:bg-gray-50 cursor-pointer"
                                       >
                                         <input
                                           type="checkbox"
                                           checked={permissions[perm.key] || false}
                                           onChange={() => canEdit && handleToggle(perm.key)}
                                           disabled={!canEdit}
-                                          className="mt-1 w-4 h-4 rounded border-gray-300 text-brand-red focus:ring-brand-red flex-shrink-0 disabled:opacity-50 disabled:cursor-not-allowed"
+                                          className="mt-0.5 w-3.5 h-3.5 rounded border-gray-300 text-brand-red focus:ring-brand-red flex-shrink-0 disabled:opacity-50 disabled:cursor-not-allowed"
                                         />
                                         <div className="flex-1 min-w-0">
-                                          <div className="font-medium text-sm flex items-center gap-2">
+                                          <div className="text-xs font-medium text-gray-900 flex items-center gap-1.5">
                                             <span className="truncate">{perm.label}</span>
                                             {!IMPLEMENTED_PERMISSIONS.has(perm.key) && (
-                                              <span className="text-xs px-1.5 py-0.5 bg-yellow-100 text-yellow-800 rounded border border-yellow-300 flex-shrink-0">
+                                              <span className="text-[10px] px-1 py-0.5 bg-yellow-100 text-yellow-800 rounded border border-yellow-300 flex-shrink-0">
                                                 [WIP]
                                               </span>
                                             )}
                                           </div>
                                           {perm.description && (
-                                            <div className="text-xs text-gray-500 mt-0.5 line-clamp-1">{perm.description}</div>
+                                            <div className="text-[10px] text-gray-500 mt-0.5 line-clamp-1">{perm.description}</div>
                                           )}
                                         </div>
                                       </label>
@@ -1244,35 +1252,35 @@ const UserPermissions = forwardRef<UserPermissionsRef, { userId: string; onDirty
                           );
                           
                           return (
-                            <div className="border rounded-lg p-3 bg-gray-50">
-                              <div className="text-sm font-semibold text-gray-700 mb-3">Projects & Opportunities</div>
-                              <div className="grid md:grid-cols-2 gap-3">
+                            <div className="border rounded-lg p-2.5 bg-gray-50">
+                              <div className="text-xs font-semibold text-gray-700 mb-2">Projects & Opportunities</div>
+                              <div className="grid md:grid-cols-2 gap-2.5">
                                 {/* View Permissions Column */}
-                                <div className="space-y-2">
-                                  <div className="text-xs font-semibold text-gray-600 mb-2 uppercase tracking-wide">View</div>
+                                <div className="space-y-1.5">
+                                  <div className="text-[10px] font-semibold text-gray-600 mb-1.5 uppercase tracking-wide">View</div>
                                   {/* Main View Projects & Opportunities permission */}
                                   {mainViewPerm && (
                                     <label
-                                      className="flex items-start gap-2 p-2 rounded bg-white hover:bg-gray-50 cursor-pointer"
+                                      className="flex items-start gap-1.5 p-1.5 rounded bg-white hover:bg-gray-50 cursor-pointer"
                                     >
                                       <input
                                         type="checkbox"
                                         checked={permissions[mainViewPerm.key] || false}
                                         onChange={() => canEdit && handleToggle(mainViewPerm.key)}
                                         disabled={!canEdit}
-                                        className="mt-1 w-4 h-4 rounded border-gray-300 text-brand-red focus:ring-brand-red flex-shrink-0 disabled:opacity-50 disabled:cursor-not-allowed"
+                                        className="mt-0.5 w-3.5 h-3.5 rounded border-gray-300 text-brand-red focus:ring-brand-red flex-shrink-0 disabled:opacity-50 disabled:cursor-not-allowed"
                                       />
                                       <div className="flex-1 min-w-0">
-                                        <div className="font-medium text-sm flex items-center gap-2">
+                                        <div className="text-xs font-medium text-gray-900 flex items-center gap-1.5">
                                           <span className="truncate">{mainViewPerm.label}</span>
                                           {!IMPLEMENTED_PERMISSIONS.has(mainViewPerm.key) && (
-                                            <span className="text-xs px-1.5 py-0.5 bg-yellow-100 text-yellow-800 rounded border border-yellow-300 flex-shrink-0">
+                                            <span className="text-[10px] px-1 py-0.5 bg-yellow-100 text-yellow-800 rounded border border-yellow-300 flex-shrink-0">
                                               [WIP]
                                             </span>
                                           )}
                                         </div>
                                         {mainViewPerm.description && (
-                                          <div className="text-xs text-gray-500 mt-0.5 line-clamp-1">{mainViewPerm.description}</div>
+                                          <div className="text-[10px] text-gray-500 mt-0.5 line-clamp-1">{mainViewPerm.description}</div>
                                         )}
                                       </div>
                                     </label>
@@ -1283,20 +1291,20 @@ const UserPermissions = forwardRef<UserPermissionsRef, { userId: string; onDirty
                                     return (
                                     <label
                                       key={perm.id}
-                                      className={`flex items-start gap-2 p-2 rounded bg-white ${canEnable ? 'hover:bg-gray-50 cursor-pointer' : 'cursor-default'} ml-6`}
+                                      className={`flex items-start gap-1.5 p-1.5 rounded bg-white ${canEnable ? 'hover:bg-gray-50 cursor-pointer' : 'cursor-default'} ml-4`}
                                     >
                                       <input
                                         type="checkbox"
                                         checked={permissions[perm.key] || false}
                                         onChange={() => canEnable && handleToggle(perm.key)}
                                         disabled={!canEnable}
-                                        className="mt-1 w-4 h-4 rounded border-gray-300 text-brand-red focus:ring-brand-red flex-shrink-0 disabled:opacity-50 disabled:cursor-not-allowed"
+                                        className="mt-0.5 w-3.5 h-3.5 rounded border-gray-300 text-brand-red focus:ring-brand-red flex-shrink-0 disabled:opacity-50 disabled:cursor-not-allowed"
                                       />
                                       <div className="flex-1 min-w-0">
-                                        <div className="font-medium text-sm flex items-center gap-2">
+                                        <div className="text-xs font-medium text-gray-900 flex items-center gap-1.5">
                                           <span className="truncate">{perm.label}</span>
                                           {!IMPLEMENTED_PERMISSIONS.has(perm.key) && (
-                                            <span className="text-xs px-1.5 py-0.5 bg-yellow-100 text-yellow-800 rounded border border-yellow-300 flex-shrink-0">
+                                            <span className="text-[10px] px-1 py-0.5 bg-yellow-100 text-yellow-800 rounded border border-yellow-300 flex-shrink-0">
                                               [WIP]
                                             </span>
                                           )}
@@ -1308,11 +1316,11 @@ const UserPermissions = forwardRef<UserPermissionsRef, { userId: string; onDirty
                                                 e.stopPropagation();
                                                 openProjectFilesCategoriesModal('read');
                                               }}
-                                              className="ml-auto w-7 h-7 rounded hover:bg-gray-100 grid place-items-center text-gray-500 hover:text-gray-800"
+                                              className="ml-auto w-5 h-5 rounded hover:bg-gray-100 grid place-items-center text-gray-500 hover:text-gray-800"
                                               title="Configure allowed file categories"
                                               aria-label="Configure allowed file categories"
                                             >
-                                              <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                                              <svg className="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor">
                                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
                                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
                                               </svg>
@@ -1320,7 +1328,7 @@ const UserPermissions = forwardRef<UserPermissionsRef, { userId: string; onDirty
                                           )}
                                         </div>
                                         {perm.description && (
-                                          <div className="text-xs text-gray-500 mt-0.5 line-clamp-1">{perm.description}</div>
+                                          <div className="text-[10px] text-gray-500 mt-0.5 line-clamp-1">{perm.description}</div>
                                         )}
                                       </div>
                                     </label>
@@ -1329,33 +1337,33 @@ const UserPermissions = forwardRef<UserPermissionsRef, { userId: string; onDirty
                                 </div>
                                 
                                 {/* Edit Permissions Column */}
-                                <div className="space-y-2">
-                                  <div className="text-xs font-semibold text-gray-600 mb-2 uppercase tracking-wide">Edit</div>
+                                <div className="space-y-1.5">
+                                  <div className="text-[10px] font-semibold text-gray-600 mb-1.5 uppercase tracking-wide">Edit</div>
                                   {/* Main Edit Projects & Opportunities permission */}
                                   {mainEditPerm && (() => {
                                     const canEnable = canEdit && canEnableEditPermission(mainEditPerm.key, permissions);
                                     return (
                                     <label
-                                      className={`flex items-start gap-2 p-2 rounded bg-white ${canEnable ? 'hover:bg-gray-50 cursor-pointer' : 'cursor-default'}`}
+                                      className={`flex items-start gap-1.5 p-1.5 rounded bg-white ${canEnable ? 'hover:bg-gray-50 cursor-pointer' : 'cursor-default'}`}
                                     >
                                       <input
                                         type="checkbox"
                                         checked={permissions[mainEditPerm.key] || false}
                                         onChange={() => canEnable && handleToggle(mainEditPerm.key)}
                                         disabled={!canEnable}
-                                        className="mt-1 w-4 h-4 rounded border-gray-300 text-brand-red focus:ring-brand-red flex-shrink-0 disabled:opacity-50 disabled:cursor-not-allowed"
+                                        className="mt-0.5 w-3.5 h-3.5 rounded border-gray-300 text-brand-red focus:ring-brand-red flex-shrink-0 disabled:opacity-50 disabled:cursor-not-allowed"
                                       />
                                       <div className="flex-1 min-w-0">
-                                        <div className="font-medium text-sm flex items-center gap-2">
+                                        <div className="text-xs font-medium text-gray-900 flex items-center gap-1.5">
                                           <span className="truncate">{mainEditPerm.label}</span>
                                           {!IMPLEMENTED_PERMISSIONS.has(mainEditPerm.key) && (
-                                            <span className="text-xs px-1.5 py-0.5 bg-yellow-100 text-yellow-800 rounded border border-yellow-300 flex-shrink-0">
+                                            <span className="text-[10px] px-1 py-0.5 bg-yellow-100 text-yellow-800 rounded border border-yellow-300 flex-shrink-0">
                                               [WIP]
                                             </span>
                                           )}
                                         </div>
                                         {mainEditPerm.description && (
-                                          <div className="text-xs text-gray-500 mt-0.5 line-clamp-1">{mainEditPerm.description}</div>
+                                          <div className="text-[10px] text-gray-500 mt-0.5 line-clamp-1">{mainEditPerm.description}</div>
                                         )}
                                       </div>
                                     </label>
@@ -1367,20 +1375,20 @@ const UserPermissions = forwardRef<UserPermissionsRef, { userId: string; onDirty
                                     return (
                                     <label
                                       key={perm.id}
-                                      className={`flex items-start gap-2 p-2 rounded bg-white ${canEnable ? 'hover:bg-gray-50 cursor-pointer' : 'cursor-default'} ml-6`}
+                                      className={`flex items-start gap-1.5 p-1.5 rounded bg-white ${canEnable ? 'hover:bg-gray-50 cursor-pointer' : 'cursor-default'} ml-4`}
                                     >
                                       <input
                                         type="checkbox"
                                         checked={permissions[perm.key] || false}
                                         onChange={() => canEnable && handleToggle(perm.key)}
                                         disabled={!canEnable}
-                                        className="mt-1 w-4 h-4 rounded border-gray-300 text-brand-red focus:ring-brand-red flex-shrink-0 disabled:opacity-50 disabled:cursor-not-allowed"
+                                        className="mt-0.5 w-3.5 h-3.5 rounded border-gray-300 text-brand-red focus:ring-brand-red flex-shrink-0 disabled:opacity-50 disabled:cursor-not-allowed"
                                       />
                                       <div className="flex-1 min-w-0">
-                                        <div className="font-medium text-sm flex items-center gap-2">
+                                        <div className="text-xs font-medium text-gray-900 flex items-center gap-1.5">
                                           <span className="truncate">{perm.label}</span>
                                           {!IMPLEMENTED_PERMISSIONS.has(perm.key) && (
-                                            <span className="text-xs px-1.5 py-0.5 bg-yellow-100 text-yellow-800 rounded border border-yellow-300 flex-shrink-0">
+                                            <span className="text-[10px] px-1 py-0.5 bg-yellow-100 text-yellow-800 rounded border border-yellow-300 flex-shrink-0">
                                               [WIP]
                                             </span>
                                           )}
@@ -1392,11 +1400,11 @@ const UserPermissions = forwardRef<UserPermissionsRef, { userId: string; onDirty
                                                 e.stopPropagation();
                                                 openProjectFilesCategoriesModal('write');
                                               }}
-                                              className="ml-auto w-7 h-7 rounded hover:bg-gray-100 grid place-items-center text-gray-500 hover:text-gray-800"
+                                              className="ml-auto w-5 h-5 rounded hover:bg-gray-100 grid place-items-center text-gray-500 hover:text-gray-800"
                                               title="Configure allowed file categories"
                                               aria-label="Configure allowed file categories"
                                             >
-                                              <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                                              <svg className="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor">
                                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
                                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
                                               </svg>
@@ -1404,7 +1412,7 @@ const UserPermissions = forwardRef<UserPermissionsRef, { userId: string; onDirty
                                           )}
                                         </div>
                                         {perm.description && (
-                                          <div className="text-xs text-gray-500 mt-0.5 line-clamp-1">{perm.description}</div>
+                                          <div className="text-[10px] text-gray-500 mt-0.5 line-clamp-1">{perm.description}</div>
                                         )}
                                       </div>
                                     </label>
@@ -1443,35 +1451,35 @@ const UserPermissions = forwardRef<UserPermissionsRef, { userId: string; onDirty
                           );
                           
                           return (
-                            <div className="border rounded-lg p-3 bg-gray-50">
-                              <div className="text-sm font-semibold text-gray-700 mb-3">Projects & Opportunities</div>
-                              <div className="grid md:grid-cols-2 gap-3">
+                            <div className="border rounded-lg p-2.5 bg-gray-50">
+                              <div className="text-xs font-semibold text-gray-700 mb-2">Projects & Opportunities</div>
+                              <div className="grid md:grid-cols-2 gap-2.5">
                                 {/* View Permissions Column */}
-                                <div className="space-y-2">
-                                  <div className="text-xs font-semibold text-gray-600 mb-2 uppercase tracking-wide">View</div>
+                                <div className="space-y-1.5">
+                                  <div className="text-[10px] font-semibold text-gray-600 mb-1.5 uppercase tracking-wide">View</div>
                                   {/* Main View Projects & Opportunities permission */}
                                   {mainViewPerm && (
                                     <label
-                                      className="flex items-start gap-2 p-2 rounded bg-white hover:bg-gray-50 cursor-pointer"
+                                      className="flex items-start gap-1.5 p-1.5 rounded bg-white hover:bg-gray-50 cursor-pointer"
                                     >
                                       <input
                                         type="checkbox"
                                         checked={permissions[mainViewPerm.key] || false}
                                         onChange={() => canEdit && handleToggle(mainViewPerm.key)}
                                         disabled={!canEdit}
-                                        className="mt-1 w-4 h-4 rounded border-gray-300 text-brand-red focus:ring-brand-red flex-shrink-0 disabled:opacity-50 disabled:cursor-not-allowed"
+                                        className="mt-0.5 w-3.5 h-3.5 rounded border-gray-300 text-brand-red focus:ring-brand-red flex-shrink-0 disabled:opacity-50 disabled:cursor-not-allowed"
                                       />
                                       <div className="flex-1 min-w-0">
-                                        <div className="font-medium text-sm flex items-center gap-2">
+                                        <div className="text-xs font-medium text-gray-900 flex items-center gap-1.5">
                                           <span className="truncate">{mainViewPerm.label}</span>
                                           {!IMPLEMENTED_PERMISSIONS.has(mainViewPerm.key) && (
-                                            <span className="text-xs px-1.5 py-0.5 bg-yellow-100 text-yellow-800 rounded border border-yellow-300 flex-shrink-0">
+                                            <span className="text-[10px] px-1 py-0.5 bg-yellow-100 text-yellow-800 rounded border border-yellow-300 flex-shrink-0">
                                               [WIP]
                                             </span>
                                           )}
                                         </div>
                                         {mainViewPerm.description && (
-                                          <div className="text-xs text-gray-500 mt-0.5 line-clamp-1">{mainViewPerm.description}</div>
+                                          <div className="text-[10px] text-gray-500 mt-0.5 line-clamp-1">{mainViewPerm.description}</div>
                                         )}
                                       </div>
                                     </label>
@@ -1482,26 +1490,26 @@ const UserPermissions = forwardRef<UserPermissionsRef, { userId: string; onDirty
                                     return (
                                     <label
                                       key={perm.id}
-                                      className={`flex items-start gap-2 p-2 rounded bg-white ${canEnable ? 'hover:bg-gray-50 cursor-pointer' : 'cursor-default'} ml-6`}
+                                      className={`flex items-start gap-1.5 p-1.5 rounded bg-white ${canEnable ? 'hover:bg-gray-50 cursor-pointer' : 'cursor-default'} ml-4`}
                                     >
                                       <input
                                         type="checkbox"
                                         checked={permissions[perm.key] || false}
                                         onChange={() => canEnable && handleToggle(perm.key)}
                                         disabled={!canEnable}
-                                        className="mt-1 w-4 h-4 rounded border-gray-300 text-brand-red focus:ring-brand-red flex-shrink-0 disabled:opacity-50 disabled:cursor-not-allowed"
+                                        className="mt-0.5 w-3.5 h-3.5 rounded border-gray-300 text-brand-red focus:ring-brand-red flex-shrink-0 disabled:opacity-50 disabled:cursor-not-allowed"
                                       />
                                       <div className="flex-1 min-w-0">
-                                        <div className="font-medium text-sm flex items-center gap-2">
+                                        <div className="text-xs font-medium text-gray-900 flex items-center gap-1.5">
                                           <span className="truncate">{perm.label}</span>
                                           {!IMPLEMENTED_PERMISSIONS.has(perm.key) && (
-                                            <span className="text-xs px-1.5 py-0.5 bg-yellow-100 text-yellow-800 rounded border border-yellow-300 flex-shrink-0">
+                                            <span className="text-[10px] px-1 py-0.5 bg-yellow-100 text-yellow-800 rounded border border-yellow-300 flex-shrink-0">
                                               [WIP]
                                             </span>
                                           )}
                                         </div>
                                         {perm.description && (
-                                          <div className="text-xs text-gray-500 mt-0.5 line-clamp-1">{perm.description}</div>
+                                          <div className="text-[10px] text-gray-500 mt-0.5 line-clamp-1">{perm.description}</div>
                                         )}
                                       </div>
                                     </label>
@@ -1510,33 +1518,33 @@ const UserPermissions = forwardRef<UserPermissionsRef, { userId: string; onDirty
                                 </div>
                                 
                                 {/* Edit Permissions Column */}
-                                <div className="space-y-2">
-                                  <div className="text-xs font-semibold text-gray-600 mb-2 uppercase tracking-wide">Edit</div>
+                                <div className="space-y-1.5">
+                                  <div className="text-[10px] font-semibold text-gray-600 mb-1.5 uppercase tracking-wide">Edit</div>
                                   {/* Main Edit Projects & Opportunities permission */}
                                   {mainEditPerm && (() => {
                                     const canEnable = canEdit && canEnableEditPermission(mainEditPerm.key, permissions);
                                     return (
                                     <label
-                                      className={`flex items-start gap-2 p-2 rounded bg-white ${canEnable ? 'hover:bg-gray-50 cursor-pointer' : 'cursor-default'}`}
+                                      className={`flex items-start gap-1.5 p-1.5 rounded bg-white ${canEnable ? 'hover:bg-gray-50 cursor-pointer' : 'cursor-default'}`}
                                     >
                                       <input
                                         type="checkbox"
                                         checked={permissions[mainEditPerm.key] || false}
                                         onChange={() => canEnable && handleToggle(mainEditPerm.key)}
                                         disabled={!canEnable}
-                                        className="mt-1 w-4 h-4 rounded border-gray-300 text-brand-red focus:ring-brand-red flex-shrink-0 disabled:opacity-50 disabled:cursor-not-allowed"
+                                        className="mt-0.5 w-3.5 h-3.5 rounded border-gray-300 text-brand-red focus:ring-brand-red flex-shrink-0 disabled:opacity-50 disabled:cursor-not-allowed"
                                       />
                                       <div className="flex-1 min-w-0">
-                                        <div className="font-medium text-sm flex items-center gap-2">
+                                        <div className="text-xs font-medium text-gray-900 flex items-center gap-1.5">
                                           <span className="truncate">{mainEditPerm.label}</span>
                                           {!IMPLEMENTED_PERMISSIONS.has(mainEditPerm.key) && (
-                                            <span className="text-xs px-1.5 py-0.5 bg-yellow-100 text-yellow-800 rounded border border-yellow-300 flex-shrink-0">
+                                            <span className="text-[10px] px-1 py-0.5 bg-yellow-100 text-yellow-800 rounded border border-yellow-300 flex-shrink-0">
                                               [WIP]
                                             </span>
                                           )}
                                         </div>
                                         {mainEditPerm.description && (
-                                          <div className="text-xs text-gray-500 mt-0.5 line-clamp-1">{mainEditPerm.description}</div>
+                                          <div className="text-[10px] text-gray-500 mt-0.5 line-clamp-1">{mainEditPerm.description}</div>
                                         )}
                                       </div>
                                     </label>
@@ -1548,26 +1556,26 @@ const UserPermissions = forwardRef<UserPermissionsRef, { userId: string; onDirty
                                     return (
                                     <label
                                       key={perm.id}
-                                      className={`flex items-start gap-2 p-2 rounded bg-white ${canEnable ? 'hover:bg-gray-50 cursor-pointer' : 'cursor-default'} ml-6`}
+                                      className={`flex items-start gap-1.5 p-1.5 rounded bg-white ${canEnable ? 'hover:bg-gray-50 cursor-pointer' : 'cursor-default'} ml-4`}
                                     >
                                       <input
                                         type="checkbox"
                                         checked={permissions[perm.key] || false}
                                         onChange={() => canEnable && handleToggle(perm.key)}
                                         disabled={!canEnable}
-                                        className="mt-1 w-4 h-4 rounded border-gray-300 text-brand-red focus:ring-brand-red flex-shrink-0 disabled:opacity-50 disabled:cursor-not-allowed"
+                                        className="mt-0.5 w-3.5 h-3.5 rounded border-gray-300 text-brand-red focus:ring-brand-red flex-shrink-0 disabled:opacity-50 disabled:cursor-not-allowed"
                                       />
                                       <div className="flex-1 min-w-0">
-                                        <div className="font-medium text-sm flex items-center gap-2">
+                                        <div className="text-xs font-medium text-gray-900 flex items-center gap-1.5">
                                           <span className="truncate">{perm.label}</span>
                                           {!IMPLEMENTED_PERMISSIONS.has(perm.key) && (
-                                            <span className="text-xs px-1.5 py-0.5 bg-yellow-100 text-yellow-800 rounded border border-yellow-300 flex-shrink-0">
+                                            <span className="text-[10px] px-1 py-0.5 bg-yellow-100 text-yellow-800 rounded border border-yellow-300 flex-shrink-0">
                                               [WIP]
                                             </span>
                                           )}
                                         </div>
                                         {perm.description && (
-                                          <div className="text-xs text-gray-500 mt-0.5 line-clamp-1">{perm.description}</div>
+                                          <div className="text-[10px] text-gray-500 mt-0.5 line-clamp-1">{perm.description}</div>
                                         )}
                                       </div>
                                     </label>
@@ -1590,35 +1598,35 @@ const UserPermissions = forwardRef<UserPermissionsRef, { userId: string; onDirty
                             const editPerms = areaPerms.filter((p: any) => p.key.includes(':write'));
                             
                             return (
-                              <div className="border rounded-lg p-3 bg-gray-50">
-                                <div className="text-sm font-semibold text-gray-700 mb-3">Customers</div>
-                                <div className="grid md:grid-cols-2 gap-3">
+                              <div className="border rounded-lg p-2.5 bg-gray-50">
+                                <div className="text-xs font-semibold text-gray-700 mb-2">Customers</div>
+                                <div className="grid md:grid-cols-2 gap-2.5">
                                   {viewPerms.length > 0 && (
-                                    <div className="space-y-2">
-                                      <div className="text-xs font-semibold text-gray-600 mb-2 uppercase tracking-wide">View</div>
+                                    <div className="space-y-1.5">
+                                      <div className="text-[10px] font-semibold text-gray-600 mb-1.5 uppercase tracking-wide">View</div>
                                       {viewPerms.map((perm: any) => (
                                         <label
                                           key={perm.id}
-                                          className="flex items-start gap-2 p-2 rounded bg-white hover:bg-gray-50 cursor-pointer"
+                                          className="flex items-start gap-1.5 p-1.5 rounded bg-white hover:bg-gray-50 cursor-pointer"
                                         >
                                           <input
                                             type="checkbox"
                                             checked={permissions[perm.key] || false}
                                             onChange={() => canEdit && handleToggle(perm.key)}
                                             disabled={!canEdit}
-                                            className="mt-1 w-4 h-4 rounded border-gray-300 text-brand-red focus:ring-brand-red flex-shrink-0 disabled:opacity-50 disabled:cursor-not-allowed"
+                                            className="mt-0.5 w-3.5 h-3.5 rounded border-gray-300 text-brand-red focus:ring-brand-red flex-shrink-0 disabled:opacity-50 disabled:cursor-not-allowed"
                                           />
                                           <div className="flex-1 min-w-0">
-                                            <div className="font-medium text-sm flex items-center gap-2">
+                                            <div className="text-xs font-medium text-gray-900 flex items-center gap-1.5">
                                               <span className="truncate">{perm.label}</span>
                                               {!IMPLEMENTED_PERMISSIONS.has(perm.key) && (
-                                                <span className="text-xs px-1.5 py-0.5 bg-yellow-100 text-yellow-800 rounded border border-yellow-300 flex-shrink-0">
+                                                <span className="text-[10px] px-1 py-0.5 bg-yellow-100 text-yellow-800 rounded border border-yellow-300 flex-shrink-0">
                                                   [WIP]
                                                 </span>
                                               )}
                                             </div>
                                             {perm.description && (
-                                              <div className="text-xs text-gray-500 mt-0.5 line-clamp-1">{perm.description}</div>
+                                              <div className="text-[10px] text-gray-500 mt-0.5 line-clamp-1">{perm.description}</div>
                                             )}
                                           </div>
                                         </label>
@@ -1626,33 +1634,33 @@ const UserPermissions = forwardRef<UserPermissionsRef, { userId: string; onDirty
                                     </div>
                                   )}
                                   {editPerms.length > 0 && (
-                                    <div className="space-y-2">
-                                      <div className="text-xs font-semibold text-gray-600 mb-2 uppercase tracking-wide">Edit</div>
+                                    <div className="space-y-1.5">
+                                      <div className="text-[10px] font-semibold text-gray-600 mb-1.5 uppercase tracking-wide">Edit</div>
                                       {editPerms.map((perm: any) => {
                                         const canEnable = canEdit && canEnableEditPermission(perm.key, permissions);
                                         return (
                                         <label
                                           key={perm.id}
-                                          className={`flex items-start gap-2 p-2 rounded bg-white ${canEnable ? 'hover:bg-gray-50 cursor-pointer' : 'cursor-default'}`}
+                                          className={`flex items-start gap-1.5 p-1.5 rounded bg-white ${canEnable ? 'hover:bg-gray-50 cursor-pointer' : 'cursor-default'}`}
                                         >
                                           <input
                                             type="checkbox"
                                             checked={permissions[perm.key] || false}
                                             onChange={() => canEnable && handleToggle(perm.key)}
                                             disabled={!canEnable}
-                                            className="mt-1 w-4 h-4 rounded border-gray-300 text-brand-red focus:ring-brand-red flex-shrink-0 disabled:opacity-50 disabled:cursor-not-allowed"
+                                            className="mt-0.5 w-3.5 h-3.5 rounded border-gray-300 text-brand-red focus:ring-brand-red flex-shrink-0 disabled:opacity-50 disabled:cursor-not-allowed"
                                           />
                                           <div className="flex-1 min-w-0">
-                                            <div className="font-medium text-sm flex items-center gap-2">
+                                            <div className="text-xs font-medium text-gray-900 flex items-center gap-1.5">
                                               <span className="truncate">{perm.label}</span>
                                               {!IMPLEMENTED_PERMISSIONS.has(perm.key) && (
-                                                <span className="text-xs px-1.5 py-0.5 bg-yellow-100 text-yellow-800 rounded border border-yellow-300 flex-shrink-0">
+                                                <span className="text-[10px] px-1 py-0.5 bg-yellow-100 text-yellow-800 rounded border border-yellow-300 flex-shrink-0">
                                                   [WIP]
                                                 </span>
                                               )}
                                             </div>
                                             {perm.description && (
-                                              <div className="text-xs text-gray-500 mt-0.5 line-clamp-1">{perm.description}</div>
+                                              <div className="text-[10px] text-gray-500 mt-0.5 line-clamp-1">{perm.description}</div>
                                             )}
                                           </div>
                                         </label>
@@ -1677,36 +1685,36 @@ const UserPermissions = forwardRef<UserPermissionsRef, { userId: string; onDirty
                           const editPerms = areaPerms.filter((p: any) => p.key.includes(':write'));
                           
                           return (
-                            <div key={area} className="border rounded-lg p-3 bg-gray-50">
-                              <div className="text-sm font-semibold text-gray-700 mb-3">{areaLabel}</div>
-                              <div className="grid md:grid-cols-2 gap-3">
+                            <div key={area} className="border rounded-lg p-2.5 bg-gray-50">
+                              <div className="text-xs font-semibold text-gray-700 mb-2">{areaLabel}</div>
+                              <div className="grid md:grid-cols-2 gap-2.5">
                                 {/* View Permissions Column */}
                                 {viewPerms.length > 0 && (
-                                  <div className="space-y-2">
-                                    <div className="text-xs font-semibold text-gray-600 mb-2 uppercase tracking-wide">View</div>
+                                  <div className="space-y-1.5">
+                                    <div className="text-[10px] font-semibold text-gray-600 mb-1.5 uppercase tracking-wide">View</div>
                                     {viewPerms.map((perm: any) => (
                                       <label
                                         key={perm.id}
-                                        className="flex items-start gap-2 p-2 rounded bg-white hover:bg-gray-50 cursor-pointer"
+                                        className="flex items-start gap-1.5 p-1.5 rounded bg-white hover:bg-gray-50 cursor-pointer"
                                       >
                                         <input
                                           type="checkbox"
                                           checked={permissions[perm.key] || false}
                                           onChange={() => canEdit && handleToggle(perm.key)}
                                           disabled={!canEdit}
-                                          className="mt-1 w-4 h-4 rounded border-gray-300 text-brand-red focus:ring-brand-red flex-shrink-0 disabled:opacity-50 disabled:cursor-not-allowed"
+                                          className="mt-0.5 w-3.5 h-3.5 rounded border-gray-300 text-brand-red focus:ring-brand-red flex-shrink-0 disabled:opacity-50 disabled:cursor-not-allowed"
                                         />
                                         <div className="flex-1 min-w-0">
-                                          <div className="font-medium text-sm flex items-center gap-2">
+                                          <div className="text-xs font-medium text-gray-900 flex items-center gap-1.5">
                                             <span className="truncate">{perm.label}</span>
                                             {!IMPLEMENTED_PERMISSIONS.has(perm.key) && (
-                                              <span className="text-xs px-1.5 py-0.5 bg-yellow-100 text-yellow-800 rounded border border-yellow-300 flex-shrink-0">
+                                              <span className="text-[10px] px-1 py-0.5 bg-yellow-100 text-yellow-800 rounded border border-yellow-300 flex-shrink-0">
                                                 [WIP]
                                               </span>
                                             )}
                                           </div>
                                           {perm.description && (
-                                            <div className="text-xs text-gray-500 mt-0.5 line-clamp-1">{perm.description}</div>
+                                            <div className="text-[10px] text-gray-500 mt-0.5 line-clamp-1">{perm.description}</div>
                                           )}
                                         </div>
                                       </label>
@@ -1715,31 +1723,31 @@ const UserPermissions = forwardRef<UserPermissionsRef, { userId: string; onDirty
                                 )}
                                 {/* Edit Permissions Column */}
                                 {editPerms.length > 0 && (
-                                  <div className="space-y-2">
-                                    <div className="text-xs font-semibold text-gray-600 mb-2 uppercase tracking-wide">Edit</div>
+                                  <div className="space-y-1.5">
+                                    <div className="text-[10px] font-semibold text-gray-600 mb-1.5 uppercase tracking-wide">Edit</div>
                                     {editPerms.map((perm: any) => (
                                       <label
                                         key={perm.id}
-                                        className="flex items-start gap-2 p-2 rounded bg-white hover:bg-gray-50 cursor-pointer"
+                                        className="flex items-start gap-1.5 p-1.5 rounded bg-white hover:bg-gray-50 cursor-pointer"
                                       >
                                         <input
                                           type="checkbox"
                                           checked={permissions[perm.key] || false}
                                           onChange={() => canEdit && handleToggle(perm.key)}
                                           disabled={!canEdit}
-                                          className="mt-1 w-4 h-4 rounded border-gray-300 text-brand-red focus:ring-brand-red flex-shrink-0 disabled:opacity-50 disabled:cursor-not-allowed"
+                                          className="mt-0.5 w-3.5 h-3.5 rounded border-gray-300 text-brand-red focus:ring-brand-red flex-shrink-0 disabled:opacity-50 disabled:cursor-not-allowed"
                                         />
                                         <div className="flex-1 min-w-0">
-                                          <div className="font-medium text-sm flex items-center gap-2">
+                                          <div className="text-xs font-medium text-gray-900 flex items-center gap-1.5">
                                             <span className="truncate">{perm.label}</span>
                                             {!IMPLEMENTED_PERMISSIONS.has(perm.key) && (
-                                              <span className="text-xs px-1.5 py-0.5 bg-yellow-100 text-yellow-800 rounded border border-yellow-300 flex-shrink-0">
+                                              <span className="text-[10px] px-1 py-0.5 bg-yellow-100 text-yellow-800 rounded border border-yellow-300 flex-shrink-0">
                                                 [WIP]
                                               </span>
                                             )}
                                           </div>
                                           {perm.description && (
-                                            <div className="text-xs text-gray-500 mt-0.5 line-clamp-1">{perm.description}</div>
+                                            <div className="text-[10px] text-gray-500 mt-0.5 line-clamp-1">{perm.description}</div>
                                           )}
                                         </div>
                                       </label>
@@ -1763,36 +1771,36 @@ const UserPermissions = forwardRef<UserPermissionsRef, { userId: string; onDirty
                           const editPerms = areaPerms.filter((p: any) => p.key.includes(':write'));
                           
                           return (
-                            <div key={area} className="border rounded-lg p-3 bg-gray-50">
-                              <div className="text-sm font-semibold text-gray-700 mb-3">{areaLabel}</div>
-                              <div className="grid md:grid-cols-2 gap-3">
+                            <div key={area} className="border rounded-lg p-2.5 bg-gray-50">
+                              <div className="text-xs font-semibold text-gray-700 mb-2">{areaLabel}</div>
+                              <div className="grid md:grid-cols-2 gap-2.5">
                                 {/* View Permissions Column */}
                                 {viewPerms.length > 0 && (
-                                  <div className="space-y-2">
-                                    <div className="text-xs font-semibold text-gray-600 mb-2 uppercase tracking-wide">View</div>
+                                  <div className="space-y-1.5">
+                                    <div className="text-[10px] font-semibold text-gray-600 mb-1.5 uppercase tracking-wide">View</div>
                                     {viewPerms.map((perm: any) => (
                                       <label
                                         key={perm.id}
-                                        className={`flex items-start gap-2 p-2 rounded bg-white ${canEdit ? 'hover:bg-gray-50 cursor-pointer' : 'cursor-default'}`}
+                                        className={`flex items-start gap-1.5 p-1.5 rounded bg-white ${canEdit ? 'hover:bg-gray-50 cursor-pointer' : 'cursor-default'}`}
                                       >
                                         <input
                                           type="checkbox"
                                           checked={permissions[perm.key] || false}
                                           onChange={() => canEdit && handleToggle(perm.key)}
                                           disabled={!canEdit}
-                                          className="mt-1 w-4 h-4 rounded border-gray-300 text-brand-red focus:ring-brand-red flex-shrink-0 disabled:opacity-50 disabled:cursor-not-allowed"
+                                          className="mt-0.5 w-3.5 h-3.5 rounded border-gray-300 text-brand-red focus:ring-brand-red flex-shrink-0 disabled:opacity-50 disabled:cursor-not-allowed"
                                         />
                                         <div className="flex-1 min-w-0">
-                                          <div className="font-medium text-sm flex items-center gap-2">
+                                          <div className="text-xs font-medium text-gray-900 flex items-center gap-1.5">
                                             <span className="truncate">{perm.label}</span>
                                             {!IMPLEMENTED_PERMISSIONS.has(perm.key) && (
-                                              <span className="text-xs px-1.5 py-0.5 bg-yellow-100 text-yellow-800 rounded border border-yellow-300 flex-shrink-0">
+                                              <span className="text-[10px] px-1 py-0.5 bg-yellow-100 text-yellow-800 rounded border border-yellow-300 flex-shrink-0">
                                                 [WIP]
                                               </span>
                                             )}
                                           </div>
                                           {perm.description && (
-                                            <div className="text-xs text-gray-500 mt-0.5 line-clamp-1">{perm.description}</div>
+                                            <div className="text-[10px] text-gray-500 mt-0.5 line-clamp-1">{perm.description}</div>
                                           )}
                                         </div>
                                       </label>
@@ -1801,33 +1809,33 @@ const UserPermissions = forwardRef<UserPermissionsRef, { userId: string; onDirty
                                 )}
                                 {/* Edit Permissions Column */}
                                 {editPerms.length > 0 && (
-                                  <div className="space-y-2">
-                                    <div className="text-xs font-semibold text-gray-600 mb-2 uppercase tracking-wide">Edit</div>
+                                  <div className="space-y-1.5">
+                                    <div className="text-[10px] font-semibold text-gray-600 mb-1.5 uppercase tracking-wide">Edit</div>
                                     {editPerms.map((perm: any) => {
                                       const canEnableEdit = canEdit && canEnableEditPermission(perm.key, permissions);
                                       return (
                                       <label
                                         key={perm.id}
-                                        className={`flex items-start gap-2 p-2 rounded bg-white ${canEnableEdit ? 'hover:bg-gray-50 cursor-pointer' : 'cursor-default'}`}
+                                        className={`flex items-start gap-1.5 p-1.5 rounded bg-white ${canEnableEdit ? 'hover:bg-gray-50 cursor-pointer' : 'cursor-default'}`}
                                       >
                                         <input
                                           type="checkbox"
                                           checked={permissions[perm.key] || false}
                                           onChange={() => canEnableEdit && handleToggle(perm.key)}
                                           disabled={!canEnableEdit}
-                                          className="mt-1 w-4 h-4 rounded border-gray-300 text-brand-red focus:ring-brand-red flex-shrink-0 disabled:opacity-50 disabled:cursor-not-allowed"
+                                          className="mt-0.5 w-3.5 h-3.5 rounded border-gray-300 text-brand-red focus:ring-brand-red flex-shrink-0 disabled:opacity-50 disabled:cursor-not-allowed"
                                         />
                                         <div className="flex-1 min-w-0">
-                                          <div className="font-medium text-sm flex items-center gap-2">
+                                          <div className="text-xs font-medium text-gray-900 flex items-center gap-1.5">
                                             <span className="truncate">{perm.label}</span>
                                             {!IMPLEMENTED_PERMISSIONS.has(perm.key) && (
-                                              <span className="text-xs px-1.5 py-0.5 bg-yellow-100 text-yellow-800 rounded border border-yellow-300 flex-shrink-0">
+                                              <span className="text-[10px] px-1 py-0.5 bg-yellow-100 text-yellow-800 rounded border border-yellow-300 flex-shrink-0">
                                                 [WIP]
                                               </span>
                                             )}
                                           </div>
                                           {perm.description && (
-                                            <div className="text-xs text-gray-500 mt-0.5 line-clamp-1">{perm.description}</div>
+                                            <div className="text-[10px] text-gray-500 mt-0.5 line-clamp-1">{perm.description}</div>
                                           )}
                                         </div>
                                       </label>
@@ -1842,33 +1850,33 @@ const UserPermissions = forwardRef<UserPermissionsRef, { userId: string; onDirty
                       </div>
                     ) : (
                       /* Default layout for other categories */
-                      <div className="space-y-2">
+                      <div className="space-y-1.5">
                         {subPermissions.map((perm: any) => {
                           const isEditPermission = perm.key.startsWith('hr:users:edit:') || perm.key === 'hr:users:write';
                           const canEnable = canEdit && (!isEditPermission || canEnableEditPermission(perm.key, permissions));
                           return (
                           <label
                             key={perm.id}
-                            className={`flex items-start gap-3 p-2 rounded ${canEnable ? 'hover:bg-gray-50 cursor-pointer' : 'cursor-default'}`}
+                            className={`flex items-start gap-1.5 p-1.5 rounded ${canEnable ? 'hover:bg-gray-50 cursor-pointer' : 'cursor-default'}`}
                           >
                             <input
                               type="checkbox"
                               checked={permissions[perm.key] || false}
                               onChange={() => canEnable && handleToggle(perm.key)}
                               disabled={!canEnable}
-                              className="mt-1 w-4 h-4 rounded border-gray-300 text-brand-red focus:ring-brand-red disabled:opacity-50 disabled:cursor-not-allowed"
+                              className="mt-0.5 w-3.5 h-3.5 rounded border-gray-300 text-brand-red focus:ring-brand-red disabled:opacity-50 disabled:cursor-not-allowed"
                             />
                             <div className="flex-1">
-                              <div className="font-medium text-sm flex items-center gap-2">
+                              <div className="text-xs font-medium text-gray-900 flex items-center gap-1.5">
                                 {perm.label}
                                 {!IMPLEMENTED_PERMISSIONS.has(perm.key) && (
-                                  <span className="text-xs px-1.5 py-0.5 bg-yellow-100 text-yellow-800 rounded border border-yellow-300">
+                                  <span className="text-[10px] px-1 py-0.5 bg-yellow-100 text-yellow-800 rounded border border-yellow-300">
                                     [WIP]
                                   </span>
                                 )}
                               </div>
                               {perm.description && (
-                                <div className="text-xs text-gray-500 mt-0.5">{perm.description}</div>
+                                <div className="text-[10px] text-gray-500 mt-0.5">{perm.description}</div>
                               )}
                             </div>
                           </label>
@@ -1887,7 +1895,7 @@ const UserPermissions = forwardRef<UserPermissionsRef, { userId: string; onDirty
         </div>
         
         {!canEdit && (
-          <div className="mt-6 p-4 bg-gray-50 border border-gray-200 rounded-lg text-center text-sm text-gray-600">
+          <div className="mt-6 p-3 bg-gray-50 border border-gray-200 rounded-lg text-center text-xs text-gray-600">
             You have view-only access. You need edit permissions to modify user permissions.
           </div>
         )}
@@ -2062,6 +2070,7 @@ export default function UserInfo(){
     }
   }, [hasVisas, p.work_eligibility_status, userId, canEdit, canEditGeneral, isEditingPersonal, queryClient]);
   const [isEditingJob, setIsEditingJob] = useState(false);
+  const [isEmployeeCardMinimized, setIsEmployeeCardMinimized] = useState(false);
   const permissionsRef = useRef<UserPermissionsRef>(null);
   const { data:usersOptions } = useQuery({ queryKey:['users-options'], queryFn: ()=> api<any[]>('GET','/auth/users/options') });
   const { data: supervisorProfile } = useQuery({
@@ -2248,13 +2257,14 @@ export default function UserInfo(){
       
       // Save divisions if any changes
       if (divisionsDirty && (canEdit || canEditGeneral)) {
-        await api('PATCH', `/users/${encodeURIComponent(String(userId||''))}`, {
-          divisions: selectedDivisions
-        });
+        await api('PUT', `/employees/${encodeURIComponent(String(userId||''))}/divisions`, selectedDivisions);
         setDivisionsDirty(false);
         // Invalidate and refetch user profile to get updated divisions
         await queryClient.invalidateQueries({ queryKey: ['userProfile', userId] });
         await queryClient.refetchQueries({ queryKey: ['userProfile', userId] });
+        // Wait a bit for the refetch to complete
+        await new Promise(resolve => setTimeout(resolve, 200));
+        // The useEffect will automatically update selectedDivisions when u?.divisions changes
       }
       
       // Save project divisions if any changes
@@ -2298,74 +2308,175 @@ export default function UserInfo(){
 
   return (
     <div>
-      <div className="bg-slate-200/50 rounded-[12px] border border-slate-200 flex items-center justify-between py-4 px-6 mb-6">
-        <div className="flex items-center gap-4 flex-1">
-          <button
-            onClick={() => navigate('/users')}
-            className="p-2 rounded-lg hover:bg-gray-200 transition-colors flex items-center justify-center"
-            title="Back to Users"
-          >
-            <svg className="w-5 h-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
-            </svg>
-          </button>
-          <div>
-            <div className="text-xl font-bold text-gray-900 tracking-tight mb-0.5">User Information</div>
-            <div className="text-sm text-gray-500 font-medium">Personal details, employment, and documents.</div>
-          </div>
-        </div>
-        <div className="text-right">
-          <div className="text-xs text-gray-400 mb-1.5 font-medium uppercase tracking-wide">Today</div>
-          <div className="text-sm font-semibold text-gray-700">{todayLabel}</div>
-        </div>
-      </div>
-      <div className="rounded-xl border shadow-hero bg-white">
-        <div className="rounded-t-xl p-5 text-white relative overflow-hidden" style={{ backgroundImage: `url(${heroResolvedUrl||'/ui/assets/login/background.jpg'})`, backgroundSize: 'cover', backgroundPosition: 'center' }}>
-          <div className="absolute inset-0 bg-gradient-to-br from-gray-500/50 to-gray-800/60" />
-          <div className="relative z-10">
-            <div className="flex gap-4 items-stretch min-h-[210px]">
-              <div className="w-[220px]">
-                <img className="w-full h-full object-cover rounded-xl border-2 border-brand-red" src={p.profile_photo_file_id? `/files/${p.profile_photo_file_id}/thumbnail?w=240`:'/ui/assets/placeholders/user.png'} />
-              </div>
-              <div className="flex-1 flex flex-col justify-start">
-                <div className="text-3xl font-extrabold">{p.first_name||u?.username} {p.last_name||''}</div>
-                <div className="text-sm opacity-90 mt-1">{p.job_title||u?.email||''}{u?.divisions && u.divisions.length > 0 ? ` — ${u.divisions.map((d: any) => d.label).join(', ')}` : (p.division ? ` — ${p.division}` : '')}</div>
-                <div className="grid md:grid-cols-3 gap-2 text-xs mt-3">
-                  <div><span className="opacity-80">Username:</span> <span className="font-semibold">{u?.username||'—'}</span></div>
-                  <div><span className="opacity-80">Phone:</span> <span className="font-semibold">{p.phone||'—'}</span></div>
-                  <div><span className="opacity-80">Personal email:</span> <span className="font-semibold">{u?.email||u?.email_personal||'—'}</span></div>
-                  <div><span className="opacity-80">Work email:</span> <span className="font-semibold">{p.work_email||'—'}</span></div>
-                  <div><span className="opacity-80">Status:</span> <span className="font-semibold">{u?.is_active? 'Active':'Terminated'}</span></div>
-                  <div><span className="opacity-80">Hire date:</span> <span className="font-semibold">{p.hire_date? String(p.hire_date).slice(0,10):'—'}{p.hire_date? ` (${tenure(p.hire_date)})`:''}</span></div>
-                  <div><span className="opacity-80">Supervisor:</span> <span className="font-semibold">{supervisorName||'—'}</span></div>
-                  <div><span className="opacity-80">Age:</span> <span className="font-semibold">{calcAge(p.date_of_birth)||'—'}</span></div>
-                </div>
-                <div className="mt-auto flex gap-2">
-                  {([
-                    ...(canViewGeneral || canSelfEdit ? ['personal','job','docs'] : []),
-                    ...(canViewTimesheet || canSelfEdit ? ['timesheet'] : []),
-                    ...(canViewLoans ? ['loans'] : []),
-                    ...(canViewReports ? ['reports'] : []),
-                    ...(canViewPermissions ? ['permissions'] : [])
-                  ] as const).map((k)=> (
-                    <button
-                      key={k}
-                      onClick={()=>handleTabChange(k as any)}
-                      className={`px-4 py-2 rounded-lg border ${tab===k? 'bg-black/30 border-white/30 text-white' : 'bg-white text-black'}`}
-                    >
-                      {String(k).replace(/^./,s=>s.toUpperCase())}
-                    </button>
-                  ))}
-                </div>
-              </div>
-              <div className="flex gap-2">
-                {canEdit && (
-                  <SyncBambooHRButton userId={String(userId)} onSuccess={() => { window.location.reload(); }} />
-                )}
-              </div>
+      <div className="rounded-xl border bg-white p-4 mb-4">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3 flex-1">
+            <button
+              onClick={() => navigate('/users')}
+              className="p-1.5 rounded-lg hover:bg-gray-100 transition-colors flex items-center justify-center"
+              title="Back to Users"
+            >
+              <svg className="w-4 h-4 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+              </svg>
+            </button>
+            <div className="w-8 h-8 rounded bg-blue-100 flex items-center justify-center">
+              <svg className="w-5 h-5 text-blue-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+              </svg>
+            </div>
+            <div>
+              <h5 className="text-sm font-semibold text-blue-900">User Information</h5>
+              <p className="text-xs text-gray-600 mt-0.5">Personal details, employment, and documents.</p>
             </div>
           </div>
+          <div className="text-right">
+            <div className="text-[10px] text-gray-400 mb-1 font-medium uppercase tracking-wide">Today</div>
+            <div className="text-xs font-semibold text-gray-700">{todayLabel}</div>
+          </div>
         </div>
+      </div>
+      <div className="space-y-4">
+        {/* Employee Info Card */}
+        <div className="rounded-xl border bg-white p-3 relative">
+          {isEmployeeCardMinimized ? (
+            /* Minimized View */
+            <div className="flex gap-2 items-center pr-8">
+              <img 
+                className="w-10 h-10 object-cover rounded-lg border border-gray-200" 
+                src={p.profile_photo_file_id? `/files/${p.profile_photo_file_id}/thumbnail?w=80`:'/ui/assets/placeholders/user.png'} 
+                alt={`${p.first_name||u?.username} ${p.last_name||''}`}
+              />
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2">
+                  <div className="flex-1 min-w-0">
+                    <div className="text-sm font-bold text-gray-900 truncate">
+                      {p.first_name||u?.username} {p.last_name||''}{u?.username ? ` (${u.username})` : ''}
+                    </div>
+                    <div className="text-[10px] text-gray-600 truncate mt-0.5">
+                      {p.job_title||'—'}{u?.divisions && u.divisions.length > 0 ? ` • ${u.divisions.map((d: any) => d.label).join(', ')}` : (p.division ? ` • ${p.division}` : '')}
+                    </div>
+                  </div>
+                  <span className={`inline-flex items-center px-1.5 py-0.5 rounded-full text-[10px] font-medium flex-shrink-0 ${
+                    u?.is_active 
+                      ? 'bg-green-100 text-green-800' 
+                      : 'bg-red-100 text-red-800'
+                  }`}>
+                    {u?.is_active? 'Active':'Terminated'}
+                  </span>
+                </div>
+              </div>
+            </div>
+          ) : (
+            /* Expanded View */
+            <div className="flex gap-3 items-start">
+              {/* Profile Photo */}
+              <div className="flex-shrink-0 flex flex-col items-center">
+                <img 
+                  className="w-24 h-24 object-cover rounded-xl border-2 border-gray-200" 
+                  src={p.profile_photo_file_id? `/files/${p.profile_photo_file_id}/thumbnail?w=240`:'/ui/assets/placeholders/user.png'} 
+                  alt={`${p.first_name||u?.username} ${p.last_name||''}`}
+                />
+                <div className="mt-2">
+                  <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium ${
+                    u?.is_active 
+                      ? 'bg-green-100 text-green-800' 
+                      : 'bg-red-100 text-red-800'
+                  }`}>
+                    {u?.is_active? 'Active':'Terminated'}
+                  </span>
+                </div>
+              </div>
+              
+              {/* Employee Details */}
+              <div className="flex-1 min-w-0">
+                <div className="mb-2">
+                  <h1 className="text-sm font-bold text-gray-900">
+                    {p.first_name||u?.username} {p.last_name||''}{u?.username ? ` (${u.username})` : ''}
+                  </h1>
+                  <div className="text-xs text-gray-600 mt-0.5">
+                    {p.job_title||'—'}{u?.divisions && u.divisions.length > 0 ? ` • ${u.divisions.map((d: any) => d.label).join(', ')}` : (p.division ? ` • ${p.division}` : '')}
+                  </div>
+                </div>
+                
+                {/* Info Grid */}
+                <div className="grid md:grid-cols-3 gap-x-3 gap-y-1.5">
+                  <div>
+                    <span className="text-[10px] font-medium text-gray-500 uppercase tracking-wide">Phone</span>
+                    <div className="text-xs font-semibold text-gray-900 mt-0.5">{p.phone||'—'}</div>
+                  </div>
+                  <div>
+                    <span className="text-[10px] font-medium text-gray-500 uppercase tracking-wide">Personal Email</span>
+                    <div className="text-xs font-semibold text-gray-900 mt-0.5">{u?.email||u?.email_personal||'—'}</div>
+                  </div>
+                  <div>
+                    <span className="text-[10px] font-medium text-gray-500 uppercase tracking-wide">Work Email</span>
+                    <div className="text-xs font-semibold text-gray-900 mt-0.5">{p.work_email||'—'}</div>
+                  </div>
+                  <div>
+                    <span className="text-[10px] font-medium text-gray-500 uppercase tracking-wide">Hire Date</span>
+                    <div className="text-xs font-semibold text-gray-900 mt-0.5">
+                      {p.hire_date? String(p.hire_date).slice(0,10):'—'}{p.hire_date? ` (${tenure(p.hire_date)})`:''}
+                    </div>
+                  </div>
+                  <div>
+                    <span className="text-[10px] font-medium text-gray-500 uppercase tracking-wide">Supervisor</span>
+                    <div className="text-xs font-semibold text-gray-900 mt-0.5">{supervisorName||'—'}</div>
+                  </div>
+                  <div>
+                    <span className="text-[10px] font-medium text-gray-500 uppercase tracking-wide">Age</span>
+                    <div className="text-xs font-semibold text-gray-900 mt-0.5">{calcAge(p.date_of_birth)||'—'}</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+          
+          {/* Minimize/Expand Button */}
+          <button
+            onClick={() => setIsEmployeeCardMinimized(!isEmployeeCardMinimized)}
+            className="absolute bottom-2 right-2 p-1 rounded hover:bg-gray-100 transition-colors text-gray-500 hover:text-gray-700"
+            title={isEmployeeCardMinimized ? 'Expand' : 'Minimize'}
+          >
+            <svg 
+              className={`w-3 h-3 transition-transform ${isEmployeeCardMinimized ? '' : 'rotate-180'}`}
+              fill="none" 
+              stroke="currentColor" 
+              viewBox="0 0 24 24"
+            >
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+            </svg>
+          </button>
+        </div>
+        
+        {/* Navigation Tabs */}
+        <div className="rounded-xl border bg-white p-3">
+          <div className="flex flex-wrap gap-2">
+            {([
+              ...(canViewGeneral || canSelfEdit ? ['personal','job','docs'] : []),
+              ...(canViewTimesheet || canSelfEdit ? ['timesheet'] : []),
+              ...(canViewLoans ? ['loans'] : []),
+              ...(canViewReports ? ['reports'] : []),
+              ...(canViewPermissions ? ['permissions'] : [])
+            ] as const).map((k)=> (
+              <button
+                key={k}
+                onClick={()=>handleTabChange(k as any)}
+                className={`px-3 py-1.5 text-xs font-medium rounded-lg border transition-colors ${
+                  tab===k
+                    ? 'bg-brand-red text-white border-brand-red' 
+                    : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50 hover:border-gray-400'
+                }`}
+              >
+                {String(k).replace(/^./,s=>s.toUpperCase())}
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
+      
+      {/* Main Content Card */}
+      <div className="rounded-xl border bg-white">
         <div className="p-5">
           {isLoading? <div className="h-24 animate-pulse bg-gray-100 rounded"/> : (
             <>
@@ -2377,88 +2488,64 @@ export default function UserInfo(){
               )}
               {tab==='personal' && canViewGeneral && (
                 <div className="space-y-6 pb-24">
-                  <div>
-                    <div className="flex items-center justify-between gap-2">
-                      <h4 className="font-semibold">Basic information</h4>
-                      {!isEditingPersonal && (canEditGeneral || canSelfEdit) && (
-                        <button
-                          onClick={() => setIsEditingPersonal(true)}
-                          className="px-3 py-1.5 rounded-lg bg-gradient-to-r from-brand-red to-[#ee2b2b] text-white text-sm font-medium hover:opacity-90 flex items-center gap-1.5"
-                        >
-                          <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                          </svg>
-                          Edit
-                        </button>
-                      )}
-                    </div>
-                    <div className="text-xs text-gray-500 mt-0.5 mb-2">Core personal details.</div>
-                    <EditableGrid p={p} editable={isEditingPersonal && (canEditGeneral || !!canSelfEdit)} selfEdit={false} userId={String(userId)} collectChanges={collectChanges} inlineSave={false} fields={[['First name','first_name'],['Last name','last_name'],['Middle name','middle_name'],['Prefered name','preferred_name'],['Gender','gender'],['Marital status','marital_status'],['Date of birth','date_of_birth'],['Nationality','nationality']]} />
-                    <div className="mt-4 grid md:grid-cols-2 gap-4">
-                      <ClothSizeField p={p} editable={isEditingPersonal && (canEditGeneral || !!canSelfEdit)} userId={String(userId)} collectChanges={collectChanges} profileData={data} />
-                    </div>
-                  </div>
-                  <div>
-                    <div className="flex items-center gap-2"><h4 className="font-semibold">Address</h4></div>
-                    <div className="text-xs text-gray-500 mt-0.5 mb-2">Home address for contact and records.</div>
-                    <AddressSection p={p} editable={isEditingPersonal && (canEditGeneral || !!canSelfEdit)} selfEdit={false} userId={String(userId)} collectChanges={collectChanges} inlineSave={false} />
-                  </div>
-                  <div>
-                    <div className="flex items-center gap-2"><h4 className="font-semibold">Contact</h4></div>
-                    <div className="text-xs text-gray-500 mt-0.5 mb-2">How we can reach you.</div>
-                    <EditableGrid p={p} editable={isEditingPersonal && (canEditGeneral || !!canSelfEdit)} selfEdit={false} userId={String(userId)} collectChanges={collectChanges} inlineSave={false} fields={[['Phone 1','phone'],['Phone 2','mobile_phone']]} />
-                  </div>
-                  <div>
-                    <div className="flex items-center gap-2"><h4 className="font-semibold">Education</h4></div>
-                    <div className="text-xs text-gray-500 mt-0.5 mb-2">Academic history.</div>
-                    <EducationSection userId={String(userId)} canEdit={isEditingPersonal && (canEditGeneral || !!canSelfEdit)} />
-                  </div>
-                  <div>
-                    <div className="flex items-center gap-2"><h4 className="font-semibold">Legal & Documents</h4></div>
-                    <div className="text-xs text-gray-500 mt-0.5 mb-2">Legal status and identification.</div>
-                    <div className="grid md:grid-cols-2 gap-4 mb-4">
-                      <EditableGrid p={p} editable={isEditingPersonal && (canEditGeneral || !!canSelfEdit)} selfEdit={!!canSelfEdit} userId={String(userId)} collectChanges={collectChanges} inlineSave={false} fields={[['SIN Number','sin_number']]} />
-                      <EditableGrid p={p} editable={isEditingPersonal && (canEditGeneral || !!canSelfEdit)} selfEdit={!!canSelfEdit} userId={String(userId)} collectChanges={collectChanges} inlineSave={false} fields={[['Work Eligibility Status','work_eligibility_status']]} fieldOptions={{ work_eligibility_status: ['Canadian Citizen', 'Permanent Resident', 'Temporary Resident (with work authorization)', 'Other'] }} />
-                    </div>
-                    <WorkEligibilityDocumentsSection 
-                      userId={String(userId)} 
-                      canEdit={isEditingPersonal && (canEditGeneral || !!canSelfEdit)} 
-                      workEligibilityStatus={isEditingPersonal && pending.work_eligibility_status !== undefined ? pending.work_eligibility_status : (p.work_eligibility_status || '')}
-                    />
-                  </div>
-                  <div>
-                    <div className="flex items-center gap-2"><h4 className="font-semibold">Emergency Contacts</h4></div>
-                    <div className="text-xs text-gray-500 mt-0.5 mb-2">People to contact in case of emergency.</div>
-                    <EmergencyContactsSection userId={String(userId)} canEdit={isEditingPersonal && (canEditGeneral || !!canSelfEdit)} />
-                  </div>
+                  <BasicInformationSection 
+                    p={p} 
+                    editable={isEditingPersonal && (canEditGeneral || !!canSelfEdit)} 
+                    userId={String(userId)} 
+                    collectChanges={collectChanges} 
+                    profileData={data}
+                    onEditClick={() => setIsEditingPersonal(true)}
+                    canEdit={canEditGeneral || !!canSelfEdit}
+                  />
+                  <AddressSectionCard 
+                    p={p} 
+                    editable={isEditingPersonal && (canEditGeneral || !!canSelfEdit)} 
+                    userId={String(userId)} 
+                    collectChanges={collectChanges}
+                    onEditClick={() => setIsEditingPersonal(true)}
+                    canEdit={canEditGeneral || !!canSelfEdit}
+                  />
+                  <ContactSection 
+                    p={p} 
+                    editable={isEditingPersonal && (canEditGeneral || !!canSelfEdit)} 
+                    userId={String(userId)} 
+                    collectChanges={collectChanges}
+                    onEditClick={() => setIsEditingPersonal(true)}
+                    canEdit={canEditGeneral || !!canSelfEdit}
+                  />
+                  <EducationSectionCard 
+                    userId={String(userId)} 
+                    canEdit={isEditingPersonal && (canEditGeneral || !!canSelfEdit)}
+                    onEditClick={() => setIsEditingPersonal(true)}
+                    canEditButton={canEditGeneral || !!canSelfEdit}
+                  />
+                  <LegalDocumentsSection 
+                    p={p} 
+                    editable={isEditingPersonal && (canEditGeneral || !!canSelfEdit)} 
+                    userId={String(userId)} 
+                    collectChanges={collectChanges}
+                    pending={pending}
+                    onEditClick={() => setIsEditingPersonal(true)}
+                    canEdit={canEditGeneral || !!canSelfEdit}
+                    canSelfEdit={!!canSelfEdit}
+                  />
+                  <EmergencyContactsSectionCard 
+                    userId={String(userId)} 
+                    canEdit={isEditingPersonal && (canEditGeneral || !!canSelfEdit)}
+                    onEditClick={() => setIsEditingPersonal(true)}
+                    canEditButton={canEditGeneral || !!canSelfEdit}
+                  />
                 </div>
               )}
               {tab==='job' && canViewGeneral && (
                 <div className="space-y-6 pb-24">
-                  <div>
-                    <div className="flex items-center justify-between gap-2">
-                      <h4 className="font-semibold">Employment Details</h4>
-                      {!isEditingJob && (canEditGeneral || !!canSelfEdit) && (
-                        <button
-                          onClick={() => setIsEditingJob(true)}
-                          className="px-3 py-1.5 rounded-lg bg-gradient-to-r from-brand-red to-[#ee2b2b] text-white text-sm font-medium hover:opacity-90 flex items-center gap-1.5"
-                        >
-                          <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                          </svg>
-                          Edit
-                        </button>
-                      )}
-                    </div>
-                    <div className="text-xs text-gray-500 mt-0.5 mb-2">Dates and employment attributes.</div>
-                    <JobSection type="employment" p={p} editable={isEditingJob && (canEditGeneral || !!canSelfEdit)} userId={String(userId)} collectChanges={collectChanges} usersOptions={usersOptions||[]} settings={settings} canViewCompensation={canViewJobCompensation} />
-                  </div>
                   <OrganizationSection 
                     p={p} 
                     editable={isEditingJob && (canEditGeneral || !!canSelfEdit)} 
                     userId={String(userId)} 
                     collectChanges={collectChanges} 
-                    usersOptions={usersOptions||[]} 
+                    usersOptions={usersOptions||[]}
+                    canViewCompensation={canViewJobCompensation} 
                     settings={settings} 
                     userDivisions={u?.divisions || []}
                     selectedDivisions={selectedDivisions}
@@ -2471,6 +2558,7 @@ export default function UserInfo(){
                       setSelectedProjectDivisions(divisions);
                       setProjectDivisionsDirty(true);
                     }}
+                    onEditClick={() => setIsEditingJob(true)}
                   />
                   {canViewJobCompensation && (
                     <SalarySection p={p} editable={isEditingJob && (canEditGeneral || !!canSelfEdit)} userId={String(userId)} collectChanges={collectChanges} settings={settings} canEdit={canEditGeneral} />
@@ -2527,10 +2615,27 @@ export default function UserInfo(){
       {(tab === 'permissions' && canEditPermissions) && (
         <div className="fixed bottom-0 left-0 right-0 z-40">
           <div className="max-w-[1200px] mx-auto px-4">
-            <div className="mb-3 rounded-xl border bg-white shadow-hero p-3 flex items-center gap-3">
-              <div className={`text-sm ${permissionsDirty? 'text-amber-700':'text-green-700'}`}>{permissionsDirty? 'You have unsaved changes':'All changes saved'}</div>
-              <button onClick={async () => { await permissionsRef.current?.save(); }} disabled={!permissionsDirty} className={`ml-auto px-4 py-2 rounded text-white ${permissionsDirty? 'bg-gradient-to-r from-brand-red to-[#ee2b2b]':'bg-gray-400 cursor-not-allowed'}`}>Save</button>
+            <div className="mb-3 rounded-xl border bg-white shadow-hero p-2.5 flex items-center gap-3">
+              <div className={`text-xs ${permissionsDirty? 'text-amber-700':'text-green-700'}`}>{permissionsDirty? 'You have unsaved changes':'All changes saved'}</div>
+              <button onClick={async () => { await permissionsRef.current?.save(); }} disabled={!permissionsDirty} className={`ml-auto px-3 py-1.5 text-xs rounded text-white ${permissionsDirty? 'bg-gradient-to-r from-brand-red to-[#ee2b2b]':'bg-gray-400 cursor-not-allowed'}`}>Save</button>
             </div>
+          </div>
+        </div>
+      )}
+      
+      {/* BambooHR Actions - Moved to bottom */}
+      {canEdit && (
+        <div className="rounded-xl border bg-white p-3 mt-6">
+          <div className="flex items-center gap-2 mb-2">
+            <div className="w-6 h-6 rounded bg-gray-100 flex items-center justify-center">
+              <svg className="w-4 h-4 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+              </svg>
+            </div>
+            <h5 className="text-xs font-semibold text-gray-900">BambooHR Integration</h5>
+          </div>
+          <div className="flex gap-2">
+            <SyncBambooHRButton userId={String(userId)} onSuccess={() => { window.location.reload(); }} />
           </div>
         </div>
       )}
@@ -2605,28 +2710,28 @@ function EditableGrid({p, fields, editable, selfEdit, userId, collectChanges, in
           
           return (
             <div key={key}>
-              <div className="text-sm text-gray-600">{label}</div>
+              <div className="text-xs font-medium text-gray-600 mb-1.5">{label}</div>
               {isEditable ? (
                 (key==='date_of_birth' || key==='hire_date' || key==='termination_date') ? (
-                  <input type="date" value={(form[key]||'').slice(0,10)} onChange={e=> { setForm((s:any)=>({ ...s, [key]: e.target.value })); collectChanges && collectChanges({ [key]: e.target.value }); }} className="w-full rounded-lg border px-3 py-2"/>
+                  <input type="date" value={(form[key]||'').slice(0,10)} onChange={e=> { setForm((s:any)=>({ ...s, [key]: e.target.value })); collectChanges && collectChanges({ [key]: e.target.value }); }} className="w-full rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-gray-900 focus:ring-1 focus:ring-gray-400 focus:border-gray-400"/>
                 ) : key === 'nationality' ? (
-                  <NationalitySelect value={form[key]||''} onChange={v=> { setForm((s:any)=>({ ...s, [key]: v })); collectChanges && collectChanges({ [key]: v }); }} />
+                  <NationalitySelect value={form[key]||''} onChange={v=> { setForm((s:any)=>({ ...s, [key]: v })); collectChanges && collectChanges({ [key]: v }); }} className="w-full" />
                 ) : options ? (
-                  <select value={form[key]||''} onChange={e=> { setForm((s:any)=>({ ...s, [key]: e.target.value })); collectChanges && collectChanges({ [key]: e.target.value }); }} className="w-full rounded-lg border px-3 py-2">
+                  <select value={form[key]||''} onChange={e=> { setForm((s:any)=>({ ...s, [key]: e.target.value })); collectChanges && collectChanges({ [key]: e.target.value }); }} className="w-full rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-gray-900 focus:ring-1 focus:ring-gray-400 focus:border-gray-400">
                     <option value="">Select...</option>
                     {options.map(opt => (
                       <option key={opt} value={opt}>{opt}</option>
                     ))}
                   </select>
                 ) : (key === 'phone' || key === 'mobile_phone') ? (
-                  <input value={form[key]||''} onChange={e=> { const formatted = formatPhone(e.target.value); setForm((s:any)=>({ ...s, [key]: formatted })); collectChanges && collectChanges({ [key]: formatted }); }} className="w-full rounded-lg border px-3 py-2"/>
+                  <input value={form[key]||''} onChange={e=> { const formatted = formatPhone(e.target.value); setForm((s:any)=>({ ...s, [key]: formatted })); collectChanges && collectChanges({ [key]: formatted }); }} className="w-full rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-gray-900 focus:ring-1 focus:ring-gray-400 focus:border-gray-400"/>
                 ) : key === 'sin_number' ? (
-                  <input value={form[key]||''} onChange={e=> { const formatted = formatSIN(e.target.value); setForm((s:any)=>({ ...s, [key]: formatted })); collectChanges && collectChanges({ [key]: formatted }); }} maxLength={11} placeholder="123-456-789" className="w-full rounded-lg border px-3 py-2"/>
+                  <input value={form[key]||''} onChange={e=> { const formatted = formatSIN(e.target.value); setForm((s:any)=>({ ...s, [key]: formatted })); collectChanges && collectChanges({ [key]: formatted }); }} maxLength={11} placeholder="123-456-789" className="w-full rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-gray-900 focus:ring-1 focus:ring-gray-400 focus:border-gray-400"/>
                 ) : (
-                  <input value={form[key]||''} onChange={e=> { setForm((s:any)=>({ ...s, [key]: e.target.value })); collectChanges && collectChanges({ [key]: e.target.value }); }} className="w-full rounded-lg border px-3 py-2"/>
+                  <input value={form[key]||''} onChange={e=> { setForm((s:any)=>({ ...s, [key]: e.target.value })); collectChanges && collectChanges({ [key]: e.target.value }); }} className="w-full rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-gray-900 focus:ring-1 focus:ring-gray-400 focus:border-gray-400"/>
                 )
               ) : (
-                <div className="text-gray-900 font-medium py-1 break-words">{(key==='date_of_birth' || key==='hire_date' || key==='termination_date')? (String(p[key]??'').slice(0,10) || '—') : (String(p[key]??'') || '—')}</div>
+                <div className="text-sm font-semibold text-gray-900">{(key==='date_of_birth' || key==='hire_date' || key==='termination_date')? (String(p[key]??'').slice(0,10) || '—') : (String(p[key]??'') || '—')}</div>
               )}
             </div>
           );
@@ -2694,7 +2799,7 @@ function ClothSizeField({ p, editable, userId, collectChanges, profileData }: { 
   
   return (
     <div>
-      <div className="text-sm text-gray-600">Cloth Size</div>
+      <div className="text-xs font-medium text-gray-600 mb-1.5">Cloth Size</div>
       {isEditable ? (
         <ClothSizeSelect
           value={form.cloth_size || ''}
@@ -2706,9 +2811,10 @@ function ClothSizeField({ p, editable, userId, collectChanges, profileData }: { 
           customSizes={customSizes}
           useGlobalCustomSizes={true}
           onRefreshCustomSizes={handleRefreshCustomSizes}
+          className="w-full"
         />
       ) : (
-        <div className="text-gray-900 font-medium py-1 break-words">{String(p.cloth_size || '') || '—'}</div>
+        <div className="text-sm font-semibold text-gray-900">{String(p.cloth_size || '') || '—'}</div>
       )}
     </div>
   );
@@ -2760,122 +2866,127 @@ function AddressSection({ p, editable, selfEdit, userId, collectChanges, inlineS
   return (
     <div>
       <div className="grid md:grid-cols-2 gap-4">
-        <div>
-          <div className="text-sm text-gray-600">Address line 1</div>
-          {isEditable? (
-            <AddressAutocomplete
-              value={form.address_line1 || ''}
-              onChange={(value) => {
-                setForm((s:any)=>({ ...s, address_line1: value }));
-                collectChanges && collectChanges({ address_line1: value });
+        {/* Left column: Address lines and Postal code */}
+        <div className="space-y-4">
+          <div>
+            <div className="text-xs font-medium text-gray-600 mb-1.5">Address line 1</div>
+            {isEditable? (
+              <AddressAutocomplete
+                value={form.address_line1 || ''}
+                onChange={(value) => {
+                  setForm((s:any)=>({ ...s, address_line1: value }));
+                  collectChanges && collectChanges({ address_line1: value });
+                }}
+                onAddressSelect={(address) => {
+                  setForm((currentForm: any) => {
+                    const updatedForm = {
+                      ...currentForm,
+                      address_line1: address.address_line1 !== undefined ? address.address_line1 : currentForm.address_line1,
+                      city: address.city !== undefined ? address.city : currentForm.city,
+                      province: address.province !== undefined ? address.province : currentForm.province,
+                      postal_code: address.postal_code !== undefined ? address.postal_code : currentForm.postal_code,
+                      country: address.country !== undefined ? address.country : currentForm.country,
+                    };
+                    // Call collectChanges with the updated form
+                    if (collectChanges) {
+                      collectChanges({
+                        address_line1: updatedForm.address_line1,
+                        city: updatedForm.city,
+                        province: updatedForm.province,
+                        postal_code: updatedForm.postal_code,
+                        country: updatedForm.country,
+                      });
+                    }
+                    return updatedForm;
+                  });
+                }}
+                placeholder="Start typing an address..."
+                className="w-full rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-gray-900 focus:ring-1 focus:ring-gray-400 focus:border-gray-400"
+              />
+            ) : (
+              <div className="text-sm font-semibold text-gray-900 break-words">{String(p.address_line1||'') || '—'}</div>
+            )}
+          </div>
+          <div>
+            <div className="text-xs font-medium text-gray-600 mb-1.5">Address line 2</div>
+            {isEditable? (
+              <AddressAutocomplete
+                value={form.address_line2 || ''}
+                onChange={(value) => {
+                  setForm((s:any)=>({ ...s, address_line2: value }));
+                  collectChanges && collectChanges({ address_line2: value });
+                }}
+                placeholder="Start typing an address..."
+                className="w-full rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-gray-900 focus:ring-1 focus:ring-gray-400 focus:border-gray-400"
+              />
+            ) : (
+              <div className="text-sm font-semibold text-gray-900 break-words">{String(p.address_line2||'') || '—'}</div>
+            )}
+          </div>
+          <div>
+            <div className="text-xs font-medium text-gray-600 mb-1.5">Postal code</div>
+            {isEditable ? (
+              <input 
+              value={form.postal_code || ''} 
+              onChange={(e) => {
+                setForm((s:any)=>({ ...s, postal_code: e.target.value }));
+                collectChanges && collectChanges({ postal_code: e.target.value });
               }}
-              onAddressSelect={(address) => {
-                setForm((s:any) => ({
-                  ...s,
-                  address_line1: address.address_line1 || s.address_line1,
-                  city: address.city !== undefined ? address.city : s.city,
-                  province: address.province !== undefined ? address.province : s.province,
-                  postal_code: address.postal_code !== undefined ? address.postal_code : s.postal_code,
-                  country: address.country !== undefined ? address.country : s.country,
-                }));
-                collectChanges && collectChanges({
-                  address_line1: address.address_line1,
-                  city: address.city,
-                  province: address.province,
-                  postal_code: address.postal_code,
-                  country: address.country,
-                });
+              className="w-full rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-gray-900 focus:ring-1 focus:ring-gray-400 focus:border-gray-400"
+            />
+            ) : (
+              <div className="text-sm font-semibold text-gray-900 break-words">{String(p.postal_code||'') || '—'}</div>
+            )}
+          </div>
+        </div>
+        
+        {/* Right column: City, Province, Country */}
+        <div className="space-y-4">
+          <div>
+            <div className="text-xs font-medium text-gray-600 mb-1.5">City</div>
+            {isEditable ? (
+              <input 
+              value={form.city || ''} 
+              onChange={(e) => {
+                setForm((s:any)=>({ ...s, city: e.target.value }));
+                collectChanges && collectChanges({ city: e.target.value });
               }}
-              placeholder="Start typing an address..."
-              className="w-full rounded-lg border px-3 py-2"
+              className="w-full rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-gray-900 focus:ring-1 focus:ring-gray-400 focus:border-gray-400"
             />
-          ) : (
-            <div className="text-gray-900 font-medium py-1 break-words">{String(p.address_line1||'') || '—'}</div>
-          )}
-        </div>
-        <div>
-          <div className="text-sm text-gray-600">Complement (e.g., Apt, Unit, Basement)</div>
-          {isEditable? (
-            <input 
-              type="text" 
-              value={form.address_line1_complement || ''} 
-              onChange={e=> { 
-                setForm((s:any)=>({ ...s, address_line1_complement: e.target.value })); 
-                collectChanges && collectChanges({ address_line1_complement: e.target.value }); 
-              }} 
-              placeholder="Apt 101, Unit 2, Basement, etc."
-              className="w-full rounded-lg border px-3 py-2"
-            />
-          ) : (
-            <div className="text-gray-900 font-medium py-1 break-words">{String(p.address_line1_complement||'') || '—'}</div>
-          )}
-        </div>
-        <div className="grid md:grid-cols-2 gap-4">
-          <div>
-            <div className="text-sm text-gray-600">City</div>
-            {isEditable ? (
-              <input value={form.city || ''} readOnly className="w-full rounded-lg border px-3 py-2 bg-gray-50 cursor-not-allowed"/>
             ) : (
-              <div className="text-gray-900 font-medium py-1 break-words">{String(p.city||'') || '—'}</div>
+              <div className="text-sm font-semibold text-gray-900 break-words">{String(p.city||'') || '—'}</div>
             )}
           </div>
           <div>
-            <div className="text-sm text-gray-600">Province/State</div>
+            <div className="text-xs font-medium text-gray-600 mb-1.5">Province/State</div>
             {isEditable ? (
-              <input value={form.province || ''} readOnly className="w-full rounded-lg border px-3 py-2 bg-gray-50 cursor-not-allowed"/>
-            ) : (
-              <div className="text-gray-900 font-medium py-1 break-words">{String(p.province||'') || '—'}</div>
-            )}
-          </div>
-          <div>
-            <div className="text-sm text-gray-600">Postal code</div>
-            {isEditable ? (
-              <input value={form.postal_code || ''} readOnly className="w-full rounded-lg border px-3 py-2 bg-gray-50 cursor-not-allowed"/>
-            ) : (
-              <div className="text-gray-900 font-medium py-1 break-words">{String(p.postal_code||'') || '—'}</div>
-            )}
-          </div>
-          <div>
-            <div className="text-sm text-gray-600">Country</div>
-            {isEditable ? (
-              <input value={form.country || ''} readOnly className="w-full rounded-lg border px-3 py-2 bg-gray-50 cursor-not-allowed"/>
-            ) : (
-              <div className="text-gray-900 font-medium py-1 break-words">{String(p.country||'') || '—'}</div>
-            )}
-          </div>
-        </div>
-        <div>
-          <div className="text-sm text-gray-600">Address line 2</div>
-          {isEditable? (
-            <AddressAutocomplete
-              value={form.address_line2 || ''}
-              onChange={(value) => {
-                setForm((s:any)=>({ ...s, address_line2: value }));
-                collectChanges && collectChanges({ address_line2: value });
+              <input 
+              value={form.province || ''} 
+              onChange={(e) => {
+                setForm((s:any)=>({ ...s, province: e.target.value }));
+                collectChanges && collectChanges({ province: e.target.value });
               }}
-              placeholder="Start typing an address..."
-              className="w-full rounded-lg border px-3 py-2"
+              className="w-full rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-gray-900 focus:ring-1 focus:ring-gray-400 focus:border-gray-400"
             />
-          ) : (
-            <div className="text-gray-900 font-medium py-1 break-words">{String(p.address_line2||'') || '—'}</div>
-          )}
-        </div>
-        <div>
-          <div className="text-sm text-gray-600">Complement (e.g., Apt, Unit, Basement)</div>
-          {isEditable? (
-            <input 
-              type="text" 
-              value={form.address_line2_complement || ''} 
-              onChange={e=> { 
-                setForm((s:any)=>({ ...s, address_line2_complement: e.target.value })); 
-                collectChanges && collectChanges({ address_line2_complement: e.target.value }); 
-              }} 
-              placeholder="Apt 101, Unit 2, Basement, etc."
-              className="w-full rounded-lg border px-3 py-2"
+            ) : (
+              <div className="text-sm font-semibold text-gray-900 break-words">{String(p.province||'') || '—'}</div>
+            )}
+          </div>
+          <div>
+            <div className="text-xs font-medium text-gray-600 mb-1.5">Country</div>
+            {isEditable ? (
+              <input 
+              value={form.country || ''} 
+              onChange={(e) => {
+                setForm((s:any)=>({ ...s, country: e.target.value }));
+                collectChanges && collectChanges({ country: e.target.value });
+              }}
+              className="w-full rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-gray-900 focus:ring-1 focus:ring-gray-400 focus:border-gray-400"
             />
-          ) : (
-            <div className="text-gray-900 font-medium py-1 break-words">{String(p.address_line2_complement||'') || '—'}</div>
-          )}
+            ) : (
+              <div className="text-sm font-semibold text-gray-900 break-words">{String(p.country||'') || '—'}</div>
+            )}
+          </div>
         </div>
       </div>
       {isEditable && inlineSave && (
@@ -2967,7 +3078,7 @@ function EducationSection({ userId, canEdit }:{ userId:string, canEdit:boolean }
           {!showAdd ? (
             <button onClick={()=>setShowAdd(true)} className="px-3 py-2 rounded bg-brand-red text-white">Add education</button>
           ) : (
-            <div className="grid md:grid-cols-2 gap-3">
+                                <div className="grid md:grid-cols-2 gap-2.5">
               <div>
                 <div className="text-xs text-gray-600">Institution</div>
                 <input className="w-full rounded-lg border px-3 py-2" value={inst} onChange={e=>setInst(e.target.value)} />
@@ -3026,34 +3137,87 @@ function JobSection({ type, p, editable, userId, collectChanges, usersOptions, s
     collectChanges({ _divisions_changed: true, _selected_divisions: newSelection });
   };
   if (type==='employment'){
+    const isActive = !p.termination_date || String(p.termination_date||'').trim() === '';
+    const statusColor = isActive ? 'green' : 'red';
+    const statusBg = isActive ? 'bg-green-100' : 'bg-red-100';
+    const statusText = isActive ? 'text-green-700' : 'text-red-700';
+    const statusLabel = isActive ? 'Active' : 'Terminated';
+    
     return (
-      <div className="grid md:grid-cols-2 gap-4">
-        <div>
-          <div className="text-sm text-gray-600">Hire date</div>
-          {isEditable? <input type="date" className="w-full rounded-lg border px-3 py-2" value={(form.hire_date||'').slice(0,10)} onChange={e=>onField('hire_date', e.target.value)} /> : <div className="text-gray-900 font-medium py-1">{String(p.hire_date||'').slice(0,10) || '—'}</div>}
-        </div>
-        <div>
-          <div className="text-sm text-gray-600">Termination date</div>
-          {isEditable? <input type="date" className="w-full rounded-lg border px-3 py-2" value={(form.termination_date||'').slice(0,10)} onChange={e=>onField('termination_date', e.target.value)} /> : <div className="text-gray-900 font-medium py-1">{String(p.termination_date||'').slice(0,10) || '—'}</div>}
-        </div>
-        {canViewCompensation && (
-          <div>
-            <div className="text-sm text-gray-600">Employment type</div>
-            {isEditable? (
-              (settings?.employment_types?.length ? (
-                <select className="w-full rounded-lg border px-3 py-2" value={form.employment_type} onChange={e=>onField('employment_type', e.target.value)}>
-                  <option value="">Select...</option>
-                  {settings.employment_types.map((it:any)=> <option key={it.id} value={it.label}>{it.label}</option>)}
-                </select>
-              ) : (
-                <input className="w-full rounded-lg border px-3 py-2" value={form.employment_type} onChange={e=>onField('employment_type', e.target.value)} />
-              ))
-            ) : <div className="text-gray-900 font-medium py-1">{String(p.employment_type||'') || '—'}</div>}
+      <div className="space-y-4">
+        {/* Employment Details Cards */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+          {/* Employment Status Card */}
+          <div className="rounded-lg border border-gray-200 bg-white p-3">
+            <div className="flex items-center justify-center mb-2">
+              <div className={`w-8 h-8 rounded ${statusBg} flex items-center justify-center`}>
+                {isActive ? (
+                  <svg className={`w-5 h-5 ${statusText}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                ) : (
+                  <svg className={`w-5 h-5 ${statusText}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                )}
+              </div>
+            </div>
+            <div className="text-center">
+              <div className={`text-sm font-semibold ${isActive ? 'text-green-600' : 'text-red-600'}`}>
+                {statusLabel}
+              </div>
+              <div className="text-xs font-medium text-gray-700 mt-0.5">
+                Employment Status
+              </div>
+            </div>
           </div>
-        )}
-        <div>
-          <div className="text-sm text-gray-600">Job title</div>
-          {isEditable? <input className="w-full rounded-lg border px-3 py-2" value={form.job_title} onChange={e=>onField('job_title', e.target.value)} /> : <div className="text-gray-900 font-medium py-1">{String(p.job_title||'') || '—'}</div>}
+          
+          {/* Hire Date Card */}
+          <div className="rounded-lg border border-gray-200 bg-white p-3">
+            <div className="flex items-center justify-center mb-2">
+              <div className="w-8 h-8 rounded bg-blue-100 flex items-center justify-center">
+                <svg className="w-5 h-5 text-blue-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                </svg>
+              </div>
+            </div>
+            <div className="text-center">
+              {isEditable ? (
+                <input type="date" className="w-full text-center text-sm font-semibold text-gray-900 border-0 bg-transparent focus:outline-none focus:ring-0" value={(form.hire_date||'').slice(0,10)} onChange={e=>onField('hire_date', e.target.value)} />
+              ) : (
+                <div className="text-sm font-semibold text-gray-900">
+                  {String(p.hire_date||'').slice(0,10) || '—'}
+                </div>
+              )}
+              <div className="text-xs font-medium text-gray-700 mt-0.5">
+                Hire Date
+              </div>
+            </div>
+          </div>
+          
+          {/* Termination Date Card */}
+          <div className="rounded-lg border border-gray-200 bg-white p-3">
+            <div className="flex items-center justify-center mb-2">
+              <div className="w-8 h-8 rounded bg-orange-100 flex items-center justify-center">
+                <svg className="w-5 h-5 text-orange-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                </svg>
+              </div>
+            </div>
+            <div className="text-center">
+              {isEditable ? (
+                <input type="date" className="w-full text-center text-sm font-semibold text-gray-900 border-0 bg-transparent focus:outline-none focus:ring-0" value={(form.termination_date||'').slice(0,10)} onChange={e=>onField('termination_date', e.target.value)} />
+              ) : (
+                <div className="text-sm font-semibold text-gray-900">
+                  {String(p.termination_date||'').slice(0,10) || '—'}
+                </div>
+              )}
+              <div className="text-xs font-medium text-gray-700 mt-0.5">
+                Termination Date
+              </div>
+            </div>
+          </div>
+          
         </div>
       </div>
     );
@@ -3786,261 +3950,274 @@ function TimesheetBlock({ userId, canEdit = true }:{ userId:string, canEdit?: bo
     : !formData.hours_worked || parseFloat(formData.hours_worked || '0') <= 0;
 
   return (
-    <div className="pb-24">
-      {/* Eligible for Break checkbox */}
-      <div className="mb-4 rounded-xl border bg-white p-4 flex items-center justify-between">
-        <div className="flex items-center gap-2">
+    <div className="space-y-6 pb-24">
+      {/* Timesheet Section */}
+      <div className="rounded-xl border bg-white p-4">
+        {/* Header */}
+        <div className="mb-4 flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <div className="w-8 h-8 rounded bg-indigo-100 flex items-center justify-center">
+              <svg className="w-5 h-5 text-indigo-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+            </div>
+            <h5 className="text-sm font-semibold text-indigo-900">Timesheet</h5>
+          </div>
+          {canEdit && (
+            <button
+              onClick={() => handleOpenModal()}
+              className="px-2 py-1 text-xs bg-[#d11616] text-white rounded-lg font-medium hover:bg-[#b01414] transition-colors"
+            >
+              + New Attendance
+            </button>
+          )}
+        </div>
+
+        {/* Eligible for Break checkbox */}
+        <div className="mb-4 flex items-center gap-2">
           <input
             type="checkbox"
             id="eligible-for-break"
             checked={isEligibleForBreak}
             onChange={(e) => canEdit && toggleEligibleForBreak(e.target.checked)}
             disabled={!canEdit}
-            className="w-4 h-4 text-brand-red border-gray-300 rounded focus:ring-brand-red disabled:opacity-50 disabled:cursor-not-allowed"
+            className="w-3.5 h-3.5 text-brand-red border-gray-300 rounded focus:ring-brand-red disabled:opacity-50 disabled:cursor-not-allowed"
           />
-          <label htmlFor="eligible-for-break" className={`text-sm text-gray-700 ${canEdit ? 'cursor-pointer' : 'cursor-default'}`}>
+          <label htmlFor="eligible-for-break" className={`text-xs font-medium text-gray-700 ${canEdit ? 'cursor-pointer' : 'cursor-default'}`}>
             Eligible for Break
           </label>
-          <span className="text-xs text-gray-500">(Break will be deducted for shifts of 5 hours or more)</span>
+          <span className="text-[10px] text-gray-500">(Break will be deducted for shifts of 5 hours or more)</span>
         </div>
-        {canEdit && (
-          <button
-            onClick={() => handleOpenModal()}
-            className="px-4 py-2 bg-[#d11616] text-white rounded-lg font-semibold hover:bg-[#b01414] transition-colors"
-          >
-            + New Attendance
-          </button>
-        )}
-      </div>
 
-      {/* Filters */}
-      <div className="mb-4 rounded-xl border bg-white p-4 grid grid-cols-4 gap-4">
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">Start Date</label>
-          <input
-            type="date"
-            value={filters.start_date}
-            onChange={(e) => setFilters({ ...filters, start_date: e.target.value })}
-            className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
-          />
-        </div>
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">End Date</label>
-          <input
-            type="date"
-            value={filters.end_date}
-            onChange={(e) => setFilters({ ...filters, end_date: e.target.value })}
-            className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
-          />
-        </div>
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">Project/Job</label>
-          <select
-            value={filters.project_id}
-            onChange={(e) => setFilters({ ...filters, project_id: e.target.value })}
-            className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
-          >
-            <option value="">All Projects/Jobs</option>
-            <optgroup label="Jobs">
-              {PREDEFINED_JOBS.map((job) => (
-                <option key={`job_${job.id}`} value={`job_${job.id}`}>
-                  {job.code ? `${job.code} - ` : ''}{job.name}
-                </option>
-              ))}
-            </optgroup>
-            <optgroup label="Projects">
-              {(Array.isArray(projects) ? projects : []).map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.code ? `${p.code} - ` : ''}{p.name}
-                </option>
-              ))}
-            </optgroup>
-          </select>
-        </div>
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">Status</label>
-          <select
-            value={filters.status}
-            onChange={(e) => setFilters({ ...filters, status: e.target.value })}
-            className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
-          >
-            <option value="">All Statuses</option>
-            <option value="approved">Approved</option>
-            <option value="pending">Pending</option>
-            <option value="rejected">Rejected</option>
-          </select>
-        </div>
-      </div>
-
-      {/* Error message */}
-      {error && (
-        <div className="mb-4 rounded-xl border border-red-200 bg-red-50 p-4 text-red-800">
-          Error loading attendance records: {String(error)}
-        </div>
-      )}
-
-      {/* Bulk Actions */}
-      {canEdit && selectedEvents.size > 0 && (
-        <div className="mb-4 rounded-xl border bg-blue-50 p-4 flex items-center justify-between">
-          <div className="text-sm font-medium text-blue-900">
-            {selectedEvents.size} event(s) selected
+        {/* Filters */}
+        <div className="mb-4 grid grid-cols-4 gap-4">
+          <div>
+            <label className="block text-xs font-medium text-gray-600 mb-1.5">Start Date</label>
+            <input
+              type="date"
+              value={filters.start_date}
+              onChange={(e) => setFilters({ ...filters, start_date: e.target.value })}
+              className="w-full rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-gray-900 focus:ring-1 focus:ring-gray-400 focus:border-gray-400"
+            />
           </div>
-          <button
-            onClick={handleDeleteSelected}
-            disabled={deletingSelected}
-            className="px-4 py-2 bg-red-600 text-white rounded-lg font-semibold hover:bg-red-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            {deletingSelected ? 'Deleting...' : 'Delete All Selected'}
-          </button>
+          <div>
+            <label className="block text-xs font-medium text-gray-600 mb-1.5">End Date</label>
+            <input
+              type="date"
+              value={filters.end_date}
+              onChange={(e) => setFilters({ ...filters, end_date: e.target.value })}
+              className="w-full rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-gray-900 focus:ring-1 focus:ring-gray-400 focus:border-gray-400"
+            />
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-gray-600 mb-1.5">Project/Job</label>
+            <select
+              value={filters.project_id}
+              onChange={(e) => setFilters({ ...filters, project_id: e.target.value })}
+              className="w-full rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-gray-900 focus:ring-1 focus:ring-gray-400 focus:border-gray-400"
+            >
+              <option value="">All Projects/Jobs</option>
+              <optgroup label="Jobs">
+                {PREDEFINED_JOBS.map((job) => (
+                  <option key={`job_${job.id}`} value={`job_${job.id}`}>
+                    {job.code ? `${job.code} - ` : ''}{job.name}
+                  </option>
+                ))}
+              </optgroup>
+              <optgroup label="Projects">
+                {(Array.isArray(projects) ? projects : []).map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.code ? `${p.code} - ` : ''}{p.name}
+                  </option>
+                ))}
+              </optgroup>
+            </select>
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-gray-600 mb-1.5">Status</label>
+            <select
+              value={filters.status}
+              onChange={(e) => setFilters({ ...filters, status: e.target.value })}
+              className="w-full rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-gray-900 focus:ring-1 focus:ring-gray-400 focus:border-gray-400"
+            >
+              <option value="">All Statuses</option>
+              <option value="approved">Approved</option>
+              <option value="pending">Pending</option>
+              <option value="rejected">Rejected</option>
+            </select>
+          </div>
         </div>
-      )}
 
-      {/* Table */}
-      <div className="rounded-xl border bg-white overflow-hidden">
-        <table className="w-full text-sm">
-          <thead className="bg-gray-50">
-            <tr>
-              <th className="p-3 text-left w-12">
-                {canEdit && (
-                  <input
-                    type="checkbox"
-                    checked={attendanceEvents.length > 0 && selectedEvents.size === attendanceEvents.length}
-                    onChange={handleSelectAll}
-                    className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
-                  />
-                )}
-              </th>
-              <th className="p-3 text-left">Clock In</th>
-              <th className="p-3 text-left">Clock Out</th>
-              <th className="p-3 text-left">Job/Project</th>
-              <th className="p-3 text-left">Hours</th>
-              <th className="p-3 text-left">Break</th>
-              <th className="p-3 text-left">Status</th>
-              <th className="p-3 text-left">Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            {isLoading ? (
+        {/* Error message */}
+        {error && (
+          <div className="mb-4 rounded-xl border border-red-200 bg-red-50 p-3 text-xs text-red-800">
+            Error loading attendance records: {String(error)}
+          </div>
+        )}
+
+        {/* Bulk Actions */}
+        {canEdit && selectedEvents.size > 0 && (
+          <div className="mb-4 rounded-xl border bg-blue-50 p-3 flex items-center justify-between">
+            <div className="text-xs font-medium text-blue-900">
+              {selectedEvents.size} event(s) selected
+            </div>
+            <button
+              onClick={handleDeleteSelected}
+              disabled={deletingSelected}
+              className="px-2 py-1 text-xs bg-red-600 text-white rounded-lg font-medium hover:bg-red-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {deletingSelected ? 'Deleting...' : 'Delete All Selected'}
+            </button>
+          </div>
+        )}
+
+        {/* Table */}
+        <div className="rounded-xl border overflow-hidden">
+          <table className="w-full">
+            <thead className="bg-gray-50">
               <tr>
-                <td colSpan={8} className="p-4">
-                  <div className="h-6 bg-gray-100 animate-pulse rounded" />
-                </td>
+                <th className="p-2.5 text-left w-12">
+                  {canEdit && (
+                    <input
+                      type="checkbox"
+                      checked={attendanceEvents.length > 0 && selectedEvents.size === attendanceEvents.length}
+                      onChange={handleSelectAll}
+                      className="w-3.5 h-3.5 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                    />
+                  )}
+                </th>
+                <th className="p-2.5 text-left text-xs font-medium text-gray-600">Clock In</th>
+                <th className="p-2.5 text-left text-xs font-medium text-gray-600">Clock Out</th>
+                <th className="p-2.5 text-left text-xs font-medium text-gray-600">Job/Project</th>
+                <th className="p-2.5 text-left text-xs font-medium text-gray-600">Hours</th>
+                <th className="p-2.5 text-left text-xs font-medium text-gray-600">Break</th>
+                <th className="p-2.5 text-left text-xs font-medium text-gray-600">Status</th>
+                <th className="p-2.5 text-left text-xs font-medium text-gray-600">Actions</th>
               </tr>
-            ) : error ? (
-              <tr>
-                <td colSpan={8} className="p-4 text-center text-red-600">
-                  Error loading data. Please check console for details.
-                </td>
-              </tr>
-            ) : attendanceEvents.length === 0 ? (
-              <tr>
-                <td colSpan={8} className="p-4 text-center text-gray-500">
-                  No attendance records found
-                </td>
-              </tr>
-            ) : (
-              attendanceEvents.map((event) => (
-                <tr key={event.event_id} className="border-t hover:bg-gray-50">
-                  <td className="p-3">
-                    {canEdit && (
-                      <input
-                        type="checkbox"
-                        checked={selectedEvents.has(event.event_id)}
-                        onChange={() => handleToggleSelect(event.event_id)}
-                        className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
-                      />
-                    )}
-                  </td>
-                  <td className="p-3">
-                    {event.is_hours_worked ? '-' : (event.clock_in_time ? formatDateTime(event.clock_in_time) : '--')}
-                  </td>
-                  <td className="p-3">
-                    {event.is_hours_worked ? '-' : (event.clock_out_time ? formatDateTime(event.clock_out_time) : '--')}
-                  </td>
-                  <td className="p-3">
-                    {event.job_name ||
-                      event.project_name ||
-                      (event.job_type
-                        ? jobOptions.find((j) => j.id === event.job_type)?.name || 'Unknown'
-                        : 'No Project')}
-                  </td>
-                  <td className="p-3">{formatHours(event.hours_worked)}</td>
-                  <td className="p-3">{formatBreak(event.break_minutes)}</td>
-                  <td className="p-3">
-                    <span
-                      className={`px-2 py-1 rounded text-xs font-medium ${
-                        event.clock_in_status === 'approved' &&
-                        (!event.clock_out_status || event.clock_out_status === 'approved')
-                          ? 'bg-green-100 text-green-800'
-                          : event.clock_in_status === 'pending' ||
-                            event.clock_out_status === 'pending'
-                          ? 'bg-yellow-100 text-yellow-800'
-                          : 'bg-red-100 text-red-800'
-                      }`}
-                    >
-                      {event.clock_in_status === 'approved' &&
-                      (!event.clock_out_status || event.clock_out_status === 'approved')
-                        ? 'Approved'
-                        : event.clock_in_status === 'pending' ||
-                          event.clock_out_status === 'pending'
-                        ? 'Pending'
-                        : 'Rejected'}
-                    </span>
-                  </td>
-                  <td className="p-3">
-                    <div className="flex items-center gap-2">
-                      {canEdit ? (
-                        <>
-                          <button
-                            onClick={() => handleOpenModal(event)}
-                            className="text-blue-600 hover:text-blue-800 text-sm"
-                          >
-                            Edit
-                          </button>
-                          <button
-                            onClick={() => handleDeleteEvent(event)}
-                            disabled={deletingId === event.event_id}
-                            className="text-red-600 hover:text-red-800 text-sm disabled:opacity-50"
-                          >
-                            {deletingId === event.event_id ? 'Deleting...' : 'Delete'}
-                          </button>
-                        </>
-                      ) : (
-                        <span className="text-xs text-gray-500">View only</span>
-                      )}
-                      {event.shift_deleted && (
-                        <span 
-                          className="text-yellow-600" 
-                          title={event.shift_deleted_by ? `The shift related to this attendance was deleted by ${event.shift_deleted_by}${event.shift_deleted_at ? ` on ${new Date(event.shift_deleted_at).toLocaleDateString()}` : ''}` : 'The shift related to this attendance was deleted'}
-                        >
-                          <svg className="w-4 h-4 inline-block" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-                          </svg>
-                        </span>
-                      )}
-                    </div>
+            </thead>
+            <tbody>
+              {isLoading ? (
+                <tr>
+                  <td colSpan={8} className="p-4">
+                    <div className="h-6 bg-gray-100 animate-pulse rounded" />
                   </td>
                 </tr>
-              ))
-            )}
-          </tbody>
-        </table>
+              ) : error ? (
+                <tr>
+                  <td colSpan={8} className="p-4 text-center text-xs text-red-600">
+                    Error loading data. Please check console for details.
+                  </td>
+                </tr>
+              ) : attendanceEvents.length === 0 ? (
+                <tr>
+                  <td colSpan={8} className="p-4 text-center text-xs text-gray-500">
+                    No attendance records found
+                  </td>
+                </tr>
+              ) : (
+                attendanceEvents.map((event) => (
+                  <tr key={event.event_id} className="border-t border-gray-200 hover:bg-gray-50">
+                    <td className="p-2.5">
+                      {canEdit && (
+                        <input
+                          type="checkbox"
+                          checked={selectedEvents.has(event.event_id)}
+                          onChange={() => handleToggleSelect(event.event_id)}
+                          className="w-3.5 h-3.5 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                        />
+                      )}
+                    </td>
+                    <td className="p-2.5 text-xs text-gray-900">
+                      {event.is_hours_worked ? '—' : (event.clock_in_time ? formatDateTime(event.clock_in_time) : '—')}
+                    </td>
+                    <td className="p-2.5 text-xs text-gray-900">
+                      {event.is_hours_worked ? '—' : (event.clock_out_time ? formatDateTime(event.clock_out_time) : '—')}
+                    </td>
+                    <td className="p-2.5 text-xs text-gray-900">
+                      {event.job_name ||
+                        event.project_name ||
+                        (event.job_type
+                          ? jobOptions.find((j) => j.id === event.job_type)?.name || 'Unknown'
+                          : 'No Project')}
+                    </td>
+                    <td className="p-2.5 text-xs text-gray-900">{formatHours(event.hours_worked)}</td>
+                    <td className="p-2.5 text-xs text-gray-900">{formatBreak(event.break_minutes)}</td>
+                    <td className="p-2.5">
+                      <span
+                        className={`px-2 py-0.5 rounded text-[10px] font-medium ${
+                          event.clock_in_status === 'approved' &&
+                          (!event.clock_out_status || event.clock_out_status === 'approved')
+                            ? 'bg-green-100 text-green-800'
+                            : event.clock_in_status === 'pending' ||
+                              event.clock_out_status === 'pending'
+                            ? 'bg-yellow-100 text-yellow-800'
+                            : 'bg-red-100 text-red-800'
+                        }`}
+                      >
+                        {event.clock_in_status === 'approved' &&
+                        (!event.clock_out_status || event.clock_out_status === 'approved')
+                          ? 'Approved'
+                          : event.clock_in_status === 'pending' ||
+                            event.clock_out_status === 'pending'
+                          ? 'Pending'
+                          : 'Rejected'}
+                      </span>
+                    </td>
+                    <td className="p-2.5">
+                      <div className="flex items-center gap-1.5">
+                        {canEdit ? (
+                          <>
+                            <button
+                              onClick={() => handleOpenModal(event)}
+                              className="text-blue-600 hover:text-blue-800 text-[10px]"
+                            >
+                              Edit
+                            </button>
+                            <button
+                              onClick={() => handleDeleteEvent(event)}
+                              disabled={deletingId === event.event_id}
+                              className="text-red-600 hover:text-red-800 text-[10px] disabled:opacity-50"
+                            >
+                              {deletingId === event.event_id ? 'Deleting...' : 'Delete'}
+                            </button>
+                          </>
+                        ) : (
+                          <span className="text-[10px] text-gray-500">View only</span>
+                        )}
+                        {event.shift_deleted && (
+                          <span 
+                            className="text-yellow-600" 
+                            title={event.shift_deleted_by ? `The shift related to this attendance was deleted by ${event.shift_deleted_by}${event.shift_deleted_at ? ` on ${new Date(event.shift_deleted_at).toLocaleDateString()}` : ''}` : 'The shift related to this attendance was deleted'}
+                          >
+                            <svg className="w-3 h-3 inline-block" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                            </svg>
+                          </span>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
       </div>
 
       {/* Modal - same as Attendance.tsx */}
       {showModal && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg p-6 max-w-lg w-full mx-4 max-h-[90vh] overflow-y-auto">
-            <h2 className="text-xl font-bold mb-4">
+          <div className="bg-white rounded-lg p-4 max-w-lg w-full mx-4 max-h-[90vh] overflow-y-auto">
+            <h2 className="text-lg font-bold mb-4">
               {editingEvent ? 'Edit Attendance Event' : 'New Attendance Event'}
             </h2>
             <div className="space-y-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Job *</label>
+                <label className="block text-xs font-medium text-gray-600 mb-1.5">Job *</label>
                 <select
                   value={formData.job_type}
                   onChange={(e) => setFormData({ ...formData, job_type: e.target.value })}
-                  className="w-full rounded-lg border border-gray-300 px-3 py-2"
+                  className="w-full rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-gray-900 focus:ring-1 focus:ring-gray-400 focus:border-gray-400"
                   required
                 >
                   {jobOptions.map((job) => (
@@ -4051,10 +4228,10 @@ function TimesheetBlock({ userId, canEdit = true }:{ userId:string, canEdit?: bo
                 </select>
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
+                <label className="block text-xs font-medium text-gray-600 mb-1.5">
                   Entry Type
                 </label>
-                <div className="inline-flex rounded-lg border border-gray-300 bg-gray-50 overflow-hidden text-sm">
+                <div className="inline-flex rounded-lg border border-gray-300 bg-gray-50 overflow-hidden text-xs">
                   <button
                     type="button"
                     onClick={() => {
@@ -4064,7 +4241,7 @@ function TimesheetBlock({ userId, canEdit = true }:{ userId:string, canEdit?: bo
                         hours_worked: '',
                       }));
                     }}
-                    className={`px-3 py-1.5 ${
+                    className={`px-2.5 py-1.5 ${
                       formData.entry_mode === 'time'
                         ? 'bg-white text-gray-900'
                         : 'text-gray-600 hover:bg-gray-100'
@@ -4096,7 +4273,7 @@ function TimesheetBlock({ userId, canEdit = true }:{ userId:string, canEdit?: bo
                         };
                       });
                     }}
-                    className={`px-3 py-1.5 border-l border-gray-300 ${
+                    className={`px-2.5 py-1.5 border-l border-gray-300 ${
                       formData.entry_mode === 'hours'
                         ? 'bg-white text-gray-900'
                         : 'text-gray-600 hover:bg-gray-100'
@@ -4105,14 +4282,14 @@ function TimesheetBlock({ userId, canEdit = true }:{ userId:string, canEdit?: bo
                     Hours Worked
                   </button>
                 </div>
-                <p className="mt-1 text-xs text-gray-500">
+                <p className="mt-1 text-[10px] text-gray-500">
                   {formData.entry_mode === 'time'
                     ? 'Enter exact clock-in and clock-out times.'
                     : 'Enter start time and total hours; clock-out will be calculated automatically.'}
                 </p>
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
+                <label className="block text-xs font-medium text-gray-600 mb-1.5">
                   {formData.entry_mode === 'time'
                     ? 'Clock In Time * (Local)'
                     : 'Work Date *'}
@@ -4124,7 +4301,7 @@ function TimesheetBlock({ userId, canEdit = true }:{ userId:string, canEdit?: bo
                     onChange={(e) =>
                       setFormData({ ...formData, clock_in_time: e.target.value })
                     }
-                    className="w-full rounded-lg border border-gray-300 px-3 py-2"
+                    className="w-full rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-gray-900 focus:ring-1 focus:ring-gray-400 focus:border-gray-400"
                     required
                   />
                 ) : (
@@ -4138,7 +4315,7 @@ function TimesheetBlock({ userId, canEdit = true }:{ userId:string, canEdit?: bo
                         clock_in_time: date ? `${date}T00:00` : '',
                       }));
                     }}
-                    className="w-full rounded-lg border border-gray-300 px-3 py-2"
+                    className="w-full rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-gray-900 focus:ring-1 focus:ring-gray-400 focus:border-gray-400"
                     required
                   />
                 )}
@@ -4146,7 +4323,7 @@ function TimesheetBlock({ userId, canEdit = true }:{ userId:string, canEdit?: bo
               {formData.entry_mode === 'time' && (
                 <>
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                    <label className="block text-xs font-medium text-gray-600 mb-1.5">
                       {editingEvent
                         ? 'Clock Out Time (Local) - Optional'
                         : 'Clock Out Time * (Local)'}
@@ -4157,7 +4334,7 @@ function TimesheetBlock({ userId, canEdit = true }:{ userId:string, canEdit?: bo
                       onChange={(e) =>
                         setFormData({ ...formData, clock_out_time: e.target.value })
                       }
-                      className="w-full rounded-lg border border-gray-300 px-3 py-2"
+                      className="w-full rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-gray-900 focus:ring-1 focus:ring-gray-400 focus:border-gray-400"
                       required={!editingEvent}
                     />
                   </div>
@@ -4168,18 +4345,18 @@ function TimesheetBlock({ userId, canEdit = true }:{ userId:string, canEdit?: bo
                         type="checkbox"
                         checked={insertBreakTime}
                         onChange={(e) => setInsertBreakTime(e.target.checked)}
-                        className="w-4 h-4 rounded border-gray-300 text-brand-red focus:ring-brand-red"
+                        className="w-3.5 h-3.5 rounded border-gray-300 text-brand-red focus:ring-brand-red"
                       />
-                      <span className="text-sm font-medium text-gray-700">Insert Break Time</span>
+                      <span className="text-xs font-medium text-gray-700">Insert Break Time</span>
                     </label>
                     {insertBreakTime && (
                       <div className="ml-6 space-y-2">
                         <div className="flex gap-2 items-center">
-                          <label className="text-xs text-gray-600 w-12">Hours:</label>
+                          <label className="text-[10px] text-gray-600 w-12">Hours:</label>
                           <select
                             value={breakHours}
                             onChange={(e) => setBreakHours(e.target.value)}
-                            className="flex-1 border rounded px-3 py-2"
+                            className="flex-1 border rounded px-2.5 py-1.5 text-xs"
                           >
                             {Array.from({ length: 3 }, (_, i) => (
                               <option key={i} value={String(i)}>
@@ -4187,11 +4364,11 @@ function TimesheetBlock({ userId, canEdit = true }:{ userId:string, canEdit?: bo
                               </option>
                             ))}
                           </select>
-                          <label className="text-xs text-gray-600 w-12 ml-2">Minutes:</label>
+                          <label className="text-[10px] text-gray-600 w-12 ml-2">Minutes:</label>
                           <select
                             value={breakMinutes}
                             onChange={(e) => setBreakMinutes(e.target.value)}
-                            className="flex-1 border rounded px-3 py-2"
+                            className="flex-1 border rounded px-2.5 py-1.5 text-xs"
                           >
                             {Array.from({ length: 12 }, (_, i) => {
                               const m = i * 5;
@@ -4211,7 +4388,7 @@ function TimesheetBlock({ userId, canEdit = true }:{ userId:string, canEdit?: bo
               {formData.entry_mode === 'hours' && (
                 <>
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                    <label className="block text-xs font-medium text-gray-600 mb-1.5">
                       Hours Worked *
                     </label>
                     <input
@@ -4222,7 +4399,7 @@ function TimesheetBlock({ userId, canEdit = true }:{ userId:string, canEdit?: bo
                       onChange={(e) =>
                         setFormData({ ...formData, hours_worked: e.target.value })
                       }
-                      className="w-full rounded-lg border border-gray-300 px-3 py-2"
+                      className="w-full rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-gray-900 focus:ring-1 focus:ring-gray-400 focus:border-gray-400"
                       placeholder="e.g. 8"
                       required
                     />
@@ -4234,18 +4411,18 @@ function TimesheetBlock({ userId, canEdit = true }:{ userId:string, canEdit?: bo
                         type="checkbox"
                         checked={insertBreakTime}
                         onChange={(e) => setInsertBreakTime(e.target.checked)}
-                        className="w-4 h-4 rounded border-gray-300 text-brand-red focus:ring-brand-red"
+                        className="w-3.5 h-3.5 rounded border-gray-300 text-brand-red focus:ring-brand-red"
                       />
-                      <span className="text-sm font-medium text-gray-700">Insert Break Time</span>
+                      <span className="text-xs font-medium text-gray-700">Insert Break Time</span>
                     </label>
                     {insertBreakTime && (
                       <div className="ml-6 space-y-2">
                         <div className="flex gap-2 items-center">
-                          <label className="text-xs text-gray-600 w-12">Hours:</label>
+                          <label className="text-[10px] text-gray-600 w-12">Hours:</label>
                           <select
                             value={breakHours}
                             onChange={(e) => setBreakHours(e.target.value)}
-                            className="flex-1 border rounded px-3 py-2"
+                            className="flex-1 border rounded px-2.5 py-1.5 text-xs"
                           >
                             {Array.from({ length: 3 }, (_, i) => (
                               <option key={i} value={String(i)}>
@@ -4253,11 +4430,11 @@ function TimesheetBlock({ userId, canEdit = true }:{ userId:string, canEdit?: bo
                               </option>
                             ))}
                           </select>
-                          <label className="text-xs text-gray-600 w-12 ml-2">Minutes:</label>
+                          <label className="text-[10px] text-gray-600 w-12 ml-2">Minutes:</label>
                           <select
                             value={breakMinutes}
                             onChange={(e) => setBreakMinutes(e.target.value)}
-                            className="flex-1 border rounded px-3 py-2"
+                            className="flex-1 border rounded px-2.5 py-1.5 text-xs"
                           >
                             {Array.from({ length: 12 }, (_, i) => {
                               const m = i * 5;
@@ -4276,11 +4453,11 @@ function TimesheetBlock({ userId, canEdit = true }:{ userId:string, canEdit?: bo
               )}
               {editingEvent && (
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Status *</label>
+                  <label className="block text-xs font-medium text-gray-600 mb-1.5">Status *</label>
                   <select
                     value={formData.status}
                     onChange={(e) => setFormData({ ...formData, status: e.target.value })}
-                    className="w-full rounded-lg border border-gray-300 px-3 py-2"
+                    className="w-full rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-gray-900 focus:ring-1 focus:ring-gray-400 focus:border-gray-400"
                     required
                   >
                     <option value="approved">Approved</option>
@@ -4290,20 +4467,20 @@ function TimesheetBlock({ userId, canEdit = true }:{ userId:string, canEdit?: bo
                 </div>
               )}
             </div>
-            <div className="mt-6 flex justify-end gap-3">
+            <div className="mt-6 flex justify-end gap-2">
               <button
                 onClick={() => {
                   setShowModal(false);
                   resetForm();
                 }}
-                className="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50"
+                className="px-3 py-1.5 text-xs border border-gray-300 rounded-lg hover:bg-gray-50"
               >
                 Cancel
               </button>
               <button
                 onClick={handleSubmit}
                 disabled={isSubmitDisabled}
-                className="px-4 py-2 bg-[#d11616] text-white rounded-lg hover:bg-[#b01414] disabled:opacity-50 disabled:cursor-not-allowed"
+                className="px-3 py-1.5 text-xs bg-[#d11616] text-white rounded-lg hover:bg-[#b01414] disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {editingEvent ? 'Update' : 'Create'}
               </button>
@@ -4528,7 +4705,7 @@ function SalaryHistorySection({ userId, canEdit, settings }:{ userId:string, can
           <div className="bg-white rounded-xl w-full max-w-lg p-4">
             <div className="text-lg font-semibold mb-4">New salary entry</div>
             <div className="space-y-3">
-              <div className="grid md:grid-cols-2 gap-3">
+                                <div className="grid md:grid-cols-2 gap-2.5">
                 <div>
                   <div className="text-xs text-gray-600">Effective date *</div>
                   <input type="date" className="w-full rounded-lg border px-3 py-2" value={effectiveDate} onChange={e=>setEffectiveDate(e.target.value)} />
@@ -4585,7 +4762,228 @@ function SalaryHistorySection({ userId, canEdit, settings }:{ userId:string, can
 }
 
 
-function OrganizationSection({ p, editable, userId, collectChanges, usersOptions, settings, userDivisions, selectedDivisions, onDivisionsChange, selectedProjectDivisions, onProjectDivisionsChange }: { p:any, editable:boolean, userId:string, collectChanges: (kv:Record<string,any>)=>void, usersOptions:any[], settings:any, userDivisions?: any[], selectedDivisions?: string[], onDivisionsChange?: (divisions: string[]) => void, selectedProjectDivisions?: string[], onProjectDivisionsChange?: (divisions: string[]) => void }){
+// Icon mapping for divisions (same as Projects.tsx)
+const getDivisionIcon = (label: string): string => {
+  const iconMap: Record<string, string> = {
+    'Roofing': '🏠',
+    'Concrete Restoration & Waterproofing': '🏗️',
+    'Cladding & Exterior Finishes': '🧱',
+    'Repairs & Maintenance': '🔧',
+    'Mechanical': '🔩',
+    'Electrical': '⚡',
+    'Carpentry': '🪵',
+    'Welding & Custom Fabrication': '🔥',
+    'Structural Upgrading': '📐',
+    'Solar PV': '☀️',
+    'Green Roofing': '🌱',
+  };
+  return iconMap[label] || '📦';
+};
+
+// Personal tab sections
+function BasicInformationSection({ p, editable, userId, collectChanges, profileData, onEditClick, canEdit }: { p: any, editable: boolean, userId: string, collectChanges: (kv: Record<string, any>) => void, profileData?: any, onEditClick?: () => void, canEdit?: boolean }) {
+  const isEditable = !!editable;
+  return (
+    <div className="rounded-xl border bg-white p-4">
+      <div className="mb-4 flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <div className="w-8 h-8 rounded bg-blue-100 flex items-center justify-center">
+            <svg className="w-5 h-5 text-blue-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+            </svg>
+          </div>
+          <h5 className="text-sm font-semibold text-blue-900">Basic Information</h5>
+        </div>
+        {!isEditable && onEditClick && canEdit && (
+          <button
+            onClick={onEditClick}
+            className="p-1.5 rounded hover:bg-gray-100 text-gray-600 hover:text-brand-red transition-colors"
+            title="Edit Basic Information"
+          >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+            </svg>
+          </button>
+        )}
+      </div>
+      <div className="space-y-4">
+        <EditableGrid p={p} editable={isEditable} selfEdit={false} userId={userId} collectChanges={collectChanges} inlineSave={false} fields={[['First name','first_name'],['Last name','last_name'],['Middle name','middle_name'],['Prefered name','preferred_name'],['Gender','gender'],['Marital status','marital_status'],['Date of birth','date_of_birth'],['Nationality','nationality']]} />
+        <div className="grid md:grid-cols-2 gap-4">
+          <ClothSizeField p={p} editable={isEditable} userId={userId} collectChanges={collectChanges} profileData={profileData} />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function AddressSectionCard({ p, editable, userId, collectChanges, onEditClick, canEdit }: { p: any, editable: boolean, userId: string, collectChanges: (kv: Record<string, any>) => void, onEditClick?: () => void, canEdit?: boolean }) {
+  const isEditable = !!editable;
+  return (
+    <div className="rounded-xl border bg-white p-4">
+      <div className="mb-4 flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <div className="w-8 h-8 rounded bg-green-100 flex items-center justify-center">
+            <svg className="w-5 h-5 text-green-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+            </svg>
+          </div>
+          <h5 className="text-sm font-semibold text-green-900">Address</h5>
+        </div>
+        {!isEditable && onEditClick && canEdit && (
+          <button
+            onClick={onEditClick}
+            className="p-1.5 rounded hover:bg-gray-100 text-gray-600 hover:text-brand-red transition-colors"
+            title="Edit Address"
+          >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+            </svg>
+          </button>
+        )}
+      </div>
+      <div className="space-y-4">
+        <AddressSection p={p} editable={isEditable} selfEdit={false} userId={userId} collectChanges={collectChanges} inlineSave={false} />
+      </div>
+    </div>
+  );
+}
+
+function ContactSection({ p, editable, userId, collectChanges, onEditClick, canEdit }: { p: any, editable: boolean, userId: string, collectChanges: (kv: Record<string, any>) => void, onEditClick?: () => void, canEdit?: boolean }) {
+  const isEditable = !!editable;
+  return (
+    <div className="rounded-xl border bg-white p-4">
+      <div className="mb-4 flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <div className="w-8 h-8 rounded bg-yellow-100 flex items-center justify-center">
+            <svg className="w-5 h-5 text-yellow-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" />
+            </svg>
+          </div>
+          <h5 className="text-sm font-semibold text-yellow-900">Contact</h5>
+        </div>
+        {!isEditable && onEditClick && canEdit && (
+          <button
+            onClick={onEditClick}
+            className="p-1.5 rounded hover:bg-gray-100 text-gray-600 hover:text-brand-red transition-colors"
+            title="Edit Contact"
+          >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+            </svg>
+          </button>
+        )}
+      </div>
+      <div className="space-y-4">
+        <EditableGrid p={p} editable={isEditable} selfEdit={false} userId={userId} collectChanges={collectChanges} inlineSave={false} fields={[['Phone 1','phone'],['Phone 2','mobile_phone']]} />
+      </div>
+    </div>
+  );
+}
+
+function EducationSectionCard({ userId, canEdit, onEditClick, canEditButton }: { userId: string, canEdit: boolean, onEditClick?: () => void, canEditButton?: boolean }) {
+  return (
+    <div className="rounded-xl border bg-white p-4">
+      <div className="mb-4 flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <div className="w-8 h-8 rounded bg-indigo-100 flex items-center justify-center">
+            <svg className="w-5 h-5 text-indigo-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
+            </svg>
+          </div>
+          <h5 className="text-sm font-semibold text-indigo-900">Education</h5>
+        </div>
+        {!canEdit && onEditClick && canEditButton && (
+          <button
+            onClick={onEditClick}
+            className="p-1.5 rounded hover:bg-gray-100 text-gray-600 hover:text-brand-red transition-colors"
+            title="Edit Education"
+          >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+            </svg>
+          </button>
+        )}
+      </div>
+      <div className="space-y-4">
+        <EducationSection userId={userId} canEdit={canEdit} />
+      </div>
+    </div>
+  );
+}
+
+function LegalDocumentsSection({ p, editable, userId, collectChanges, pending, onEditClick, canEdit, canSelfEdit }: { p: any, editable: boolean, userId: string, collectChanges: (kv: Record<string, any>) => void, pending: any, onEditClick?: () => void, canEdit?: boolean, canSelfEdit?: boolean }) {
+  const isEditable = !!editable;
+  return (
+    <div className="rounded-xl border bg-white p-4">
+      <div className="mb-4 flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <div className="w-8 h-8 rounded bg-red-100 flex items-center justify-center">
+            <svg className="w-5 h-5 text-red-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+            </svg>
+          </div>
+          <h5 className="text-sm font-semibold text-red-900">Legal & Documents</h5>
+        </div>
+        {!isEditable && onEditClick && canEdit && (
+          <button
+            onClick={onEditClick}
+            className="p-1.5 rounded hover:bg-gray-100 text-gray-600 hover:text-brand-red transition-colors"
+            title="Edit Legal & Documents"
+          >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+            </svg>
+          </button>
+        )}
+      </div>
+      <div className="space-y-4">
+        <div className="grid md:grid-cols-2 gap-4">
+          <EditableGrid p={p} editable={isEditable} selfEdit={!!canSelfEdit} userId={userId} collectChanges={collectChanges} inlineSave={false} fields={[['SIN Number','sin_number']]} />
+          <EditableGrid p={p} editable={isEditable} selfEdit={!!canSelfEdit} userId={userId} collectChanges={collectChanges} inlineSave={false} fields={[['Work Eligibility Status','work_eligibility_status']]} fieldOptions={{ work_eligibility_status: ['Canadian Citizen', 'Permanent Resident', 'Temporary Resident (with work authorization)', 'Other'] }} />
+        </div>
+        <WorkEligibilityDocumentsSection 
+          userId={userId} 
+          canEdit={isEditable} 
+          workEligibilityStatus={isEditable && pending.work_eligibility_status !== undefined ? pending.work_eligibility_status : (p.work_eligibility_status || '')}
+        />
+      </div>
+    </div>
+  );
+}
+
+function EmergencyContactsSectionCard({ userId, canEdit, onEditClick, canEditButton }: { userId: string, canEdit: boolean, onEditClick?: () => void, canEditButton?: boolean }) {
+  return (
+    <div className="rounded-xl border bg-white p-4">
+      <div className="mb-4 flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <div className="w-8 h-8 rounded bg-orange-100 flex items-center justify-center">
+            <svg className="w-5 h-5 text-orange-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+            </svg>
+          </div>
+          <h5 className="text-sm font-semibold text-orange-900">Emergency Contacts</h5>
+        </div>
+        {!canEdit && onEditClick && canEditButton && (
+          <button
+            onClick={onEditClick}
+            className="p-1.5 rounded hover:bg-gray-100 text-gray-600 hover:text-brand-red transition-colors"
+            title="Edit Emergency Contacts"
+          >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+            </svg>
+          </button>
+        )}
+      </div>
+      <div className="space-y-4">
+        <EmergencyContactsSection userId={userId} canEdit={canEdit} />
+      </div>
+    </div>
+  );
+}
+
+function OrganizationSection({ p, editable, userId, collectChanges, usersOptions, settings, userDivisions, selectedDivisions, onDivisionsChange, selectedProjectDivisions, onProjectDivisionsChange, canViewCompensation, onEditClick }: { p:any, editable:boolean, userId:string, collectChanges: (kv:Record<string,any>)=>void, usersOptions:any[], settings:any, userDivisions?: any[], selectedDivisions?: string[], onDivisionsChange?: (divisions: string[]) => void, selectedProjectDivisions?: string[], onProjectDivisionsChange?: (divisions: string[]) => void, canViewCompensation?: boolean, onEditClick?: () => void }){
   const isEditable = !!editable;
   const { data: projectDivisions } = useQuery({ 
     queryKey:['project-divisions'], 
@@ -4596,6 +4994,11 @@ function OrganizationSection({ p, editable, userId, collectChanges, usersOptions
   const [form, setForm] = useState<any>(()=>({
     job_title: p.job_title||'',
     manager_user_id: p.manager_user_id||'',
+    employment_type: p.employment_type||'',
+    hire_date: p.hire_date||'',
+    termination_date: p.termination_date||'',
+    work_email: p.work_email||'',
+    work_phone: p.work_phone||'',
   }));
   const [departmentDropdownOpen, setDepartmentDropdownOpen] = useState(false);
   const [projectDivisionDropdownOpen, setProjectDivisionDropdownOpen] = useState(false);
@@ -4604,14 +5007,14 @@ function OrganizationSection({ p, editable, userId, collectChanges, usersOptions
   
   useEffect(() => {
     if (editable && !prevEditableRef.current) {
-      setForm({ job_title: p.job_title||'', manager_user_id: p.manager_user_id||'' });
+      setForm({ job_title: p.job_title||'', manager_user_id: p.manager_user_id||'', employment_type: p.employment_type||'', hire_date: p.hire_date||'', termination_date: p.termination_date||'', work_email: p.work_email||'', work_phone: p.work_phone||'' });
       if (onProjectDivisionsChange) {
         const projectDivs = Array.isArray(p.project_division_ids) ? p.project_division_ids.map((id: any) => String(id)) : [];
         onProjectDivisionsChange(projectDivs);
       }
     }
     if (!editable && prevEditableRef.current) {
-      setForm({ job_title: p.job_title||'', manager_user_id: p.manager_user_id||'' });
+      setForm({ job_title: p.job_title||'', manager_user_id: p.manager_user_id||'', employment_type: p.employment_type||'', hire_date: p.hire_date||'', termination_date: p.termination_date||'', work_email: p.work_email||'', work_phone: p.work_phone||'' });
       if (onProjectDivisionsChange) {
         const projectDivs = Array.isArray(p.project_division_ids) ? p.project_division_ids.map((id: any) => String(id)) : [];
         onProjectDivisionsChange(projectDivs);
@@ -4690,91 +5093,172 @@ function OrganizationSection({ p, editable, userId, collectChanges, usersOptions
           </div>
           <h5 className="text-sm font-semibold text-purple-900">Organization</h5>
         </div>
+        {!isEditable && onEditClick && (
+          <button
+            onClick={onEditClick}
+            className="p-1.5 rounded hover:bg-gray-100 text-gray-600 hover:text-brand-red transition-colors"
+            title="Edit Organization"
+          >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+            </svg>
+          </button>
+        )}
       </div>
       
       <div className="space-y-4">
-        {/* Job Title */}
-        <div>
-          <div className="text-xs font-medium text-gray-600 mb-1.5">Job Title</div>
-          {isEditable? (
-            <input className="w-full rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-gray-900 focus:ring-1 focus:ring-gray-400 focus:border-gray-400" value={form.job_title} onChange={e=>onField('job_title', e.target.value)} placeholder="e.g. Project Manager" />
-          ) : (
-            <div className="text-sm font-semibold text-gray-900">{String(p.job_title||'') || '—'}</div>
-          )}
-        </div>
-        
-        {/* Supervisor */}
-        <div>
-          <div className="text-xs font-medium text-gray-600 mb-1.5">Supervisor</div>
-          {isEditable? (
-            <select className="w-full rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-gray-900 focus:ring-1 focus:ring-gray-400 focus:border-gray-400" value={form.manager_user_id} onChange={e=>onField('manager_user_id', e.target.value)}>
-              <option value="">Select...</option>
-              {(usersOptions||[]).map((u:any)=> (
-                <option key={u.id} value={u.id}><UserLabel id={u.id} fallback={u.username||u.email} /></option>
-              ))}
-            </select>
-          ) : (
-            <div className="text-sm font-semibold text-gray-900">{supervisor||'—'}</div>
-          )}
-        </div>
-        
-        {/* Departments */}
-        <div className="relative">
-          <div className="text-xs font-medium text-gray-600 mb-1.5">Departments</div>
-          {isEditable? (
-            (settings?.divisions?.length ? (
-              <div className="relative">
-                <button
-                  type="button"
-                  onClick={() => setDepartmentDropdownOpen(!departmentDropdownOpen)}
-                  className="w-full rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-left flex items-center justify-between"
-                >
-                  <span className={selectedDivisions && selectedDivisions.length > 0 ? 'text-gray-900' : 'text-gray-400'}>
-                    {selectedDivisions && selectedDivisions.length > 0 
-                      ? selectedDivisions.map((id: string) => {
-                          const division = settings.divisions.find((d: any) => String(d.id) === id);
-                          return division?.label || '';
-                        }).filter(Boolean).join(', ')
-                      : 'Select departments...'}
-                  </span>
-                  <span className="text-gray-400">▼</span>
-                </button>
-                {departmentDropdownOpen && (
-                  <>
-                    <div 
-                      className="fixed inset-0 z-10" 
-                      onClick={() => setDepartmentDropdownOpen(false)}
-                    />
-                    <div className="absolute z-20 w-full mt-1 bg-white border rounded-lg shadow-lg max-h-60 overflow-y-auto">
-                      {settings.divisions.map((it: any) => (
-                        <label
-                          key={it.id}
-                          className="flex items-center gap-2 px-3 py-2 hover:bg-gray-50 cursor-pointer"
-                          onClick={(e) => e.stopPropagation()}
-                        >
-                          <input
-                            type="checkbox"
-                            checked={selectedDivisions?.includes(String(it.id)) || false}
-                            onChange={() => handleDepartmentToggle(String(it.id))}
-                            className="rounded border-gray-300 text-brand-red focus:ring-brand-red"
-                          />
-                          <span className="text-xs">{it.label}</span>
-                        </label>
-                      ))}
-                    </div>
-                  </>
-                )}
-              </div>
+        {/* Job Title | Employment Type */}
+        <div className="grid md:grid-cols-2 gap-4">
+          <div>
+            <div className="text-xs font-medium text-gray-600 mb-1.5">Job Title</div>
+            {isEditable? (
+              <input className="w-full rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-gray-900 focus:ring-1 focus:ring-gray-400 focus:border-gray-400" value={form.job_title} onChange={e=>onField('job_title', e.target.value)} placeholder="e.g. Project Manager" />
             ) : (
-              <input className="w-full rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-gray-900" value={form.division} onChange={e=>onField('division', e.target.value)} />
-            ))
-          ) : (
-            <div className="text-sm font-semibold text-gray-900">
-              {userDivisions && userDivisions.length > 0
-                ? userDivisions.map((d: any) => d.label).join(', ')
-                : '—'}
-            </div>
-          )}
+              <div className="text-sm font-semibold text-gray-900">{String(p.job_title||'') || '—'}</div>
+            )}
+          </div>
+          <div>
+            <div className="text-xs font-medium text-gray-600 mb-1.5">Employment Type</div>
+            {isEditable? (
+              <select className="w-full rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-gray-900 focus:ring-1 focus:ring-gray-400 focus:border-gray-400" value={form.employment_type} onChange={e=>onField('employment_type', e.target.value)}>
+                <option value="">Select...</option>
+                <option value="Full-time">Full-time</option>
+                <option value="Hourly">Hourly</option>
+                <option value="Part-time">Part-time</option>
+                <option value="Salary">Salary</option>
+              </select>
+            ) : (
+              <div className="text-sm font-semibold text-gray-900">{String(p.employment_type||'') || '—'}</div>
+            )}
+          </div>
+        </div>
+        
+        {/* Supervisor | Hire Date */}
+        <div className="grid md:grid-cols-2 gap-4">
+          <div>
+            <div className="text-xs font-medium text-gray-600 mb-1.5">Supervisor</div>
+            {isEditable? (
+              <select className="w-full rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-gray-900 focus:ring-1 focus:ring-gray-400 focus:border-gray-400" value={form.manager_user_id} onChange={e=>onField('manager_user_id', e.target.value)}>
+                <option value="">Select...</option>
+                {(usersOptions||[]).map((u:any)=> (
+                  <option key={u.id} value={u.id}><UserLabel id={u.id} fallback={u.username||u.email} /></option>
+                ))}
+              </select>
+            ) : (
+              <div className="text-sm font-semibold text-gray-900">{supervisor||'—'}</div>
+            )}
+          </div>
+          <div>
+            <div className="text-xs font-medium text-gray-600 mb-1.5">Hire Date</div>
+            {isEditable? (
+              <input type="date" className="w-full rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-gray-900 focus:ring-1 focus:ring-gray-400 focus:border-gray-400" value={(form.hire_date||'').slice(0,10)} onChange={e=>onField('hire_date', e.target.value)} />
+            ) : (
+              <div className="text-sm font-semibold text-gray-900">{String(p.hire_date||'').slice(0,10) || '—'}</div>
+            )}
+          </div>
+        </div>
+        
+        {/* Department | Termination Date */}
+        <div className="grid md:grid-cols-2 gap-4">
+          {/* Departments */}
+          <div className="relative">
+            <div className="text-xs font-medium text-gray-600 mb-1.5">Departments</div>
+            {isEditable? (
+              (settings?.divisions?.length ? (
+                <div className="relative">
+                  <button
+                    type="button"
+                    onClick={() => setDepartmentDropdownOpen(!departmentDropdownOpen)}
+                    className="w-full rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-left flex items-center justify-between"
+                  >
+                    <span className={selectedDivisions && selectedDivisions.length > 0 ? 'text-gray-900' : 'text-gray-400'}>
+                      {selectedDivisions && selectedDivisions.length > 0 
+                        ? selectedDivisions.map((id: string) => {
+                            const division = settings.divisions.find((d: any) => String(d.id) === id);
+                            return division?.label || '';
+                          }).filter(Boolean).join(', ')
+                        : 'Select departments...'}
+                    </span>
+                    <span className="text-gray-400">▼</span>
+                  </button>
+                  {departmentDropdownOpen && (
+                    <>
+                      <div 
+                        className="fixed inset-0 z-10" 
+                        onClick={() => setDepartmentDropdownOpen(false)}
+                      />
+                      <div className="absolute z-20 w-full mt-1 bg-white border rounded-lg shadow-lg max-h-60 overflow-y-auto">
+                        {settings.divisions.map((it: any) => (
+                          <label
+                            key={it.id}
+                            className="flex items-center gap-2 px-3 py-2 hover:bg-gray-50 cursor-pointer"
+                            onClick={(e) => e.stopPropagation()}
+                          >
+                            <input
+                              type="checkbox"
+                              checked={selectedDivisions && selectedDivisions.includes(String(it.id))}
+                              onChange={() => {
+                                const newSelection = selectedDivisions && selectedDivisions.includes(String(it.id))
+                                  ? selectedDivisions.filter(id => id !== String(it.id))
+                                  : [...(selectedDivisions || []), String(it.id)];
+                                if (onDivisionsChange) {
+                                  onDivisionsChange(newSelection);
+                                }
+                              }}
+                              className="rounded border-gray-300"
+                            />
+                            <span className="text-xs text-gray-900">{it.label}</span>
+                          </label>
+                        ))}
+                      </div>
+                    </>
+                  )}
+                </div>
+              ) : (
+                <div className="text-sm font-semibold text-gray-900">
+                  {selectedDivisions && selectedDivisions.length > 0 && settings?.divisions
+                    ? selectedDivisions.map((id: string) => {
+                        const division = settings.divisions.find((d: any) => String(d.id) === id);
+                        return division?.label || '';
+                      }).filter(Boolean).join(', ')
+                    : (userDivisions && userDivisions.length > 0
+                      ? userDivisions.map((d: any) => d.label).join(', ')
+                      : (p.division || '—'))}
+                </div>
+              ))
+            ) : (
+              <div className="text-sm font-semibold text-gray-900">
+                {selectedDivisions && selectedDivisions.length > 0 && settings?.divisions
+                  ? selectedDivisions.map((id: string) => {
+                      const division = settings.divisions.find((d: any) => String(d.id) === id);
+                      return division?.label || '';
+                    }).filter(Boolean).join(', ')
+                  : (userDivisions && userDivisions.length > 0
+                    ? userDivisions.map((d: any) => d.label).join(', ')
+                    : (p.division || '—'))}
+              </div>
+            )}
+          </div>
+          <div>
+            <div className="text-xs font-medium text-gray-600 mb-1.5">Termination Date</div>
+            {isEditable? (
+              <input type="date" className="w-full rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-gray-900 focus:ring-1 focus:ring-gray-400 focus:border-gray-400" value={(form.termination_date||'').slice(0,10)} onChange={e=>onField('termination_date', e.target.value)} />
+            ) : (
+              <div className="text-sm font-semibold text-gray-900">{String(p.termination_date||'').slice(0,10) || '—'}</div>
+            )}
+          </div>
+        </div>
+        
+        {/* Work email and Work phone */}
+        <div className="grid md:grid-cols-2 gap-4">
+          <div>
+            <div className="text-xs font-medium text-gray-600 mb-1.5">Work email</div>
+            {isEditable? <input className="w-full rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-gray-900 focus:ring-1 focus:ring-gray-400 focus:border-gray-400" value={form.work_email} onChange={e=>onField('work_email', e.target.value)} /> : <div className="text-sm font-semibold text-gray-900">{String(p.work_email||'') || '—'}</div>}
+          </div>
+          <div>
+            <div className="text-xs font-medium text-gray-600 mb-1.5">Work phone</div>
+            {isEditable? <input className="w-full rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-gray-900 focus:ring-1 focus:ring-gray-400 focus:border-gray-400" value={form.work_phone} onChange={e=>onField('work_phone', e.target.value)} /> : <div className="text-sm font-semibold text-gray-900">{String(p.work_phone||'') || '—'}</div>}
+          </div>
         </div>
         
         {/* Project Divisions */}
@@ -4848,13 +5332,21 @@ function OrganizationSection({ p, editable, userId, collectChanges, usersOptions
               <div className="text-xs text-gray-500">Loading project divisions...</div>
             )
           ) : (
-            <div className="text-sm font-semibold text-gray-900">
+            <div className="space-y-1.5">
               {(selectedProjectDivisions || []).length > 0
                 ? (selectedProjectDivisions || []).map((id: string) => {
                     const division = allProjectDivisions.find((d: any) => String(d.id) === id);
-                    return division ? (division.isMain ? division.label : `${division.parentLabel} - ${division.label}`) : '';
-                  }).filter(Boolean).join(', ')
-                : '—'}
+                    if (!division) return null;
+                    const divisionLabel = division.isMain ? division.label : `${division.parentLabel} - ${division.label}`;
+                    const divisionIcon = getDivisionIcon(division.isMain ? division.label : division.parentLabel);
+                    return (
+                      <div key={id} className="flex items-center gap-1.5">
+                        <span className="text-xs">{divisionIcon}</span>
+                        <span className="text-sm font-semibold text-gray-900">{divisionLabel}</span>
+                      </div>
+                    );
+                  }).filter(Boolean)
+                : <div className="text-sm font-semibold text-gray-900">—</div>}
             </div>
           )}
         </div>
@@ -4864,6 +5356,11 @@ function OrganizationSection({ p, editable, userId, collectChanges, usersOptions
 }
 
 function TimeOffSection({ userId, canEdit }:{ userId:string, canEdit:boolean }){
+  const { data:me } = useQuery({ queryKey:['me'], queryFn: ()=> api<any>('GET','/auth/me') });
+  
+  // Ensure canEdit is true for admins
+  const hasEditPermission = canEdit || (me?.roles || []).some((r: string) => String(r || '').toLowerCase() === 'admin') || (me?.permissions || []).includes('users:write');
+  
   const { data:balances, refetch:refetchBalances } = useQuery({ 
     queryKey:['time-off-balance', userId], 
     queryFn: ()=> api<any[]>('GET', `/employees/${userId}/time-off/balance`) 
@@ -4885,6 +5382,14 @@ function TimeOffSection({ userId, canEdit }:{ userId:string, canEdit:boolean }){
   const [submitting, setSubmitting] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [syncingHistory, setSyncingHistory] = useState(false);
+  const [showAdjustModal, setShowAdjustModal] = useState(false);
+  const [adjustingBalance, setAdjustingBalance] = useState<any>(null);
+  const [selectedPolicyName, setSelectedPolicyName] = useState('');
+  const [adjustmentType, setAdjustmentType] = useState<'add' | 'subtract'>('add');
+  const [adjustmentDays, setAdjustmentDays] = useState('');
+  const [effectiveDate, setEffectiveDate] = useState(new Date().toISOString().split('T')[0]);
+  const [adjustmentNote, setAdjustmentNote] = useState('');
+  const [adjusting, setAdjusting] = useState(false);
   
   const calculateHours = () => {
     if (startDate && endDate) {
@@ -4969,6 +5474,53 @@ function TimeOffSection({ userId, canEdit }:{ userId:string, canEdit:boolean }){
     }
   };
   
+  const handleOpenAdjust = (balance: any) => {
+    setAdjustingBalance(balance);
+    setSelectedPolicyName(balance.policy_name || '');
+    setAdjustmentType('add');
+    setAdjustmentDays('');
+    setEffectiveDate(new Date().toISOString().split('T')[0]);
+    setAdjustmentNote('');
+    setShowAdjustModal(true);
+  };
+  
+  const handleAdjust = async () => {
+    const policyName = selectedPolicyName || adjustingBalance?.policy_name;
+    if (!policyName || !adjustmentDays || !effectiveDate || !adjustmentNote.trim()) {
+      toast.error('Please fill in all required fields');
+      return;
+    }
+    
+    const days = parseFloat(adjustmentDays);
+    if (isNaN(days) || days <= 0) {
+      toast.error('Amount must be greater than 0');
+      return;
+    }
+    
+    setAdjusting(true);
+    try {
+      await api('POST', `/employees/${userId}/time-off/balance/adjust`, {
+        policy_name: policyName,
+        adjustment_type: adjustmentType,
+        amount_days: days,
+        effective_date: effectiveDate,
+        note: adjustmentNote.trim()
+      });
+      toast.success('Balance adjusted successfully');
+      setShowAdjustModal(false);
+      setAdjustingBalance(null);
+      setSelectedPolicyName('');
+      setAdjustmentDays('');
+      setAdjustmentNote('');
+      refetchBalances();
+      refetchHistory();
+    } catch (error: any) {
+      toast.error(error?.message || 'Failed to adjust balance');
+    } finally {
+      setAdjusting(false);
+    }
+  };
+  
   const getStatusColor = (status: string) => {
     switch (status) {
       case 'approved': return 'bg-green-100 text-green-800';
@@ -4980,6 +5532,44 @@ function TimeOffSection({ userId, canEdit }:{ userId:string, canEdit:boolean }){
   
   const availablePolicies = balances?.map((b: any) => b.policy_name) || [];
   const totalBalance = balances?.reduce((sum: number, b: any) => sum + b.balance_hours, 0) || 0;
+  
+  // Ensure we always show cards for main policies (Sick Leave and Vacation), even if they don't exist in DB
+  const defaultPolicies = ['Sick Leave', 'Vacation'];
+  const displayedBalances = useMemo(() => {
+    if (!balances || balances.length === 0) {
+      // If no balances, show default policies as empty cards
+      return defaultPolicies.map(policy => ({
+        id: `default-${policy}`,
+        policy_name: policy,
+        balance_hours: 0,
+        accrued_hours: 0,
+        used_hours: 0,
+        year: new Date().getFullYear(),
+        isDefault: true
+      }));
+    }
+    
+    // Merge existing balances with default policies
+    const existingPolicyNames = balances.map((b: any) => b.policy_name);
+    const missingPolicies = defaultPolicies.filter(p => 
+      !existingPolicyNames.some((name: string) => name.toLowerCase().includes(p.toLowerCase()))
+    );
+    
+    const result = [...balances];
+    missingPolicies.forEach(policy => {
+      result.push({
+        id: `default-${policy}`,
+        policy_name: policy,
+        balance_hours: 0,
+        accrued_hours: 0,
+        used_hours: 0,
+        year: new Date().getFullYear(),
+        isDefault: true
+      });
+    });
+    
+    return result;
+  }, [balances]);
   const pendingRequests = requests?.filter((r: any) => r.status === 'pending') || [];
   const upcomingRequests = requests?.filter((r: any) => {
     if (r.status !== 'approved') return false;
@@ -5014,46 +5604,77 @@ function TimeOffSection({ userId, canEdit }:{ userId:string, canEdit:boolean }){
         <div className="grid md:grid-cols-2 gap-4">
           {/* Balance Section - Left */}
           <div className="rounded-lg border bg-gray-50 p-4">
-            <div className="flex items-center justify-between mb-3">
-              <h5 className="font-semibold flex items-center gap-2 text-sm">
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                </svg>
-                Available Balance
-              </h5>
-              <button
-                onClick={handleSync}
-                disabled={syncing}
-                className="px-3 py-1.5 rounded border border-blue-300 text-blue-700 text-sm font-medium hover:bg-blue-50 disabled:opacity-50"
-              >
-                {syncing ? 'Syncing...' : 'Sync'}
-              </button>
+            <div className="mb-4 flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 rounded bg-green-100 flex items-center justify-center">
+                  <svg className="w-5 h-5 text-green-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                  </svg>
+                </div>
+                <h5 className="text-sm font-semibold text-green-900">Available Balance</h5>
+              </div>
             </div>
-          {balances && balances.length > 0 ? (
-            <div className="space-y-3">
-              {balances.map((b: any) => {
+          {displayedBalances && displayedBalances.length > 0 ? (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              {displayedBalances.map((b: any) => {
                 const balanceDays = hoursToDays(b.balance_hours);
                 const isNegative = b.balance_hours < 0;
+                const isSickLeave = b.policy_name.toLowerCase().includes('sick');
+                const isVacation = b.policy_name.toLowerCase().includes('vacation') || b.policy_name.toLowerCase().includes('holiday');
                 return (
-                  <div key={b.id} className="p-3 bg-gray-50 rounded-lg border">
-                    <div className="flex items-center justify-between mb-1">
-                      <div className="font-medium text-sm">{b.policy_name}</div>
-                      <div className={`text-lg font-bold ${isNegative ? 'text-red-600' : 'text-brand-red'}`}>
+                  <div key={b.id} className="p-3 bg-white rounded-lg border border-gray-200 relative">
+                    {/* Edit button in top right corner */}
+                    {hasEditPermission && (
+                      <button
+                        onClick={() => handleOpenAdjust(b)}
+                        className="absolute top-1.5 right-1.5 p-1 rounded hover:bg-gray-100 text-gray-500 hover:text-brand-red transition-colors"
+                        title="Adjust Balance"
+                      >
+                        <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                        </svg>
+                      </button>
+                    )}
+                    {/* Icon and Balance */}
+                    <div className="flex items-center justify-center mb-2">
+                      {isSickLeave ? (
+                        <div className="w-8 h-8 rounded bg-red-100 flex items-center justify-center">
+                          <svg className="w-5 h-5 text-red-600" viewBox="0 0 24 24" fill="none">
+                            <path d="M12 8v4m0 4h.01" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
+                            <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="2"/>
+                          </svg>
+                        </div>
+                      ) : isVacation ? (
+                        <div className="w-8 h-8 rounded bg-blue-100 flex items-center justify-center">
+                          <svg className="w-5 h-5 text-blue-600" viewBox="0 0 24 24" fill="none">
+                            <path d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                          </svg>
+                        </div>
+                      ) : (
+                        <div className="w-8 h-8 rounded bg-green-100 flex items-center justify-center">
+                          <svg className="w-5 h-5 text-green-600" viewBox="0 0 24 24" fill="none">
+                            <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="2"/>
+                            <path d="M12 8v4l3 3" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                          </svg>
+                        </div>
+                      )}
+                    </div>
+                    <div className="text-center">
+                      <div className={`text-sm font-semibold ${isNegative ? 'text-red-600' : isSickLeave ? 'text-red-600' : isVacation ? 'text-blue-600' : 'text-green-600'}`}>
                         {isNegative ? '-' : ''}{balanceDays} Days
                       </div>
-                    </div>
-                    <div className="text-xs text-gray-600">
-                      {b.policy_name} Available
+                      <div className="text-xs font-medium text-gray-700 mt-0.5">
+                        {b.policy_name}
+                      </div>
+                      {b.isDefault && (
+                        <div className="text-[10px] text-orange-600 mt-0.5">(Not yet created)</div>
+                      )}
                     </div>
                   </div>
                 );
               })}
             </div>
-          ) : (
-            <div className="text-sm text-gray-600 py-4 text-center">
-              No balance found. Click "Sync" to load from BambooHR.
-            </div>
-          )}
+          ) : null}
         </div>
         
           {/* Upcoming Time Off - Right */}
@@ -5068,7 +5689,7 @@ function TimeOffSection({ userId, canEdit }:{ userId:string, canEdit:boolean }){
               {availablePolicies.length > 0 && (
                 <button
                   onClick={() => setShowRequestForm(true)}
-                  className="px-3 py-1.5 rounded border border-blue-300 text-blue-700 text-sm font-medium hover:bg-blue-50"
+                  className="px-2 py-1 rounded border border-blue-300 text-blue-700 text-xs font-medium hover:bg-blue-50"
                 >
                   Request Time Off
                 </button>
@@ -5111,46 +5732,95 @@ function TimeOffSection({ userId, canEdit }:{ userId:string, canEdit:boolean }){
               </svg>
               History
             </h5>
-            <button
-              onClick={handleSyncHistory}
-              disabled={syncingHistory}
-              className="px-3 py-1.5 rounded border border-blue-300 text-blue-700 text-sm font-medium hover:bg-blue-50 disabled:opacity-50"
-            >
-              {syncingHistory ? 'Syncing...' : 'Sync History'}
-            </button>
           </div>
-        {history && history.length > 0 ? (
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b">
-                  <th className="text-left py-2 px-2 font-semibold">Date</th>
-                  <th className="text-left py-2 px-2 font-semibold">Description</th>
-                  <th className="text-right py-2 px-2 font-semibold">Used Days (-)</th>
-                  <th className="text-right py-2 px-2 font-semibold">Earned Days (+)</th>
-                  <th className="text-right py-2 px-2 font-semibold">Balance</th>
-                </tr>
-              </thead>
-              <tbody>
-                {history.map((h: any) => (
-                  <tr key={h.id} className="border-b">
-                    <td className="py-2 px-2">{new Date(h.transaction_date).toLocaleDateString(undefined, { timeZone: 'UTC' })}</td>
-                    <td className="py-2 px-2 whitespace-pre-line">{h.description || 'Time off transaction'}</td>
-                    <td className="py-2 px-2 text-right">
-                      {h.used_days ? (h.used_days < 0 ? parseFloat(h.used_days).toFixed(2) : `-${parseFloat(h.used_days).toFixed(2)}`) : '—'}
-                    </td>
-                    <td className="py-2 px-2 text-right">
-                      {h.earned_days ? `+${parseFloat(h.earned_days).toFixed(2)}` : '—'}
-                    </td>
-                    <td className="py-2 px-2 text-right">
-                      {parseFloat(h.balance_after).toFixed(2)}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        ) : historyRequests.length > 0 ? (
+        {history && history.length > 0 ? (() => {
+          // Group history by policy
+          const groupedHistory = history.reduce((acc: any, h: any) => {
+            if (!acc[h.policy_name]) {
+              acc[h.policy_name] = [];
+            }
+            acc[h.policy_name].push(h);
+            return acc;
+          }, {});
+          
+          // Check if entry is a manual adjustment
+          const isManualAdjustment = (desc: string) => {
+            return desc && desc.includes('Adjusted by');
+          };
+          
+          return (
+            <div className="space-y-4">
+              {Object.entries(groupedHistory).map(([policyName, entries]: [string, any]) => (
+                <div key={policyName} className="border rounded-lg overflow-hidden">
+                  <div className="bg-gray-50 px-4 py-2 border-b">
+                    <h6 className="font-semibold text-sm text-gray-900">{policyName}</h6>
+                  </div>
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-sm">
+                      <thead>
+                        <tr className="border-b bg-gray-50">
+                          <th className="text-left py-2 px-3 font-semibold text-xs">Date</th>
+                          <th className="text-left py-2 px-3 font-semibold text-xs">Description</th>
+                          <th className="text-right py-2 px-3 font-semibold text-xs">Used Days (-)</th>
+                          <th className="text-right py-2 px-3 font-semibold text-xs">Earned Days (+)</th>
+                          <th className="text-right py-2 px-3 font-semibold text-xs">Balance</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {entries.map((h: any) => {
+                          const isAdjustment = isManualAdjustment(h.description || '');
+                          return (
+                            <tr key={h.id} className={`border-b ${isAdjustment ? 'bg-blue-50' : ''}`}>
+                              <td className="py-2 px-3">
+                                {new Date(h.transaction_date).toLocaleDateString(undefined, { 
+                                  year: 'numeric',
+                                  month: 'short',
+                                  day: 'numeric',
+                                  timeZone: 'UTC' 
+                                })}
+                              </td>
+                              <td className="py-2 px-3">
+                                <div className="flex items-center gap-2">
+                                  {isAdjustment && (
+                                    <span className="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-800">
+                                      <svg className="w-3 h-3 mr-1" fill="currentColor" viewBox="0 0 20 20">
+                                        <path d="M11 3a1 1 0 100 2h2.586l-6.293 6.293a1 1 0 101.414 1.414L15 6.414V9a1 1 0 102 0V4a1 1 0 00-1-1h-5z" />
+                                        <path d="M5 5a2 2 0 00-2 2v8a2 2 0 002 2h8a2 2 0 002-2v-3a1 1 0 10-2 0v3H5V7h3a1 1 0 000-2H5z" />
+                                      </svg>
+                                      Adjustment
+                                    </span>
+                                  )}
+                                  <span className="whitespace-pre-line text-xs">{h.description || 'Time off transaction'}</span>
+                                </div>
+                              </td>
+                              <td className="py-2 px-3 text-right">
+                                {h.used_days ? (
+                                  <span className="text-red-600 font-medium">
+                                    {h.used_days < 0 ? parseFloat(h.used_days).toFixed(2) : `-${parseFloat(h.used_days).toFixed(2)}`}
+                                  </span>
+                                ) : '—'}
+                              </td>
+                              <td className="py-2 px-3 text-right">
+                                {h.earned_days ? (
+                                  <span className="text-green-600 font-medium">
+                                    +{parseFloat(h.earned_days).toFixed(2)}
+                                  </span>
+                                ) : '—'}
+                              </td>
+                              <td className="py-2 px-3 text-right font-semibold">
+                                {parseFloat(h.balance_after).toFixed(2)} days
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              ))}
+            </div>
+          );
+        })() : historyRequests.length > 0 ? (
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
@@ -5198,7 +5868,7 @@ function TimeOffSection({ userId, canEdit }:{ userId:string, canEdit:boolean }){
             <div className="text-lg font-semibold mb-4">Request Time Off</div>
             <div className="space-y-3">
               <div>
-                <label className="text-xs text-gray-600">Policy</label>
+                <label className="text-xs text-gray-600">Policy*</label>
                 <select
                   className="w-full border rounded px-3 py-2"
                   value={policyName}
@@ -5209,10 +5879,31 @@ function TimeOffSection({ userId, canEdit }:{ userId:string, canEdit:boolean }){
                     <option key={p} value={p}>{p}</option>
                   ))}
                 </select>
+                {policyName && balances && (() => {
+                  const selectedBalance = balances.find((b: any) => b.policy_name === policyName);
+                  const isSickLeave = policyName.toLowerCase().includes('sick');
+                  if (selectedBalance) {
+                    const availableDays = hoursToDays(selectedBalance.balance_hours);
+                    return (
+                      <div className={`mt-1 text-xs ${parseFloat(availableDays) >= 0 ? 'text-gray-600' : 'text-orange-600'}`}>
+                        Available balance: {availableDays} days
+                        {isSickLeave && (
+                          <div className="mt-1 p-2 bg-blue-50 border border-blue-200 rounded text-blue-800">
+                            <svg className="w-4 h-4 inline mr-1" fill="currentColor" viewBox="0 0 20 20">
+                              <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
+                            </svg>
+                            Sick leave requests are allowed even without sufficient balance.
+                          </div>
+                        )}
+                      </div>
+                    );
+                  }
+                  return null;
+                })()}
               </div>
               <div className="grid grid-cols-2 gap-2">
                 <div>
-                  <label className="text-xs text-gray-600">Start Date</label>
+                  <label className="text-xs text-gray-600">Start Date*</label>
                   <input
                     type="date"
                     className="w-full border rounded px-3 py-2"
@@ -5221,7 +5912,7 @@ function TimeOffSection({ userId, canEdit }:{ userId:string, canEdit:boolean }){
                   />
                 </div>
                 <div>
-                  <label className="text-xs text-gray-600">End Date</label>
+                  <label className="text-xs text-gray-600">End Date*</label>
                   <input
                     type="date"
                     className="w-full border rounded px-3 py-2"
@@ -5230,6 +5921,31 @@ function TimeOffSection({ userId, canEdit }:{ userId:string, canEdit:boolean }){
                   />
                 </div>
               </div>
+              {startDate && endDate && policyName && (() => {
+                const days = Math.ceil((new Date(endDate).getTime() - new Date(startDate).getTime()) / (1000 * 60 * 60 * 24)) + 1;
+                const selectedBalance = balances?.find((b: any) => b.policy_name === policyName);
+                const isSickLeave = policyName.toLowerCase().includes('sick');
+                const availableDays = selectedBalance ? parseFloat(hoursToDays(selectedBalance.balance_hours)) : 0;
+                const hasEnoughBalance = isSickLeave || availableDays >= days;
+                return (
+                  <div className={`p-3 rounded-lg border ${hasEnoughBalance ? 'bg-green-50 border-green-200' : 'bg-yellow-50 border-yellow-200'}`}>
+                    <div className="text-sm font-medium text-gray-700">
+                      Request Summary
+                    </div>
+                    <div className="text-xs text-gray-600 mt-1">
+                      You are requesting <strong>{days} days</strong> of {policyName}
+                    </div>
+                    <div className="text-xs text-gray-600">
+                      Available balance: <strong>{availableDays.toFixed(1)} days</strong>
+                    </div>
+                    {!hasEnoughBalance && !isSickLeave && (
+                      <div className="text-xs text-red-600 mt-1 font-medium">
+                        Insufficient balance. You need {days} days but only have {availableDays.toFixed(1)} days available.
+                      </div>
+                    )}
+                  </div>
+                );
+              })()}
               <div>
                 <label className="text-xs text-gray-600">Hours (auto-calculated)</label>
                 <input
@@ -5241,13 +5957,15 @@ function TimeOffSection({ userId, canEdit }:{ userId:string, canEdit:boolean }){
                 />
               </div>
               <div>
-                <label className="text-xs text-gray-600">Notes (optional)</label>
+                <label className="text-xs text-gray-600">
+                  {policyName?.toLowerCase().includes('sick') ? 'Reason/Justification*' : 'Notes (optional)'}
+                </label>
                 <textarea
                   className="w-full border rounded px-3 py-2"
                   rows={3}
                   value={notes}
                   onChange={(e) => setNotes(e.target.value)}
-                  placeholder="Reason for time off..."
+                  placeholder={policyName?.toLowerCase().includes('sick') ? 'Please provide a reason for your sick leave request...' : 'Reason for time off...'}
                 />
               </div>
             </div>
@@ -5271,6 +5989,166 @@ function TimeOffSection({ userId, canEdit }:{ userId:string, canEdit:boolean }){
                 className="px-3 py-2 rounded bg-brand-red text-white disabled:opacity-50"
               >
                 {submitting ? 'Submitting...' : 'Submit Request'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      
+      {showAdjustModal && adjustingBalance && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50" onClick={() => setShowAdjustModal(false)}>
+          <div className="bg-white rounded-xl w-full max-w-lg p-6" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-xl font-semibold text-brand-red">
+                {adjustingBalance.policy_name ? `Adjust ${adjustingBalance.policy_name} Balance` : 'Adjust Time Off Balance'}
+              </h3>
+              <button
+                onClick={() => {
+                  setShowAdjustModal(false);
+                  setAdjustingBalance(null);
+                  setSelectedPolicyName('');
+                }}
+                className="text-gray-400 hover:text-gray-600"
+              >
+                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+            
+            {/* Adjustment Form */}
+            <div className="space-y-4">
+              {/* Policy Selection - always show if multiple balances exist, or if no policy selected */}
+              {((displayedBalances && displayedBalances.length > 1) || !adjustingBalance.policy_name) && (
+                <div>
+                  <label className="text-sm font-medium text-gray-700 mb-1 block">Policy*</label>
+                  <select
+                    value={selectedPolicyName || adjustingBalance.policy_name || ''}
+                    onChange={(e) => {
+                      setSelectedPolicyName(e.target.value);
+                      // Update adjustingBalance with selected policy
+                      const selectedBalance = displayedBalances?.find((b: any) => b.policy_name === e.target.value);
+                      if (selectedBalance) {
+                        setAdjustingBalance(selectedBalance);
+                      } else {
+                        setAdjustingBalance({ policy_name: e.target.value, balance_hours: undefined });
+                      }
+                    }}
+                    className="w-full border rounded px-3 py-2"
+                  >
+                    <option value="">Select policy...</option>
+                    {displayedBalances && displayedBalances.length > 0 ? (
+                      displayedBalances.map((b: any) => (
+                        <option key={b.id} value={b.policy_name}>{b.policy_name}</option>
+                      ))
+                    ) : (
+                      <>
+                        <option value="Vacation">Vacation</option>
+                        <option value="Sick Leave">Sick Leave</option>
+                        <option value="Personal Days">Personal Days</option>
+                        <option value="Holiday">Holiday</option>
+                      </>
+                    )}
+                  </select>
+                </div>
+              )}
+              
+              <div>
+                <label className="text-sm font-medium text-gray-700 mb-1 block">Amount*</label>
+                <div className="flex gap-2">
+                  <select
+                    value={adjustmentType}
+                    onChange={(e) => setAdjustmentType(e.target.value as 'add' | 'subtract')}
+                    className="border rounded px-3 py-2 text-sm"
+                  >
+                    <option value="add">Add</option>
+                    <option value="subtract">Subtract</option>
+                  </select>
+                  <input
+                    type="number"
+                    step="0.5"
+                    min="0.5"
+                    value={adjustmentDays}
+                    onChange={(e) => setAdjustmentDays(e.target.value)}
+                    className="flex-1 border rounded px-3 py-2"
+                    placeholder="0"
+                  />
+                  <span className="px-3 py-2 text-sm text-gray-600">days</span>
+                </div>
+              </div>
+              
+              <div>
+                <label className="text-sm font-medium text-gray-700 mb-1 block">Effective Date*</label>
+                <input
+                  type="date"
+                  value={effectiveDate}
+                  onChange={(e) => setEffectiveDate(e.target.value)}
+                  className="w-full border rounded px-3 py-2"
+                />
+              </div>
+              
+              <div>
+                <label className="text-sm font-medium text-gray-700 mb-1 block">Note*</label>
+                <textarea
+                  value={adjustmentNote}
+                  onChange={(e) => setAdjustmentNote(e.target.value)}
+                  className="w-full border rounded px-3 py-2"
+                  rows={3}
+                  placeholder="Reason for adjustment..."
+                />
+              </div>
+              
+              {/* Summary */}
+              {adjustingBalance.policy_name && (
+                <div className="p-4 bg-blue-50 rounded-lg border border-blue-200">
+                  <div className="space-y-2 text-sm">
+                    <div className="flex justify-between">
+                      <span className="text-gray-700">Current {adjustingBalance.policy_name} Balance:</span>
+                      <span className="font-semibold">
+                        {adjustingBalance.balance_hours !== undefined 
+                          ? hoursToDays(adjustingBalance.balance_hours) 
+                          : '0'} days
+                      </span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-gray-700">
+                        {adjustmentType === 'add' ? 'Added' : 'Subtracted'}:
+                      </span>
+                      <span className={`font-semibold ${adjustmentType === 'add' ? 'text-green-600' : 'text-red-600'}`}>
+                        {adjustmentDays ? (adjustmentType === 'add' ? '+' : '-') + adjustmentDays : '0'} days
+                      </span>
+                    </div>
+                    <div className="flex justify-between pt-2 border-t border-blue-300">
+                      <span className="font-semibold text-gray-900">New {adjustingBalance.policy_name} Balance:</span>
+                      <span className="font-bold text-brand-red">
+                        {adjustmentDays
+                          ? (parseFloat(adjustingBalance.balance_hours !== undefined ? hoursToDays(adjustingBalance.balance_hours) : '0') + 
+                             (adjustmentType === 'add' ? parseFloat(adjustmentDays) : -parseFloat(adjustmentDays))).toFixed(1)
+                          : (adjustingBalance.balance_hours !== undefined ? hoursToDays(adjustingBalance.balance_hours) : '0')} days
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+            
+            <div className="mt-6 flex justify-end gap-2">
+              <button
+                onClick={() => {
+                  setShowAdjustModal(false);
+                  setAdjustingBalance(null);
+                  setSelectedPolicyName('');
+                }}
+                className="px-4 py-2 rounded border text-sm hover:bg-gray-50"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleAdjust}
+                disabled={adjusting || !adjustmentDays || !effectiveDate || !adjustmentNote.trim() || (!selectedPolicyName && !adjustingBalance?.policy_name)}
+                className="px-4 py-2 rounded bg-brand-red text-white text-sm disabled:opacity-50 hover:bg-red-700"
+              >
+                {adjusting ? 'Saving...' : 'Save'}
               </button>
             </div>
           </div>

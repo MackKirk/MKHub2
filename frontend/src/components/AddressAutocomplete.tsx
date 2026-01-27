@@ -145,6 +145,11 @@ export default function AddressAutocomplete({
       
       console.log('Place selected:', place);
       
+      if (!place || !place.place_id) {
+        console.warn('Place is invalid or missing place_id');
+        return;
+      }
+      
       if (!place.address_components || !place.geometry) {
         console.warn('Place missing address_components or geometry');
         return;
@@ -201,22 +206,14 @@ export default function AddressAutocomplete({
         }
       });
 
-      // Build formatted address for display (full address with city, province, country)
-      // This matches what Google shows in the autocomplete dropdown
-      const addressParts = [];
+      // Build street address (number + route) for address_line1
       const streetAddress = address_line1.trim();
-      if (streetAddress) addressParts.push(streetAddress);
-      if (city) addressParts.push(city);
-      if (province) addressParts.push(province);
-      if (country) addressParts.push(country);
-      const formattedFullAddress = addressParts.join(', ');
       
-      // Use formatted_address from Google if available, otherwise build our own
-      const displayAddress = place.formatted_address || formattedFullAddress || streetAddress;
+      // Use formatted_address from Google for display, but keep street address separate
+      const displayAddress = place.formatted_address || streetAddress;
       
       console.log('Parsed address:', {
         streetAddress,
-        formattedFullAddress,
         displayAddress,
         address_line2,
         city,
@@ -264,7 +261,10 @@ export default function AddressAutocomplete({
     // Add listener for place selection
     const listener = autocomplete.addListener('place_changed', () => {
       console.log('place_changed event fired');
-      handlePlaceSelect();
+      // Use setTimeout to ensure the place is fully loaded
+      setTimeout(() => {
+        handlePlaceSelect();
+      }, 100);
     });
     console.log('Added place_changed listener');
 
@@ -272,6 +272,7 @@ export default function AddressAutocomplete({
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Enter') {
         console.log('Enter key pressed, checking for place...');
+        e.preventDefault(); // Prevent form submission
         setTimeout(() => {
           const place = autocomplete.getPlace();
           if (place && place.place_id) {
@@ -290,7 +291,7 @@ export default function AddressAutocomplete({
           console.log('Place found on blur:', place);
           handlePlaceSelect();
         }
-      }, 200);
+      }, 300);
     };
 
     const inputElement = inputRef.current;

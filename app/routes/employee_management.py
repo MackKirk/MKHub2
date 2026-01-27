@@ -33,11 +33,12 @@ def get_user_divisions(
     _=Depends(require_permissions("users:read", "hr:users:read", "hr:users:view:general"))
 ):
     """Get all divisions for a user"""
-    user = db.query(User).filter(User.id == user_id).first()
+    from sqlalchemy.orm import joinedload
+    user = db.query(User).options(joinedload(User.divisions)).filter(User.id == user_id).first()
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
     
-    divisions = user.divisions if hasattr(user, 'divisions') else []
+    divisions = user.divisions if hasattr(user, 'divisions') and user.divisions else []
     return [{"id": str(d.id), "label": d.label, "value": d.value} for d in divisions]
 
 
@@ -1374,6 +1375,124 @@ def sync_time_off_balance(
         raise HTTPException(status_code=500, detail=f"Error syncing time off balance: {str(e)}")
 
 
+@router.post("/{user_id}/time-off/balance/adjust")
+def adjust_time_off_balance(
+    user_id: str,
+    payload: dict = Body(...),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+    _=Depends(require_permissions("users:write"))
+):
+    """Manually adjust time off balance for a user"""
+    user = db.query(User).filter(User.id == user_id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    
+    # Validate required fields
+    policy_name = payload.get("policy_name")
+    adjustment_type = payload.get("adjustment_type")  # "add" or "subtract"
+    amount_days = payload.get("amount_days")
+    effective_date_str = payload.get("effective_date")
+    note = payload.get("note")
+    
+    if not policy_name:
+        raise HTTPException(status_code=400, detail="policy_name is required")
+    if adjustment_type not in ["add", "subtract"]:
+        raise HTTPException(status_code=400, detail="adjustment_type must be 'add' or 'subtract'")
+    if not amount_days or float(amount_days) <= 0:
+        raise HTTPException(status_code=400, detail="amount_days must be greater than 0")
+    if not effective_date_str:
+        raise HTTPException(status_code=400, detail="effective_date is required")
+    if not note or not note.strip():
+        raise HTTPException(status_code=400, detail="note is required")
+    
+    try:
+        effective_date = datetime.fromisoformat(effective_date_str.split('T')[0]).date()
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid date format. Use YYYY-MM-DD")
+    
+    # Get or create balance for current year
+    current_year = datetime.now().year
+    balance = db.query(TimeOffBalance).filter(
+        TimeOffBalance.user_id == user.id,
+        TimeOffBalance.policy_name == policy_name,
+        TimeOffBalance.year == current_year
+    ).first()
+    
+    if not balance:
+        # Create new balance record
+        balance = TimeOffBalance(
+            id=uuid_lib.uuid4(),
+            user_id=user.id,
+            policy_name=policy_name,
+            balance_hours=0.0,
+            accrued_hours=0.0,
+            used_hours=0.0,
+            year=current_year,
+            created_at=datetime.now(timezone.utc),
+            updated_at=datetime.now(timezone.utc)
+        )
+        db.add(balance)
+        db.flush()
+    
+    # Convert days to hours (8 hours per day)
+    amount_hours = float(amount_days) * 8.0
+    
+    # Calculate new balance
+    current_balance_hours = float(balance.balance_hours)
+    if adjustment_type == "add":
+        new_balance_hours = current_balance_hours + amount_hours
+        balance.accrued_hours = float(balance.accrued_hours) + amount_hours
+    else:  # subtract
+        new_balance_hours = current_balance_hours - amount_hours
+        balance.used_hours = float(balance.used_hours) + amount_hours
+    
+    balance.balance_hours = new_balance_hours
+    balance.updated_at = datetime.now(timezone.utc)
+    
+    # Get admin name from profile or use username/email
+    admin_profile = db.query(EmployeeProfile).filter(EmployeeProfile.user_id == current_user.id).first()
+    if admin_profile and admin_profile.first_name:
+        admin_name = f"{admin_profile.first_name or ''} {admin_profile.last_name or ''}".strip() or current_user.username or current_user.email_personal
+    else:
+        admin_name = current_user.username or current_user.email_personal or current_user.email_corporate or "Admin"
+    
+    description = f"{note.strip()} (Adjusted by {admin_name})"
+    
+    # Calculate balance in days for history
+    new_balance_days = new_balance_hours / 8.0
+    
+    history = TimeOffHistory(
+        id=uuid_lib.uuid4(),
+        user_id=user.id,
+        policy_name=policy_name,
+        transaction_date=effective_date,
+        description=description,
+        earned_days=float(amount_days) if adjustment_type == "add" else None,
+        used_days=float(amount_days) if adjustment_type == "subtract" else None,
+        balance_after=new_balance_days,
+        created_at=datetime.now(timezone.utc)
+    )
+    db.add(history)
+    
+    try:
+        db.commit()
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Error adjusting balance: {str(e)}")
+    
+    return {
+        "id": str(balance.id),
+        "policy_name": balance.policy_name,
+        "balance_hours": float(balance.balance_hours),
+        "balance_days": new_balance_days,
+        "accrued_hours": float(balance.accrued_hours),
+        "used_hours": float(balance.used_hours),
+        "year": balance.year,
+        "message": f"Balance adjusted successfully"
+    }
+
+
 @router.get("/{user_id}/time-off/requests")
 def get_time_off_requests(
     user_id: str,
@@ -1417,16 +1536,17 @@ def create_time_off_request(
     user_id: str,
     payload: dict = Body(...),
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_user),
+    _=Depends(require_permissions("users:write", "hr:users:write"))
 ):
     """Create a new time off request"""
     user = db.query(User).filter(User.id == user_id).first()
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
     
-    # Users can only create requests for themselves
-    if str(current_user.id) != user_id:
-        raise HTTPException(status_code=403, detail="You can only create time off requests for yourself")
+    # Users can create requests for themselves, or admins/HR can create for others
+    if str(current_user.id) != user_id and not _:
+        raise HTTPException(status_code=403, detail="You can only create time off requests for yourself, or you need admin/HR permissions to create requests for others")
     
     # Validate required fields
     policy_name = payload.get("policy_name")
@@ -1456,6 +1576,8 @@ def create_time_off_request(
         hours = float(hours)
     
     # Check if user has enough balance
+    # For "Sick Leave", allow request even without sufficient balance
+    is_sick_leave = policy_name and policy_name.lower().strip() in ["sick leave", "sick"]
     current_year = datetime.now().year
     balance = db.query(TimeOffBalance).filter(
         TimeOffBalance.user_id == user.id,
@@ -1463,11 +1585,18 @@ def create_time_off_request(
         TimeOffBalance.year == current_year
     ).first()
     
-    if balance and float(balance.balance_hours) < hours:
-        raise HTTPException(
-            status_code=400,
-            detail=f"Insufficient balance. Available: {balance.balance_hours} hours, Requested: {hours} hours"
-        )
+    # Only check balance for non-sick-leave policies
+    if not is_sick_leave:
+        if balance and float(balance.balance_hours) < hours:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Insufficient balance. Available: {balance.balance_hours} hours, Requested: {hours} hours"
+            )
+        elif not balance:
+            raise HTTPException(
+                status_code=400,
+                detail=f"No balance found for policy '{policy_name}'. Please contact HR to set up your time off balance."
+            )
     
     # Create request
     request = TimeOffRequest(
