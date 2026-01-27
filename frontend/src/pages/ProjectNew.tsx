@@ -175,35 +175,48 @@ export default function ProjectNew(){
 
   return (
     <>
-    <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center overflow-y-auto">
-      <div className="w-[900px] max-w-[95vw] max-h-[90vh] bg-white rounded-xl overflow-hidden flex flex-col">
-        <div className="bg-gradient-to-br from-[#7f1010] to-[#a31414] p-6 relative">
-          <button onClick={()=> nav(-1)} className="absolute top-4 right-4 text-white/80 hover:text-white text-2xl font-bold w-8 h-8 flex items-center justify-center rounded hover:bg-white/10" title="Close">×</button>
-          <div className="text-2xl font-extrabold text-white">{isBidding ? 'New Opportunity' : 'New Project'}</div>
-          <div className="text-sm text-white/80 mt-1">{step===1? 'Provide basic details and site' : 'Setup options and cover'}</div>
-        </div>
-        <div className="overflow-y-auto">
-          <div className="p-6 grid md:grid-cols-2 gap-4 items-start">
-            <div className="md:col-span-2 mb-2">
-              <div className="inline-flex items-center gap-2 text-xs text-gray-600">
-                <span className={step===1? 'px-2 py-0.5 rounded-full bg-brand-red text-white' : 'px-2 py-0.5 rounded-full bg-gray-100'}>Step 1</span>
-                <span>→</span>
-                <span className={step===2? 'px-2 py-0.5 rounded-full bg-brand-red text-white' : 'px-2 py-0.5 rounded-full bg-gray-100'}>Step 2</span>
+    <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center overflow-y-auto p-4">
+      <div className="w-[900px] max-w-[95vw] max-h-[90vh] bg-gray-100 rounded-xl overflow-hidden flex flex-col border border-gray-200 shadow-xl">
+        {/* Title bar - same style as Opportunities / ProjectDetail */}
+        <div className="rounded-t-xl border-b border-gray-200 bg-white p-4 flex-shrink-0">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <button
+                onClick={()=> nav(-1)}
+                className="p-1.5 rounded hover:bg-gray-100 transition-colors flex items-center justify-center"
+                title="Close"
+              >
+                <svg className="w-4 h-4 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+                </svg>
+              </button>
+              <div>
+                <div className="text-sm font-semibold text-gray-900">{isBidding ? 'New Opportunity' : 'New Project'}</div>
+                <div className="text-xs text-gray-500 mt-0.5">{step === 1 ? 'Basic details and site' : 'Options and cover'}</div>
               </div>
             </div>
+            <div className="inline-flex items-center gap-2 text-[10px] font-medium text-gray-500">
+              <span className={step === 1 ? 'px-2 py-1 rounded-full bg-gray-900 text-white' : 'px-2 py-1 rounded-full bg-gray-200 text-gray-600'}>Step 1</span>
+              <span className="text-gray-400">→</span>
+              <span className={step === 2 ? 'px-2 py-1 rounded-full bg-gray-900 text-white' : 'px-2 py-1 rounded-full bg-gray-200 text-gray-600'}>Step 2</span>
+            </div>
+          </div>
+        </div>
+        <div className="overflow-y-auto flex-1 p-4">
+          <div className="rounded-xl border bg-white p-4 grid md:grid-cols-2 gap-4 items-start">
             {step===1 ? ( <>
             <div className="md:col-span-2">
-              <label className="text-xs text-gray-600">Name *</label>
-              <input className={`w-full border rounded px-3 py-2 ${!nameValid? 'border-red-500':''}`} value={name} onChange={e=>setName(e.target.value)} />
-              {!nameValid && <div className="text-[11px] text-red-600 mt-1">Required</div>}
+              <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">Name *</label>
+              <input className={`w-full border border-gray-200 rounded-lg px-3 py-2 text-sm ${!nameValid ? 'border-red-500 focus:ring-red-500' : 'focus:ring-gray-300 focus:border-gray-300'}`} value={name} onChange={e=>setName(e.target.value)} />
+              {!nameValid && <div className="text-[10px] text-red-600 mt-1">Required</div>}
             </div>
                 
             <div>
-              <label className="text-xs text-gray-600">Customer *</label>
+              <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">Customer *</label>
               {initialClientId ? (
                 <div className="relative">
                   <input 
-                    className={`w-full border rounded px-3 py-2 bg-gray-50 ${!clientValid? 'border-red-500':''}`} 
+                    className={`w-full border border-gray-200 rounded-lg px-3 py-2 text-sm bg-gray-50 ${!clientValid ? 'border-red-500' : ''}`} 
                     value={selectedClient ? (selectedClient.display_name||selectedClient.name||selectedClient.id) : ''} 
                     readOnly
                     disabled
@@ -214,7 +227,7 @@ export default function ProjectNew(){
                   <div className="flex items-center gap-2">
                     <div className="flex-1 relative">
                       <input 
-                        className={`w-full border rounded px-3 py-2 ${!clientValid? 'border-red-500':''}`} 
+                        className={`w-full border border-gray-200 rounded-lg px-3 py-2 text-sm ${!clientValid ? 'border-red-500' : ''}`} 
                         placeholder="Search customer..." 
                         value={clientSearch} 
                         onChange={e=> {
@@ -280,7 +293,7 @@ export default function ProjectNew(){
                     <button
                       type="button"
                       onClick={() => setClientModalOpen(true)}
-                      className="px-3 py-2 rounded border text-gray-600 hover:bg-gray-50 flex-shrink-0"
+                      className="px-3 py-2 rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50 flex-shrink-0"
                       title="Browse all customers"
                     >
                       <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -294,35 +307,38 @@ export default function ProjectNew(){
             </div>
             {!!clientId && (
               <div className="md:col-span-2">
-                <label className="text-xs text-gray-600">Customer contact</label>
-                <select className="w-full border rounded px-3 py-2" value={contactId} onChange={e=> setContactId(e.target.value)}>
+                <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">Customer contact</label>
+                <select className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" value={contactId} onChange={e=> setContactId(e.target.value)}>
                   <option value="">Select...</option>
                   {(contacts||[]).map((c:any)=> <option key={c.id} value={c.id}>{c.name||c.email||c.phone||c.id}</option>)}
                 </select>
               </div>
             )}
-            <div className="md:col-span-2"><label className="text-xs text-gray-600">Description</label><textarea className="w-full border rounded px-3 py-2" rows={3} value={desc} onChange={e=>setDesc(e.target.value)} /></div>
+            <div className="md:col-span-2">
+              <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">Description</label>
+              <textarea className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" rows={3} value={desc} onChange={e=>setDesc(e.target.value)} />
+            </div>
 
             {!!clientId && (
               <div className="md:col-span-2">
                 <div className="flex items-center justify-between mb-2">
-                  <label className="text-sm text-gray-700">Site</label>
-                  <label className="text-xs flex items-center gap-2"><input type="checkbox" checked={createSite} onChange={e=> setCreateSite(e.target.checked)} /> Create new site</label>
+                  <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide">Site</label>
+                  <label className="text-xs text-gray-600 flex items-center gap-2 cursor-pointer"><input type="checkbox" checked={createSite} onChange={e=> setCreateSite(e.target.checked)} className="rounded border-gray-300" /> Create new site</label>
                 </div>
                 {!createSite ? (
-                  <select className={`w-full border rounded px-3 py-2 ${clientValid && !siteValid? 'border-red-500':''}`} value={siteId} onChange={e=> setSiteId(e.target.value)}>
+                  <select className={`w-full border rounded-lg px-3 py-2 text-sm ${clientValid && !siteValid ? 'border-red-500' : 'border-gray-200'}`} value={siteId} onChange={e=> setSiteId(e.target.value)}>
                     <option value="">Select site...</option>
                     {(sites||[]).map(s=> <option key={String(s.id)} value={String(s.id)}>{s.site_name||s.site_address_line1||String(s.id)}</option>)}
                   </select>
                   ) : (
                   <div className="grid md:grid-cols-2 gap-3">
                     <div className="md:col-span-2">
-                      <label className="text-xs text-gray-600">Site name</label>
-                      <input className={`w-full border rounded px-3 py-2 ${clientValid && !siteValid? 'border-red-500':''}`} value={siteForm.site_name||''} onChange={e=>setSiteField('site_name', e.target.value)} />
+                      <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">Site name</label>
+                      <input className={`w-full border rounded-lg px-3 py-2 text-sm ${clientValid && !siteValid ? 'border-red-500' : 'border-gray-200'}`} value={siteForm.site_name||''} onChange={e=>setSiteField('site_name', e.target.value)} />
                       {clientValid && !siteValid && <div className="text-[11px] text-red-600 mt-1">Provide at least a name or address</div>}
                     </div>
                     <div>
-                      <label className="text-xs text-gray-600">Address 1</label>
+                      <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">Address 1</label>
                       <AddressAutocomplete
                         value={siteForm.site_address_line1||''}
                         onChange={(value) => setSiteField('site_address_line1', value)}
@@ -342,55 +358,58 @@ export default function ProjectNew(){
                           }));
                         }}
                         placeholder="Start typing an address..."
-                        className="w-full border rounded px-3 py-2"
+                        className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"
                       />
                     </div>
                     <div>
-                      <label className="text-xs text-gray-600">Address 2</label>
+                      <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">Address 2</label>
                       <input
-                        className="w-full border rounded px-3 py-2"
+                        className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"
                         value={siteForm.site_address_line2||''}
                         onChange={e=>setSiteField('site_address_line2', e.target.value)}
                         placeholder="Apartment, suite, unit, etc. (optional)"
                       />
                     </div>
                     <div>
-                      <label className="text-xs text-gray-600">Country</label>
+                      <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">Country</label>
                       <input 
-                        className="w-full border rounded px-3 py-2 bg-gray-50 cursor-not-allowed" 
+                        className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm bg-gray-50 cursor-not-allowed" 
                         value={siteForm.site_country||''} 
                         readOnly
                         placeholder="Auto-filled from address"
                       />
                     </div>
                     <div>
-                      <label className="text-xs text-gray-600">Province/State</label>
+                      <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">Province/State</label>
                       <input 
-                        className="w-full border rounded px-3 py-2 bg-gray-50 cursor-not-allowed" 
+                        className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm bg-gray-50 cursor-not-allowed" 
                         value={siteForm.site_province||''} 
                         readOnly
                         placeholder="Auto-filled from address"
                       />
                     </div>
                     <div>
-                      <label className="text-xs text-gray-600">City</label>
+                      <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">City</label>
                       <input 
-                        className="w-full border rounded px-3 py-2 bg-gray-50 cursor-not-allowed" 
+                        className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm bg-gray-50 cursor-not-allowed" 
                         value={siteForm.site_city||''} 
                         readOnly
                         placeholder="Auto-filled from address"
                       />
                     </div>
                     <div>
-                      <label className="text-xs text-gray-600">Postal code</label>
+                      <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">Postal code</label>
                       <input 
-                        className="w-full border rounded px-3 py-2 bg-gray-50 cursor-not-allowed" 
+                        className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm bg-gray-50 cursor-not-allowed" 
                         value={siteForm.site_postal_code||''} 
                         readOnly
                         placeholder="Auto-filled from address"
                       />
                     </div>
-                    <div className="md:col-span-2"><label className="text-xs text-gray-600">Notes</label><textarea rows={3} className="w-full border rounded px-3 py-2" value={siteForm.site_notes||''} onChange={e=>setSiteField('site_notes', e.target.value)} /></div>
+                    <div className="md:col-span-2">
+                      <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">Notes</label>
+                      <textarea rows={3} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" value={siteForm.site_notes||''} onChange={e=>setSiteField('site_notes', e.target.value)} />
+                    </div>
                   </div>
                 )}
               </div>
@@ -400,15 +419,15 @@ export default function ProjectNew(){
               <>
                 {!isBidding && (
                   <div>
-                    <label className="text-xs text-gray-600">Status</label>
-                    <select className="w-full border rounded px-3 py-2" value={statusLabel} onChange={e=> setStatusLabel(e.target.value)}>
+                    <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">Status</label>
+                    <select className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" value={statusLabel} onChange={e=> setStatusLabel(e.target.value)}>
                       <option value="">Select...</option>
                       {(settings?.project_statuses||[]).map((s:any)=> <option key={s.label} value={s.label}>{s.label}</option>)}
                     </select>
                   </div>
                 )}
                 <div className="md:col-span-2">
-                  <label className="text-xs text-gray-600">Project Divisions</label>
+                  <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-2">Project Divisions</label>
                   <div className="space-y-3 mt-1">
                     {(projectDivisions||[]).map((div:any)=>{
                       const divId = String(div.id);
@@ -468,43 +487,43 @@ export default function ProjectNew(){
                   )}
                 </div>
                 <div>
-                  <label className="text-xs text-gray-600">Estimator</label>
-                  <select className="w-full border rounded px-3 py-2" value={estimatorId} onChange={e=> setEstimatorId(e.target.value)}>
+                  <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">Estimator</label>
+                  <select className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" value={estimatorId} onChange={e=> setEstimatorId(e.target.value)}>
                     <option value="">Select...</option>
                     {(employees||[]).map((emp:any)=> <option key={emp.id} value={emp.id}>{emp.name||emp.username}</option>)}
                   </select>
                 </div>
                 {!isBidding && (
                   <div>
-                    <label className="text-xs text-gray-600">On-site lead</label>
-                    <select className="w-full border rounded px-3 py-2" value={leadId} onChange={e=> setLeadId(e.target.value)}>
+                    <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">On-site lead</label>
+                    <select className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" value={leadId} onChange={e=> setLeadId(e.target.value)}>
                       <option value="">Select...</option>
                       {(employees||[]).map((emp:any)=> <option key={emp.id} value={emp.id}>{emp.name||emp.username}</option>)}
                     </select>
                   </div>
                 )}
                 <div className="md:col-span-2">
-                  <label className="text-xs text-gray-600">Cover <span className="opacity-60">(optional)</span></label>
+                  <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">Cover <span className="opacity-60">(optional)</span></label>
                   <div className="mt-1 flex items-center gap-3">
-                    <button onClick={()=> setHiddenPickerOpen(true)} className="px-3 py-2 rounded bg-black text-white">Select Cover</button>
-                    {coverPreview && <img src={coverPreview} className="w-20 h-20 rounded border object-cover" />}
-                    {coverPreview && <button onClick={()=>{ setCoverBlob(null); setCoverPreview(''); }} className="px-3 py-2 rounded bg-gray-100">Skip cover</button>}
+                    <button onClick={()=> setHiddenPickerOpen(true)} className="px-3 py-1.5 rounded-lg text-sm font-medium bg-gray-900 text-white hover:bg-gray-800">Select Cover</button>
+                    {coverPreview && <img src={coverPreview} className="w-20 h-20 rounded-lg border border-gray-200 object-cover" alt="" />}
+                    {coverPreview && <button onClick={()=>{ setCoverBlob(null); setCoverPreview(''); }} className="px-3 py-1.5 rounded-lg text-sm font-medium border border-gray-200 hover:bg-gray-50">Skip cover</button>}
                   </div>
                 </div>
               </>
             )}
           </div>
         </div>
-        <div className="px-5 py-4 border-t bg-gray-50 flex items-center justify-between gap-2">
-          <div className="text-[12px] text-gray-600">{step===1? 'Step 1 of 2' : 'Step 2 of 2'}</div>
+        <div className="flex-shrink-0 px-4 py-4 border-t border-gray-200 bg-white flex items-center justify-between gap-3 rounded-b-xl">
+          <div className="text-xs text-gray-500">{step === 1 ? 'Step 1 of 2' : 'Step 2 of 2'}</div>
           <div className="flex items-center gap-2">
-            <button onClick={()=> nav(-1)} className="px-4 py-2 rounded bg-gray-200 hover:bg-gray-300">Cancel</button>
-            {step===1 ? (
-              <button disabled={!canSubmit} onClick={()=> setStep(2)} className="px-4 py-2 rounded bg-brand-red text-white disabled:opacity-50">Next</button>
+            <button onClick={()=> nav(-1)} className="px-3 py-1.5 rounded-lg text-sm font-medium text-gray-700 border border-gray-200 hover:bg-gray-50">Cancel</button>
+            {step === 1 ? (
+              <button disabled={!canSubmit} onClick={()=> setStep(2)} className="px-3 py-1.5 rounded-lg text-sm font-medium bg-brand-red text-white hover:bg-[#aa1212] disabled:opacity-50">Next</button>
             ) : (
               <>
-                <button onClick={()=> setStep(1)} disabled={isSubmitting} className="px-4 py-2 rounded bg-gray-100 disabled:opacity-50">Back</button>
-                <button onClick={submit} disabled={!canSubmit || isSubmitting} className="px-4 py-2 rounded bg-brand-red text-white disabled:opacity-50 disabled:cursor-not-allowed">
+                <button onClick={()=> setStep(1)} disabled={isSubmitting} className="px-3 py-1.5 rounded-lg text-sm font-medium border border-gray-200 hover:bg-gray-50 disabled:opacity-50">Back</button>
+                <button onClick={submit} disabled={!canSubmit || isSubmitting} className="px-3 py-1.5 rounded-lg text-sm font-medium bg-brand-red text-white hover:bg-[#aa1212] disabled:opacity-50 disabled:cursor-not-allowed">
                   {isSubmitting ? 'Creating...' : 'Create'}
                 </button>
               </>
@@ -583,17 +602,24 @@ function ClientSelectModal({ open, onClose, onSelect }: { open: boolean, onClose
   if (!open) return null;
 
   return (
-    <div className="fixed inset-0 z-[60] bg-black/60 flex items-center justify-center">
-      <div className="w-[720px] max-w-[95vw] bg-white rounded-xl overflow-hidden max-h-[90vh] flex flex-col">
-        <div className="bg-gradient-to-br from-[#7f1010] to-[#a31414] p-6 flex items-center gap-6 relative flex-shrink-0">
-          <div className="font-semibold text-lg text-white">Select Customer</div>
-          <button onClick={onClose} className="ml-auto text-white hover:text-gray-200 text-2xl font-bold w-8 h-8 flex items-center justify-center rounded hover:bg-white/20" title="Close">×</button>
+    <div className="fixed inset-0 z-[60] bg-black/50 flex items-center justify-center p-4">
+      <div className="w-[720px] max-w-[95vw] bg-gray-100 rounded-xl overflow-hidden max-h-[90vh] flex flex-col border border-gray-200 shadow-xl">
+        <div className="rounded-t-xl border-b border-gray-200 bg-white p-4 flex items-center justify-between flex-shrink-0">
+          <div>
+            <div className="text-sm font-semibold text-gray-900">Select Customer</div>
+            <div className="text-xs text-gray-500 mt-0.5">Search by name, city, or address</div>
+          </div>
+          <button onClick={onClose} className="p-1.5 rounded hover:bg-gray-100" title="Close">
+            <svg className="w-5 h-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
         </div>
-        <div className="p-4 space-y-3 overflow-y-auto flex-1">
-          <div className="flex-1">
-            <label className="text-xs text-gray-600">Search Customer:</label>
+        <div className="p-4 space-y-3 overflow-y-auto flex-1 bg-white rounded-b-xl">
+          <div>
+            <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">Search</label>
             <input 
-              className="w-full border rounded px-3 py-2" 
+              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:ring-1 focus:ring-gray-300 focus:border-gray-300" 
               placeholder="Type customer name, city, or address..." 
               value={q} 
               onChange={e => setQ(e.target.value)}
@@ -601,15 +627,15 @@ function ClientSelectModal({ open, onClose, onSelect }: { open: boolean, onClose
             />
           </div>
           {list.length > 0 && (
-            <div className="max-h-96 overflow-auto rounded border divide-y">
+            <div className="max-h-96 overflow-auto rounded-xl border border-gray-200 divide-y divide-gray-100">
               {list.map(c => (
                 <button 
                   key={c.id} 
                   onClick={() => onSelect(c)} 
-                  className="w-full text-left px-3 py-2 bg-white hover:bg-gray-50 transition-colors"
+                  className="w-full text-left px-3 py-2.5 bg-white hover:bg-gray-50 transition-colors text-sm"
                 >
-                  <div className="font-medium">{c.display_name||c.name||c.id}</div>
-                  <div className="text-xs text-gray-500">
+                  <div className="font-semibold text-gray-900">{c.display_name||c.name||c.id}</div>
+                  <div className="text-xs text-gray-500 mt-0.5">
                     {[c.address_line1, c.city, c.province].filter(Boolean).join(', ') || 'No address'}
                   </div>
                 </button>
@@ -617,19 +643,19 @@ function ClientSelectModal({ open, onClose, onSelect }: { open: boolean, onClose
               {hasMore && (
                 <button
                   onClick={() => setDisplayedCount(prev => prev + 20)}
-                  className="w-full text-center px-3 py-2 bg-gray-50 hover:bg-gray-100 text-sm text-gray-600 border-t">
+                  className="w-full text-center px-3 py-2 bg-gray-50 hover:bg-gray-100 text-xs font-medium text-gray-600 border-t border-gray-100">
                   Load more ({filteredClients.length - displayedCount} remaining)
                 </button>
               )}
             </div>
           )}
           {q.trim() && list.length === 0 && (
-            <div className="text-center py-8 text-gray-500">
+            <div className="text-center py-8 text-sm text-gray-500">
               No customers found matching "{q}"
             </div>
           )}
           {!q.trim() && list.length === 0 && (
-            <div className="text-center py-8 text-gray-500">
+            <div className="text-center py-8 text-sm text-gray-500">
               No customers available
             </div>
           )}

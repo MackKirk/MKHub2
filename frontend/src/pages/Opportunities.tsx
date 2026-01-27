@@ -340,18 +340,18 @@ function convertParamsToRules(params: URLSearchParams): FilterRule[] {
   return rules;
 }
 
-// Filter Chip Component
+// Filter Chip Component - same rounded-full / text-sm as employee tabs area
 function FilterChip({ label, value, onRemove }: { label: string; value: string; onRemove: () => void }) {
   return (
-    <div className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-gray-100 border border-gray-200 text-sm text-gray-700 transition-all duration-200 ease-out">
-      <span className="font-medium">{label}:</span>
+    <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-white border border-gray-200 text-sm text-gray-800 transition-all duration-200 ease-out">
+      <span className="font-medium text-gray-600">{label}:</span>
       <span>{value}</span>
       <button
         onClick={onRemove}
-        className="ml-0.5 w-4 h-4 rounded-full hover:bg-gray-200 flex items-center justify-center transition-colors duration-150"
+        className="w-5 h-5 rounded-full hover:bg-gray-100 flex items-center justify-center transition-colors duration-150"
         aria-label={`Remove ${label} filter`}
       >
-        <svg className="w-3 h-3 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <svg className="w-4 h-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
         </svg>
       </button>
@@ -785,6 +785,7 @@ function FilterBuilderModal({
 
 export default function Opportunities(){
   const location = useLocation();
+  const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const queryParam = searchParams.get('q') || '';
   
@@ -1010,46 +1011,61 @@ export default function Opportunities(){
 
   return (
     <div>
-      <div className="bg-slate-200/50 rounded-[12px] border border-slate-200 flex items-center justify-between py-4 px-6 mb-6">
-        <div>
-          <div className="text-xl font-bold text-gray-900 tracking-tight mb-0.5">Opportunities</div>
-          <div className="text-sm text-gray-500 font-medium">Create, edit and track bids and quotes</div>
-        </div>
-        <div className="text-right">
-          <div className="text-xs text-gray-400 mb-1.5 font-medium uppercase tracking-wide">Today</div>
-          <div className="text-sm font-semibold text-gray-700">{todayLabel}</div>
+      {/* Title Bar - same layout and font sizes as ProjectDetail (/projects/:id) */}
+      <div className="rounded-xl border bg-white p-4 mb-4">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3 flex-1">
+            <button
+              onClick={() => navigate('/business')}
+              className="p-1.5 rounded hover:bg-gray-100 transition-colors flex items-center justify-center"
+              title="Back to Business"
+            >
+              <svg className="w-4 h-4 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+              </svg>
+            </button>
+            <div>
+              <div className="text-sm font-semibold text-gray-900">Opportunities</div>
+              <div className="text-xs text-gray-500 mt-0.5">Create, edit and track bids and quotes</div>
+            </div>
+          </div>
+          <div className="text-right">
+            <div className="text-[10px] font-medium text-gray-500 uppercase tracking-wide">Today</div>
+            <div className="text-xs font-semibold text-gray-700 mt-0.5">{todayLabel}</div>
+          </div>
         </div>
       </div>
-      {/* Filter Bar */}
-      <div className="mb-3 rounded-lg border border-gray-200 bg-white shadow-sm overflow-hidden">
+
+      {/* Filter Bar - same rounded-xl area and mb-4 as ProjectDetail sections */}
+      <div className="rounded-xl border bg-white p-4 mb-4">
         {/* Primary Row: Global Search + Status + Actions */}
-        <div className="px-6 py-4 bg-white">
+        <div>
           <div className="flex items-center gap-4">
             {/* View Toggle Button */}
-            <div className="flex items-center border border-gray-200 rounded-md overflow-hidden">
+            <div className="flex items-center border border-gray-200 rounded-lg overflow-hidden">
               <button
                 onClick={() => setViewMode('list')}
-                className={`px-3 py-2.5 text-sm font-medium transition-colors duration-150 ${
+                className={`p-2.5 text-sm font-medium transition-colors duration-150 ${
                   viewMode === 'list'
-                    ? 'bg-gray-100 text-gray-900'
-                    : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'
+                    ? 'bg-gray-900 text-white'
+                    : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50 bg-white'
                 }`}
                 title="List view"
               >
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
                 </svg>
               </button>
               <button
                 onClick={() => setViewMode('cards')}
-                className={`px-3 py-2.5 text-sm font-medium transition-colors duration-150 border-l border-gray-200 ${
+                className={`p-2.5 text-sm font-medium transition-colors duration-150 border-l border-gray-200 ${
                   viewMode === 'cards'
-                    ? 'bg-gray-100 text-gray-900'
-                    : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'
+                    ? 'bg-gray-900 text-white'
+                    : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50 bg-white'
                 }`}
                 title="Card view"
               >
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z" />
                 </svg>
               </button>
@@ -1059,12 +1075,12 @@ export default function Opportunities(){
             <div className="flex-1">
               <div className="relative">
                 <input 
-                  className="w-full border border-gray-200 rounded-md px-4 py-2.5 pl-10 text-sm bg-gray-50/50 text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-1 focus:ring-gray-300 focus:border-gray-300 focus:bg-white transition-all duration-150" 
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2 pl-9 text-sm bg-gray-50/50 text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-1 focus:ring-gray-300 focus:border-gray-300 focus:bg-white transition-all duration-150" 
                   placeholder="Search by opportunity name, code, or client name..." 
                   value={q} 
                   onChange={e=>setQ(e.target.value)} 
                 />
-                <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
                 </svg>
               </div>
@@ -1073,9 +1089,12 @@ export default function Opportunities(){
             {/* + Filters Button - Opens Modal */}
             <button 
               onClick={()=>setIsFilterModalOpen(true)}
-              className="px-3 py-2.5 text-sm font-medium text-gray-600 hover:text-gray-900 transition-colors duration-150 whitespace-nowrap"
+              className="px-3 py-1.5 rounded-full text-sm font-medium text-gray-600 hover:text-gray-900 bg-white border border-gray-200 hover:border-gray-300 transition-colors duration-150 whitespace-nowrap inline-flex items-center gap-1.5"
             >
-              + Filters
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z" />
+              </svg>
+              Filters
             </button>
 
             {/* Clear Filters - Only when active */}
@@ -1087,9 +1106,9 @@ export default function Opportunities(){
                   setSearchParams(params);
                   refetch();
                 }} 
-                className="px-3 py-2.5 text-sm font-medium text-gray-500 hover:text-gray-700 transition-colors duration-150 whitespace-nowrap"
+                className="px-3 py-1.5 rounded-full text-sm font-medium text-gray-500 hover:text-gray-700 border border-gray-200 hover:border-gray-300 transition-colors duration-150 whitespace-nowrap"
               >
-                Clear Filters
+                Clear
               </button>
             )}
           </div>
@@ -1121,6 +1140,8 @@ export default function Opportunities(){
         </div>
       )}
       
+      {/* List area - same rounded-xl border bg-white as employee sections */}
+      <div className="rounded-xl border bg-white p-4">
       <LoadingOverlay isLoading={isInitialLoading} text="Loading opportunities...">
         {viewMode === 'cards' ? (
           <div 
@@ -1135,11 +1156,10 @@ export default function Opportunities(){
               <Link
                 to="/projects/new?is_bidding=true"
                 state={{ backgroundLocation: location }}
-                className="border-2 border-dashed border-gray-300 rounded-xl p-4 hover:border-brand-red hover:bg-gray-50 transition-all text-center bg-white flex flex-col items-center justify-center min-h-[200px]"
+                className="border-2 border-dashed border-gray-300 rounded-lg p-2.5 hover:border-brand-red hover:bg-gray-50 transition-all text-center bg-white flex items-center justify-center min-h-[200px]"
               >
-                <div className="text-4xl text-gray-400 mb-2">+</div>
-                <div className="font-medium text-sm text-gray-700">New Opportunity</div>
-                <div className="text-xs text-gray-500 mt-1">Add new opportunity</div>
+                <div className="text-lg text-gray-400 mr-2">+</div>
+                <div className="font-medium text-xs text-gray-700">New Opportunity</div>
               </Link>
             )}
             {arr.map(p => (
@@ -1164,12 +1184,23 @@ export default function Opportunities(){
               <Link
                 to="/projects/new?is_bidding=true"
                 state={{ backgroundLocation: location }}
-                className="border-2 border-dashed border-gray-300 rounded-lg p-4 hover:border-brand-red hover:bg-gray-50 transition-all text-center bg-white flex items-center justify-center min-h-[60px]"
+                className="border-2 border-dashed border-gray-300 rounded-lg p-2.5 hover:border-brand-red hover:bg-gray-50 transition-all text-center bg-white flex items-center justify-center min-h-[60px] min-w-[680px]"
               >
-                <div className="text-2xl text-gray-400 mr-2">+</div>
-                <div className="font-medium text-sm text-gray-700">New Opportunity</div>
+                <div className="text-lg text-gray-400 mr-2">+</div>
+                <div className="font-medium text-xs text-gray-700">New Opportunity</div>
               </Link>
             )}
+            {/* Column headers - same style as Files tab (brief description of each column) */}
+            <div 
+              className="grid grid-cols-[10fr_5fr_5fr_5fr_auto] gap-2 sm:gap-3 lg:gap-4 items-center px-4 py-2 bg-gray-50 border-b border-gray-200 rounded-t-lg min-w-[680px] text-[10px] font-semibold text-gray-700"
+              aria-hidden
+            >
+              <div className="min-w-0" title="Opportunity name, code and client">Opportunity</div>
+              <div className="min-w-0" title="Person responsible for the estimate">Estimator</div>
+              <div className="min-w-0" title="Estimated total value">Est. value</div>
+              <div className="min-w-0" title="Current status (e.g. Prospecting, Sent, Refused)">Status</div>
+              <div className="min-w-0 w-24" title="Quick access to Files, Proposal, Report" aria-hidden />
+            </div>
             {arr.map(p => (
               <OpportunityListItem 
                 key={p.id} 
@@ -1181,11 +1212,12 @@ export default function Opportunities(){
           </div>
         )}
         {!isInitialLoading && arr.length === 0 && (
-          <div className="p-8 text-center text-gray-500 rounded-xl border bg-white">
+          <div className="p-8 text-center text-sm text-gray-500">
             No opportunities found matching your criteria.
           </div>
         )}
       </LoadingOverlay>
+      </div>
       {pickerOpen?.open && (
         <ImagePicker isOpen={true} onClose={()=>setPickerOpen(null)} clientId={String(pickerOpen?.clientId||'')} targetWidth={800} targetHeight={300} allowEdit={true} onConfirm={async(blob)=>{
           try{
@@ -1525,18 +1557,25 @@ function OpportunityListItem({ opportunity, onOpenReportModal, projectStatuses }
       .filter(Boolean);
   }, [estimatorIds, employees]);
 
+  // Quick access buttons (same as cards): Files, Proposal, Report → levam direto para a aba na opportunity
+  const tabButtons = [
+    { key: 'files', icon: '📁', label: 'Files', tab: 'files' },
+    { key: 'proposal', icon: '📄', label: 'Proposal', tab: 'proposal' },
+    { key: 'reports', icon: '📋', label: 'Report', tab: 'reports' },
+  ];
+
   return (
-    <Link 
-      to={`/opportunities/${encodeURIComponent(String(opportunity.id))}`} 
-      className="group border rounded-lg bg-white p-4 hover:shadow-md transition-all duration-200 min-w-[600px]"
+    <Link
+      to={`/opportunities/${encodeURIComponent(String(opportunity.id))}`}
+      className="group border border-gray-200 rounded-xl bg-white p-4 hover:shadow-md hover:border-gray-300 transition-all duration-200 min-w-[680px] block"
     >
-      <div className="grid grid-cols-[10fr_5fr_5fr_5fr] gap-2 sm:gap-3 lg:gap-4 items-center overflow-hidden">
-        {/* Coluna 1: Name, Code, Client */}
+      <div className="grid grid-cols-[10fr_5fr_5fr_5fr_auto] gap-2 sm:gap-3 lg:gap-4 items-center overflow-hidden">
+        {/* Coluna 1: Name, Code, Client - font sizes like ProjectDetail */}
         <div className="min-w-0">
-          <div className="font-semibold text-base text-gray-900 group-hover:text-[#7f1010] transition-colors truncate">
+          <div className="text-sm font-bold text-gray-900 group-hover:text-[#7f1010] transition-colors truncate">
             {opportunity.name || 'Opportunity'}
           </div>
-          <div className="flex items-center gap-2 mt-1 text-sm text-gray-600">
+          <div className="flex items-center gap-2 mt-0.5 text-xs text-gray-600">
             <span className="truncate">{opportunity.code || '—'}</span>
             {clientName && (
               <>
@@ -1547,48 +1586,71 @@ function OpportunityListItem({ opportunity, onOpenReportModal, projectStatuses }
           </div>
         </div>
 
-        {/* Coluna 2: Avatares (Estimators) */}
-        <div className="min-w-0">
-          <div className="text-xs text-gray-500 mb-0.5">Estimator</div>
+        {/* Coluna 2: Estimator (header já mostra o título) */}
+        <div className="min-w-0 flex items-center">
           {estimators.length === 0 ? (
-            <div className="text-gray-400 text-xs">—</div>
+            <span className="text-xs font-semibold text-gray-400">—</span>
           ) : estimators.length === 1 ? (
-            <div className="flex items-center gap-1.5 min-w-0">
+            <div className="flex items-center gap-2 min-w-0">
               <UserAvatar user={estimators[0]} size="w-5 h-5" showTooltip={true} />
-              <div className="font-medium text-gray-900 text-xs truncate min-w-0">{getUserDisplayName(estimators[0])}</div>
+              <span className="font-semibold text-gray-900 text-xs truncate min-w-0">{getUserDisplayName(estimators[0])}</span>
             </div>
           ) : (
-            <div className="flex items-center gap-1">
+            <div className="flex items-center gap-1.5">
               {estimators.slice(0, 2).map((est: any) => (
                 <UserAvatar key={est.id} user={est} size="w-5 h-5" showTooltip={true} />
               ))}
-              {estimators.length > 2 && (
-                <span className="text-xs text-gray-500 ml-1">+{estimators.length - 2}</span>
-              )}
+              <span className="text-xs text-gray-500 ml-1">+{estimators.length - 2}</span>
             </div>
           )}
         </div>
 
-        {/* Coluna 3: Value */}
-        <div className="min-w-0">
-          <div className="text-xs text-gray-500 mb-0.5">Value</div>
-          <div className="font-semibold text-[#7f1010] whitespace-nowrap text-sm truncate">
+        {/* Coluna 3: Value (header já mostra o título) */}
+        <div className="min-w-0 flex items-center">
+          <span className="font-semibold text-[#7f1010] whitespace-nowrap text-xs truncate">
             {estimatedValue > 0 ? `$${estimatedValue.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : '—'}
-          </div>
+          </span>
         </div>
 
-        {/* Coluna 4: Status */}
+        {/* Coluna 4: Status - text-xs like Project */}
         <div className="min-w-0">
           <span
             className={[
-              'inline-flex items-center gap-1 px-2 lg:px-3 py-1.5 rounded-full text-xs font-medium border shadow-sm',
-              'backdrop-blur-sm border-gray-200 text-gray-800',
+              'inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium border border-gray-200',
+              'backdrop-blur-sm text-gray-800',
             ].join(' ')}
             title={status}
             style={{ backgroundColor: statusColor, color: '#000' }}
           >
             <span className="truncate">{status || '—'}</span>
           </span>
+        </div>
+
+        {/* Coluna 5: Quick access (Files, Proposal, Report) - igual aos cards */}
+        <div className="flex items-center gap-1.5 flex-shrink-0" onClick={(e) => e.preventDefault()}>
+          {tabButtons.map((btn) => (
+            <button
+              key={btn.key}
+              type="button"
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                if (btn.key === 'reports') {
+                  onOpenReportModal(String(opportunity.id));
+                } else {
+                  navigate(`/opportunities/${encodeURIComponent(String(opportunity.id))}?tab=${btn.tab}`);
+                }
+              }}
+              className="relative group/btn w-8 h-8 rounded-lg bg-gray-100 hover:bg-gray-200 border border-gray-200 hover:border-gray-300 flex items-center justify-center text-sm transition-all hover:scale-[1.05]"
+              title={btn.label}
+            >
+              {btn.icon}
+              <span className="absolute left-1/2 -translate-x-1/2 bottom-full mb-1 px-2 py-1 bg-gray-900 text-white text-xs rounded whitespace-nowrap opacity-0 group-hover/btn:opacity-100 pointer-events-none z-20 transition-opacity">
+                {btn.label}
+                <span className="absolute -bottom-1 left-1/2 -translate-x-1/2 w-2 h-2 bg-gray-900 rotate-45" />
+              </span>
+            </button>
+          ))}
         </div>
       </div>
     </Link>
@@ -1744,7 +1806,7 @@ function OpportunityListCard({ opportunity, onOpenReportModal, projectStatuses }
   return (
     <Link 
       to={`/opportunities/${encodeURIComponent(String(opportunity.id))}`} 
-      className="group rounded-xl border bg-white hover:border-gray-200 hover:shadow-md hover:-translate-y-0.5 block h-full transition-all duration-200 relative"
+      className="group rounded-xl border border-gray-200 bg-white hover:border-gray-300 hover:shadow-md hover:-translate-y-0.5 block h-full transition-all duration-200 relative"
     >
       {/* Pending data alert icon (separate, top-left) */}
       {hasPendingData && (
@@ -1790,19 +1852,19 @@ function OpportunityListCard({ opportunity, onOpenReportModal, projectStatuses }
           </div>
 
           <div className="flex-1 min-w-0">
-            {/* Customer + name + code (as before) */}
+            {/* Customer + name + code - font sizes like ProjectDetail */}
             <div className="flex items-start justify-between gap-2">
-              <div className="text-xs text-gray-500 truncate min-w-0">{clientName || 'No client'}</div>
+              <div className="text-[10px] font-medium text-gray-500 uppercase tracking-wide truncate min-w-0">{clientName || 'No client'}</div>
             </div>
             <div className="min-w-0">
-              <div className="font-semibold text-base text-gray-900 group-hover:text-[#7f1010] transition-colors whitespace-normal break-words">
+              <div className="text-sm font-bold text-gray-900 group-hover:text-[#7f1010] transition-colors whitespace-normal break-words">
                 {opportunity.name || 'Opportunity'}
               </div>
-              <div className="text-xs text-gray-600 break-words">{opportunity.code || '—'}</div>
+              <div className="text-xs font-semibold text-gray-900 break-words">{opportunity.code || '—'}</div>
             </div>
 
-            {/* Icons row (right below code) */}
-            <div className="mt-2 flex items-center gap-1.5 flex-wrap">
+            {/* Icons row (right below code) - same icon size as employee area */}
+            <div className="mt-2 flex items-center gap-2 flex-wrap">
               {tabButtons.map((btn) => (
                 <button
                   key={btn.key}
@@ -1815,7 +1877,7 @@ function OpportunityListCard({ opportunity, onOpenReportModal, projectStatuses }
                       navigate(`/opportunities/${encodeURIComponent(String(opportunity.id))}?tab=${btn.tab}`);
                     }
                   }}
-                  className="relative group/btn w-6 h-6 rounded-md bg-gray-100 hover:bg-gray-200 border border-gray-200 hover:border-gray-300 flex items-center justify-center text-xs transition-all hover:scale-[1.05]"
+                  className="relative group/btn w-8 h-8 rounded-lg bg-gray-100 hover:bg-gray-200 border border-gray-200 hover:border-gray-300 flex items-center justify-center text-sm transition-all hover:scale-[1.05]"
                   title={btn.label}
                 >
                   {btn.icon}
@@ -1832,29 +1894,29 @@ function OpportunityListCard({ opportunity, onOpenReportModal, projectStatuses }
         {/* Separator */}
         <div className="border-t border-black/5" />
 
-        {/* Fields (simple text, no boxed grid) */}
-        <div className="grid grid-cols-2 gap-3 text-sm">
+        {/* Fields - labels text-[10px] font-medium text-gray-500 uppercase, values text-xs font-semibold like ProjectDetail */}
+        <div className="grid grid-cols-2 gap-3">
           <div className="min-w-0">
-            <div className="text-xs text-gray-500 mb-1.5">Estimator</div>
+            <div className="text-[10px] font-medium text-gray-500 uppercase tracking-wide mb-0.5">Estimator</div>
             {estimators.length === 0 ? (
-              <div className="text-gray-400 text-xs">—</div>
+              <div className="text-xs font-semibold text-gray-400">—</div>
             ) : estimators.length === 1 ? (
               <div className="flex items-center gap-2">
-                <UserAvatar user={estimators[0]} size="w-6 h-6" showTooltip={true} />
-                <div className="font-medium text-gray-900 text-xs truncate">{getUserDisplayName(estimators[0])}</div>
+                <UserAvatar user={estimators[0]} size="w-5 h-5" showTooltip={true} />
+                <div className="font-semibold text-gray-900 text-xs truncate">{getUserDisplayName(estimators[0])}</div>
               </div>
             ) : (
               <div className="flex items-center gap-1.5 flex-wrap">
                 {estimators.map((est: any) => (
-                  <UserAvatar key={est.id} user={est} size="w-6 h-6" showTooltip={true} />
+                  <UserAvatar key={est.id} user={est} size="w-5 h-5" showTooltip={true} />
                 ))}
               </div>
             )}
           </div>
           <div className="min-w-0">
-            <div className="text-xs text-gray-500 mb-1.5">Estimated Value</div>
-            <div className="h-6 flex items-center">
-              <div className="font-semibold text-[#7f1010] truncate w-full">
+            <div className="text-[10px] font-medium text-gray-500 uppercase tracking-wide mb-0.5">Estimated Value</div>
+            <div className="h-5 flex items-center">
+              <div className="font-semibold text-[#7f1010] text-xs truncate w-full">
                 {estimatedValue > 0 ? `$${estimatedValue.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : '—'}
               </div>
             </div>
@@ -1871,10 +1933,10 @@ function OpportunityListCard({ opportunity, onOpenReportModal, projectStatuses }
               <div className="flex items-center gap-2 flex-wrap">
                 {divisionIcons.map((div, idx) => (
                   <div key={idx} className="relative group/icon flex flex-col items-center" title={div.label}>
-                    <div className="text-xl cursor-pointer hover:scale-110 transition-transform">
+                    <div className="text-base cursor-pointer hover:scale-110 transition-transform">
                       {div.icon}
                     </div>
-                    <div className="text-xs text-gray-600 font-bold mt-0.5">
+                    <div className="text-[10px] font-semibold text-gray-600 mt-0.5">
                       {Math.round(div.percentage || 0)}%
                     </div>
                     <div className="absolute left-0 bottom-full mb-1 px-2 py-1 bg-gray-900 text-white text-xs rounded whitespace-nowrap opacity-0 group-hover/icon:opacity-100 transition-opacity pointer-events-none z-10">
@@ -1896,15 +1958,15 @@ function OpportunityListCard({ opportunity, onOpenReportModal, projectStatuses }
                 )}
               </div>
             ) : (
-              <div className="text-xs text-gray-400">No division</div>
+              <div className="text-xs font-semibold text-gray-400">No division</div>
             )}
           </div>
 
           <div className="relative flex-shrink-0">
             <span
               className={[
-                'inline-flex items-center gap-1 px-2 py-1 rounded-full text-[11px] leading-4 font-medium border shadow-sm',
-                'backdrop-blur-sm border-gray-200 text-gray-800',
+                'inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium border border-gray-200',
+                'backdrop-blur-sm text-gray-800',
               ].join(' ')}
               title={status}
               style={{ backgroundColor: statusColor, color: '#000' }}
