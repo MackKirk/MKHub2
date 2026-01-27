@@ -121,6 +121,7 @@ export default function ProposalForm({ mode, clientId: clientIdProp, siteId: sit
   const [pricingItems, setPricingItems] = useState<{ name:string, price:string, quantity?:string, pst?:boolean, gst?:boolean, division_id?:string }[]>([]);
   const [optionalServices, setOptionalServices] = useState<{ service:string, price:string }[]>([]);
   const [showDivisionModal, setShowDivisionModal] = useState(false);
+  const [showSectionTypeModal, setShowSectionTypeModal] = useState(false);
   const [showTotalInPdf, setShowTotalInPdf] = useState<boolean>(true);
   const [pstRate, setPstRate] = useState<number>(7);
   const [gstRate, setGstRate] = useState<number>(5);
@@ -205,6 +206,9 @@ By signing the accompanying proposal, the Owner agrees to these Terms and Condit
   const [page2FoId, setPage2FoId] = useState<string|undefined>(undefined);
   const [pickerFor, setPickerFor] = useState<null|'cover'|'page2'>(null);
   const [sectionPicker, setSectionPicker] = useState<{ secId:string, index?: number, fileObjectId?: string }|null>(null);
+  const [draggingImage, setDraggingImage] = useState<{ secIdx: number, imgIdx: number }|null>(null);
+  const [dragOverImage, setDragOverImage] = useState<{ secIdx: number, imgIdx: number }|null>(null);
+  const [dragImageInsertPosition, setDragImageInsertPosition] = useState<'before'|'after'|null>(null);
   const [coverPreview, setCoverPreview] = useState<string>('');
   const [page2Preview, setPage2Preview] = useState<string>('');
   const newImageId = ()=> 'img_'+Math.random().toString(36).slice(2);
@@ -1183,16 +1187,69 @@ By signing the accompanying proposal, the Owner agrees to these Terms and Condit
     setDragInsertPosition(null);
   };
 
-  const onImageDragStart = (secIdx:number, imgIdx:number)=> setSectionPicker({ secId: String(secIdx), index: imgIdx });
-  const onImageDragOver = (e: React.DragEvent)=> e.preventDefault();
+  const onImageDragStart = (secIdx:number, imgIdx:number)=> {
+    setDraggingImage({ secIdx, imgIdx });
+  };
+  const onImageDragOver = (secIdx:number, imgIdx:number, e: React.DragEvent)=> {
+    e.preventDefault();
+    e.stopPropagation();
+    if (!draggingImage || draggingImage.secIdx !== secIdx || (draggingImage.secIdx === secIdx && draggingImage.imgIdx === imgIdx)) {
+      setDragOverImage(null);
+      setDragImageInsertPosition(null);
+      return;
+    }
+    setDragOverImage({ secIdx, imgIdx });
+    // Determine if inserting before or after based on mouse position
+    const rect = e.currentTarget.getBoundingClientRect();
+    const mouseY = e.clientY;
+    const imageMiddle = rect.top + rect.height / 2;
+    setDragImageInsertPosition(mouseY < imageMiddle ? 'before' : 'after');
+  };
+  const onImageDragLeave = (secIdx:number, imgIdx:number, e: React.DragEvent)=> {
+    // Only clear if we're actually leaving the image (not just moving to a child element)
+    const rect = e.currentTarget.getBoundingClientRect();
+    const x = e.clientX;
+    const y = e.clientY;
+    if (x < rect.left || x > rect.right || y < rect.top || y > rect.bottom) {
+      if (dragOverImage && dragOverImage.secIdx === secIdx && dragOverImage.imgIdx === imgIdx) {
+        setDragOverImage(null);
+        setDragImageInsertPosition(null);
+      }
+    }
+  };
   const onImageDrop = (secIdx:number, targetIdx:number)=>{
-    const picked = sectionPicker; setSectionPicker(null);
-    if (!picked || typeof picked.index!=='number') return;
+    const dragging = draggingImage;
+    const insertPos = dragImageInsertPosition;
+    setDraggingImage(null);
+    setDragOverImage(null);
+    setDragImageInsertPosition(null);
+    if (!dragging || dragging.secIdx !== secIdx) return;
+    if (dragging.imgIdx === targetIdx) return;
+    
     setSections(arr=> arr.map((s:any,i:number)=>{
       if (i!==secIdx) return s;
       const imgs = Array.isArray(s.images)? [...s.images]:[];
-      const [moved] = imgs.splice(picked.index,1);
-      imgs.splice(targetIdx,0,moved);
+      
+      // Remove the dragged item first
+      const [moved] = imgs.splice(dragging.imgIdx, 1);
+      
+      // Calculate insertion index after removal
+      let insertIdx = targetIdx;
+      
+      if (dragging.imgIdx < targetIdx) {
+        // Moving forward: we removed an item before targetIdx
+        // targetIdx needs to be adjusted down by 1
+        const adjustedTarget = targetIdx - 1;
+        insertIdx = insertPos === 'before' ? adjustedTarget : adjustedTarget + 1;
+      } else {
+        // Moving backward: targetIdx is before the removed item, so it's unchanged
+        insertIdx = insertPos === 'before' ? targetIdx : targetIdx + 1;
+      }
+      
+      // Ensure insertIdx is within bounds
+      insertIdx = Math.max(0, Math.min(insertIdx, imgs.length));
+      
+      imgs.splice(insertIdx, 0, moved);
       return { ...s, images: imgs };
     }));
   };
@@ -1245,12 +1302,12 @@ By signing the accompanying proposal, the Owner agrees to these Terms and Condit
         </div>
       )}
       
-      <div className="space-y-6">
+      <div className="space-y-4">
         {/* General Information Block - Hidden for Change Orders */}
         {!isChangeOrder && (
         <div className="rounded-xl border bg-white overflow-hidden">
           <div 
-            className="bg-slate-200 p-3 text-gray-900 font-semibold flex items-center justify-between cursor-pointer hover:opacity-90 transition-opacity"
+            className="bg-slate-200 p-2.5 text-gray-900 font-semibold text-xs flex items-center justify-between cursor-pointer hover:opacity-90 transition-opacity"
             onClick={() => setSectionsExpanded(prev => ({ ...prev, generalInfo: !prev.generalInfo }))}
           >
             <span>General Information</span>
@@ -1264,93 +1321,125 @@ By signing the accompanying proposal, the Owner agrees to these Terms and Condit
             </svg>
           </div>
           {sectionsExpanded.generalInfo && (
-          <div className="p-4">
-            <div className="grid md:grid-cols-2 gap-4">
+          <div className="p-3">
+            <div className="grid md:grid-cols-2 gap-3">
               {/* Card 1 - Left Column */}
-              <div className="space-y-2 text-sm">
+              <div className="space-y-3">
                 <div>
-                  <label className="text-sm text-gray-600">Document Type (Shown on cover page)</label>
-                  <input className={`w-full border rounded px-3 py-2 ${disabled ? 'bg-gray-100 cursor-not-allowed' : ''}`} value={coverTitle} onChange={e=>setCoverTitle(e.target.value)} maxLength={44} aria-label="Document Type" disabled={disabled} readOnly={disabled} />
-                  <div className="mt-1 text-[11px] text-gray-500">{coverTitle.length}/44 characters</div>
+                  <div className="text-xs font-medium text-gray-600 mb-1.5">Document Type (Shown on cover page)</div>
+                  {disabled ? (
+                    <div className="text-sm font-semibold text-gray-900">{coverTitle || '-'}</div>
+                  ) : (
+                    <div className="relative">
+                      <input className="w-full rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 pr-12 text-xs text-gray-900 focus:ring-1 focus:ring-gray-400 focus:border-gray-400" value={coverTitle} onChange={e=>setCoverTitle(e.target.value)} maxLength={44} aria-label="Document Type" />
+                      <div className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[10px] text-gray-500">{coverTitle.length}/44</div>
+                    </div>
+                  )}
                 </div>
                 <div>
-                  <label className="text-sm text-gray-600">Type of Project</label>
-                  <input className={`w-full border rounded px-3 py-2 ${disabled ? 'bg-gray-100 cursor-not-allowed' : ''}`} value={typeOfProject} onChange={e=>setTypeOfProject(e.target.value)} disabled={disabled} readOnly={disabled} />
+                  <div className="text-xs font-medium text-gray-600 mb-1.5">Type of Project</div>
+                  {disabled ? (
+                    <div className="text-sm font-semibold text-gray-900">{typeOfProject || '-'}</div>
+                  ) : (
+                    <input className="w-full rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-gray-900 focus:ring-1 focus:ring-gray-400 focus:border-gray-400" value={typeOfProject} onChange={e=>setTypeOfProject(e.target.value)} />
+                  )}
                 </div>
                 <div>
-                  <label className="text-sm text-gray-600">Date</label>
-                  <input type="date" className={`w-full border rounded px-3 py-2 ${disabled ? 'bg-gray-100 cursor-not-allowed' : ''}`} value={date} onChange={e=>setDate(e.target.value)} disabled={disabled} readOnly={disabled} />
+                  <div className="text-xs font-medium text-gray-600 mb-1.5">Date</div>
+                  {disabled ? (
+                    <div className="text-sm font-semibold text-gray-900">{date || '-'}</div>
+                  ) : (
+                    <input type="date" className="w-full rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-gray-900 focus:ring-1 focus:ring-gray-400 focus:border-gray-400" value={date} onChange={e=>setDate(e.target.value)} />
+                  )}
                 </div>
                 <div className="grid grid-cols-3 gap-2">
                   <div>
-                    <label className="text-sm text-gray-600">Primary Contact Name</label>
-                    <select 
-                      className={`w-full border rounded px-3 py-2 ${disabled ? 'bg-gray-100 cursor-not-allowed' : ''}`}
-                      value={contactModalOpen ? '__new__' : selectedContactId}
-                      onChange={e=>{
-                        const contactId = e.target.value;
-                        if (contactId === '__new__') {
-                          setContactModalOpen(true);
-                        } else {
-                          setSelectedContactId(contactId);
-                          if (contactId && contacts) {
-                            const contact = contacts.find(c => String(c.id) === contactId);
-                            if (contact) {
-                              setCreatedFor(contact.name || '');
-                              setPrimary({
-                                name: contact.name || '',
-                                phone: contact.phone || '',
-                                email: contact.email || ''
-                              });
-                            }
+                    <div className="text-xs font-medium text-gray-600 mb-1.5">Primary Contact Name</div>
+                    {disabled ? (
+                      <div className="text-sm font-semibold text-gray-900">{createdFor || '-'}</div>
+                    ) : (
+                      <select 
+                        className="w-full rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-gray-900 focus:ring-1 focus:ring-gray-400 focus:border-gray-400"
+                        value={contactModalOpen ? '__new__' : selectedContactId}
+                        onChange={e=>{
+                          const contactId = e.target.value;
+                          if (contactId === '__new__') {
+                            setContactModalOpen(true);
                           } else {
-                            setCreatedFor('');
-                            setPrimary({ name: '', phone: '', email: '' });
+                            setSelectedContactId(contactId);
+                            if (contactId && contacts) {
+                              const contact = contacts.find(c => String(c.id) === contactId);
+                              if (contact) {
+                                setCreatedFor(contact.name || '');
+                                setPrimary({
+                                  name: contact.name || '',
+                                  phone: contact.phone || '',
+                                  email: contact.email || ''
+                                });
+                              }
+                            } else {
+                              setCreatedFor('');
+                              setPrimary({ name: '', phone: '', email: '' });
+                            }
                           }
-                        }
-                      }}
-                      disabled={disabled}
-                    >
-                      <option value="">-- Select Contact --</option>
-                      {(contacts||[]).map(contact => (
-                        <option key={contact.id} value={String(contact.id)}>
-                          {contact.name || 'Unnamed Contact'}
-                        </option>
-                      ))}
-                      {!disabled && (
-                        <option value="__new__">+ New Contact</option>
-                      )}
-                    </select>
+                        }}
+                        disabled={disabled}
+                      >
+                        <option value="">-- Select Contact --</option>
+                        {(contacts||[]).map(contact => (
+                          <option key={contact.id} value={String(contact.id)}>
+                            {contact.name || 'Unnamed Contact'}
+                          </option>
+                        ))}
+                        {!disabled && (
+                          <option value="__new__">+ New Contact</option>
+                        )}
+                      </select>
+                    )}
                   </div>
                   <div>
-                    <label className="text-sm text-gray-600">Primary Contact Phone</label>
-                    <input className={`w-full border rounded px-3 py-2 ${disabled ? 'bg-gray-100 cursor-not-allowed' : ''}`} value={primary.phone||''} onChange={e=>setPrimary(p=>({ ...p, phone: e.target.value }))} disabled={disabled} readOnly={disabled} />
+                    <div className="text-xs font-medium text-gray-600 mb-1.5">Primary Contact Phone</div>
+                    {disabled ? (
+                      <div className="text-sm font-semibold text-gray-900">{primary.phone || '-'}</div>
+                    ) : (
+                      <input className="w-full rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-gray-900 focus:ring-1 focus:ring-gray-400 focus:border-gray-400" value={primary.phone||''} onChange={e=>setPrimary(p=>({ ...p, phone: e.target.value }))} />
+                    )}
                   </div>
                   <div>
-                    <label className="text-sm text-gray-600">Primary Contact Email</label>
-                    <input className={`w-full border rounded px-3 py-2 ${disabled ? 'bg-gray-100 cursor-not-allowed' : ''}`} value={primary.email||''} onChange={e=>setPrimary(p=>({ ...p, email: e.target.value }))} disabled={disabled} readOnly={disabled} />
+                    <div className="text-xs font-medium text-gray-600 mb-1.5">Primary Contact Email</div>
+                    {disabled ? (
+                      <div className="text-sm font-semibold text-gray-900">{primary.email || '-'}</div>
+                    ) : (
+                      <input className="w-full rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-gray-900 focus:ring-1 focus:ring-gray-400 focus:border-gray-400" value={primary.email||''} onChange={e=>setPrimary(p=>({ ...p, email: e.target.value }))} />
+                    )}
                   </div>
                 </div>
                 <div>
-                  <label className="text-sm text-gray-600">Other Notes</label>
-                  <textarea className={`w-full border rounded px-3 py-2 ${disabled ? 'bg-gray-100 cursor-not-allowed' : ''}`} value={otherNotes} onChange={e=>setOtherNotes(e.target.value)} maxLength={250} disabled={disabled} readOnly={disabled} />
-                  <div className="mt-1 text-[11px] text-gray-500">{otherNotes.length}/250 characters</div>
+                  <div className="text-xs font-medium text-gray-600 mb-1.5">Other Notes</div>
+                  {disabled ? (
+                    <div className="text-sm font-semibold text-gray-900">{otherNotes || '-'}</div>
+                  ) : (
+                    <div className="relative">
+                      <textarea className="w-full rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 pr-12 text-xs text-gray-900 focus:ring-1 focus:ring-gray-400 focus:border-gray-400" value={otherNotes} onChange={e=>setOtherNotes(e.target.value)} maxLength={250} />
+                      <div className="absolute right-2.5 top-1.5 text-[10px] text-gray-500">{otherNotes.length}/250</div>
+                    </div>
+                  )}
                 </div>
               </div>
               {/* Card 2 - Right Column (Covers only) */}
-              <div className="space-y-2 text-sm">
+              <div className="space-y-3">
                 <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <div className="mb-1 text-sm text-gray-600">Front Cover Image</div>
+                    <div className="text-xs font-medium text-gray-600 mb-1.5">Front Cover Image</div>
                     {!disabled && (
-                      <button className="px-3 py-1.5 rounded bg-gray-100" onClick={()=>setPickerFor('cover')}>Choose</button>
+                      <button className="px-2 py-1 rounded bg-gray-100 text-xs hover:bg-gray-200" onClick={()=>setPickerFor('cover')}>Choose</button>
                     )}
                     {coverPreview && <div className="mt-2"><img src={coverPreview} className="w-full rounded border" style={{ aspectRatio: '566/537', objectFit: 'contain' }} /></div>}
                   </div>
                   <div>
-                    <div className="mb-1 text-sm text-gray-600">Inside Cover Image</div>
+                    <div className="text-xs font-medium text-gray-600 mb-1.5">Inside Cover Image</div>
                     {!disabled && (
-                      <button className="px-3 py-1.5 rounded bg-gray-100" onClick={()=>setPickerFor('page2')}>Choose</button>
+                      <button className="px-2 py-1 rounded bg-gray-100 text-xs hover:bg-gray-200" onClick={()=>setPickerFor('page2')}>Choose</button>
                     )}
                     {page2Preview && <div className="mt-2"><img src={page2Preview} className="w-full rounded border" style={{ aspectRatio: '540/340', objectFit: 'contain' }} /></div>}
                   </div>
@@ -1365,7 +1454,7 @@ By signing the accompanying proposal, the Owner agrees to these Terms and Condit
         {/* Sections Block */}
         <div className="rounded-xl border bg-white overflow-hidden">
           <div 
-            className="bg-slate-200 p-3 text-gray-900 font-semibold flex items-center justify-between cursor-pointer hover:opacity-90 transition-opacity"
+            className="bg-slate-200 p-2.5 text-gray-900 font-semibold text-xs flex items-center justify-between cursor-pointer hover:opacity-90 transition-opacity"
             onClick={() => setSectionsExpanded(prev => ({ ...prev, sections: !prev.sections }))}
           >
             <span>Sections</span>
@@ -1379,8 +1468,8 @@ By signing the accompanying proposal, the Owner agrees to these Terms and Condit
             </svg>
           </div>
           {sectionsExpanded.sections && (
-          <div className="p-4">
-          <div className="space-y-3">
+          <div className="p-3">
+          <div className="space-y-2">
             {sections.map((s:any, idx:number)=> (
               <div key={s.id||idx} className="relative">
                 {/* Insertion line indicator - shown above the section when dragging */}
@@ -1388,7 +1477,7 @@ By signing the accompanying proposal, the Owner agrees to these Terms and Condit
                   <div className="absolute -top-2 left-0 right-0 h-0.5 bg-slate-400 rounded-full z-10 shadow-lg" style={{boxShadow: '0 0 8px rgba(148, 163, 184, 0.6)'}}></div>
                 )}
                 <div
-                   className={`border rounded p-3 transition-all ${
+                   className={`rounded-lg border border-gray-200 p-2.5 transition-all ${
                      draggingSection === idx ? 'opacity-50 scale-95' : ''
                    } ${
                      dragOverSection === idx && !disabled && draggingSection !== idx 
@@ -1438,11 +1527,11 @@ By signing the accompanying proposal, the Owner agrees to these Terms and Condit
                         </svg>
                       </span>
                     )}
-                    <input data-role="section-title" data-sec={idx} onFocus={()=> setActiveSectionIndex(idx)} className={`flex-1 min-w-[240px] border rounded px-3 py-2 text-sm ${disabled ? 'bg-gray-100 cursor-not-allowed' : ''}`} placeholder="Section title" value={s.title||''} onChange={e=> setSections(arr=> arr.map((x,i)=> i===idx? { ...x, title: e.target.value }: x))} disabled={disabled} readOnly={disabled} />
+                    <input data-role="section-title" data-sec={idx} onFocus={()=> setActiveSectionIndex(idx)} className={`flex-1 min-w-[240px] rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-gray-900 focus:ring-1 focus:ring-gray-400 focus:border-gray-400 ${disabled ? 'bg-gray-100 cursor-not-allowed' : ''}`} placeholder="Section title" value={s.title||''} onChange={e=> setSections(arr=> arr.map((x,i)=> i===idx? { ...x, title: e.target.value }: x))} disabled={disabled} readOnly={disabled} />
                   </div>
                   {!disabled && (
                     <div className="flex items-center gap-1">
-                      <button className="px-2 py-1 rounded text-gray-500 hover:text-gray-700" title="Duplicate section" onClick={()=>{
+                      <button className="px-1.5 py-1 rounded text-gray-500 hover:text-gray-700 text-xs" title="Duplicate section" onClick={()=>{
                         setSections(arr=>{
                           const copy = JSON.parse(JSON.stringify(arr[idx]||{}));
                           copy.id = 'sec_'+Math.random().toString(36).slice(2);
@@ -1452,21 +1541,21 @@ By signing the accompanying proposal, the Owner agrees to these Terms and Condit
                           return next;
                         });
                       }}>
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M7 7h10v10H7V7Zm-2 2v10h10v2H5a2 2 0 0 1-2-2V9h2Zm6-6h8a2 2 0 0 1 2 2v8h-2V5H11V3Z"></path></svg>
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M7 7h10v10H7V7Zm-2 2v10h10v2H5a2 2 0 0 1-2-2V9h2Zm6-6h8a2 2 0 0 1 2 2v8h-2V5H11V3Z"></path></svg>
                       </button>
-                      <button className="px-2 py-1 rounded text-gray-500 hover:text-red-600" title="Remove section" onClick={async()=>{
+                      <button className="px-1.5 py-1 rounded text-gray-500 hover:text-red-600 text-xs" title="Remove section" onClick={async()=>{
                         const result = await confirm({ title:'Remove section', message:'Are you sure you want to remove this section?' });
                         if (result !== 'confirm') return;
                         setSections(arr=> arr.filter((_,i)=> i!==idx));
                       }}>
-                      <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M9 3h6a1 1 0 0 1 1 1v2h4v2h-1l-1 13a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 8H4V6h4V4a1 1 0 0 1 1-1Zm1 3h4V5h-4v1Zm-2 2 1 12h8l1-12H8Z"></path></svg>
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M9 3h6a1 1 0 0 1 1 1v2h4v2h-1l-1 13a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 8H4V6h4V4a1 1 0 0 1 1-1Zm1 3h4V5h-4v1Zm-2 2 1 12h8l1-12H8Z"></path></svg>
                       </button>
                     </div>
                   )}
                 </div>
                 {s.type==='text' ? (
                   <textarea 
-                    className={`w-full border rounded px-3 py-2 text-sm ${disabled ? 'bg-gray-100 cursor-not-allowed' : ''}`}
+                    className={`w-full rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-gray-900 focus:ring-1 focus:ring-gray-400 focus:border-gray-400 ${disabled ? 'bg-gray-100 cursor-not-allowed' : ''}`}
                     rows={5} 
                     placeholder="Section text" 
                     value={s.text||''} 
@@ -1495,61 +1584,136 @@ By signing the accompanying proposal, the Owner agrees to these Terms and Condit
                   />
                 ) : (
                   <div>
-                    {!disabled && (
-                      <div className="mb-2"><button className="px-3 py-1.5 rounded bg-gray-100" onClick={()=> setSectionPicker({ secId: s.id||String(idx) })}>+ Add Image</button></div>
-                    )}
                     <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                      {(s.images||[]).map((img:any, j:number)=> (
-                        <div key={`${img.image_id||img.file_object_id||''}-${j}`} className="border rounded p-2 flex flex-col items-center"
-                             onDragOver={!disabled ? onImageDragOver : undefined}
-                             onDrop={!disabled ? ()=> onImageDrop(idx, j) : undefined}
+                      {!disabled && (
+                        <button 
+                          className="border border-gray-300 rounded-lg p-2 flex flex-col items-center justify-center hover:border-gray-400 hover:bg-gray-50 transition-all aspect-video"
+                          onClick={()=> setSectionPicker({ secId: s.id||String(idx) })}
                         >
-                          <div className="flex items-center justify-between mb-1">
-                            {!disabled && (
-                              <span className="inline-flex items-center justify-center w-5 h-5 text-gray-400 hover:text-gray-600 cursor-grab active:cursor-grabbing" title="Drag to reorder image" aria-label="Drag image handle" draggable onDragStart={()=> onImageDragStart(idx, j)}>
-                                <svg width="16" height="16" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
-                                  <circle cx="6" cy="6" r="1.5"></circle>
-                                  <circle cx="10" cy="6" r="1.5"></circle>
-                                  <circle cx="14" cy="6" r="1.5"></circle>
-                                  <circle cx="6" cy="10" r="1.5"></circle>
-                                  <circle cx="10" cy="10" r="1.5"></circle>
-                                  <circle cx="14" cy="10" r="1.5"></circle>
-                                </svg>
-                              </span>
-                            )}
-                            {!disabled && (
-                              <div className="ml-auto flex items-center gap-2">
-                                <button className="px-2 py-1 rounded bg-gray-100 text-xs" title="Edit image" onClick={()=> setSectionPicker({ secId: s.id||String(idx), index: j, fileObjectId: img.file_object_id })}>Edit</button>
-                                <button className="px-2 py-1 rounded bg-gray-100 text-xs" title="Duplicate image" onClick={()=>{
-                                  setSections(arr=> arr.map((x,i)=>{
-                                    if (i!==idx) return x;
-                                    const imgs = Array.isArray(x.images)? [...x.images]:[];
-                                    const clone = { ...(imgs[j]||{}), image_id: 'img_'+Math.random().toString(36).slice(2) };
-                                    imgs.splice(j+1,0,clone);
-                                    setTimeout(()=> setFocusTarget({ type:'caption', sectionIndex: idx, imageIndex: j+1 }), 0);
-                                    return { ...x, images: imgs };
-                                  }));
-                                }}>Duplicate</button>
-                                <button className="px-2 py-1 rounded text-gray-500 hover:text-red-600" title="Remove image" onClick={async()=>{
-                                  const result = await confirm({ title:'Remove image', message:'Are you sure you want to remove this image?' });
-                                  if (result !== 'confirm') return;
-                                  setSections(arr=> arr.map((x,i)=> i===idx? { ...x, images: (x.images||[]).filter((_:any,k:number)=> k!==j) }: x));
-                                }}>
-                                  <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M9 3h6a1 1 0 0 1 1 1v2h4v2h-1l-1 13a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 8H4V6h4V4a1 1 0 0 1 1-1Zm1 3h4V5h-4v1Zm-2 2 1 12h8l1-12H8Z"></path></svg>
+                          <svg className="w-4 h-4 text-gray-400 mb-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                          </svg>
+                          <span className="text-xs font-medium text-gray-700">+ Add Image</span>
+                        </button>
+                      )}
+                      {(s.images||[]).map((img:any, j:number)=> (
+                        <div key={`${img.image_id||img.file_object_id||''}-${j}`} className="relative">
+                          {/* Insertion line indicator - shown before the image when dragging */}
+                          {!disabled && dragOverImage && dragOverImage.secIdx === idx && dragOverImage.imgIdx === j && dragImageInsertPosition === 'before' && draggingImage && (draggingImage.secIdx !== idx || draggingImage.imgIdx !== j) && (
+                            <div className="absolute -top-1 left-0 right-0 h-0.5 bg-slate-400 rounded-full z-20 shadow-lg" style={{boxShadow: '0 0 8px rgba(148, 163, 184, 0.6)'}}></div>
+                          )}
+                          <div 
+                            className={`border rounded p-2 flex flex-col items-center relative transition-all ${
+                              draggingImage && draggingImage.secIdx === idx && draggingImage.imgIdx === j ? 'opacity-50 scale-95' : ''
+                            } ${
+                              dragOverImage && dragOverImage.secIdx === idx && dragOverImage.imgIdx === j && !disabled && draggingImage && (draggingImage.secIdx !== idx || draggingImage.imgIdx !== j)
+                                ? 'ring-2 ring-slate-400 ring-opacity-50 bg-slate-100/50' 
+                                : ''
+                            }`}
+                            onDragOver={!disabled ? (e)=> onImageDragOver(idx, j, e) : undefined}
+                            onDragLeave={!disabled ? (e)=> onImageDragLeave(idx, j, e) : undefined}
+                            onDrop={!disabled ? (e)=>{ e.preventDefault(); e.stopPropagation(); onImageDrop(idx, j); } : undefined}
+                          >
+                          {!disabled && (
+                            <div className="absolute top-2 right-2 flex items-center gap-1.5 z-10 bg-white/80 backdrop-blur-sm rounded p-0.5">
+                                <button 
+                                  className="w-6 h-6 flex items-center justify-center rounded hover:bg-gray-100 text-gray-500 hover:text-gray-700 transition-colors" 
+                                  title="Edit image" 
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setSectionPicker({ secId: s.id||String(idx), index: j, fileObjectId: img.file_object_id });
+                                  }}
+                                >
+                                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                                  </svg>
                                 </button>
-                              </div>
-                            )}
+                                <button 
+                                  className="w-6 h-6 flex items-center justify-center rounded hover:bg-gray-100 text-gray-500 hover:text-gray-700 transition-colors" 
+                                  title="Duplicate image" 
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setSections(arr=> arr.map((x,i)=>{
+                                      if (i!==idx) return x;
+                                      const imgs = Array.isArray(x.images)? [...x.images]:[];
+                                      const clone = { ...(imgs[j]||{}), image_id: 'img_'+Math.random().toString(36).slice(2) };
+                                      imgs.splice(j+1,0,clone);
+                                      setTimeout(()=> setFocusTarget({ type:'caption', sectionIndex: idx, imageIndex: j+1 }), 0);
+                                      return { ...x, images: imgs };
+                                    }));
+                                  }}
+                                >
+                                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                                  </svg>
+                                </button>
+                                <button 
+                                  className="w-6 h-6 flex items-center justify-center rounded hover:bg-gray-100 text-gray-500 hover:text-red-600 transition-colors" 
+                                  title="Remove image" 
+                                  onClick={async(e)=>{
+                                    e.stopPropagation();
+                                    const result = await confirm({ title:'Remove image', message:'Are you sure you want to remove this image?' });
+                                    if (result !== 'confirm') return;
+                                    setSections(arr=> arr.map((x,i)=> i===idx? { ...x, images: (x.images||[]).filter((_:any,k:number)=> k!==j) }: x));
+                                  }}
+                                >
+                                  <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
+                                    <path d="M9 3h6a1 1 0 0 1 1 1v2h4v2h-1l-1 13a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 8H4V6h4V4a1 1 0 0 1 1-1Zm1 3h4V5h-4v1Zm-2 2 1 12h8l1-12H8Z"></path>
+                                  </svg>
+                                </button>
+                            </div>
+                          )}
+                          {!disabled && (
+                            <span 
+                              className="absolute top-2 left-2 inline-flex items-center justify-center w-6 h-6 text-gray-400 hover:text-gray-600 cursor-grab active:cursor-grabbing bg-white/80 backdrop-blur-sm rounded z-10" 
+                              title="Drag to reorder image" 
+                              aria-label="Drag image handle" 
+                              draggable 
+                              onDragStart={(e) => {
+                                e.stopPropagation();
+                                onImageDragStart(idx, j);
+                              }}
+                              onDragEnd={() => {
+                                setDraggingImage(null);
+                              }}
+                            >
+                              <svg className="w-4 h-4" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+                                <circle cx="6" cy="6" r="1.5"></circle>
+                                <circle cx="10" cy="6" r="1.5"></circle>
+                                <circle cx="14" cy="6" r="1.5"></circle>
+                                <circle cx="6" cy="10" r="1.5"></circle>
+                                <circle cx="10" cy="10" r="1.5"></circle>
+                                <circle cx="14" cy="10" r="1.5"></circle>
+                              </svg>
+                            </span>
+                          )}
+                          <div className="w-full">
+                            {img.file_object_id? (
+                              <img
+                                src={`/files/${img.file_object_id}/thumbnail?w=520`}
+                                className="w-full h-auto object-cover rounded"
+                              />
+                            ) : null}
                           </div>
-                          {img.file_object_id? (
-                            <img
-                              src={`/files/${img.file_object_id}/thumbnail?w=520`}
-                              className="w-[260px] h-[150px] object-cover rounded"
-                            />
-                          ) : null}
-                          <input data-role="img-caption" data-sec={idx} data-img={j} className={`mt-2 w-full border rounded px-2 py-1 text-sm ${disabled ? 'bg-gray-100 cursor-not-allowed' : ''}`} placeholder="Caption" value={img.caption||''} onChange={e=> setSections(arr=> arr.map((x,i)=> i===idx? { ...x, images: (x.images||[]).map((it:any,k:number)=> k===j? { ...it, caption: e.target.value }: it) }: x))} disabled={disabled} readOnly={disabled} />
+                          <input 
+                            data-role="img-caption" 
+                            data-sec={idx} 
+                            data-img={j} 
+                            className={`mt-2 w-full border rounded px-2 py-1 text-sm ${disabled ? 'bg-gray-100 cursor-not-allowed' : ''}`} 
+                            placeholder="Caption" 
+                            value={img.caption||''} 
+                            onChange={e=> setSections(arr=> arr.map((x,i)=> i===idx? { ...x, images: (x.images||[]).map((it:any,k:number)=> k===j? { ...it, caption: e.target.value }: it) }: x))} 
+                            disabled={disabled} 
+                            readOnly={disabled} 
+                          />
+                          </div>
+                          {/* Insertion line indicator - shown after the image when dragging */}
+                          {!disabled && dragOverImage && dragOverImage.secIdx === idx && dragOverImage.imgIdx === j && dragImageInsertPosition === 'after' && draggingImage && (draggingImage.secIdx !== idx || draggingImage.imgIdx !== j) && (
+                            <div className="absolute -bottom-1 left-0 right-0 h-0.5 bg-slate-400 rounded-full z-20 shadow-lg" style={{boxShadow: '0 0 8px rgba(148, 163, 184, 0.6)'}}></div>
+                          )}
                         </div>
                       ))}
-                      {!(s.images||[]).length && <div className="text-sm text-gray-600">No images</div>}
+                      {!(s.images||[]).length && <div className="text-xs text-gray-600">No images</div>}
                     </div>
                   </div>
                 )}
@@ -1561,10 +1725,13 @@ By signing the accompanying proposal, the Owner agrees to these Terms and Condit
             </div>
             ))}
             {!disabled && (
-              <div className="flex items-center gap-2">
-                <button className="px-3 py-1.5 rounded bg-gray-100 text-base" onClick={()=> setSections(arr=> [...arr, { id: 'sec_'+Math.random().toString(36).slice(2), type:'text', title:'', text:'' }])}>+ Text Section</button>
-                <button className="px-3 py-1.5 rounded bg-gray-100 text-base" onClick={()=> setSections(arr=> [...arr, { id: 'sec_'+Math.random().toString(36).slice(2), type:'images', title:'', images: [] }])}>+ Images Section</button>
-              </div>
+              <button 
+                className="mt-3 w-full border-2 border-dashed border-gray-300 rounded-lg p-2.5 hover:border-brand-red hover:bg-gray-50 transition-all text-center bg-white flex items-center justify-center disabled:opacity-60"
+                onClick={() => setShowSectionTypeModal(true)}
+              >
+                <div className="text-lg text-gray-400 mr-2">+</div>
+                <div className="font-medium text-xs text-gray-700">Add Section</div>
+              </button>
             )}
           </div>
           </div>
@@ -1574,7 +1741,7 @@ By signing the accompanying proposal, the Owner agrees to these Terms and Condit
         {/* Pricing Block */}
         <div className="rounded-xl border bg-white overflow-hidden">
           <div 
-            className="bg-slate-200 p-3 text-gray-900 font-semibold flex items-center justify-between cursor-pointer hover:opacity-90 transition-opacity"
+            className="bg-slate-200 p-2.5 text-gray-900 font-semibold text-xs flex items-center justify-between cursor-pointer hover:opacity-90 transition-opacity"
             onClick={() => setSectionsExpanded(prev => ({ ...prev, pricing: !prev.pricing }))}
           >
             <span>Pricing</span>
@@ -1588,26 +1755,26 @@ By signing the accompanying proposal, the Owner agrees to these Terms and Condit
             </svg>
           </div>
           {sectionsExpanded.pricing && (
-          <div className="p-4">
-          <div className="text-[12px] text-gray-600 mb-2">If no pricing items are added, the "Pricing Table" section will be hidden in the PDF.</div>
+          <div className="p-3">
+          <div className="text-[10px] text-gray-600 mb-2">If no pricing items are added, the "Pricing Table" section will be hidden in the PDF.</div>
           {!disabled && (
-            <div className="sticky top-0 z-30 bg-white/95 backdrop-blur mb-3 py-3 border-b">
+            <div className="sticky top-0 z-30 bg-white/95 backdrop-blur mb-3 py-2 border-b">
               <div className="flex items-center gap-2">
-                <div className="ml-auto flex items-center gap-3 text-sm">
-                  <label className="text-sm">PST (%)</label>
+                <div className="ml-auto flex items-center gap-3">
+                  <div className="text-xs font-medium text-gray-600">PST (%)</div>
                   <input 
                     type="number" 
-                    className="border rounded px-2 py-1 w-20" 
+                    className="rounded-lg border border-gray-300 bg-white px-2 py-1 w-20 text-xs text-gray-900 focus:ring-1 focus:ring-gray-400 focus:border-gray-400" 
                     value={pstRate} 
                     min={0} 
                     step={1} 
                     onChange={e=>setPstRate(Number(e.target.value||0))} 
                     disabled={disabled}
                   />
-                  <label className="text-sm">GST (%)</label>
+                  <div className="text-xs font-medium text-gray-600">GST (%)</div>
                   <input 
                     type="number" 
-                    className="border rounded px-2 py-1 w-20" 
+                    className="rounded-lg border border-gray-300 bg-white px-2 py-1 w-20 text-xs text-gray-900 focus:ring-1 focus:ring-gray-400 focus:border-gray-400" 
                     value={gstRate} 
                     min={0} 
                     step={1} 
@@ -1620,26 +1787,14 @@ By signing the accompanying proposal, the Owner agrees to these Terms and Condit
           )}
           {disabled && (
             <div className="mb-4 flex items-center gap-4">
-              <label className="flex items-center gap-2 text-sm">
-                <span>PST (%)</span>
-                <input 
-                  type="number" 
-                  className="border rounded px-2 py-1 w-20 bg-gray-100 cursor-not-allowed" 
-                  value={pstRate} 
-                  disabled={true}
-                  readOnly={true}
-                />
-              </label>
-              <label className="flex items-center gap-2 text-sm">
-                <span>GST (%)</span>
-                <input 
-                  type="number" 
-                  className="border rounded px-2 py-1 w-20 bg-gray-100 cursor-not-allowed" 
-                  value={gstRate} 
-                  disabled={true}
-                  readOnly={true}
-                />
-              </label>
+              <div className="flex items-center gap-2">
+                <div className="text-xs font-medium text-gray-600">PST (%)</div>
+                <div className="text-sm font-semibold text-gray-900">{pstRate}%</div>
+              </div>
+              <div className="flex items-center gap-2">
+                <div className="text-xs font-medium text-gray-600">GST (%)</div>
+                <div className="text-sm font-semibold text-gray-900">{gstRate}%</div>
+              </div>
             </div>
           )}
           <div className="space-y-2">
@@ -1666,7 +1821,7 @@ By signing the accompanying proposal, the Owner agrees to these Terms and Condit
                     </div>
                   )}
                   <input 
-                    className={`flex-1 min-w-0 border rounded px-3 py-2 text-sm ${disabled ? 'bg-gray-100 cursor-not-allowed' : ''}`} 
+                    className={`flex-1 min-w-0 rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-gray-900 focus:ring-1 focus:ring-gray-400 focus:border-gray-400 ${disabled ? 'bg-gray-100 cursor-not-allowed' : ''}`} 
                     placeholder="Name" 
                     value={c.name} 
                     onChange={e=>{ 
@@ -1678,7 +1833,7 @@ By signing the accompanying proposal, the Owner agrees to these Terms and Condit
                   />
                   <input 
                     type="text" 
-                    className={`flex-1 min-w-[100px] max-w-[140px] border rounded px-2 sm:px-3 py-2 text-sm ${disabled ? 'bg-gray-100 cursor-not-allowed' : ''}`} 
+                    className={`flex-1 min-w-[100px] max-w-[140px] rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-gray-900 focus:ring-1 focus:ring-gray-400 focus:border-gray-400 ${disabled ? 'bg-gray-100 cursor-not-allowed' : ''}`} 
                     placeholder="Price" 
                     value={c.price} 
                     onChange={e=>{ 
@@ -1689,12 +1844,12 @@ By signing the accompanying proposal, the Owner agrees to these Terms and Condit
                     disabled={disabled} 
                     readOnly={disabled} 
                   />
-                  <div className="flex items-center border rounded overflow-hidden min-w-[80px] max-w-[120px]">
+                  <div className="flex items-center rounded-lg border border-gray-300 overflow-hidden min-w-[80px] max-w-[120px]">
                     <input 
                       type="number" 
                       min="1"
                       step="1"
-                      className={`flex-1 min-w-0 border-0 rounded-none px-2 sm:px-3 py-2 text-sm appearance-none [-moz-appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none ${disabled ? 'bg-gray-100 cursor-not-allowed' : ''}`} 
+                      className={`flex-1 min-w-0 border-0 rounded-none px-2 py-1.5 text-xs text-gray-900 appearance-none [-moz-appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none ${disabled ? 'bg-gray-100 cursor-not-allowed' : ''}`} 
                       placeholder="Qty" 
                       value={c.quantity || '1'} 
                       onChange={e=>{ 
@@ -1736,8 +1891,8 @@ By signing the accompanying proposal, the Owner agrees to these Terms and Condit
                       </div>
                     )}
                   </div>
-                  <div className={`border rounded px-2 sm:px-3 py-2 bg-gray-50 min-w-[100px] max-w-[140px] flex-shrink-0 ${disabled ? 'cursor-not-allowed' : ''}`}>
-                    <div className="text-xs sm:text-sm font-medium text-gray-700 text-right whitespace-nowrap overflow-hidden">
+                  <div className={`rounded-lg border border-gray-300 px-2 py-1.5 bg-gray-50 min-w-[100px] max-w-[140px] flex-shrink-0 ${disabled ? 'cursor-not-allowed' : ''}`}>
+                    <div className="text-xs font-medium text-gray-700 text-right whitespace-nowrap overflow-hidden">
                       ${formatAccounting(lineTotal)}
                     </div>
                   </div>
@@ -1780,7 +1935,7 @@ By signing the accompanying proposal, the Owner agrees to these Terms and Condit
           </div>
           {!disabled && (
             <button 
-              className="mt-3 w-full border-2 border-dashed border-gray-300 rounded-lg p-4 hover:border-brand-red hover:bg-gray-50 transition-all text-center bg-white flex items-center justify-center min-h-[60px] disabled:opacity-60"
+              className="mt-3 w-full border-2 border-dashed border-gray-300 rounded-lg p-2.5 hover:border-brand-red hover:bg-gray-50 transition-all text-center bg-white flex items-center justify-center disabled:opacity-60"
               onClick={()=> {
                 // Only show modal if projectId exists and has divisions
                 if (projectId && project?.project_division_ids && project.project_division_ids.length > 0) {
@@ -1791,8 +1946,8 @@ By signing the accompanying proposal, the Owner agrees to these Terms and Condit
                 }
               }}
             >
-              <div className="text-2xl text-gray-400 mr-2">+</div>
-              <div className="font-medium text-sm text-gray-700">Add Pricing Item</div>
+              <div className="text-lg text-gray-400 mr-2">+</div>
+              <div className="font-medium text-xs text-gray-700">Add Pricing Item</div>
             </button>
           )}
 
@@ -1800,30 +1955,30 @@ By signing the accompanying proposal, the Owner agrees to these Terms and Condit
           <div className="mt-6">
             <div className="rounded-xl border bg-white overflow-hidden">
               {/* Summary Header - Gray */}
-              <div className="bg-gray-500 p-3 text-white font-semibold">
+              <div className="bg-gray-500 p-2.5 text-white font-semibold text-xs">
                 Summary
               </div>
               
               {/* Two Cards Grid - inside Summary card */}
-              <div className="p-4">
-                <div className="grid md:grid-cols-2 gap-4">
+              <div className="p-3">
+                <div className="grid md:grid-cols-2 gap-3">
                   {/* Left Card */}
-                  <div className="rounded-xl border bg-white p-4">
-                    <div className="space-y-1 text-sm">
-                      <div className="flex items-center justify-between hover:bg-gray-50 rounded px-1 py-1 -mx-1"><span className="font-bold">Total Direct Costs</span><span className="font-bold">${totalNum.toFixed(2)}</span></div>
+                  <div className="rounded-lg border border-gray-200 bg-white p-3">
+                    <div className="space-y-1">
+                      <div className="flex items-center justify-between hover:bg-gray-50 rounded px-1 py-1 -mx-1"><span className="text-xs font-semibold">Total Direct Costs</span><span className="text-xs font-semibold">${totalNum.toFixed(2)}</span></div>
                       {showPstInPdf && pst > 0 && (
-                        <div className="flex items-center justify-between hover:bg-gray-50 rounded px-1 py-1 -mx-1"><span>PST ({pstRate}%)</span><span>${pst.toFixed(2)}</span></div>
+                        <div className="flex items-center justify-between hover:bg-gray-50 rounded px-1 py-1 -mx-1"><span className="text-xs">PST ({pstRate}%)</span><span className="text-xs">${pst.toFixed(2)}</span></div>
                       )}
-                      <div className="flex items-center justify-between hover:bg-gray-50 rounded px-1 py-1 -mx-1"><span className="font-bold">Sub-total</span><span className="font-bold">${subtotal.toFixed(2)}</span></div>
+                      <div className="flex items-center justify-between hover:bg-gray-50 rounded px-1 py-1 -mx-1"><span className="text-xs font-semibold">Sub-total</span><span className="text-xs font-semibold">${subtotal.toFixed(2)}</span></div>
                     </div>
                   </div>
                   {/* Right Card */}
-                  <div className="rounded-xl border bg-white p-4">
-                    <div className="space-y-1 text-sm">
+                  <div className="rounded-lg border border-gray-200 bg-white p-3">
+                    <div className="space-y-1">
                       {showGstInPdf && gst > 0 && (
-                        <div className="flex items-center justify-between hover:bg-gray-50 rounded px-1 py-1 -mx-1"><span>GST ({gstRate}%)</span><span>${gst.toFixed(2)}</span></div>
+                        <div className="flex items-center justify-between hover:bg-gray-50 rounded px-1 py-1 -mx-1"><span className="text-xs">GST ({gstRate}%)</span><span className="text-xs">${gst.toFixed(2)}</span></div>
                       )}
-                      <div className="flex items-center justify-between hover:bg-gray-50 rounded px-1 py-1 -mx-1 text-lg"><span className="font-bold">Final Total (with GST)</span><span className="font-bold">${grandTotal.toFixed(2)}</span></div>
+                      <div className="flex items-center justify-between hover:bg-gray-50 rounded px-1 py-1 -mx-1"><span className="text-xs font-semibold">Final Total (with GST)</span><span className="text-xs font-semibold">${grandTotal.toFixed(2)}</span></div>
                     </div>
                   </div>
                 </div>
@@ -1834,8 +1989,8 @@ By signing the accompanying proposal, the Owner agrees to these Terms and Condit
           {/* Total with Show in PDF checkbox */}
           <div className="mt-3 space-y-2">
             <div className="flex items-center gap-2">
-              <div className="text-sm font-semibold">Total: <span className="text-gray-600">${formatAccounting(grandTotal)}</span></div>
-              <label className={`flex items-center gap-1 text-sm text-gray-600 ${disabled ? 'cursor-not-allowed' : 'cursor-pointer'}`}>
+              <div className="text-xs font-semibold">Total: <span className="text-gray-600">${formatAccounting(grandTotal)}</span></div>
+              <label className={`flex items-center gap-1 text-xs text-gray-600 ${disabled ? 'cursor-not-allowed' : 'cursor-pointer'}`}>
                 <input 
                   type="checkbox" 
                   checked={showTotalInPdf} 
@@ -1854,7 +2009,7 @@ By signing the accompanying proposal, the Owner agrees to these Terms and Condit
         {/* Optional Services Block */}
         <div className="rounded-xl border bg-white overflow-hidden">
           <div 
-            className="bg-slate-200 p-3 text-gray-900 font-semibold flex items-center justify-between cursor-pointer hover:opacity-90 transition-opacity"
+            className="bg-slate-200 p-2.5 text-gray-900 font-semibold text-xs flex items-center justify-between cursor-pointer hover:opacity-90 transition-opacity"
             onClick={() => setSectionsExpanded(prev => ({ ...prev, optionalServices: !prev.optionalServices }))}
           >
             <span>Optional Services</span>
@@ -1868,20 +2023,26 @@ By signing the accompanying proposal, the Owner agrees to these Terms and Condit
             </svg>
           </div>
           {sectionsExpanded.optionalServices && (
-          <div className="p-4">
-          <div className="text-[12px] text-gray-600 mb-2">If no services are added, the "Optional Services" section will be hidden in the PDF.</div>
+          <div className="p-3">
+          <div className="text-[10px] text-gray-600 mb-2">If no services are added, the "Optional Services" section will be hidden in the PDF.</div>
             <div className="space-y-2">
               {optionalServices.map((s, i)=> (
                 <div key={i} className="grid grid-cols-5 gap-2">
-                  <input className={`col-span-3 border rounded px-3 py-2 ${disabled ? 'bg-gray-100 cursor-not-allowed' : ''}`} placeholder="Service" value={s.service} onChange={e=>{ const v=e.target.value; setOptionalServices(arr=> arr.map((x,j)=> j===i? { ...x, service:v }: x)); }} disabled={disabled} readOnly={disabled} />
-                  <input type="text" className={`col-span-1 border rounded px-3 py-2 ${disabled ? 'bg-gray-100 cursor-not-allowed' : ''}`} placeholder="Price" value={s.price} onChange={e=>{ const v = parseAccounting(e.target.value); setOptionalServices(arr=> arr.map((x,j)=> j===i? { ...x, price:v }: x)); }} onBlur={!disabled ? ()=> setOptionalServices(arr=> arr.map((x,j)=> j===i? { ...x, price: formatAccounting(x.price) }: x)) : undefined} disabled={disabled} readOnly={disabled} />
+                  <input className={`col-span-3 rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-gray-900 focus:ring-1 focus:ring-gray-400 focus:border-gray-400 ${disabled ? 'bg-gray-100 cursor-not-allowed' : ''}`} placeholder="Service" value={s.service} onChange={e=>{ const v=e.target.value; setOptionalServices(arr=> arr.map((x,j)=> j===i? { ...x, service:v }: x)); }} disabled={disabled} readOnly={disabled} />
+                  <input type="text" className={`col-span-1 rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-gray-900 focus:ring-1 focus:ring-gray-400 focus:border-gray-400 ${disabled ? 'bg-gray-100 cursor-not-allowed' : ''}`} placeholder="Price" value={s.price} onChange={e=>{ const v = parseAccounting(e.target.value); setOptionalServices(arr=> arr.map((x,j)=> j===i? { ...x, price:v }: x)); }} onBlur={!disabled ? ()=> setOptionalServices(arr=> arr.map((x,j)=> j===i? { ...x, price: formatAccounting(x.price) }: x)) : undefined} disabled={disabled} readOnly={disabled} />
                   {!disabled && (
-                    <button className="col-span-1 px-2 py-2 rounded bg-gray-100" onClick={()=> setOptionalServices(arr=> arr.filter((_,j)=> j!==i))}>Remove</button>
+                    <button className="col-span-1 px-2 py-1 rounded bg-gray-100 hover:bg-gray-200 text-xs" onClick={()=> setOptionalServices(arr=> arr.filter((_,j)=> j!==i))}>Remove</button>
                   )}
                 </div>
               ))}
               {!disabled && (
-                <button className="px-3 py-1.5 rounded bg-gray-100 text-base" onClick={()=> setOptionalServices(arr=> [...arr, { service:'', price:'' }])}>+ Add Service</button>
+                <button 
+                  className="mt-3 w-full border-2 border-dashed border-gray-300 rounded-lg p-2.5 hover:border-brand-red hover:bg-gray-50 transition-all text-center bg-white flex items-center justify-center disabled:opacity-60"
+                  onClick={()=> setOptionalServices(arr=> [...arr, { service:'', price:'' }])}
+                >
+                  <div className="text-lg text-gray-400 mr-2">+</div>
+                  <div className="font-medium text-xs text-gray-700">Add Service</div>
+                </button>
               )}
             </div>
           </div>
@@ -1891,7 +2052,7 @@ By signing the accompanying proposal, the Owner agrees to these Terms and Condit
         {/* Terms Block */}
         <div className="rounded-xl border bg-white overflow-hidden">
           <div 
-            className="bg-slate-200 p-3 text-gray-900 font-semibold flex items-center justify-between cursor-pointer hover:opacity-90 transition-opacity"
+            className="bg-slate-200 p-2.5 text-gray-900 font-semibold text-xs flex items-center justify-between cursor-pointer hover:opacity-90 transition-opacity"
             onClick={() => setSectionsExpanded(prev => ({ ...prev, terms: !prev.terms }))}
           >
             <span>Terms</span>
@@ -1905,46 +2066,52 @@ By signing the accompanying proposal, the Owner agrees to these Terms and Condit
             </svg>
           </div>
           {sectionsExpanded.terms && (
-          <div className="p-4 space-y-3">
-            {!disabled && termsTemplates.length > 0 && (
+          <div className="p-3 space-y-2">
+            {termsTemplates.length > 0 && (
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Select Terms Template (optional)</label>
-                <select
-                  className="w-full border rounded px-3 py-2 text-sm"
-                  value={selectedTermsTemplateId}
-                  onChange={(e) => {
-                    const templateId = e.target.value;
-                    setSelectedTermsTemplateId(templateId);
-                    if (templateId) {
-                      const template = termsTemplates.find(t => t.id === templateId);
-                      if (template?.meta?.description) {
-                        setTerms(template.meta.description);
+                <div className="text-xs font-medium text-gray-600 mb-1.5">Select Terms Template (optional)</div>
+                {disabled ? (
+                  <div className="text-sm font-semibold text-gray-900">{selectedTermsTemplateId ? termsTemplates.find(t => t.id === selectedTermsTemplateId)?.label || '-' : '-'}</div>
+                ) : (
+                  <select
+                    className="w-full rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-gray-900 focus:ring-1 focus:ring-gray-400 focus:border-gray-400"
+                    value={selectedTermsTemplateId}
+                    onChange={(e) => {
+                      const templateId = e.target.value;
+                      setSelectedTermsTemplateId(templateId);
+                      if (templateId) {
+                        const template = termsTemplates.find(t => t.id === templateId);
+                        if (template?.meta?.description) {
+                          setTerms(template.meta.description);
+                        }
                       }
-                    }
-                  }}
-                >
-                  <option value="">Custom / No template</option>
-                  {termsTemplates.map((template) => (
-                    <option key={template.id} value={template.id}>
-                      {template.label}
-                    </option>
-                  ))}
-                </select>
+                    }}
+                  >
+                    <option value="">Custom / No template</option>
+                    {termsTemplates.map((template) => (
+                      <option key={template.id} value={template.id}>
+                        {template.label}
+                      </option>
+                    ))}
+                  </select>
+                )}
               </div>
             )}
             <div>
               {!disabled && termsTemplates.length > 0 && (
-                <label className="block text-sm font-medium text-gray-700 mb-1">Terms Text</label>
+                <div className="text-xs font-medium text-gray-600 mb-1.5">Terms Text</div>
               )}
-              <textarea 
-                className={`w-full border rounded px-3 py-2 ${disabled ? 'bg-gray-100 cursor-not-allowed' : ''}`} 
-                value={terms} 
-                onChange={e=>setTerms(e.target.value)} 
-                disabled={disabled} 
-                readOnly={disabled}
-                rows={12}
-                style={{ minHeight: '250px' }}
-              />
+              {disabled ? (
+                <div className="text-sm font-semibold text-gray-900 whitespace-pre-wrap">{terms || '-'}</div>
+              ) : (
+                <textarea 
+                  className="w-full rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-gray-900 focus:ring-1 focus:ring-gray-400 focus:border-gray-400" 
+                  value={terms} 
+                  onChange={e=>setTerms(e.target.value)} 
+                  rows={12}
+                  style={{ minHeight: '250px' }}
+                />
+              )}
             </div>
           </div>
           )}
@@ -2005,7 +2172,7 @@ By signing the accompanying proposal, the Owner agrees to these Terms and Condit
               {isChangeOrder && !isApproved && !effectiveDisabled && (
                 <>
                   <button 
-                    className="px-4 py-1.5 text-sm rounded-lg bg-green-600 hover:bg-green-700 text-white font-semibold transition-colors shadow-sm" 
+                    className="px-3 py-1 text-xs rounded-lg bg-green-600 hover:bg-green-700 text-white font-semibold transition-colors shadow-sm" 
                     onClick={async () => {
                       const result = await confirm({
                         title: 'Submit for Approval',
@@ -2044,7 +2211,7 @@ By signing the accompanying proposal, the Owner agrees to these Terms and Condit
               {/* Approval status badge for Change Orders */}
               {isChangeOrder && isApproved && (
                 <>
-                  <div className="px-3 py-1.5 text-sm rounded-lg bg-green-100 text-green-700 font-medium">
+                  <div className="px-2.5 py-1 text-xs rounded-lg bg-green-100 text-green-700 font-medium">
                     ✓ Approved
                   </div>
                   <div className="w-px h-4 bg-gray-300"></div>
@@ -2052,7 +2219,7 @@ By signing the accompanying proposal, the Owner agrees to these Terms and Condit
               )}
               {isChangeOrder && approvalStatus === 'pending' && (
                 <>
-                  <div className="px-3 py-1.5 text-sm rounded-lg bg-yellow-100 text-yellow-700 font-medium">
+                  <div className="px-2.5 py-1 text-xs rounded-lg bg-yellow-100 text-yellow-700 font-medium">
                     ⏳ Pending Approval
                   </div>
                   <div className="w-px h-4 bg-gray-300"></div>
@@ -2060,7 +2227,7 @@ By signing the accompanying proposal, the Owner agrees to these Terms and Condit
               )}
               {!effectiveDisabled && projectId && !window.location.pathname.includes('/proposals/') && (
                 <button 
-                  className="px-3 py-1.5 text-sm rounded-lg bg-gray-100 hover:bg-gray-200 text-gray-700 font-medium transition-colors" 
+                  className="px-2.5 py-1 text-xs rounded-lg bg-gray-100 hover:bg-gray-200 text-gray-700 font-medium transition-colors" 
                   onClick={handleClearProposal}
                   disabled={effectiveDisabled}
                 >
@@ -2074,7 +2241,7 @@ By signing the accompanying proposal, the Owner agrees to these Terms and Condit
               ) && (
                 <>
                   <button 
-                    className="px-3 py-1.5 text-sm rounded-lg bg-gray-100 hover:bg-gray-200 text-gray-700 font-medium transition-colors" 
+                    className="px-2.5 py-1 text-xs rounded-lg bg-gray-100 hover:bg-gray-200 text-gray-700 font-medium transition-colors" 
                     onClick={async () => {
                       const result = await confirm({ 
                         title: isChangeOrder ? 'Delete Change Order' : 'Delete Proposal', 
@@ -2113,7 +2280,7 @@ By signing the accompanying proposal, the Owner agrees to these Terms and Condit
               )}
               {!effectiveDisabled && !isApproved && (
                 <button 
-                  className={`px-4 py-1.5 text-sm rounded-lg text-white font-semibold disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-sm ${
+                  className={`px-3 py-1 text-xs rounded-lg text-white font-semibold disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-sm ${
                     hasUnsavedChanges
                       ? 'bg-gradient-to-r from-brand-red to-[#ee2b2b] hover:from-red-700 hover:to-red-800' 
                       : 'bg-gray-400 hover:bg-gray-500'
@@ -2128,7 +2295,7 @@ By signing the accompanying proposal, the Owner agrees to these Terms and Condit
                 <>
                   <div className="w-px h-4 bg-gray-300"></div>
                   <button 
-                    className="px-3 py-1.5 text-sm rounded-lg bg-gray-400 hover:bg-gray-500 text-white font-medium disabled:opacity-60 disabled:cursor-not-allowed transition-colors" 
+                    className="px-3 py-1 text-xs rounded-lg bg-gray-400 hover:bg-gray-500 text-white font-medium disabled:opacity-60 disabled:cursor-not-allowed transition-colors" 
                     disabled={isGenerating} 
                     onClick={handleGenerate}
                   >
@@ -2140,9 +2307,9 @@ By signing the accompanying proposal, the Owner agrees to these Terms and Condit
                 <>
                   <div className="w-px h-4 bg-gray-300"></div>
                   {(renderFingerprint===lastGeneratedHash) ? (
-                    <a className="px-3 py-1.5 text-sm rounded-lg bg-gray-400 hover:bg-gray-500 text-white font-medium transition-colors" href={downloadUrl} download="ProjectProposal.pdf">Download PDF</a>
+                    <a className="px-3 py-1 text-xs rounded-lg bg-gray-400 hover:bg-gray-500 text-white font-medium transition-colors" href={downloadUrl} download="ProjectProposal.pdf">Download PDF</a>
                   ) : (
-                    <button className="px-3 py-1.5 text-sm rounded-lg bg-gray-200 text-gray-600 cursor-not-allowed font-medium" title="PDF is outdated. Generate again to enable download" disabled>Download PDF</button>
+                    <button className="px-3 py-1 text-xs rounded-lg bg-gray-200 text-gray-600 cursor-not-allowed font-medium" title="PDF is outdated. Generate again to enable download" disabled>Download PDF</button>
                   )}
                 </>
               )}
@@ -2467,6 +2634,21 @@ By signing the accompanying proposal, the Owner agrees to these Terms and Condit
           onClose={() => setShowDivisionModal(false)}
         />
       )}
+
+      {/* Section Type Selection Modal */}
+      {showSectionTypeModal && (
+        <SectionTypeSelectionModal
+          onSelect={(type) => {
+            if (type === 'text') {
+              setSections(arr => [...arr, { id: 'sec_'+Math.random().toString(36).slice(2), type:'text', title:'', text:'' }]);
+            } else if (type === 'images') {
+              setSections(arr => [...arr, { id: 'sec_'+Math.random().toString(36).slice(2), type:'images', title:'', images: [] }]);
+            }
+            setShowSectionTypeModal(false);
+          }}
+          onClose={() => setShowSectionTypeModal(false)}
+        />
+      )}
     </div>
   );
 }
@@ -2507,34 +2689,77 @@ function DivisionSelectionModal({
 
   return (
     <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4" onClick={onClose}>
-      <div className="bg-white rounded-xl w-full max-w-2xl max-h-[80vh] overflow-hidden flex flex-col shadow-xl" onClick={(e) => e.stopPropagation()}>
-        <div className="p-4 bg-[#7f1010] flex items-center justify-between">
-          <h3 className="text-lg font-semibold text-white">Select Division</h3>
-          <button onClick={onClose} className="text-white hover:text-gray-200 transition-colors">
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <div className="bg-white rounded-xl max-w-md w-full max-h-[80vh] overflow-hidden flex flex-col shadow-xl" onClick={(e) => e.stopPropagation()}>
+        <div className="bg-slate-200 p-2.5 text-gray-900 font-semibold text-xs flex items-center justify-between">
+          <span>Select Division</span>
+          <button onClick={onClose} className="text-gray-600 hover:text-gray-900 transition-colors">
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
             </svg>
           </button>
         </div>
         <div className="flex-1 overflow-y-auto p-4">
           {availableDivisions.length > 0 ? (
-            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+            <div className={`grid gap-3 ${availableDivisions.length === 1 ? 'grid-cols-1' : availableDivisions.length === 2 ? 'grid-cols-2' : 'grid-cols-2 sm:grid-cols-3'}`}>
               {availableDivisions.map((div) => (
                 <button
                   key={div.id}
                   onClick={() => onSelect(div.id)}
-                  className="flex flex-col items-center gap-2 p-4 border rounded-lg hover:border-[#7f1010] hover:bg-gray-50 transition-all"
+                  className="flex flex-col items-center gap-2 p-3 border border-gray-300 rounded-lg hover:border-gray-400 hover:bg-gray-50 transition-all"
                 >
-                  <span className="text-3xl">{div.icon}</span>
-                  <span className="text-sm font-medium text-gray-900 text-center">{div.label}</span>
+                  <span className="text-2xl">{div.icon}</span>
+                  <span className="text-xs font-medium text-gray-900 text-center">{div.label}</span>
                 </button>
               ))}
             </div>
           ) : (
             <div className="text-center py-8 text-gray-500">
-              <p>All divisions have been assigned to pricing items.</p>
+              <p className="text-xs">All divisions have been assigned to pricing items.</p>
             </div>
           )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Section Type Selection Modal Component
+function SectionTypeSelectionModal({ 
+  onSelect, 
+  onClose 
+}: { 
+  onSelect: (type: 'text' | 'images') => void; 
+  onClose: () => void;
+}) {
+  const sectionTypes = [
+    { type: 'text' as const, label: 'Text Section', icon: '📝' },
+    { type: 'images' as const, label: 'Images Section', icon: '🖼️' }
+  ];
+
+  return (
+    <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4" onClick={onClose}>
+      <div className="bg-white rounded-xl w-full max-w-md overflow-hidden flex flex-col shadow-xl" onClick={(e) => e.stopPropagation()}>
+        <div className="bg-slate-200 p-2.5 text-gray-900 font-semibold text-xs flex items-center justify-between">
+          <span>Select Section Type</span>
+          <button onClick={onClose} className="text-gray-600 hover:text-gray-900 transition-colors">
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+        <div className="flex-1 overflow-y-auto p-4">
+          <div className="grid grid-cols-2 gap-3">
+            {sectionTypes.map((section) => (
+              <button
+                key={section.type}
+                onClick={() => onSelect(section.type)}
+                className="flex flex-col items-center gap-2 p-3 border border-gray-300 rounded-lg hover:border-gray-400 hover:bg-gray-50 transition-all"
+              >
+                <span className="text-2xl">{section.icon}</span>
+                <span className="text-xs font-medium text-gray-900 text-center">{section.label}</span>
+              </button>
+            ))}
+          </div>
         </div>
       </div>
     </div>
