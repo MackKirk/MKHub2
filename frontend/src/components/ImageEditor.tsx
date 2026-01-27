@@ -583,7 +583,8 @@ export default function ImageEditor({ isOpen, onClose, imageUrl, imageName = 'im
   }, [img, angle, clampOffset, ensureBlurredBackground]);
 
   // Get item bounds
-  const getItemBounds = useCallback((it: AnnotationItem) => {
+  const getItemBounds = useCallback((it: AnnotationItem | null | undefined) => {
+    if (!it || !it.id) return null;
     const overlay = overlayRef.current;
     if (!overlay) return null;
     const ctx = overlay.getContext('2d');
@@ -1272,7 +1273,7 @@ export default function ImageEditor({ isOpen, onClose, imageUrl, imageName = 'im
     
     // Handle clicks when editing text (even in pan mode)
     if (textEditingRef.current) {
-      const editingItem = items.find(it => it.id === textEditingRef.current && it.type === 'text');
+      const editingItem = items.find(it => it && it.id === textEditingRef.current && it.type === 'text');
       if (editingItem) {
         const boxW = editingItem.w || 200;
         const boxH = editingItem.h || 30;
@@ -1514,6 +1515,7 @@ export default function ImageEditor({ isOpen, onClose, imageUrl, imageName = 'im
           // First check if clicking on a resize handle of any selected item
           let handleClicked = false;
           for (const item of items) {
+            if (!item || !item.id) continue;
             if (selectedIds.includes(item.id)) {
               const handle = getHandleAt(x, y, item);
               if (handle) {
@@ -1716,7 +1718,7 @@ export default function ImageEditor({ isOpen, onClose, imageUrl, imageName = 'im
     
     // Mouse-drag text selection while editing
     if (textEditingRef.current && textSelectingRef.current) {
-      const editingItem = items.find(it => it.id === textEditingRef.current && it.type === 'text');
+      const editingItem = items.find(it => it && it.id === textEditingRef.current && it.type === 'text');
       if (editingItem) {
         const currentText = editingItem.text || '';
         const anchor = textSelectionStartRef.current ?? textCursorPositionRef.current;
@@ -1741,45 +1743,36 @@ export default function ImageEditor({ isOpen, onClose, imageUrl, imageName = 'im
       return;
     }
     
-    if (drawingRef.current) {
-      if (drawingRef.current.type === 'rect') {
-        setItems(prev => prev.map(it => !it || !it.id ? it : (it.id === drawingRef.current!.id ? { ...it, w: x - it.x, h: y - it.y } : it)).filter(it => it && it.id));
-      } else if (drawingRef.current.type === 'arrow') {
-        setItems(prev => prev.map(it => !it || !it.id ? it : (it.id === drawingRef.current!.id ? { ...it, x2: x, y2: y } : it)).filter(it => it && it.id));
-      } else if (drawingRef.current.type === 'circle') {
-        // Update width and height like rectangle (from corner to corner)
+    const drawing = drawingRef.current;
+    if (drawing) {
+      const drawnId = drawing.id;
+      if (drawing.type === 'rect') {
+        setItems(prev => prev.map(it => !it || !it.id ? it : (it.id === drawnId ? { ...it, w: x - it.x, h: y - it.y } : it)).filter(it => it && it.id));
+      } else if (drawing.type === 'arrow') {
+        setItems(prev => prev.map(it => !it || !it.id ? it : (it.id === drawnId ? { ...it, x2: x, y2: y } : it)).filter(it => it && it.id));
+      } else if (drawing.type === 'circle') {
         setItems(prev => prev.map(it => {
           if (!it || !it.id) return it;
-          if (it.id === drawingRef.current!.id) {
-            return { ...it, w: x - it.x, h: y - it.y };
-          }
+          if (it.id === drawnId) return { ...it, w: x - it.x, h: y - it.y };
           return it;
         }).filter(it => it && it.id));
-      } else if (drawingRef.current.type === 'text') {
-        // For text, add to items on first move (when user starts dragging)
-        const dx = Math.abs(x - drawingRef.current.x);
-        const dy = Math.abs(y - drawingRef.current.y);
-        const minSize = 5; // Minimum movement to consider it a drag
-        
-        if (dx < minSize && dy < minSize) {
-          // Not enough movement yet, don't add to items
-          return;
-        }
-        
-        if (!drawingRef.current.w || drawingRef.current.w <= 1) {
-          // First move - add item to items array
-          const newItem = { ...drawingRef.current, w: Math.max(50, Math.abs(x - drawingRef.current.x)), h: Math.max(20, Math.abs(y - drawingRef.current.y)) };
+      } else if (drawing.type === 'text') {
+        const dx = Math.abs(x - drawing.x);
+        const dy = Math.abs(y - drawing.y);
+        const minSize = 5;
+        if (dx < minSize && dy < minSize) return;
+        if (!drawing.w || drawing.w <= 1) {
+          const newItem = { ...drawing, w: Math.max(50, Math.abs(x - drawing.x)), h: Math.max(20, Math.abs(y - drawing.y)) };
           setItems(prev => [...prev.filter(it => it && it.id), newItem]);
           setSelectedIds([newItem.id]);
           drawingRef.current = newItem;
         } else {
-          // Continue resizing
-          setItems(prev => prev.map(it => !it || !it.id ? it : (it.id === drawingRef.current!.id ? { ...it, w: Math.max(50, Math.abs(x - it.x)), h: Math.max(20, Math.abs(y - it.y)) } : it)).filter(it => it && it.id));
+          setItems(prev => prev.map(it => !it || !it.id ? it : (it.id === drawnId ? { ...it, w: Math.max(50, Math.abs(x - it.x)), h: Math.max(20, Math.abs(y - it.y)) } : it)).filter(it => it && it.id));
         }
-      } else if (drawingRef.current.type === 'path') {
+      } else if (drawing.type === 'path') {
         setItems(prev => prev.map(it => {
           if (!it || !it.id) return it;
-          if (it.id === drawingRef.current!.id) {
+          if (it.id === drawnId) {
             const pts = [...(it.points || []), { x, y }];
             return { ...it, points: pts };
           }
@@ -2132,7 +2125,7 @@ export default function ImageEditor({ isOpen, onClose, imageUrl, imageName = 'im
     const handleKeyDown = (e: KeyboardEvent) => {
       // Don't delete when editing text - ESC should exit edit mode instead
         if (textEditingRef.current) {
-          const editingItem = items.find(it => it.id === textEditingRef.current && it.type === 'text');
+          const editingItem = items.find(it => it && it.id === textEditingRef.current && it.type === 'text');
           if (editingItem) {
             const currentText = editingItem.text || '';
             let cursorPos = editingItem.cursorPosition !== undefined ? editingItem.cursorPosition : currentText.length;
@@ -2631,6 +2624,7 @@ export default function ImageEditor({ isOpen, onClose, imageUrl, imageName = 'im
                           let handleFound = false;
                           if (mode === 'select') {
                             for (const item of items) {
+                              if (!item || !item.id) continue;
                               if (selectedIds.includes(item.id)) {
                                 const handle = getHandleAt(x, y, item);
                                 if (handle) {

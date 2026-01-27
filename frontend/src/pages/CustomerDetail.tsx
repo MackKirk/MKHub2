@@ -8,6 +8,7 @@ import ImageEditor from '@/components/ImageEditor';
 import { useConfirm } from '@/components/ConfirmProvider';
 import { useUnsavedChangesGuard } from '@/hooks/useUnsavedChangesGuard';
 import LoadingOverlay from '@/components/LoadingOverlay';
+import { CustomerFilesTabEnhanced } from './CustomerFilesTabEnhanced';
 
 type Client = { id:string, name?:string, display_name?:string, code?:string, city?:string, province?:string, postal_code?:string, country?:string, address_line1?:string, address_line2?:string, created_at?:string };
 type Site = { id:string, site_name?:string, site_address_line1?:string, site_city?:string, site_province?:string, site_country?:string };
@@ -394,12 +395,20 @@ const createDonutSlice = (startAngle: number, endAngle: number, innerRadius: num
   ].join(' ');
 };
 
+type CustomerTab = 'overview'|'general'|'files'|'contacts'|'sites'|'projects'|'opportunities'|null;
+
 export default function CustomerDetail(){
   const location = useLocation();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { id } = useParams();
-  const [tab, setTab] = useState<'overview'|'general'|'files'|'contacts'|'sites'|'projects'|'opportunities'>('overview');
+  const searchParams = new URLSearchParams(location.search);
+  const initialTabParam = searchParams.get('tab') as CustomerTab | null;
+  const initialTab: CustomerTab = (initialTabParam && initialTabParam !== 'overview' && ['general','files','contacts','sites','projects','opportunities'].includes(initialTabParam))
+    ? initialTabParam
+    : null;
+  const [tab, setTab] = useState<CustomerTab>(initialTab);
+  const [isHeroCollapsed, setIsHeroCollapsed] = useState(false);
   const [newProjectOpen, setNewProjectOpen] = useState(false);
   const [newProjectName, setNewProjectName] = useState('');
   const { data:client, isLoading } = useQuery({ queryKey:['client', id], queryFn: ()=>api<Client>('GET', `/clients/${id}`) });
@@ -1248,14 +1257,32 @@ export default function CustomerDetail(){
     return tabs;
   }, [hasCustomersRead, hasProjectsRead, hasFilesRead]);
   
+  // Sync tab from URL when location.search changes
+  useEffect(() => {
+    const sp = new URLSearchParams(location.search);
+    const tabParam = sp.get('tab') as string | null;
+    if (tabParam && tabParam !== 'overview' && ['general','files','contacts','sites','projects','opportunities'].includes(tabParam)) {
+      setTab(tabParam as CustomerTab);
+    } else {
+      setTab(null);
+    }
+  }, [location.search]);
+
   // Redirect to first available tab if current tab is not available
   useEffect(() => {
-    if (tab && availableTabs.length > 0 && !availableTabs.includes(tab)) {
-      setTab(availableTabs[0] as typeof tab);
-    } else if (availableTabs.length > 0 && !tab) {
-      setTab(availableTabs[0] as typeof tab);
+    if (tab !== null && availableTabs.length > 0 && !availableTabs.includes(tab)) {
+      setTab(availableTabs[0] === 'overview' ? null : (availableTabs[0] as CustomerTab));
     }
   }, [tab, availableTabs]);
+
+  // Auto-collapse hero when a tab is selected (not overview), expand when on overview
+  useEffect(() => {
+    if (tab === null) {
+      setIsHeroCollapsed(false);
+    } else {
+      setIsHeroCollapsed(true);
+    }
+  }, [tab]);
   const { data:employees } = useQuery({ queryKey:['employees'], queryFn: ()=> api<any[]>('GET','/employees') });
   const primaryContact = (contacts||[]).find(c=>c.is_primary) || (contacts||[])[0];
   const clientLogoRec = (files||[]).find(f=> !f.site_id && String(f.category||'').toLowerCase()==='client-logo-derived');
@@ -1360,81 +1387,225 @@ export default function CustomerDetail(){
     });
   }, []);
 
+  const getPageTitle = (client: Client | typeof c, activeTab: CustomerTab): string => {
+    if (!activeTab) return 'Customer Information';
+    const tabTitles: Record<string, string> = {
+      general: 'General',
+      contacts: 'Contacts',
+      files: 'Files',
+      sites: 'Sites',
+      opportunities: 'Opportunities',
+      projects: 'Projects',
+    };
+    return `Customer Information • ${tabTitles[activeTab] || activeTab}`;
+  };
+
+  const getPageDescription = (_client: Client | typeof c, activeTab: CustomerTab): string => {
+    if (!activeTab) return 'Profile, sites, projects, and files for this customer.';
+    const tabDescriptions: Record<string, string> = {
+      general: 'Company identity and billing details',
+      contacts: 'Contacts and primary contact',
+      files: 'Documents and files',
+      sites: 'Construction sites',
+      opportunities: 'Open opportunities',
+      projects: 'Active projects',
+    };
+    return tabDescriptions[activeTab] || '';
+  };
+
+  const handleTabClick = (newTab: 'overview' | CustomerTab) => {
+    if (newTab === 'overview' || newTab === null) {
+      setTab(null);
+      navigate(location.pathname, { replace: true });
+      return;
+    }
+    setTab(newTab);
+    navigate(`${location.pathname}?tab=${newTab}`, { replace: true });
+  };
+
   return (
     <div>
-      <div className="bg-slate-200/50 rounded-[12px] border border-slate-200 flex items-center justify-between py-4 px-6 mb-6">
-        <div className="flex items-center gap-4 flex-1">
-          <button
-            onClick={() => navigate('/customers')}
-            className="p-2 rounded-lg hover:bg-gray-200 transition-colors flex items-center justify-center"
-            title="Back to Customers"
-          >
-            <svg className="w-5 h-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
-            </svg>
-          </button>
-          <div>
-            <div className="text-xl font-bold text-gray-900 tracking-tight mb-0.5">Customer Information</div>
-            <div className="text-sm text-gray-500 font-medium">Profile, sites, projects, and files for this customer.</div>
+      {/* Title Bar - ProjectDetail style */}
+      <div className="rounded-xl border bg-white p-4 mb-4">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3 flex-1">
+            <button
+              onClick={() => {
+                if (tab !== null) {
+                  setTab(null);
+                  navigate(location.pathname, { replace: true });
+                } else {
+                  navigate('/customers');
+                }
+              }}
+              className="p-1.5 rounded hover:bg-gray-100 transition-colors flex items-center justify-center"
+              title={tab !== null ? 'Back to Overview' : 'Back to Customers'}
+            >
+              <svg className="w-4 h-4 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+              </svg>
+            </button>
+            <div className="w-8 h-8 rounded bg-blue-100 flex items-center justify-center flex-shrink-0">
+              <svg className="w-5 h-5 text-blue-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h10m-6 4h.01M9 17h.01" />
+              </svg>
+            </div>
+            <div>
+              <div className="text-sm font-semibold text-gray-900">{getPageTitle(c, tab)}</div>
+              <div className="text-xs text-gray-500 mt-0.5">{getPageDescription(c, tab)}</div>
+            </div>
           </div>
-        </div>
-        <div className="text-right">
-          <div className="text-xs text-gray-400 mb-1.5 font-medium uppercase tracking-wide">Today</div>
-          <div className="text-sm font-semibold text-gray-700">{todayLabel}</div>
+          <div className="text-right">
+            <div className="text-[10px] font-bold text-gray-500 uppercase tracking-wide">Today</div>
+            <div className="text-xs font-semibold text-gray-700 mt-0.5">{todayLabel}</div>
+          </div>
         </div>
       </div>
-      <div className="rounded-xl border bg-white">
-        <div className="relative rounded-t-xl p-5 text-white overflow-hidden" style={{ backgroundImage: 'linear-gradient(135deg, #6b7280, #1f2937)' }}>
-          <img src={clientAvatarLarge} alt="" className="pointer-events-none select-none absolute right-0 top-0 h-[160%] w-auto opacity-15 -translate-x-20 scale-150 object-contain" />
-          {overlayResolved && (
-            <img src={overlayResolved} alt="" className="pointer-events-none select-none absolute right-0 top-0 h-full w-auto opacity-80"
-                 style={{ WebkitMaskImage: 'linear-gradient(to left, black 70%, transparent 100%)', maskImage: 'linear-gradient(to left, black 70%, transparent 100%)' }} />
-          )}
-          <div className="flex gap-4 items-stretch min-h-[210px] relative">
-            <div className="w-[220px] relative group">
-              <img src={clientAvatarLarge} className="w-full h-full object-cover rounded-xl border-2 border-brand-red" />
-              <button onClick={()=>setPickerOpen(true)} className="absolute inset-0 rounded-xl bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center text-white">✏️ Change</button>
+
+      {/* Hero Section - white, compact, collapsible (ProjectDetail style) */}
+      <div className={`transition-all ${isHeroCollapsed ? 'duration-[1200ms]' : 'duration-[1800ms]'} ease-in-out ${isHeroCollapsed ? 'mb-2' : 'mb-4'}`}>
+        <div className="relative" style={{ minHeight: isHeroCollapsed ? 'auto' : 'auto' }}>
+          {/* Expanded View */}
+          <div className={`rounded-xl border bg-white overflow-hidden transition-all ${isHeroCollapsed ? 'duration-[1200ms]' : 'duration-[1800ms]'} ease-in-out ${
+            isHeroCollapsed ? 'opacity-0 max-h-0 pointer-events-none relative' : 'opacity-100 max-h-[2000px] pointer-events-auto relative'
+          }`} style={{
+            transitionProperty: 'max-height, opacity',
+            transitionDuration: isHeroCollapsed ? '1200ms, 300ms' : '1800ms, 300ms',
+            transitionTimingFunction: 'ease-in-out, ease-in-out'
+          }}>
+            <div className="p-3 overflow-visible">
+              <div className="flex gap-3 items-start">
+                <div className="w-48 flex-shrink-0">
+                  <div className="w-48 h-36 rounded-xl border overflow-hidden group relative">
+                    <img src={clientAvatarLarge} className="w-full h-full object-cover" alt="" />
+                    <button onClick={()=>setPickerOpen(true)} className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center text-white transition-opacity text-xs">✏️ Change</button>
+                  </div>
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="mb-2">
+                    <h3 className="text-sm font-bold text-gray-900 truncate">{c.display_name||c.name||id}</h3>
+                  </div>
+                  <div className="grid grid-cols-[minmax(5rem,auto)_1fr] gap-x-2 gap-y-1.5">
+                    <div className="min-w-0">
+                      <div>
+                        <span className="text-[10px] font-bold text-gray-500 uppercase tracking-wide">Code</span>
+                        <div className="text-xs font-semibold text-gray-900 mt-0.5">{c.code || id?.slice(0, 8) || '—'}</div>
+                      </div>
+                    </div>
+                    <div className="min-w-0">
+                      <div>
+                        <span className="text-[10px] font-bold text-gray-500 uppercase tracking-wide">Address</span>
+                        <div className="text-xs font-semibold text-gray-900 mt-0.5 truncate" title={[c.address_line1, (c as any).address_line2, c.city, c.province, c.postal_code, c.country].filter(Boolean).join(', ')}>
+                          {[c.address_line1, (c as any).address_line2, c.city, c.province, c.country].filter(Boolean).join(', ') || '—'}
+                        </div>
+                      </div>
+                    </div>
+                    <div className="min-w-0">
+                      <div>
+                        <span className="text-[10px] font-bold text-gray-500 uppercase tracking-wide">Status</span>
+                        <div className="mt-0.5">
+                          {((c as any).client_status) ? (
+                            <span className="px-2 py-0.5 rounded text-[10px] font-medium inline-block" style={{ backgroundColor: statusColorMap[String((c as any).client_status)] || '#eeeeee', color: '#000' }}>
+                              {String((c as any).client_status)}
+                            </span>
+                          ) : (
+                            <span className="text-xs font-semibold text-gray-400">—</span>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                    <div className="min-w-0">
+                      <div>
+                        <span className="text-[10px] font-bold text-gray-500 uppercase tracking-wide">Type</span>
+                        <div className="text-xs font-semibold text-gray-900 mt-0.5">{(c as any).client_type ? String((c as any).client_type) : '—'}</div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
             </div>
-            <div className="flex-1 flex flex-col justify-start">
-              <div className="text-3xl font-extrabold">{c.display_name||c.name||id}</div>
-              <div className="text-sm opacity-90 mt-1">
-                {c.address_line1||''}{(c.address_line1 && (c.city||c.province||c.country))? ' · ':''}{[c.city, c.province, c.country].filter(Boolean).join(', ')}{c.code ? ` · Code: ${c.code}` : ''}
-              </div>
-              <div className="mt-2 flex items-center gap-2 text-xs">
-                {((c as any).client_type) && (
-                  <span className="px-2 py-0.5 rounded-full bg-white/90 text-gray-900 border">{String((c as any).client_type)}</span>
-                )}
-                {((c as any).client_status) && (
-                  <span className="px-2 py-0.5 rounded-full border" style={{ backgroundColor: statusColorMap[String((c as any).client_status)] || '#eeeeee', color: '#000' }}>{String((c as any).client_status)}</span>
-                )}
-              </div>
-              <div className="mt-auto flex gap-2">
-                {availableTabs.map(k=> {
-                  let count: number | undefined;
-                  if (k === 'projects') count = projects?.length;
-                  else if (k === 'opportunities') count = opportunities?.length;
-                  else if (k === 'sites') count = sites?.length;
-                  else if (k === 'contacts') count = contacts?.length;
-                  else if (k === 'files') count = files?.length;
-                  return (
-                    <button key={k} onClick={()=>setTab(k as typeof tab)} className={`px-4 py-2 rounded-lg border ${tab===k?'bg-black/30 border-white/30 text-white':'bg-white text-black'} flex items-center gap-2`}>
-                      <span>{k[0].toUpperCase()+k.slice(1)}</span>
-                      {count !== undefined && count > 0 && (
-                        <span className={`text-xs px-1.5 py-0.5 rounded-full ${tab===k?'bg-white/20 text-white':'bg-gray-100 text-gray-600'}`}>
-                          {count}
-                        </span>
-                      )}
-                    </button>
-                  );
-                })}
+            <button
+              onClick={() => setIsHeroCollapsed(!isHeroCollapsed)}
+              className="absolute bottom-2 right-2 p-1 rounded hover:bg-gray-100 transition-colors text-gray-500 hover:text-gray-700"
+              title="Collapse"
+            >
+              <svg className="w-3 h-3 transition-transform rotate-180" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+              </svg>
+            </button>
+          </div>
+
+          {/* Collapsed View */}
+          <div className={`rounded-xl border bg-white overflow-hidden transition-all ${isHeroCollapsed ? 'duration-[1200ms]' : 'duration-[1800ms]'} ease-in-out absolute top-0 left-0 right-0 ${
+            isHeroCollapsed ? 'opacity-100 min-h-[60px] max-h-[200px] pointer-events-auto z-10' : 'opacity-0 max-h-0 pointer-events-none z-0'
+          }`} style={{
+            transitionProperty: 'max-height, opacity',
+            transitionDuration: isHeroCollapsed ? '1200ms, 300ms' : '1800ms, 300ms',
+            transitionTimingFunction: 'ease-in-out, ease-in-out'
+          }}>
+            <div className="p-3 flex items-center justify-between gap-4 min-h-[44px]">
+              <h3 className="text-sm font-bold text-gray-900 truncate min-w-0">{c.display_name||c.name||id}</h3>
+              <div className="flex items-center gap-2 flex-shrink-0">
+                <span className="text-xs text-gray-500 font-medium">{c.code || id?.slice(0, 8) || '—'}</span>
+                {(c as any).client_status ? (
+                  <span className="px-2 py-0.5 rounded text-[10px] font-medium" style={{ backgroundColor: statusColorMap[String((c as any).client_status)] || '#eeeeee', color: '#000' }}>
+                    {String((c as any).client_status)}
+                  </span>
+                ) : null}
               </div>
             </div>
+            <button
+              onClick={() => setIsHeroCollapsed(!isHeroCollapsed)}
+              className="absolute bottom-2 right-2 p-1 rounded hover:bg-gray-100 transition-colors text-gray-500 hover:text-gray-700"
+              title="Expand"
+            >
+              <svg className="w-3 h-3 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+              </svg>
+            </button>
           </div>
         </div>
-        <div className="p-5">
+      </div>
+
+      {/* Tab Cards - ProjectDetail style */}
+      <div className={`mb-4 transition-all duration-[1200ms] ease-in-out ${isHeroCollapsed ? 'mt-16' : 'mt-0'}`}>
+        <div className="rounded-xl border bg-white p-3">
+          <div className="flex flex-wrap gap-2">
+            {(['overview', ...availableTabs.filter(t => t !== 'overview')]).map(tabKey => {
+              const tabConfig: Record<string, { label: string; icon: string }> = {
+                overview: { label: 'Overview', icon: '📊' },
+                general: { label: 'General', icon: '📋' },
+                contacts: { label: 'Contacts', icon: '👤' },
+                files: { label: 'Files', icon: '📁' },
+                sites: { label: 'Sites', icon: '📍' },
+                opportunities: { label: 'Opportunities', icon: '💼' },
+                projects: { label: 'Projects', icon: '🏗️' },
+              };
+              const config = tabConfig[tabKey];
+              if (!config) return null;
+              const isActive = (tab === null && tabKey === 'overview') || tab === tabKey;
+              return (
+                <button
+                  key={tabKey}
+                  onClick={() => handleTabClick(tabKey === 'overview' ? null : (tabKey as CustomerTab))}
+                  className={`flex-1 min-w-[120px] px-3 py-1.5 text-sm font-bold rounded-lg border transition-colors flex items-center justify-center gap-1.5 ${
+                    isActive ? 'bg-red-50 text-red-700 border-red-300 hover:bg-red-100 hover:border-red-400' : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50 hover:border-gray-400'
+                  }`}
+                >
+                  <span className="text-xs leading-none">{config.icon}</span>
+                  {config.label}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      </div>
+
+      {/* Content area */}
+      <div className="rounded-xl border bg-white p-5">
           {isLoading? <div className="h-24 animate-pulse bg-gray-100 rounded"/> : (
             <>
-              {tab==='overview' && (
+              {tab === null && (
                 <LoadingOverlay
                   isLoading={
                     projectDetailsQueries.isLoading ||
@@ -1444,10 +1615,9 @@ export default function CustomerDetail(){
                   }
                   text="Loading dashboard data..."
                 >
-                  <div className="space-y-6">
+                  <div className="space-y-10">
                     {/* Overview Controls Bar */}
-                    <div className="bg-white rounded-lg border border-gray-200 shadow-sm p-3 flex items-center justify-end">
-                      <div className="flex items-center gap-2">
+                    <div className="flex items-center justify-end gap-2">
                         <select
                           value={globalDateFilter}
                           onChange={(e) => {
@@ -1491,139 +1661,192 @@ export default function CustomerDetail(){
                           <option value="quantity">Quantity</option>
                           <option value="value">Value</option>
                         </select>
-                      </div>
                     </div>
 
-                    {/* KPI Cards — 6 metrics, Quantity/Value toggle */}
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                      <div className="rounded-lg border border-gray-200 bg-white shadow-sm p-4 transition-all duration-200 ease-out hover:-translate-y-0.5 hover:shadow-md">
-                        <div className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-1">Closed</div>
-                        <div className="text-2xl font-bold text-gray-900">
+                    {/* KPI Snapshot — 4 metrics, Quantity/Value toggle */}
+                    <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+                      <div className="rounded-lg border border-gray-200 bg-white shadow-sm p-3">
+                        <div className="text-[10px] font-bold text-gray-500 uppercase tracking-wide mb-0.5">Closed</div>
+                        <div className="text-lg font-semibold text-gray-900">
                           {globalDisplayMode === 'value' ? formatCurrency(kpis.closed.value) : <CountUp value={kpis.closed.count} enabled={hasAnimated} />}
                         </div>
-                        <div className="text-xs text-gray-500 mt-1">{globalDisplayMode === 'value' ? 'Closed value' : 'Finished projects'}</div>
+                        <div className="text-[11px] text-gray-500 mt-0.5 opacity-70">{globalDisplayMode === 'value' ? 'Closed value' : 'Finished projects'}</div>
                       </div>
-                      <div className="rounded-lg border border-gray-200 bg-white shadow-sm p-4 transition-all duration-200 ease-out hover:-translate-y-0.5 hover:shadow-md">
-                        <div className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-1">Pipeline</div>
-                        <div className="text-2xl font-bold text-gray-900">
+                      <div className="rounded-lg border border-gray-200 bg-white shadow-sm p-3">
+                        <div className="text-[10px] font-bold text-gray-500 uppercase tracking-wide mb-0.5">Pipeline</div>
+                        <div className="text-lg font-semibold text-gray-900">
                           {globalDisplayMode === 'value' ? formatCurrency(kpis.pipeline.value) : <CountUp value={kpis.pipeline.count} enabled={hasAnimated} />}
                         </div>
-                        <div className="text-xs text-gray-500 mt-1">{globalDisplayMode === 'value' ? 'Pipeline value' : 'Open opportunities'}</div>
+                        <div className="text-[11px] text-gray-500 mt-0.5 opacity-70">{globalDisplayMode === 'value' ? 'Pipeline value' : 'Open opportunities'}</div>
                       </div>
-                      <div className="rounded-lg border border-gray-200 bg-white shadow-sm p-4 transition-all duration-200 ease-out hover:-translate-y-0.5 hover:shadow-md">
-                        <div className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-1">Sent</div>
-                        <div className="text-2xl font-bold text-gray-900">
-                          {globalDisplayMode === 'value' ? formatCurrency(kpis.sent.value) : <CountUp value={kpis.sent.count} enabled={hasAnimated} />}
-                        </div>
-                        <div className="text-xs text-gray-500 mt-1">{globalDisplayMode === 'value' ? 'Sent to Customer value' : 'Sent to Customer'}</div>
-                      </div>
-                      <div className="rounded-lg border border-gray-200 bg-white shadow-sm p-4 transition-all duration-200 ease-out hover:-translate-y-0.5 hover:shadow-md">
-                        <div className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-1">Prospecting</div>
-                        <div className="text-2xl font-bold text-gray-900">
-                          {globalDisplayMode === 'value' ? formatCurrency(kpis.prospecting.value) : <CountUp value={kpis.prospecting.count} enabled={hasAnimated} />}
-                        </div>
-                        <div className="text-xs text-gray-500 mt-1">{globalDisplayMode === 'value' ? 'Prospecting value' : 'Prospecting'}</div>
-                      </div>
-                      <div className="rounded-lg border border-gray-200 bg-white shadow-sm p-4 transition-all duration-200 ease-out hover:-translate-y-0.5 hover:shadow-md">
-                        <div className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-1">In Progress</div>
-                        <div className="text-2xl font-bold text-gray-900">
+                      <div className="rounded-lg border border-gray-200 bg-white shadow-sm p-3">
+                        <div className="text-[10px] font-bold text-gray-500 uppercase tracking-wide mb-0.5">In Progress</div>
+                        <div className="text-lg font-semibold text-gray-900">
                           {globalDisplayMode === 'value' ? formatCurrency(kpis.inProgress.value) : <CountUp value={kpis.inProgress.count} enabled={hasAnimated} />}
                         </div>
-                        <div className="text-xs text-gray-500 mt-1">{globalDisplayMode === 'value' ? 'In progress value' : 'In progress projects'}</div>
+                        <div className="text-[11px] text-gray-500 mt-0.5 opacity-70">{globalDisplayMode === 'value' ? 'In progress value' : 'In progress projects'}</div>
                       </div>
-                      <div className="rounded-lg border border-gray-200 bg-white shadow-sm p-4 transition-all duration-200 ease-out hover:-translate-y-0.5 hover:shadow-md">
-                        <div className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-1">On Hold</div>
-                        <div className="text-2xl font-bold text-gray-900">
+                      <div className="rounded-lg border border-gray-200 bg-white shadow-sm p-3">
+                        <div className="text-[10px] font-bold text-gray-500 uppercase tracking-wide mb-0.5">On Hold</div>
+                        <div className="text-lg font-semibold text-gray-900">
                           {globalDisplayMode === 'value' ? formatCurrency(kpis.onHold.value) : <CountUp value={kpis.onHold.count} enabled={hasAnimated} />}
                         </div>
-                        <div className="text-xs text-gray-500 mt-1">{globalDisplayMode === 'value' ? 'On hold value' : 'On hold projects'}</div>
+                        <div className="text-[11px] text-gray-500 mt-0.5 opacity-70">{globalDisplayMode === 'value' ? 'On hold value' : 'On hold projects'}</div>
                       </div>
                     </div>
 
-                    {/* Charts Row 1 */}
+                    {/* Status Overview — Opportunities by Status + Customer Funnel / Health */}
                     <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-                      {/* Opportunities by Status */}
-                      <div className="rounded-lg border border-gray-200 bg-white shadow-sm p-4 transition-all duration-200 ease-out hover:-translate-y-0.5 hover:shadow-md">
-                        <div className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-3">Opportunities by Status</div>
-                        <div className="space-y-2">
-                          {Object.entries(oppStatusBreakdown).length > 0 ? (
-                            (() => {
-                              const entries = Object.entries(oppStatusBreakdown);
-                              const maxValue = globalDisplayMode === 'value'
-                                ? Math.max(...entries.map(([, data]) => data.value), 1)
-                                : Math.max(...entries.map(([, data]) => data.count), 1);
-                              const sorted = entries.sort(([, a], [, b]) => 
-                                globalDisplayMode === 'value' ? b.value - a.value : b.count - a.count
-                              );
-                              return sorted.map(([status, data]) => {
-                                const value = globalDisplayMode === 'value' ? data.value : data.count;
-                                const percentage = maxValue > 0 ? (value / maxValue) * 100 : 0;
-                                return (
-                                  <div key={status} className="flex items-center gap-2">
-                                    <span className="text-xs text-gray-500 truncate w-32">{status}</span>
-                                    <div className="flex-1 bg-gray-100 rounded-full h-3 min-w-0 relative">
-                                      <div
-                                        className="bg-gradient-to-r from-[#7f1010] to-[#d11616] rounded-full h-3 transition-all duration-500 ease-out"
-                                        style={{ width: `${percentage}%` }}
+                      {/* Opportunities by Status — pie chart */}
+                      <div className="rounded-lg border border-gray-200 bg-white shadow-sm p-3 flex flex-col min-h-0">
+                        <div className="text-[10px] font-bold text-gray-500 uppercase tracking-wide mb-2 shrink-0">Opportunities by Status</div>
+                        {Object.entries(oppStatusBreakdown).length > 0 ? (
+                          (() => {
+                            const entries = Object.entries(oppStatusBreakdown);
+                            const total = globalDisplayMode === 'value'
+                              ? entries.reduce((s, [, d]) => s + d.value, 0)
+                              : entries.reduce((s, [, d]) => s + d.count, 0);
+                            const sorted = [...entries].sort(([, a], [, b]) =>
+                              globalDisplayMode === 'value' ? b.value - a.value : b.count - a.count
+                            );
+                            const colors = ['#7f1010', '#b91c1c', '#dc2626', '#ea580c', '#d97706', '#ca8a04'];
+                            const radius = 65;
+                            const centerX = 65;
+                            const centerY = 65;
+                            const size = 150;
+                            let currentAngle = 0;
+                            const slices = sorted.map(([status, data], idx) => {
+                              const metric = globalDisplayMode === 'value' ? data.value : data.count;
+                              const percentage = total > 0 ? (metric / total) * 100 : 0;
+                              const angle = (percentage / 100) * 360;
+                              const startAngle = currentAngle;
+                              const endAngle = currentAngle + angle;
+                              currentAngle = endAngle;
+                              return { status, metric, percentage, startAngle, endAngle, color: colors[idx % colors.length] };
+                            });
+                            return (
+                              <div className="flex-1 flex items-center justify-center">
+                                <div className="flex items-center gap-4">
+                                  <svg width={size} height={size} viewBox="0 0 130 130" className="shrink-0">
+                                    {slices.map((slice, idx) => (
+                                      <path
+                                        key={slice.status}
+                                        d={createDonutSlice(slice.startAngle, slice.endAngle, 0, radius, centerX, centerY)}
+                                        fill={slice.color}
+                                        style={{ opacity: hasAnimated ? 1 : 0, transition: `opacity 400ms ease-out ${hasAnimated ? idx * 80 + 'ms' : '0ms'}` }}
                                       />
-                                    </div>
-                                    <span className="text-xs font-bold text-gray-900 whitespace-nowrap">
-                                      {globalDisplayMode === 'value' ? formatCurrency(value) : <CountUp value={value} enabled={hasAnimated} />}
-                                    </span>
+                                    ))}
+                                  </svg>
+                                  <div className="flex flex-col justify-center gap-1.5 text-[11px]">
+                                    {slices.map(slice => (
+                                      <div key={slice.status} className="flex items-center gap-1.5">
+                                        <div className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: slice.color }} />
+                                        <span className="text-gray-600 truncate">{slice.status}:</span>
+                                        <span className="font-semibold text-gray-900 whitespace-nowrap">
+                                          {globalDisplayMode === 'value' ? formatCurrency(slice.metric) : <CountUp value={slice.metric} enabled={hasAnimated} />} ({slice.percentage.toFixed(0)}%)
+                                        </span>
+                                      </div>
+                                    ))}
                                   </div>
-                                );
-                              });
-                            })()
-                          ) : (
-                            <div className="text-xs text-gray-400">No status data</div>
-                          )}
-                        </div>
+                                </div>
+                              </div>
+                            );
+                          })()
+                        ) : (
+                          <div className="flex-1 flex items-center justify-center"><div className="text-[11px] text-gray-400">No status data</div></div>
+                        )}
                       </div>
 
-                      {/* Projects by Status */}
-                      <div className="rounded-lg border border-gray-200 bg-white shadow-sm p-4 transition-all duration-200 ease-out hover:-translate-y-0.5 hover:shadow-md">
-                        <div className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-3">Projects by Status</div>
-                        <div className="space-y-2">
-                          {Object.entries(projStatusBreakdown).length > 0 ? (
-                            (() => {
-                              const entries = Object.entries(projStatusBreakdown);
-                              const maxValue = globalDisplayMode === 'value'
-                                ? Math.max(...entries.map(([, data]) => data.value), 1)
-                                : Math.max(...entries.map(([, data]) => data.count), 1);
-                              const sorted = entries.sort(([, a], [, b]) => 
-                                globalDisplayMode === 'value' ? b.value - a.value : b.count - a.count
-                              );
-                              return sorted.map(([status, data]) => {
-                                const value = globalDisplayMode === 'value' ? data.value : data.count;
-                                const percentage = maxValue > 0 ? (value / maxValue) * 100 : 0;
+                      {/* Customer Funnel / Health */}
+                      <div className="rounded-lg border border-gray-200 bg-white shadow-sm p-3">
+                        <div className="text-[10px] font-bold text-gray-500 uppercase tracking-wide mb-2">Customer Funnel / Health</div>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                          <div className="flex flex-col">
+                            <div className="text-[10px] font-bold text-gray-500 uppercase tracking-wide mb-1.5 text-center">Projects by Status</div>
+                            {buildProjectDonutData.length > 0 ? (
+                              (() => {
+                                const total = globalDisplayMode === 'value' ? buildProjectDonutData.reduce((sum, item) => sum + item.value, 0) : buildProjectDonutData.reduce((sum, item) => sum + item.count, 0);
+                                const colors = ['#0b1739', '#1d4ed8', '#0284c7'];
+                                const radius = 40; const innerRadius = 25; const centerX = 60; const centerY = 60;
+                                let currentAngle = 0;
+                                const slices = buildProjectDonutData.map((item, idx) => {
+                                  const metric = globalDisplayMode === 'value' ? item.value : item.count;
+                                  const percentage = total > 0 ? (metric / total) * 100 : 0;
+                                  const angle = (percentage / 100) * 360;
+                                  const startAngle = currentAngle;
+                                  const endAngle = currentAngle + angle;
+                                  currentAngle = endAngle;
+                                  return { ...item, metric, percentage, startAngle, endAngle, color: colors[idx % colors.length] };
+                                });
                                 return (
-                                  <div key={status} className="flex items-center gap-2">
-                                    <span className="text-xs text-gray-500 truncate w-32">{status}</span>
-                                    <div className="flex-1 bg-gray-100 rounded-full h-3 min-w-0 relative">
-                                      <div
-                                        className="bg-gradient-to-r from-[#0b1739] to-[#1d4ed8] rounded-full h-3 transition-all duration-500 ease-out"
-                                        style={{ width: `${percentage}%` }}
-                                      />
+                                  <div className="w-full">
+                                    <svg width="100" height="100" viewBox="0 0 120 120" className="mx-auto">
+                                      {slices.map((slice, idx) => (
+                                        <path key={slice.status} d={createDonutSlice(slice.startAngle, slice.endAngle, innerRadius, radius, centerX, centerY)} fill={slice.color} style={{ opacity: hasAnimated ? 1 : 0, transition: `opacity 400ms ease-out ${hasAnimated ? idx * 80 + 'ms' : '0ms'}` }} />
+                                      ))}
+                                    </svg>
+                                    <div className="mt-2 space-y-0.5 text-center">
+                                      {slices.map(slice => (
+                                        <div key={slice.status} className="flex items-center justify-center gap-1.5 text-[11px]">
+                                          <div className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: slice.color }}></div>
+                                          <span className="text-gray-600">{slice.status}:</span>
+                                          <span className="font-semibold text-gray-900">{globalDisplayMode === 'value' ? formatCurrency(slice.metric) : slice.metric} ({slice.percentage.toFixed(0)}%)</span>
+                                        </div>
+                                      ))}
                                     </div>
-                                    <span className="text-xs font-bold text-gray-900 whitespace-nowrap">
-                                      {globalDisplayMode === 'value' ? formatCurrency(value) : <CountUp value={value} enabled={hasAnimated} />}
-                                    </span>
                                   </div>
                                 );
-                              });
-                            })()
-                          ) : (
-                            <div className="text-xs text-gray-400">No status data</div>
-                          )}
+                              })()
+                            ) : (
+                              <div className="h-[100px] flex items-center justify-center"><div className="text-[11px] text-gray-400">No projects</div></div>
+                            )}
+                          </div>
+                          <div className="space-y-2">
+                            {(() => {
+                              const funnel = buildFunnelMetrics;
+                              const maxValue = Math.max(funnel.prospecting, funnel.sent, funnel.refused, funnel.converted, 1);
+                              const hasActivity = funnel.prospecting > 0 || funnel.sent > 0 || funnel.refused > 0 || funnel.converted > 0;
+                              if (!hasActivity) return <div className="h-[100px] flex items-center justify-center"><div className="text-[11px] text-gray-400">No funnel activity</div></div>;
+                              return (
+                                <div className="space-y-2">
+                                  <div className="flex items-center gap-2">
+                                    <span className="text-[11px] text-gray-600 w-24">Prospecting</span>
+                                    <div className="flex-1 bg-gray-100 rounded-full h-2 min-w-0"><div className="bg-gradient-to-r from-[#7f1010] to-[#d11616] rounded-full h-2" style={{ width: `${(funnel.prospecting / maxValue) * 100}%` }} /></div>
+                                    <span className="text-[11px] font-semibold text-gray-900 min-w-[70px] text-right">{globalDisplayMode === 'value' ? formatCurrency(funnel.prospecting) : <CountUp value={funnel.prospecting} enabled={hasAnimated} />}</span>
+                                  </div>
+                                  <div className="flex items-center gap-2">
+                                    <span className="text-[11px] text-gray-600 w-24">Sent</span>
+                                    <div className="flex-1 bg-gray-100 rounded-full h-2 min-w-0"><div className="bg-gradient-to-r from-[#7f1010] to-[#d11616] rounded-full h-2" style={{ width: `${(funnel.sent / maxValue) * 100}%` }} /></div>
+                                    <span className="text-[11px] font-semibold text-gray-900 min-w-[70px] text-right">{globalDisplayMode === 'value' ? formatCurrency(funnel.sent) : <CountUp value={funnel.sent} enabled={hasAnimated} />}{funnel.sentPct != null ? <span className="text-gray-500 ml-0.5">({funnel.sentPct.toFixed(0)}%)</span> : null}</span>
+                                  </div>
+                                  <div className="flex items-center gap-2">
+                                    <span className="text-[11px] text-gray-600 w-24">Refused</span>
+                                    <div className="flex-1 bg-gray-100 rounded-full h-2 min-w-0"><div className="bg-gradient-to-r from-[#7f1010] to-[#d11616] rounded-full h-2" style={{ width: `${(funnel.refused / maxValue) * 100}%` }} /></div>
+                                    <span className="text-[11px] font-semibold text-gray-900 min-w-[70px] text-right">{globalDisplayMode === 'value' ? formatCurrency(funnel.refused) : <CountUp value={funnel.refused} enabled={hasAnimated} />}{funnel.refusedPct != null ? <span className="text-gray-500 ml-0.5">({funnel.refusedPct.toFixed(0)}%)</span> : null}</span>
+                                  </div>
+                                  <div className="flex items-center gap-2 border-t border-gray-100 pt-2">
+                                    <span className="text-[11px] text-gray-600 w-24">Converted</span>
+                                    <div className="flex-1 bg-gray-100 rounded-full h-2 min-w-0"><div className="bg-gradient-to-r from-[#0b1739] to-[#1d4ed8] rounded-full h-2" style={{ width: `${(funnel.converted / maxValue) * 100}%` }} /></div>
+                                    <span className="text-[11px] font-semibold text-gray-900 min-w-[70px] text-right">{globalDisplayMode === 'value' ? formatCurrency(funnel.converted) : <CountUp value={funnel.converted} enabled={hasAnimated} />}{funnel.convertedPct != null ? <span className="text-gray-500 ml-0.5">({funnel.convertedPct.toFixed(0)}%)</span> : null}</span>
+                                  </div>
+                                  <div className="border-t border-gray-100 pt-2">
+                                    {funnel.refusedPct != null && funnel.refusedPct > 40 ? (
+                                      <div className="bg-amber-50 border border-amber-200 rounded px-2 py-1.5"><div className="text-[10px] font-semibold text-amber-800">Warning</div><div className="text-[10px] text-amber-700">Refusal rate: {funnel.refusedPct.toFixed(1)}%</div></div>
+                                    ) : (
+                                      <div className="bg-green-50 border border-green-200 rounded px-2 py-1.5"><div className="text-[10px] font-semibold text-green-800">Healthy pipeline</div><div className="text-[10px] text-green-700">No issues detected</div></div>
+                                    )}
+                                  </div>
+                                </div>
+                              );
+                            })()}
+                          </div>
                         </div>
                       </div>
                     </div>
 
-                    {/* Charts Row 2 */}
-                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-                      {/* Revenue & Pipeline Over Time - Line Chart */}
-                      <div className="rounded-lg border border-gray-200 bg-white shadow-sm p-4 transition-all duration-200 ease-out hover:-translate-y-0.5 hover:shadow-md">
-                        <div className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-3">
+                    {/* Value Over Time — full width */}
+                    <div className="rounded-lg border border-gray-200 bg-white shadow-sm p-3 w-full">
+                      <div className="text-[10px] font-bold text-gray-500 uppercase tracking-wide mb-2">
                           {globalDisplayMode === 'value' 
                             ? 'Revenue & Pipeline Over Time' 
                             : 'Projects & Opportunities Over Time'}
@@ -1638,7 +1861,7 @@ export default function CustomerDetail(){
                           );
                           if (totalClosed === 0 && totalPipeline === 0) {
                             return (
-                              <div className="h-[200px] flex items-center justify-center">
+                              <div className="h-[120px] flex items-center justify-center">
                                 <div className="text-xs text-gray-400 text-center">
                                   <div>No {mode === 'value' ? 'financial' : 'activity'} in this period</div>
                                 </div>
@@ -1652,9 +1875,9 @@ export default function CustomerDetail(){
                               mode === 'value' ? d.pipeline : (d.pipelineCount || 0)
                             )
                           ), 1);
-                          const chartWidth = 600;
-                          const chartHeight = 200;
-                          const padding = { top: 20, right: 40, bottom: 50, left: 60 };
+                          const chartWidth = 960;
+                          const chartHeight = 120;
+                          const padding = { top: 14, right: 28, bottom: 38, left: 52 };
                           const plotWidth = chartWidth - padding.left - padding.right;
                           const plotHeight = chartHeight - padding.top - padding.bottom;
                           const pointCount = valueOverTime.length;
@@ -1709,8 +1932,9 @@ export default function CustomerDetail(){
                           };
                           
                           return (
-                            <div className="relative">
-                              <svg width="100%" height={chartHeight} viewBox={`0 0 ${chartWidth} ${chartHeight}`} preserveAspectRatio="xMidYMid meet" className="overflow-visible">
+                            <div className="flex items-stretch gap-4 w-full">
+                              <div className="relative flex-1 min-w-0 max-h-[130px] min-h-[80px]" style={{ aspectRatio: `${chartWidth}/${chartHeight}` }}>
+                              <svg width="100%" height="100%" viewBox={`0 0 ${chartWidth} ${chartHeight}`} preserveAspectRatio="xMidYMid meet" className="overflow-visible min-h-0 block">
                                 {/* Grid lines (very light) */}
                                 {[0, 0.25, 0.5, 0.75, 1].map((ratio, i) => (
                                   <line
@@ -1827,7 +2051,7 @@ export default function CustomerDetail(){
                                     <text
                                       key={idx}
                                       x={x}
-                                      y={chartHeight - padding.bottom + 20}
+                                      y={chartHeight - padding.bottom + 14}
                                       textAnchor="middle"
                                       className="text-[9px] fill-gray-600"
                                     >
@@ -1836,257 +2060,65 @@ export default function CustomerDetail(){
                                   );
                                 })}
                               </svg>
-                              
-                              {/* Legend */}
-                              <div className="flex items-center gap-4 justify-center mt-3">
+                              </div>
+                              {/* Legend — lateral */}
+                              <div className="flex flex-col justify-center gap-2 flex-shrink-0 border-l border-gray-200 pl-4">
                                 <div className="flex items-center gap-1.5">
-                                  <div className="w-3 h-0.5 bg-[#0b1739]"></div>
-                                  <span className="text-xs text-gray-600">
-                                    {mode === 'value' ? 'Closed' : 'Projects'}
-                                  </span>
+                                  <div className="w-3 h-0.5 bg-[#0b1739] flex-shrink-0"></div>
+                                  <span className="text-xs text-gray-600 whitespace-nowrap">{mode === 'value' ? 'Closed' : 'Projects'}</span>
                                 </div>
                                 <div className="flex items-center gap-1.5">
-                                  <div className="w-3 h-0.5 bg-[#7f1010]"></div>
-                                  <span className="text-xs text-gray-600">
-                                    {mode === 'value' ? 'Pipeline' : 'Opportunities'}
-                                  </span>
+                                  <div className="w-3 h-0.5 bg-[#7f1010] flex-shrink-0"></div>
+                                  <span className="text-xs text-gray-600 whitespace-nowrap">{mode === 'value' ? 'Pipeline' : 'Opportunities'}</span>
                                 </div>
                               </div>
                             </div>
                           );
                         })()}
-                      </div>
-
-                      {/* Customer Sales Funnel */}
-                      <div className="rounded-lg border border-gray-200 bg-white shadow-sm p-4 transition-all duration-200 ease-out hover:-translate-y-0.5 hover:shadow-md">
-                        <div className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-3">Customer Sales Funnel</div>
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                          {/* Left: Donut Chart - Projects by Status */}
-                          <div className="flex flex-col">
-                            <div className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-2 text-center">Projects by Status</div>
-                            {buildProjectDonutData.length > 0 ? (
-                              (() => {
-                                const total = globalDisplayMode === 'value'
-                                  ? buildProjectDonutData.reduce((sum, item) => sum + item.value, 0)
-                                  : buildProjectDonutData.reduce((sum, item) => sum + item.count, 0);
-                                const colors = ['#0b1739', '#1d4ed8', '#0284c7'];
-                                const radius = 40;
-                                const innerRadius = 25;
-                                const centerX = 60;
-                                const centerY = 60;
-                                
-                                let currentAngle = 0;
-                                const slices = buildProjectDonutData.map((item, idx) => {
-                                  const metric = globalDisplayMode === 'value' ? item.value : item.count;
-                                  const percentage = total > 0 ? (metric / total) * 100 : 0;
-                                  const angle = (percentage / 100) * 360;
-                                  const startAngle = currentAngle;
-                                  const endAngle = currentAngle + angle;
-                                  currentAngle = endAngle;
-                                  return {
-                                    ...item,
-                                    metric,
-                                    percentage,
-                                    startAngle,
-                                    endAngle,
-                                    color: colors[idx % colors.length],
-                                  };
-                                });
-                                
-                                return (
-                                  <div className="w-full">
-                                    <svg width="120" height="120" viewBox="0 0 120 120" className="mx-auto">
-                                      {slices.map((slice, idx) => (
-                                        <path
-                                          key={slice.status}
-                                          d={createDonutSlice(slice.startAngle, slice.endAngle, innerRadius, radius, centerX, centerY)}
-                                          fill={slice.color}
-                                          className="hover:opacity-80 transition-opacity"
-                                          style={{
-                                            opacity: hasAnimated ? 1 : 0,
-                                            transition: `opacity 400ms ease-out ${hasAnimated ? idx * 80 + 'ms' : '0ms'}`
-                                          }}
-                                        />
-                                      ))}
-                                    </svg>
-                                    <div className="mt-3 space-y-1 text-center">
-                                      {slices.map(slice => (
-                                        <div key={slice.status} className="flex items-center justify-center gap-2 text-xs">
-                                          <div className="w-2 h-2 rounded-full" style={{ backgroundColor: slice.color }}></div>
-                                          <span className="text-gray-600">{slice.status}:</span>
-                                          <span className="font-semibold text-gray-900">
-                                            {globalDisplayMode === 'value' ? formatCurrency(slice.metric) : slice.metric}
-                                            {' '}({slice.percentage.toFixed(0)}%)
-                                          </span>
-                                        </div>
-                                      ))}
-                                    </div>
-                                  </div>
-                                );
-                              })()
-                            ) : (
-                              <div className="h-[120px] flex items-center justify-center">
-                                <div className="text-xs text-gray-400">No projects in this period</div>
-                              </div>
-                            )}
-                          </div>
-                          
-                          {/* Right: Sales Funnel (Event-based) */}
-                          <div className="space-y-3">
-                            {(() => {
-                              const funnel = buildFunnelMetrics;
-                              const maxValue = Math.max(funnel.prospecting, funnel.sent, funnel.refused, funnel.converted, 1);
-                              const hasActivity = funnel.prospecting > 0 || funnel.sent > 0 || funnel.refused > 0 || funnel.converted > 0;
-                              
-                              if (!hasActivity) {
-                                return (
-                                  <div className="h-[200px] flex items-center justify-center">
-                                    <div className="text-xs text-gray-400 text-center">No funnel activity in this period</div>
-                                  </div>
-                                );
-                              }
-                              
-                              return (
-                                <div className="space-y-3">
-                                  {/* Prospecting */}
-                                  <div className="space-y-1">
-                                    <div className="flex items-center gap-2">
-                                      <span className="text-xs text-gray-600 w-28">Prospecting</span>
-                                      <div className="flex-1 bg-gray-100 rounded-full h-2 min-w-0 relative">
-                                        <div
-                                          className="bg-gradient-to-r from-[#7f1010] to-[#d11616] rounded-full h-2 transition-all duration-500 ease-out"
-                                          style={{ width: `${(funnel.prospecting / maxValue) * 100}%` }}
-                                        />
-                                      </div>
-                                      <span className="text-xs font-semibold text-gray-900 whitespace-nowrap min-w-[80px] text-right">
-                                        {globalDisplayMode === 'value' ? formatCurrency(funnel.prospecting) : <CountUp value={funnel.prospecting} enabled={hasAnimated} />}
-                                      </span>
-                                    </div>
-                                  </div>
-                                  
-                                  {/* Sent to Customer */}
-                                  <div className="space-y-1">
-                                    <div className="flex items-center gap-2">
-                                      <span className="text-xs text-gray-600 w-28">Sent to Customer</span>
-                                      <div className="flex-1 bg-gray-100 rounded-full h-2 min-w-0 relative">
-                                        <div
-                                          className="bg-gradient-to-r from-[#7f1010] to-[#d11616] rounded-full h-2 transition-all duration-500 ease-out"
-                                          style={{ width: `${(funnel.sent / maxValue) * 100}%` }}
-                                        />
-                                      </div>
-                                      <span className="text-xs font-semibold text-gray-900 whitespace-nowrap min-w-[80px] text-right">
-                                        {globalDisplayMode === 'value' ? formatCurrency(funnel.sent) : <CountUp value={funnel.sent} enabled={hasAnimated} />}
-                                        {funnel.sentPct !== null ? (
-                                          <span className="text-gray-500 ml-1">({funnel.sentPct.toFixed(0)}%)</span>
-                                        ) : null}
-                                      </span>
-                                    </div>
-                                  </div>
-                                  
-                                  {/* Refused */}
-                                  <div className="space-y-1">
-                                    <div className="flex items-center gap-2">
-                                      <span className="text-xs text-gray-600 w-28">Refused</span>
-                                      <div className="flex-1 bg-gray-100 rounded-full h-2 min-w-0 relative">
-                                        <div
-                                          className="bg-gradient-to-r from-[#7f1010] to-[#d11616] rounded-full h-2 transition-all duration-500 ease-out"
-                                          style={{ width: `${(funnel.refused / maxValue) * 100}%` }}
-                                        />
-                                      </div>
-                                      <span className="text-xs font-semibold text-gray-900 whitespace-nowrap min-w-[80px] text-right">
-                                        {globalDisplayMode === 'value' ? formatCurrency(funnel.refused) : <CountUp value={funnel.refused} enabled={hasAnimated} />}
-                                        {funnel.refusedPct !== null ? (
-                                          <span className="text-gray-500 ml-1">({funnel.refusedPct.toFixed(0)}%)</span>
-                                        ) : null}
-                                      </span>
-                                    </div>
-                                  </div>
-                                  
-                                  {/* Converted / Won */}
-                                  <div className="space-y-1 border-t pt-2">
-                                    <div className="flex items-center gap-2">
-                                      <span className="text-xs text-gray-600 w-28">Converted / Won</span>
-                                      <div className="flex-1 bg-gray-100 rounded-full h-2 min-w-0 relative">
-                                        <div
-                                          className="bg-gradient-to-r from-[#0b1739] to-[#1d4ed8] rounded-full h-2 transition-all duration-500 ease-out"
-                                          style={{ width: `${(funnel.converted / maxValue) * 100}%` }}
-                                        />
-                                      </div>
-                                      <span className="text-xs font-semibold text-gray-900 whitespace-nowrap min-w-[80px] text-right">
-                                        {globalDisplayMode === 'value' ? formatCurrency(funnel.converted) : <CountUp value={funnel.converted} enabled={hasAnimated} />}
-                                        {funnel.convertedPct !== null ? (
-                                          <span className="text-gray-500 ml-1">({funnel.convertedPct.toFixed(0)}%)</span>
-                                        ) : null}
-                                      </span>
-                                    </div>
-                                  </div>
-                                  
-                                  {/* Health Flags */}
-                                  <div className="border-t pt-3">
-                                    {funnel.refusedPct !== null && funnel.refusedPct > 40 ? (
-                                      <div className="bg-amber-50 border border-amber-200 rounded p-2">
-                                        <div className="text-xs font-semibold text-amber-800">Warning</div>
-                                        <div className="text-xs text-amber-700">Refusal rate: {funnel.refusedPct.toFixed(1)}%</div>
-                                      </div>
-                                    ) : (
-                                      <div className="bg-green-50 border border-green-200 rounded p-2">
-                                        <div className="text-xs font-semibold text-green-800">Healthy pipeline</div>
-                                        <div className="text-xs text-green-700">No issues detected</div>
-                                      </div>
-                                    )}
-                                  </div>
-                                </div>
-                              );
-                            })()}
-                          </div>
-                        </div>
-                      </div>
                     </div>
 
-                    {/* Insights and Activity Row */}
+                    {/* Insights + Activity */}
                     <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-                      {/* Customer Insights */}
-                      <div className="rounded-lg border border-gray-200 bg-white shadow-sm p-4 transition-all duration-200 ease-out hover:-translate-y-0.5 hover:shadow-md">
-                        <div className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-3">Customer Insights</div>
-                        <div className="space-y-3">
-                          <div className="flex items-center justify-between">
-                            <span className="text-sm text-gray-600">Converted Projects</span>
-                            <span className="text-sm font-semibold text-gray-900">{insights.convertedProjects}</span>
+                      {/* Customer Insights — compact list */}
+                      <div className="rounded-lg border border-gray-200 bg-white shadow-sm p-3">
+                        <div className="text-[10px] font-bold text-gray-500 uppercase tracking-wide mb-2">Customer Insights</div>
+                        <div className="space-y-2">
+                          <div className="flex items-center justify-between text-xs">
+                            <span className="text-gray-600">Converted Projects</span>
+                            <span className="font-semibold text-gray-900">{insights.convertedProjects}</span>
                           </div>
-                          <div className="flex items-center justify-between">
-                            <span className="text-sm text-gray-600">Largest Deal</span>
-                            <span className="text-sm font-semibold text-gray-900">{insights.largestDeal > 0 ? formatCurrency(insights.largestDeal) : '—'}</span>
+                          <div className="flex items-center justify-between text-xs">
+                            <span className="text-gray-600">Largest Deal</span>
+                            <span className="font-semibold text-gray-900">{insights.largestDeal > 0 ? formatCurrency(insights.largestDeal) : '—'}</span>
                           </div>
-                          <div className="flex items-center justify-between">
-                            <span className="text-sm text-gray-600">Last Activity</span>
-                            <span className="text-sm font-semibold text-gray-900">
-                              {insights.lastActivity ? formatDateForDisplay(insights.lastActivity.toISOString()) : '—'}
-                            </span>
+                          <div className="flex items-center justify-between text-xs">
+                            <span className="text-gray-600">Last Activity</span>
+                            <span className="font-semibold text-gray-900">{insights.lastActivity ? formatDateForDisplay(insights.lastActivity.toISOString()) : '—'}</span>
                           </div>
-                          <div className="flex items-center justify-between">
-                            <span className="text-sm text-gray-600">Avg Pipeline Age</span>
-                            <span className="text-sm font-semibold text-gray-900">{insights.avgPipelineAge > 0 ? `${insights.avgPipelineAge} days` : '—'}</span>
+                          <div className="flex items-center justify-between text-xs">
+                            <span className="text-gray-600">Avg Pipeline Age</span>
+                            <span className="font-semibold text-gray-900">{insights.avgPipelineAge > 0 ? `${insights.avgPipelineAge} days` : '—'}</span>
                           </div>
-                          <div className="flex items-center justify-between">
-                            <span className="text-sm text-gray-600">Project Hold Rate</span>
-                            <span className="text-sm font-semibold text-gray-900">{insights.holdRate.toFixed(1)}%</span>
+                          <div className="flex items-center justify-between text-xs">
+                            <span className="text-gray-600">Project Hold Rate</span>
+                            <span className="font-semibold text-gray-900">{insights.holdRate.toFixed(1)}%</span>
                           </div>
                         </div>
                       </div>
 
-                      {/* Recent Activity */}
-                      <div className="rounded-lg border border-gray-200 bg-white shadow-sm p-4 transition-all duration-200 ease-out hover:-translate-y-0.5 hover:shadow-md">
-                        <div className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-3">Recent Activity</div>
-                        <div className="space-y-2 max-h-[300px] overflow-y-auto">
+                      {/* Recent Activity — fixed height, internal scroll */}
+                      <div className="rounded-lg border border-gray-200 bg-white shadow-sm p-3 flex flex-col min-h-0">
+                        <div className="text-[10px] font-bold text-gray-500 uppercase tracking-wide mb-2 flex-shrink-0">Recent Activity</div>
+                        <div className="h-[200px] overflow-y-auto flex-shrink-0 space-y-1.5 pr-1">
                           {recentActivity.length > 0 ? (
                             recentActivity.map((event, idx) => (
-                              <div key={`${event.id}-${idx}`} className="text-xs text-gray-700 py-1 border-b border-gray-100 last:border-0">
+                              <div key={`${event.id}-${idx}`} className="text-xs text-gray-700 py-1.5 border-b border-gray-100 last:border-0">
                                 <div className="font-medium">{event.label}</div>
-                                <div className="text-gray-500">{formatDateForDisplay(event.date)}</div>
+                                <div className="text-[11px] text-gray-500">{formatDateForDisplay(event.date)}</div>
                               </div>
                             ))
                           ) : (
-                            <div className="text-xs text-gray-400">No recent activity</div>
+                            <div className="text-xs text-gray-400 py-4">No recent activity</div>
                           )}
                         </div>
                       </div>
@@ -2120,214 +2152,299 @@ export default function CustomerDetail(){
                 </LoadingOverlay>
               )}
               {tab==='general' && (
-                <div className="space-y-8 pb-24">
-                  {/* Company */}
-                  <div className="flex items-center justify-between gap-2">
-                    <h4 className="font-semibold">Company</h4>
-                    {!isEditingGeneral && hasEditPermission && (
-                      <button
-                        onClick={() => setIsEditingGeneral(true)}
-                        className="px-3 py-1.5 rounded-lg bg-gradient-to-r from-brand-red to-[#ee2b2b] text-white text-sm font-medium hover:opacity-90 flex items-center gap-1.5"
-                      >
-                        <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                        </svg>
-                        Edit
-                      </button>
-                    )}
-                  </div>
-                  <div className="text-xs text-gray-500 mt-0.5 mb-2">Core company identity details.</div>
-                  <div className="grid md:grid-cols-2 gap-4">
-                    <Field label={<><span>Display name</span> <span className="text-red-600">*</span></>} tooltip="Public name shown across the app.">
-                      <>
-                        {isEditingGeneral ? (
-                          <input className={`w-full border rounded px-3 py-2 ${!isDisplayValid? 'border-red-500' : ''}`} value={form.display_name||''} onChange={e=>set('display_name', e.target.value)} />
-                        ) : (
-                          <div className="text-gray-900 font-medium py-1 break-words">{String(form.display_name||'') || '—'}</div>
-                        )}
-                        {!isDisplayValid && isEditingGeneral && <div className="text-[11px] text-red-600 mt-1">Required</div>}
-                      </>
-                    </Field>
-                    <Field label={<><span>Legal name</span> <span className="text-red-600">*</span></>} tooltip="Registered legal entity name.">
-                      <>
-                        {isEditingGeneral ? (
-                          <input className={`w-full border rounded px-3 py-2 ${!isLegalValid? 'border-red-500' : ''}`} value={form.legal_name||''} onChange={e=>set('legal_name', e.target.value)} />
-                        ) : (
-                          <div className="text-gray-900 font-medium py-1 break-words">{String(form.legal_name||'') || '—'}</div>
-                        )}
-                        {!isLegalValid && isEditingGeneral && <div className="text-[11px] text-red-600 mt-1">Required</div>}
-                      </>
-                    </Field>
-                    {/* Code hidden for users */}
-                    {/* <Field label="Code"><input className="w-full border rounded px-3 py-2" value={form.code||''} readOnly /></Field> */}
-                    <Field label="Type" tooltip="Customer classification.">
-                      {isEditingGeneral ? (
-                        <select className="w-full border rounded px-3 py-2" value={form.client_type||''} onChange={e=>set('client_type', e.target.value)}>
-                          <option value="">Select...</option>
-                          {(settings?.client_types||[]).map((t:any)=> <option key={t.value||t.label} value={t.label}>{t.label}</option>)}
-                        </select>
-                      ) : (
-                        <div className="text-gray-900 font-medium py-1 break-words">{String(form.client_type||'') || '—'}</div>
+                <div className="space-y-6 pb-24">
+                  {/* Company — card style like Users > Personal */}
+                  <div className="rounded-xl border bg-white p-4">
+                    <div className="mb-4 flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <div className="w-8 h-8 rounded bg-blue-100 flex items-center justify-center">
+                          <svg className="w-5 h-5 text-blue-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
+                          </svg>
+                        </div>
+                        <h5 className="text-sm font-semibold text-blue-900">Company</h5>
+                      </div>
+                      {!isEditingGeneral && hasEditPermission && (
+                        <button
+                          onClick={() => setIsEditingGeneral(true)}
+                          className="p-1.5 rounded hover:bg-gray-100 text-gray-600 hover:text-brand-red transition-colors"
+                          title="Edit Company"
+                        >
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                          </svg>
+                        </button>
                       )}
-                    </Field>
-                    <Field label="Status" tooltip="Relationship status.">
-                      {isEditingGeneral ? (
-                        <select className="w-full border rounded px-3 py-2" value={form.client_status||''} onChange={e=>set('client_status', e.target.value)}>
-                          <option value="">Select...</option>
-                          {(settings?.client_statuses||[]).map((t:any)=> <option key={t.value||t.label} value={t.label}>{t.label}</option>)}
-                        </select>
-                      ) : (
-                        <div className="text-gray-900 font-medium py-1 break-words">{String(form.client_status||'') || '—'}</div>
-                      )}
-                    </Field>
-                    <Field label="Lead source" tooltip="Where did this lead originate?">
-                      {isEditingGeneral ? (
-                        <select className="w-full border rounded px-3 py-2" value={form.lead_source||''} onChange={e=>set('lead_source', e.target.value)}>
-                          <option value="">Select...</option>
-                          {leadSources.map((ls:any)=>{
-                            const val = ls?.value ?? ls?.id ?? ls?.label ?? ls?.name ?? String(ls);
-                            const label = ls?.label ?? ls?.name ?? String(ls);
-                            return <option key={String(val)} value={String(val)}>{label}</option>;
-                          })}
-                        </select>
-                      ) : (
-                        <div className="text-gray-900 font-medium py-1 break-words">{String(form.lead_source||'') || '—'}</div>
-                      )}
-                    </Field>
-                    <Field label="Tax number" tooltip="Tax/VAT identifier used for invoicing.">
-                      {isEditingGeneral ? (
-                        <input className="w-full border rounded px-3 py-2" value={form.tax_number||''} onChange={e=>set('tax_number', e.target.value)} />
-                      ) : (
-                        <div className="text-gray-900 font-medium py-1 break-words">{String(form.tax_number||'') || '—'}</div>
-                      )}
-                    </Field>
+                    </div>
+                    <div className="space-y-4">
+                      <div className="text-xs text-gray-500 mb-2">Core company identity details.</div>
+                      <div className="grid md:grid-cols-2 gap-4">
+                        <Field label={<><span>Display name</span> <span className="text-red-600">*</span></>} tooltip="Public name shown across the app.">
+                          <>
+                            {isEditingGeneral ? (
+                              <input className={`w-full border rounded px-3 py-2 ${!isDisplayValid? 'border-red-500' : ''}`} value={form.display_name||''} onChange={e=>set('display_name', e.target.value)} />
+                            ) : (
+                              <div className="text-gray-900 font-medium py-1 break-words">{String(form.display_name||'') || '—'}</div>
+                            )}
+                            {!isDisplayValid && isEditingGeneral && <div className="text-[11px] text-red-600 mt-1">Required</div>}
+                          </>
+                        </Field>
+                        <Field label={<><span>Legal name</span> <span className="text-red-600">*</span></>} tooltip="Registered legal entity name.">
+                          <>
+                            {isEditingGeneral ? (
+                              <input className={`w-full border rounded px-3 py-2 ${!isLegalValid? 'border-red-500' : ''}`} value={form.legal_name||''} onChange={e=>set('legal_name', e.target.value)} />
+                            ) : (
+                              <div className="text-gray-900 font-medium py-1 break-words">{String(form.legal_name||'') || '—'}</div>
+                            )}
+                            {!isLegalValid && isEditingGeneral && <div className="text-[11px] text-red-600 mt-1">Required</div>}
+                          </>
+                        </Field>
+                        <Field label="Type" tooltip="Customer classification.">
+                          {isEditingGeneral ? (
+                            <select className="w-full border rounded px-3 py-2" value={form.client_type||''} onChange={e=>set('client_type', e.target.value)}>
+                              <option value="">Select...</option>
+                              {(settings?.client_types||[]).map((t:any)=> <option key={t.value||t.label} value={t.label}>{t.label}</option>)}
+                            </select>
+                          ) : (
+                            <div className="text-gray-900 font-medium py-1 break-words">{String(form.client_type||'') || '—'}</div>
+                          )}
+                        </Field>
+                        <Field label="Status" tooltip="Relationship status.">
+                          {isEditingGeneral ? (
+                            <select className="w-full border rounded px-3 py-2" value={form.client_status||''} onChange={e=>set('client_status', e.target.value)}>
+                              <option value="">Select...</option>
+                              {(settings?.client_statuses||[]).map((t:any)=> <option key={t.value||t.label} value={t.label}>{t.label}</option>)}
+                            </select>
+                          ) : (
+                            <div className="text-gray-900 font-medium py-1 break-words">{String(form.client_status||'') || '—'}</div>
+                          )}
+                        </Field>
+                        <Field label="Lead source" tooltip="Where did this lead originate?">
+                          {isEditingGeneral ? (
+                            <select className="w-full border rounded px-3 py-2" value={form.lead_source||''} onChange={e=>set('lead_source', e.target.value)}>
+                              <option value="">Select...</option>
+                              {leadSources.map((ls:any)=>{
+                                const val = ls?.value ?? ls?.id ?? ls?.label ?? ls?.name ?? String(ls);
+                                const label = ls?.label ?? ls?.name ?? String(ls);
+                                return <option key={String(val)} value={String(val)}>{label}</option>;
+                              })}
+                            </select>
+                          ) : (
+                            <div className="text-gray-900 font-medium py-1 break-words">{String(form.lead_source||'') || '—'}</div>
+                          )}
+                        </Field>
+                        <Field label="Tax number" tooltip="Tax/VAT identifier used for invoicing.">
+                          {isEditingGeneral ? (
+                            <input className="w-full border rounded px-3 py-2" value={form.tax_number||''} onChange={e=>set('tax_number', e.target.value)} />
+                          ) : (
+                            <div className="text-gray-900 font-medium py-1 break-words">{String(form.tax_number||'') || '—'}</div>
+                          )}
+                        </Field>
+                      </div>
+                    </div>
                   </div>
                   {/* Address */}
-                  <div className="flex items-center gap-2">
-                    <h4 className="font-semibold">Address</h4>
-                  </div>
-                  <div className="text-xs text-gray-500 mt-0.5 mb-2">Primary mailing and location address.</div>
-                  <div className="grid md:grid-cols-2 gap-4">
-                    <Field label="Address 1">
-                      {isEditingGeneral ? (
-                        <input className="w-full border rounded px-3 py-2" value={form.address_line1||''} onChange={e=>set('address_line1', e.target.value)} />
-                      ) : (
-                        <div className="text-gray-900 font-medium py-1 break-words">{String(form.address_line1||'') || '—'}</div>
+                  <div className="rounded-xl border bg-white p-4">
+                    <div className="mb-4 flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <div className="w-8 h-8 rounded bg-green-100 flex items-center justify-center">
+                          <svg className="w-5 h-5 text-green-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+                          </svg>
+                        </div>
+                        <h5 className="text-sm font-semibold text-green-900">Address</h5>
+                      </div>
+                      {!isEditingGeneral && hasEditPermission && (
+                        <button
+                          onClick={() => setIsEditingGeneral(true)}
+                          className="p-1.5 rounded hover:bg-gray-100 text-gray-600 hover:text-brand-red transition-colors"
+                          title="Edit Address"
+                        >
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                          </svg>
+                        </button>
                       )}
-                    </Field>
-                    <Field label="Address 2">
-                      {isEditingGeneral ? (
-                        <input className="w-full border rounded px-3 py-2" value={form.address_line2||''} onChange={e=>set('address_line2', e.target.value)} />
-                      ) : (
-                        <div className="text-gray-900 font-medium py-1 break-words">{String(form.address_line2||'') || '—'}</div>
-                      )}
-                    </Field>
-                    <Field label="Country">
-                      {isEditingGeneral ? (
-                        <input className="w-full border rounded px-3 py-2" value={form.country||''} onChange={e=>set('country', e.target.value)} />
-                      ) : (
-                        <div className="text-gray-900 font-medium py-1 break-words">{String(form.country||'') || '—'}</div>
-                      )}
-                    </Field>
-                    <Field label="Province/State">
-                      {isEditingGeneral ? (
-                        <input className="w-full border rounded px-3 py-2" value={form.province||''} onChange={e=>set('province', e.target.value)} />
-                      ) : (
-                        <div className="text-gray-900 font-medium py-1 break-words">{String(form.province||'') || '—'}</div>
-                      )}
-                    </Field>
-                    <Field label="City">
-                      {isEditingGeneral ? (
-                        <input className="w-full border rounded px-3 py-2" value={form.city||''} onChange={e=>set('city', e.target.value)} />
-                      ) : (
-                        <div className="text-gray-900 font-medium py-1 break-words">{String(form.city||'') || '—'}</div>
-                      )}
-                    </Field>
-                    <Field label="Postal code">
-                      {isEditingGeneral ? (
-                        <input className="w-full border rounded px-3 py-2" value={form.postal_code||''} onChange={e=>set('postal_code', e.target.value)} />
-                      ) : (
-                        <div className="text-gray-900 font-medium py-1 break-words">{String(form.postal_code||'') || '—'}</div>
-                      )}
-                    </Field>
+                    </div>
+                    <div className="space-y-4">
+                      <div className="text-xs text-gray-500 mb-2">Primary mailing and location address.</div>
+                      <div className="grid md:grid-cols-2 gap-4">
+                        <Field label="Address 1">
+                          {isEditingGeneral ? (
+                            <input className="w-full border rounded px-3 py-2" value={form.address_line1||''} onChange={e=>set('address_line1', e.target.value)} />
+                          ) : (
+                            <div className="text-gray-900 font-medium py-1 break-words">{String(form.address_line1||'') || '—'}</div>
+                          )}
+                        </Field>
+                        <Field label="Address 2">
+                          {isEditingGeneral ? (
+                            <input className="w-full border rounded px-3 py-2" value={form.address_line2||''} onChange={e=>set('address_line2', e.target.value)} />
+                          ) : (
+                            <div className="text-gray-900 font-medium py-1 break-words">{String(form.address_line2||'') || '—'}</div>
+                          )}
+                        </Field>
+                        <Field label="Country">
+                          {isEditingGeneral ? (
+                            <input className="w-full border rounded px-3 py-2" value={form.country||''} onChange={e=>set('country', e.target.value)} />
+                          ) : (
+                            <div className="text-gray-900 font-medium py-1 break-words">{String(form.country||'') || '—'}</div>
+                          )}
+                        </Field>
+                        <Field label="Province/State">
+                          {isEditingGeneral ? (
+                            <input className="w-full border rounded px-3 py-2" value={form.province||''} onChange={e=>set('province', e.target.value)} />
+                          ) : (
+                            <div className="text-gray-900 font-medium py-1 break-words">{String(form.province||'') || '—'}</div>
+                          )}
+                        </Field>
+                        <Field label="City">
+                          {isEditingGeneral ? (
+                            <input className="w-full border rounded px-3 py-2" value={form.city||''} onChange={e=>set('city', e.target.value)} />
+                          ) : (
+                            <div className="text-gray-900 font-medium py-1 break-words">{String(form.city||'') || '—'}</div>
+                          )}
+                        </Field>
+                        <Field label="Postal code">
+                          {isEditingGeneral ? (
+                            <input className="w-full border rounded px-3 py-2" value={form.postal_code||''} onChange={e=>set('postal_code', e.target.value)} />
+                          ) : (
+                            <div className="text-gray-900 font-medium py-1 break-words">{String(form.postal_code||'') || '—'}</div>
+                          )}
+                        </Field>
+                      </div>
+                    </div>
                   </div>
                   {/* Billing */}
-                  <div className="flex items-center gap-2 mt-4">
-                    <h4 className="font-semibold">Billing</h4>
-                  </div>
-                  <div className="text-xs text-gray-500 mt-0.5 mb-2">Preferences used for invoices and payments.</div>
-                  <div className="grid md:grid-cols-2 gap-4">
-                    <Field label="Billing email" tooltip="Email used for invoice delivery.">
-                      {isEditingGeneral ? (
-                        <input className="w-full border rounded px-3 py-2" value={form.billing_email||''} onChange={e=>set('billing_email', e.target.value)} />
-                      ) : (
-                        <div className="text-gray-900 font-medium py-1 break-words">{String(form.billing_email||'') || '—'}</div>
+                  <div className="rounded-xl border bg-white p-4">
+                    <div className="mb-4 flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <div className="w-8 h-8 rounded bg-amber-100 flex items-center justify-center">
+                          <svg className="w-5 h-5 text-amber-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 14l6-6m-5 5l6-6M2 17h.546c.501 0 .905-.405.905-.904 0-.715.211-1.413.608-2.008L17.658 5.604c.272-.417.87-.417 1.142 0l2.312 3.542c.272.417.272 1.096 0 1.513l-8.405 12.848c-.397.595-.608 1.293-.608 2.008 0 .499-.404.904-.905.904H2" />
+                          </svg>
+                        </div>
+                        <h5 className="text-sm font-semibold text-amber-900">Billing</h5>
+                      </div>
+                      {!isEditingGeneral && hasEditPermission && (
+                        <button
+                          onClick={() => setIsEditingGeneral(true)}
+                          className="p-1.5 rounded hover:bg-gray-100 text-gray-600 hover:text-brand-red transition-colors"
+                          title="Edit Billing"
+                        >
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                          </svg>
+                        </button>
                       )}
-                    </Field>
-                    <Field label="PO required" tooltip="Whether a purchase order is required before invoicing.">
-                      {isEditingGeneral ? (
-                        <select className="w-full border rounded px-3 py-2" value={form.po_required||'false'} onChange={e=>set('po_required', e.target.value)}>
-                          <option value="false">No</option>
-                          <option value="true">Yes</option>
-                        </select>
-                      ) : (
-                        <div className="text-gray-900 font-medium py-1 break-words">{form.po_required === 'true' ? 'Yes' : 'No'}</div>
-                      )}
-                    </Field>
-                  </div>
-                  {/* Billing Address (inside Billing) */}
-                  <div className="grid md:grid-cols-2 gap-4 mt-2">
-                    <div className="md:col-span-2 text-sm">
-                      <label className={`inline-flex items-center gap-2 ${!isEditingGeneral ? 'opacity-50 cursor-not-allowed' : ''}`}>
-                        <input type="checkbox" checked={!!(!form.billing_same_as_address)} onChange={e=>set('billing_same_as_address', !e.target.checked)} disabled={!isEditingGeneral} /> Use different address for Billing address
-                      </label>
                     </div>
-                    {(!form.billing_same_as_address) && (
-                      <>
-                        <Field label="Billing Address 1" tooltip="Street address for billing.">
+                    <div className="space-y-4">
+                      <div className="text-xs text-gray-500 mb-2">Preferences used for invoices and payments.</div>
+                      <div className="grid md:grid-cols-2 gap-4">
+                        <Field label="Billing email" tooltip="Email used for invoice delivery.">
                           {isEditingGeneral ? (
-                            <input className="w-full border rounded px-3 py-2" value={form.billing_address_line1||''} onChange={e=>set('billing_address_line1', e.target.value)} />
+                            <input className="w-full border rounded px-3 py-2" value={form.billing_email||''} onChange={e=>set('billing_email', e.target.value)} />
                           ) : (
-                            <div className="text-gray-900 font-medium py-1 break-words">{String(form.billing_address_line1||'') || '—'}</div>
+                            <div className="text-gray-900 font-medium py-1 break-words">{String(form.billing_email||'') || '—'}</div>
                           )}
                         </Field>
-                        <Field label="Billing Address 2" tooltip="Apartment, suite, unit, building, floor, etc.">
+                        <Field label="PO required" tooltip="Whether a purchase order is required before invoicing.">
                           {isEditingGeneral ? (
-                            <input className="w-full border rounded px-3 py-2" value={form.billing_address_line2||''} onChange={e=>set('billing_address_line2', e.target.value)} />
+                            <select className="w-full border rounded px-3 py-2" value={form.po_required||'false'} onChange={e=>set('po_required', e.target.value)}>
+                              <option value="false">No</option>
+                              <option value="true">Yes</option>
+                            </select>
                           ) : (
-                            <div className="text-gray-900 font-medium py-1 break-words">{String(form.billing_address_line2||'') || '—'}</div>
+                            <div className="text-gray-900 font-medium py-1 break-words">{form.po_required === 'true' ? 'Yes' : 'No'}</div>
                           )}
                         </Field>
-                        <Field label="Billing Country" tooltip="Country or region for billing.">
-                          {isEditingGeneral ? (
-                            <input className="w-full border rounded px-3 py-2" value={form.billing_country||''} onChange={e=>set('billing_country', e.target.value)} />
-                          ) : (
-                            <div className="text-gray-900 font-medium py-1 break-words">{String(form.billing_country||'') || '—'}</div>
-                          )}
-                        </Field>
-                        <Field label="Billing Province/State" tooltip="State, province, or region.">
-                          {isEditingGeneral ? (
-                            <input className="w-full border rounded px-3 py-2" value={form.billing_province||''} onChange={e=>set('billing_province', e.target.value)} />
-                          ) : (
-                            <div className="text-gray-900 font-medium py-1 break-words">{String(form.billing_province||'') || '—'}</div>
-                          )}
-                        </Field>
-                        <Field label="Billing City" tooltip="City or locality for billing.">
-                          {isEditingGeneral ? (
-                            <input className="w-full border rounded px-3 py-2" value={form.billing_city||''} onChange={e=>set('billing_city', e.target.value)} />
-                          ) : (
-                            <div className="text-gray-900 font-medium py-1 break-words">{String(form.billing_city||'') || '—'}</div>
-                          )}
-                        </Field>
-                        <Field label="Billing Postal code" tooltip="ZIP or postal code for billing.">
-                          {isEditingGeneral ? (
-                            <input className="w-full border rounded px-3 py-2" value={form.billing_postal_code||''} onChange={e=>set('billing_postal_code', e.target.value)} />
-                          ) : (
-                            <div className="text-gray-900 font-medium py-1 break-words">{String(form.billing_postal_code||'') || '—'}</div>
-                          )}
-                        </Field>
-                      </>
-                    )}
+                      </div>
+                      <div className="grid md:grid-cols-2 gap-4 mt-2">
+                        <div className="md:col-span-2 text-sm">
+                          <label className={`inline-flex items-center gap-2 ${!isEditingGeneral ? 'opacity-50 cursor-not-allowed' : ''}`}>
+                            <input type="checkbox" checked={!!(!form.billing_same_as_address)} onChange={e=>set('billing_same_as_address', !e.target.checked)} disabled={!isEditingGeneral} /> Use different address for Billing address
+                          </label>
+                        </div>
+                        {(!form.billing_same_as_address) && (
+                          <>
+                            <Field label="Billing Address 1" tooltip="Street address for billing.">
+                              {isEditingGeneral ? (
+                                <input className="w-full border rounded px-3 py-2" value={form.billing_address_line1||''} onChange={e=>set('billing_address_line1', e.target.value)} />
+                              ) : (
+                                <div className="text-gray-900 font-medium py-1 break-words">{String(form.billing_address_line1||'') || '—'}</div>
+                              )}
+                            </Field>
+                            <Field label="Billing Address 2" tooltip="Apartment, suite, unit, building, floor, etc.">
+                              {isEditingGeneral ? (
+                                <input className="w-full border rounded px-3 py-2" value={form.billing_address_line2||''} onChange={e=>set('billing_address_line2', e.target.value)} />
+                              ) : (
+                                <div className="text-gray-900 font-medium py-1 break-words">{String(form.billing_address_line2||'') || '—'}</div>
+                              )}
+                            </Field>
+                            <Field label="Billing Country" tooltip="Country or region for billing.">
+                              {isEditingGeneral ? (
+                                <input className="w-full border rounded px-3 py-2" value={form.billing_country||''} onChange={e=>set('billing_country', e.target.value)} />
+                              ) : (
+                                <div className="text-gray-900 font-medium py-1 break-words">{String(form.billing_country||'') || '—'}</div>
+                              )}
+                            </Field>
+                            <Field label="Billing Province/State" tooltip="State, province, or region.">
+                              {isEditingGeneral ? (
+                                <input className="w-full border rounded px-3 py-2" value={form.billing_province||''} onChange={e=>set('billing_province', e.target.value)} />
+                              ) : (
+                                <div className="text-gray-900 font-medium py-1 break-words">{String(form.billing_province||'') || '—'}</div>
+                              )}
+                            </Field>
+                            <Field label="Billing City" tooltip="City or locality for billing.">
+                              {isEditingGeneral ? (
+                                <input className="w-full border rounded px-3 py-2" value={form.billing_city||''} onChange={e=>set('billing_city', e.target.value)} />
+                              ) : (
+                                <div className="text-gray-900 font-medium py-1 break-words">{String(form.billing_city||'') || '—'}</div>
+                              )}
+                            </Field>
+                            <Field label="Billing Postal code" tooltip="ZIP or postal code for billing.">
+                              {isEditingGeneral ? (
+                                <input className="w-full border rounded px-3 py-2" value={form.billing_postal_code||''} onChange={e=>set('billing_postal_code', e.target.value)} />
+                              ) : (
+                                <div className="text-gray-900 font-medium py-1 break-words">{String(form.billing_postal_code||'') || '—'}</div>
+                              )}
+                            </Field>
+                          </>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                  {/* Description / Notes */}
+                  <div className="rounded-xl border bg-white p-4">
+                    <div className="mb-4 flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <div className="w-8 h-8 rounded bg-gray-100 flex items-center justify-center">
+                          <svg className="w-5 h-5 text-gray-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                          </svg>
+                        </div>
+                        <h5 className="text-sm font-semibold text-gray-900">Description</h5>
+                      </div>
+                      {!isEditingGeneral && hasEditPermission && (
+                        <button
+                          onClick={() => setIsEditingGeneral(true)}
+                          className="p-1.5 rounded hover:bg-gray-100 text-gray-600 hover:text-brand-red transition-colors"
+                          title="Edit Description"
+                        >
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                          </svg>
+                        </button>
+                      )}
+                    </div>
+                    <div className="space-y-4">
+                      <div className="text-xs text-gray-500 mb-2">Additional notes about this customer.</div>
+                      {isEditingGeneral ? (
+                        <textarea rows={6} className="w-full border rounded px-3 py-2 resize-y" value={form.description||''} onChange={e=>set('description', e.target.value)} />
+                      ) : (
+                        <div className="text-gray-900 font-medium py-1 break-words whitespace-pre-wrap">{String(form.description||'') || '—'}</div>
+                      )}
+                    </div>
                   </div>
 
                   {/* Communications and Preferences (hidden per request) */}
@@ -2341,22 +2458,6 @@ export default function CustomerDetail(){
                     <Field label="CC emails for estimates"><input className="w-full border rounded px-3 py-2" value={form.cc_emails_for_estimates||''} onChange={e=>set('cc_emails_for_estimates', e.target.value)} /></Field>
                     <Field label="Do not contact"><select className="w-full border rounded px-3 py-2" value={form.do_not_contact||'false'} onChange={e=>set('do_not_contact', e.target.value)}><option value="false">No</option><option value="true">Yes</option></select></Field>
                     <div className="md:col-span-2"><Field label="Reason"><input className="w-full border rounded px-3 py-2" value={form.do_not_contact_reason||''} onChange={e=>set('do_not_contact_reason', e.target.value)} /></Field></div>
-                  </div>
-                  <div className="mt-4">
-                    <label className="text-sm text-gray-600 flex items-center gap-1">
-                      <span>Description</span>
-                      <span className="relative group inline-block ml-0.5">
-                        <svg className="w-4 h-4 text-gray-400 cursor-help" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                        </svg>
-                        <span className="absolute left-1/2 -translate-x-1/2 mt-2 hidden group-hover:block whitespace-nowrap bg-black text-white text-xs px-2 py-1 rounded shadow z-20">Additional notes about this customer.</span>
-                      </span>
-                    </label>
-                    {isEditingGeneral ? (
-                      <textarea rows={6} className="w-full border rounded px-3 py-2 resize-y" value={form.description||''} onChange={e=>set('description', e.target.value)} />
-                    ) : (
-                      <div className="text-gray-900 font-medium py-1 break-words whitespace-pre-wrap">{String(form.description||'') || '—'}</div>
-                    )}
                   </div>
                 </div>
               )}
@@ -2464,7 +2565,7 @@ export default function CustomerDetail(){
                 </div>
               )}
               {tab==='files' && (
-                <CustomerDocuments id={String(id)} files={files||[]} sites={sites||[]} onRefresh={refetchFiles} hasEditPermission={hasFilesWrite} />
+                <CustomerFilesTabEnhanced clientId={String(id)} files={files||[]} onRefresh={refetchFiles} hasEditPermission={hasFilesWrite} />
               )}
               {tab==='contacts' && (
                 <ContactsCard id={String(id)} hasEditPermission={hasEditPermission} />
@@ -2549,7 +2650,6 @@ export default function CustomerDetail(){
               )}
             </>
           )}
-        </div>
       </div>
       <ImagePicker isOpen={pickerOpen} onClose={()=>setPickerOpen(false)} clientId={String(id)} targetWidth={800} targetHeight={600} allowEdit={true} onConfirm={async(blob, original)=>{
         try{

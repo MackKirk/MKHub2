@@ -824,6 +824,26 @@ def list_files(
     return out
 
 
+@router.put("/{client_id}/files/{client_file_id}")
+def update_client_file(
+    client_id: str,
+    client_file_id: str,
+    payload: dict,
+    db: Session = Depends(get_db),
+    _=Depends(require_permissions("business:customers:write")),
+):
+    """Update a client file (e.g., change category)."""
+    row = db.query(ClientFile).filter(ClientFile.id == client_file_id, ClientFile.client_id == client_id).first()
+    if not row:
+        raise HTTPException(status_code=404, detail="File not found")
+    if "category" in payload:
+        row.category = payload["category"]
+    if "original_name" in payload:
+        row.original_name = payload["original_name"]
+    db.commit()
+    return {"status": "ok"}
+
+
 @router.delete("/{client_id}/files/{client_file_id}")
 def delete_client_file(client_id: str, client_file_id: str, db: Session = Depends(get_db), _=Depends(require_permissions("business:customers:write"))):
     row = db.query(ClientFile).filter(ClientFile.id == client_file_id, ClientFile.client_id == client_id).first()
