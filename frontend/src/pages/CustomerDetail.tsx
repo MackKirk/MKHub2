@@ -414,6 +414,7 @@ export default function CustomerDetail(){
   const [newProjectOpen, setNewProjectOpen] = useState(false);
   const [newProjectName, setNewProjectName] = useState('');
   const [customerReportModalOpen, setCustomerReportModalOpen] = useState<{ open: boolean; projectId?: string } | null>(null);
+  const confirm = useConfirm();
   const { data:client, isLoading } = useQuery({ queryKey:['client', id], queryFn: ()=>api<Client>('GET', `/clients/${id}`) });
   const { data: me } = useQuery({ queryKey:['me'], queryFn: ()=>api<any>('GET','/auth/me') });
   const isAdmin = (me?.roles||[]).includes('admin');
@@ -1482,6 +1483,16 @@ export default function CustomerDetail(){
             transitionDuration: isHeroCollapsed ? '1200ms, 300ms' : '1800ms, 300ms',
             transitionTimingFunction: 'ease-in-out, ease-in-out'
           }}>
+            {isAdmin && (
+              <button
+                type="button"
+                onClick={async (e) => { e.stopPropagation(); const ok = await confirm({ title: 'Delete customer', message: 'Are you sure you want to delete this customer? This action cannot be undone.' }); if (!ok) return; try { await api('DELETE', `/clients/${encodeURIComponent(String(id||''))}`); toast.success('Customer deleted'); navigate('/customers'); } catch (_e) { toast.error('Failed to delete customer'); } }}
+                className="absolute top-2 right-2 z-10 px-2 py-1 rounded text-[11px] font-medium border border-red-200 text-red-600 hover:bg-red-50 transition-colors"
+                title="Delete Customer"
+              >
+                Delete Customer
+              </button>
+            )}
             <div className="p-3 overflow-visible">
               <div className="flex gap-3 items-start">
                 <div className="w-48 flex-shrink-0">
@@ -1552,6 +1563,16 @@ export default function CustomerDetail(){
             transitionDuration: isHeroCollapsed ? '1200ms, 300ms' : '1800ms, 300ms',
             transitionTimingFunction: 'ease-in-out, ease-in-out'
           }}>
+            {isAdmin && (
+              <button
+                type="button"
+                onClick={async (e) => { e.stopPropagation(); const ok = await confirm({ title: 'Delete customer', message: 'Are you sure you want to delete this customer? This action cannot be undone.' }); if (!ok) return; try { await api('DELETE', `/clients/${encodeURIComponent(String(id||''))}`); toast.success('Customer deleted'); navigate('/customers'); } catch (_e) { toast.error('Failed to delete customer'); } }}
+                className="absolute top-2 right-2 z-10 px-2 py-1 rounded text-[11px] font-medium border border-red-200 text-red-600 hover:bg-red-50 transition-colors"
+                title="Delete Customer"
+              >
+                Delete Customer
+              </button>
+            )}
             <div className="px-3 py-3 pr-10 min-h-[60px] flex items-center justify-between gap-4">
               <div className="min-w-0 flex items-center flex-1">
                 <h3 className="text-sm font-bold text-gray-900 truncate">{c.display_name||c.name||id}</h3>

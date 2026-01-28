@@ -430,7 +430,7 @@ export default function Customers(){
               <>
                 {/* Column headers - same style as Opportunities list */}
                 <div 
-                  className="grid grid-cols-[3fr_1.5fr_2fr_1.5fr_1.5fr_auto] gap-2 sm:gap-3 lg:gap-4 items-center px-4 py-2 pl-4 pr-8 min-w-[640px] text-[10px] font-semibold text-gray-700 bg-gray-50 border-b border-gray-200 rounded-t-lg"
+                  className="grid grid-cols-[40fr_10fr_25fr_10fr_15fr] gap-2 sm:gap-3 lg:gap-4 items-center px-4 py-2 w-full text-[10px] font-semibold text-gray-700 bg-gray-50 border-b border-gray-200 rounded-t-lg"
                   aria-hidden
                 >
                   <div className="min-w-0" title="Customer name and address">Customer</div>
@@ -438,11 +438,10 @@ export default function Customers(){
                   <div className="min-w-0" title="City and province">City</div>
                   <div className="min-w-0" title="Client status">Status</div>
                   <div className="min-w-0" title="Client type">Type</div>
-                  <div className="min-w-0 w-24" title="Actions" aria-hidden />
                 </div>
-                <div className="rounded-b-lg border border-t-0 border-gray-200 overflow-hidden min-w-[640px]">
+                <div className="rounded-b-lg border border-t-0 border-gray-200 overflow-hidden min-w-0">
                   {(data?.items || []).map(c => (
-                    <ClientRow key={c.id} c={c} statusColorMap={statusColorMap} hasEditPermission={hasEditPermission} onOpen={()=> nav(`/customers/${encodeURIComponent(c.id)}`)} onDeleted={()=> refetch()} />
+                    <ClientRow key={c.id} c={c} statusColorMap={statusColorMap} onOpen={()=> nav(`/customers/${encodeURIComponent(c.id)}`)} />
                   ))}
                 </div>
               </>
@@ -528,15 +527,14 @@ export default function Customers(){
   );
 }
 
-function ClientRow({ c, statusColorMap, hasEditPermission, onOpen, onDeleted }:{ c: Client, statusColorMap: Record<string,string>, hasEditPermission?: boolean, onOpen: ()=>void, onDeleted: ()=>void }){
+function ClientRow({ c, statusColorMap, onOpen }:{ c: Client, statusColorMap: Record<string,string>, onOpen: ()=>void }){
   const avatarUrl = c.logo_url || '/ui/assets/placeholders/customer.png';
   const status = String(c.client_status||'').trim();
   const color = status ? (statusColorMap[status] || '') : '';
   const badgeStyle: any = color ? { backgroundColor: color, borderColor: 'transparent', color: '#000' } : {};
-  const confirm = useConfirm();
   return (
     <div 
-      className="grid grid-cols-[3fr_1.5fr_2fr_1.5fr_1.5fr_auto] gap-2 sm:gap-3 lg:gap-4 items-center px-4 py-3 pl-4 pr-8 min-w-[640px] hover:bg-gray-50 cursor-pointer border-b border-gray-100 last:border-b-0 min-h-[52px]" 
+      className="grid grid-cols-[40fr_10fr_25fr_10fr_15fr] gap-2 sm:gap-3 lg:gap-4 items-center px-4 py-3 w-full hover:bg-gray-50 cursor-pointer border-b border-gray-100 last:border-b-0 min-h-[52px]" 
       onClick={onOpen}
     >
       {/* Col 1: Customer (avatar + name, address) - vertically centered */}
@@ -562,17 +560,6 @@ function ClientRow({ c, statusColorMap, hasEditPermission, onOpen, onDeleted }:{
       {/* Col 5: Type */}
       <div className="min-w-0 flex items-center">
         <span className="inline-flex px-2 py-0.5 rounded-full border border-gray-200 text-[10px] font-medium text-gray-700 bg-gray-50 truncate">{String(c.client_type||'—')}</span>
-      </div>
-      {/* Col 6: Actions */}
-      <div className="min-w-0 w-24 flex items-center justify-end" onClick={e=> e.stopPropagation()}>
-        {hasEditPermission && (
-          <button className="rounded-lg px-3 py-2 bg-brand-red text-white text-xs font-medium hover:opacity-90 transition-all" title="Delete customer" onClick={async(e)=>{
-            e.stopPropagation();
-            const ok = await confirm({ title: 'Delete customer', message: 'Are you sure you want to delete this customer? This action cannot be undone.' });
-            if (!ok) return;
-            try{ await api('DELETE', `/clients/${encodeURIComponent(c.id)}`); onDeleted(); }catch(_e){}
-          }}>Delete</button>
-        )}
       </div>
     </div>
   );
