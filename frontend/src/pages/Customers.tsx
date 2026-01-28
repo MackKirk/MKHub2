@@ -430,7 +430,7 @@ export default function Customers(){
               <>
                 {/* Column headers - same style as Opportunities list */}
                 <div 
-                  className="grid grid-cols-[3fr_1.5fr_2fr_1.5fr_1.5fr_auto] gap-2 sm:gap-3 lg:gap-4 items-center px-4 py-2 bg-gray-50 border-b border-gray-200 rounded-t-lg min-w-[640px] text-[10px] font-semibold text-gray-700"
+                  className="grid grid-cols-[3fr_1.5fr_2fr_1.5fr_1.5fr_auto] gap-2 sm:gap-3 lg:gap-4 items-center px-4 py-2 pl-4 pr-8 min-w-[640px] text-[10px] font-semibold text-gray-700 bg-gray-50 border-b border-gray-200 rounded-t-lg"
                   aria-hidden
                 >
                   <div className="min-w-0" title="Customer name and address">Customer</div>
@@ -536,31 +536,31 @@ function ClientRow({ c, statusColorMap, hasEditPermission, onOpen, onDeleted }:{
   const confirm = useConfirm();
   return (
     <div 
-      className="grid grid-cols-[3fr_1.5fr_2fr_1.5fr_1.5fr_auto] gap-2 sm:gap-3 lg:gap-4 items-center px-4 py-3 min-w-[640px] hover:bg-gray-50 cursor-pointer border-b border-gray-100 last:border-b-0" 
+      className="grid grid-cols-[3fr_1.5fr_2fr_1.5fr_1.5fr_auto] gap-2 sm:gap-3 lg:gap-4 items-center px-4 py-3 pl-4 pr-8 min-w-[640px] hover:bg-gray-50 cursor-pointer border-b border-gray-100 last:border-b-0 min-h-[52px]" 
       onClick={onOpen}
     >
-      {/* Col 1: Customer (avatar + name, address) */}
+      {/* Col 1: Customer (avatar + name, address) - vertically centered */}
       <div className="min-w-0 flex items-center gap-3">
         <img src={avatarUrl} className="w-10 h-10 rounded-lg border border-gray-200 object-cover flex-shrink-0" alt={c.display_name || c.name || 'Client logo'}/>
-        <div className="min-w-0">
+        <div className="min-w-0 flex flex-col justify-center">
           <div className="text-xs font-semibold text-gray-900 truncate">{c.display_name||c.name||c.id}</div>
           {c.address_line1 && <div className="text-[10px] text-gray-500 truncate">{String(c.address_line1)}</div>}
         </div>
       </div>
-      {/* Col 2: Code */}
-      <div className="min-w-0">
+      {/* Col 2: Code - vertically centered */}
+      <div className="min-w-0 flex items-center">
         <span className="text-xs text-gray-700 truncate">{c.code || '—'}</span>
       </div>
       {/* Col 3: City */}
-      <div className="min-w-0">
+      <div className="min-w-0 flex items-center">
         <span className="text-xs text-gray-600 truncate">{[c.city, c.province].filter(Boolean).join(', ') || '—'}</span>
       </div>
-      {/* Col 4: Status */}
-      <div className="min-w-0">
+      {/* Col 4: Status - vertically centered (code + status group shifted left via pr-8 on row) */}
+      <div className="min-w-0 flex items-center">
         <span className="inline-flex px-2 py-0.5 rounded-full border text-[10px] font-medium truncate max-w-full" style={badgeStyle}>{status || '—'}</span>
       </div>
       {/* Col 5: Type */}
-      <div className="min-w-0">
+      <div className="min-w-0 flex items-center">
         <span className="inline-flex px-2 py-0.5 rounded-full border border-gray-200 text-[10px] font-medium text-gray-700 bg-gray-50 truncate">{String(c.client_type||'—')}</span>
       </div>
       {/* Col 6: Actions */}

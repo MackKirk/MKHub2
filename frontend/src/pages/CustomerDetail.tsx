@@ -1552,8 +1552,10 @@ export default function CustomerDetail(){
             transitionDuration: isHeroCollapsed ? '1200ms, 300ms' : '1800ms, 300ms',
             transitionTimingFunction: 'ease-in-out, ease-in-out'
           }}>
-            <div className="p-3 flex items-center justify-between gap-4 min-h-[44px]">
-              <h3 className="text-sm font-bold text-gray-900 truncate min-w-0">{c.display_name||c.name||id}</h3>
+            <div className="px-3 py-3 pr-10 min-h-[60px] flex items-center justify-between gap-4">
+              <div className="min-w-0 flex items-center flex-1">
+                <h3 className="text-sm font-bold text-gray-900 truncate">{c.display_name||c.name||id}</h3>
+              </div>
               <div className="flex items-center gap-2 flex-shrink-0">
                 <span className="text-xs text-gray-500 font-medium">{c.code || id?.slice(0, 8) || '—'}</span>
                 {(c as any).client_status ? (
