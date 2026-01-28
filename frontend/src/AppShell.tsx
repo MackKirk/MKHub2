@@ -744,7 +744,7 @@ export default function AppShell({ children }: PropsWithChildren){
                     <div className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-6 bg-white rounded-r-full" />
                   )}
                   <span className={`flex-shrink-0 ${isActive ? 'opacity-100' : 'opacity-70'}`}>{category.icon}</span>
-                  <span className="font-medium flex-1">{category.label}</span>
+                  <span className="text-sm font-medium flex-1">{category.label}</span>
                 </NavLink>
                 {showSubItems && (category.items.length > 1 || category.id === 'sales') && (
                   <div className="mt-1.5 ml-4 space-y-0.5">
@@ -804,7 +804,7 @@ export default function AppShell({ children }: PropsWithChildren){
                                     <div className="absolute left-0 top-1/2 -translate-y-1/2 w-0.5 h-5 bg-white rounded-r-full" />
                                   )}
                                   <span className={`flex-shrink-0 ${(isItemOrChildActive || location.pathname === item.path || location.pathname.startsWith(item.path + '/')) ? 'opacity-100' : 'opacity-60'}`}>{item.icon}</span>
-                                  <span className="text-sm flex-1">{item.label}</span>
+                                  <span className="text-xs flex-1">{item.label}</span>
                                 </NavLink>
                               ) : (
                                 <div
@@ -818,7 +818,7 @@ export default function AppShell({ children }: PropsWithChildren){
                                     <div className="absolute left-0 top-1/2 -translate-y-1/2 w-0.5 h-5 bg-white rounded-r-full" />
                                   )}
                                   <span className={`flex-shrink-0 ${isItemOrChildActive ? 'opacity-100' : 'opacity-60'}`}>{item.icon}</span>
-                                  <span className="text-sm flex-1 text-left">{item.label}</span>
+                                  <span className="text-xs flex-1 text-left">{item.label}</span>
                                 </div>
                               )}
 
@@ -842,7 +842,7 @@ export default function AppShell({ children }: PropsWithChildren){
                                           <div className="absolute left-0 top-1/2 -translate-y-1/2 w-0.5 h-5 bg-white rounded-r-full" />
                                         )}
                                         <span className={`flex-shrink-0 ${childActive ? 'opacity-100' : 'opacity-60'}`}>{child.icon}</span>
-                                        <span className="text-sm">{child.label}</span>
+                                        <span className="text-xs">{child.label}</span>
                                       </NavLink>
                                     );
                                   })}
@@ -871,7 +871,7 @@ export default function AppShell({ children }: PropsWithChildren){
                               <div className="absolute left-0 top-1/2 -translate-y-1/2 w-0.5 h-5 bg-white rounded-r-full" />
                             )}
                             <span className={`flex-shrink-0 ${(isItemActive || location.pathname === item.path || location.pathname.startsWith(item.path + '/')) ? 'opacity-100' : 'opacity-60'}`}>{item.icon}</span>
-                            <span className="text-sm">{item.label}</span>
+                            <span className="text-xs">{item.label}</span>
                           </NavLink>
                         );
                       })}

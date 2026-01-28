@@ -222,7 +222,7 @@ const polarToCartesian = (centerX: number, centerY: number, radius: number, angl
 };
 
 // Palettes are ordered from darkest -> lightest so the largest slice can start darker.
-const warmPalette = ['#7f1010', '#a31414', '#d11616', '#ee2b2b', '#f97316', '#f59e0b', '#fbbf24', '#fde68a'];
+const greenPalette = ['#14532d', '#166534', '#15803d', '#16a34a', '#22c55e', '#4ade80', '#86efac', '#bbf7d0'];
 const coolPalette = ['#0b1739', '#0f2a5a', '#1d4ed8', '#2563eb', '#0284c7', '#0ea5e9', '#38bdf8', '#7dd3fc'];
 
 type DateFilterType = 'all' | 'last_year' | 'last_6_months' | 'last_3_months' | 'last_month' | 'custom';
@@ -513,27 +513,31 @@ export default function BusinessDashboard() {
 
   return (
     <LoadingOverlay isLoading={isInitialLoading} text="Loading dashboard data...">
-      <div className="space-y-8">
-        {/* Header */}
-        <div className="bg-slate-200/50 rounded-[12px] border border-slate-200 flex items-center justify-between py-4 px-6">
-          <div>
-            <div className="text-xl font-bold text-gray-900 tracking-tight mb-0.5">
-              Business Dashboard{selectedDivision ? ` • ${selectedDivision.label}` : ''}
+      <div className="space-y-4">
+        {/* Title Bar - same layout and font sizes as Opportunities / ProjectDetail */}
+        <div className="rounded-xl border bg-white p-4 mb-4">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3 flex-1">
+              <div>
+                <div className="text-sm font-semibold text-gray-900">
+                  Business Dashboard{selectedDivision ? ` • ${selectedDivision.label}` : ''}
+                </div>
+                <div className="text-xs text-gray-500 mt-0.5">
+                  Opportunities and projects grouped by division
+                </div>
+              </div>
             </div>
-            <div className="text-sm text-gray-500 font-medium">
-              Opportunities and projects grouped by division
+            <div className="text-right">
+              <div className="text-[10px] font-medium text-gray-500 uppercase tracking-wide">Today</div>
+              <div className="text-xs font-semibold text-gray-700 mt-0.5">{todayLabel}</div>
             </div>
-          </div>
-          <div className="text-right">
-            <div className="text-xs text-gray-400 mb-1.5 font-medium uppercase tracking-wide">Today</div>
-            <div className="text-sm font-semibold text-gray-700">{todayLabel}</div>
           </div>
         </div>
 
-        {/* Filter Bar */}
-        <div className="bg-white rounded-lg border border-gray-200 p-3">
-          <div className="flex items-center gap-2">
-            <span className="text-xs font-medium text-gray-500 uppercase tracking-wide mr-2">Filter by:</span>
+        {/* Filter Bar - same rounded-xl area as Opportunities */}
+        <div className="rounded-xl border bg-white p-4 mb-4">
+          <div className="flex items-center gap-4">
+            <span className="text-[10px] font-medium text-gray-500 uppercase tracking-wide mr-2">Filter by:</span>
             <div className="relative group">
               <button
                 onClick={() => setSelectedDivisionId(null)}
@@ -586,7 +590,7 @@ export default function BusinessDashboard() {
               {/* Opportunities by Division */}
               <LoadingOverlay isLoading={oppDivisionsLoading} minHeight="min-h-[200px]">
               <div 
-                className="rounded-lg border border-gray-200 bg-white shadow-sm p-4 transition-all duration-200 ease-out hover:-translate-y-0.5 hover:shadow-md flex flex-col"
+                className="rounded-xl border border-gray-200 bg-white p-4 transition-all duration-200 ease-out hover:border-gray-300 hover:-translate-y-0.5 flex flex-col"
                 style={animationComplete ? {} : {
                   opacity: hasAnimated ? 1 : 0,
                   transform: hasAnimated ? 'translateY(0) scale(1)' : 'translateY(-8px) scale(0.98)',
@@ -594,7 +598,7 @@ export default function BusinessDashboard() {
                 }}
               >
                 <div className="flex items-center justify-between mb-3 flex-shrink-0">
-                  <div className="text-xs font-medium text-gray-500 uppercase tracking-wide">
+                  <div className="text-[10px] font-medium text-gray-500 uppercase tracking-wide">
                     Opportunities by Division{selectedDivision ? ` - ${selectedDivision.label}` : ''}
                   </div>
                   <div className="flex items-center gap-2">
@@ -647,7 +651,7 @@ export default function BusinessDashboard() {
                   {oppStatsByDivision.length === 0 ? (
                     <div className="text-xs text-gray-400 text-center">No data</div>
                   ) : (() => {
-                    const colors = warmPalette;
+                    const colors = greenPalette;
                     // Always start from divisions that have opportunities, regardless of value.
                     const divisionsForList = oppStatsByDivision
                       .filter(d => (d.opportunities_count || 0) > 0)
@@ -765,7 +769,7 @@ export default function BusinessDashboard() {
                 {/* Projects by Division */}
                 <LoadingOverlay isLoading={projDivisionsLoading} minHeight="min-h-[200px]">
                 <div 
-                  className="rounded-lg border border-gray-200 bg-white shadow-sm p-4 transition-all duration-200 ease-out hover:-translate-y-0.5 hover:shadow-md flex flex-col"
+                  className="rounded-xl border border-gray-200 bg-white p-4 transition-all duration-200 ease-out hover:border-gray-300 hover:-translate-y-0.5 flex flex-col"
                   style={animationComplete ? {} : {
                     opacity: hasAnimated ? 1 : 0,
                     transform: hasAnimated ? 'translateY(0) scale(1)' : 'translateY(-8px) scale(0.98)',
@@ -773,7 +777,7 @@ export default function BusinessDashboard() {
                   }}
                 >
                   <div className="flex items-center justify-between mb-3 flex-shrink-0">
-                    <div className="text-xs font-medium text-gray-500 uppercase tracking-wide">
+                    <div className="text-[10px] font-medium text-gray-500 uppercase tracking-wide">
                       Projects by Division{selectedDivision ? ` - ${selectedDivision.label}` : ''}
                     </div>
                       <div className="flex items-center gap-2">
@@ -945,7 +949,7 @@ export default function BusinessDashboard() {
               {/* Opportunities by Status (horizontal bars) */}
               <LoadingOverlay isLoading={oppStatusLoading} minHeight="min-h-[200px]">
                   <div 
-                    className="rounded-lg border border-gray-200 bg-white shadow-sm p-4 min-w-0 transition-all duration-200 ease-out hover:-translate-y-0.5 hover:shadow-md"
+                    className="rounded-xl border border-gray-200 bg-white p-4 min-w-0 transition-all duration-200 ease-out hover:border-gray-300 hover:-translate-y-0.5"
                     style={animationComplete ? {} : {
                       opacity: hasAnimated ? 1 : 0,
                       transform: hasAnimated ? 'translateY(0) scale(1)' : 'translateY(-8px) scale(0.98)',
@@ -953,7 +957,7 @@ export default function BusinessDashboard() {
                     }}
                   >
                     <div className="flex items-center justify-between mb-3">
-                      <div className="text-xs font-medium text-gray-500 uppercase tracking-wide">
+                      <div className="text-[10px] font-medium text-gray-500 uppercase tracking-wide">
                         Opportunities by Status{selectedDivision ? ` - ${selectedDivision.label}` : ''}
                       </div>
                       <div className="flex items-center gap-2 flex-wrap">
@@ -1055,7 +1059,7 @@ export default function BusinessDashboard() {
                                     </span>
                                     <div className="flex-1 bg-gray-100 rounded-full h-3 min-w-0 relative">
                                       <div
-                                        className="bg-gradient-to-r from-[#7f1010] to-[#d11616] rounded-full h-3 transition-all duration-500 ease-out absolute inset-0"
+                                        className="bg-gradient-to-r from-[#14532d] to-[#22c55e] rounded-full h-3 transition-all duration-500 ease-out absolute inset-0"
                                         style={{ width: `${finalTotalPercentage}%` }}
                                       />
                                     </div>
@@ -1083,7 +1087,7 @@ export default function BusinessDashboard() {
                                   </span>
                                   <div className="flex-1 bg-gray-100 rounded-full h-3 min-w-0 relative">
                                     <div
-                                      className="bg-gradient-to-r from-[#7f1010] to-[#d11616] rounded-full h-3 transition-all duration-500 ease-out"
+                                      className="bg-gradient-to-r from-[#14532d] to-[#22c55e] rounded-full h-3 transition-all duration-500 ease-out"
                                       style={{ width: `${barPercentage}%` }}
                                     />
                                   </div>
@@ -1105,7 +1109,7 @@ export default function BusinessDashboard() {
                 {/* Projects by Status (horizontal bars) */}
                 <LoadingOverlay isLoading={projStatusLoading} minHeight="min-h-[200px]">
                   <div 
-                    className="rounded-lg border border-gray-200 bg-white shadow-sm p-4 min-w-0 transition-all duration-200 ease-out hover:-translate-y-0.5 hover:shadow-md"
+                    className="rounded-xl border border-gray-200 bg-white p-4 min-w-0 transition-all duration-200 ease-out hover:border-gray-300 hover:-translate-y-0.5"
                     style={animationComplete ? {} : {
                       opacity: hasAnimated ? 1 : 0,
                       transform: hasAnimated ? 'translateY(0) scale(1)' : 'translateY(-8px) scale(0.98)',
@@ -1113,7 +1117,7 @@ export default function BusinessDashboard() {
                     }}
                   >
                     <div className="flex items-center justify-between mb-3">
-                      <div className="text-xs font-medium text-gray-500 uppercase tracking-wide">
+                      <div className="text-[10px] font-medium text-gray-500 uppercase tracking-wide">
                         Projects by Status{selectedDivision ? ` - ${selectedDivision.label}` : ''}
                       </div>
                       <div className="flex items-center gap-2 flex-wrap">
@@ -1267,7 +1271,7 @@ export default function BusinessDashboard() {
 
         {/* Section 2: Division Cards Grid */}
         {divisionsError ? (
-          <div className="rounded-lg border border-gray-200 bg-red-50 p-6 text-center">
+          <div className="rounded-xl border border-gray-200 bg-red-50 p-6 text-center">
             <div className="text-red-700 font-semibold mb-2">Error loading divisions</div>
             <div className="text-sm text-red-600">{String(divisionsError)}</div>
             <div className="text-xs text-gray-500 mt-2">Check console for details</div>
@@ -1290,7 +1294,7 @@ export default function BusinessDashboard() {
                   return (
                     <div
                       key={subdivisionStat.id}
-                      className="rounded-lg border border-gray-200 bg-white shadow-sm p-5 flex flex-col h-full group transition-all duration-200 ease-out hover:-translate-y-0.5 hover:shadow-lg"
+                      className="rounded-xl border border-gray-200 bg-white p-4 flex flex-col h-full group transition-all duration-200 ease-out hover:border-gray-300 hover:-translate-y-0.5"
                       style={animationComplete ? {} : {
                         opacity: hasAnimated ? 1 : 0,
                         transform: hasAnimated ? 'translateY(0)' : 'translateY(-8px)',
@@ -1299,8 +1303,8 @@ export default function BusinessDashboard() {
                     >
                       <div className="flex items-center justify-between mb-3 gap-2">
                         <div className="flex items-center gap-2 min-w-0 flex-1">
-                          <div className="text-3xl flex-shrink-0">{icon}</div>
-                          <div className="text-base font-semibold text-gray-900">{subdivisionStat.label}</div>
+                          <div className="text-2xl flex-shrink-0">{icon}</div>
+                          <div className="text-sm font-semibold text-gray-900">{subdivisionStat.label}</div>
                         </div>
                       </div>
 
@@ -1313,10 +1317,10 @@ export default function BusinessDashboard() {
                           className="cursor-pointer hover:bg-gray-50 rounded-lg p-2 transition-all group border border-transparent hover:border-gray-200 flex-1 flex items-center justify-center gap-1.5"
                           title="View Opportunities"
                         >
-                          <span className="text-xl font-bold text-[#7f1010] group-hover:text-[#a31414] group-hover:opacity-100 opacity-95 transition-all duration-150">
+                          <span className="text-sm font-bold text-[#7f1010] group-hover:text-[#a31414] group-hover:opacity-100 opacity-95 transition-all duration-150">
                             <CountUp value={oppCount} enabled={hasAnimated} />
                           </span>
-                          <span className="text-gray-600 group-hover:text-[#7f1010] transition-colors font-medium text-xs uppercase tracking-wide">
+                          <span className="text-[10px] font-medium text-gray-500 group-hover:text-[#7f1010] transition-colors uppercase tracking-wide">
                             Opportunities
                           </span>
                         </div>
@@ -1329,10 +1333,10 @@ export default function BusinessDashboard() {
                           className="cursor-pointer hover:bg-gray-50 rounded-lg p-2 transition-all group border border-transparent hover:border-gray-200 flex-1 flex items-center justify-center gap-1.5"
                           title="View Projects"
                         >
-                          <span className="text-xl font-bold text-[#7f1010] group-hover:text-[#a31414] group-hover:opacity-100 opacity-95 transition-all duration-150">
+                          <span className="text-sm font-bold text-[#7f1010] group-hover:text-[#a31414] group-hover:opacity-100 opacity-95 transition-all duration-150">
                             <CountUp value={projCount} enabled={hasAnimated} />
                           </span>
-                          <span className="text-gray-600 group-hover:text-[#7f1010] transition-colors font-medium text-xs uppercase tracking-wide">
+                          <span className="text-[10px] font-medium text-gray-500 group-hover:text-[#7f1010] transition-colors uppercase tracking-wide">
                             Projects
                           </span>
                         </div>
@@ -1352,7 +1356,7 @@ export default function BusinessDashboard() {
                 return (
                   <div
                     key={division.id}
-                    className="rounded-lg border border-gray-200 bg-white shadow-sm p-5 flex flex-col h-full group transition-all duration-200 ease-out hover:-translate-y-0.5 hover:shadow-lg"
+                    className="rounded-xl border border-gray-200 bg-white p-4 flex flex-col h-full group transition-all duration-200 ease-out hover:border-gray-300 hover:-translate-y-0.5"
                     style={animationComplete ? {} : {
                       opacity: hasAnimated ? 1 : 0,
                       transform: hasAnimated ? 'translateY(0)' : 'translateY(-8px)',
@@ -1361,12 +1365,12 @@ export default function BusinessDashboard() {
                   >
                     <div className="flex items-center justify-between mb-3 gap-2">
                       <div className="flex items-center gap-2 min-w-0 flex-1">
-                        <div className="text-3xl flex-shrink-0">{getDivisionIcon(division.label)}</div>
-                        <div className="text-base font-semibold text-gray-900">{division.label}</div>
+                        <div className="text-2xl flex-shrink-0">{getDivisionIcon(division.label)}</div>
+                        <div className="text-sm font-semibold text-gray-900">{division.label}</div>
                       </div>
                       {hasSubdivisions && (
                         <div className="relative group/sub flex-shrink-0">
-                          <div className="text-xs text-gray-500 bg-gray-100 px-2 py-1 rounded whitespace-nowrap cursor-pointer">
+                          <div className="text-[10px] font-medium text-gray-500 bg-gray-100 px-2 py-1 rounded-lg whitespace-nowrap cursor-pointer">
                             {division.subdivisions.length} sub
                           </div>
                           <div className="absolute right-0 bottom-full mb-1 px-2 py-1.5 bg-gray-900 text-white text-xs rounded opacity-0 group-hover/sub:opacity-100 transition-opacity pointer-events-none z-10 min-w-max">
@@ -1390,10 +1394,10 @@ export default function BusinessDashboard() {
                         className="cursor-pointer hover:bg-gray-50 rounded-lg p-2 transition-all group border border-transparent hover:border-gray-200 flex-1 flex items-center justify-center gap-1.5"
                         title="View Opportunities"
                       >
-                        <span className="text-xl font-bold text-[#7f1010] group-hover:text-[#a31414] group-hover:opacity-100 opacity-95 transition-all duration-150">
+                        <span className="text-sm font-bold text-[#7f1010] group-hover:text-[#a31414] group-hover:opacity-100 opacity-95 transition-all duration-150">
                           <CountUp value={oppCount} enabled={hasAnimated} />
                         </span>
-                        <span className="text-gray-600 group-hover:text-[#7f1010] transition-colors font-medium text-xs uppercase tracking-wide">
+                        <span className="text-[10px] font-medium text-gray-500 group-hover:text-[#7f1010] transition-colors uppercase tracking-wide">
                           Opportunities
                         </span>
                       </div>
@@ -1406,10 +1410,10 @@ export default function BusinessDashboard() {
                         className="cursor-pointer hover:bg-gray-50 rounded-lg p-2 transition-all group border border-transparent hover:border-gray-200 flex-1 flex items-center justify-center gap-1.5"
                         title="View Projects"
                       >
-                        <span className="text-xl font-bold text-[#7f1010] group-hover:text-[#a31414] group-hover:opacity-100 opacity-95 transition-all duration-150">
+                        <span className="text-sm font-bold text-[#7f1010] group-hover:text-[#a31414] group-hover:opacity-100 opacity-95 transition-all duration-150">
                           <CountUp value={projCount} enabled={hasAnimated} />
                         </span>
-                        <span className="text-gray-600 group-hover:text-[#7f1010] transition-colors font-medium text-xs uppercase tracking-wide">
+                        <span className="text-[10px] font-medium text-gray-500 group-hover:text-[#7f1010] transition-colors uppercase tracking-wide">
                           Projects
                         </span>
                       </div>
@@ -1421,7 +1425,7 @@ export default function BusinessDashboard() {
             </div>
           </section>
         ) : (
-          <div className="rounded-lg border border-gray-200 bg-white p-6 text-center">
+          <div className="rounded-xl border border-gray-200 bg-white p-6 text-center">
             <div className="text-gray-500 mb-3">No project divisions found.</div>
             <div className="text-sm text-gray-400 mb-4">
               {divisionsLoading ? 'Loading...' : 'Please run the seed script to create divisions.'}
@@ -1443,31 +1447,31 @@ export default function BusinessDashboard() {
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <Link
               to={`/opportunities${selectedDivisionId ? `?division_id=${encodeURIComponent(selectedDivisionId)}` : ''}`}
-              className="rounded-lg border border-gray-200 bg-white p-6 shadow-sm transition-all duration-200 ease-out hover:-translate-y-0.5 hover:shadow-lg"
+              className="rounded-xl border border-gray-200 bg-white p-4 transition-all duration-200 ease-out hover:border-gray-300 hover:-translate-y-0.5"
             >
               <div className="flex items-center justify-between">
                 <div>
-                  <div className="text-lg font-semibold text-gray-900">View All Opportunities</div>
-                  <div className="text-sm text-gray-600 mt-1">
+                  <div className="text-sm font-semibold text-gray-900">View All Opportunities</div>
+                  <div className="text-xs text-gray-500 mt-0.5">
                     Browse and manage all bidding opportunities
                   </div>
                 </div>
-                <div className="text-2xl text-gray-400">→</div>
+                <div className="text-xl text-gray-400">→</div>
               </div>
             </Link>
 
             <Link
               to={`/projects${selectedDivisionId ? `?division_id=${encodeURIComponent(selectedDivisionId)}` : ''}`}
-              className="rounded-lg border border-gray-200 bg-white p-6 shadow-sm transition-all duration-200 ease-out hover:-translate-y-0.5 hover:shadow-lg"
+              className="rounded-xl border border-gray-200 bg-white p-4 transition-all duration-200 ease-out hover:border-gray-300 hover:-translate-y-0.5"
             >
               <div className="flex items-center justify-between">
                 <div>
-                  <div className="text-lg font-semibold text-gray-900">View All Projects</div>
-                  <div className="text-sm text-gray-600 mt-1">
+                  <div className="text-sm font-semibold text-gray-900">View All Projects</div>
+                  <div className="text-xs text-gray-500 mt-0.5">
                     Browse and manage all active projects
                   </div>
                 </div>
-                <div className="text-2xl text-gray-400">→</div>
+                <div className="text-xl text-gray-400">→</div>
               </div>
             </Link>
           </div>
