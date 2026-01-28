@@ -9,6 +9,8 @@ import { useConfirm } from '@/components/ConfirmProvider';
 import { useUnsavedChangesGuard } from '@/hooks/useUnsavedChangesGuard';
 import LoadingOverlay from '@/components/LoadingOverlay';
 import { CustomerFilesTabEnhanced } from './CustomerFilesTabEnhanced';
+import { OpportunityListItem, CreateReportModal } from './Opportunities';
+import { ProjectListItem } from './Projects';
 
 type Client = { id:string, name?:string, display_name?:string, code?:string, city?:string, province?:string, postal_code?:string, country?:string, address_line1?:string, address_line2?:string, created_at?:string };
 type Site = { id:string, site_name?:string, site_address_line1?:string, site_city?:string, site_province?:string, site_country?:string };
@@ -411,6 +413,7 @@ export default function CustomerDetail(){
   const [isHeroCollapsed, setIsHeroCollapsed] = useState(false);
   const [newProjectOpen, setNewProjectOpen] = useState(false);
   const [newProjectName, setNewProjectName] = useState('');
+  const [customerReportModalOpen, setCustomerReportModalOpen] = useState<{ open: boolean; projectId?: string } | null>(null);
   const { data:client, isLoading } = useQuery({ queryKey:['client', id], queryFn: ()=>api<Client>('GET', `/clients/${id}`) });
   const { data: me } = useQuery({ queryKey:['me'], queryFn: ()=>api<any>('GET','/auth/me') });
   const isAdmin = (me?.roles||[]).includes('admin');
@@ -423,6 +426,14 @@ export default function CustomerDetail(){
   const { data:sites } = useQuery({ queryKey:['clientSites', id], queryFn: ()=>api<Site[]>('GET', `/clients/${id}/sites`) });
   const { data:files, refetch: refetchFiles } = useQuery({ queryKey:['clientFiles', id], queryFn: ()=>api<ClientFile[]>('GET', `/clients/${id}/files`) });
   const { data:settings } = useQuery({ queryKey:['settings'], queryFn: ()=>api<any>('GET','/settings') });
+  const { data: projectDivisions } = useQuery({
+    queryKey: ['project-divisions'],
+    queryFn: () => api<any[]>('GET', '/settings/project-divisions'),
+    staleTime: 300_000,
+    enabled: hasProjectsRead,
+  });
+  const projectStatuses = (settings?.project_statuses || []) as any[];
+  const reportCategories = (settings?.report_categories || []) as any[];
   const statusColorMap: Record<string,string> = useMemo(()=>{
     const list = (settings||{}).client_statuses as {label?:string, value?:string}[]|undefined;
     const m: Record<string,string> = {};
@@ -485,7 +496,7 @@ export default function CustomerDetail(){
   }, [newProjectOpen]);
   const leadSources = (settings?.lead_sources||[]) as any[];
   const { data:projects } = useQuery({ queryKey:['clientProjects', id], queryFn: ()=>api<Project[]>('GET', `/projects?client=${encodeURIComponent(String(id||''))}&is_bidding=false`), enabled: hasProjectsRead });
-  const { data:opportunities } = useQuery({ queryKey:['clientOpportunities', id], queryFn: ()=>api<Project[]>('GET', `/projects?client=${encodeURIComponent(String(id||''))}&is_bidding=true`), enabled: hasProjectsRead });
+  const { data:opportunities } = useQuery({ queryKey:['clientOpportunities', id], queryFn: ()=>api<Project[]>('GET', `/projects/business/opportunities?client_id=${encodeURIComponent(String(id||''))}`), enabled: hasProjectsRead });
   const { data:contacts } = useQuery({ queryKey:['clientContacts', id], queryFn: ()=>api<Contact[]>('GET', `/clients/${id}/contacts`) });
   
   // Dashboard states (must be declared before useMemo that uses them)
@@ -555,11 +566,14 @@ export default function CustomerDetail(){
     const detailsMap = new Map((opportunityDetailsQueries.data || []).map((d: any) => [d.id, d]));
     return (opportunities || []).map(o => {
       const fullDetails = detailsMap.get(o.id);
-      // Merge the full details into the opportunity object so proposal is accessible directly
+      // Merge full details; preserve cost_estimated from list (from proposal) when detail has none
+      const listCostEstimated = (o as any).cost_estimated;
+      const detailCostEstimated = fullDetails?.cost_estimated;
       return {
         ...o,
-        ...fullDetails, // Spread full details to make proposal accessible at root level
-        details: fullDetails, // Also keep in details for backward compatibility
+        ...fullDetails,
+        cost_estimated: detailCostEstimated != null ? detailCostEstimated : listCostEstimated,
+        details: fullDetails,
       };
     });
   }, [opportunities, opportunityDetailsQueries.data]);
@@ -1445,11 +1459,6 @@ export default function CustomerDetail(){
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
               </svg>
             </button>
-            <div className="w-8 h-8 rounded bg-blue-100 flex items-center justify-center flex-shrink-0">
-              <svg className="w-5 h-5 text-blue-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h10m-6 4h.01M9 17h.01" />
-              </svg>
-            </div>
             <div>
               <div className="text-sm font-semibold text-gray-900">{getPageTitle(c, tab)}</div>
               <div className="text-xs text-gray-500 mt-0.5">{getPageDescription(c, tab)}</div>
@@ -2572,79 +2581,127 @@ export default function CustomerDetail(){
               )}
               {tab==='sites' && (
                 <div>
-                  <div className="mb-3 flex items-center justify-between">
-                    <h3 className="font-semibold">Construction Sites</h3>
-                    {hasEditPermission && (
-                      <Link to={`/customers/${encodeURIComponent(String(id||''))}/sites/new`} state={{ backgroundLocation: location }} className="px-3 py-1.5 rounded bg-brand-red text-white">+ New Site</Link>
-                    )}
+                  <div className="mb-2">
+                    <h4 className="font-semibold">Construction Sites</h4>
                   </div>
-                  <div className="grid grid-cols-2 md:grid-cols-6 gap-3">
+                  <div className="grid md:grid-cols-2 gap-4">
+                    {hasEditPermission && (
+                      <Link
+                        to={`/customers/${encodeURIComponent(String(id||''))}/sites/new`}
+                        state={{ backgroundLocation: location }}
+                        className="rounded-xl border-2 border-dashed border-gray-300 p-4 hover:border-brand-red hover:bg-gray-50 transition-all bg-white flex items-center justify-center min-h-[100px]"
+                      >
+                        <div className="text-lg text-gray-400 mr-2">+</div>
+                        <div className="font-medium text-xs text-gray-700">New Site</div>
+                      </Link>
+                    )}
                     {(sites||[]).map(s=>{
                       const filesForSite = (fileBySite[s.id||'']||[]);
                       const cover = filesForSite.find(f=> String(f.category||'')==='site-cover-derived');
                       const img = cover || filesForSite.find(f=> (f.is_image===true) || String(f.content_type||'').startsWith('image/'));
                       const src = img? `/files/${img.file_object_id}/thumbnail?w=600` : '/ui/assets/login/logo-light.svg';
+                      const addressLine = [s.site_address_line1, s.site_city, s.site_province, s.site_country].filter(Boolean).join(', ') || '—';
                       return (
-                        <Link to={`/customers/${encodeURIComponent(String(id||''))}/sites/${encodeURIComponent(String(s.id))}`} state={{ backgroundLocation: location }} key={String(s.id)} className="group rounded-xl border overflow-hidden bg-white block">
-                          <div className="aspect-square w-full bg-gray-100 relative">
-                            <img className="w-full h-full object-cover" src={src} />
+                        <Link to={`/customers/${encodeURIComponent(String(id||''))}/sites/${encodeURIComponent(String(s.id))}`} state={{ backgroundLocation: location }} key={String(s.id)} className="group rounded-xl border bg-white overflow-hidden flex">
+                          <div className="w-28 bg-gray-100 flex-shrink-0 flex items-center justify-center relative min-h-[100px]">
+                            {img ? (
+                              <img className="w-full h-full min-h-[100px] object-cover" src={src} alt={s.site_name||'Site'} />
+                            ) : (
+                              <div className="w-20 h-20 rounded bg-gray-200 grid place-items-center text-2xl text-gray-400" title="No image">📍</div>
+                            )}
                             {hasEditPermission && (
-                              <button onClick={(e)=>{ e.preventDefault(); e.stopPropagation(); setSitePicker({ open:true, siteId: String(s.id) }); }} className="absolute right-2 top-2 text-xs px-2 py-1 rounded bg-black/70 text-white">Change cover</button>
+                              <button onClick={(e)=>{ e.preventDefault(); e.stopPropagation(); setSitePicker({ open:true, siteId: String(s.id) }); }} className="hidden group-hover:block absolute right-1 bottom-1 text-[11px] px-2 py-0.5 rounded bg-black/70 text-white">Change cover</button>
                             )}
                           </div>
-                          <div className="p-2">
-                            <div className="font-semibold text-sm group-hover:underline truncate">{s.site_name||'Site'}</div>
-                            <div className="text-xs text-gray-600 truncate">{s.site_address_line1||''}</div>
-                            <div className="text-[11px] text-gray-500 truncate">{s.site_city||''} {s.site_province||''} {s.site_country||''}</div>
+                          <div className="flex-1 p-3 text-sm min-w-0">
+                            <div className="font-semibold text-gray-900 group-hover:text-brand-red transition-colors truncate">{s.site_name||'Site'}</div>
+                            <div className="mt-2">
+                              <div className="text-[11px] uppercase text-gray-500">Address</div>
+                              <div className="text-gray-700 text-xs leading-snug break-words">{addressLine}</div>
+                            </div>
                           </div>
                         </Link>
                       );
                     })}
+                    {(!sites||!sites.length) && <div className="text-sm text-gray-600">No sites</div>}
                   </div>
                 </div>
               )}
               {tab==='opportunities' && (
-                <div>
-                  <div className="mb-3 flex items-center justify-between">
-                    <h3 className="font-semibold">Opportunities</h3>
-                    {hasEditPermission && (
-                      <Link to={`/projects/new?client_id=${encodeURIComponent(String(id||''))}&is_bidding=true`} state={{ backgroundLocation: location }} className="px-3 py-1.5 rounded bg-brand-red text-white">+ New Opportunity</Link>
-                    )}
+                <div className="rounded-xl border bg-white p-4">
+                  <div className="mb-4">
+                    <h3 className="font-semibold text-gray-900">Opportunities</h3>
                   </div>
-                  <div className="grid grid-cols-2 md:grid-cols-6 gap-3">
-                    {(opportunities||[]).map(p=> {
-                      const pfiles = (files||[]).filter(f=> String((f as any).project_id||'')===String(p.id));
-                      const cover = pfiles.find(f=> String(f.category||'')==='project-cover-derived') || pfiles.find(f=> (f.is_image===true) || String(f.content_type||'').startsWith('image/'));
-                      const src = cover? `/files/${cover.file_object_id}/thumbnail?w=600` : '/ui/assets/login/logo-light.svg';
-                      return (
-                        <Link to={`/opportunities/${encodeURIComponent(String(p.id))}`} key={p.id} className="group rounded-xl border bg-white overflow-hidden block">
-                          <div className="aspect-square bg-gray-100 relative">
-                            <img className="w-full h-full object-cover" src={src} />
-                            {hasEditPermission && (
-                              <button onClick={(e)=>{ e.preventDefault(); e.stopPropagation(); setProjectPicker({ open:true, projectId: String(p.id) }); }} className="absolute right-2 top-2 text-xs px-2 py-1 rounded bg-black/70 text-white">Change cover</button>
-                            )}
-                          </div>
-                          <div className="p-2 text-sm">
-                            <div className="font-semibold text-sm group-hover:underline truncate">{p.name||'Opportunity'} {p.code? `· ${p.code}`:''}</div>
-                            <div className="text-[11px] text-gray-500 mt-1">{(p.date_start||p.created_at||'').slice(0,10)}</div>
-                          </div>
-                        </Link>
-                      );
-                    })}
-                    {(!opportunities||!opportunities.length) && <div className="text-sm text-gray-600">No opportunities</div>}
+                  <div className="flex flex-col gap-2 overflow-x-auto">
+                    {hasEditPermission && (
+                      <Link
+                        to={`/projects/new?client_id=${encodeURIComponent(String(id||''))}&is_bidding=true`}
+                        state={{ backgroundLocation: location }}
+                        className="border-2 border-dashed border-gray-300 rounded-lg p-2.5 hover:border-brand-red hover:bg-gray-50 transition-all text-center bg-white flex items-center justify-center min-h-[60px] min-w-[680px]"
+                      >
+                        <div className="text-lg text-gray-400 mr-2">+</div>
+                        <div className="font-medium text-xs text-gray-700">New Opportunity</div>
+                      </Link>
+                    )}
+                    {(opportunitiesWithDetails||[]).length > 0 ? (
+                      <>
+                        <div
+                          className="grid grid-cols-[10fr_5fr_5fr_5fr_auto] gap-2 sm:gap-3 lg:gap-4 items-center px-4 py-2 bg-gray-50 border-b border-gray-200 rounded-t-lg min-w-[680px] text-[10px] font-semibold text-gray-700"
+                          aria-hidden
+                        >
+                          <div className="min-w-0" title="Opportunity name, code and client">Opportunity</div>
+                          <div className="min-w-0" title="Person responsible for the estimate">Estimator</div>
+                          <div className="min-w-0" title="Estimated total value">Est. value</div>
+                          <div className="min-w-0" title="Current status (e.g. Prospecting, Sent, Refused)">Status</div>
+                          <div className="min-w-0 w-24" title="Quick access to Files, Proposal, Report" aria-hidden />
+                        </div>
+                        {(opportunitiesWithDetails||[]).map((p: any) => (
+                          <OpportunityListItem
+                            key={p.id}
+                            opportunity={p}
+                            onOpenReportModal={(projectId) => setCustomerReportModalOpen({ open: true, projectId })}
+                            projectStatuses={projectStatuses}
+                          />
+                        ))}
+                      </>
+                    ) : (
+                      <div className="p-8 text-center text-sm text-gray-500">No opportunities for this customer.</div>
+                    )}
                   </div>
                 </div>
               )}
               {tab==='projects' && (
-                <div>
-                  <div className="mb-3">
-                    <h3 className="font-semibold">Projects</h3>
+                <div className="rounded-xl border bg-white p-4">
+                  <div className="mb-4">
+                    <h3 className="font-semibold text-gray-900">Projects</h3>
                   </div>
-                  <div className="rounded-xl border bg-white divide-y">
-                    {(projects||[]).map(p=> (
-                      <ProjectRow key={p.id} project={p} files={files||[]} onCoverClick={(projectId)=>{ setProjectPicker({ open:true, projectId }); }} hasEditPermission={hasEditPermission} />
-                    ))}
-                    {(!projects||!projects.length) && <div className="p-4 text-sm text-gray-600">No projects</div>}
+                  <div className="flex flex-col gap-2 overflow-x-auto">
+                    {(projectsWithDetails||[]).length > 0 ? (
+                      <>
+                        <div
+                          className="grid grid-cols-[10fr_3fr_3fr_4fr_4fr_4fr_auto] gap-2 sm:gap-3 lg:gap-4 items-center px-4 py-2 bg-gray-50 border-b border-gray-200 rounded-t-lg min-w-[800px] text-[10px] font-semibold text-gray-700"
+                          aria-hidden
+                        >
+                          <div className="min-w-0" title="Project name, code and client">Project</div>
+                          <div className="min-w-0" title="Start date">Start</div>
+                          <div className="min-w-0" title="Estimated completion">ETA</div>
+                          <div className="min-w-0" title="Project administrator">Project Admin</div>
+                          <div className="min-w-0" title="Estimated or actual value">Value</div>
+                          <div className="min-w-0" title="Current status">Status</div>
+                          <div className="min-w-0 w-28" title="Quick access to Files, Proposal, Reports, etc." aria-hidden />
+                        </div>
+                        {(projectsWithDetails||[]).map((p: any) => (
+                          <ProjectListItem
+                            key={p.id}
+                            project={p}
+                            projectDivisions={projectDivisions || []}
+                            projectStatuses={projectStatuses}
+                          />
+                        ))}
+                      </>
+                    ) : (
+                      <div className="p-8 text-center text-sm text-gray-500">No projects for this customer.</div>
+                    )}
                   </div>
                 </div>
               )}
@@ -2653,7 +2710,6 @@ export default function CustomerDetail(){
       </div>
       <ImagePicker isOpen={pickerOpen} onClose={()=>setPickerOpen(false)} clientId={String(id)} targetWidth={800} targetHeight={600} allowEdit={true} onConfirm={async(blob, original)=>{
         try{
-          // upload processed image as derived client-logo
           const up:any = await api('POST','/files/upload',{ project_id:null, client_id:id, employee_id:null, category_id:'client-logo-derived', original_name: 'client-logo.jpg', content_type: 'image/jpeg' });
           await fetch(up.upload_url, { method:'PUT', headers:{ 'Content-Type':'image/jpeg', 'x-ms-blob-type':'BlockBlob' }, body: blob });
           const conf:any = await api('POST','/files/confirm',{ key: up.key, size_bytes: blob.size, checksum_sha256:'na', content_type:'image/jpeg' });
@@ -2688,6 +2744,17 @@ export default function CustomerDetail(){
           }catch(e){ toast.error('Failed to update project cover'); }
           finally{ setProjectPicker(null); }
         }} />
+      )}
+      {customerReportModalOpen?.open && customerReportModalOpen?.projectId && (
+        <CreateReportModal
+          projectId={customerReportModalOpen.projectId}
+          reportCategories={reportCategories}
+          onClose={() => setCustomerReportModalOpen(null)}
+          onSuccess={async () => {
+            setCustomerReportModalOpen(null);
+            toast.success('Report created successfully');
+          }}
+        />
       )}
       <DateRangeModal
         open={globalDateModalOpen}
@@ -3246,15 +3313,20 @@ function ContactsCard({ id, hasEditPermission }: { id: string, hasEditPermission
   };
   return (
     <div>
-      <div className="mb-2 flex items-center justify-between">
+      <div className="mb-2">
         <h4 className="font-semibold">Contacts</h4>
-        <div className="flex items-center gap-2">
-          {hasEditPermission && (
-            <button onClick={()=>setCreateOpen(true)} className="px-3 py-1.5 rounded bg-brand-red text-white">+ New Contact</button>
-          )}
-        </div>
       </div>
       <div className="grid md:grid-cols-2 gap-4">
+        {hasEditPermission && (
+          <button
+            type="button"
+            onClick={()=>setCreateOpen(true)}
+            className="rounded-xl border-2 border-dashed border-gray-300 p-4 hover:border-brand-red hover:bg-gray-50 transition-all bg-white flex items-center justify-center min-h-[100px]"
+          >
+            <div className="text-lg text-gray-400 mr-2">+</div>
+            <div className="font-medium text-xs text-gray-700">New Contact</div>
+          </button>
+        )}
         {(list||[]).map(c=> (
           <div key={c.id} className="rounded-xl border bg-white overflow-hidden flex" draggable onDragStart={()=>onDragStart(String(c.id))} onDragOver={onDragOver} onDrop={()=>onDropOver(String(c.id))}>
             <div className="w-28 bg-gray-100 flex items-center justify-center relative group">
@@ -3277,6 +3349,9 @@ function ContactsCard({ id, hasEditPermission }: { id: string, hasEditPermission
                         <option value="false">No</option>
                         <option value="true">Yes</option>
                       </select>
+                      {hasEditPermission && (
+                        <button onClick={async()=>{ const ok = await confirm({ title: 'Delete contact', message: 'Are you sure you want to delete this contact?' }); if(!ok) return; try { await api('DELETE', `/clients/${id}/contacts/${c.id}`); toast.success('Contact deleted'); setEditId(null); refetch(); } catch(e) { toast.error('Failed to delete contact'); } }} className="px-2 py-1 rounded bg-red-50 text-red-600 hover:bg-red-100" title="Delete">Delete</button>
+                      )}
                     </div>
                   </div>
                   <div className="grid grid-cols-2 gap-2">
@@ -3312,12 +3387,13 @@ function ContactsCard({ id, hasEditPermission }: { id: string, hasEditPermission
                     <div className="font-semibold">{c.name}</div>
                     <div className="flex items-center gap-2">
                       {c.is_primary && <span className="text-[11px] bg-green-50 text-green-700 border border-green-200 rounded-full px-2">Primary</span>}
+                      {!c.is_primary && hasEditPermission && <button onClick={async()=>{ await api('PATCH', `/clients/${id}/contacts/${c.id}`, { is_primary: true }); refetch(); }} className="px-2 py-1 rounded bg-gray-100">Set Primary</button>}
                       {hasEditPermission && (
-                        <>
-                          {!c.is_primary && <button onClick={async()=>{ await api('PATCH', `/clients/${id}/contacts/${c.id}`, { is_primary: true }); refetch(); }} className="px-2 py-1 rounded bg-gray-100">Set Primary</button>}
-                          <button onClick={()=>beginEdit(c)} className="px-2 py-1 rounded bg-gray-100">Edit</button>
-                          <button onClick={async()=>{ const ok = await confirm({ title: 'Delete contact', message: 'Are you sure you want to delete this contact?' }); if(!ok) return; try { await api('DELETE', `/clients/${id}/contacts/${c.id}`); toast.success('Contact deleted'); refetch(); } catch(e) { toast.error('Failed to delete contact'); } }} className="px-2 py-1 rounded bg-gray-100">Delete</button>
-                        </>
+                        <button onClick={()=>beginEdit(c)} className="p-1.5 rounded hover:bg-gray-100 text-gray-600 hover:text-brand-red transition-colors" title="Edit contact">
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                          </svg>
+                        </button>
                       )}
                     </div>
                   </div>
@@ -3338,68 +3414,99 @@ function ContactsCard({ id, hasEditPermission }: { id: string, hasEditPermission
         {(!data || !data.length) && <div className="text-sm text-gray-600">No contacts</div>}
       </div>
       {createOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
-          <div className="w-[800px] max-w-[95vw] bg-white rounded-xl overflow-hidden">
-            <div className="px-4 py-3 border-b flex items-center justify-between"><div className="font-semibold">New Contact</div><button onClick={()=>{ setCreateOpen(false); setCreatePhotoBlob(null); setNameError(false); }} className="text-gray-500 hover:text-gray-700 text-2xl font-bold w-8 h-8 flex items-center justify-center rounded hover:bg-gray-100" title="Close">×</button></div>
-            <div className="p-4 grid md:grid-cols-5 gap-3 items-start">
-              <div className="md:col-span-2">
-                <div className="text-[11px] uppercase text-gray-500 mb-1">Contact Photo</div>
-                <button onClick={()=> setCreatePhotoBlob(new Blob()) || setPickerForContact('__new__') } className="w-full h-40 border rounded grid place-items-center bg-gray-50">Select Photo</button>
-              </div>
-              <div className="md:col-span-3 grid grid-cols-2 gap-2">
-                <div className="col-span-2">
-                  <label className="text-xs text-gray-600">
-                    Name <span className="text-red-600">*</span>
-                  </label>
-                  <input className={`border rounded px-3 py-2 w-full ${nameError && !name.trim() ? 'border-red-500' : ''}`} value={name} onChange={e=>{setName(e.target.value); if(nameError) setNameError(false);}} />
-                  {nameError && !name.trim() && <div className="text-[11px] text-red-600 mt-1">This field is required</div>}
-                </div>
-                <div>
-                  <label className="text-xs text-gray-600">Role/Title</label>
-                  <input className="border rounded px-3 py-2 w-full" value={role} onChange={e=>setRole(e.target.value)} />
-                </div>
-                <div>
-                  <label className="text-xs text-gray-600">Department</label>
-                  <input className="border rounded px-3 py-2 w-full" value={dept} onChange={e=>setDept(e.target.value)} />
-                </div>
-                <div>
-                  <label className="text-xs text-gray-600">Email</label>
-                  <input className="border rounded px-3 py-2 w-full" value={email} onChange={e=>setEmail(e.target.value)} />
-                </div>
-                <div>
-                  <label className="text-xs text-gray-600">Phone</label>
-                  <input className="border rounded px-3 py-2 w-full" value={phone} onChange={e=>setPhone(formatPhone(e.target.value))} />
-                </div>
-                <div>
-                  <label className="text-xs text-gray-600">Primary</label>
-                  <select className="border rounded px-3 py-2 w-full" value={primary} onChange={e=>setPrimary(e.target.value)}>
-                    <option value="false">No</option>
-                    <option value="true">Yes</option>
-                  </select>
-                </div>
-                <div className="col-span-2 text-right">
-                  <button onClick={async()=>{
-                    if (isCreatingContact) return;
-                    if (!name.trim()) {
-                      setNameError(true);
-                      toast.error('Name is required');
-                      return;
-                    }
-                    try {
-                      setIsCreatingContact(true);
-                      const payload:any = { name, email, phone, role_title: role, department: dept, is_primary: primary==='true' };
-                      const created:any = await api('POST', `/clients/${id}/contacts`, payload);
-                      // If photo selected through picker callback, it will be uploaded below via picker confirmation
-                      setName(''); setEmail(''); setPhone(''); setRole(''); setDept(''); setPrimary('false'); setNameError(false); setCreateOpen(false); refetch();
-                    } catch (e) {
-                      toast.error('Failed to create contact');
-                      setIsCreatingContact(false);
-                    }
-                  }} disabled={isCreatingContact} className="px-4 py-2 rounded-xl bg-gradient-to-r from-brand-red to-[#ee2b2b] text-white font-semibold disabled:opacity-50 disabled:cursor-not-allowed">
-                    {isCreatingContact ? 'Creating...' : 'Create'}
+        <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center overflow-y-auto p-4">
+          <div className="w-[900px] max-w-[95vw] max-h-[90vh] bg-gray-100 rounded-xl overflow-hidden flex flex-col border border-gray-200 shadow-xl">
+            {/* Title bar - same style as New Site (SiteDetail) */}
+            <div className="rounded-t-xl border-b border-gray-200 bg-white p-4 flex-shrink-0">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <button
+                    type="button"
+                    onClick={()=>{ setCreateOpen(false); setCreatePhotoBlob(null); setNameError(false); }}
+                    className="p-1.5 rounded hover:bg-gray-100 transition-colors flex items-center justify-center"
+                    title="Close"
+                  >
+                    <svg className="w-4 h-4 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+                    </svg>
                   </button>
+                  <div>
+                    <div className="text-sm font-semibold text-gray-900">New Contact</div>
+                    <div className="text-xs text-gray-500 mt-0.5">Name, role and contact details</div>
+                  </div>
                 </div>
               </div>
+            </div>
+
+            <div className="overflow-y-auto flex-1 p-4">
+              <div className="rounded-xl border bg-white p-4 grid md:grid-cols-5 gap-4 items-start">
+                <div className="md:col-span-2">
+                  <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">Contact Photo <span className="opacity-60">(optional)</span></label>
+                  <button type="button" onClick={()=>{ setCreatePhotoBlob(new Blob()); setPickerForContact('__new__'); }} className="w-full h-40 border border-gray-200 rounded-lg grid place-items-center bg-gray-50 hover:bg-gray-100 text-sm text-gray-600">Select Photo</button>
+                </div>
+                <div className="md:col-span-3 grid grid-cols-2 gap-4">
+                  <div className="col-span-2">
+                    <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">Name <span className="text-red-600">*</span></label>
+                    <input
+                      className={`w-full border rounded-lg px-3 py-2 text-sm ${nameError && !name.trim() ? 'border-red-500 focus:ring-red-500' : 'border-gray-200 focus:ring-gray-300 focus:border-gray-300'}`}
+                      value={name}
+                      onChange={e=>{ setName(e.target.value); if(nameError) setNameError(false); }}
+                    />
+                    {nameError && !name.trim() && <div className="text-[11px] text-red-600 mt-1">This field is required</div>}
+                  </div>
+                  <div>
+                    <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">Role/Title</label>
+                    <input className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" value={role} onChange={e=>setRole(e.target.value)} />
+                  </div>
+                  <div>
+                    <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">Department</label>
+                    <input className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" value={dept} onChange={e=>setDept(e.target.value)} />
+                  </div>
+                  <div>
+                    <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">Email</label>
+                    <input className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" value={email} onChange={e=>setEmail(e.target.value)} />
+                  </div>
+                  <div>
+                    <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">Phone</label>
+                    <input className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" value={phone} onChange={e=>setPhone(formatPhone(e.target.value))} />
+                  </div>
+                  <div>
+                    <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">Primary</label>
+                    <select className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" value={primary} onChange={e=>setPrimary(e.target.value)}>
+                      <option value="false">No</option>
+                      <option value="true">Yes</option>
+                    </select>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div className="flex-shrink-0 px-4 py-4 border-t border-gray-200 bg-white flex items-center justify-end gap-3 rounded-b-xl">
+              <button type="button" onClick={()=>{ setCreateOpen(false); setCreatePhotoBlob(null); setNameError(false); }} className="px-3 py-1.5 rounded-lg text-sm font-medium border border-gray-200 hover:bg-gray-50 text-gray-700">Cancel</button>
+              <button
+                type="button"
+                onClick={async()=>{
+                  if (isCreatingContact) return;
+                  if (!name.trim()) {
+                    setNameError(true);
+                    toast.error('Name is required');
+                    return;
+                  }
+                  try {
+                    setIsCreatingContact(true);
+                    const payload:any = { name, email, phone, role_title: role, department: dept, is_primary: primary==='true' };
+                    await api('POST', `/clients/${id}/contacts`, payload);
+                    setName(''); setEmail(''); setPhone(''); setRole(''); setDept(''); setPrimary('false'); setNameError(false); setCreateOpen(false); refetch();
+                  } catch (e) {
+                    toast.error('Failed to create contact');
+                    setIsCreatingContact(false);
+                  }
+                }}
+                disabled={isCreatingContact}
+                className="px-4 py-2 rounded-lg text-sm font-semibold bg-brand-red text-white hover:bg-[#c41e1e] disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {isCreatingContact ? 'Creating...' : 'Create'}
+              </button>
             </div>
           </div>
         </div>

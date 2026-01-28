@@ -52,6 +52,16 @@ self.addEventListener('fetch', (event) => {
   const { request } = event;
   const url = new URL(request.url);
 
+  // Don't intercept cross-origin requests (e.g. Azure Blob Storage upload URLs)
+  // Let the browser handle PUT/POST to external domains natively
+  try {
+    const pageOrigin = new URL(self.location.origin).hostname;
+    const requestHost = url.hostname;
+    if (requestHost !== pageOrigin && requestHost !== 'localhost' && !requestHost.endsWith('.localhost')) {
+      return;
+    }
+  } catch (_) {}
+
   // NEVER cache API or auth endpoints
   if (url.pathname.startsWith('/api/') || 
       url.pathname.startsWith('/auth/') ||
@@ -120,13 +130,11 @@ self.addEventListener('fetch', (event) => {
           }
           return response;
         }).catch(() => {
-          // If offline and not in cache, return a basic response
-          if (request.destination === 'script' || request.destination === 'style') {
-            return new Response('', {
-              status: 503,
-              statusText: 'Service Unavailable'
-            });
-          }
+          // If offline and not in cache, return a valid response (never undefined)
+          return new Response('', {
+            status: 503,
+            statusText: 'Service Unavailable'
+          });
         });
       })
     );
@@ -149,9 +157,11 @@ self.addEventListener('fetch', (event) => {
       .catch(() => {
         // Only try to get from cache if it's a GET request
         if (request.method === 'GET') {
-          return caches.match(request);
+          return caches.match(request).then((cached) => {
+            return cached || caches.match(OFFLINE_PAGE) || new Response('Offline', { status: 503, statusText: 'Service Unavailable' });
+          });
         }
-        // For non-GET requests, return error response
+        // For non-GET requests, return error response (same-origin only; cross-origin not intercepted)
         return new Response('Method not supported offline', {
           status: 503,
           statusText: 'Service Unavailable'

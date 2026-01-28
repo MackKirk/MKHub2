@@ -1276,7 +1276,7 @@ const getDivisionIcon = (label: string): string => {
   return iconMap[label] || '📦';
 };
 
-function CreateReportModal({ projectId, reportCategories, onClose, onSuccess }: {
+export function CreateReportModal({ projectId, reportCategories, onClose, onSuccess }: {
   projectId: string,
   reportCategories: any[],
   onClose: () => void,
@@ -1517,7 +1517,7 @@ function CreateReportModal({ projectId, reportCategories, onClose, onSuccess }: 
   );
 }
 
-function OpportunityListItem({ opportunity, onOpenReportModal, projectStatuses }: { 
+export function OpportunityListItem({ opportunity, onOpenReportModal, projectStatuses }: { 
   opportunity: Opportunity;
   onOpenReportModal: (projectId: string) => void;
   projectStatuses: any[];

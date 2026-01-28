@@ -80,6 +80,9 @@ export default function SiteDetail(){
   const [showAddress2, setShowAddress2] = useState(false);
   const [showAddress3, setShowAddress3] = useState(false);
   const [siteNameError, setSiteNameError] = useState(false);
+  // View-only mode for existing site; Edit button switches to edit mode. New site has no view mode.
+  const [isEditMode, setIsEditMode] = useState(false);
+  const isViewMode = !isNew && !isEditMode;
 
   // Prevent body scroll when modal is open
   useEffect(() => {
@@ -89,81 +92,141 @@ export default function SiteDetail(){
     };
   }, []);
 
+  const handleClose = async () => {
+    const hasUnsavedChanges = JSON.stringify(form) !== JSON.stringify(initialForm);
+    if (hasUnsavedChanges) {
+      const result = await confirm({
+        title: 'Unsaved Changes',
+        message: 'You have unsaved changes. What would you like to do?',
+        confirmText: 'Save and Leave',
+        cancelText: 'Cancel',
+        showDiscard: true,
+        discardText: 'Discard Changes'
+      });
+      if (result === 'confirm') {
+        try {
+          if (isNew) {
+            await api('POST', `/clients/${encodeURIComponent(String(customerId||''))}/sites`, form);
+          } else {
+            await api('PATCH', `/clients/${encodeURIComponent(String(customerId||''))}/sites/${encodeURIComponent(String(siteId||''))}`, form);
+          }
+          setInitialForm({ ...form });
+          try{ await qc.invalidateQueries({ queryKey:['clientSites', customerId] }); }catch(_e){}
+          nav(-1);
+        } catch(_e) { toast.error('Save failed'); }
+      } else if (result === 'discard') {
+        setForm({ ...initialForm });
+        nav(-1);
+      }
+    } else {
+      nav(-1);
+    }
+  };
+
   return (
     <>
-    <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center overflow-y-auto">
-      <div className="w-[900px] max-w-[95vw] max-h-[90vh] bg-white rounded-xl overflow-hidden flex flex-col">
-        <div className="bg-gradient-to-br from-[#7f1010] to-[#a31414] p-6 flex items-center gap-6 relative">
-          <button
-            onClick={async ()=>{
-              // Prompt only if there are unsaved changes
-              const hasUnsavedChanges = JSON.stringify(form) !== JSON.stringify(initialForm);
-              if (hasUnsavedChanges) {
-                const result = await confirm({
-                  title: 'Unsaved Changes',
-                  message: 'You have unsaved changes. What would you like to do?',
-                  confirmText: 'Save and Leave',
-                  cancelText: 'Cancel',
-                  showDiscard: true,
-                  discardText: 'Discard Changes'
-                });
-
-                if (result === 'confirm') {
-                  try {
-                    if (isNew) {
-                      await api('POST', `/clients/${encodeURIComponent(String(customerId||''))}/sites`, form);
-                    } else {
-                      await api('PATCH', `/clients/${encodeURIComponent(String(customerId||''))}/sites/${encodeURIComponent(String(siteId||''))}`, form);
-                    }
-                    setInitialForm({ ...form });
-                    try{ await qc.invalidateQueries({ queryKey:['clientSites', customerId] }); }catch(_e){}
-                    nav(-1);
-                  } catch(_e) {
-                    toast.error('Save failed');
-                  }
-                } else if (result === 'discard') {
-                  setForm({ ...initialForm });
-                  nav(-1);
-                }
-              } else {
-                nav(-1);
-              }
-            }}
-            className="absolute top-4 right-4 text-white/80 hover:text-white text-2xl font-bold w-8 h-8 flex items-center justify-center rounded hover:bg-white/10"
-            title="Close"
-          >
-            ×
-          </button>
-          <div className="w-24 h-24 rounded-xl border-4 border-white shadow-lg overflow-hidden bg-white flex items-center justify-center relative">
-            <img src={previewSrc} className="w-full h-full object-cover" alt={form.site_name||'Site'} />
-            {!isNew && hasEditPermission && (
+    <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center overflow-y-auto p-4">
+      <div className="w-[900px] max-w-[95vw] max-h-[90vh] bg-gray-100 rounded-xl overflow-hidden flex flex-col border border-gray-200 shadow-xl">
+        {/* Title bar - same style as New Opportunity (ProjectNew) */}
+        <div className="rounded-t-xl border-b border-gray-200 bg-white p-4 flex-shrink-0">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
               <button
-                onClick={()=> setCoverPickerOpen(true)}
-                className="absolute bottom-1 right-1 text-[11px] px-2 py-0.5 rounded bg-black/60 text-white hover:bg-black/70"
-                title="Change cover"
+                onClick={()=> isViewMode ? nav(-1) : handleClose()}
+                className="p-1.5 rounded hover:bg-gray-100 transition-colors flex items-center justify-center"
+                title="Close"
               >
-                Change
+                <svg className="w-4 h-4 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+                </svg>
               </button>
-            )}
-          </div>
-          <div className="flex-1 min-w-0">
-            <div className="text-3xl font-extrabold text-white truncate">{form.site_name||'Site'}</div>
-            <div className="flex items-center gap-4 mt-3 text-sm text-white">
-              {(form.site_address_line1||form.site_city||form.site_province||form.site_country) && (
-                <div className="flex items-center gap-2">
-                  <span className="text-white/80">📍</span>
-                  <span className="truncate">{[form.site_address_line1, form.site_city, form.site_province, form.site_country].filter(Boolean).join(', ')}</span>
+              <div>
+                <div className="text-sm font-semibold text-gray-900">
+                  {isViewMode ? (form.site_name || 'Construction Site') : (isNew ? 'New Site' : 'Edit Site')}
                 </div>
-              )}
+                <div className="text-xs text-gray-500 mt-0.5">
+                  {isViewMode ? 'View details' : 'Address and details'}
+                </div>
+              </div>
             </div>
           </div>
         </div>
-        <div className="overflow-y-auto">
-          <div className="p-6 grid md:grid-cols-2 gap-4 items-start">
+
+        {/* View mode: read-only display */}
+        {isViewMode && (
+          <>
+            <div className="overflow-y-auto flex-1 p-4">
+              <div className="rounded-xl border bg-white overflow-hidden flex flex-col sm:flex-row relative">
+                {hasEditPermission && (
+                  <button
+                    onClick={()=> setIsEditMode(true)}
+                    className="absolute top-3 right-3 z-10 p-1.5 rounded hover:bg-gray-100 transition-colors flex items-center justify-center"
+                    title="Edit"
+                  >
+                    <svg className="w-4 h-4 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                    </svg>
+                  </button>
+                )}
+                <div className="sm:w-64 bg-gray-100 flex-shrink-0 flex items-center justify-center relative min-h-[200px] sm:min-h-0 sm:min-h-[240px]">
+                  <img src={previewSrc} className="w-full h-full object-cover" alt={form.site_name||'Site'} />
+                </div>
+                <div className="flex-1 p-4 sm:p-6 space-y-4">
+                  <div>
+                    <div className="text-[10px] font-medium text-gray-500 uppercase tracking-wide mb-1">Site name</div>
+                    <div className="text-sm font-semibold text-gray-900">{form.site_name || '—'}</div>
+                  </div>
+                  {(form.site_address_line1 || form.site_city || form.site_province || form.site_country) && (
+                    <div>
+                      <div className="text-[10px] font-medium text-gray-500 uppercase tracking-wide mb-1">Address</div>
+                      <div className="text-sm text-gray-700">
+                        {[form.site_address_line1, form.site_address_line1_complement, form.site_city, form.site_province, form.site_postal_code, form.site_country].filter(Boolean).join(', ') || '—'}
+                      </div>
+                    </div>
+                  )}
+                  {(form.site_address_line2 || form.site_address_line2_complement) && (
+                    <div>
+                      <div className="text-[10px] font-medium text-gray-500 uppercase tracking-wide mb-1">Address 2</div>
+                      <div className="text-sm text-gray-700">{[form.site_address_line2, form.site_address_line2_complement].filter(Boolean).join(', ') || '—'}</div>
+                    </div>
+                  )}
+                  {(form.site_address_line3 || form.site_address_line3_complement) && (
+                    <div>
+                      <div className="text-[10px] font-medium text-gray-500 uppercase tracking-wide mb-1">Address 3</div>
+                      <div className="text-sm text-gray-700">{[form.site_address_line3, form.site_address_line3_complement].filter(Boolean).join(', ') || '—'}</div>
+                    </div>
+                  )}
+                  {form.site_notes && (
+                    <div>
+                      <div className="text-[10px] font-medium text-gray-500 uppercase tracking-wide mb-1">Notes</div>
+                      <div className="text-sm text-gray-700 whitespace-pre-wrap">{form.site_notes}</div>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+            <div className="flex-shrink-0 px-4 py-4 border-t border-gray-200 bg-white flex items-center justify-end gap-3 rounded-b-xl">
+              <button onClick={()=> nav(-1)} className="px-3 py-1.5 rounded-lg text-sm font-medium border border-gray-200 hover:bg-gray-50 text-gray-700">Close</button>
+            </div>
+          </>
+        )}
+
+        {/* Edit mode / New site: form (same visual as New Opportunity) */}
+        {!isViewMode && (
+        <>
+        <div className="overflow-y-auto flex-1 p-4">
+          <div className="rounded-xl border bg-white p-4 grid md:grid-cols-2 gap-4 items-start">
+            <div className="md:col-span-2">
+              <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">Cover <span className="opacity-60">(optional)</span></label>
+              <div className="mt-1 flex items-center gap-3">
+                <button type="button" onClick={()=> setCoverPickerOpen(true)} className="px-3 py-1.5 rounded-lg text-sm font-medium bg-gray-900 text-white hover:bg-gray-800">Select Cover</button>
+                {previewSrc && previewSrc !== '/ui/assets/login/logo-light.svg' && <img src={previewSrc} className="w-20 h-20 rounded-lg border border-gray-200 object-cover" alt="" />}
+              </div>
+            </div>
             <div className="md:col-span-2">
               <Field label={<><span>Site name</span> <span className="text-red-600">*</span></>}>
-                <input 
-                  className={`w-full border rounded px-3 py-2 ${siteNameError && !form.site_name?.trim() ? 'border-red-500' : ''} ${!hasEditPermission ? 'bg-gray-100 cursor-not-allowed' : ''}`} 
+            <input 
+                className={`w-full border border-gray-200 rounded-lg px-3 py-2 text-sm ${siteNameError && !form.site_name?.trim() ? 'border-red-500 focus:ring-red-500' : 'focus:ring-gray-300 focus:border-gray-300'} ${!hasEditPermission ? 'bg-gray-100 cursor-not-allowed' : ''}`}
                   value={form.site_name||''} 
                   onChange={e=>{
                     setField('site_name', e.target.value);
@@ -198,12 +261,12 @@ export default function SiteDetail(){
                   }));
                 }}
                 placeholder="Enter address"
-                className={`w-full border rounded px-3 py-2 ${!hasEditPermission ? 'bg-gray-100 cursor-not-allowed' : ''}`}
+                className={`w-full border border-gray-200 rounded-lg px-3 py-2 text-sm ${!hasEditPermission ? 'bg-gray-100 cursor-not-allowed' : 'focus:ring-gray-300 focus:border-gray-300'}`}
               />
             </Field>
             <Field label="Complement">
               <input
-                className={`w-full border rounded px-3 py-2 ${!hasEditPermission ? 'bg-gray-100 cursor-not-allowed' : ''}`}
+                className={`w-full border border-gray-200 rounded-lg px-3 py-2 text-sm ${!hasEditPermission ? 'bg-gray-100 cursor-not-allowed' : 'focus:ring-gray-300 focus:border-gray-300'}`}
                 value={form.site_address_line1_complement||''}
                 onChange={e=>setField('site_address_line1_complement', e.target.value)}
                 placeholder="Apartment, Unit, Block, etc (Optional)"
@@ -242,14 +305,14 @@ export default function SiteDetail(){
                       }));
                     }}
                     placeholder="Enter address"
-                    className={`w-full border rounded px-3 py-2 ${!hasEditPermission ? 'bg-gray-100 cursor-not-allowed' : ''}`}
+                    className={`w-full border border-gray-200 rounded-lg px-3 py-2 text-sm ${!hasEditPermission ? 'bg-gray-100 cursor-not-allowed' : 'focus:ring-gray-300 focus:border-gray-300'}`}
                   />
                 </Field>
                 <div className="flex items-end gap-2">
                   <div className="flex-1">
                     <Field label="Complement">
                       <input
-                        className={`w-full border rounded px-3 py-2 ${!hasEditPermission ? 'bg-gray-100 cursor-not-allowed' : ''}`}
+                        className={`w-full border border-gray-200 rounded-lg px-3 py-2 text-sm ${!hasEditPermission ? 'bg-gray-100 cursor-not-allowed' : 'focus:ring-gray-300 focus:border-gray-300'}`}
                         value={form.site_address_line2_complement||''}
                         onChange={e=>setField('site_address_line2_complement', e.target.value)}
                         placeholder="Apartment, Unit, Block, etc (Optional)"
@@ -316,14 +379,14 @@ export default function SiteDetail(){
                       }));
                     }}
                     placeholder="Enter address"
-                    className={`w-full border rounded px-3 py-2 ${!hasEditPermission ? 'bg-gray-100 cursor-not-allowed' : ''}`}
+                    className={`w-full border border-gray-200 rounded-lg px-3 py-2 text-sm ${!hasEditPermission ? 'bg-gray-100 cursor-not-allowed' : 'focus:ring-gray-300 focus:border-gray-300'}`}
                   />
                 </Field>
                 <div className="flex items-end gap-2">
                   <div className="flex-1">
                     <Field label="Complement">
                       <input
-                        className={`w-full border rounded px-3 py-2 ${!hasEditPermission ? 'bg-gray-100 cursor-not-allowed' : ''}`}
+                        className={`w-full border border-gray-200 rounded-lg px-3 py-2 text-sm ${!hasEditPermission ? 'bg-gray-100 cursor-not-allowed' : 'focus:ring-gray-300 focus:border-gray-300'}`}
                         value={form.site_address_line3_complement||''}
                         onChange={e=>setField('site_address_line3_complement', e.target.value)}
                         placeholder="Apartment, Unit, Block, etc (Optional)"
@@ -353,7 +416,7 @@ export default function SiteDetail(){
             )}
             <Field label="Country">
               <input 
-                className="w-full border rounded px-3 py-2 bg-gray-50 cursor-not-allowed" 
+                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm bg-gray-50 cursor-not-allowed" 
                 value={form.site_country||''} 
                 readOnly
                 placeholder="Auto-filled from address"
@@ -361,7 +424,7 @@ export default function SiteDetail(){
             </Field>
             <Field label="Province/State">
               <input 
-                className="w-full border rounded px-3 py-2 bg-gray-50 cursor-not-allowed" 
+                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm bg-gray-50 cursor-not-allowed" 
                 value={form.site_province||''} 
                 readOnly
                 placeholder="Auto-filled from address"
@@ -369,7 +432,7 @@ export default function SiteDetail(){
             </Field>
             <Field label="City">
               <input 
-                className="w-full border rounded px-3 py-2 bg-gray-50 cursor-not-allowed" 
+                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm bg-gray-50 cursor-not-allowed" 
                 value={form.site_city||''} 
                 readOnly
                 placeholder="Auto-filled from address"
@@ -377,7 +440,7 @@ export default function SiteDetail(){
             </Field>
             <Field label="Postal code">
               <input 
-                className="w-full border rounded px-3 py-2 bg-gray-50 cursor-not-allowed" 
+                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm bg-gray-50 cursor-not-allowed" 
                 value={form.site_postal_code||''} 
                 readOnly
                 placeholder="Auto-filled from address"
@@ -387,7 +450,7 @@ export default function SiteDetail(){
               <Field label="Notes">
                 <textarea 
                   rows={4} 
-                  className={`w-full border rounded px-3 py-2 ${!hasEditPermission ? 'bg-gray-100 cursor-not-allowed' : ''}`} 
+                  className={`w-full border border-gray-200 rounded-lg px-3 py-2 text-sm ${!hasEditPermission ? 'bg-gray-100 cursor-not-allowed' : 'focus:ring-gray-300 focus:border-gray-300'}`} 
                   value={form.site_notes||''} 
                   onChange={e=>setField('site_notes', e.target.value)}
                   disabled={!hasEditPermission}
@@ -397,7 +460,7 @@ export default function SiteDetail(){
             </div>
           </div>
         </div>
-        <div className="px-5 py-4 border-t bg-gray-50 flex items-center justify-between gap-2">
+        <div className="flex-shrink-0 px-4 py-4 border-t border-gray-200 bg-white flex items-center justify-between gap-3 rounded-b-xl">
           <div>
             {!isNew && hasEditPermission && (
               <button onClick={async()=>{
@@ -414,56 +477,20 @@ export default function SiteDetail(){
                   try{ await qc.invalidateQueries({ queryKey:['clientSites', customerId] }); }catch(_e){}
                   nav(-1);
                 }catch(_e){ toast.error('Failed to delete site'); }
-              }} className="px-4 py-2 rounded bg-red-600 hover:bg-red-700 text-white">Delete Site</button>
+              }} className="px-3 py-1.5 rounded-lg text-sm font-medium text-red-600 hover:bg-red-50">Delete Site</button>
             )}
           </div>
           <div className="flex items-center gap-2">
-            <button onClick={async ()=>{
-              const hasUnsavedChanges = JSON.stringify(form) !== JSON.stringify(initialForm);
-              if (hasUnsavedChanges) {
-                const result = await confirm({
-                  title: 'Unsaved Changes',
-                  message: 'You have unsaved changes. What would you like to do?',
-                  confirmText: 'Save and Leave',
-                  cancelText: 'Cancel',
-                  showDiscard: true,
-                  discardText: 'Discard Changes'
-                });
-
-                if (result === 'confirm') {
-                  try {
-                    if (isNew) {
-                      await api('POST', `/clients/${encodeURIComponent(String(customerId||''))}/sites`, form);
-                    } else {
-                      await api('PATCH', `/clients/${encodeURIComponent(String(customerId||''))}/sites/${encodeURIComponent(String(siteId||''))}`, form);
-                    }
-                    setInitialForm({ ...form });
-                    try{ await qc.invalidateQueries({ queryKey:['clientSites', customerId] }); }catch(_e){}
-                    nav(-1);
-                  } catch(_e) {
-                    toast.error('Save failed');
-                  }
-                } else if (result === 'discard') {
-                  setForm({ ...initialForm });
-                  nav(-1);
-                }
-              } else {
-                nav(-1);
-              }
-            }} className="px-4 py-2 rounded bg-gray-200 hover:bg-gray-300">Close</button>
+            <button onClick={handleClose} className="px-3 py-1.5 rounded-lg text-sm font-medium text-gray-700 border border-gray-200 hover:bg-gray-50">Close</button>
             {hasEditPermission && (
             <button 
               onClick={async()=>{
-                // Prevent multiple clicks
                 if (isCreating) return;
-                
-                // Validate site name
                 if (!form.site_name?.trim()) {
                   setSiteNameError(true);
                   toast.error('Site name is required');
                   return;
                 }
-                
                 try{
                   setIsCreating(true);
                   if(isNew){
@@ -486,13 +513,15 @@ export default function SiteDetail(){
                 }
               }} 
               disabled={isCreating}
-              className="px-4 py-2 rounded bg-brand-red text-white disabled:opacity-50 disabled:cursor-not-allowed"
+              className="px-3 py-1.5 rounded-lg text-sm font-medium bg-brand-red text-white hover:bg-[#aa1212] disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {isCreating ? (isNew ? 'Creating...' : 'Saving...') : (isNew ? 'Create' : 'Save')}
             </button>
             )}
           </div>
         </div>
+        </>
+        )}
       </div>
     </div>
     {coverPickerOpen && (
@@ -503,6 +532,7 @@ export default function SiteDetail(){
           const conf:any = await api('POST','/files/confirm',{ key:up.key, size_bytes: blob.size, checksum_sha256:'na', content_type:'image/jpeg' });
           await api('POST', `/clients/${customerId}/files?file_object_id=${encodeURIComponent(conf.id)}&category=site-cover-derived&original_name=site-cover.jpg&site_id=${encodeURIComponent(String(siteId||''))}`);
           toast.success('Cover updated');
+          try{ await qc.invalidateQueries({ queryKey:['clientFilesForSiteHeader', customerId] }); }catch(_e){}
           setCoverPickerOpen(false);
         }catch(e){ toast.error('Failed to update cover'); setCoverPickerOpen(false); }
       }} />
@@ -513,8 +543,8 @@ export default function SiteDetail(){
 
 function Field({label, children}:{label:ReactNode, children:any}){
   return (
-    <div className="space-y-2">
-      <label className="text-sm text-gray-600">{label}</label>
+    <div className="space-y-1">
+      <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">{label}</label>
       {children}
     </div>
   );

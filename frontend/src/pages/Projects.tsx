@@ -947,7 +947,7 @@ const getDivisionIcon = (label: string): string => {
   return iconMap[label] || '📦';
 };
 
-function ProjectListItem({ project, projectDivisions, projectStatuses }:{ project: Project, projectDivisions?: any[], projectStatuses: any[] }){
+export function ProjectListItem({ project, projectDivisions, projectStatuses }:{ project: Project, projectDivisions?: any[], projectStatuses: any[] }){
   const navigate = useNavigate();
   
   const clientName = project.client_display_name || project.client_name || '';
