@@ -869,65 +869,59 @@ export default function InventorySuppliers() {
 
   return (
     <div>
-      <div 
-        className="bg-slate-200/50 rounded-[12px] border border-slate-200 flex items-center justify-between py-4 px-6 mb-6"
-        style={animationComplete ? {} : {
-          opacity: hasAnimated ? 1 : 0,
-          transform: hasAnimated ? 'translateY(0) scale(1)' : 'translateY(-8px) scale(0.98)',
-          transition: 'opacity 400ms ease-out, transform 400ms ease-out'
-        }}
-      >
-        <div>
-          <div className="text-xl font-bold text-gray-900 tracking-tight mb-0.5">Suppliers</div>
-          <div className="text-sm text-gray-500 font-medium">Manage vendors and contact information</div>
-        </div>
-        <div className="text-right">
-          <div className="text-xs text-gray-400 mb-1.5 font-medium uppercase tracking-wide">Today</div>
-          <div className="text-sm font-semibold text-gray-700">{todayLabel}</div>
+      {/* Title Bar - same layout and font sizes as Customers */}
+      <div className="rounded-xl border bg-white p-4 mb-4">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3 flex-1">
+            <div>
+              <div className="text-sm font-semibold text-gray-900">Suppliers</div>
+              <div className="text-xs text-gray-500 mt-0.5">Manage vendors and contact information</div>
+            </div>
+          </div>
+          <div className="text-right">
+            <div className="text-[10px] font-medium text-gray-500 uppercase tracking-wide">Today</div>
+            <div className="text-xs font-semibold text-gray-700 mt-0.5">{todayLabel}</div>
+          </div>
         </div>
       </div>
-      {/* Filter Bar */}
-      <div className="mb-3 rounded-lg border border-gray-200 bg-white shadow-sm overflow-hidden">
-        {/* Primary Row: Global Search + Actions */}
-        <div className="px-6 py-4 bg-white">
-          <div className="flex items-center gap-4">
-            {/* Global Search - Dominant, large */}
-            <div className="flex-1">
-              <div className="relative">
-                <input 
-                  className="w-full border border-gray-200 rounded-md px-4 py-2.5 pl-10 text-sm bg-gray-50/50 text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-1 focus:ring-gray-300 focus:border-gray-300 focus:bg-white transition-all duration-150" 
-                  placeholder="Search by supplier name, email, or phone..." 
-                  value={q} 
-                  onChange={e=>setQ(e.target.value)} 
-                />
-                <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-                </svg>
-              </div>
+
+      {/* Filter Bar - same rounded-xl area as Customers */}
+      <div className="rounded-xl border bg-white p-4 mb-4">
+        <div className="flex items-center gap-4">
+          <div className="flex-1">
+            <div className="relative">
+              <input 
+                className="w-full border border-gray-200 rounded-lg px-3 py-2 pl-9 text-sm bg-gray-50/50 text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-1 focus:ring-gray-300 focus:border-gray-300 focus:bg-white transition-all duration-150" 
+                placeholder="Search by supplier name, email, or phone..." 
+                value={q} 
+                onChange={e=>setQ(e.target.value)} 
+              />
+              <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+              </svg>
             </div>
-
-            {/* + Filters Button - Opens Modal */}
-            <button 
-              onClick={()=>setIsFilterModalOpen(true)}
-              className="px-3 py-2.5 text-sm font-medium text-gray-600 hover:text-gray-900 transition-colors duration-150 whitespace-nowrap"
-            >
-              + Filters
-            </button>
-
-            {/* Clear Filters - Only when active */}
-            {hasActiveFilters && (
-              <button 
-                onClick={()=>{
-                  setQ('');
-                  setSearchParams(new URLSearchParams());
-                  refetchSuppliers();
-                }} 
-                className="px-3 py-2.5 text-sm font-medium text-gray-600 hover:text-gray-900 transition-colors duration-150 whitespace-nowrap"
-              >
-                Clear Filters
-              </button>
-            )}
           </div>
+          <button 
+            onClick={()=>setIsFilterModalOpen(true)}
+            className="px-3 py-1.5 rounded-lg text-xs font-medium text-gray-600 hover:text-gray-900 bg-white border border-gray-200 hover:border-gray-300 transition-colors duration-150 whitespace-nowrap inline-flex items-center gap-1.5"
+          >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z" />
+            </svg>
+            Filters
+          </button>
+          {hasActiveFilters && (
+            <button 
+              onClick={()=>{
+                setQ('');
+                setSearchParams(new URLSearchParams());
+                refetchSuppliers();
+              }} 
+              className="px-3 py-1.5 rounded-lg text-xs font-medium text-gray-500 hover:text-gray-700 border border-gray-200 hover:border-gray-300 transition-colors duration-150 whitespace-nowrap"
+            >
+              Clear
+            </button>
+          )}
         </div>
       </div>
 
@@ -953,75 +947,75 @@ export default function InventorySuppliers() {
       )}
 
       <LoadingOverlay isLoading={isInitialLoading} text="Loading suppliers...">
-      <div className="rounded-xl border bg-white">
-        {isLoading ? (
-          <div className="p-4">
-            <div className="h-6 bg-gray-100 animate-pulse rounded" />
-          </div>
-        ) : !Array.isArray(rows) || !rows.length ? (
-          <div className="p-4 text-gray-600 text-center">
-            No suppliers yet
-          </div>
-        ) : (
-          <div className="divide-y">
+        <div 
+          className="rounded-xl border border-gray-200 bg-white overflow-hidden"
+          style={animationComplete ? {} : {
+            opacity: hasAnimated ? 1 : 0,
+            transform: hasAnimated ? 'translateY(0) scale(1)' : 'translateY(-8px) scale(0.98)',
+            transition: 'opacity 400ms ease-out, transform 400ms ease-out'
+          }}
+        >
+          <div className="flex flex-col gap-2 overflow-x-auto">
             {canEditSuppliers && (
               <button
                 onClick={() => {
                   resetForm();
                   setOpen(true);
                 }}
-                className="w-full p-3 flex items-center justify-center border-2 border-dashed border-gray-300 hover:border-brand-red hover:bg-gray-50 transition-all cursor-pointer"
+                className="border-2 border-dashed border-gray-300 rounded-lg p-2.5 hover:border-brand-red hover:bg-gray-50 transition-all text-center bg-white flex items-center justify-center min-h-[60px] min-w-[640px]"
               >
-                <div className="flex items-center gap-3">
-                  <div className="text-3xl text-gray-400">+</div>
-                  <div>
-                    <div className="font-medium text-sm text-gray-700">New Supplier</div>
-                    <div className="text-xs text-gray-500">Add new supplier</div>
-                  </div>
-                </div>
+                <div className="text-lg text-gray-400 mr-2">+</div>
+                <div className="font-medium text-xs text-gray-700">New Supplier</div>
               </button>
             )}
-            {rows.map((s) => (
-              <div
-                key={s.id}
-                className="p-3 flex items-center justify-between hover:bg-gray-50 cursor-pointer"
-                onClick={() => openViewModal(s)}
-              >
-                <div className="flex items-center gap-3 min-w-0">
-                  <img
-                    src={s.image_base64 || '/ui/assets/placeholders/supplier.png'}
-                    className="w-12 h-12 rounded-lg border object-cover"
-                    alt={s.name}
-                  />
-                  <div className="min-w-0">
-                    <div className="font-medium text-base">{s.name}</div>
-                    {(s as any).address_line1 && (
-                      <div className="text-xs text-gray-700">{String((s as any).address_line1)}</div>
-                    )}
-                    <div className="text-xs text-gray-600">
-                      {[s.city, s.province].filter(Boolean).join(', ')}
+            {!isLoading && Array.isArray(rows) && rows.length > 0 && (
+              <>
+                {/* Column headers - same style as Customers list */}
+                <div 
+                  className="grid grid-cols-[60fr_20fr_20fr] gap-2 sm:gap-3 lg:gap-4 items-center px-4 py-2 w-full text-[10px] font-semibold text-gray-700 bg-gray-50 border-b border-gray-200 rounded-t-lg"
+                  aria-hidden
+                >
+                  <div className="min-w-0" title="Supplier name and address">Supplier</div>
+                  <div className="min-w-0" title="Email">Email</div>
+                  <div className="min-w-0" title="Phone">Phone</div>
+                </div>
+                <div className="rounded-b-lg border border-t-0 border-gray-200 overflow-hidden min-w-0">
+                  {rows.map((s) => (
+                    <div
+                      key={s.id}
+                      className="grid grid-cols-[60fr_20fr_20fr] gap-2 sm:gap-3 lg:gap-4 items-center px-4 py-3 w-full hover:bg-gray-50 cursor-pointer border-b border-gray-100 last:border-b-0 min-h-[52px]"
+                      onClick={() => openViewModal(s)}
+                    >
+                      <div className="min-w-0 flex items-center gap-3">
+                        <img
+                          src={s.image_base64 || '/ui/assets/placeholders/supplier.png'}
+                          className="w-10 h-10 rounded-lg border border-gray-200 object-cover flex-shrink-0"
+                          alt={s.name}
+                        />
+                        <div className="min-w-0 flex flex-col justify-center">
+                          <div className="text-xs font-semibold text-gray-900 truncate">{s.name}</div>
+                          {(s as any).address_line1 && <div className="text-[10px] text-gray-500 truncate">{String((s as any).address_line1)}</div>}
+                        </div>
+                      </div>
+                      <div className="min-w-0 flex items-center">
+                        <span className="text-xs text-gray-700 truncate">{s.email || '—'}</span>
+                      </div>
+                      <div className="min-w-0 flex items-center">
+                        <span className="text-xs text-gray-700 truncate">{s.phone ? formatPhone(s.phone) : '—'}</span>
+                      </div>
                     </div>
-                  </div>
+                  ))}
                 </div>
-                <div className="flex items-center gap-3 text-sm" onClick={(e) => e.stopPropagation()}>
-                  {s.email && (
-                    <>
-                      <span className="text-gray-600">Email:</span>
-                      <span className="px-2 py-0.5 rounded-full border text-gray-700 bg-gray-50">{s.email}</span>
-                    </>
-                  )}
-                  {s.phone && (
-                    <>
-                      <span className="text-gray-600">Phone:</span>
-                      <span className="px-2 py-0.5 rounded-full border text-gray-700 bg-gray-50">{formatPhone(s.phone)}</span>
-                    </>
-                  )}
-                </div>
-              </div>
-            ))}
+              </>
+            )}
           </div>
-        )}
-      </div>
+
+          {!isLoading && (!Array.isArray(rows) || rows.length === 0) && (
+            <div className="p-8 text-center text-xs text-gray-500">
+              No suppliers found matching your criteria.
+            </div>
+          )}
+        </div>
       </LoadingOverlay>
 
       {open && (
