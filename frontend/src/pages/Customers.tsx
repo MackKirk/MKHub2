@@ -326,61 +326,62 @@ export default function Customers(){
 
   return (
     <div>
-      <div className="bg-slate-200/50 rounded-[12px] border border-slate-200 flex items-center justify-between py-4 px-6 mb-6">
-        <div>
-          <div className="text-xl font-bold text-gray-900 tracking-tight mb-0.5">Customers</div>
-          <div className="text-sm text-gray-500 font-medium">Manage your customer list and sites</div>
-        </div>
-        <div className="text-right">
-          <div className="text-xs text-gray-400 mb-1.5 font-medium uppercase tracking-wide">Today</div>
-          <div className="text-sm font-semibold text-gray-700">{todayLabel}</div>
+      {/* Title Bar - same layout and font sizes as Projects / Opportunities */}
+      <div className="rounded-xl border bg-white p-4 mb-4">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3 flex-1">
+            <div>
+              <div className="text-sm font-semibold text-gray-900">Customers</div>
+              <div className="text-xs text-gray-500 mt-0.5">Manage your customer list and sites</div>
+            </div>
+          </div>
+          <div className="text-right">
+            <div className="text-[10px] font-medium text-gray-500 uppercase tracking-wide">Today</div>
+            <div className="text-xs font-semibold text-gray-700 mt-0.5">{todayLabel}</div>
+          </div>
         </div>
       </div>
-      {/* Filter Bar */}
-      <div className="mb-3 rounded-lg border border-gray-200 bg-white shadow-sm overflow-hidden">
-        {/* Primary Row: Global Search + Actions */}
-        <div className="px-6 py-4 bg-white">
-          <div className="flex items-center gap-4">
-            {/* Global Search - Dominant, large */}
-            <div className="flex-1">
-              <div className="relative">
-                <input 
-                  className="w-full border border-gray-200 rounded-md px-4 py-2.5 pl-10 text-sm bg-gray-50/50 text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-1 focus:ring-gray-300 focus:border-gray-300 focus:bg-white transition-all duration-150" 
-                  placeholder="Search by name, display name, code, address, city, province..." 
-                  value={q} 
-                  onChange={e=>handleQChange(e.target.value)} 
-                />
-                <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-                </svg>
-              </div>
+
+      {/* Filter Bar - same rounded-xl area as Projects */}
+      <div className="rounded-xl border bg-white p-4 mb-4">
+        <div className="flex items-center gap-4">
+          <div className="flex-1">
+            <div className="relative">
+              <input 
+                className="w-full border border-gray-200 rounded-lg px-3 py-2 pl-9 text-sm bg-gray-50/50 text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-1 focus:ring-gray-300 focus:border-gray-300 focus:bg-white transition-all duration-150" 
+                placeholder="Search by name, display name, code, address, city, province..." 
+                value={q} 
+                onChange={e=>handleQChange(e.target.value)} 
+              />
+              <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+              </svg>
             </div>
-
-            {/* + Filters Button - Opens Modal */}
-            <button 
-              onClick={()=>setIsFilterModalOpen(true)}
-              className="px-3 py-2.5 text-sm font-medium text-gray-600 hover:text-gray-900 transition-colors duration-150 whitespace-nowrap"
-            >
-              + Filters
-            </button>
-
-            {/* Clear Filters - Only when active */}
-            {hasActiveFilters && (
-              <button 
-                onClick={()=>{
-                  const params = new URLSearchParams();
-                  if (q) params.set('q', q);
-                  params.set('page', '1');
-                  setPage(1);
-                  setSearchParams(params);
-                  refetch();
-                }} 
-                className="px-3 py-2.5 text-sm font-medium text-gray-600 hover:text-gray-900 transition-colors duration-150 whitespace-nowrap"
-              >
-                Clear Filters
-              </button>
-            )}
           </div>
+          <button 
+            onClick={()=>setIsFilterModalOpen(true)}
+            className="px-3 py-1.5 rounded-lg text-xs font-medium text-gray-600 hover:text-gray-900 bg-white border border-gray-200 hover:border-gray-300 transition-colors duration-150 whitespace-nowrap inline-flex items-center gap-1.5"
+          >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z" />
+            </svg>
+            Filters
+          </button>
+          {hasActiveFilters && (
+            <button 
+              onClick={()=>{
+                const params = new URLSearchParams();
+                if (q) params.set('q', q);
+                params.set('page', '1');
+                setPage(1);
+                setSearchParams(params);
+                refetch();
+              }} 
+              className="px-3 py-1.5 rounded-lg text-xs font-medium text-gray-500 hover:text-gray-700 border border-gray-200 hover:border-gray-300 transition-colors duration-150 whitespace-nowrap"
+            >
+              Clear
+            </button>
+          )}
         </div>
       </div>
 
@@ -408,37 +409,50 @@ export default function Customers(){
 
       <LoadingOverlay isLoading={isInitialLoading} text="Loading customers...">
         <div 
-          className="rounded-xl border bg-white"
+          className="rounded-xl border border-gray-200 bg-white overflow-hidden"
           style={animationComplete ? {} : {
             opacity: hasAnimated ? 1 : 0,
             transform: hasAnimated ? 'translateY(0) scale(1)' : 'translateY(-8px) scale(0.98)',
             transition: 'opacity 400ms ease-out, transform 400ms ease-out'
           }}
         >
-          <div className="divide-y">
+          <div className="flex flex-col gap-2 overflow-x-auto">
             {hasEditPermission && (
               <button
                 onClick={() => setNewCustomerModalOpen(true)}
-                className="w-full p-3 flex items-center justify-center border-2 border-dashed border-gray-300 hover:border-brand-red hover:bg-gray-50 transition-all cursor-pointer"
+                className="border-2 border-dashed border-gray-300 rounded-lg p-2.5 hover:border-brand-red hover:bg-gray-50 transition-all text-center bg-white flex items-center justify-center min-h-[60px] min-w-[640px]"
               >
-                <div className="flex items-center gap-3">
-                  <div className="text-3xl text-gray-400">+</div>
-                  <div>
-                    <div className="font-medium text-sm text-gray-700">New Customer</div>
-                    <div className="text-xs text-gray-500">Add new customer</div>
-                  </div>
-                </div>
+                <div className="text-lg text-gray-400 mr-2">+</div>
+                <div className="font-medium text-xs text-gray-700">New Customer</div>
               </button>
             )}
-            {(data?.items || []).map(c => (
-              <ClientRow key={c.id} c={c} statusColorMap={statusColorMap} hasEditPermission={hasEditPermission} onOpen={()=> nav(`/customers/${encodeURIComponent(c.id)}`)} onDeleted={()=> refetch()} />
-            ))}
+            {(data?.items || []).length > 0 && (
+              <>
+                {/* Column headers - same style as Opportunities list */}
+                <div 
+                  className="grid grid-cols-[3fr_1.5fr_2fr_1.5fr_1.5fr_auto] gap-2 sm:gap-3 lg:gap-4 items-center px-4 py-2 bg-gray-50 border-b border-gray-200 rounded-t-lg min-w-[640px] text-[10px] font-semibold text-gray-700"
+                  aria-hidden
+                >
+                  <div className="min-w-0" title="Customer name and address">Customer</div>
+                  <div className="min-w-0" title="Customer code">Code</div>
+                  <div className="min-w-0" title="City and province">City</div>
+                  <div className="min-w-0" title="Client status">Status</div>
+                  <div className="min-w-0" title="Client type">Type</div>
+                  <div className="min-w-0 w-24" title="Actions" aria-hidden />
+                </div>
+                <div className="rounded-b-lg border border-t-0 border-gray-200 overflow-hidden min-w-[640px]">
+                  {(data?.items || []).map(c => (
+                    <ClientRow key={c.id} c={c} statusColorMap={statusColorMap} hasEditPermission={hasEditPermission} onOpen={()=> nav(`/customers/${encodeURIComponent(c.id)}`)} onDeleted={()=> refetch()} />
+                  ))}
+                </div>
+              </>
+            )}
           </div>
           
           {/* Pagination Controls */}
           {data && data.total > 0 && (
-            <div className="p-4 border-t flex items-center justify-between">
-              <div className="text-sm text-gray-600">
+            <div className="p-4 border-t border-gray-200 flex items-center justify-between">
+              <div className="text-xs text-gray-600">
                 Showing {((data.page - 1) * data.limit) + 1} to {Math.min(data.page * data.limit, data.total)} of {data.total} customers
               </div>
               <div className="flex items-center gap-2">
@@ -451,11 +465,11 @@ export default function Customers(){
                     setSearchParams(params);
                   }}
                   disabled={data.page <= 1 || isFetching}
-                  className="px-3 py-1.5 rounded border bg-white hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed text-sm"
+                  className="rounded-lg px-3 py-2 border border-gray-300 text-xs font-medium text-gray-700 bg-white hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
                 >
                   Previous
                 </button>
-                <div className="text-sm text-gray-700">
+                <div className="text-xs text-gray-700 font-medium">
                   Page {data.page} of {data.total_pages}
                 </div>
                 <button
@@ -467,7 +481,7 @@ export default function Customers(){
                     setSearchParams(params);
                   }}
                   disabled={data.page >= data.total_pages || isFetching}
-                  className="px-3 py-1.5 rounded border bg-white hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed text-sm"
+                  className="rounded-lg px-3 py-2 border border-gray-300 text-xs font-medium text-gray-700 bg-white hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
                 >
                   Next
                 </button>
@@ -476,7 +490,7 @@ export default function Customers(){
           )}
           
           {data && data.total === 0 && (
-            <div className="p-8 text-center text-gray-500">
+            <div className="p-8 text-center text-xs text-gray-500">
               No customers found matching your criteria.
             </div>
           )}
@@ -515,7 +529,6 @@ export default function Customers(){
 }
 
 function ClientRow({ c, statusColorMap, hasEditPermission, onOpen, onDeleted }:{ c: Client, statusColorMap: Record<string,string>, hasEditPermission?: boolean, onOpen: ()=>void, onDeleted: ()=>void }){
-  // Use logo_url from the client data (loaded together with the client list)
   const avatarUrl = c.logo_url || '/ui/assets/placeholders/customer.png';
   const status = String(c.client_status||'').trim();
   const color = status ? (statusColorMap[status] || '') : '';
@@ -523,25 +536,38 @@ function ClientRow({ c, statusColorMap, hasEditPermission, onOpen, onDeleted }:{
   const confirm = useConfirm();
   return (
     <div 
-      className="p-3 flex items-center justify-between hover:bg-gray-50 cursor-pointer" 
+      className="grid grid-cols-[3fr_1.5fr_2fr_1.5fr_1.5fr_auto] gap-2 sm:gap-3 lg:gap-4 items-center px-4 py-3 min-w-[640px] hover:bg-gray-50 cursor-pointer border-b border-gray-100 last:border-b-0" 
       onClick={onOpen}
     >
-      <div className="flex items-center gap-3 min-w-0">
-        <img src={avatarUrl} className="w-12 h-12 rounded-lg border object-cover" alt={c.display_name || c.name || 'Client logo'}/>
+      {/* Col 1: Customer (avatar + name, address) */}
+      <div className="min-w-0 flex items-center gap-3">
+        <img src={avatarUrl} className="w-10 h-10 rounded-lg border border-gray-200 object-cover flex-shrink-0" alt={c.display_name || c.name || 'Client logo'}/>
         <div className="min-w-0">
-          <div className="font-medium truncate">{c.display_name||c.name||c.id}</div>
-          {c.code && <div className="text-xs text-gray-600">Code: {c.code}</div>}
-          {c.address_line1 && <div className="text-xs text-gray-700 truncate">{String(c.address_line1)}</div>}
-          <div className="text-xs text-gray-600 truncate">{[c.city, c.province].filter(Boolean).join(', ')}</div>
+          <div className="text-xs font-semibold text-gray-900 truncate">{c.display_name||c.name||c.id}</div>
+          {c.address_line1 && <div className="text-[10px] text-gray-500 truncate">{String(c.address_line1)}</div>}
         </div>
       </div>
-      <div className="flex items-center gap-3 text-sm" onClick={e=> e.stopPropagation()}>
-        <span className="text-gray-600">Status:</span>
-        <span className="px-2 py-0.5 rounded-full border" style={badgeStyle}>{status || '—'}</span>
-        <span className="text-gray-600">Type:</span>
-        <span className="px-2 py-0.5 rounded-full border text-gray-700 bg-gray-50">{String(c.client_type||'—')}</span>
+      {/* Col 2: Code */}
+      <div className="min-w-0">
+        <span className="text-xs text-gray-700 truncate">{c.code || '—'}</span>
+      </div>
+      {/* Col 3: City */}
+      <div className="min-w-0">
+        <span className="text-xs text-gray-600 truncate">{[c.city, c.province].filter(Boolean).join(', ') || '—'}</span>
+      </div>
+      {/* Col 4: Status */}
+      <div className="min-w-0">
+        <span className="inline-flex px-2 py-0.5 rounded-full border text-[10px] font-medium truncate max-w-full" style={badgeStyle}>{status || '—'}</span>
+      </div>
+      {/* Col 5: Type */}
+      <div className="min-w-0">
+        <span className="inline-flex px-2 py-0.5 rounded-full border border-gray-200 text-[10px] font-medium text-gray-700 bg-gray-50 truncate">{String(c.client_type||'—')}</span>
+      </div>
+      {/* Col 6: Actions */}
+      <div className="min-w-0 w-24 flex items-center justify-end" onClick={e=> e.stopPropagation()}>
         {hasEditPermission && (
-          <button className="ml-2 px-3 py-1.5 rounded bg-brand-red text-white hover:bg-red-700" title="Delete customer" onClick={async()=>{
+          <button className="rounded-lg px-3 py-2 bg-brand-red text-white text-xs font-medium hover:opacity-90 transition-all" title="Delete customer" onClick={async(e)=>{
+            e.stopPropagation();
             const ok = await confirm({ title: 'Delete customer', message: 'Are you sure you want to delete this customer? This action cannot be undone.' });
             if (!ok) return;
             try{ await api('DELETE', `/clients/${encodeURIComponent(c.id)}`); onDeleted(); }catch(_e){}
