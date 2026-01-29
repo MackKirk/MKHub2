@@ -276,51 +276,54 @@ export default function FleetAssetDetail() {
   }
 
   return (
-    <div className="space-y-4">
-      <div className="bg-slate-200/50 rounded-[12px] border border-slate-200 flex items-center justify-between py-4 px-6 mb-6">
-        <div className="flex items-center gap-4 flex-1">
-          <button
-            onClick={() => nav('/fleet')}
-            className="p-2 rounded-lg hover:bg-gray-200 transition-colors flex items-center justify-center"
-            title="Back to Fleet"
-          >
-            <svg className="w-5 h-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
-            </svg>
-          </button>
-          <div>
-            <div className="text-xl font-bold text-gray-900 tracking-tight mb-0.5">{asset.name}</div>
-            <div className="text-sm text-gray-500 font-medium capitalize">{asset.asset_type.replace('_', ' ')}</div>
+    <div className="space-y-4 min-w-0 overflow-x-hidden">
+      {/* Title Bar */}
+      <div className="rounded-xl border bg-white p-4 mb-4">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3 flex-1">
+            <button
+              onClick={() => nav('/fleet')}
+              className="p-2 rounded-lg hover:bg-gray-100 transition-colors flex items-center justify-center text-gray-600 hover:text-gray-900"
+              title="Back to Fleet"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+              </svg>
+            </button>
+            <div>
+              <div className="text-sm font-semibold text-gray-900">{asset.name}</div>
+              <div className="text-xs text-gray-500 mt-0.5 capitalize">{asset.asset_type.replace('_', ' ')}</div>
+            </div>
           </div>
-        </div>
-        <div className="text-right">
-          <div className="text-xs text-gray-400 mb-1.5 font-medium uppercase tracking-wide">Today</div>
-          <div className="text-sm font-semibold text-gray-700">{todayLabel}</div>
+          <div className="text-right">
+            <div className="text-[10px] font-medium text-gray-500 uppercase tracking-wide">Today</div>
+            <div className="text-xs font-semibold text-gray-700 mt-0.5">{todayLabel}</div>
+          </div>
         </div>
       </div>
 
-      {/* Tabs */}
-      <div className="flex gap-2 border-b">
-        {(['general', 'inspections', 'work-orders', 'logs'] as const).map(t => (
-          <button
-            key={t}
-            onClick={() => {
-              setTab(t);
-              nav(`/fleet/assets/${id}?tab=${t}`, { replace: true });
-            }}
-            className={`px-4 py-2 rounded-t-lg transition-colors capitalize ${
-              tab === t
-                ? 'bg-white border-t border-l border-r text-gray-900 font-medium'
-                : 'text-gray-600 hover:text-gray-900'
-            }`}
-          >
-            {t.replace('-', ' ')}
-          </button>
-        ))}
+      {/* Tabs - same style as TaskRequests */}
+      <div className="rounded-xl border border-gray-200 bg-white overflow-hidden">
+        <div className="flex gap-1 border-b border-gray-200 px-4">
+          {(['general', 'inspections', 'work-orders', 'logs'] as const).map(t => (
+            <button
+              key={t}
+              onClick={() => {
+                setTab(t);
+                nav(`/fleet/assets/${id}?tab=${t}`, { replace: true });
+              }}
+              className={`px-3 py-2 text-xs font-medium transition-colors border-b-2 -mb-[1px] capitalize ${
+                tab === t ? 'border-brand-red text-brand-red' : 'border-transparent text-gray-600 hover:text-gray-900'
+              }`}
+            >
+              {t.replace('-', ' ')}
+            </button>
+          ))}
+        </div>
       </div>
 
       {/* Tab Content */}
-      <div className="rounded-xl border bg-white p-6">
+      <div className="rounded-b-xl border border-t-0 border-gray-200 bg-white p-4 min-w-0 overflow-hidden">
         {tab === 'general' && (
           <div className="space-y-6">
             <div className="flex justify-between items-center mb-4">

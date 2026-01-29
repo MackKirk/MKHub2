@@ -120,15 +120,28 @@ export default function ProjectNew(){
     return ()=> window.removeEventListener('keydown', onKey);
   }, [nav]);
 
-  const canSubmit = useMemo(()=>{
+  // Step 1 → Step 2: only basic details (name, client, site). Divisions are on step 2.
+  const canGoToStep2 = useMemo(()=>{
     if(!String(name||'').trim()) return false;
     if(!String(clientId||'').trim()) return false;
     if(createSite){ return !!String(siteForm.site_name||siteForm.site_address_line1||'').trim(); }
-    return !!String(siteId||'').trim();
+    if(!String(siteId||'').trim()) return false;
+    return true;
   }, [name, clientId, siteId, createSite, siteForm]);
+
+  // Final submit: for opportunities also require at least one division (chosen on step 2).
+  const canSubmit = useMemo(()=>{
+    if(!canGoToStep2) return false;
+    if(isBidding && projectDivisionIds.length === 0) return false;
+    return true;
+  }, [canGoToStep2, isBidding, projectDivisionIds.length]);
 
   const submit = async()=>{
     if(!canSubmit || isSubmitting) return;
+    if(isBidding && projectDivisionIds.length === 0) {
+      toast.error('Select at least one division for this opportunity');
+      return;
+    }
     try{
       setIsSubmitting(true);
       let newSiteId = siteId;
@@ -427,7 +440,12 @@ export default function ProjectNew(){
                   </div>
                 )}
                 <div className="md:col-span-2">
-                  <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-2">Project Divisions</label>
+                  <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-2">
+                    Project Divisions {isBidding ? <span className="text-red-600">*</span> : null}
+                  </label>
+                  {isBidding && projectDivisionIds.length === 0 && (
+                    <div className="text-[11px] text-red-600 mb-2">Select at least one division for this opportunity</div>
+                  )}
                   <div className="space-y-3 mt-1">
                     {(projectDivisions||[]).map((div:any)=>{
                       const divId = String(div.id);
@@ -519,7 +537,7 @@ export default function ProjectNew(){
           <div className="flex items-center gap-2">
             <button onClick={()=> nav(-1)} className="px-3 py-1.5 rounded-lg text-sm font-medium text-gray-700 border border-gray-200 hover:bg-gray-50">Cancel</button>
             {step === 1 ? (
-              <button disabled={!canSubmit} onClick={()=> setStep(2)} className="px-3 py-1.5 rounded-lg text-sm font-medium bg-brand-red text-white hover:bg-[#aa1212] disabled:opacity-50">Next</button>
+              <button disabled={!canGoToStep2} onClick={()=> setStep(2)} className="px-3 py-1.5 rounded-lg text-sm font-medium bg-brand-red text-white hover:bg-[#aa1212] disabled:opacity-50">Next</button>
             ) : (
               <>
                 <button onClick={()=> setStep(1)} disabled={isSubmitting} className="px-3 py-1.5 rounded-lg text-sm font-medium border border-gray-200 hover:bg-gray-50 disabled:opacity-50">Back</button>

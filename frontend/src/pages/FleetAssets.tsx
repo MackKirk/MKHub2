@@ -121,97 +121,94 @@ export default function FleetAssets() {
   }, []);
 
   return (
-    <div className="space-y-4">
-      <div className="bg-slate-200/50 rounded-[12px] border border-slate-200 flex items-center justify-between py-4 px-6 mb-6">
-        <div>
-          <div className="text-xl font-bold text-gray-900 tracking-tight mb-0.5">{getTypeLabel(typeFilter)}</div>
-          <div className="text-sm text-gray-500 font-medium">Manage fleet assets</div>
-        </div>
-        <div className="text-right">
-          <div className="text-xs text-gray-400 mb-1.5 font-medium uppercase tracking-wide">Today</div>
-          <div className="text-sm font-semibold text-gray-700">{todayLabel}</div>
+    <div className="space-y-4 min-w-0 overflow-x-hidden">
+      {/* Title Bar */}
+      <div className="rounded-xl border bg-white p-4 mb-4">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3 flex-1">
+            <div>
+              <div className="text-sm font-semibold text-gray-900">{getTypeLabel(typeFilter)}</div>
+              <div className="text-xs text-gray-500 mt-0.5">Manage fleet assets</div>
+            </div>
+          </div>
+          <div className="text-right">
+            <div className="text-[10px] font-medium text-gray-500 uppercase tracking-wide">Today</div>
+            <div className="text-xs font-semibold text-gray-700 mt-0.5">{todayLabel}</div>
+          </div>
         </div>
       </div>
 
-      {/* Filters */}
-      <div className="flex gap-3 items-center flex-wrap">
-        <div className="flex gap-2">
+      {/* Tabs + Filter Bar - connects to table below with single border */}
+      <div className="rounded-t-xl border border-gray-200 bg-white overflow-hidden">
+        <div className="flex gap-1 border-b border-gray-200 px-4 pt-2">
           <button
             onClick={() => handleTypeFilterChange('all')}
-            className={`px-4 py-2 rounded-lg border transition-colors ${
-              typeFilter === 'all' 
-                ? 'bg-brand-red text-white border-brand-red' 
-                : 'bg-white hover:bg-gray-50'
+            className={`px-3 py-2 text-xs font-medium transition-colors border-b-2 -mb-[1px] ${
+              typeFilter === 'all' ? 'border-brand-red text-brand-red' : 'border-transparent text-gray-600 hover:text-gray-900'
             }`}
           >
             All
           </button>
           <button
             onClick={() => handleTypeFilterChange('vehicle')}
-            className={`px-4 py-2 rounded-lg border transition-colors ${
-              typeFilter === 'vehicle' 
-                ? 'bg-brand-red text-white border-brand-red' 
-                : 'bg-white hover:bg-gray-50'
+            className={`px-3 py-2 text-xs font-medium transition-colors border-b-2 -mb-[1px] ${
+              typeFilter === 'vehicle' ? 'border-brand-red text-brand-red' : 'border-transparent text-gray-600 hover:text-gray-900'
             }`}
           >
             Vehicles
           </button>
           <button
             onClick={() => handleTypeFilterChange('heavy_machinery')}
-            className={`px-4 py-2 rounded-lg border transition-colors ${
-              typeFilter === 'heavy_machinery' 
-                ? 'bg-brand-red text-white border-brand-red' 
-                : 'bg-white hover:bg-gray-50'
+            className={`px-3 py-2 text-xs font-medium transition-colors border-b-2 -mb-[1px] ${
+              typeFilter === 'heavy_machinery' ? 'border-brand-red text-brand-red' : 'border-transparent text-gray-600 hover:text-gray-900'
             }`}
           >
             Heavy Machinery
           </button>
           <button
             onClick={() => handleTypeFilterChange('other')}
-            className={`px-4 py-2 rounded-lg border transition-colors ${
-              typeFilter === 'other' 
-                ? 'bg-brand-red text-white border-brand-red' 
-                : 'bg-white hover:bg-gray-50'
+            className={`px-3 py-2 text-xs font-medium transition-colors border-b-2 -mb-[1px] ${
+              typeFilter === 'other' ? 'border-brand-red text-brand-red' : 'border-transparent text-gray-600 hover:text-gray-900'
             }`}
           >
             Other Assets
           </button>
         </div>
-        <input
-          type="text"
-          placeholder="Search by name, VIN, plate, or model..."
-          value={search}
-          onChange={e => setSearch(e.target.value)}
-          className="flex-1 min-w-[200px] border rounded-lg px-4 py-2"
-        />
-        <select
-          value={statusFilter}
-          onChange={e => setStatusFilter(e.target.value)}
-          className="border rounded-lg px-4 py-2"
-        >
-          <option value="all">All Status</option>
-          <option value="active">Active</option>
-          <option value="inactive">Inactive</option>
-          <option value="maintenance">Maintenance</option>
-          <option value="retired">Retired</option>
-        </select>
-        <button
-          onClick={() => nav(`/fleet/assets/new?type=${typeFilter === 'all' ? 'vehicle' : typeFilter}`)}
-          className="px-4 py-2 bg-brand-red text-white rounded-lg hover:bg-red-700 whitespace-nowrap"
-        >
-          + New Asset
-        </button>
+        <div className="px-4 py-3 flex gap-3 items-center flex-wrap">
+          <input
+            type="text"
+            placeholder="Search by name, VIN, plate, or model..."
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+            className="flex-1 min-w-[180px] border border-gray-200 rounded-lg px-3 py-2 text-xs text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-1 focus:ring-gray-300 focus:border-gray-300"
+          />
+          <select
+            value={statusFilter}
+            onChange={e => setStatusFilter(e.target.value)}
+            className="border border-gray-200 rounded-lg px-3 py-2 text-xs text-gray-900 focus:outline-none focus:ring-1 focus:ring-gray-300 focus:border-gray-300"
+          >
+            <option value="all">All Status</option>
+            <option value="active">Active</option>
+            <option value="inactive">Inactive</option>
+            <option value="maintenance">Maintenance</option>
+            <option value="retired">Retired</option>
+          </select>
+          <button
+            onClick={() => nav(`/fleet/assets/new?type=${typeFilter === 'all' ? 'vehicle' : typeFilter}`)}
+            className="px-3 py-2 text-xs font-medium text-white bg-brand-red rounded-lg hover:opacity-90 transition-opacity whitespace-nowrap"
+          >
+            + New Asset
+          </button>
+        </div>
       </div>
 
       {/* Table */}
-      <div className="rounded-xl border bg-white overflow-hidden">
+      <div className="rounded-b-xl border border-t-0 border-gray-200 bg-white overflow-hidden min-w-0">
         {isLoading ? (
-          <div className="p-4">
-            <div className="h-6 bg-gray-100 animate-pulse rounded" />
-          </div>
+          <div className="p-8 text-center text-xs text-gray-500">Loading assets...</div>
         ) : (
-          <table className="w-full text-sm">
-            <thead className="bg-gray-50">
+          <table className="w-full text-xs">
+            <thead className="bg-gray-50 border-b border-gray-200">
               <tr>
                 <th className="p-3 text-left">Unit #</th>
                 <th className="p-3 text-left">Name</th>
@@ -274,7 +271,7 @@ export default function FleetAssets() {
           </table>
         )}
         {!isLoading && (!assets || assets.length === 0) && (
-          <div className="p-8 text-center text-gray-500">
+          <div className="p-8 text-center text-xs text-gray-500">
             No {typeFilter === 'all' ? 'assets' : getTypeLabel(typeFilter).toLowerCase()} found
           </div>
         )}

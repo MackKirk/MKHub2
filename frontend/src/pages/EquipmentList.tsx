@@ -59,64 +59,69 @@ export default function EquipmentList() {
   }, []);
 
   return (
-    <div className="space-y-4">
-      <div className="bg-slate-200/50 rounded-[12px] border border-slate-200 flex items-center justify-between py-4 px-6 mb-6">
-        <div>
-          <div className="text-xl font-bold text-gray-900 tracking-tight mb-0.5">Equipment</div>
-          <div className="text-sm text-gray-500 font-medium">Manage tools and equipment</div>
-        </div>
-        <div className="text-right">
-          <div className="text-xs text-gray-400 mb-1.5 font-medium uppercase tracking-wide">Today</div>
-          <div className="text-sm font-semibold text-gray-700">{todayLabel}</div>
+    <div className="space-y-4 min-w-0 overflow-x-hidden">
+      {/* Title Bar */}
+      <div className="rounded-xl border bg-white p-4 mb-4">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3 flex-1">
+            <div>
+              <div className="text-sm font-semibold text-gray-900">Equipment</div>
+              <div className="text-xs text-gray-500 mt-0.5">Manage tools and equipment</div>
+            </div>
+          </div>
+          <div className="text-right">
+            <div className="text-[10px] font-medium text-gray-500 uppercase tracking-wide">Today</div>
+            <div className="text-xs font-semibold text-gray-700 mt-0.5">{todayLabel}</div>
+          </div>
         </div>
       </div>
 
-      {/* Filters */}
-      <div className="flex gap-3 items-center">
-        <input
-          type="text"
-          placeholder="Search by name, serial, brand, or model..."
-          value={search}
-          onChange={e => setSearch(e.target.value)}
-          className="flex-1 border rounded-lg px-4 py-2"
-        />
-        <select
-          value={categoryFilter}
-          onChange={e => setCategoryFilter(e.target.value)}
-          className="border rounded-lg px-4 py-2"
-        >
-          {categories.map(cat => (
-            <option key={cat.value} value={cat.value}>{cat.label}</option>
-          ))}
-        </select>
-        <select
-          value={statusFilter}
-          onChange={e => setStatusFilter(e.target.value)}
-          className="border rounded-lg px-4 py-2"
-        >
-          <option value="all">All Status</option>
-          <option value="available">Available</option>
-          <option value="checked_out">Checked Out</option>
-          <option value="maintenance">Maintenance</option>
-          <option value="retired">Retired</option>
-        </select>
-        <button
-          onClick={() => nav('/fleet/equipment/new')}
-          className="px-4 py-2 bg-brand-red text-white rounded-lg hover:bg-red-700"
-        >
-          + New Equipment
-        </button>
+      {/* Filter Bar */}
+      <div className="rounded-xl border border-gray-200 bg-white overflow-hidden">
+        <div className="px-4 py-3 flex gap-3 items-center flex-wrap">
+          <input
+            type="text"
+            placeholder="Search by name, serial, brand, or model..."
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+            className="flex-1 min-w-[180px] border border-gray-200 rounded-lg px-3 py-2 text-xs text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-1 focus:ring-gray-300 focus:border-gray-300"
+          />
+          <select
+            value={categoryFilter}
+            onChange={e => setCategoryFilter(e.target.value)}
+            className="border border-gray-200 rounded-lg px-3 py-2 text-xs text-gray-900 focus:outline-none focus:ring-1 focus:ring-gray-300 focus:border-gray-300"
+          >
+            {categories.map(cat => (
+              <option key={cat.value} value={cat.value}>{cat.label}</option>
+            ))}
+          </select>
+          <select
+            value={statusFilter}
+            onChange={e => setStatusFilter(e.target.value)}
+            className="border border-gray-200 rounded-lg px-3 py-2 text-xs text-gray-900 focus:outline-none focus:ring-1 focus:ring-gray-300 focus:border-gray-300"
+          >
+            <option value="all">All Status</option>
+            <option value="available">Available</option>
+            <option value="checked_out">Checked Out</option>
+            <option value="maintenance">Maintenance</option>
+            <option value="retired">Retired</option>
+          </select>
+          <button
+            onClick={() => nav('/fleet/equipment/new')}
+            className="px-3 py-2 text-xs font-medium text-white bg-brand-red rounded-lg hover:opacity-90 transition-opacity whitespace-nowrap"
+          >
+            + New Equipment
+          </button>
+        </div>
       </div>
 
       {/* Table */}
-      <div className="rounded-xl border bg-white overflow-hidden">
+      <div className="rounded-b-xl border border-t-0 border-gray-200 bg-white overflow-hidden min-w-0">
         {isLoading ? (
-          <div className="p-4">
-            <div className="h-6 bg-gray-100 animate-pulse rounded" />
-          </div>
+          <div className="p-8 text-center text-xs text-gray-500">Loading equipment...</div>
         ) : (
-          <table className="w-full text-sm">
-            <thead className="bg-gray-50">
+          <table className="w-full text-xs">
+            <thead className="bg-gray-50 border-b border-gray-200">
               <tr>
                 <th className="p-3 text-left">Name</th>
                 <th className="p-3 text-left">Category</th>
@@ -151,7 +156,7 @@ export default function EquipmentList() {
           </table>
         )}
         {!isLoading && (!equipment || equipment.length === 0) && (
-          <div className="p-8 text-center text-gray-500">No equipment found</div>
+          <div className="p-8 text-center text-xs text-gray-500">No equipment found</div>
         )}
       </div>
     </div>

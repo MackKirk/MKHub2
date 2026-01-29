@@ -98,32 +98,35 @@ export default function InspectionDetail() {
   }
 
   return (
-    <div className="space-y-4">
-      <div className="bg-slate-200/50 rounded-[12px] border border-slate-200 flex items-center justify-between py-4 px-6 mb-6">
-        <div className="flex items-center gap-4 flex-1">
-          <button
-            onClick={() => nav('/fleet/inspections')}
-            className="p-2 rounded-lg hover:bg-gray-200 transition-colors flex items-center justify-center"
-            title="Back to Inspections"
-          >
-            <svg className="w-5 h-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
-            </svg>
-          </button>
-          <div>
-            <div className="text-xl font-bold text-gray-900 tracking-tight mb-0.5">Inspection</div>
-            <div className="text-sm text-gray-500 font-medium">
-              {new Date(inspection.inspection_date).toLocaleDateString()}
+    <div className="space-y-4 min-w-0 overflow-x-hidden">
+      {/* Title Bar */}
+      <div className="rounded-xl border bg-white p-4 mb-4">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3 flex-1">
+            <button
+              onClick={() => nav('/fleet/inspections')}
+              className="p-2 rounded-lg hover:bg-gray-100 transition-colors flex items-center justify-center text-gray-600 hover:text-gray-900"
+              title="Back to Inspections"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+              </svg>
+            </button>
+            <div>
+              <div className="text-sm font-semibold text-gray-900">Inspection</div>
+              <div className="text-xs text-gray-500 mt-0.5">
+                {new Date(inspection.inspection_date).toLocaleDateString()}
+              </div>
             </div>
           </div>
-        </div>
-        <div className="text-right">
-          <div className="text-xs text-gray-400 mb-1.5 font-medium uppercase tracking-wide">Today</div>
-          <div className="text-sm font-semibold text-gray-700">{todayLabel}</div>
+          <div className="text-right">
+            <div className="text-[10px] font-medium text-gray-500 uppercase tracking-wide">Today</div>
+            <div className="text-xs font-semibold text-gray-700 mt-0.5">{todayLabel}</div>
+          </div>
         </div>
       </div>
 
-      <div className="rounded-xl border bg-white p-6 space-y-6">
+      <div className="rounded-xl border border-gray-200 bg-white p-4 space-y-6 min-w-0 overflow-hidden">
         <div className="grid grid-cols-2 gap-4">
           <div>
             <label className="text-sm text-gray-600">Result</label>

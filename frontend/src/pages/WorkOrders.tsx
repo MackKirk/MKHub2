@@ -59,69 +59,74 @@ export default function WorkOrders() {
   }, []);
 
   return (
-    <div className="space-y-4">
-      <div className="bg-slate-200/50 rounded-[12px] border border-slate-200 flex items-center justify-between py-4 px-6 mb-6">
-        <div>
-          <div className="text-xl font-bold text-gray-900 tracking-tight mb-0.5">Work Orders</div>
-          <div className="text-sm text-gray-500 font-medium">Unified work order management</div>
-        </div>
-        <div className="text-right">
-          <div className="text-xs text-gray-400 mb-1.5 font-medium uppercase tracking-wide">Today</div>
-          <div className="text-sm font-semibold text-gray-700">{todayLabel}</div>
+    <div className="space-y-4 min-w-0 overflow-x-hidden">
+      {/* Title Bar */}
+      <div className="rounded-xl border bg-white p-4 mb-4">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3 flex-1">
+            <div>
+              <div className="text-sm font-semibold text-gray-900">Work Orders</div>
+              <div className="text-xs text-gray-500 mt-0.5">Unified work order management</div>
+            </div>
+          </div>
+          <div className="text-right">
+            <div className="text-[10px] font-medium text-gray-500 uppercase tracking-wide">Today</div>
+            <div className="text-xs font-semibold text-gray-700 mt-0.5">{todayLabel}</div>
+          </div>
         </div>
       </div>
 
-      {/* Filters */}
-      <div className="flex gap-3 items-center">
-        <select
-          value={statusFilter}
-          onChange={e => setStatusFilter(e.target.value)}
-          className="border rounded-lg px-4 py-2"
-        >
-          <option value="all">All Status</option>
-          <option value="open">Open</option>
-          <option value="in_progress">In Progress</option>
-          <option value="pending_parts">Pending Parts</option>
-          <option value="closed">Closed</option>
-          <option value="cancelled">Cancelled</option>
-        </select>
-        <select
-          value={urgencyFilter}
-          onChange={e => setUrgencyFilter(e.target.value)}
-          className="border rounded-lg px-4 py-2"
-        >
-          <option value="all">All Urgency</option>
-          <option value="low">Low</option>
-          <option value="normal">Normal</option>
-          <option value="high">High</option>
-          <option value="urgent">Urgent</option>
-        </select>
-        <select
-          value={entityTypeFilter}
-          onChange={e => setEntityTypeFilter(e.target.value)}
-          className="border rounded-lg px-4 py-2"
-        >
-          <option value="all">All Types</option>
-          <option value="fleet">Fleet</option>
-          <option value="equipment">Equipment</option>
-        </select>
-        <button
-          onClick={() => nav('/fleet/work-orders/new')}
-          className="px-4 py-2 bg-brand-red text-white rounded-lg hover:bg-red-700"
-        >
-          + New Work Order
-        </button>
+      {/* Filter Bar */}
+      <div className="rounded-xl border border-gray-200 bg-white overflow-hidden">
+        <div className="px-4 py-3 flex gap-3 items-center flex-wrap">
+          <select
+            value={statusFilter}
+            onChange={e => setStatusFilter(e.target.value)}
+            className="border border-gray-200 rounded-lg px-3 py-2 text-xs text-gray-900 focus:outline-none focus:ring-1 focus:ring-gray-300 focus:border-gray-300"
+          >
+            <option value="all">All Status</option>
+            <option value="open">Open</option>
+            <option value="in_progress">In Progress</option>
+            <option value="pending_parts">Pending Parts</option>
+            <option value="closed">Closed</option>
+            <option value="cancelled">Cancelled</option>
+          </select>
+          <select
+            value={urgencyFilter}
+            onChange={e => setUrgencyFilter(e.target.value)}
+            className="border border-gray-200 rounded-lg px-3 py-2 text-xs text-gray-900 focus:outline-none focus:ring-1 focus:ring-gray-300 focus:border-gray-300"
+          >
+            <option value="all">All Urgency</option>
+            <option value="low">Low</option>
+            <option value="normal">Normal</option>
+            <option value="high">High</option>
+            <option value="urgent">Urgent</option>
+          </select>
+          <select
+            value={entityTypeFilter}
+            onChange={e => setEntityTypeFilter(e.target.value)}
+            className="border border-gray-200 rounded-lg px-3 py-2 text-xs text-gray-900 focus:outline-none focus:ring-1 focus:ring-gray-300 focus:border-gray-300"
+          >
+            <option value="all">All Types</option>
+            <option value="fleet">Fleet</option>
+            <option value="equipment">Equipment</option>
+          </select>
+          <button
+            onClick={() => nav('/fleet/work-orders/new')}
+            className="px-3 py-2 text-xs font-medium text-white bg-brand-red rounded-lg hover:opacity-90 transition-opacity whitespace-nowrap"
+          >
+            + New Work Order
+          </button>
+        </div>
       </div>
 
       {/* Table */}
-      <div className="rounded-xl border bg-white overflow-hidden">
+      <div className="rounded-b-xl border border-t-0 border-gray-200 bg-white overflow-hidden min-w-0">
         {isLoading ? (
-          <div className="p-4">
-            <div className="h-6 bg-gray-100 animate-pulse rounded" />
-          </div>
+          <div className="p-8 text-center text-xs text-gray-500">Loading work orders...</div>
         ) : (
-          <table className="w-full text-sm">
-            <thead className="bg-gray-50">
+          <table className="w-full text-xs">
+            <thead className="bg-gray-50 border-b border-gray-200">
               <tr>
                 <th className="p-3 text-left">Work Order #</th>
                 <th className="p-3 text-left">Description</th>
@@ -162,7 +167,7 @@ export default function WorkOrders() {
           </table>
         )}
         {!isLoading && (!workOrders || workOrders.length === 0) && (
-          <div className="p-8 text-center text-gray-500">No work orders found</div>
+          <div className="p-8 text-center text-xs text-gray-500">No work orders found</div>
         )}
       </div>
     </div>
