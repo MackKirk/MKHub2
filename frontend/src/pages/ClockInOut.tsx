@@ -1396,31 +1396,35 @@ export default function ClockInOut() {
 
   return (
     <div className="w-full min-h-screen">
-      {/* Standardized Page Header */}
-      <div className="bg-slate-200/50 rounded-[12px] border border-slate-200 flex items-center justify-between py-4 px-6 mb-6">
-        <div>
-          <div className="text-xl font-bold text-gray-900 tracking-tight mb-0.5">Clock In / Out</div>
-          <div className="text-sm text-gray-500 font-medium">Track your work hours and manage your attendance</div>
-        </div>
-        <div className="text-right">
-          <div className="text-xs text-gray-400 mb-1.5 font-medium uppercase tracking-wide">Today</div>
-          <div className="text-sm font-semibold text-gray-700">{todayLabel}</div>
+      {/* Title Bar - same layout and font sizes as Projects / Customers */}
+      <div className="rounded-xl border bg-white p-4 mb-4">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3 flex-1">
+            <div>
+              <div className="text-sm font-semibold text-gray-900">Clock In / Out</div>
+              <div className="text-xs text-gray-500 mt-0.5">Track your work hours and manage your attendance</div>
+            </div>
+          </div>
+          <div className="text-right">
+            <div className="text-[10px] font-medium text-gray-500 uppercase tracking-wide">Today</div>
+            <div className="text-xs font-semibold text-gray-700 mt-0.5">{todayLabel}</div>
+          </div>
         </div>
       </div>
 
-      <div className="grid grid-cols-[1.2fr_1fr] gap-8">
+      <div className="grid grid-cols-[1.2fr_1fr] gap-4">
         {/* Left Column - Two Stacked Cards */}
         <div className="space-y-4">
           {/* CARD 1 — Clock Actions (Action-Focused) */}
-          <div className="rounded-[12px] border border-gray-200/60 bg-white shadow-sm p-5 space-y-4">
+          <div className="rounded-xl border border-gray-200 bg-white p-4 space-y-4">
             <div className="flex items-center justify-between gap-3">
-              <h3 className="text-base font-semibold text-gray-900 tracking-tight">Clock Actions</h3>
+              <div className="text-sm font-semibold text-gray-900">Clock Actions</div>
 
               {/* Date selector (compact, right-aligned) */}
               <div className="relative">
                 <label htmlFor="clock-actions-date" className="sr-only">Date</label>
                 <div
-                  className="relative w-[220px] max-w-[60vw] rounded-lg border border-gray-200/60 bg-white px-3 py-2 shadow-sm hover:shadow-md hover:border-gray-300 transition-all duration-200 cursor-pointer"
+                  className="relative w-[220px] max-w-[60vw] rounded-lg border border-gray-200 bg-white px-3 py-2 hover:border-gray-300 transition-all duration-200 cursor-pointer"
                   onClick={openDatePicker}
                   role="button"
                   tabIndex={0}
@@ -1433,7 +1437,7 @@ export default function ClockInOut() {
                   aria-label="Select date"
                 >
                   <div className="flex items-center gap-2">
-                    <div className="w-7 h-7 rounded-md bg-gray-100 flex items-center justify-center flex-shrink-0">
+                    <div className="w-7 h-7 rounded-lg bg-gray-100 flex items-center justify-center flex-shrink-0">
                       <svg className="w-4 h-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
                       </svg>
@@ -1469,7 +1473,7 @@ export default function ClockInOut() {
               <button
                 onClick={() => setClockType('in')}
                 disabled={hasOpenClockIn || !canClockIn || submitting}
-                className={`w-full rounded-[12px] border-2 p-4 text-left transition-all duration-200 ${
+                className={`w-full rounded-xl border-2 p-4 text-left transition-all duration-200 ${
                   !hasOpenClockIn && canClockIn && !submitting
                     ? 'border-green-200 bg-green-50/50 hover:border-green-300 hover:bg-green-50 hover:shadow-md hover:-translate-y-0.5 active:scale-[0.98] cursor-pointer'
                     : 'border-gray-200 bg-gray-50/50 cursor-not-allowed opacity-60'
@@ -1523,7 +1527,7 @@ export default function ClockInOut() {
                   setClockType('out');
                 }}
                 disabled={!hasOpenClockIn || !canClockOut || submitting}
-                className={`w-full rounded-[12px] border-2 p-4 text-left transition-all duration-200 ${
+                className={`w-full rounded-xl border-2 p-4 text-left transition-all duration-200 ${
                   hasOpenClockIn && canClockOut && !submitting
                     ? 'border-red-200 bg-red-50/50 hover:border-red-300 hover:bg-red-50 hover:shadow-md hover:-translate-y-0.5 active:scale-[0.98] cursor-pointer'
                     : 'border-gray-200 bg-gray-50/50 cursor-not-allowed opacity-60'
@@ -1567,10 +1571,10 @@ export default function ClockInOut() {
           </div>
 
           {/* CARD 2 — Today Status (Informational Only) */}
-          <div className="rounded-[12px] border border-gray-200/60 bg-white shadow-sm p-5 space-y-4">
-            <h3 className="text-base font-semibold text-gray-900 tracking-tight">
+          <div className="rounded-xl border border-gray-200 bg-white p-4 space-y-4">
+            <div className="text-sm font-semibold text-gray-900">
               {selectedDate === todayStr ? 'Today Status' : `Status - ${formatDate(selectedDate)}`}
-            </h3>
+            </div>
             
             <div className="space-y-4">
               {/* Show all attendances for the selected date */}
@@ -1600,7 +1604,7 @@ export default function ClockInOut() {
                 
                 if (allAttendancesToShow.length === 0) {
                   return (
-                    <div className="text-sm text-gray-500">No attendance records for this date</div>
+                    <div className="text-xs text-gray-500">No attendance records for this date</div>
                   );
                 }
                 
@@ -1842,25 +1846,25 @@ export default function ClockInOut() {
         </div>
 
         {/* Right Column - Weekly Summary Panel */}
-        <div className="rounded-[12px] border border-gray-200/60 bg-white shadow-sm p-5 space-y-5">
+        <div className="rounded-xl border border-gray-200 bg-white p-4 space-y-4">
           <div className="flex items-center justify-between">
-            <h3 className="text-base font-semibold text-gray-900 tracking-tight">Weekly Summary</h3>
+            <div className="text-sm font-semibold text-gray-900">Weekly Summary</div>
             <div className="flex items-center gap-1">
               <button
                 onClick={goToPreviousWeek}
-                className="px-2 py-1 rounded-lg border border-gray-200/60 hover:bg-gray-50 active:bg-gray-100 active:scale-[0.98] text-xs font-medium text-gray-600 transition-all duration-150"
+                className="rounded-lg px-3 py-2 border border-gray-200 hover:bg-gray-50 active:bg-gray-100 active:scale-[0.98] text-xs font-medium text-gray-600 transition-all duration-150"
               >
                 ←
               </button>
               <button
                 onClick={goToCurrentWeek}
-                className="px-2.5 py-1 rounded-lg border border-gray-200/60 hover:bg-gray-50 active:bg-gray-100 active:scale-[0.98] text-xs font-medium text-gray-600 transition-all duration-150"
+                className="rounded-lg px-3 py-2 border border-gray-200 hover:bg-gray-50 active:bg-gray-100 active:scale-[0.98] text-xs font-medium text-gray-600 transition-all duration-150"
               >
                 Today
               </button>
               <button
                 onClick={goToNextWeek}
-                className="px-2 py-1 rounded-lg border border-gray-200/60 hover:bg-gray-50 active:bg-gray-100 active:scale-[0.98] text-xs font-medium text-gray-600 transition-all duration-150"
+                className="rounded-lg px-3 py-2 border border-gray-200 hover:bg-gray-50 active:bg-gray-100 active:scale-[0.98] text-xs font-medium text-gray-600 transition-all duration-150"
               >
                 →
               </button>
@@ -1870,7 +1874,7 @@ export default function ClockInOut() {
           {weeklySummary && (
             <>
               {/* SECTION A — Weekly Overview (General Information) */}
-              <div className="pb-6 border-b border-gray-200/60">
+              <div className="pb-4 border-b border-gray-200">
                 <div className="text-xs text-gray-500 text-center font-medium uppercase tracking-wide mb-4">
                   {weekRangeLabel}
                 </div>
@@ -1878,27 +1882,27 @@ export default function ClockInOut() {
                 {/* Compact Metrics Grid */}
                 <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <div className="text-xs text-gray-500 mb-1.5 font-medium">Total Hours Worked</div>
-                    <div className="text-lg font-bold text-gray-900">{weeklySummary.total_hours_formatted || '0h 00m'}</div>
+                    <div className="text-[10px] font-medium text-gray-500 uppercase tracking-wide mb-1">Total Hours Worked</div>
+                    <div className="text-sm font-semibold text-gray-900">{weeklySummary.total_hours_formatted || '0h 00m'}</div>
                   </div>
                   <div>
-                    <div className="text-xs text-gray-500 mb-1.5 font-medium">Break Time</div>
-                    <div className="text-lg font-bold text-gray-900">{weeklySummary.total_break_formatted || '0h 00m'}</div>
+                    <div className="text-[10px] font-medium text-gray-500 uppercase tracking-wide mb-1">Break Time</div>
+                    <div className="text-sm font-semibold text-gray-900">{weeklySummary.total_break_formatted || '0h 00m'}</div>
                   </div>
                   <div>
-                    <div className="text-xs text-gray-500 mb-1.5 font-medium">Overtime</div>
-                    <div className="text-lg font-bold text-gray-900">0h 00m</div>
+                    <div className="text-[10px] font-medium text-gray-500 uppercase tracking-wide mb-1">Overtime</div>
+                    <div className="text-sm font-semibold text-gray-900">0h 00m</div>
                   </div>
                   <div>
-                    <div className="text-xs text-gray-500 mb-1.5 font-medium">Regular Hours</div>
-                    <div className="text-lg font-bold text-gray-900">{weeklySummary.reg_hours_formatted || '0h 00m'}</div>
+                    <div className="text-[10px] font-medium text-gray-500 uppercase tracking-wide mb-1">Regular Hours</div>
+                    <div className="text-sm font-semibold text-gray-900">{weeklySummary.reg_hours_formatted || '0h 00m'}</div>
                   </div>
                 </div>
               </div>
 
               {/* SECTION B — Daily Breakdown (Detailed Reference) */}
-              <div className="pt-6">
-                <h4 className="text-xs font-semibold text-gray-600 mb-4 uppercase tracking-wide">Daily Breakdown</h4>
+              <div className="pt-4">
+                <div className="text-[10px] font-semibold text-gray-600 mb-3 uppercase tracking-wide">Daily Breakdown</div>
                 <div className="space-y-3.5 max-h-[400px] overflow-y-auto">
                   {weeklySummary.days.map((day, index) => {
                     const clockInTime = day.clock_in 
@@ -1922,7 +1926,7 @@ export default function ClockInOut() {
                     const uniqueKey = `${day.date}-${day.clock_in || 'no-in'}-${day.clock_out || 'no-out'}-${index}`;
 
                     return (
-                      <div key={uniqueKey} className="border-b border-gray-200/30 pb-3.5 last:border-b-0 last:pb-0">
+                      <div key={uniqueKey} className="border-b border-gray-200 pb-3.5 last:border-b-0 last:pb-0">
                         <div className="flex items-start justify-between gap-4">
                           <div className="flex-1 min-w-0">
                             <div className="text-xs font-medium text-gray-700 mb-1">

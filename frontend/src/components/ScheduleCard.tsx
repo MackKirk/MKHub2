@@ -577,33 +577,33 @@ export default function ScheduleCard() {
   const isOwnShift = currentUser && selectedShift && String(currentUser.id) === String(selectedShift.worker_id);
 
   return (
-    <div className="grid grid-cols-[1.5fr_1fr] gap-6">
+    <div className="grid grid-cols-[1.5fr_1fr] gap-4">
       {/* LEFT COLUMN - Weekly Schedule */}
-      <div className="rounded-[12px] border border-gray-200/60 bg-white shadow-sm p-6">
+      <div className="rounded-xl border border-gray-200 bg-white p-4">
         {/* Week Navigation Header */}
-        <div className="mb-6 pb-4 border-b border-gray-200/60">
-          <h2 className="text-xl font-semibold text-gray-900 tracking-tight mb-4">Weekly Schedule</h2>
+        <div className="mb-4 pb-4 border-b border-gray-200">
+          <div className="text-sm font-semibold text-gray-900 mb-4">Weekly Schedule</div>
           {/* Week Controls */}
           <div className="flex items-center justify-between">
             <button
               onClick={goToPreviousWeek}
-              className="px-3 py-1.5 rounded-lg border border-gray-200 bg-white hover:bg-gray-50 text-sm font-medium text-gray-700 transition-all duration-200 hover:shadow-sm active:scale-[0.98]"
+              className="rounded-lg px-3 py-2 border border-gray-200 bg-white hover:bg-gray-50 text-xs font-medium text-gray-700 transition-all duration-200 active:scale-[0.98]"
             >
               ← Previous Week
             </button>
-            <span className="text-sm font-semibold text-gray-700 min-w-[200px] text-center">
+            <span className="text-xs font-semibold text-gray-700 min-w-[200px] text-center">
               {weekLabel}
             </span>
             <div className="flex items-center gap-2">
               <button
                 onClick={goToToday}
-                className="px-3 py-1.5 rounded-lg border border-gray-200 bg-white hover:bg-gray-50 text-sm font-medium text-gray-700 transition-all duration-200 hover:shadow-sm active:scale-[0.98]"
+                className="rounded-lg px-3 py-2 border border-gray-200 bg-white hover:bg-gray-50 text-xs font-medium text-gray-700 transition-all duration-200 active:scale-[0.98]"
               >
                 Today
               </button>
               <button
                 onClick={goToNextWeek}
-                className="px-3 py-1.5 rounded-lg border border-gray-200 bg-white hover:bg-gray-50 text-sm font-medium text-gray-700 transition-all duration-200 hover:shadow-sm active:scale-[0.98]"
+                className="rounded-lg px-3 py-2 border border-gray-200 bg-white hover:bg-gray-50 text-xs font-medium text-gray-700 transition-all duration-200 active:scale-[0.98]"
               >
                 Next Week →
               </button>
@@ -628,7 +628,7 @@ export default function ScheduleCard() {
                 key={key}
                 className={`rounded-lg border transition-all duration-200 ${
                   dayShifts.length > 0
-                    ? `bg-white border-gray-200/60 p-4 ${
+                    ? `bg-white border-gray-200 p-4 ${
                         isToday ? 'ring-2 ring-brand-red/30 border-brand-red/40' : ''
                       }`
                     : `bg-gray-50/30 border-gray-100/60 p-2.5 ${
@@ -769,8 +769,8 @@ export default function ScheduleCard() {
       </div>
 
       {/* RIGHT COLUMN - Shift Details Panel */}
-      <div className="rounded-[12px] border border-gray-200/60 bg-white shadow-sm p-6">
-        <h3 className="text-xl font-semibold text-gray-900 tracking-tight mb-6">Shift Details</h3>
+      <div className="rounded-xl border border-gray-200 bg-white p-4">
+        <div className="text-sm font-semibold text-gray-900 mb-4">Shift Details</div>
         
         {selectedShift ? (
           <div className="space-y-5">
@@ -780,14 +780,14 @@ export default function ScheduleCard() {
               
               {/* Project Card */}
               {selectedShift.project_name && (
-                <div className="rounded-lg border border-gray-200/60 bg-gray-50/50 p-4">
+                <div className="rounded-lg border border-gray-200 bg-gray-50/50 p-4">
                   <div className="text-xs uppercase tracking-wide text-gray-500 font-medium mb-1.5">Project</div>
                   <div className="text-sm font-semibold text-gray-900">{selectedShift.project_name}</div>
                 </div>
               )}
 
               {/* Date & Time Card */}
-              <div className="rounded-lg border border-gray-200/60 bg-gray-50/50 p-4">
+              <div className="rounded-lg border border-gray-200 bg-gray-50/50 p-4">
                 <div className="text-xs uppercase tracking-wide text-gray-500 font-medium mb-1.5">Date & Time</div>
                 <div className="text-sm font-semibold text-gray-900">
                   {new Date(selectedShift.date).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}
@@ -799,7 +799,7 @@ export default function ScheduleCard() {
 
               {/* Job Type Card */}
               {selectedShift.job_name && (
-                <div className="rounded-lg border border-gray-200/60 bg-gray-50/50 p-4">
+                <div className="rounded-lg border border-gray-200 bg-gray-50/50 p-4">
                   <div className="text-xs uppercase tracking-wide text-gray-500 font-medium mb-1.5">Job Type</div>
                   <div className="text-sm font-semibold text-gray-900">{selectedShift.job_name}</div>
                 </div>
@@ -807,12 +807,12 @@ export default function ScheduleCard() {
             </div>
 
             {/* People Section */}
-            <div className="space-y-3 pt-2 border-t border-gray-200/60">
+            <div className="space-y-3 pt-2 border-t border-gray-200">
               <div className="text-xs uppercase tracking-wide text-gray-500 font-semibold mb-2">People</div>
               
               {/* Worker Card */}
               {worker && (
-                <div className="rounded-lg border border-gray-200/60 bg-gray-50/50 p-4">
+                <div className="rounded-lg border border-gray-200 bg-gray-50/50 p-4">
                   <div className="text-xs uppercase tracking-wide text-gray-500 font-medium mb-1.5">Worker</div>
                   <div className="text-sm font-semibold text-gray-900">{worker.name || worker.username}</div>
                 </div>
@@ -820,7 +820,7 @@ export default function ScheduleCard() {
 
               {/* Supervisor Card */}
               {workerProfile?.manager_user_id && (
-                <div className="rounded-lg border border-gray-200/60 bg-gray-50/50 p-4">
+                <div className="rounded-lg border border-gray-200 bg-gray-50/50 p-4">
                   <div className="text-xs uppercase tracking-wide text-gray-500 font-medium mb-1.5">Supervisor</div>
                   <div className="text-sm font-semibold text-gray-900">
                     {(() => {
@@ -834,10 +834,10 @@ export default function ScheduleCard() {
 
             {/* Location Section */}
             {project && (
-              <div className="space-y-3 pt-2 border-t border-gray-200/60">
+              <div className="space-y-3 pt-2 border-t border-gray-200">
                 <div className="text-xs uppercase tracking-wide text-gray-500 font-semibold mb-2">Location</div>
                 
-                <div className="rounded-lg border border-gray-200/60 bg-gray-50/50 p-4">
+                <div className="rounded-lg border border-gray-200 bg-gray-50/50 p-4">
                   <div className="flex items-start gap-2">
                     <svg className="w-4 h-4 text-gray-400 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
@@ -875,7 +875,7 @@ export default function ScheduleCard() {
             )}
 
             {/* Attendance Status Card */}
-            <div className="rounded-lg border border-gray-200/60 bg-gray-50/50 p-4 pt-2 border-t border-gray-200/60">
+            <div className="rounded-lg border border-gray-200 bg-gray-50/50 p-4 pt-2 border-t border-gray-200">
               <div className="text-xs uppercase tracking-wide text-gray-500 font-semibold mb-3">Attendance Status</div>
               <div className="space-y-3">
                 <div className="flex items-center justify-between">
@@ -947,7 +947,7 @@ export default function ScheduleCard() {
 
             {/* Attendance Actions */}
             {isOwnShift && (
-              <div className="pt-4 border-t border-gray-200/60">
+              <div className="pt-4 border-t border-gray-200">
                 <div className="text-xs uppercase tracking-wide text-gray-500 font-semibold mb-3">Actions</div>
                 <div className="space-y-2">
                   <button

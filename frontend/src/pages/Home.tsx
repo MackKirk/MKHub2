@@ -77,17 +77,22 @@ export default function Home(){
   }, [overlayUrl]);
   
   return (
-    <div className="space-y-6 min-h-screen">
-      {/* Compact Header with subtle gradient */}
-      <div className="bg-slate-200/50 rounded-[12px] border border-slate-200 flex items-center justify-between py-4 px-6 mb-6">
-        <div>
-          <div className="text-xl font-bold text-gray-900 tracking-tight mb-0.5">
-            {getTimeBasedGreeting()}, {displayName}
+    <div className="space-y-4 min-h-screen">
+      {/* Title Bar - same layout and font sizes as Projects / Customers */}
+      <div className="rounded-xl border bg-white p-4 mb-4">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3 flex-1">
+            <div>
+              <div className="text-sm font-semibold text-gray-900">
+                {getTimeBasedGreeting()}, {displayName}
+              </div>
+              {jobTitle && <div className="text-xs text-gray-500 mt-0.5">{jobTitle}</div>}
+            </div>
           </div>
-        </div>
-        <div className="text-right">
-          <div className="text-xs text-gray-400 mb-1.5 font-medium uppercase tracking-wide">Today</div>
-          <div className="text-sm font-semibold text-gray-700">{todayLabel}</div>
+          <div className="text-right">
+            <div className="text-[10px] font-medium text-gray-500 uppercase tracking-wide">Today</div>
+            <div className="text-xs font-semibold text-gray-700 mt-0.5">{todayLabel}</div>
+          </div>
         </div>
       </div>
       
@@ -130,13 +135,13 @@ export default function Home(){
       {/* Main Content - Employee Community and Calendar */}
       <div className="grid grid-cols-[2fr_1fr] gap-4 min-w-0">
         {/* Left column - Employee Community Feed */}
-        <div className="flex flex-col min-w-0" style={{ height: '600px' }}>
+        <div className="rounded-xl border border-gray-200 bg-white overflow-hidden flex flex-col min-w-0" style={{ height: '600px' }}>
           <EmployeeCommunity feedMode={true} />
         </div>
         
         {/* Right column - Calendar (Always Open, Smaller) */}
-        <div className="rounded-[12px] border border-gray-200/80 bg-white shadow-sm p-5 flex-shrink-0">
-          <h3 className="text-lg font-bold text-gray-900 mb-4 tracking-tight">Calendar</h3>
+        <div className="rounded-xl border border-gray-200 bg-white p-4 flex-shrink-0">
+          <div className="text-sm font-semibold text-gray-900 mb-3">Calendar</div>
           <div className="overflow-auto" style={{ maxHeight: '600px' }}>
             <Calendar />
           </div>
@@ -228,17 +233,17 @@ function ClockInOutHeroCard() {
     <Link
       to="/clock-in-out"
       state={{ fromHome: true }}
-      className="group rounded-[12px] border border-orange-200/60 bg-gradient-to-br from-orange-50/80 via-orange-50/50 to-white shadow-sm hover:shadow-md hover:shadow-orange-200/30 hover:-translate-y-0.5 transition-all duration-200 cursor-pointer flex flex-col p-6"
+      className="group rounded-xl border border-orange-200/60 bg-gradient-to-br from-orange-50/80 via-orange-50/50 to-white hover:shadow-md hover:border-orange-300/80 transition-all duration-200 cursor-pointer flex flex-col p-4"
     >
-      <div className="flex items-center gap-4 mb-4">
-        <div className="w-12 h-12 rounded-[10px] border border-orange-200/40 bg-white/60 flex items-center justify-center flex-shrink-0 shadow-sm">
+      <div className="flex items-center gap-3 mb-3">
+        <div className="w-10 h-10 rounded-lg border border-orange-200/40 bg-white/60 flex items-center justify-center flex-shrink-0">
           <svg className="w-5 h-5 text-orange-600" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
           </svg>
         </div>
-        <div className="flex-1">
-          <div className="text-xl font-bold text-gray-900 mb-1 tracking-tight">Clock In / Out</div>
-          <div className={`text-sm font-semibold ${
+        <div className="flex-1 min-w-0">
+          <div className="text-sm font-semibold text-gray-900 truncate">Clock In / Out</div>
+          <div className={`text-xs font-medium ${
             clockStatus.status === 'clocked_in' ? 'text-green-600' :
             clockStatus.status === 'completed' ? 'text-gray-500' :
             'text-orange-600'
@@ -248,18 +253,18 @@ function ClockInOutHeroCard() {
              'Not Clocked In'}
           </div>
           {clockStatus.status === 'clocked_in' && clockStatus.workingDuration && (
-            <div className="text-xs text-gray-500 mt-0.5 font-medium">
+            <div className="text-[10px] text-gray-500 mt-0.5 font-medium">
               Working for {clockStatus.workingDuration}
             </div>
           )}
         </div>
       </div>
       
-      <div className="text-sm text-gray-600 mb-5 line-clamp-2 leading-relaxed">
+      <div className="text-xs text-gray-600 mb-4 line-clamp-2 leading-relaxed">
         {clockStatus.message}
       </div>
       
-      <div className="w-full px-4 py-3 rounded-lg bg-orange-600 hover:bg-orange-700 active:bg-orange-800 text-white font-semibold text-center transition-all duration-150 shadow-sm hover:shadow-md active:scale-[0.98]">
+      <div className="w-full px-3 py-2 rounded-lg bg-orange-600 hover:bg-orange-700 active:bg-orange-800 text-white text-xs font-semibold text-center transition-all duration-150 active:scale-[0.98]">
         {clockStatus.status === 'clocked_in' ? 'Clock Out' : 'Clock In'}
       </div>
     </Link>
@@ -342,17 +347,17 @@ function QuickActionCard({ to, iconBg, iconColor, iconPath, label, summaryKey }:
     <Link
       to={to}
       state={{ fromHome: true }}
-      className="group rounded-[12px] border border-gray-200/80 bg-white shadow-sm hover:shadow-md hover:-translate-y-0.5 hover:border-gray-300 transition-all duration-200 cursor-pointer flex flex-col p-5"
+      className="group rounded-xl border border-gray-200 bg-white hover:shadow-md hover:border-gray-300 transition-all duration-200 cursor-pointer flex flex-col p-4"
     >
-      <div className="flex items-center gap-3 mb-3">
-        <div className="w-10 h-10 rounded-[10px] border border-gray-200 bg-gray-50/50 flex items-center justify-center flex-shrink-0 group-hover:bg-gray-100/80 transition-colors">
-          <svg className="w-5 h-5 text-gray-600" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+      <div className="flex items-center gap-3 mb-2">
+        <div className={`w-10 h-10 rounded-lg border border-gray-200 flex items-center justify-center flex-shrink-0 group-hover:bg-gray-50 transition-colors ${iconBg} ${iconColor}`}>
+          <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" d={iconPath} />
           </svg>
         </div>
-        <div className="text-base font-bold text-gray-900 tracking-tight">{label}</div>
+        <div className="text-sm font-semibold text-gray-900 truncate">{label}</div>
       </div>
-      <div className="text-sm text-gray-500 font-medium leading-relaxed">
+      <div className="text-xs text-gray-500 font-medium leading-relaxed">
         {summary}
       </div>
     </Link>

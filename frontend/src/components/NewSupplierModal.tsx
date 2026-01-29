@@ -117,32 +117,35 @@ export default function NewSupplierModal({ open, onClose, onSupplierCreated }: N
 
   if (!open) return null;
 
+  const inputBase = 'w-full border border-gray-200 rounded-lg px-3 py-2 mt-1 text-xs text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-1 focus:ring-gray-300 focus:border-gray-300 bg-white';
+  const inputError = nameError && !name.trim() ? 'border-red-500 focus:ring-red-500 focus:border-red-500' : '';
+  const labelClass = 'text-xs font-medium text-gray-700';
+
   return (
     <div className="fixed inset-0 z-[90] bg-black/60 flex items-center justify-center p-4">
-      <div className="w-[900px] max-w-[95vw] max-h-[90vh] bg-white rounded-xl overflow-hidden flex flex-col">
-        <div className="bg-gradient-to-br from-[#7f1010] to-[#a31414] p-6 relative flex-shrink-0">
+      <div className="w-[900px] max-w-[95vw] max-h-[90vh] bg-white rounded-xl border border-gray-200 overflow-hidden flex flex-col shadow-xl">
+        {/* Header - same style as page title bars */}
+        <div className="flex-shrink-0 flex items-center justify-between p-4 border-b border-gray-200 bg-white">
+          <div>
+            <h2 className="text-sm font-semibold text-gray-900">New Supplier</h2>
+            <p className="text-xs text-gray-500 mt-0.5">Add a new supplier to your inventory</p>
+          </div>
           <button
             onClick={onClose}
-            className="absolute top-4 right-4 text-white/80 hover:text-white text-2xl font-bold w-8 h-8 flex items-center justify-center rounded hover:bg-white/10"
+            className="text-gray-400 hover:text-gray-600 w-8 h-8 flex items-center justify-center rounded-lg hover:bg-gray-100 text-xl font-medium leading-none"
             title="Close"
           >
             ×
           </button>
-          <div>
-            <h2 className="text-2xl font-extrabold text-white">New Supplier</h2>
-            <p className="text-sm text-white/80 mt-1">
-              Add a new supplier to your inventory
-            </p>
-          </div>
         </div>
-        
+
         <div className="flex-1 overflow-y-auto">
-          <div className="p-6 grid grid-cols-2 gap-4">
+          <div className="p-4 grid grid-cols-2 gap-4">
             <div className="col-span-2">
-              <label className="text-xs font-semibold text-gray-700">Name *</label>
+              <label className={labelClass}>Name *</label>
               <input
                 type="text"
-                className={`w-full border rounded px-3 py-2 mt-1 ${nameError && !name.trim() ? 'border-red-500' : ''}`}
+                className={`${inputBase} ${inputError}`}
                 value={name}
                 onChange={(e) => {
                   setName(e.target.value);
@@ -154,44 +157,44 @@ export default function NewSupplierModal({ open, onClose, onSupplierCreated }: N
               )}
             </div>
             <div className="col-span-2">
-              <label className="text-xs font-semibold text-gray-700">Legal Name</label>
+              <label className={labelClass}>Legal Name</label>
               <input
                 type="text"
-                className="w-full border rounded px-3 py-2 mt-1"
+                className={inputBase}
                 value={legalName}
                 onChange={(e) => setLegalName(e.target.value)}
               />
             </div>
             <div>
-              <label className="text-xs font-semibold text-gray-700">Email</label>
+              <label className={labelClass}>Email</label>
               <input
                 type="email"
-                className="w-full border rounded px-3 py-2 mt-1"
+                className={inputBase}
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
               />
             </div>
             <div>
-              <label className="text-xs font-semibold text-gray-700">Phone</label>
+              <label className={labelClass}>Phone</label>
               <input
                 type="text"
-                className="w-full border rounded px-3 py-2 mt-1"
+                className={inputBase}
                 value={phone}
                 onChange={(e) => setPhone(e.target.value)}
               />
             </div>
             <div className="col-span-2">
-              <label className="text-xs font-semibold text-gray-700">Website</label>
+              <label className={labelClass}>Website</label>
               <input
                 type="url"
-                className="w-full border rounded px-3 py-2 mt-1"
+                className={inputBase}
                 value={website}
                 onChange={(e) => setWebsite(e.target.value)}
               />
             </div>
             <div className="col-span-2 grid grid-cols-2 gap-4">
               <div>
-                <label className="text-xs font-semibold text-gray-700">Address</label>
+                <label className={labelClass}>Address</label>
                 <AddressAutocomplete
                   value={addressLine1}
                   onChange={(value) => setAddressLine1(value)}
@@ -203,14 +206,14 @@ export default function NewSupplierModal({ open, onClose, onSupplierCreated }: N
                     setCountry(address.country !== undefined ? address.country : country);
                   }}
                   placeholder="Enter address"
-                  className="w-full border rounded px-3 py-2 mt-1"
+                  className={inputBase}
                 />
               </div>
               <div>
-                <label className="text-xs font-semibold text-gray-700">Complement</label>
+                <label className={labelClass}>Complement</label>
                 <input
                   type="text"
-                  className="w-full border rounded px-3 py-2 mt-1"
+                  className={inputBase}
                   value={addressLine1Complement}
                   onChange={(e) => setAddressLine1Complement(e.target.value)}
                   placeholder="Apartment, Unit, Block, etc (Optional)"
@@ -222,9 +225,9 @@ export default function NewSupplierModal({ open, onClose, onSupplierCreated }: N
                 <button
                   type="button"
                   onClick={() => setShowAddress2(true)}
-                  className="text-sm text-brand-red hover:underline flex items-center gap-1"
+                  className="text-xs font-medium text-brand-red hover:underline flex items-center gap-1"
                 >
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
                   </svg>
                   Add another Address
@@ -235,7 +238,7 @@ export default function NewSupplierModal({ open, onClose, onSupplierCreated }: N
               <>
                 <div className="col-span-2 grid grid-cols-[1fr_0.8fr_auto] gap-4 items-end">
                   <div>
-                    <label className="text-xs font-semibold text-gray-700">Address 2</label>
+                    <label className={labelClass}>Address 2</label>
                     <AddressAutocomplete
                       value={addressLine2}
                       onChange={(value) => setAddressLine2(value)}
@@ -243,14 +246,14 @@ export default function NewSupplierModal({ open, onClose, onSupplierCreated }: N
                         setAddressLine2(address.address_line1 || addressLine2);
                       }}
                       placeholder="Enter address"
-                      className="w-full border rounded px-3 py-2 mt-1"
+                      className={inputBase}
                     />
                   </div>
                   <div>
-                    <label className="text-xs font-semibold text-gray-700">Complement</label>
+                    <label className={labelClass}>Complement</label>
                     <input
                       type="text"
-                      className="w-full border rounded px-3 py-2 mt-1"
+                      className={inputBase}
                       value={addressLine2Complement}
                       onChange={(e) => setAddressLine2Complement(e.target.value)}
                       placeholder="Apartment, Unit, Block, etc (Optional)"
@@ -270,10 +273,10 @@ export default function NewSupplierModal({ open, onClose, onSupplierCreated }: N
                         setShowAddress3(false);
                       }
                     }}
-                    className="mb-[2px] px-2 py-1 text-red-600 hover:bg-red-50 rounded"
+                    className="mb-[2px] px-2 py-1.5 text-xs text-red-600 hover:bg-red-50 rounded-lg border border-transparent hover:border-red-200 transition-colors"
                     title="Remove Address 2"
                   >
-                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
                     </svg>
                   </button>
@@ -283,9 +286,9 @@ export default function NewSupplierModal({ open, onClose, onSupplierCreated }: N
                     <button
                       type="button"
                       onClick={() => setShowAddress3(true)}
-                      className="text-sm text-brand-red hover:underline flex items-center gap-1"
+                      className="text-xs font-medium text-brand-red hover:underline flex items-center gap-1"
                     >
-                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
                       </svg>
                       Add another Address
@@ -298,7 +301,7 @@ export default function NewSupplierModal({ open, onClose, onSupplierCreated }: N
               <>
                 <div className="col-span-2 grid grid-cols-[1fr_0.8fr_auto] gap-4 items-end">
                   <div>
-                    <label className="text-xs font-semibold text-gray-700">Address 3</label>
+                    <label className={labelClass}>Address 3</label>
                     <AddressAutocomplete
                       value={addressLine3}
                       onChange={(value) => setAddressLine3(value)}
@@ -306,14 +309,14 @@ export default function NewSupplierModal({ open, onClose, onSupplierCreated }: N
                         setAddressLine3(address.address_line1 || addressLine3);
                       }}
                       placeholder="Enter address"
-                      className="w-full border rounded px-3 py-2 mt-1"
+                      className={inputBase}
                     />
                   </div>
                   <div>
-                    <label className="text-xs font-semibold text-gray-700">Complement</label>
+                    <label className={labelClass}>Complement</label>
                     <input
                       type="text"
-                      className="w-full border rounded px-3 py-2 mt-1"
+                      className={inputBase}
                       value={addressLine3Complement}
                       onChange={(e) => setAddressLine3Complement(e.target.value)}
                       placeholder="Apartment, Unit, Block, etc (Optional)"
@@ -326,10 +329,10 @@ export default function NewSupplierModal({ open, onClose, onSupplierCreated }: N
                       setAddressLine3('');
                       setAddressLine3Complement('');
                     }}
-                    className="mb-[2px] px-2 py-1 text-red-600 hover:bg-red-50 rounded"
+                    className="mb-[2px] px-2 py-1.5 text-xs text-red-600 hover:bg-red-50 rounded-lg border border-transparent hover:border-red-200 transition-colors"
                     title="Remove Address 3"
                   >
-                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
                     </svg>
                   </button>
@@ -337,40 +340,40 @@ export default function NewSupplierModal({ open, onClose, onSupplierCreated }: N
               </>
             )}
             <div>
-              <label className="text-xs font-semibold text-gray-700">City</label>
+              <label className={labelClass}>City</label>
               <input
                 type="text"
-                className="w-full border rounded px-3 py-2 mt-1 bg-gray-50 cursor-not-allowed"
+                className={`${inputBase} bg-gray-50 cursor-not-allowed border-gray-200`}
                 value={city}
                 readOnly
                 placeholder=""
               />
             </div>
             <div>
-              <label className="text-xs font-semibold text-gray-700">Province</label>
+              <label className={labelClass}>Province</label>
               <input
                 type="text"
-                className="w-full border rounded px-3 py-2 mt-1 bg-gray-50 cursor-not-allowed"
+                className={`${inputBase} bg-gray-50 cursor-not-allowed border-gray-200`}
                 value={province}
                 readOnly
                 placeholder=""
               />
             </div>
             <div>
-              <label className="text-xs font-semibold text-gray-700">Postal Code</label>
+              <label className={labelClass}>Postal Code</label>
               <input
                 type="text"
-                className="w-full border rounded px-3 py-2 mt-1 bg-gray-50 cursor-not-allowed"
+                className={`${inputBase} bg-gray-50 cursor-not-allowed border-gray-200`}
                 value={postalCode}
                 readOnly
                 placeholder=""
               />
             </div>
             <div>
-              <label className="text-xs font-semibold text-gray-700">Country</label>
+              <label className={labelClass}>Country</label>
               <input
                 type="text"
-                className="w-full border rounded px-3 py-2 mt-1 bg-gray-50 cursor-not-allowed"
+                className={`${inputBase} bg-gray-50 cursor-not-allowed border-gray-200`}
                 value={country}
                 readOnly
                 placeholder=""
@@ -378,17 +381,17 @@ export default function NewSupplierModal({ open, onClose, onSupplierCreated }: N
             </div>
           </div>
         </div>
-        <div className="flex-shrink-0 px-6 py-4 border-t bg-gray-50 flex justify-end gap-2">
+        <div className="flex-shrink-0 px-4 py-3 border-t border-gray-200 bg-gray-50 flex justify-end gap-2">
           <button
             onClick={onClose}
-            className="px-4 py-2 rounded bg-gray-200 hover:bg-gray-300"
+            className="px-3 py-2 text-xs font-medium text-gray-700 border border-gray-200 rounded-lg bg-white hover:bg-gray-50 transition-colors"
           >
             Cancel
           </button>
           <button
             onClick={handleSubmit}
             disabled={createMut.isPending}
-            className="px-4 py-2 rounded bg-brand-red text-white hover:bg-brand-red-dark disabled:opacity-50"
+            className="px-3 py-2 text-xs font-medium text-white bg-brand-red rounded-lg hover:opacity-90 disabled:opacity-50 transition-opacity"
           >
             {createMut.isPending ? 'Creating...' : 'Create'}
           </button>

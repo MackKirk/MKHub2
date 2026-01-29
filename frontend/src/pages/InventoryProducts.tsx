@@ -649,53 +649,46 @@ export default function InventoryProducts(){
   }
 
   return (
-    <div>
-      <div 
-        className="bg-slate-200/50 rounded-[12px] border border-slate-200 flex items-center justify-between py-4 px-6 mb-6"
-        style={animationComplete ? {} : {
-          opacity: hasAnimated ? 1 : 0,
-          transform: hasAnimated ? 'translateY(0) scale(1)' : 'translateY(-8px) scale(0.98)',
-          transition: 'opacity 400ms ease-out, transform 400ms ease-out'
-        }}
-      >
-        <div>
-          <div className="text-xl font-bold text-gray-900 tracking-tight mb-0.5">Products</div>
-          <div className="text-sm text-gray-500 font-medium">Catalog of materials and pricing</div>
-        </div>
-        <div className="text-right">
-          <div className="text-xs text-gray-400 mb-1.5 font-medium uppercase tracking-wide">Today</div>
-          <div className="text-sm font-semibold text-gray-700">{todayLabel}</div>
+    <div className="space-y-4 min-w-0 overflow-x-hidden">
+      {/* Title Bar - same layout and font sizes as Schedule / TaskRequests */}
+      <div className="rounded-xl border bg-white p-4 mb-4">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3 flex-1">
+            <div>
+              <div className="text-sm font-semibold text-gray-900">Products</div>
+              <div className="text-xs text-gray-500 mt-0.5">Catalog of materials and pricing</div>
+            </div>
+          </div>
+          <div className="text-right">
+            <div className="text-[10px] font-medium text-gray-500 uppercase tracking-wide">Today</div>
+            <div className="text-xs font-semibold text-gray-700 mt-0.5">{todayLabel}</div>
+          </div>
         </div>
       </div>
+
       {/* Filter Bar */}
-      <div className="mb-3 rounded-lg border border-gray-200 bg-white shadow-sm overflow-hidden">
-        {/* Primary Row: Global Search + Actions */}
-        <div className="px-6 py-4 bg-white">
-          <div className="flex items-center gap-4">
-            {/* Global Search - Dominant, large */}
+      <div className="rounded-xl border border-gray-200 bg-white overflow-hidden">
+        <div className="px-4 py-3">
+          <div className="flex items-center gap-3">
             <div className="flex-1">
               <div className="relative">
                 <input 
-                  className="w-full border border-gray-200 rounded-md px-4 py-2.5 pl-10 text-sm bg-gray-50/50 text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-1 focus:ring-gray-300 focus:border-gray-300 focus:bg-white transition-all duration-150" 
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2 pl-9 text-xs bg-gray-50/50 text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-1 focus:ring-gray-300 focus:border-gray-300 focus:bg-white transition-all" 
                   placeholder="Search by product name, supplier, or category..." 
                   value={q} 
                   onChange={e=>setQ(e.target.value)} 
                 />
-                <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <svg className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
                 </svg>
               </div>
             </div>
-
-            {/* + Filters Button - Opens Modal */}
             <button 
               onClick={()=>setIsFilterModalOpen(true)}
-              className="px-3 py-2.5 text-sm font-medium text-gray-600 hover:text-gray-900 transition-colors duration-150 whitespace-nowrap"
+              className="px-3 py-2 text-xs font-medium text-gray-600 hover:text-gray-900 transition-colors whitespace-nowrap"
             >
               + Filters
             </button>
-
-            {/* Clear Filters - Only when active */}
             {hasActiveFilters && (
               <button 
                 onClick={()=>{
@@ -703,7 +696,7 @@ export default function InventoryProducts(){
                   setSearchParams(new URLSearchParams());
                   refetch();
                 }} 
-                className="px-3 py-2.5 text-sm font-medium text-gray-600 hover:text-gray-900 transition-colors duration-150 whitespace-nowrap"
+                className="px-3 py-2 text-xs font-medium text-gray-600 hover:text-gray-900 transition-colors whitespace-nowrap"
               >
                 Clear Filters
               </button>
@@ -714,7 +707,7 @@ export default function InventoryProducts(){
 
       {/* Filter Chips */}
       {hasActiveFilters && (
-        <div className="mb-4 flex items-center gap-2 flex-wrap">
+        <div className="flex items-center gap-2 flex-wrap">
           {currentRules.map((rule) => (
             <FilterChip
               key={rule.id}
@@ -734,14 +727,12 @@ export default function InventoryProducts(){
       )}
 
       <LoadingOverlay isLoading={isInitialLoading} text="Loading products...">
-      <div className="rounded-xl border bg-white p-4">
+      <div className="rounded-b-xl border border-t-0 border-gray-200 bg-white p-4 min-w-0 overflow-hidden">
         {isLoading ? (
-          <div className="p-4">
-            <div className="h-6 bg-gray-100 animate-pulse rounded" />
-          </div>
+          <div className="p-8 text-center text-xs text-gray-500">Loading products...</div>
         ) : !rows.length ? (
-          <div className="p-4 text-gray-600 text-center">
-            No products found
+          <div className="p-8 text-center">
+            <div className="text-xs text-gray-500">No products found</div>
           </div>
         ) : (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-6 2xl:grid-cols-7 gap-4">
@@ -751,7 +742,7 @@ export default function InventoryProducts(){
                 className="border-2 border-dashed border-gray-300 rounded-lg p-3 hover:border-brand-red hover:bg-gray-50 transition-all text-center bg-white flex flex-col items-center justify-center min-h-[200px]"
               >
                 <div className="text-4xl text-gray-400 mb-2">+</div>
-                <div className="font-medium text-sm text-gray-700">New Product</div>
+                <div className="font-medium text-xs text-gray-700">New Product</div>
                 <div className="text-xs text-gray-500 mt-1">Add new product to inventory</div>
               </button>
             )}
@@ -759,7 +750,7 @@ export default function InventoryProducts(){
               <button
                 key={p.id}
                 onClick={() => openViewModal(p)}
-                className="border rounded-lg p-3 hover:border-brand-red hover:shadow-md transition-all bg-white flex flex-col text-left"
+                className="border border-gray-200 rounded-lg p-3 hover:border-brand-red hover:bg-gray-50/50 transition-all bg-white flex flex-col text-left"
               >
                 <div className="w-full h-24 mb-2 relative">
                   {p.image_base64 ? (
@@ -802,180 +793,165 @@ export default function InventoryProducts(){
       </LoadingOverlay>
 
       {open && (
-        <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center">
-          <div className="w-[900px] max-w-[95vw] max-h-[90vh] bg-white rounded-xl overflow-hidden flex flex-col">
+        <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4">
+          <div className="w-[900px] max-w-[95vw] max-h-[90vh] bg-white rounded-xl border border-gray-200 overflow-hidden flex flex-col shadow-xl">
               {viewing && !editing ? (
                 // View mode - display product details
                 <>
-                  {/* Product Header */}
-                  <div className="flex-shrink-0 bg-gradient-to-br from-[#7f1010] to-[#a31414] p-6 flex items-center gap-6 relative">
-                    <button
-                      onClick={resetModal}
-                      className="absolute top-4 right-4 text-white/80 hover:text-white text-2xl font-bold w-8 h-8 flex items-center justify-center rounded hover:bg-white/10"
-                      title="Close"
-                    >
-                      ×
-                    </button>
-                    <div className="w-24 h-24 rounded-xl border-4 border-white shadow-lg overflow-hidden bg-white flex items-center justify-center">
-                      <img 
-                        src={viewing.image_base64 || '/ui/assets/placeholders/product.png'} 
-                        className="w-full h-full object-cover" 
-                        alt={viewing.name}
-                      />
-                    </div>
-                    <div className="flex-1">
-                      <h2 className="text-3xl font-extrabold text-white">{viewing.name}</h2>
-                      <div className="flex items-center gap-4 mt-3 text-sm">
-                        {viewing.supplier_name && (
-                          <div className="flex items-center gap-2">
-                            <span className="text-white/80">🏢</span>
-                            <span className="text-white">{viewing.supplier_name}</span>
-                          </div>
-                        )}
-                        {viewing.category && (
-                          <div className="flex items-center gap-2">
-                            <span className="text-white/80">📦</span>
-                            <span className="text-white">{viewing.category}</span>
-                          </div>
-                        )}
+                  {/* Product Header - new style */}
+                  <div className="flex-shrink-0 p-4 border-b border-gray-200 bg-white">
+                    <div className="flex items-start gap-4">
+                      <div className="w-16 h-16 rounded-xl border border-gray-200 overflow-hidden bg-white flex items-center justify-center flex-shrink-0">
+                        <img 
+                          src={viewing.image_base64 || '/ui/assets/placeholders/product.png'} 
+                          className="w-full h-full object-cover" 
+                          alt={viewing.name}
+                        />
                       </div>
-                    </div>
-                  </div>
-
-                  {/* Tabs */}
-                  <div className="flex-shrink-0 px-6 border-b">
-                    <div className="flex gap-1">
+                      <div className="flex-1 min-w-0">
+                        <h2 className="text-sm font-semibold text-gray-900">{viewing.name}</h2>
+                        <div className="flex items-center gap-3 mt-1 text-xs text-gray-600">
+                          {viewing.supplier_name && <span>{viewing.supplier_name}</span>}
+                          {viewing.category && <span>{viewing.category}</span>}
+                        </div>
+                        {/* Tabs - same style as TaskRequests / Suppliers */}
+                        <div className="flex gap-1 border-b border-gray-200 mt-3 -mb-[-1px]">
+                          <button
+                            onClick={() => setProductTab('details')}
+                            className={`px-3 py-2 text-xs font-medium transition-colors border-b-2 -mb-[1px] ${
+                              productTab === 'details'
+                                ? 'border-brand-red text-brand-red'
+                                : 'border-transparent text-gray-600 hover:text-gray-900'
+                            }`}
+                          >
+                            Details
+                          </button>
+                          <button
+                            onClick={() => setProductTab('usage')}
+                            className={`px-3 py-2 text-xs font-medium transition-colors border-b-2 -mb-[1px] ${
+                              productTab === 'usage'
+                                ? 'border-brand-red text-brand-red'
+                                : 'border-transparent text-gray-600 hover:text-gray-900'
+                            }`}
+                          >
+                            Usage {productUsage.length > 0 && `(${productUsage.length})`}
+                          </button>
+                          {canEditProducts && viewing && (
+                            <button
+                              onClick={() => {
+                                setProductTab('related');
+                                if (viewing.id && relatedList.length === 0) {
+                                  handleViewRelated(viewing.id);
+                                }
+                              }}
+                              className={`px-3 py-2 text-xs font-medium transition-colors border-b-2 -mb-[1px] ${
+                                productTab === 'related'
+                                  ? 'border-brand-red text-brand-red'
+                                  : 'border-transparent text-gray-600 hover:text-gray-900'
+                              }`}
+                            >
+                              Related {relatedCounts[viewing.id] ? `(${relatedCounts[viewing.id]})` : ''}
+                            </button>
+                          )}
+                        </div>
+                      </div>
                       <button
-                        onClick={() => setProductTab('details')}
-                        className={`px-4 py-2 font-medium text-sm transition-colors ${
-                          productTab === 'details'
-                            ? 'text-brand-red border-b-2 border-brand-red'
-                            : 'text-gray-600 hover:text-gray-900'
-                        }`}
+                        onClick={resetModal}
+                        className="text-gray-400 hover:text-gray-600 w-8 h-8 flex items-center justify-center rounded-lg hover:bg-gray-100 text-xl font-medium leading-none flex-shrink-0"
+                        title="Close"
                       >
-                        Details
+                        ×
                       </button>
-                      <button
-                        onClick={() => setProductTab('usage')}
-                        className={`px-4 py-2 font-medium text-sm transition-colors ${
-                          productTab === 'usage'
-                            ? 'text-brand-red border-b-2 border-brand-red'
-                            : 'text-gray-600 hover:text-gray-900'
-                        }`}
-                      >
-                        Usage {productUsage.length > 0 && `(${productUsage.length})`}
-                      </button>
-                      {canEditProducts && viewing && (
-                        <button
-                          onClick={() => {
-                            setProductTab('related');
-                            if (viewing.id && relatedList.length === 0) {
-                              handleViewRelated(viewing.id);
-                            }
-                          }}
-                          className={`px-4 py-2 font-medium text-sm transition-colors ${
-                            productTab === 'related'
-                              ? 'text-brand-red border-b-2 border-brand-red'
-                              : 'text-gray-600 hover:text-gray-900'
-                          }`}
-                        >
-                          Related {relatedCounts[viewing.id] ? `(${relatedCounts[viewing.id]})` : ''}
-                        </button>
-                      )}
                     </div>
                   </div>
 
                   {/* Product Details or Usage */}
                   <div className="flex-1 overflow-y-auto">
                   {productTab === 'details' ? (
-                  <div className="px-6 pb-6 space-y-4">
+                  <div className="px-4 pb-4 space-y-4">
                     <div className="grid grid-cols-2 gap-4">
                       {viewing.unit && (
-                        <div className="bg-white border rounded-lg p-4">
-                          <div className="text-xs font-semibold text-gray-600 mb-1">Sell Unit</div>
-                          <div className="text-gray-900">{viewing.unit}</div>
+                        <div className="bg-white border border-gray-200 rounded-lg p-4">
+                          <div className="text-[10px] font-medium text-gray-500 uppercase tracking-wide mb-1">Sell Unit</div>
+                          <div className="text-xs text-gray-900">{viewing.unit}</div>
                         </div>
                       )}
                       {viewing.unit_type && (
-                        <div className="bg-white border rounded-lg p-4">
-                          <div className="text-xs font-semibold text-gray-600 mb-1">Unit Type</div>
-                          <div className="text-gray-900">{viewing.unit_type}</div>
+                        <div className="bg-white border border-gray-200 rounded-lg p-4">
+                          <div className="text-[10px] font-medium text-gray-500 uppercase tracking-wide mb-1">Unit Type</div>
+                          <div className="text-xs text-gray-900">{viewing.unit_type}</div>
                         </div>
                       )}
                     </div>
                     {typeof viewing.price === 'number' && (
-                      <div className="bg-white border rounded-lg p-4">
-                        <div className="text-xs font-semibold text-gray-600 mb-1">Price</div>
-                        <div className="text-gray-900 font-semibold text-lg">${viewing.price.toFixed(2)}</div>
+                      <div className="bg-white border border-gray-200 rounded-lg p-4">
+                        <div className="text-[10px] font-medium text-gray-500 uppercase tracking-wide mb-1">Price</div>
+                        <div className="text-xs text-gray-900 font-semibold">${viewing.price.toFixed(2)}</div>
                       </div>
                     )}
                     {viewing.units_per_package && (
-                      <div className="bg-white border rounded-lg p-4">
-                        <div className="text-xs font-semibold text-gray-600 mb-1">Units per Package</div>
-                        <div className="text-gray-900">{viewing.units_per_package}</div>
+                      <div className="bg-white border border-gray-200 rounded-lg p-4">
+                        <div className="text-[10px] font-medium text-gray-500 uppercase tracking-wide mb-1">Units per Package</div>
+                        <div className="text-xs text-gray-900">{viewing.units_per_package}</div>
                       </div>
                     )}
                     {(viewing.coverage_sqs || viewing.coverage_ft2 || viewing.coverage_m2) && (
-                      <div className="bg-white border rounded-lg p-4">
-                        <div className="text-sm font-semibold text-gray-900 mb-3">📍 Coverage Area</div>
-                        <div className="grid grid-cols-3 gap-2">
-                          <div className="text-gray-700">SQS: {viewing.coverage_sqs||'-'}</div>
-                          <div className="text-gray-700">ft²: {viewing.coverage_ft2||'-'}</div>
-                          <div className="text-gray-700">m²: {viewing.coverage_m2||'-'}</div>
+                      <div className="bg-white border border-gray-200 rounded-lg p-4">
+                        <div className="text-xs font-semibold text-gray-900 mb-2">Coverage Area</div>
+                        <div className="grid grid-cols-3 gap-2 text-xs text-gray-700">
+                          <div>SQS: {viewing.coverage_sqs||'-'}</div>
+                          <div>ft²: {viewing.coverage_ft2||'-'}</div>
+                          <div>m²: {viewing.coverage_m2||'-'}</div>
                         </div>
                       </div>
                     )}
                     {viewing.description && (
-                      <div className="bg-white border rounded-lg p-4">
-                        <div className="text-sm font-semibold text-gray-900 mb-2">Description</div>
-                        <div className="text-gray-700 whitespace-pre-wrap">{viewing.description}</div>
+                      <div className="bg-white border border-gray-200 rounded-lg p-4">
+                        <div className="text-xs font-semibold text-gray-900 mb-2">Description</div>
+                        <div className="text-xs text-gray-700 whitespace-pre-wrap">{viewing.description}</div>
                       </div>
                     )}
                     {viewing.technical_manual_url && (() => {
-                      // Ensure URL is absolute (add https:// if missing protocol)
                       const url = viewing.technical_manual_url.trim();
                       const absoluteUrl = url.match(/^https?:\/\//i) ? url : `https://${url}`;
                       return (
-                        <div className="bg-white border rounded-lg p-4">
+                        <div className="bg-white border border-gray-200 rounded-lg p-4">
                           <div className="flex items-center justify-between">
-                            <div className="text-sm font-semibold text-gray-900">Technical Manual</div>
+                            <div className="text-xs font-semibold text-gray-900">Technical Manual</div>
                             <a
                               href={absoluteUrl}
                               target="_blank"
                               rel="noopener noreferrer"
                               onClick={(e) => {
-                                // Prevent navigation if URL is invalid
-                                if (!absoluteUrl || absoluteUrl === 'https://') {
-                                  e.preventDefault();
-                                }
+                                if (!absoluteUrl || absoluteUrl === 'https://') e.preventDefault();
                               }}
-                              className="px-4 py-2 rounded bg-brand-red text-white hover:bg-[#6d0d0d] transition-colors flex items-center gap-2"
+                              className="px-3 py-2 text-xs font-medium rounded-lg bg-brand-red text-white hover:opacity-90 transition-opacity flex items-center gap-2"
                             >
-                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
                               </svg>
                               View Manual
                             </a>
-      </div>
-    </div>
-  );
-})()}
+                          </div>
+                        </div>
+                      );
+                    })()}
                   </div>
                   ) : productTab === 'usage' ? (
-                    <div className="px-6 pb-6">
+                    <div className="px-4 pb-4">
                       {loadingUsage ? (
-                        <div className="py-8 text-center text-gray-500">Loading usage data...</div>
+                        <div className="py-8 text-center text-xs text-gray-500">Loading usage data...</div>
                       ) : productUsage.length === 0 ? (
-                        <div className="py-8 text-center text-gray-500">
+                        <div className="py-8 text-center text-xs text-gray-500">
                           <div className="text-lg mb-2">📦</div>
                           <div>This product is not being used in any estimates.</div>
                         </div>
                       ) : (
                         <div className="space-y-3">
-                          <div className="text-sm text-gray-600 mb-4">
+                          <div className="text-xs text-gray-600 mb-4">
                             This product is being used in {productUsage.length} estimate{productUsage.length !== 1 ? 's' : ''}:
                           </div>
-                          <div className="border rounded-lg divide-y">
+                          <div className="border border-gray-200 rounded-lg divide-y divide-gray-200">
                             {productUsage.map((usage, idx) => (
                               <div key={idx} className="p-4 hover:bg-gray-50">
                                 {usage.status === 'orphaned' ? (
@@ -1024,7 +1000,7 @@ export default function InventoryProducts(){
                                           navigate(`/projects/${usage.project_id}`);
                                           resetModal();
                                         }}
-                                        className="px-3 py-1.5 rounded bg-brand-red text-white hover:bg-[#6d0d0d] transition-colors text-sm"
+                                        className="px-3 py-2 text-xs font-medium rounded-lg bg-brand-red text-white hover:opacity-90 transition-opacity"
                                       >
                                         View Project
                                       </button>
@@ -1038,13 +1014,13 @@ export default function InventoryProducts(){
                       )}
                     </div>
                   ) : productTab === 'related' && viewing ? (
-                    <div className="px-6 pb-6">
+                    <div className="px-4 pb-4">
                       {Array.isArray(relatedList) && relatedList.length ? (
                         <div className="space-y-3">
-                          <div className="text-sm text-gray-600 mb-4">
+                          <div className="text-xs text-gray-600 mb-4">
                             This product is related to {relatedList.length} product{relatedList.length !== 1 ? 's' : ''}:
                           </div>
-                          <div className="border rounded-lg divide-y">
+                          <div className="border border-gray-200 rounded-lg divide-y divide-gray-200">
                             {relatedList.map((r: any, i: number) => (
                               <div key={i} className="p-4 hover:bg-gray-50 flex items-center gap-4">
                                 <img
@@ -1066,7 +1042,7 @@ export default function InventoryProducts(){
                                 {canEditProducts && (
                                   <button
                                     onClick={() => deleteRelation(viewing.id, r.id)}
-                                    className="px-3 py-1.5 rounded bg-red-100 text-red-700 hover:bg-red-200 text-sm flex-shrink-0"
+                                    className="px-3 py-2 text-xs font-medium rounded-lg bg-red-50 text-red-700 hover:bg-red-100 flex-shrink-0 transition-colors"
                                   >
                                     Remove
                                   </button>
@@ -1077,20 +1053,20 @@ export default function InventoryProducts(){
                           {canEditProducts && (
                             <button
                               onClick={() => handleAddRelated(viewing.id)}
-                              className="w-full mt-4 px-4 py-2 rounded bg-brand-red text-white hover:bg-[#6d0d0d] transition-colors"
+                              className="w-full mt-4 px-3 py-2 text-xs font-medium rounded-lg bg-brand-red text-white hover:opacity-90 transition-opacity"
                             >
                               + Add Related Product
                             </button>
                           )}
                         </div>
                       ) : (
-                        <div className="py-8 text-center text-gray-500">
+                        <div className="py-8 text-center text-xs text-gray-500">
                           <div className="text-lg mb-2">🔗</div>
                           <div>This product has no related products.</div>
                           {canEditProducts && (
                             <button
                               onClick={() => handleAddRelated(viewing.id)}
-                              className="mt-4 px-4 py-2 rounded bg-brand-red text-white hover:bg-[#6d0d0d] transition-colors"
+                              className="mt-4 px-3 py-2 text-xs font-medium rounded-lg bg-brand-red text-white hover:opacity-90 transition-opacity"
                             >
                               + Add Related Product
                             </button>
@@ -1104,41 +1080,32 @@ export default function InventoryProducts(){
               ) : (
                 // Edit/Create mode - form inputs
                 <>
-                  {/* Edit Header */}
-                  <div className="flex-shrink-0 bg-gradient-to-br from-[#7f1010] to-[#a31414] p-6 relative">
+                  {/* Edit Header - new style */}
+                  <div className="flex-shrink-0 flex items-center justify-between p-4 border-b border-gray-200 bg-white">
+                    <div>
+                      <h2 className="text-sm font-semibold text-gray-900">
+                        {editing ? 'Edit Product' : 'New Product'}
+                      </h2>
+                      <p className="text-xs text-gray-500 mt-0.5">
+                        {editing ? 'Update product information' : 'Add a new product to your inventory'}
+                      </p>
+                    </div>
                     <button
                       onClick={resetModal}
-                      className="absolute top-4 right-4 text-white/80 hover:text-white text-2xl font-bold w-8 h-8 flex items-center justify-center rounded hover:bg-white/10"
+                      className="text-gray-400 hover:text-gray-600 w-8 h-8 flex items-center justify-center rounded-lg hover:bg-gray-100 text-xl font-medium leading-none"
                       title="Close"
                     >
                       ×
                     </button>
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <h2 className="text-2xl font-extrabold text-white">
-                          {editing ? 'Edit Product' : 'New Product'}
-                        </h2>
-                        {editing && (
-                          <p className="text-sm text-white/80 mt-1">
-                            Update product information
-                          </p>
-                        )}
-                        {!editing && (
-                          <p className="text-sm text-white/80 mt-1">
-                            Add a new product to your inventory
-                          </p>
-                        )}
-                      </div>
-                    </div>
                   </div>
                   
-                  <div className="flex-1 overflow-y-auto p-6 grid grid-cols-2 gap-4">
+                  <div className="flex-1 overflow-y-auto p-4 grid grid-cols-2 gap-4">
               <div className="col-span-2">
-                <label className="text-xs font-semibold text-gray-700">
+                <label className="text-xs font-medium text-gray-700">
                   Name <span className="text-red-600">*</span>
                 </label>
                 <input 
-                  className={`w-full border rounded px-3 py-2 mt-1 ${nameError && !name.trim() ? 'border-red-500' : ''}`}
+                  className={`w-full border border-gray-200 rounded-lg px-3 py-2 mt-1 text-xs text-gray-900 focus:outline-none focus:ring-1 focus:ring-gray-300 focus:border-gray-300 ${nameError && !name.trim() ? 'border-red-500' : ''}`}
                   value={name} 
                   onChange={e=>{
                     setName(e.target.value);
@@ -1150,7 +1117,7 @@ export default function InventoryProducts(){
                 )}
               </div>
               <div>
-                <label className="text-xs font-semibold text-gray-700">
+                <label className="text-xs font-medium text-gray-700">
                   Supplier <span className="text-red-600">*</span>
                 </label>
                 <div className="mt-1">
@@ -1169,15 +1136,15 @@ export default function InventoryProducts(){
                   <div className="text-[11px] text-red-600 mt-1">This field is required</div>
                 )}
               </div>
-              <div><label className="text-xs font-semibold text-gray-700">Category</label><input className="w-full border rounded px-3 py-2 mt-1" value={newCategory} onChange={e=>setNewCategory(e.target.value)} /></div>
-              <div><label className="text-xs font-semibold text-gray-700">Sell Unit</label><input className="w-full border rounded px-3 py-2 mt-1" placeholder="e.g., Roll, Pail (20L), Box" value={unit} onChange={e=>setUnit(e.target.value)} /></div>
+              <div><label className="text-xs font-medium text-gray-700">Category</label><input className="w-full border border-gray-200 rounded-lg px-3 py-2 mt-1 text-xs text-gray-900 focus:outline-none focus:ring-1 focus:ring-gray-300 focus:border-gray-300" value={newCategory} onChange={e=>setNewCategory(e.target.value)} /></div>
+              <div><label className="text-xs font-medium text-gray-700">Sell Unit</label><input className="w-full border border-gray-200 rounded-lg px-3 py-2 mt-1 text-xs text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-1 focus:ring-gray-300 focus:border-gray-300" placeholder="e.g., Roll, Pail (20L), Box" value={unit} onChange={e=>setUnit(e.target.value)} /></div>
               <div>
-                <label className="text-xs font-semibold text-gray-700">
+                <label className="text-xs font-medium text-gray-700">
                   Price ($) <span className="text-red-600">*</span>
                 </label>
                 <input 
                   type="text" 
-                  className={`w-full border rounded px-3 py-2 mt-1 ${priceError && (!price || !price.trim() || Number(parseCurrency(price)) <= 0) ? 'border-red-500' : ''}`}
+                  className={`w-full border border-gray-200 rounded-lg px-3 py-2 mt-1 text-xs text-gray-900 focus:outline-none focus:ring-1 focus:ring-gray-300 focus:border-gray-300 ${priceError && (!price || !price.trim() || Number(parseCurrency(price)) <= 0) ? 'border-red-500' : ''}`}
                   placeholder="$0.00"
                   value={priceFocused ? priceDisplay : (price ? formatCurrency(price) : '')}
                   onFocus={() => {
@@ -1201,89 +1168,89 @@ export default function InventoryProducts(){
                 )}
               </div>
               <div className="col-span-2">
-                <label className="text-xs font-semibold text-gray-700">Unit Type</label>
+                <label className="text-xs font-medium text-gray-700">Unit Type</label>
                 <div className="flex items-center gap-6 mt-1">
-                  <label className="flex items-center gap-2 text-sm"><input type="radio" name="unit-type" checked={unitType==='unitary'} onChange={()=>{ setUnitType('unitary'); setUnitsPerPackage(''); setCovSqs(''); setCovFt2(''); setCovM2(''); }} /> Unitary</label>
-                  <label className="flex items-center gap-2 text-sm"><input type="radio" name="unit-type" checked={unitType==='multiple'} onChange={()=>{ setUnitType('multiple'); setCovSqs(''); setCovFt2(''); setCovM2(''); }} /> Multiple</label>
-                  <label className="flex items-center gap-2 text-sm"><input type="radio" name="unit-type" checked={unitType==='coverage'} onChange={()=>{ setUnitType('coverage'); setUnitsPerPackage(''); }} /> Coverage</label>
+                  <label className="flex items-center gap-2 text-xs"><input type="radio" name="unit-type" checked={unitType==='unitary'} onChange={()=>{ setUnitType('unitary'); setUnitsPerPackage(''); setCovSqs(''); setCovFt2(''); setCovM2(''); }} /> Unitary</label>
+                  <label className="flex items-center gap-2 text-xs"><input type="radio" name="unit-type" checked={unitType==='multiple'} onChange={()=>{ setUnitType('multiple'); setCovSqs(''); setCovFt2(''); setCovM2(''); }} /> Multiple</label>
+                  <label className="flex items-center gap-2 text-xs"><input type="radio" name="unit-type" checked={unitType==='coverage'} onChange={()=>{ setUnitType('coverage'); setUnitsPerPackage(''); }} /> Coverage</label>
                 </div>
               </div>
               {unitType==='multiple' && (
                 <div className="col-span-2">
-                  <label className="text-xs font-semibold text-gray-700">Units per Package</label>
-                  <input type="number" step="0.01" className="w-full border rounded px-3 py-2 mt-1" value={unitsPerPackage} onChange={e=>setUnitsPerPackage(e.target.value)} />
+                  <label className="text-xs font-medium text-gray-700">Units per Package</label>
+                  <input type="number" step="0.01" className="w-full border border-gray-200 rounded-lg px-3 py-2 mt-1 text-xs text-gray-900 focus:outline-none focus:ring-1 focus:ring-gray-300 focus:border-gray-300" value={unitsPerPackage} onChange={e=>setUnitsPerPackage(e.target.value)} />
                 </div>
               )}
               {unitType==='coverage' && (
                 <div className="col-span-2">
-                  <label className="text-xs font-semibold text-gray-700">Coverage Area</label>
+                  <label className="text-xs font-medium text-gray-700">Coverage Area</label>
                   <div className="flex items-center gap-2 mt-1">
                     <div className="flex-1 flex items-center gap-1">
                       <input 
                         type="number"
                         step="any"
-                        className="w-full border rounded px-3 py-2" 
+                        className="w-full border border-gray-200 rounded-lg px-3 py-2 text-xs text-gray-900 focus:outline-none focus:ring-1 focus:ring-gray-300 focus:border-gray-300" 
                         placeholder="0" 
                         value={covSqs} 
                         onChange={e=> onCoverageChange('sqs', e.target.value)} 
                       />
-                      <span className="text-sm text-gray-600 whitespace-nowrap">SQS</span>
+                      <span className="text-xs text-gray-600 whitespace-nowrap">SQS</span>
                     </div>
                     <span className="text-gray-400">=</span>
                     <div className="flex-1 flex items-center gap-1">
                       <input 
                         type="number"
                         step="any"
-                        className="w-full border rounded px-3 py-2" 
+                        className="w-full border border-gray-200 rounded-lg px-3 py-2 text-xs text-gray-900 focus:outline-none focus:ring-1 focus:ring-gray-300 focus:border-gray-300" 
                         placeholder="0" 
                         value={covFt2} 
                         onChange={e=> onCoverageChange('ft2', e.target.value)} 
                       />
-                      <span className="text-sm text-gray-600 whitespace-nowrap">ft²</span>
+                      <span className="text-xs text-gray-600 whitespace-nowrap">ft²</span>
                     </div>
                     <span className="text-gray-400">=</span>
                     <div className="flex-1 flex items-center gap-1">
                       <input 
                         type="number"
                         step="any"
-                        className="w-full border rounded px-3 py-2" 
+                        className="w-full border border-gray-200 rounded-lg px-3 py-2 text-xs text-gray-900 focus:outline-none focus:ring-1 focus:ring-gray-300 focus:border-gray-300" 
                         placeholder="0" 
                         value={covM2} 
                         onChange={e=> onCoverageChange('m2', e.target.value)} 
                       />
-                      <span className="text-sm text-gray-600 whitespace-nowrap">m²</span>
+                      <span className="text-xs text-gray-600 whitespace-nowrap">m²</span>
                     </div>
                   </div>
                 </div>
               )}
-              <div className="col-span-2"><label className="text-xs font-semibold text-gray-700">Description / Notes</label><textarea className="w-full border rounded px-3 py-2 mt-1" rows={3} value={desc} onChange={e=>setDesc(e.target.value)} /></div>
+              <div className="col-span-2"><label className="text-xs font-medium text-gray-700">Description / Notes</label><textarea className="w-full border border-gray-200 rounded-lg px-3 py-2 mt-1 text-xs text-gray-900 focus:outline-none focus:ring-1 focus:ring-gray-300 focus:border-gray-300" rows={3} value={desc} onChange={e=>setDesc(e.target.value)} /></div>
               <div className="col-span-2">
-                <label className="text-xs font-semibold text-gray-700">Technical Manual URL</label>
+                <label className="text-xs font-medium text-gray-700">Technical Manual URL</label>
                 <input 
-                  className="w-full border rounded px-3 py-2 mt-1" 
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2 mt-1 text-xs text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-1 focus:ring-gray-300 focus:border-gray-300" 
                   type="url"
                   placeholder="https://supplier.com/manual/product"
                   value={technicalManualUrl} 
                   onChange={e=>setTechnicalManualUrl(e.target.value)} 
                 />
-                <div className="text-xs text-gray-500 mt-1">Link to the technical manual on the supplier's website</div>
+                <div className="text-[11px] text-gray-500 mt-1">Link to the technical manual on the supplier's website</div>
               </div>
               <div className="col-span-2">
-                <label className="text-xs font-semibold text-gray-700">Product Image</label>
+                <label className="text-xs font-medium text-gray-700">Product Image</label>
                 <div className="mt-1 space-y-2">
                   <button
                     type="button"
                     onClick={() => setImagePickerOpen(true)}
-                    className="px-3 py-2 rounded bg-gray-100 hover:bg-gray-200 text-sm">
+                    className="px-3 py-2 text-xs font-medium rounded-lg border border-gray-200 bg-white hover:bg-gray-50 transition-colors">
                     {imageDataUrl ? 'Change Image' : 'Select Image'}
                   </button>
                   {imageDataUrl && (
                     <div className="mt-2">
-                      <img src={imageDataUrl} className="w-32 h-32 object-contain border rounded" alt="Preview" />
+                      <img src={imageDataUrl} className="w-32 h-32 object-contain border border-gray-200 rounded-lg" alt="Preview" />
                       <button
                         type="button"
                         onClick={() => setImageDataUrl('')}
-                        className="mt-2 px-2 py-1 text-xs rounded bg-red-100 text-red-700 hover:bg-red-200">
+                        className="mt-2 px-2 py-1.5 text-xs font-medium rounded-lg bg-red-50 text-red-700 hover:bg-red-100 transition-colors">
                         Remove Image
                       </button>
                     </div>
@@ -1293,14 +1260,14 @@ export default function InventoryProducts(){
                   </div>
                 </>
               )}
-            <div className="flex-shrink-0 px-4 py-3 border-t bg-gray-50 flex justify-end gap-2">
+            <div className="flex-shrink-0 px-4 py-3 border-t border-gray-200 bg-gray-50 flex justify-end gap-2">
               {viewing && !editing ? (
                 // View mode buttons
                 <>
                   {canEditProducts && (
                     <>
-                      <button onClick={openEditModal} className="px-4 py-2 rounded bg-gray-100">Edit</button>
-                      <button onClick={()=> handleDelete(viewing.id)} className="px-4 py-2 rounded bg-red-600 text-white hover:bg-red-700">Delete</button>
+                      <button onClick={openEditModal} className="px-3 py-2 text-xs font-medium text-gray-700 border border-gray-200 rounded-lg bg-white hover:bg-gray-50 transition-colors">Edit</button>
+                      <button onClick={()=> handleDelete(viewing.id)} className="px-3 py-2 text-xs font-medium text-white bg-red-600 rounded-lg hover:opacity-90 transition-opacity">Delete</button>
                     </>
                   )}
                 </>
@@ -1317,7 +1284,7 @@ export default function InventoryProducts(){
                     }else{
                       resetModal();
                     }
-                  }} className="px-4 py-2 rounded bg-gray-200 hover:bg-gray-300">Cancel</button>
+                  }} className="px-3 py-2 text-xs font-medium text-gray-700 border border-gray-200 rounded-lg bg-white hover:bg-gray-50 transition-colors">Cancel</button>
                   <button onClick={async()=>{
                     if(isSavingProduct) return;
                     
@@ -1366,7 +1333,7 @@ export default function InventoryProducts(){
                       await refetch();
                     }catch(_e){ toast.error('Failed'); }
                     finally{ setIsSavingProduct(false); }
-                  }} disabled={isSavingProduct} className="px-4 py-2 rounded bg-brand-red text-white disabled:opacity-50 disabled:cursor-not-allowed">
+                  }} disabled={isSavingProduct} className="px-3 py-2 text-xs font-medium text-white bg-brand-red rounded-lg hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed transition-opacity">
                     {isSavingProduct ? (editing ? 'Updating...' : 'Creating...') : (editing ? 'Update' : 'Create')}
                   </button>
                 </>

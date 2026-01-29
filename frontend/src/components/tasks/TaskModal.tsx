@@ -297,10 +297,10 @@ export default function TaskModal({ open, taskId, onClose, onUpdated }: Props) {
   return (
     <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4" onClick={onClose}>
       <div
-        className="bg-white rounded-2xl max-w-[75vw] w-full h-[85vh] max-h-[85vh] overflow-hidden flex flex-col shadow-xl border border-gray-200/60 relative"
+        className="bg-white rounded-xl max-w-[75vw] w-full h-[85vh] max-h-[85vh] overflow-hidden flex flex-col shadow-xl border border-gray-200 relative"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className={`absolute top-0 left-0 right-0 h-2.5 ${getStatusBorderColor(task?.status)} z-10 rounded-t-2xl`} />
+        <div className={`absolute top-0 left-0 right-0 h-2.5 ${getStatusBorderColor(task?.status)} z-10 rounded-t-xl`} />
 
         {/* Header */}
         <div className="sticky top-0 bg-white px-6 py-5 border-b border-gray-200/60 flex items-center justify-between gap-4 relative flex-shrink-0">
@@ -320,7 +320,7 @@ export default function TaskModal({ open, taskId, onClose, onUpdated }: Props) {
               <div className="flex items-center gap-2">
                 {!isEditingTitle ? (
                   <div
-                    className="text-xl font-semibold text-gray-900 truncate cursor-text"
+                    className="text-sm font-semibold text-gray-900 truncate cursor-text"
                     onClick={() => {
                       if (isBusy) return;
                       setIsEditingTitle(true);
@@ -351,7 +351,7 @@ export default function TaskModal({ open, taskId, onClose, onUpdated }: Props) {
                       }
                     }}
                     disabled={!task || isBusy}
-                    className="w-full text-xl font-semibold text-gray-900 bg-white border border-gray-200/60 focus:border-brand-red/40 focus:ring-2 focus:ring-brand-red/30 rounded-lg px-3 py-2"
+                    className="w-full text-sm font-semibold text-gray-900 bg-white border border-gray-200 focus:border-brand-red/40 focus:ring-2 focus:ring-brand-red/30 rounded-lg px-3 py-2"
                   />
                 )}
                 {task?.priority && (

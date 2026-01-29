@@ -239,7 +239,7 @@ export default function TaskCard({ task, onClick, showActions = true }: Props) {
                   e.stopPropagation();
                   a.onClick();
                 }}
-                className="px-2.5 py-1 rounded-md text-[11px] font-semibold border border-gray-200/60 bg-white hover:bg-gray-50 disabled:opacity-60"
+                className="px-3 py-1.5 rounded-lg text-xs font-medium border border-gray-200 bg-white hover:bg-gray-50 disabled:opacity-60"
               >
                 {a.label}
               </button>

@@ -209,79 +209,97 @@ export default function TaskRequestsPage() {
     }
   };
 
+  const todayLabel = useMemo(() => {
+    return new Date().toLocaleDateString('en-CA', {
+      weekday: 'long',
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric',
+    });
+  }, []);
+
   return (
-    <div className="space-y-6 min-w-0 overflow-x-hidden">
-      {/* Page Header */}
-      <div className="bg-slate-200/50 rounded-[12px] border border-slate-200 flex items-center justify-between py-4 px-6 mb-6">
-        <div>
-          <div className="text-xl font-bold text-gray-900 tracking-tight mb-0.5">Requests</div>
-          <div className="text-sm text-gray-500 font-medium">Conversations that may become tasks</div>
+    <div className="space-y-4 min-w-0 overflow-x-hidden">
+      {/* Title Bar - same layout and font sizes as Projects / Customers */}
+      <div className="rounded-xl border bg-white p-4 mb-4">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3 flex-1">
+            <div>
+              <div className="text-sm font-semibold text-gray-900">Requests</div>
+              <div className="text-xs text-gray-500 mt-0.5">Conversations that may become tasks</div>
+            </div>
+          </div>
+          <div className="text-right">
+            <div className="text-[10px] font-medium text-gray-500 uppercase tracking-wide">Today</div>
+            <div className="text-xs font-semibold text-gray-700 mt-0.5">{todayLabel}</div>
+          </div>
         </div>
       </div>
       
       {/* Tabs */}
-      <div className="flex items-center gap-1 border-b border-gray-200">
-        <button
-          onClick={() => setActiveTab('all')}
-          className={`px-4 py-2 text-sm font-medium transition-colors border-b-2 -mb-[1px] ${
-            activeTab === 'all'
-              ? 'border-brand-red text-brand-red'
-              : 'border-transparent text-gray-600 hover:text-gray-900'
-          }`}
-        >
-          All
-        </button>
-        <button
-          onClick={() => setActiveTab('received')}
-          className={`px-4 py-2 text-sm font-medium transition-colors border-b-2 -mb-[1px] ${
-            activeTab === 'received'
-              ? 'border-brand-red text-brand-red'
-              : 'border-transparent text-gray-600 hover:text-gray-900'
-          }`}
-        >
-          Received
-        </button>
-        <button
-          onClick={() => setActiveTab('sent')}
-          className={`px-4 py-2 text-sm font-medium transition-colors border-b-2 -mb-[1px] ${
-            activeTab === 'sent'
-              ? 'border-brand-red text-brand-red'
-              : 'border-transparent text-gray-600 hover:text-gray-900'
-          }`}
-        >
-          Sent
-        </button>
-        <button
-          onClick={() => setActiveTab('needs_info')}
-          className={`px-4 py-2 text-sm font-medium transition-colors border-b-2 -mb-[1px] ${
-            activeTab === 'needs_info'
-              ? 'border-brand-red text-brand-red'
-              : 'border-transparent text-gray-600 hover:text-gray-900'
-          }`}
-        >
-          Awaiting Info
-        </button>
-        <button
-          onClick={() => setActiveTab('completed')}
-          className={`px-4 py-2 text-sm font-medium transition-colors border-b-2 -mb-[1px] ${
-            activeTab === 'completed'
-              ? 'border-brand-red text-brand-red'
-              : 'border-transparent text-gray-600 hover:text-gray-900'
-          }`}
-        >
-          Completed
-        </button>
+      <div className="rounded-xl border border-gray-200 bg-white overflow-hidden">
+        <div className="flex items-center gap-1 border-b border-gray-200 px-4">
+          <button
+            onClick={() => setActiveTab('all')}
+            className={`px-3 py-2 text-xs font-medium transition-colors border-b-2 -mb-[1px] ${
+              activeTab === 'all'
+                ? 'border-brand-red text-brand-red'
+                : 'border-transparent text-gray-600 hover:text-gray-900'
+            }`}
+          >
+            All
+          </button>
+          <button
+            onClick={() => setActiveTab('received')}
+            className={`px-3 py-2 text-xs font-medium transition-colors border-b-2 -mb-[1px] ${
+              activeTab === 'received'
+                ? 'border-brand-red text-brand-red'
+                : 'border-transparent text-gray-600 hover:text-gray-900'
+            }`}
+          >
+            Received
+          </button>
+          <button
+            onClick={() => setActiveTab('sent')}
+            className={`px-3 py-2 text-xs font-medium transition-colors border-b-2 -mb-[1px] ${
+              activeTab === 'sent'
+                ? 'border-brand-red text-brand-red'
+                : 'border-transparent text-gray-600 hover:text-gray-900'
+            }`}
+          >
+            Sent
+          </button>
+          <button
+            onClick={() => setActiveTab('needs_info')}
+            className={`px-3 py-2 text-xs font-medium transition-colors border-b-2 -mb-[1px] ${
+              activeTab === 'needs_info'
+                ? 'border-brand-red text-brand-red'
+                : 'border-transparent text-gray-600 hover:text-gray-900'
+            }`}
+          >
+            Awaiting Info
+          </button>
+          <button
+            onClick={() => setActiveTab('completed')}
+            className={`px-3 py-2 text-xs font-medium transition-colors border-b-2 -mb-[1px] ${
+              activeTab === 'completed'
+                ? 'border-brand-red text-brand-red'
+                : 'border-transparent text-gray-600 hover:text-gray-900'
+            }`}
+          >
+            Completed
+          </button>
       </div>
 
       {/* Two-Column Layout */}
-      <div className="grid grid-cols-1 lg:grid-cols-[1fr_1.5fr] gap-6 min-w-0">
+      <div className="grid grid-cols-1 lg:grid-cols-[1fr_1.5fr] gap-4 min-w-0 rounded-b-xl border border-t-0 border-gray-200 bg-white overflow-hidden">
         {/* Left: Requests List */}
-        <div className="bg-white rounded-lg border border-gray-200/60 shadow-sm overflow-hidden min-w-0">
+        <div className="min-w-0 overflow-hidden">
           {isLoading ? (
-            <div className="p-8 text-center text-sm text-gray-500">Loading requests...</div>
+            <div className="p-8 text-center text-xs text-gray-500">Loading requests...</div>
           ) : filteredRequests.length === 0 ? (
-            <div className="p-12 text-center">
-              <div className="text-sm text-gray-500 mb-2">
+            <div className="p-8 text-center">
+              <div className="text-xs text-gray-500 mb-2">
                 {activeTab === 'all'
                   ? 'No requests yet. Create your first request to get started.'
                   : `No ${activeTab === 'needs_info' ? 'awaiting info' : activeTab} requests.`}
@@ -289,24 +307,23 @@ export default function TaskRequestsPage() {
               {activeTab === 'all' && (
                 <button
                   onClick={() => setShowCreateModal(true)}
-                  className="mt-4 px-4 py-2 bg-brand-red text-white rounded-lg hover:bg-red-700 transition-colors font-medium text-sm"
+                  className="mt-4 rounded-lg px-3 py-2 bg-brand-red text-white text-xs font-medium hover:opacity-90 transition-all"
                 >
                   Create Request
                 </button>
               )}
             </div>
           ) : (
-            <div className="divide-y divide-gray-200/60 max-h-[calc(100vh-300px)] overflow-y-auto overflow-x-hidden">
+            <div className="divide-y divide-gray-200 max-h-[calc(100vh-300px)] overflow-y-auto overflow-x-hidden">
               {/* New Request Card - First position */}
-              <div className="p-4 border-b border-gray-200/60">
+              <div className="p-4 border-b border-gray-200">
                 <button
                   type="button"
                   onClick={() => setShowCreateModal(true)}
-                  className="w-full border-2 border-dashed border-gray-300 rounded-lg p-4 hover:border-brand-red hover:bg-gray-50 transition-all text-center bg-white flex flex-col items-center justify-center min-h-[120px]"
+                  className="w-full border-2 border-dashed border-gray-300 rounded-lg p-2.5 hover:border-brand-red hover:bg-gray-50 transition-all text-center bg-white flex items-center justify-center min-h-[60px]"
                 >
-                  <div className="text-4xl text-gray-400 mb-2">+</div>
-                  <div className="font-medium text-sm text-gray-700">New Request</div>
-                  <div className="text-xs text-gray-500 mt-1">Create a new request</div>
+                  <div className="text-lg text-gray-400 mr-2">+</div>
+                  <div className="font-medium text-xs text-gray-700">New Request</div>
                 </button>
               </div>
               {filteredRequests.map((req) => {
@@ -368,7 +385,8 @@ export default function TaskRequestsPage() {
           requestId={selectedRequestId}
           onRefresh={invalidateAll}
         />
-          </div>
+      </div>
+      </div>
 
       {/* Create Request Modal */}
       {showCreateModal && (
@@ -392,7 +410,7 @@ export default function TaskRequestsPage() {
           onRefresh={invalidateAll}
         />
       )}
-            </div>
+    </div>
   );
 }
 
@@ -475,38 +493,38 @@ function RequestDetailsPanel({
 
   if (!requestId) {
     return (
-      <div className="bg-white rounded-lg border border-gray-200/60 shadow-sm p-8 flex items-center justify-center">
+      <div className="bg-white rounded-xl border border-gray-200 p-8 flex items-center justify-center">
         <div className="text-center">
-          <div className="text-sm text-gray-500">Select a request to view details</div>
-          </div>
-                </div>
+          <div className="text-xs text-gray-500">Select a request to view details</div>
+        </div>
+      </div>
     );
   }
 
   if (isLoading) {
     return (
-      <div className="bg-white rounded-lg border border-gray-200/60 shadow-sm p-8">
-        <div className="text-sm text-gray-500">Loading request details...</div>
-              </div>
+      <div className="bg-white rounded-xl border border-gray-200 p-8">
+        <div className="text-xs text-gray-500">Loading request details...</div>
+      </div>
     );
   }
 
   if (!request) {
     return (
-      <div className="bg-white rounded-lg border border-gray-200/60 shadow-sm p-8">
-        <div className="text-sm text-gray-500">Request not found</div>
-            </div>
+      <div className="bg-white rounded-xl border border-gray-200 p-8">
+        <div className="text-xs text-gray-500">Request not found</div>
+      </div>
     );
   }
 
   const statusConfig = getStatusConfig(request.status);
 
   return (
-    <div className="bg-white rounded-lg border border-gray-200/60 shadow-sm flex flex-col min-w-0" style={{ maxHeight: 'calc(100vh - 300px)' }}>
+    <div className="bg-white rounded-xl border border-gray-200 flex flex-col min-w-0" style={{ maxHeight: 'calc(100vh - 300px)' }}>
       {/* Header */}
-      <div className="p-6 border-b border-gray-200/60 min-w-0">
+      <div className="p-4 border-b border-gray-200 min-w-0">
         <div className="flex items-start justify-between gap-3 mb-3 min-w-0">
-          <h2 className="text-lg font-semibold text-gray-900 truncate flex-1 min-w-0">{request.title}</h2>
+          <h2 className="text-sm font-semibold text-gray-900 truncate flex-1 min-w-0">{request.title}</h2>
           <div className="flex items-center gap-2 flex-wrap flex-shrink-0">
             <span className={`text-xs uppercase tracking-wide rounded-full border px-2 py-1 font-semibold ${statusConfig.bg} ${statusConfig.text} ${statusConfig.border}`}>
               {statusConfig.label}
@@ -516,7 +534,7 @@ function RequestDetailsPanel({
             </span>
             </div>
           </div>
-        <div className="text-sm text-gray-600 space-y-1">
+        <div className="text-xs text-gray-600 space-y-1">
           <div>Requested by: <span className="font-medium text-gray-900">{request.requested_by?.name || 'Unknown'}</span></div>
           <div>Target: <span className="font-medium text-gray-900">
             {request.target.type === 'user'
@@ -538,48 +556,48 @@ function RequestDetailsPanel({
       </div>
 
       {/* Body: Conversation Timeline */}
-      <div className="flex-1 overflow-y-auto overflow-x-hidden p-6 space-y-4 min-w-0">
+      <div className="flex-1 overflow-y-auto overflow-x-hidden p-4 space-y-4 min-w-0">
         {request.description && (
-          <div className="rounded-lg border border-gray-200/60 bg-gray-50/50 p-4">
-            <div className="text-xs text-gray-500 mb-1">Initial Request</div>
-            <div className="text-sm text-gray-700 whitespace-pre-wrap">{request.description}</div>
+          <div className="rounded-xl border border-gray-200 bg-gray-50/50 p-4">
+            <div className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide mb-1">Initial Request</div>
+            <div className="text-xs text-gray-700 whitespace-pre-wrap">{request.description}</div>
           </div>
         )}
 
         {request.messages && request.messages.length > 0 ? (
           <div className="space-y-3">
             {request.messages.map((msg) => (
-              <div key={msg.id} className="rounded-lg border border-gray-200/60 bg-white p-4">
-                <div className="flex items-center justify-between text-xs text-gray-500 mb-2">
+              <div key={msg.id} className="rounded-xl border border-gray-200 bg-white p-4">
+                <div className="flex items-center justify-between text-[10px] text-gray-500 mb-2">
                   <span className="font-medium">{msg.sender_name || 'System'}</span>
                   <span>{new Date(msg.created_at).toLocaleString()}</span>
                 </div>
-                <div className="text-sm text-gray-800 whitespace-pre-wrap">{msg.body}</div>
+                <div className="text-xs text-gray-800 whitespace-pre-wrap">{msg.body}</div>
               </div>
             ))}
           </div>
         ) : (
-          <div className="text-sm text-gray-500 text-center py-4">No messages yet</div>
+          <div className="text-xs text-gray-500 text-center py-4">No messages yet</div>
         )}
       </div>
 
       {/* Footer: Actions */}
-      <div className="p-6 border-t border-gray-200/60 space-y-4 bg-gray-50/50">
+      <div className="p-4 border-t border-gray-200 space-y-4 bg-gray-50/50">
         {request.permissions.can_request_info && (
           <div className="space-y-2">
-            <label className="block text-sm font-medium text-gray-700">Request more information</label>
+            <label className="block text-xs font-semibold text-gray-700">Request more information</label>
             <textarea
               value={infoMessage}
               onChange={(e) => setInfoMessage(e.target.value)}
               rows={2}
               placeholder="What information do you need?"
-              className="w-full rounded-lg border border-gray-200/60 px-3 py-2 text-sm focus:ring-2 focus:ring-brand-red/40 focus:border-brand-red/60"
+              className="w-full rounded-lg border border-gray-200 px-3 py-2 text-xs focus:ring-2 focus:ring-brand-red/40 focus:border-brand-red/60"
             />
-        <button
+            <button
               onClick={() => askInfoMutation.mutate(infoMessage)}
               disabled={askInfoMutation.isLoading || !infoMessage.trim()}
-              className="px-4 py-2 bg-brand-red text-white rounded-lg hover:bg-red-700 transition-colors text-sm font-medium disabled:opacity-60"
-        >
+              className="px-3 py-2 bg-brand-red text-white rounded-lg hover:opacity-90 transition-colors text-xs font-medium disabled:opacity-60"
+            >
               {askInfoMutation.isLoading ? 'Sending...' : 'Send Request'}
             </button>
           </div>
@@ -587,30 +605,30 @@ function RequestDetailsPanel({
 
         {request.permissions.can_provide_info && (
           <div className="space-y-2">
-            <label className="block text-sm font-medium text-gray-700">Provide clarification</label>
+            <label className="block text-xs font-semibold text-gray-700">Provide clarification</label>
             <textarea
               value={clarificationMessage}
               onChange={(e) => setClarificationMessage(e.target.value)}
               rows={2}
               placeholder="Add the requested information..."
-              className="w-full rounded-lg border border-gray-200/60 px-3 py-2 text-sm focus:ring-2 focus:ring-brand-red/40 focus:border-brand-red/60"
+              className="w-full rounded-lg border border-gray-200 px-3 py-2 text-xs focus:ring-2 focus:ring-brand-red/40 focus:border-brand-red/60"
             />
             <button
               onClick={() => provideInfoMutation.mutate(clarificationMessage)}
               disabled={provideInfoMutation.isLoading || !clarificationMessage.trim()}
-              className="px-4 py-2 bg-brand-red text-white rounded-lg hover:bg-red-700 transition-colors text-sm font-medium disabled:opacity-60"
+              className="px-3 py-2 bg-brand-red text-white rounded-lg hover:opacity-90 transition-colors text-xs font-medium disabled:opacity-60"
             >
               {provideInfoMutation.isLoading ? 'Sending...' : 'Send Clarification'}
-        </button>
-      </div>
+            </button>
+          </div>
         )}
 
-        <div className="flex items-center gap-2 pt-2 border-t border-gray-200/60">
+        <div className="flex items-center gap-2 pt-2 border-t border-gray-200">
           {request.permissions.can_accept && (
             <button
               onClick={() => acceptMutation.mutate()}
               disabled={acceptMutation.isLoading}
-              className="flex-1 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors text-sm font-medium disabled:opacity-60"
+              className="flex-1 px-3 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors text-xs font-medium disabled:opacity-60"
             >
               {acceptMutation.isLoading ? 'Creating...' : 'Accept & Create Task'}
             </button>
@@ -621,7 +639,7 @@ function RequestDetailsPanel({
                 <button
                   onClick={() => setShowRefuseForm(true)}
                   disabled={refuseMutation.isLoading || acceptMutation.isLoading}
-                  className="px-4 py-2 bg-rose-600 text-white rounded-lg hover:bg-rose-700 transition-colors text-sm font-medium disabled:opacity-60"
+                  className="px-3 py-2 bg-rose-600 text-white rounded-lg hover:bg-rose-700 transition-colors text-xs font-medium disabled:opacity-60"
                 >
                   Refuse
                 </button>
@@ -632,13 +650,13 @@ function RequestDetailsPanel({
                     onChange={(e) => setRefuseMessage(e.target.value)}
                     rows={2}
                     placeholder="Reason (optional)"
-                    className="w-full rounded-lg border border-gray-200/60 px-3 py-2 text-sm"
+                    className="w-full rounded-lg border border-gray-200 px-3 py-2 text-xs"
                   />
                   <div className="flex gap-2">
                     <button
                       onClick={() => refuseMutation.mutate(refuseMessage)}
                       disabled={refuseMutation.isLoading}
-                      className="px-4 py-2 bg-rose-600 text-white rounded-lg hover:bg-rose-700 transition-colors text-sm font-medium disabled:opacity-60"
+                      className="px-3 py-2 bg-rose-600 text-white rounded-lg hover:bg-rose-700 transition-colors text-xs font-medium disabled:opacity-60"
                     >
                       Confirm Refusal
                     </button>
@@ -647,12 +665,12 @@ function RequestDetailsPanel({
                         setShowRefuseForm(false);
                         setRefuseMessage('');
                       }}
-                      className="px-4 py-2 border border-gray-200/60 rounded-lg hover:bg-gray-50 transition-colors text-sm font-medium"
+                      className="px-3 py-2 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors text-xs font-medium"
                     >
                       Cancel
                     </button>
-        </div>
-            </div>
+                  </div>
+                </div>
               )}
             </>
           )}
@@ -748,13 +766,13 @@ function ViewRequestModal({
         onClick={onClose}
       >
         <div 
-          className="bg-white rounded-2xl shadow-xl w-full max-w-[75vw] max-h-[90vh] overflow-hidden flex flex-col"
+          className="bg-white rounded-xl shadow-xl w-full max-w-[75vw] max-h-[90vh] overflow-hidden flex flex-col border border-gray-200"
           onClick={(e) => e.stopPropagation()}
         >
-          <div className="p-8 text-center text-gray-500">Loading request details...</div>
-                    </div>
-                  </div>
-                );
+          <div className="p-8 text-center text-xs text-gray-500">Loading request details...</div>
+        </div>
+      </div>
+    );
   }
 
   if (!request) {
@@ -764,10 +782,10 @@ function ViewRequestModal({
         onClick={onClose}
       >
         <div 
-          className="bg-white rounded-2xl shadow-xl w-full max-w-[75vw] max-h-[90vh] overflow-hidden flex flex-col"
+          className="bg-white rounded-xl shadow-xl w-full max-w-[75vw] max-h-[90vh] overflow-hidden flex flex-col border border-gray-200"
           onClick={(e) => e.stopPropagation()}
         >
-          <div className="p-8 text-center text-gray-500">Request not found</div>
+          <div className="p-8 text-center text-xs text-gray-500">Request not found</div>
         </div>
       </div>
     );
@@ -781,81 +799,81 @@ function ViewRequestModal({
       onClick={onClose}
     >
       <div 
-        className="bg-white rounded-2xl shadow-xl w-full max-w-[75vw] max-h-[90vh] overflow-hidden flex flex-col border border-gray-200/60"
+        className="bg-white rounded-xl shadow-xl w-full max-w-[75vw] max-h-[90vh] overflow-hidden flex flex-col border border-gray-200"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
-        <div className="p-6 border-b border-gray-200/60 flex-shrink-0">
+        <div className="p-4 border-b border-gray-200 flex-shrink-0">
           <div className="flex items-start justify-between gap-4">
             <div className="flex-1">
               <div className="flex items-center gap-3 mb-2">
-                <div className="w-10 h-10 rounded-lg bg-brand-red/10 flex items-center justify-center">
+                <div className="w-10 h-10 rounded-xl bg-brand-red/10 flex items-center justify-center">
                   <svg className="w-5 h-5 text-brand-red" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                   </svg>
                 </div>
                 <div className="flex-1">
-                  <h2 className="text-xl font-semibold text-gray-900">{request.title}</h2>
-                  <p className="text-sm text-gray-600 mt-1">Request details and conversation</p>
+                  <h2 className="text-sm font-semibold text-gray-900">{request.title}</h2>
+                  <p className="text-xs text-gray-500 mt-0.5">Request details and conversation</p>
                 </div>
               </div>
             </div>
-                <button
+            <button
               onClick={onClose}
               className="text-2xl font-bold text-gray-400 hover:text-gray-600 w-8 h-8 flex items-center justify-center rounded-lg hover:bg-gray-100 transition-colors"
-                >
+            >
               ×
-                </button>
+            </button>
           </div>
         </div>
 
         {/* Body - Two Column Layout */}
         <div className="flex-1 overflow-hidden flex">
           {/* Left: Main Content */}
-          <div className="flex-1 overflow-y-auto p-6 space-y-6">
+          <div className="flex-1 overflow-y-auto p-4 space-y-4">
             {request.description && (
-              <div className="rounded-xl border border-gray-200/60 bg-gray-50/50 p-5">
-                <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Initial Request</div>
-                <div className="text-sm text-gray-700 whitespace-pre-wrap">{request.description}</div>
-            </div>
-          )}
+              <div className="rounded-xl border border-gray-200 bg-gray-50/50 p-4">
+                <div className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide mb-2">Initial Request</div>
+                <div className="text-xs text-gray-700 whitespace-pre-wrap">{request.description}</div>
+              </div>
+            )}
 
             <div>
-              <h3 className="text-sm font-semibold text-gray-900 mb-4">Conversation</h3>
+              <h3 className="text-sm font-semibold text-gray-900 mb-3">Conversation</h3>
               {request.messages && request.messages.length > 0 ? (
-                <div className="space-y-4">
+                <div className="space-y-3">
                   {request.messages.map((msg) => (
-                    <div key={msg.id} className="rounded-xl border border-gray-200/60 bg-white p-4">
-                      <div className="flex items-center justify-between text-xs text-gray-500 mb-2">
+                    <div key={msg.id} className="rounded-xl border border-gray-200 bg-white p-4">
+                      <div className="flex items-center justify-between text-[10px] text-gray-500 mb-2">
                         <span className="font-medium">{msg.sender_name || 'System'}</span>
                         <span>{new Date(msg.created_at).toLocaleString()}</span>
-        </div>
-                      <div className="text-sm text-gray-800 whitespace-pre-wrap">{msg.body}</div>
+                      </div>
+                      <div className="text-xs text-gray-800 whitespace-pre-wrap">{msg.body}</div>
                     </div>
                   ))}
                 </div>
               ) : (
-                <div className="text-sm text-gray-500 text-center py-8 border border-gray-200/60 rounded-xl bg-gray-50/50">
+                <div className="text-xs text-gray-500 text-center py-8 border border-gray-200 rounded-xl bg-gray-50/50">
                   No messages yet
                 </div>
               )}
-      </div>
+            </div>
 
             {/* Action Inputs */}
             {request.permissions.can_request_info && (
-              <div className="rounded-xl border border-gray-200/60 bg-gray-50/50 p-5 space-y-3">
-                <label className="block text-sm font-medium text-gray-700">Request more information</label>
+              <div className="rounded-xl border border-gray-200 bg-gray-50/50 p-4 space-y-2">
+                <label className="block text-xs font-semibold text-gray-700">Request more information</label>
                 <textarea
                   value={infoMessage}
                   onChange={(e) => setInfoMessage(e.target.value)}
                   rows={3}
                   placeholder="What information do you need?"
-                  className="w-full rounded-lg border border-gray-200/60 px-4 py-2 text-sm focus:ring-2 focus:ring-brand-red/40 focus:border-brand-red/60"
+                  className="w-full rounded-lg border border-gray-200 px-3 py-2 text-xs focus:ring-2 focus:ring-brand-red/40 focus:border-brand-red/60"
                 />
                 <button
                   onClick={() => askInfoMutation.mutate(infoMessage)}
                   disabled={askInfoMutation.isLoading || !infoMessage.trim()}
-                  className="px-4 py-2 bg-brand-red text-white rounded-lg hover:bg-red-700 transition-colors text-sm font-medium disabled:opacity-60"
+                  className="px-3 py-2 bg-brand-red text-white rounded-lg hover:opacity-90 transition-colors text-xs font-medium disabled:opacity-60"
                 >
                   {askInfoMutation.isLoading ? 'Sending...' : 'Send Request'}
                 </button>
@@ -863,19 +881,19 @@ function ViewRequestModal({
             )}
 
             {request.permissions.can_provide_info && (
-              <div className="rounded-xl border border-gray-200/60 bg-gray-50/50 p-5 space-y-3">
-                <label className="block text-sm font-medium text-gray-700">Provide clarification</label>
+              <div className="rounded-xl border border-gray-200 bg-gray-50/50 p-4 space-y-2">
+                <label className="block text-xs font-semibold text-gray-700">Provide clarification</label>
                 <textarea
                   value={clarificationMessage}
                   onChange={(e) => setClarificationMessage(e.target.value)}
                   rows={3}
                   placeholder="Add the requested information..."
-                  className="w-full rounded-lg border border-gray-200/60 px-4 py-2 text-sm focus:ring-2 focus:ring-brand-red/40 focus:border-brand-red/60"
+                  className="w-full rounded-lg border border-gray-200 px-3 py-2 text-xs focus:ring-2 focus:ring-brand-red/40 focus:border-brand-red/60"
                 />
                 <button
                   onClick={() => provideInfoMutation.mutate(clarificationMessage)}
                   disabled={provideInfoMutation.isLoading || !clarificationMessage.trim()}
-                  className="px-4 py-2 bg-brand-red text-white rounded-lg hover:bg-red-700 transition-colors text-sm font-medium disabled:opacity-60"
+                  className="px-3 py-2 bg-brand-red text-white rounded-lg hover:opacity-90 transition-colors text-xs font-medium disabled:opacity-60"
                 >
                   {provideInfoMutation.isLoading ? 'Sending...' : 'Send Clarification'}
                 </button>
@@ -884,7 +902,7 @@ function ViewRequestModal({
           </div>
 
           {/* Right: Context Panel */}
-          <div className="w-80 border-l border-gray-200/60 bg-gray-50/30 p-6 space-y-5 flex-shrink-0 overflow-y-auto">
+          <div className="w-80 border-l border-gray-200 bg-gray-50/30 p-4 space-y-4 flex-shrink-0 overflow-y-auto">
             <div>
               <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">Status</div>
               <div className="flex flex-wrap gap-2">
@@ -898,8 +916,8 @@ function ViewRequestModal({
             </div>
 
             <div>
-              <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">Details</div>
-              <div className="space-y-3 text-sm">
+              <div className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide mb-2">Details</div>
+              <div className="space-y-3 text-xs">
                 <div>
                   <div className="text-gray-500 mb-1">Requested by</div>
                   <div className="font-medium text-gray-900">{request.requested_by?.name || 'Unknown'}</div>
@@ -941,10 +959,10 @@ function ViewRequestModal({
         </div>
 
         {/* Footer */}
-        <div className="p-6 border-t border-gray-200/60 bg-gray-50/50 flex items-center justify-end gap-3 flex-shrink-0">
+        <div className="p-4 border-t border-gray-200 bg-gray-50/50 flex items-center justify-end gap-2 flex-shrink-0">
           <button
             onClick={onClose}
-            className="px-4 py-2 rounded-lg border border-gray-200/60 hover:bg-gray-50 transition-colors text-sm font-medium"
+            className="px-3 py-2 rounded-lg border border-gray-200 hover:bg-gray-50 transition-colors text-xs font-medium"
           >
             Close
           </button>
@@ -952,7 +970,7 @@ function ViewRequestModal({
             <button
               onClick={() => setShowRefuseForm(true)}
               disabled={refuseMutation.isLoading || acceptMutation.isLoading}
-              className="px-4 py-2 bg-rose-600 text-white rounded-lg hover:bg-rose-700 transition-colors text-sm font-medium disabled:opacity-60"
+              className="px-3 py-2 bg-rose-600 text-white rounded-lg hover:bg-rose-700 transition-colors text-xs font-medium disabled:opacity-60"
             >
               Refuse
             </button>
@@ -964,13 +982,13 @@ function ViewRequestModal({
                 onChange={(e) => setRefuseMessage(e.target.value)}
                 rows={2}
                 placeholder="Reason (optional)"
-                className="w-full rounded-lg border border-gray-200/60 px-3 py-2 text-sm"
+                className="w-full rounded-lg border border-gray-200 px-3 py-2 text-xs"
               />
               <div className="flex gap-2">
                 <button
                   onClick={() => refuseMutation.mutate(refuseMessage)}
                   disabled={refuseMutation.isLoading}
-                  className="px-4 py-2 bg-rose-600 text-white rounded-lg hover:bg-rose-700 transition-colors text-sm font-medium disabled:opacity-60"
+                  className="px-3 py-2 bg-rose-600 text-white rounded-lg hover:bg-rose-700 transition-colors text-xs font-medium disabled:opacity-60"
                 >
                   Confirm Refusal
                 </button>
@@ -979,7 +997,7 @@ function ViewRequestModal({
                     setShowRefuseForm(false);
                     setRefuseMessage('');
                   }}
-                  className="px-4 py-2 border border-gray-200/60 rounded-lg hover:bg-gray-50 transition-colors text-sm font-medium"
+                  className="px-3 py-2 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors text-xs font-medium"
                 >
                   Cancel
                 </button>
@@ -990,7 +1008,7 @@ function ViewRequestModal({
             <button
               onClick={() => acceptMutation.mutate()}
               disabled={acceptMutation.isLoading || (showRefuseForm && refuseMutation.isLoading)}
-              className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors text-sm font-medium disabled:opacity-60"
+              className="px-3 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors text-xs font-medium disabled:opacity-60"
             >
               {acceptMutation.isLoading ? 'Creating...' : 'Accept & Create Task'}
             </button>
@@ -1110,21 +1128,21 @@ function CreateRequestModal({
       onClick={onClose}
     >
       <div 
-        className="bg-white rounded-2xl shadow-xl w-full max-w-[75vw] max-h-[90vh] overflow-hidden flex flex-col border border-gray-200/60"
+        className="bg-white rounded-xl shadow-xl w-full max-w-[75vw] max-h-[90vh] overflow-hidden flex flex-col border border-gray-200"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
-        <div className="p-6 border-b border-gray-200/60 flex-shrink-0">
+        <div className="p-4 border-b border-gray-200 flex-shrink-0">
           <div className="flex items-start justify-between gap-4">
             <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-lg bg-brand-red/10 flex items-center justify-center">
+              <div className="w-10 h-10 rounded-xl bg-brand-red/10 flex items-center justify-center">
                 <svg className="w-5 h-5 text-brand-red" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
                 </svg>
               </div>
               <div>
-                <h2 className="text-xl font-semibold text-gray-900">Create Request</h2>
-                <p className="text-sm text-gray-600 mt-1">Start a conversation that may become a task</p>
+                <h2 className="text-sm font-semibold text-gray-900">Create Request</h2>
+                <p className="text-xs text-gray-500 mt-0.5">Start a conversation that may become a task</p>
               </div>
             </div>
             <button
@@ -1139,20 +1157,20 @@ function CreateRequestModal({
         {/* Body - Two Column Layout */}
         <form onSubmit={handleSubmit} className="flex-1 overflow-hidden flex">
           {/* Left: Main Form */}
-          <div className="flex-1 overflow-y-auto p-6 space-y-5">
+          <div className="flex-1 overflow-y-auto p-4 space-y-4">
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Title *</label>
+            <label className="block text-xs font-semibold text-gray-700 mb-1">Title *</label>
             <input
               value={title}
               onChange={(e) => setTitle(e.target.value)}
-              className="w-full rounded-lg border border-gray-200/60 px-3 py-2 focus:ring-2 focus:ring-brand-red/40 focus:border-brand-red/60"
+              className="w-full rounded-lg border border-gray-200 px-3 py-2 text-xs focus:ring-2 focus:ring-brand-red/40 focus:border-brand-red/60"
               placeholder="Short summary"
             />
           </div>
 
           <div className="grid md:grid-cols-2 gap-4">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">Send to</label>
+              <label className="block text-xs font-semibold text-gray-700 mb-2">Send to</label>
               <div className="flex gap-2">
                 <button
                   type="button"
@@ -1179,11 +1197,11 @@ function CreateRequestModal({
               </div>
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Priority</label>
+              <label className="block text-xs font-semibold text-gray-700 mb-1">Priority</label>
               <select
                 value={priority}
                 onChange={(e) => setPriority(e.target.value)}
-                className="w-full rounded-lg border border-gray-200/60 px-3 py-2 focus:ring-2 focus:ring-brand-red/40 focus:border-brand-red/60"
+                className="w-full rounded-lg border border-gray-200 px-3 py-2 text-xs focus:ring-2 focus:ring-brand-red/40 focus:border-brand-red/60"
               >
                 {priorityOptions.map((opt) => (
                   <option key={opt.value} value={opt.value}>
@@ -1266,11 +1284,11 @@ function CreateRequestModal({
             </div>
           ) : (
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Select division</label>
+              <label className="block text-xs font-semibold text-gray-700 mb-1">Select division</label>
               <select
                 value={targetDivisionId}
                 onChange={(e) => setTargetDivisionId(e.target.value)}
-                className="w-full rounded-lg border border-gray-200/60 px-3 py-2 focus:ring-2 focus:ring-brand-red/40 focus:border-brand-red/60"
+                className="w-full rounded-lg border border-gray-200 px-3 py-2 text-xs focus:ring-2 focus:ring-brand-red/40 focus:border-brand-red/60"
               >
                 <option value="">Choose division...</option>
                 {divisions.map((division) => (
@@ -1283,11 +1301,11 @@ function CreateRequestModal({
           )}
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Project (optional)</label>
+            <label className="block text-xs font-semibold text-gray-700 mb-1">Project (optional)</label>
             <select
               value={projectId}
               onChange={(e) => setProjectId(e.target.value)}
-              className="w-full rounded-lg border border-gray-200/60 px-3 py-2 focus:ring-2 focus:ring-brand-red/40 focus:border-brand-red/60"
+              className="w-full rounded-lg border border-gray-200 px-3 py-2 text-xs focus:ring-2 focus:ring-brand-red/40 focus:border-brand-red/60"
             >
               <option value="">No project</option>
               {(projects || []).map((project) => (
@@ -1300,32 +1318,32 @@ function CreateRequestModal({
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Due date (optional)</label>
+            <label className="block text-xs font-semibold text-gray-700 mb-1">Due date (optional)</label>
             <input
               type="date"
               value={dueDate}
               onChange={(e) => setDueDate(e.target.value)}
-              className="w-full rounded-lg border border-gray-200/60 px-3 py-2 focus:ring-2 focus:ring-brand-red/40 focus:border-brand-red/60"
+              className="w-full rounded-lg border border-gray-200 px-3 py-2 text-xs focus:ring-2 focus:ring-brand-red/40 focus:border-brand-red/60"
             />
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Description</label>
+            <label className="block text-xs font-semibold text-gray-700 mb-1">Description</label>
             <textarea
               value={description}
               onChange={(e) => setDescription(e.target.value)}
               rows={4}
-              className="w-full rounded-lg border border-gray-200/60 px-3 py-2 focus:ring-2 focus:ring-brand-red/40 focus:border-brand-red/60"
+              className="w-full rounded-lg border border-gray-200 px-3 py-2 text-xs focus:ring-2 focus:ring-brand-red/40 focus:border-brand-red/60"
               placeholder="Explain what needs to be done..."
             />
           </div>
           </div>
 
           {/* Right: Context Panel */}
-          <div className="w-80 border-l border-gray-200/60 bg-gray-50/30 p-6 space-y-5 flex-shrink-0 overflow-y-auto">
+          <div className="w-80 border-l border-gray-200 bg-gray-50/30 p-4 space-y-4 flex-shrink-0 overflow-y-auto">
             <div>
-              <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">Quick Info</div>
-              <div className="text-sm text-gray-600 space-y-2">
+              <div className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide mb-2">Quick Info</div>
+              <div className="text-xs text-gray-600 space-y-2">
                 <p>Requests allow you to start conversations before creating tasks.</p>
                 <p>You can exchange information and clarify requirements before accepting.</p>
               </div>
@@ -1334,11 +1352,11 @@ function CreateRequestModal({
         </form>
 
         {/* Footer */}
-        <div className="p-6 border-t border-gray-200/60 bg-gray-50/50 flex items-center justify-end gap-3 flex-shrink-0">
+        <div className="p-4 border-t border-gray-200 bg-gray-50/50 flex items-center justify-end gap-2 flex-shrink-0">
           <button 
             type="button" 
             onClick={onClose} 
-            className="px-4 py-2 rounded-lg border border-gray-200/60 hover:bg-gray-50 transition-colors text-sm font-medium"
+            className="px-3 py-2 rounded-lg border border-gray-200 hover:bg-gray-50 transition-colors text-xs font-medium"
           >
             Cancel
           </button>
@@ -1346,7 +1364,7 @@ function CreateRequestModal({
             type="submit"
             onClick={handleSubmit}
             disabled={isSubmitting}
-            className="px-4 py-2 rounded-lg bg-brand-red text-white hover:bg-red-700 transition-colors text-sm font-medium disabled:opacity-60"
+            className="px-3 py-2 rounded-lg bg-brand-red text-white hover:opacity-90 transition-colors text-xs font-medium disabled:opacity-60"
           >
             {isSubmitting ? 'Creating...' : 'Create Request'}
           </button>
@@ -1481,40 +1499,40 @@ function RequestsListModal({
   return (
     <>
       <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4">
-        <div className="bg-white rounded-xl max-w-7xl w-full max-h-[90vh] overflow-hidden flex flex-col">
-          <div className="sticky top-0 bg-white border-b p-4 flex items-center justify-between">
-            <h2 className="text-xl font-semibold">{title}</h2>
-            <div className="flex items-center gap-3">
+        <div className="bg-white rounded-xl max-w-7xl w-full max-h-[90vh] overflow-hidden flex flex-col border border-gray-200">
+          <div className="sticky top-0 bg-white border-b border-gray-200 p-4 flex items-center justify-between">
+            <h2 className="text-sm font-semibold text-gray-900">{title}</h2>
+            <div className="flex items-center gap-2">
               <button
                 onClick={() => setShowHistoryModal(true)}
-                className="px-4 py-2 text-sm font-medium rounded border border-gray-300 hover:bg-gray-50 transition-colors"
+                className="px-3 py-2 text-xs font-medium rounded-lg border border-gray-200 hover:bg-gray-50 transition-colors"
               >
                 History
                 {historyRequests.length > 0 && (
-                  <span className="ml-2 px-1.5 py-0.5 bg-brand-red text-white text-xs font-semibold rounded-full">
+                  <span className="ml-2 px-1.5 py-0.5 bg-brand-red text-white text-[10px] font-semibold rounded-full">
                     {historyRequests.length}
                   </span>
                 )}
               </button>
-              <button onClick={onClose} className="text-2xl font-bold text-gray-400 hover:text-gray-600">
+              <button onClick={onClose} className="text-2xl font-bold text-gray-400 hover:text-gray-600 rounded-lg hover:bg-gray-100 w-8 h-8 flex items-center justify-center">
                 ×
               </button>
             </div>
           </div>
           <div className="flex-1 overflow-hidden flex">
             {/* Left side - List */}
-            <div className="w-80 border-r bg-gray-50 overflow-y-auto flex flex-col">
-              <div className="p-3 border-b bg-white">
-                <div className="text-sm font-medium text-gray-700">
+            <div className="w-80 border-r border-gray-200 bg-gray-50 overflow-y-auto flex flex-col">
+              <div className="p-3 border-b border-gray-200 bg-white">
+                <div className="text-xs font-medium text-gray-700">
                   {activeRequests.length} request{activeRequests.length !== 1 ? 's' : ''}{' '}
-                  <span className="text-xs text-gray-500">(in process)</span>
+                  <span className="text-[10px] text-gray-500">(in process)</span>
                 </div>
               </div>
-              <div className="divide-y flex-1">
+              <div className="divide-y divide-gray-200 flex-1">
                 {isLoading ? (
-                  <div className="p-4 text-sm text-gray-500">Loading...</div>
+                  <div className="p-4 text-xs text-gray-500">Loading...</div>
                 ) : activeRequests.length === 0 ? (
-                  <div className="p-4 text-sm text-gray-500">No active requests</div>
+                  <div className="p-4 text-xs text-gray-500">No active requests</div>
                 ) : (
                   activeRequests.map((req) => (
                   <button
@@ -1560,7 +1578,7 @@ function RequestsListModal({
               <div className="p-6 space-y-6">
                 <div className="flex flex-col gap-1">
                   <div className="flex items-center gap-3 flex-wrap">
-                    <h2 className="text-xl font-semibold">{selected.title}</h2>
+                    <h2 className="text-sm font-semibold text-gray-900">{selected.title}</h2>
                     <span
                       className={`text-xs px-2 py-0.5 rounded-full border ${
                         statusColors[selected.status] || 'bg-gray-100 text-gray-600 border-gray-200'
@@ -1797,7 +1815,7 @@ function RequestsHistoryModal({
     <div className="fixed inset-0 z-[60] bg-black/60 flex items-center justify-center p-4">
       <div className="bg-white rounded-xl max-w-7xl w-full max-h-[90vh] overflow-hidden flex flex-col">
         <div className="sticky top-0 bg-white border-b p-4 flex items-center justify-between">
-          <h2 className="text-xl font-semibold">{title}</h2>
+          <h2 className="text-sm font-semibold text-gray-900">{title}</h2>
           <button onClick={onClose} className="text-2xl font-bold text-gray-400 hover:text-gray-600">
             ×
           </button>
@@ -1861,7 +1879,7 @@ function RequestsHistoryModal({
               <div className="p-6 space-y-6">
                 <div className="flex flex-col gap-1">
                   <div className="flex items-center gap-3 flex-wrap">
-                    <h2 className="text-xl font-semibold">{selected.title}</h2>
+                    <h2 className="text-sm font-semibold text-gray-900">{selected.title}</h2>
                     <span
                       className={`text-xs px-2 py-0.5 rounded-full border ${
                         statusColors[selected.status] || 'bg-gray-100 text-gray-600 border-gray-200'
