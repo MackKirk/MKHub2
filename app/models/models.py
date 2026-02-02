@@ -529,6 +529,7 @@ class ReviewCycle(Base):
     period_start: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
     period_end: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
     template_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("review_templates.id", ondelete="RESTRICT"))
+    template_by_department: Mapped[Optional[dict]] = mapped_column(JSON)  # division name -> template_id (str)
     status: Mapped[str] = mapped_column(String(50), default="draft")
 
 

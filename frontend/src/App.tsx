@@ -37,7 +37,7 @@ import BusinessDashboard from './pages/BusinessDashboard';
 import SystemSettings from './pages/SystemSettings';
 import Users from './pages/Users';
 import UserInfo from './pages/UserInfo';
-import ReviewsAdmin from './pages/ReviewsAdmin';
+import EmployeeReviews from './pages/EmployeeReviews';
 import MyReviews from './pages/MyReviews';
 import ReviewsCompare from './pages/ReviewsCompare';
 import UserDetail from './pages/UserDetail';
@@ -128,7 +128,7 @@ export default function App(){
           <Route path="/community/groups" element={<AppShell><CommunityGroups/></AppShell>} />
           <Route path="/community/insights" element={<AppShell><CommunityInsights/></AppShell>} />
           <Route path="/community/new-post" element={<AppShell><CommunityNewPost/></AppShell>} />
-          <Route path="/reviews/admin" element={<AppShell><ReviewsAdmin/></AppShell>} />
+          <Route path="/reviews/admin" element={<AppShell><EmployeeReviews/></AppShell>} />
           <Route path="/reviews/compare" element={<AppShell><ReviewsCompare/></AppShell>} />
           <Route path="/reviews/my" element={<AppShell><MyReviews/></AppShell>} />
           <Route path="/users/:id" element={<AppShell><UserDetail/></AppShell>} />

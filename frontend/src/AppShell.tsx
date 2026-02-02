@@ -204,7 +204,12 @@ export default function AppShell({ children }: PropsWithChildren){
     queryFn: ()=> api<any[]>('GET', `/auth/users/${encodeURIComponent(userId)}/emergency-contacts`),
     enabled: !!userId
   });
-  
+
+  const { data: reviewsAvailable } = useQuery({
+    queryKey: ['reviews-me-available'],
+    queryFn: () => api<{ available?: boolean }>('GET', '/reviews/me/available'),
+  });
+
   // Check if profile is complete (all required fields filled)
   const isProfileComplete = useMemo(() => {
     // If we're still loading, don't consider it complete yet (but also don't redirect until we know)
@@ -407,8 +412,7 @@ export default function AppShell({ children }: PropsWithChildren){
           { id: 'attendance', label: 'Attendance', path: '/settings/attendance', icon: <IconCalendar />, requiredPermission: 'hr:attendance:read' },
           { id: 'community', label: 'Community', path: '/community', icon: <IconUsersGroup />, requiredPermission: 'hr:community:read' },
           ...(((me?.roles||[]).includes('admin') || (me?.permissions||[]).includes('hr:reviews:admin') || (me?.permissions||[]).includes('reviews:admin')) ? [
-            { id: 'reviews-admin', label: 'Reviews Admin', path: '/reviews/admin', icon: <IconStar />, requiredPermission: 'hr:reviews:admin' },
-            { id: 'reviews-compare', label: 'Reviews Compare', path: '/reviews/compare', icon: <IconStar />, requiredPermission: 'hr:reviews:admin' }
+            { id: 'employee-reviews', label: 'Employee Reviews', path: '/reviews/admin', icon: <IconStar />, requiredPermission: 'hr:reviews:admin' }
           ] : []),
         ] : [],
       ]
@@ -901,7 +905,9 @@ export default function AppShell({ children }: PropsWithChildren){
               {open && (
                 <div className="absolute right-0 top-full mt-2 w-56 rounded-lg border border-gray-200/20 bg-white text-black shadow-xl z-50">
                   <Link to="/profile" onClick={()=>setOpen(false)} className="block px-4 py-2.5 hover:bg-gray-50 transition-colors duration-150">My Information</Link>
-                  <Link to="/reviews/my" onClick={()=>setOpen(false)} className="block px-4 py-2.5 hover:bg-gray-50 transition-colors duration-150">My Reviews</Link>
+                  {reviewsAvailable?.available && (
+                    <Link to="/reviews/my" onClick={()=>setOpen(false)} className="block px-4 py-2.5 hover:bg-gray-50 transition-colors duration-150">Employee Review</Link>
+                  )}
                   <button onClick={handleLogout} className="w-full text-left px-4 py-2.5 hover:bg-gray-50 transition-colors duration-150">Logout</button>
                 </div>
               )}
