@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '@/lib/api';
+import { sortByLabel } from '@/lib/sortOptions';
 import toast from 'react-hot-toast';
 
 type Project = { id:string, code?:string, name?:string };
@@ -38,7 +39,7 @@ export default function LogHours(){
           <div className="flex gap-2">
             <select className="flex-1 border rounded px-3 py-2" value={projectId} onChange={e=>setProjectId(e.target.value)}>
               <option value="">Select a project...</option>
-              {(projects||[]).map(p=> <option key={p.id} value={p.id}>{p.code? `${p.code} — `:''}{p.name||'Project'}</option>)}
+              {sortByLabel(projects||[], p=> (p.name||p.code||p.id||'').toString()).map(p=> <option key={p.id} value={p.id}>{p.code? `${p.code} — `:''}{p.name||'Project'}</option>)}
             </select>
             <input className="w-56 border rounded px-3 py-2" placeholder="Search" value={q} onChange={e=>setQ(e.target.value)} />
           </div>

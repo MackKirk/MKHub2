@@ -2,6 +2,7 @@ import { useParams, Link, useLocation, useNavigate } from 'react-router-dom';
 import { useMemo, useState, useEffect, useCallback, useRef } from 'react';
 import { useQuery, useQueryClient, useQueries } from '@tanstack/react-query';
 import { api } from '@/lib/api';
+import { sortByLabel } from '@/lib/sortOptions';
 import toast from 'react-hot-toast';
 import ImagePicker from '@/components/ImagePicker';
 import EstimateBuilder, { type EstimateBuilderRef } from '@/components/EstimateBuilder';
@@ -1459,12 +1460,12 @@ export default function ProjectDetail(){
                 try {
                   const response = await api('POST', `/projects/${encodeURIComponent(String(id||''))}/convert-to-project`);
                   if (response) {
+                    queryClient.removeQueries({ queryKey: ['opportunities'] });
+                    queryClient.removeQueries({ queryKey: ['projects'] });
                     await Promise.all([
                       queryClient.invalidateQueries({ queryKey: ['project', id] }),
                       queryClient.invalidateQueries({ queryKey: ['clientProjects'] }),
                       queryClient.invalidateQueries({ queryKey: ['clientOpportunities'] }),
-                      queryClient.invalidateQueries({ queryKey: ['projects'] }),
-                      queryClient.invalidateQueries({ queryKey: ['opportunities'] })
                     ]);
                     toast.success('Opportunity converted to project');
                     nav(`/projects/${encodeURIComponent(String(id||''))}`, { replace: true });
@@ -1510,6 +1511,13 @@ export default function ProjectDetail(){
               try{
                 await api('DELETE', `/projects/${encodeURIComponent(String(id||''))}`);
                 toast.success(proj?.is_bidding ? 'Opportunity deleted' : 'Project deleted');
+                // Remove list caches so sidebar navigation shows fresh data immediately
+                queryClient.removeQueries({ queryKey: ['opportunities'] });
+                queryClient.removeQueries({ queryKey: ['projects'] });
+                await Promise.all([
+                  queryClient.invalidateQueries({ queryKey: ['clientOpportunities'] }),
+                  queryClient.invalidateQueries({ queryKey: ['clientProjects'] }),
+                ]);
                 if(proj?.client_id){
                   nav(`/customers/${encodeURIComponent(String(proj?.client_id))}`);
                 } else {
@@ -5198,7 +5206,7 @@ function TimesheetTab({ projectId, statusLabel }:{ projectId:string; statusLabel
         <div className="md:col-span-2 rounded-xl border bg-white">
         <div className="p-3 flex items-center justify-between gap-3">
           <div className="flex items-center gap-2"><label className="text-xs text-gray-600">Month</label><input type="month" className="border rounded px-2 py-1" value={month} onChange={e=>{ setMonth(e.target.value); }} /></div>
-          <div className="flex items-center gap-2"><label className="text-xs text-gray-600">Employee</label><select className="border rounded px-2 py-1 text-sm" value={userFilter} onChange={e=>setUserFilter(e.target.value)}><option value="">All</option>{(employees||[]).map((emp:any)=> <option key={emp.id} value={emp.id}>{emp.name||emp.username}</option>)}</select></div>
+          <div className="flex items-center gap-2"><label className="text-xs text-gray-600">Employee</label><select className="border rounded px-2 py-1 text-sm" value={userFilter} onChange={e=>setUserFilter(e.target.value)}><option value="">All</option>{sortByLabel(employees||[], (emp:any)=> (emp.name||emp.username||'').toString()).map((emp:any)=> <option key={emp.id} value={emp.id}>{emp.name||emp.username}</option>)}</select></div>
           <div className="flex items-center gap-3">
             <div className="text-sm text-gray-700">Total: {formatHoursMinutes(hoursTotalMinutes)} <span className="text-xs text-gray-500">(after break)</span></div>
             <button onClick={csvExport} className="px-2 py-1 rounded bg-gray-100 text-sm">Export CSV</button>
@@ -6727,7 +6735,7 @@ function ProjectQuickEdit({ projectId, proj, settings }:{ projectId:string, proj
           <label className="text-xs font-medium text-gray-600 mb-1.5">Status</label>
           <select className="w-full rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-gray-900 focus:ring-1 focus:ring-gray-400 focus:border-gray-400" value={status} onChange={e=>setStatus(e.target.value)}>
             <option value="">Select...</option>
-            {statuses.map((s:any)=> <option key={s.label} value={s.label}>{s.label}</option>)}
+            {sortByLabel(statuses, (s:any)=> (s.label||'').toString()).map((s:any)=> <option key={s.label} value={s.label}>{s.label}</option>)}
           </select>
         </div>
         <div>

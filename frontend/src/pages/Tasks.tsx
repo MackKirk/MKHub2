@@ -7,7 +7,10 @@ import TaskModal from '@/components/tasks/TaskModal';
 import CreateTaskModal from '@/components/tasks/CreateTaskModal';
 import ArchivedTasksModal from '@/components/tasks/ArchivedTasksModal';
 import type { TaskBuckets } from '@/components/tasks/types';
+import { sortTasksByPriority } from '@/components/tasks/taskUi';
 import LoadingOverlay from '@/components/LoadingOverlay';
+
+type SortBy = 'high-to-low' | 'low-to-high';
 
 function useCountUp(end: number, duration: number = 500, enabled: boolean = true): number {
   const [count, setCount] = useState(0);
@@ -91,13 +94,29 @@ export default function TasksPage() {
   const [doneExpanded, setDoneExpanded] = useState(false);
   const [archivedModalOpen, setArchivedModalOpen] = useState(false);
   const [createOpen, setCreateOpen] = useState(false);
+  const [prioritySortTodo, setPrioritySortTodo] = useState<SortBy>('high-to-low');
+  const [prioritySortInProgress, setPrioritySortInProgress] = useState<SortBy>('high-to-low');
+  const [prioritySortDone, setPrioritySortDone] = useState<SortBy>('high-to-low');
 
-  const tasksInProgress = useMemo(
+  const rawTodo = data?.accepted || [];
+  const rawInProgress = useMemo(
     () => [...(data?.in_progress || []), ...((data as any)?.blocked || [])],
     [data]
   );
-  const tasksTodo = data?.accepted || [];
-  const tasksDone = data?.done || [];
+  const rawDone = data?.done || [];
+
+  const tasksTodo = useMemo(
+    () => sortTasksByPriority(rawTodo, prioritySortTodo),
+    [rawTodo, prioritySortTodo]
+  );
+  const tasksInProgress = useMemo(
+    () => sortTasksByPriority(rawInProgress, prioritySortInProgress),
+    [rawInProgress, prioritySortInProgress]
+  );
+  const tasksDone = useMemo(
+    () => sortTasksByPriority(rawDone, prioritySortDone),
+    [rawDone, prioritySortDone]
+  );
 
   // Check if we're still loading initial data (only show overlay if no data yet)
   const isInitialLoading = isLoading && !data;
@@ -165,7 +184,7 @@ export default function TasksPage() {
       <div className="space-y-4">
         {/* Title Bar - same layout and font sizes as Projects / Customers */}
         <div className="rounded-xl border bg-white p-4 mb-4">
-          <div className="flex items-center justify-between">
+          <div className="flex items-center justify-between flex-wrap gap-3">
             <div className="flex items-center gap-3 flex-1">
               <div>
                 <div className="text-sm font-semibold text-gray-900">Tasks</div>
@@ -229,12 +248,34 @@ export default function TasksPage() {
             className="rounded-xl border border-gray-200 bg-white overflow-hidden transition-all duration-200 ease-out hover:shadow-md"
             style={sectionCardStyle(180)}
           >
-            <div className="px-4 py-3 border-b border-gray-200 flex items-center justify-between gap-3">
+            <div className="px-4 py-3 border-b border-gray-200 flex items-center justify-between gap-3 flex-wrap">
               <div>
                 <div className="text-sm font-semibold text-gray-900">To Do</div>
                 <div className="text-xs text-gray-500">Ready to start.</div>
               </div>
-              <div className="text-xs text-gray-500">{tasksTodo.length} task(s)</div>
+              <div className="flex items-center gap-2">
+                <div className="relative">
+                  <select
+                    value={prioritySortTodo}
+                    onChange={(e) => setPrioritySortTodo(e.target.value as SortBy)}
+                    onClick={(e) => e.stopPropagation()}
+                    className="tasks-priority-select appearance-none rounded-lg border border-gray-200 bg-white hover:bg-gray-50 px-2 py-1.5 pr-7 text-[11px] font-medium text-gray-600 focus:outline-none focus:ring-0 focus-visible:outline-none focus-visible:ring-0"
+                    title="Sort by priority"
+                  >
+                    <option value="high-to-low">↑ Priority</option>
+                    <option value="low-to-high">↓ Priority</option>
+                  </select>
+                  <svg
+                    className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-gray-400"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                  </svg>
+                </div>
+                <span className="text-xs text-gray-500">{tasksTodo.length} task(s)</span>
+              </div>
             </div>
             <div className="p-4 space-y-3 max-h-[calc(4*140px)] overflow-y-auto">
               {isLoading ? (
@@ -267,12 +308,34 @@ export default function TasksPage() {
             className="rounded-xl border border-gray-200 bg-white overflow-hidden transition-all duration-200 ease-out hover:shadow-md"
             style={sectionCardStyle(240)}
           >
-            <div className="px-4 py-3 border-b border-gray-200 flex items-center justify-between gap-3">
+            <div className="px-4 py-3 border-b border-gray-200 flex items-center justify-between gap-3 flex-wrap">
               <div>
                 <div className="text-sm font-semibold text-gray-900">In Progress</div>
                 <div className="text-xs text-gray-500">Work that's currently underway.</div>
               </div>
-              <div className="text-xs text-gray-500">{tasksInProgress.length} task(s)</div>
+              <div className="flex items-center gap-2">
+                <div className="relative">
+                  <select
+                    value={prioritySortInProgress}
+                    onChange={(e) => setPrioritySortInProgress(e.target.value as SortBy)}
+                    onClick={(e) => e.stopPropagation()}
+                    className="tasks-priority-select appearance-none rounded-lg border border-gray-200 bg-white hover:bg-gray-50 px-2 py-1.5 pr-7 text-[11px] font-medium text-gray-600 focus:outline-none focus:ring-0 focus-visible:outline-none focus-visible:ring-0"
+                    title="Sort by priority"
+                  >
+                    <option value="high-to-low">↑ Priority</option>
+                    <option value="low-to-high">↓ Priority</option>
+                  </select>
+                  <svg
+                    className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-gray-400"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                  </svg>
+                </div>
+                <span className="text-xs text-gray-500">{tasksInProgress.length} task(s)</span>
+              </div>
             </div>
             <div className="p-4 space-y-3 max-h-[calc(4*140px)] overflow-y-auto">
               {isLoading ? (
@@ -296,20 +359,48 @@ export default function TasksPage() {
           className="rounded-xl border border-gray-200 bg-white overflow-hidden transition-all duration-200 ease-out hover:shadow-md"
           style={sectionCardStyle(300)}
         >
-          <button
-            type="button"
-            onClick={() => setDoneExpanded((v) => !v)}
-            className="w-full px-4 py-3 border-b border-gray-200 flex items-center justify-between gap-3 text-left"
-          >
-            <div>
-              <div className="text-sm font-semibold text-gray-900">Done</div>
-              <div className="text-xs text-gray-500">Completed tasks.</div>
+          <div className="px-4 py-3 border-b border-gray-200 flex items-center justify-between gap-3 flex-wrap">
+            <button
+              type="button"
+              onClick={() => setDoneExpanded((v) => !v)}
+              className="flex-1 text-left min-w-0"
+            >
+              <div>
+                <div className="text-sm font-semibold text-gray-900">Done</div>
+                <div className="text-xs text-gray-500">Completed tasks.</div>
+              </div>
+            </button>
+            <div className="flex items-center gap-2">
+              <div className="relative">
+                <select
+                  value={prioritySortDone}
+                  onChange={(e) => setPrioritySortDone(e.target.value as SortBy)}
+                  onClick={(e) => e.stopPropagation()}
+                  className="tasks-priority-select appearance-none rounded-lg border border-gray-200 bg-white hover:bg-gray-50 px-2 py-1.5 pr-7 text-[11px] font-medium text-gray-600 focus:outline-none focus:ring-0 focus-visible:outline-none focus-visible:ring-0"
+                  title="Sort by priority"
+                >
+                  <option value="high-to-low">↑ Priority</option>
+                  <option value="low-to-high">↓ Priority</option>
+                </select>
+                <svg
+                  className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-gray-400"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                </svg>
+              </div>
+              <span className="text-xs text-gray-500">{tasksDone.length} task(s)</span>
+              <button
+                type="button"
+                onClick={() => setDoneExpanded((v) => !v)}
+                className="text-xs font-medium text-brand-red"
+              >
+                {doneExpanded ? 'Hide' : 'Show'}
+              </button>
             </div>
-            <div className="flex items-center gap-3">
-              <div className="text-xs text-gray-500">{tasksDone.length} task(s)</div>
-              <div className="text-xs font-medium text-brand-red">{doneExpanded ? 'Hide' : 'Show'}</div>
-            </div>
-          </button>
+          </div>
           {doneExpanded && (
             <div className="p-4 space-y-3 max-h-[calc(4*140px)] overflow-y-auto">
               {isLoading ? (

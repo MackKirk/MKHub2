@@ -2,6 +2,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useEffect, useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '@/lib/api';
+import { sortByLabel } from '@/lib/sortOptions';
 import toast from 'react-hot-toast';
 import ImagePicker from '@/components/ImagePicker';
 
@@ -262,15 +263,20 @@ function ClientSelectModal({ open, onClose, onSelect }: { open: boolean, onClose
     staleTime: 30_000
   });
 
+  const sortedAllClients = useMemo(() =>
+    sortByLabel(allClients, c => (c.display_name || c.name || c.id || '').toString()),
+    [allClients]
+  );
+
   const filteredClients = useMemo(() => {
-    if (!q.trim()) return allClients;
+    if (!q.trim()) return sortedAllClients;
     const searchLower = q.toLowerCase();
-    return allClients.filter(c => 
+    return sortedAllClients.filter(c =>
       (c.display_name||c.name||'').toLowerCase().includes(searchLower) ||
       (c.city||'').toLowerCase().includes(searchLower) ||
       (c.address_line1||'').toLowerCase().includes(searchLower)
     );
-  }, [allClients, q]);
+  }, [sortedAllClients, q]);
 
   const list = filteredClients.slice(0, displayedCount);
   const hasMore = filteredClients.length > displayedCount;

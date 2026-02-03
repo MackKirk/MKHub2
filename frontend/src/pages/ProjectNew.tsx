@@ -1,7 +1,8 @@
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useEffect, useMemo, useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
+import { sortByLabel } from '@/lib/sortOptions';
 import toast from 'react-hot-toast';
 import ImagePicker from '@/components/ImagePicker';
 import AddressAutocomplete from '@/components/AddressAutocomplete';
@@ -11,6 +12,7 @@ type Site = { id:string, site_name?:string, site_address_line1?:string, site_cit
 
 export default function ProjectNew(){
   const nav = useNavigate();
+  const queryClient = useQueryClient();
   const [sp] = useSearchParams();
   const initialClientId = sp.get('client_id')||'';
   const initialIsBidding = sp.get('is_bidding') === 'true';
@@ -84,7 +86,8 @@ export default function ProjectNew(){
   const filteredClients = useMemo(() => {
     if (initialClientId) return [];
     if (!clientSearch.trim()) return [];
-    return clientSearchResults || [];
+    const list = clientSearchResults || [];
+    return sortByLabel(list, c => (c.display_name || c.name || c.id || '').toString());
   }, [clientSearch, clientSearchResults, initialClientId]);
 
   useEffect(()=>{ 
@@ -173,6 +176,8 @@ export default function ProjectNew(){
         }catch(_e){ /* silent */ }
       }
       toast.success(isBidding ? 'Opportunity created' : 'Project created');
+      queryClient.removeQueries({ queryKey: ['opportunities'] });
+      queryClient.removeQueries({ queryKey: ['projects'] });
       if (isBidding) {
         nav(`/opportunities/${encodeURIComponent(String(proj?.id||''))}`);
       } else {
@@ -323,7 +328,7 @@ export default function ProjectNew(){
                 <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">Customer contact</label>
                 <select className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" value={contactId} onChange={e=> setContactId(e.target.value)}>
                   <option value="">Select...</option>
-                  {(contacts||[]).map((c:any)=> <option key={c.id} value={c.id}>{c.name||c.email||c.phone||c.id}</option>)}
+                  {sortByLabel(contacts||[], (c:any)=> (c.name||c.email||c.phone||c.id||'').toString()).map((c:any)=> <option key={c.id} value={c.id}>{c.name||c.email||c.phone||c.id}</option>)}
                 </select>
               </div>
             )}
@@ -341,7 +346,7 @@ export default function ProjectNew(){
                 {!createSite ? (
                   <select className={`w-full border rounded-lg px-3 py-2 text-sm ${clientValid && !siteValid ? 'border-red-500' : 'border-gray-200'}`} value={siteId} onChange={e=> setSiteId(e.target.value)}>
                     <option value="">Select site...</option>
-                    {(sites||[]).map(s=> <option key={String(s.id)} value={String(s.id)}>{s.site_name||s.site_address_line1||String(s.id)}</option>)}
+                    {sortByLabel(sites||[], s=> (s.site_name||s.site_address_line1||String(s.id)).toString()).map(s=> <option key={String(s.id)} value={String(s.id)}>{s.site_name||s.site_address_line1||String(s.id)}</option>)}
                   </select>
                   ) : (
                   <div className="grid md:grid-cols-2 gap-3">
@@ -435,7 +440,7 @@ export default function ProjectNew(){
                     <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">Status</label>
                     <select className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" value={statusLabel} onChange={e=> setStatusLabel(e.target.value)}>
                       <option value="">Select...</option>
-                      {(settings?.project_statuses||[]).map((s:any)=> <option key={s.label} value={s.label}>{s.label}</option>)}
+                      {sortByLabel(settings?.project_statuses||[], (s:any)=> (s.label||'').toString()).map((s:any)=> <option key={s.label} value={s.label}>{s.label}</option>)}
                     </select>
                   </div>
                 )}
@@ -447,10 +452,10 @@ export default function ProjectNew(){
                     <div className="text-[11px] text-red-600 mb-2">Select at least one division for this opportunity</div>
                   )}
                   <div className="space-y-3 mt-1">
-                    {(projectDivisions||[]).map((div:any)=>{
+                    {sortByLabel(projectDivisions||[], (div:any)=> (div.label||'').toString()).map((div:any)=>{
                       const divId = String(div.id);
                       const divSelected = projectDivisionIds.includes(divId);
-                      const subdivisions = div.subdivisions || [];
+                      const subdivisions = sortByLabel(div.subdivisions || [], (sub:any)=> (sub.label||'').toString());
                       
                       return (
                         <div key={divId} className="border rounded-lg p-2">
@@ -508,7 +513,7 @@ export default function ProjectNew(){
                   <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">Estimator</label>
                   <select className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" value={estimatorId} onChange={e=> setEstimatorId(e.target.value)}>
                     <option value="">Select...</option>
-                    {(employees||[]).map((emp:any)=> <option key={emp.id} value={emp.id}>{emp.name||emp.username}</option>)}
+                    {sortByLabel(employees||[], (emp:any)=> (emp.name||emp.username||'').toString()).map((emp:any)=> <option key={emp.id} value={emp.id}>{emp.name||emp.username}</option>)}
                   </select>
                 </div>
                 {!isBidding && (
@@ -516,7 +521,7 @@ export default function ProjectNew(){
                     <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">On-site lead</label>
                     <select className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" value={leadId} onChange={e=> setLeadId(e.target.value)}>
                       <option value="">Select...</option>
-                      {(employees||[]).map((emp:any)=> <option key={emp.id} value={emp.id}>{emp.name||emp.username}</option>)}
+                      {sortByLabel(employees||[], (emp:any)=> (emp.name||emp.username||'').toString()).map((emp:any)=> <option key={emp.id} value={emp.id}>{emp.name||emp.username}</option>)}
                     </select>
                   </div>
                 )}
@@ -590,15 +595,20 @@ function ClientSelectModal({ open, onClose, onSelect }: { open: boolean, onClose
     staleTime: 30_000
   });
 
+  const sortedAllClients = useMemo(() =>
+    sortByLabel(allClients, c => (c.display_name || c.name || c.id || '').toString()),
+    [allClients]
+  );
+
   const filteredClients = useMemo(() => {
-    if (!q.trim()) return allClients;
+    if (!q.trim()) return sortedAllClients;
     const searchLower = q.toLowerCase();
-    return allClients.filter(c => 
+    return sortedAllClients.filter(c =>
       (c.display_name||c.name||'').toLowerCase().includes(searchLower) ||
       (c.city||'').toLowerCase().includes(searchLower) ||
       (c.address_line1||'').toLowerCase().includes(searchLower)
     );
-  }, [allClients, q]);
+  }, [sortedAllClients, q]);
 
   const list = filteredClients.slice(0, displayedCount);
   const hasMore = filteredClients.length > displayedCount;

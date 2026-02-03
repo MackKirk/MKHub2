@@ -227,6 +227,77 @@ const coolPalette = ['#0b1739', '#0f2a5a', '#1d4ed8', '#2563eb', '#0284c7', '#0e
 
 type DateFilterType = 'all' | 'last_year' | 'last_6_months' | 'last_3_months' | 'last_month' | 'custom';
 
+const BUSINESS_DASHBOARD_PREFS_KEY = 'business-dashboard-prefs';
+
+type BusinessDashboardPrefs = {
+  selectedDivisionId: string | null;
+  oppDivisionDateFilter: DateFilterType;
+  oppDivisionCustomStart: string;
+  oppDivisionCustomEnd: string;
+  oppDivisionDisplayMode: 'quantity' | 'value';
+  projDivisionDateFilter: DateFilterType;
+  projDivisionCustomStart: string;
+  projDivisionCustomEnd: string;
+  projDivisionDisplayMode: 'quantity' | 'value';
+  oppStatusDateFilter: DateFilterType;
+  oppStatusCustomStart: string;
+  oppStatusCustomEnd: string;
+  oppStatusDisplayMode: 'quantity' | 'value';
+  projStatusDateFilter: DateFilterType;
+  projStatusCustomStart: string;
+  projStatusCustomEnd: string;
+  projStatusDisplayMode: 'quantity' | 'value';
+};
+
+const DEFAULT_DASHBOARD_PREFS: BusinessDashboardPrefs = {
+  selectedDivisionId: null,
+  oppDivisionDateFilter: 'all',
+  oppDivisionCustomStart: '',
+  oppDivisionCustomEnd: '',
+  oppDivisionDisplayMode: 'quantity',
+  projDivisionDateFilter: 'all',
+  projDivisionCustomStart: '',
+  projDivisionCustomEnd: '',
+  projDivisionDisplayMode: 'quantity',
+  oppStatusDateFilter: 'all',
+  oppStatusCustomStart: '',
+  oppStatusCustomEnd: '',
+  oppStatusDisplayMode: 'quantity',
+  projStatusDateFilter: 'all',
+  projStatusCustomStart: '',
+  projStatusCustomEnd: '',
+  projStatusDisplayMode: 'quantity',
+};
+
+function getDashboardPrefsKey(userId: string | number): string {
+  return `${BUSINESS_DASHBOARD_PREFS_KEY}-${userId}`;
+}
+
+function loadDashboardPrefs(userId: string | number): BusinessDashboardPrefs | null {
+  try {
+    const raw = localStorage.getItem(getDashboardPrefsKey(String(userId)));
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as Partial<BusinessDashboardPrefs>;
+    const dateFilters: DateFilterType[] = ['all', 'last_year', 'last_6_months', 'last_3_months', 'last_month', 'custom'];
+    const displayModes: ('quantity' | 'value')[] = ['quantity', 'value'];
+    return {
+      ...DEFAULT_DASHBOARD_PREFS,
+      ...parsed,
+      selectedDivisionId: typeof parsed.selectedDivisionId === 'string' || parsed.selectedDivisionId === null ? parsed.selectedDivisionId : null,
+      oppDivisionDateFilter: dateFilters.includes(parsed.oppDivisionDateFilter as DateFilterType) ? parsed.oppDivisionDateFilter! : 'all',
+      oppDivisionDisplayMode: displayModes.includes(parsed.oppDivisionDisplayMode!) ? parsed.oppDivisionDisplayMode! : 'quantity',
+      projDivisionDateFilter: dateFilters.includes(parsed.projDivisionDateFilter as DateFilterType) ? parsed.projDivisionDateFilter! : 'all',
+      projDivisionDisplayMode: displayModes.includes(parsed.projDivisionDisplayMode!) ? parsed.projDivisionDisplayMode! : 'quantity',
+      oppStatusDateFilter: dateFilters.includes(parsed.oppStatusDateFilter as DateFilterType) ? parsed.oppStatusDateFilter! : 'all',
+      oppStatusDisplayMode: displayModes.includes(parsed.oppStatusDisplayMode!) ? parsed.oppStatusDisplayMode! : 'quantity',
+      projStatusDateFilter: dateFilters.includes(parsed.projStatusDateFilter as DateFilterType) ? parsed.projStatusDateFilter! : 'all',
+      projStatusDisplayMode: displayModes.includes(parsed.projStatusDisplayMode!) ? parsed.projStatusDisplayMode! : 'quantity',
+    };
+  } catch {
+    return null;
+  }
+}
+
 // Helper function to format date for display
 const formatDateForDisplay = (dateString: string): string => {
   if (!dateString) return '';
@@ -274,6 +345,9 @@ const calculateDateRange = (dateFilter: DateFilterType, customDateStart: string,
 export default function BusinessDashboard() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const { data: currentUser } = useQuery({ queryKey: ['me'], queryFn: () => api<any>('GET', '/auth/me') });
+  const loadedPrefsForUserRef = useRef<string | null>(null);
+
   const [selectedDivisionId, setSelectedDivisionId] = useState<string | null>(null);
   const [hasAnimated, setHasAnimated] = useState(false);
   const [animationComplete, setAnimationComplete] = useState(false);
@@ -312,6 +386,82 @@ export default function BusinessDashboard() {
   const [projStatusCustomEnd, setProjStatusCustomEnd] = useState<string>('');
   const [projStatusDisplayMode, setProjStatusDisplayMode] = useState<'quantity' | 'value'>('quantity');
   const [projStatusModalOpen, setProjStatusModalOpen] = useState(false);
+
+  // Load persisted dashboard prefs for this user (once per user)
+  useEffect(() => {
+    const userId = currentUser?.id != null ? String(currentUser.id) : null;
+    if (!userId || loadedPrefsForUserRef.current === userId) return;
+    const prefs = loadDashboardPrefs(userId);
+    if (prefs) {
+      setSelectedDivisionId(prefs.selectedDivisionId);
+      setOppDivisionDateFilter(prefs.oppDivisionDateFilter);
+      setOppDivisionCustomStart(prefs.oppDivisionCustomStart);
+      setOppDivisionCustomEnd(prefs.oppDivisionCustomEnd);
+      setOppDivisionDisplayMode(prefs.oppDivisionDisplayMode);
+      setProjDivisionDateFilter(prefs.projDivisionDateFilter);
+      setProjDivisionCustomStart(prefs.projDivisionCustomStart);
+      setProjDivisionCustomEnd(prefs.projDivisionCustomEnd);
+      setProjDivisionDisplayMode(prefs.projDivisionDisplayMode);
+      setOppStatusDateFilter(prefs.oppStatusDateFilter);
+      setOppStatusCustomStart(prefs.oppStatusCustomStart);
+      setOppStatusCustomEnd(prefs.oppStatusCustomEnd);
+      setOppStatusDisplayMode(prefs.oppStatusDisplayMode);
+      setProjStatusDateFilter(prefs.projStatusDateFilter);
+      setProjStatusCustomStart(prefs.projStatusCustomStart);
+      setProjStatusCustomEnd(prefs.projStatusCustomEnd);
+      setProjStatusDisplayMode(prefs.projStatusDisplayMode);
+    }
+    loadedPrefsForUserRef.current = userId;
+  }, [currentUser?.id]);
+
+  // Persist dashboard prefs whenever any filter/display state changes
+  useEffect(() => {
+    const userId = currentUser?.id != null ? String(currentUser.id) : null;
+    if (!userId || loadedPrefsForUserRef.current !== userId) return;
+    const prefs: BusinessDashboardPrefs = {
+      selectedDivisionId,
+      oppDivisionDateFilter,
+      oppDivisionCustomStart,
+      oppDivisionCustomEnd,
+      oppDivisionDisplayMode,
+      projDivisionDateFilter,
+      projDivisionCustomStart,
+      projDivisionCustomEnd,
+      projDivisionDisplayMode,
+      oppStatusDateFilter,
+      oppStatusCustomStart,
+      oppStatusCustomEnd,
+      oppStatusDisplayMode,
+      projStatusDateFilter,
+      projStatusCustomStart,
+      projStatusCustomEnd,
+      projStatusDisplayMode,
+    };
+    try {
+      localStorage.setItem(getDashboardPrefsKey(userId), JSON.stringify(prefs));
+    } catch {
+      // ignore quota / private mode
+    }
+  }, [
+    currentUser?.id,
+    selectedDivisionId,
+    oppDivisionDateFilter,
+    oppDivisionCustomStart,
+    oppDivisionCustomEnd,
+    oppDivisionDisplayMode,
+    projDivisionDateFilter,
+    projDivisionCustomStart,
+    projDivisionCustomEnd,
+    projDivisionDisplayMode,
+    oppStatusDateFilter,
+    oppStatusCustomStart,
+    oppStatusCustomEnd,
+    oppStatusDisplayMode,
+    projStatusDateFilter,
+    projStatusCustomStart,
+    projStatusCustomEnd,
+    projStatusDisplayMode,
+  ]);
   
   // Get project divisions (hierarchical)
   const { data: divisionsData, isLoading: divisionsLoading, error: divisionsError, refetch: refetchDivisions } = useQuery<ProjectDivision[]>({

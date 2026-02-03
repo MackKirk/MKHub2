@@ -1,6 +1,7 @@
 import { useParams, Link, useLocation, useNavigate } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
+import { sortByLabel } from '@/lib/sortOptions';
 import { useEffect, useMemo, useState, ReactNode, useRef } from 'react';
 import toast from 'react-hot-toast';
 import ImagePicker from '@/components/ImagePicker';
@@ -1490,7 +1491,7 @@ export default function CustomerDetail(){
             {isAdmin && (
               <button
                 type="button"
-                onClick={async (e) => { e.stopPropagation(); const ok = await confirm({ title: 'Delete customer', message: 'Are you sure you want to delete this customer? This action cannot be undone.' }); if (!ok) return; try { await api('DELETE', `/clients/${encodeURIComponent(String(id||''))}`); toast.success('Customer deleted'); navigate('/customers'); } catch (_e) { toast.error('Failed to delete customer'); } }}
+                onClick={async (e) => { e.stopPropagation(); const ok = await confirm({ title: 'Delete customer', message: 'Are you sure you want to delete this customer? This action cannot be undone.' }); if (!ok) return; try { await api('DELETE', `/clients/${encodeURIComponent(String(id||''))}`); toast.success('Customer deleted'); await queryClient.invalidateQueries({ queryKey: ['clients'] }); navigate('/customers'); } catch (_e) { toast.error('Failed to delete customer'); } }}
                 className="absolute top-2 right-2 z-10 px-2 py-1 rounded text-[11px] font-medium border border-red-200 text-red-600 hover:bg-red-50 transition-colors"
                 title="Delete Customer"
               >
@@ -1570,7 +1571,7 @@ export default function CustomerDetail(){
             {isAdmin && (
               <button
                 type="button"
-                onClick={async (e) => { e.stopPropagation(); const ok = await confirm({ title: 'Delete customer', message: 'Are you sure you want to delete this customer? This action cannot be undone.' }); if (!ok) return; try { await api('DELETE', `/clients/${encodeURIComponent(String(id||''))}`); toast.success('Customer deleted'); navigate('/customers'); } catch (_e) { toast.error('Failed to delete customer'); } }}
+                onClick={async (e) => { e.stopPropagation(); const ok = await confirm({ title: 'Delete customer', message: 'Are you sure you want to delete this customer? This action cannot be undone.' }); if (!ok) return; try { await api('DELETE', `/clients/${encodeURIComponent(String(id||''))}`); toast.success('Customer deleted'); await queryClient.invalidateQueries({ queryKey: ['clients'] }); navigate('/customers'); } catch (_e) { toast.error('Failed to delete customer'); } }}
                 className="absolute top-2 right-2 z-10 px-2 py-1 rounded text-[11px] font-medium border border-red-200 text-red-600 hover:bg-red-50 transition-colors"
                 title="Delete Customer"
               >
@@ -2239,7 +2240,7 @@ export default function CustomerDetail(){
                           {isEditingGeneral ? (
                             <select className="w-full border rounded px-3 py-2" value={form.client_type||''} onChange={e=>set('client_type', e.target.value)}>
                               <option value="">Select...</option>
-                              {(settings?.client_types||[]).map((t:any)=> <option key={t.value||t.label} value={t.label}>{t.label}</option>)}
+                              {sortByLabel(settings?.client_types||[], (t:any)=> (t.label||'').toString()).map((t:any)=> <option key={t.value||t.label} value={t.label}>{t.label}</option>)}
                             </select>
                           ) : (
                             <div className="text-gray-900 font-medium py-1 break-words">{String(form.client_type||'') || '—'}</div>
@@ -2249,7 +2250,7 @@ export default function CustomerDetail(){
                           {isEditingGeneral ? (
                             <select className="w-full border rounded px-3 py-2" value={form.client_status||''} onChange={e=>set('client_status', e.target.value)}>
                               <option value="">Select...</option>
-                              {(settings?.client_statuses||[]).map((t:any)=> <option key={t.value||t.label} value={t.label}>{t.label}</option>)}
+                              {sortByLabel(settings?.client_statuses||[], (t:any)=> (t.label||'').toString()).map((t:any)=> <option key={t.value||t.label} value={t.label}>{t.label}</option>)}
                             </select>
                           ) : (
                             <div className="text-gray-900 font-medium py-1 break-words">{String(form.client_status||'') || '—'}</div>
@@ -2259,7 +2260,7 @@ export default function CustomerDetail(){
                           {isEditingGeneral ? (
                             <select className="w-full border rounded px-3 py-2" value={form.lead_source||''} onChange={e=>set('lead_source', e.target.value)}>
                               <option value="">Select...</option>
-                              {leadSources.map((ls:any)=>{
+                              {sortByLabel(leadSources, (ls:any)=> (ls?.label ?? ls?.name ?? '').toString()).map((ls:any)=>{
                                 const val = ls?.value ?? ls?.id ?? ls?.label ?? ls?.name ?? String(ls);
                                 const label = ls?.label ?? ls?.name ?? String(ls);
                                 return <option key={String(val)} value={String(val)}>{label}</option>;
@@ -2961,7 +2962,7 @@ function CustomerDocuments({ id, files, sites, onRefresh, hasEditPermission }: {
         {which==='site' && (
           <select className="border rounded px-3 py-2" value={siteId} onChange={e=>setSiteId(e.target.value)}>
             <option value="">Select site...</option>
-            {sites.map(s=> <option key={String(s.id)} value={String(s.id)}>{s.site_name||s.site_address_line1||s.id}</option>)}
+            {sortByLabel(sites, s=> (s.site_name||s.site_address_line1||String(s.id)).toString()).map(s=> <option key={String(s.id)} value={String(s.id)}>{s.site_name||s.site_address_line1||s.id}</option>)}
           </select>
         )}
       </div>
@@ -3034,7 +3035,7 @@ function CustomerDocuments({ id, files, sites, onRefresh, hasEditPermission }: {
                     <div className="text-sm">{selectedDocIds.size} selected</div>
                     <select id="bulk-move-target-client" className="border rounded px-2 py-1">
                       <option value="" disabled selected>Select destination</option>
-                      {(folders||[]).map((f:any)=> <option key={f.id} value={f.id}>{f.name}</option>)}
+                      {sortByLabel(folders||[], (f:any)=> (f.name||'').toString()).map((f:any)=> <option key={f.id} value={f.id}>{f.name}</option>)}
                     </select>
                     <button className="px-3 py-1.5 rounded bg-brand-red text-white" onClick={async()=>{
                       const sel = document.getElementById('bulk-move-target-client') as HTMLSelectElement;
@@ -3110,7 +3111,7 @@ function CustomerDocuments({ id, files, sites, onRefresh, hasEditPermission }: {
                 <div className="text-xs text-gray-600">Folder</div>
                 <select className="border rounded px-3 py-2 w-full" value={activeFolderId==='all'? '': activeFolderId} onChange={e=> setActiveFolderId(e.target.value||'all')}>
                   <option value="">Select a folder</option>
-                  {(folders||[]).map((f:any)=> <option key={f.id} value={f.id}>{f.name}</option>)}
+                  {sortByLabel(folders||[], (f:any)=> (f.name||'').toString()).map((f:any)=> <option key={f.id} value={f.id}>{f.name}</option>)}
                 </select>
               </div>
               <div>
@@ -3186,7 +3187,7 @@ function CustomerDocuments({ id, files, sites, onRefresh, hasEditPermission }: {
               <div className="text-xs text-gray-600">Destination folder</div>
               <select id="move-target-client" className="border rounded px-3 py-2 w-full" defaultValue="">
                 <option value="" disabled>Select...</option>
-                {(folders||[]).map((f:any)=> <option key={f.id} value={f.id}>{f.name}</option>)}
+                {sortByLabel(folders||[], (f:any)=> (f.name||'').toString()).map((f:any)=> <option key={f.id} value={f.id}>{f.name}</option>)}
               </select>
             </div>
             <div className="mt-4 flex justify-end gap-2">

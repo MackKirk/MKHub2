@@ -445,6 +445,9 @@ function FilterRuleRow({
 
     if (textSelectFields.includes(rule.field)) {
       if (rule.field === 'status') {
+        const statusList = projectStatuses
+          .filter((status: any) => ['Prospecting', 'Sent to Customer', 'Refused'].includes(status.label))
+          .sort((a: any, b: any) => (a.label || '').localeCompare(b.label || '', undefined, { sensitivity: 'base' }));
         return (
           <select
             className="w-full border border-gray-200 rounded-md px-3 py-2 text-sm bg-gray-50/50 text-gray-700 focus:outline-none focus:ring-1 focus:ring-gray-300 focus:border-gray-300 focus:bg-white"
@@ -452,15 +455,14 @@ function FilterRuleRow({
             onChange={(e) => handleValueChange(e.target.value)}
           >
             <option value="">Select status...</option>
-            {projectStatuses
-              .filter((status: any) => ['Prospecting', 'Sent to Customer', 'Refused'].includes(status.label))
-              .map((status: any) => (
-                <option key={status.id} value={status.id}>{status.label}</option>
-              ))}
+            {statusList.map((status: any) => (
+              <option key={status.id} value={status.id}>{status.label}</option>
+            ))}
           </select>
         );
       }
       if (rule.field === 'division') {
+        const sortedDivisions = [...(projectDivisions || [])].sort((a: any, b: any) => (a.label || '').localeCompare(b.label || '', undefined, { sensitivity: 'base' }));
         return (
           <select
             className="w-full border border-gray-200 rounded-md px-3 py-2 text-sm bg-gray-50/50 text-gray-700 focus:outline-none focus:ring-1 focus:ring-gray-300 focus:border-gray-300 focus:bg-white"
@@ -468,10 +470,10 @@ function FilterRuleRow({
             onChange={(e) => handleValueChange(e.target.value)}
           >
             <option value="">Select division...</option>
-            {projectDivisions?.map((div: any) => (
+            {sortedDivisions.map((div: any) => (
               <optgroup key={div.id} label={div.label}>
                 <option value={div.id}>{div.label}</option>
-                {div.subdivisions?.map((sub: any) => (
+                {[...(div.subdivisions || [])].sort((a: any, b: any) => (a.label || '').localeCompare(b.label || '', undefined, { sensitivity: 'base' })).map((sub: any) => (
                   <option key={sub.id} value={sub.id}>{sub.label}</option>
                 ))}
               </optgroup>
@@ -480,6 +482,11 @@ function FilterRuleRow({
         );
       }
       if (rule.field === 'client') {
+        const sortedClients = [...clients].sort((a: any, b: any) => {
+          const labelA = (a.display_name || a.name || a.code || a.id || '').toString();
+          const labelB = (b.display_name || b.name || b.code || b.id || '').toString();
+          return labelA.localeCompare(labelB, undefined, { sensitivity: 'base' });
+        });
         return (
           <select
             className="w-full border border-gray-200 rounded-md px-3 py-2 text-sm bg-gray-50/50 text-gray-700 focus:outline-none focus:ring-1 focus:ring-gray-300 focus:border-gray-300 focus:bg-white"
@@ -487,7 +494,7 @@ function FilterRuleRow({
             onChange={(e) => handleValueChange(e.target.value)}
           >
             <option value="">Select client...</option>
-            {clients.map((client: any) => (
+            {sortedClients.map((client: any) => (
               <option key={client.id} value={client.id}>
                 {client.display_name || client.name || client.code || client.id}
               </option>
@@ -496,6 +503,11 @@ function FilterRuleRow({
         );
       }
       if (rule.field === 'estimator') {
+        const sortedEmployees = [...employees].sort((a: any, b: any) => {
+          const labelA = (a.name || a.username || '').toString();
+          const labelB = (b.name || b.username || '').toString();
+          return labelA.localeCompare(labelB, undefined, { sensitivity: 'base' });
+        });
         return (
           <select
             className="w-full border border-gray-200 rounded-md px-3 py-2 text-sm bg-gray-50/50 text-gray-700 focus:outline-none focus:ring-1 focus:ring-gray-300 focus:border-gray-300 focus:bg-white"
@@ -503,7 +515,7 @@ function FilterRuleRow({
             onChange={(e) => handleValueChange(e.target.value)}
           >
             <option value="">Select estimator...</option>
-            {employees.map((emp: any) => (
+            {sortedEmployees.map((emp: any) => (
               <option key={emp.id} value={emp.id}>
                 {emp.name || emp.username}
               </option>
@@ -911,6 +923,50 @@ export default function Opportunities(){
   const [pickerOpen, setPickerOpen] = useState<{ open:boolean, clientId?:string, projectId?:string }|null>(null);
   const [reportModalOpen, setReportModalOpen] = useState<{ open:boolean, projectId?:string }|null>(null);
 
+  // List sort: read from URL so it persists and is shareable
+  const sortBy = (searchParams.get('sort') as 'opportunity' | 'estimator' | 'value' | 'status') || 'opportunity';
+  const sortDir = (searchParams.get('dir') === 'desc' ? 'desc' : 'asc') as 'asc' | 'desc';
+  const setListSort = (column: typeof sortBy, direction?: 'asc' | 'desc') => {
+    const params = new URLSearchParams(searchParams);
+    const nextDir = direction ?? (sortBy === column && sortDir === 'asc' ? 'desc' : 'asc');
+    params.set('sort', column);
+    params.set('dir', nextDir);
+    setSearchParams(params, { replace: true });
+  };
+
+  const sortedArr = useMemo(() => {
+    const list = [...arr];
+    const cmp = (a: Opportunity, b: Opportunity) => {
+      let aVal: string | number = '';
+      let bVal: string | number = '';
+      switch (sortBy) {
+        case 'opportunity':
+          aVal = `${(a.name || '').toLowerCase()}\t${(a.code || '')}`;
+          bVal = `${(b.name || '').toLowerCase()}\t${(b.code || '')}`;
+          return aVal < bVal ? -1 : aVal > bVal ? 1 : 0;
+        case 'estimator':
+          aVal = ((a as any).estimator_name || '').toLowerCase();
+          bVal = ((b as any).estimator_name || '').toLowerCase();
+          return aVal < bVal ? -1 : aVal > bVal ? 1 : 0;
+        case 'value':
+          aVal = Number((a as any).cost_estimated) || 0;
+          bVal = Number((b as any).cost_estimated) || 0;
+          return aVal - bVal;
+        case 'status':
+          aVal = ((a as any).status_label || '').toLowerCase();
+          bVal = ((b as any).status_label || '').toLowerCase();
+          return aVal < bVal ? -1 : aVal > bVal ? 1 : 0;
+        default:
+          return 0;
+      }
+    };
+    list.sort((a, b) => {
+      const r = cmp(a, b);
+      return sortDir === 'asc' ? r : -r;
+    });
+    return list;
+  }, [arr, sortBy, sortDir]);
+
   // Get employees for estimator filter
   const { data: employeesData } = useQuery({ 
     queryKey:['employees-for-filter'], 
@@ -1172,7 +1228,7 @@ export default function Opportunities(){
             ))}
           </div>
         ) : (
-          <div 
+          <div
             className="flex flex-col gap-2 overflow-x-auto"
             style={animationComplete ? {} : {
               opacity: hasAnimated ? 1 : 0,
@@ -1190,21 +1246,20 @@ export default function Opportunities(){
                 <div className="font-medium text-xs text-gray-700">New Opportunity</div>
               </Link>
             )}
-            {/* Column headers - same style as Files tab (brief description of each column) */}
-            <div 
+            <div
               className="grid grid-cols-[10fr_5fr_5fr_5fr_auto] gap-2 sm:gap-3 lg:gap-4 items-center px-4 py-2 bg-gray-50 border-b border-gray-200 rounded-t-lg min-w-[680px] text-[10px] font-semibold text-gray-700"
               aria-hidden
             >
-              <div className="min-w-0" title="Opportunity name, code and client">Opportunity</div>
-              <div className="min-w-0" title="Person responsible for the estimate">Estimator</div>
-              <div className="min-w-0" title="Estimated total value">Est. value</div>
-              <div className="min-w-0" title="Current status (e.g. Prospecting, Sent, Refused)">Status</div>
-              <div className="min-w-0 w-24" title="Quick access to Files, Proposal, Report" aria-hidden />
+              <button type="button" onClick={() => setListSort('opportunity')} className="min-w-0 text-left flex items-center gap-1 hover:text-gray-900 rounded py-0.5 outline-none focus:outline-none" title="Sort by opportunity name">Opportunity{sortBy === 'opportunity' ? (sortDir === 'asc' ? ' ↑' : ' ↓') : ''}</button>
+              <button type="button" onClick={() => setListSort('estimator')} className="min-w-0 text-left flex items-center gap-1 hover:text-gray-900 rounded py-0.5 outline-none focus:outline-none" title="Sort by estimator">Estimator{sortBy === 'estimator' ? (sortDir === 'asc' ? ' ↑' : ' ↓') : ''}</button>
+              <button type="button" onClick={() => setListSort('value')} className="min-w-0 text-left flex items-center gap-1 hover:text-gray-900 rounded py-0.5 outline-none focus:outline-none" title="Sort by estimated value">Est. value{sortBy === 'value' ? (sortDir === 'asc' ? ' ↑' : ' ↓') : ''}</button>
+              <button type="button" onClick={() => setListSort('status')} className="min-w-0 text-left flex items-center gap-1 hover:text-gray-900 rounded py-0.5 outline-none focus:outline-none" title="Sort by status">Status{sortBy === 'status' ? (sortDir === 'asc' ? ' ↑' : ' ↓') : ''}</button>
+              <div className="min-w-0 w-24" aria-hidden />
             </div>
-            {arr.map(p => (
-              <OpportunityListItem 
-                key={p.id} 
-                opportunity={p} 
+            {sortedArr.map(p => (
+              <OpportunityListItem
+                key={p.id}
+                opportunity={p}
                 onOpenReportModal={(projectId) => setReportModalOpen({ open: true, projectId })}
                 projectStatuses={projectStatuses}
               />
@@ -1517,52 +1572,149 @@ export function CreateReportModal({ projectId, reportCategories, onClose, onSucc
   );
 }
 
-export function OpportunityListItem({ opportunity, onOpenReportModal, projectStatuses }: { 
+export function OpportunityListItem({ opportunity, onOpenReportModal, projectStatuses, variant = 'card' }: {
   opportunity: Opportunity;
   onOpenReportModal: (projectId: string) => void;
   projectStatuses: any[];
+  variant?: 'card' | 'row';
 }){
   const navigate = useNavigate();
-  const { data:client } = useQuery({ 
-    queryKey:['opportunity-client', opportunity.client_id], 
-    queryFn: ()=> opportunity.client_id? api<any>('GET', `/clients/${encodeURIComponent(String(opportunity.client_id||''))}`): Promise.resolve(null), 
-    enabled: !!opportunity.client_id, 
-    staleTime: 300_000 
+  const { data:client } = useQuery({
+    queryKey:['opportunity-client', opportunity.client_id],
+    queryFn: ()=> opportunity.client_id? api<any>('GET', `/clients/${encodeURIComponent(String(opportunity.client_id||''))}`): Promise.resolve(null),
+    enabled: !!opportunity.client_id,
+    staleTime: 300_000
   });
-  const { data:details } = useQuery({ 
-    queryKey:['opportunity-detail-card', opportunity.id], 
-    queryFn: ()=> api<any>('GET', `/projects/${encodeURIComponent(String(opportunity.id))}`), 
-    staleTime: 60_000 
+  const { data:details } = useQuery({
+    queryKey:['opportunity-detail-card', opportunity.id],
+    queryFn: ()=> api<any>('GET', `/projects/${encodeURIComponent(String(opportunity.id))}`),
+    staleTime: 60_000
   });
-  
+
   const status = (opportunity as any).status_label || details?.status_label || '';
   const statusLabel = String(status || '').trim();
   const statusColor = (projectStatuses || []).find((s: any) => String(s?.label || '').trim() === statusLabel)?.value || '#e5e7eb';
   const estimatedValue = (opportunity as any).cost_estimated || details?.cost_estimated || 0;
   const estimatorIds = (opportunity as any).estimator_ids || details?.estimator_ids || ((opportunity as any).estimator_id || details?.estimator_id ? [(opportunity as any).estimator_id || details?.estimator_id] : []);
   const clientName = client?.display_name || client?.name || '';
-  
-  // Get employees data for avatars
-  const { data: employeesData } = useQuery({ 
-    queryKey:['employees-for-opportunities-list'], 
-    queryFn: ()=> api<any[]>('GET','/employees'), 
+
+  const { data: employeesData } = useQuery({
+    queryKey:['employees-for-opportunities-list'],
+    queryFn: ()=> api<any[]>('GET','/employees'),
     staleTime: 300_000
   });
   const employees = employeesData || [];
-  
-  // Get estimator employees for avatars
+
   const estimators = useMemo(() => {
     return estimatorIds
       .map((id: string) => employees.find((e: any) => String(e.id) === String(id)))
       .filter(Boolean);
   }, [estimatorIds, employees]);
 
-  // Quick access buttons (same as cards): Files, Proposal, Report → levam direto para a aba na opportunity
   const tabButtons = [
     { key: 'files', icon: '📁', label: 'Files', tab: 'files' },
     { key: 'proposal', icon: '📄', label: 'Proposal', tab: 'proposal' },
     { key: 'reports', icon: '📋', label: 'Report', tab: 'reports' },
   ];
+
+  const col1 = (
+    <div className="min-w-0">
+      <div className="text-sm font-bold text-gray-900 group-hover:text-[#7f1010] transition-colors truncate">
+        {opportunity.name || 'Opportunity'}
+      </div>
+      <div className="flex items-center gap-2 mt-0.5 text-xs text-gray-600">
+        <span className="truncate">{opportunity.code || '—'}</span>
+        {clientName && (
+          <>
+            <span className="text-gray-400">•</span>
+            <span className="truncate">{clientName}</span>
+          </>
+        )}
+      </div>
+    </div>
+  );
+  const col2 = (
+    <div className="min-w-0 flex items-center">
+      {estimators.length === 0 ? (
+        <span className="text-xs font-semibold text-gray-400">—</span>
+      ) : estimators.length === 1 ? (
+        <div className="flex items-center gap-2 min-w-0">
+          <UserAvatar user={estimators[0]} size="w-5 h-5" showTooltip={true} />
+          <span className="font-semibold text-gray-900 text-xs truncate min-w-0">{getUserDisplayName(estimators[0])}</span>
+        </div>
+      ) : (
+        <div className="flex items-center gap-1.5">
+          {estimators.slice(0, 2).map((est: any) => (
+            <UserAvatar key={est.id} user={est} size="w-5 h-5" showTooltip={true} />
+          ))}
+          <span className="text-xs text-gray-500 ml-1">+{estimators.length - 2}</span>
+        </div>
+      )}
+    </div>
+  );
+  const col3 = (
+    <div className="min-w-0 flex items-center">
+      <span className="font-semibold text-[#7f1010] whitespace-nowrap text-xs truncate">
+        {estimatedValue > 0 ? `$${estimatedValue.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : '—'}
+      </span>
+    </div>
+  );
+  const col4 = (
+    <div className="min-w-0">
+      <span
+        className={[
+          'inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium border border-gray-200',
+          'backdrop-blur-sm text-gray-800',
+        ].join(' ')}
+        title={status}
+        style={{ backgroundColor: statusColor, color: '#000' }}
+      >
+        <span className="truncate">{status || '—'}</span>
+      </span>
+    </div>
+  );
+  const col5 = (
+    <div className="flex items-center gap-1.5 flex-shrink-0" onClick={(e) => e.stopPropagation()}>
+      {tabButtons.map((btn) => (
+        <button
+          key={btn.key}
+          type="button"
+          onClick={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            if (btn.key === 'reports') {
+              onOpenReportModal(String(opportunity.id));
+            } else {
+              navigate(`/opportunities/${encodeURIComponent(String(opportunity.id))}?tab=${btn.tab}`);
+            }
+          }}
+          className="relative group/btn w-8 h-8 rounded-lg bg-gray-100 hover:bg-gray-200 border border-gray-200 hover:border-gray-300 flex items-center justify-center text-sm transition-all hover:scale-[1.05]"
+          title={btn.label}
+        >
+          {btn.icon}
+          <span className="absolute left-1/2 -translate-x-1/2 bottom-full mb-1 px-2 py-1 bg-gray-900 text-white text-xs rounded whitespace-nowrap opacity-0 group-hover/btn:opacity-100 pointer-events-none z-20 transition-opacity">
+            {btn.label}
+            <span className="absolute -bottom-1 left-1/2 -translate-x-1/2 w-2 h-2 bg-gray-900 rotate-45" />
+          </span>
+        </button>
+      ))}
+    </div>
+  );
+
+  if (variant === 'row') {
+    return (
+      <tr
+        onClick={() => navigate(`/opportunities/${encodeURIComponent(String(opportunity.id))}`)}
+        className="group hover:bg-gray-50 cursor-pointer transition-colors"
+      >
+        <td className="px-3 py-2 align-middle">{col1}</td>
+        <td className="px-3 py-2 align-middle">{col2}</td>
+        <td className="px-3 py-2 align-middle">{col3}</td>
+        <td className="px-3 py-2 align-middle">{col4}</td>
+        <td className="px-3 py-2 align-middle">{col5}</td>
+      </tr>
+    );
+  }
 
   return (
     <Link
@@ -1570,88 +1722,11 @@ export function OpportunityListItem({ opportunity, onOpenReportModal, projectSta
       className="group border border-gray-200 rounded-xl bg-white p-4 hover:shadow-md hover:border-gray-300 transition-all duration-200 min-w-[680px] block"
     >
       <div className="grid grid-cols-[10fr_5fr_5fr_5fr_auto] gap-2 sm:gap-3 lg:gap-4 items-center overflow-hidden">
-        {/* Coluna 1: Name, Code, Client - font sizes like ProjectDetail */}
-        <div className="min-w-0">
-          <div className="text-sm font-bold text-gray-900 group-hover:text-[#7f1010] transition-colors truncate">
-            {opportunity.name || 'Opportunity'}
-          </div>
-          <div className="flex items-center gap-2 mt-0.5 text-xs text-gray-600">
-            <span className="truncate">{opportunity.code || '—'}</span>
-            {clientName && (
-              <>
-                <span className="text-gray-400">•</span>
-                <span className="truncate">{clientName}</span>
-              </>
-            )}
-          </div>
-        </div>
-
-        {/* Coluna 2: Estimator (header já mostra o título) */}
-        <div className="min-w-0 flex items-center">
-          {estimators.length === 0 ? (
-            <span className="text-xs font-semibold text-gray-400">—</span>
-          ) : estimators.length === 1 ? (
-            <div className="flex items-center gap-2 min-w-0">
-              <UserAvatar user={estimators[0]} size="w-5 h-5" showTooltip={true} />
-              <span className="font-semibold text-gray-900 text-xs truncate min-w-0">{getUserDisplayName(estimators[0])}</span>
-            </div>
-          ) : (
-            <div className="flex items-center gap-1.5">
-              {estimators.slice(0, 2).map((est: any) => (
-                <UserAvatar key={est.id} user={est} size="w-5 h-5" showTooltip={true} />
-              ))}
-              <span className="text-xs text-gray-500 ml-1">+{estimators.length - 2}</span>
-            </div>
-          )}
-        </div>
-
-        {/* Coluna 3: Value (header já mostra o título) */}
-        <div className="min-w-0 flex items-center">
-          <span className="font-semibold text-[#7f1010] whitespace-nowrap text-xs truncate">
-            {estimatedValue > 0 ? `$${estimatedValue.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : '—'}
-          </span>
-        </div>
-
-        {/* Coluna 4: Status - text-xs like Project */}
-        <div className="min-w-0">
-          <span
-            className={[
-              'inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium border border-gray-200',
-              'backdrop-blur-sm text-gray-800',
-            ].join(' ')}
-            title={status}
-            style={{ backgroundColor: statusColor, color: '#000' }}
-          >
-            <span className="truncate">{status || '—'}</span>
-          </span>
-        </div>
-
-        {/* Coluna 5: Quick access (Files, Proposal, Report) - igual aos cards */}
-        <div className="flex items-center gap-1.5 flex-shrink-0" onClick={(e) => e.preventDefault()}>
-          {tabButtons.map((btn) => (
-            <button
-              key={btn.key}
-              type="button"
-              onClick={(e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                if (btn.key === 'reports') {
-                  onOpenReportModal(String(opportunity.id));
-                } else {
-                  navigate(`/opportunities/${encodeURIComponent(String(opportunity.id))}?tab=${btn.tab}`);
-                }
-              }}
-              className="relative group/btn w-8 h-8 rounded-lg bg-gray-100 hover:bg-gray-200 border border-gray-200 hover:border-gray-300 flex items-center justify-center text-sm transition-all hover:scale-[1.05]"
-              title={btn.label}
-            >
-              {btn.icon}
-              <span className="absolute left-1/2 -translate-x-1/2 bottom-full mb-1 px-2 py-1 bg-gray-900 text-white text-xs rounded whitespace-nowrap opacity-0 group-hover/btn:opacity-100 pointer-events-none z-20 transition-opacity">
-                {btn.label}
-                <span className="absolute -bottom-1 left-1/2 -translate-x-1/2 w-2 h-2 bg-gray-900 rotate-45" />
-              </span>
-            </button>
-          ))}
-        </div>
+        {col1}
+        {col2}
+        {col3}
+        {col4}
+        {col5}
       </div>
     </Link>
   );

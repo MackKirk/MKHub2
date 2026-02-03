@@ -1,5 +1,25 @@
 import type { Task, TaskStatus } from './types';
 
+/** Priority order: lower index = higher priority. Used for sorting. */
+export const PRIORITY_ORDER: Record<string, number> = {
+  urgent: 0,
+  high: 1,
+  normal: 2,
+  low: 3,
+};
+
+export function sortTasksByPriority<T extends { priority?: string | null }>(
+  tasks: T[],
+  order: 'high-to-low' | 'low-to-high' = 'high-to-low'
+): T[] {
+  const mult = order === 'high-to-low' ? 1 : -1;
+  return [...tasks].sort((a, b) => {
+    const pa = PRIORITY_ORDER[a.priority || 'normal'] ?? 2;
+    const pb = PRIORITY_ORDER[b.priority || 'normal'] ?? 2;
+    return mult * (pa - pb);
+  });
+}
+
 export const priorityDot: Record<string, string> = {
   urgent: 'bg-red-500',
   high: 'bg-orange-500',

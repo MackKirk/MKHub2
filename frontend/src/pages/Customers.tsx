@@ -171,13 +171,26 @@ export default function Customers(){
     setSearchParams(params);
   };
   
+  // List sort (from URL, client-side on current page)
+  const sortBy = (searchParams.get('sort') as 'customer' | 'code' | 'city' | 'status' | 'type') || 'customer';
+  const sortDir = (searchParams.get('dir') === 'desc' ? 'desc' : 'asc') as 'asc' | 'desc';
+  const setListSort = (column: typeof sortBy, direction?: 'asc' | 'desc') => {
+    const params = new URLSearchParams(searchParams);
+    const nextDir = direction ?? (sortBy === column && sortDir === 'asc' ? 'desc' : 'asc');
+    params.set('sort', column);
+    params.set('dir', nextDir);
+    setSearchParams(params, { replace: true });
+  };
+
   const queryString = useMemo(()=>{
     const p = new URLSearchParams(searchParams);
-    // Remove 'q' and 'page' from params for query string (they're handled separately)
+    // Remove 'q', 'page', 'sort', 'dir' from params for API query (handled separately or client-side)
     const qParam = p.get('q');
     const pageParam = p.get('page');
     p.delete('q');
     p.delete('page');
+    p.delete('sort');
+    p.delete('dir');
     const filterString = p.toString();
     const finalParams = new URLSearchParams();
     if (qParam) finalParams.set('q', qParam);
@@ -198,6 +211,43 @@ export default function Customers(){
   });
   
   const { data:settings, isLoading: settingsLoading } = useQuery({ queryKey:['settings'], queryFn: ()=>api<any>('GET','/settings') });
+
+  const sortedItems = useMemo(() => {
+    const list = data?.items ? [...data.items] : [];
+    const cmp = (a: Client, b: Client) => {
+      let aVal: string;
+      let bVal: string;
+      switch (sortBy) {
+        case 'customer':
+          aVal = `${(a.display_name || a.name || '').toLowerCase()}\t${(a.address_line1 || '')}`;
+          bVal = `${(b.display_name || b.name || '').toLowerCase()}\t${(b.address_line1 || '')}`;
+          return aVal < bVal ? -1 : aVal > bVal ? 1 : 0;
+        case 'code':
+          aVal = (a.code || '').toLowerCase();
+          bVal = (b.code || '').toLowerCase();
+          return aVal < bVal ? -1 : aVal > bVal ? 1 : 0;
+        case 'city':
+          aVal = [a.city, a.province].filter(Boolean).join(', ').toLowerCase();
+          bVal = [b.city, b.province].filter(Boolean).join(', ').toLowerCase();
+          return aVal < bVal ? -1 : aVal > bVal ? 1 : 0;
+        case 'status':
+          aVal = (a.client_status || '').toLowerCase();
+          bVal = (b.client_status || '').toLowerCase();
+          return aVal < bVal ? -1 : aVal > bVal ? 1 : 0;
+        case 'type':
+          aVal = (a.client_type || '').toLowerCase();
+          bVal = (b.client_type || '').toLowerCase();
+          return aVal < bVal ? -1 : aVal > bVal ? 1 : 0;
+        default:
+          return 0;
+      }
+    };
+    list.sort((a, b) => {
+      const r = cmp(a, b);
+      return sortDir === 'asc' ? r : -r;
+    });
+    return list;
+  }, [data?.items, sortBy, sortDir]);
   
   // Track if we've loaded data at least once
   useEffect(() => {
@@ -428,19 +478,19 @@ export default function Customers(){
             )}
             {(data?.items || []).length > 0 && (
               <>
-                {/* Column headers - same style as Opportunities list */}
+                {/* Column headers - sortable */}
                 <div 
                   className="grid grid-cols-[40fr_10fr_25fr_10fr_15fr] gap-2 sm:gap-3 lg:gap-4 items-center px-4 py-2 w-full text-[10px] font-semibold text-gray-700 bg-gray-50 border-b border-gray-200 rounded-t-lg"
-                  aria-hidden
+                  role="row"
                 >
-                  <div className="min-w-0" title="Customer name and address">Customer</div>
-                  <div className="min-w-0" title="Customer code">Code</div>
-                  <div className="min-w-0" title="City and province">City</div>
-                  <div className="min-w-0" title="Client status">Status</div>
-                  <div className="min-w-0" title="Client type">Type</div>
+                  <button type="button" onClick={() => setListSort('customer')} className="min-w-0 text-left flex items-center gap-1 hover:text-gray-900 rounded py-0.5 outline-none focus:outline-none" title="Sort by customer name">Customer{sortBy === 'customer' ? (sortDir === 'asc' ? ' ↑' : ' ↓') : ''}</button>
+                  <button type="button" onClick={() => setListSort('code')} className="min-w-0 text-left flex items-center gap-1 hover:text-gray-900 rounded py-0.5 outline-none focus:outline-none" title="Sort by code">Code{sortBy === 'code' ? (sortDir === 'asc' ? ' ↑' : ' ↓') : ''}</button>
+                  <button type="button" onClick={() => setListSort('city')} className="min-w-0 text-left flex items-center gap-1 hover:text-gray-900 rounded py-0.5 outline-none focus:outline-none" title="Sort by city">City{sortBy === 'city' ? (sortDir === 'asc' ? ' ↑' : ' ↓') : ''}</button>
+                  <button type="button" onClick={() => setListSort('status')} className="min-w-0 text-left flex items-center gap-1 hover:text-gray-900 rounded py-0.5 outline-none focus:outline-none" title="Sort by status">Status{sortBy === 'status' ? (sortDir === 'asc' ? ' ↑' : ' ↓') : ''}</button>
+                  <button type="button" onClick={() => setListSort('type')} className="min-w-0 text-left flex items-center gap-1 hover:text-gray-900 rounded py-0.5 outline-none focus:outline-none" title="Sort by type">Type{sortBy === 'type' ? (sortDir === 'asc' ? ' ↑' : ' ↓') : ''}</button>
                 </div>
                 <div className="rounded-b-lg border border-t-0 border-gray-200 overflow-hidden min-w-0">
-                  {(data?.items || []).map(c => (
+                  {sortedItems.map(c => (
                     <ClientRow key={c.id} c={c} statusColorMap={statusColorMap} onOpen={()=> nav(`/customers/${encodeURIComponent(c.id)}`)} />
                   ))}
                 </div>

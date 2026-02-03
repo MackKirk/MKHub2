@@ -1,5 +1,10 @@
 import { FilterRule, FieldConfig } from './types';
 import { isRangeOperator, getOperatorLabel } from './utils';
+import { sortByLabel } from '@/lib/sortOptions';
+
+function sortOptionsByLabel<T extends { label: string }>(options: T[]): T[] {
+  return sortByLabel(options, o => o.label);
+}
 
 interface FilterRuleRowProps {
   rule: FilterRule;
@@ -78,6 +83,10 @@ export default function FilterRuleRow({
       const groupedOptions = fieldConfig.getGroupedOptions ? fieldConfig.getGroupedOptions() : null;
       
       if (groupedOptions && groupedOptions.length > 0) {
+        const sortedGroups = sortOptionsByLabel(groupedOptions.map(g => ({ ...g, label: g.label }))).map(g => ({
+          label: g.label,
+          options: sortOptionsByLabel(g.options),
+        }));
         return (
           <select
             className="w-full border border-gray-200 rounded-md px-3 py-2 text-sm bg-gray-50/50 text-gray-700 focus:outline-none focus:ring-1 focus:ring-gray-300 focus:border-gray-300 focus:bg-white"
@@ -85,7 +94,7 @@ export default function FilterRuleRow({
             onChange={(e) => handleValueChange(e.target.value)}
           >
             <option value="">Select {fieldConfig.label.toLowerCase()}...</option>
-            {groupedOptions.map((group) => (
+            {sortedGroups.map((group) => (
               <optgroup key={group.label} label={group.label}>
                 {group.options.map((opt) => (
                   <option key={opt.value} value={opt.value}>{opt.label}</option>
@@ -96,8 +105,8 @@ export default function FilterRuleRow({
         );
       }
       
-      // Fallback to simple options
-      const options = fieldConfig.getOptions ? fieldConfig.getOptions() : [];
+      // Fallback to simple options (always alphabetical by label)
+      const options = sortOptionsByLabel(fieldConfig.getOptions ? fieldConfig.getOptions() : []);
       return (
         <select
           className="w-full border border-gray-200 rounded-md px-3 py-2 text-sm bg-gray-50/50 text-gray-700 focus:outline-none focus:ring-1 focus:ring-gray-300 focus:border-gray-300 focus:bg-white"
@@ -197,7 +206,7 @@ export default function FilterRuleRow({
         value={rule.field}
         onChange={(e) => handleFieldChange(e.target.value)}
       >
-        {fields.map((field) => (
+        {sortOptionsByLabel(fields.map(f => ({ id: f.id, label: f.label }))).map((field) => (
           <option key={field.id} value={field.id}>{field.label}</option>
         ))}
       </select>

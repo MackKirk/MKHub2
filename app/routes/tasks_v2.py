@@ -24,6 +24,16 @@ class TaskDescriptionUpdate(BaseModel):
     description: Optional[str] = None
 
 
+class TaskUpdate(BaseModel):
+    """Partial update for task (priority, assignment). Only provided fields are updated."""
+    priority: Optional[str] = None
+    assigned_user_id: Optional[str] = None  # UUID; set to clear division and assign to user
+    assigned_division_id: Optional[str] = None  # SettingItem UUID; set to clear user and assign to division
+
+
+VALID_PRIORITIES = {"low", "normal", "high", "urgent"}
+
+
 class TaskCreate(BaseModel):
     title: str
     description: Optional[str] = None
@@ -526,6 +536,85 @@ def update_task_description(
     task.updated_at = datetime.utcnow()
     if old_desc != new_desc:
         _add_task_log(db, task, me, "description_changed", "Description updated")
+    db.commit()
+    db.refresh(task)
+    return _serialize_task(task, viewer_id=me.id, viewer_division=viewer_division, viewer_divisions=viewer_divisions)
+
+
+@router.patch("/{task_id}")
+def update_task(
+    task_id: str,
+    payload: TaskUpdate,
+    db: Session = Depends(get_db),
+    me: User = Depends(get_current_user),
+):
+    """Update task priority and/or assignment. Only provided fields are updated."""
+    viewer_divisions = _get_viewer_divisions(db, me.id)
+    viewer_division = viewer_divisions[0] if viewer_divisions else None
+    task = _get_task(task_id, db)
+    _ensure_view_permission(task, me, viewer_divisions)
+    _ensure_action_permission(task, me, viewer_divisions)
+
+    changes: list[str] = []
+
+    if payload.priority is not None:
+        priority = (payload.priority or "normal").lower()
+        if priority not in VALID_PRIORITIES:
+            raise HTTPException(status_code=400, detail=f"Invalid priority. Must be one of: {sorted(VALID_PRIORITIES)}")
+        if task.priority != priority:
+            task.priority = priority
+            changes.append(f"Priority set to {priority}")
+
+    assignment_cleared = False
+
+    if payload.assigned_division_id is not None:
+        if payload.assigned_division_id == "":
+            task.assigned_to_id = None
+            task.assigned_to_name = None
+            task.assigned_division_label = None
+            assignment_cleared = True
+        else:
+            try:
+                div_uuid = uuid.UUID(payload.assigned_division_id)
+            except ValueError:
+                raise HTTPException(status_code=400, detail="Invalid division ID")
+            div = db.query(SettingItem).filter(SettingItem.id == div_uuid).first()
+            if not div or not getattr(div, "label", None):
+                raise HTTPException(status_code=400, detail="Division not found")
+            div_label = div.label
+            task.assigned_to_id = None
+            task.assigned_to_name = None
+            task.assigned_division_label = div_label
+            changes.append(f"Assigned to division: {div_label}")
+
+    if payload.assigned_user_id is not None:
+        if payload.assigned_user_id == "":
+            task.assigned_to_id = None
+            task.assigned_to_name = None
+            task.assigned_division_label = None
+            assignment_cleared = True
+        else:
+            try:
+                user_uuid = uuid.UUID(payload.assigned_user_id)
+            except ValueError:
+                raise HTTPException(status_code=400, detail="Invalid user ID")
+            user = db.query(User).filter(User.id == user_uuid, User.is_active == True).first()
+            if not user:
+                raise HTTPException(status_code=400, detail="User not found")
+            task.assigned_to_id = user.id
+            task.assigned_to_name = get_user_display(db, user.id)
+            task.assigned_division_label = None
+            changes.append(f"Assigned to: {task.assigned_to_name}")
+
+    if assignment_cleared and not any("Assigned to" in c for c in changes):
+        changes.append("Assignment cleared")
+
+    if not changes:
+        db.refresh(task)
+        return _serialize_task(task, viewer_id=me.id, viewer_division=viewer_division, viewer_divisions=viewer_divisions)
+
+    task.updated_at = datetime.utcnow()
+    _add_task_log(db, task, me, "updated", "; ".join(changes))
     db.commit()
     db.refresh(task)
     return _serialize_task(task, viewer_id=me.id, viewer_division=viewer_division, viewer_divisions=viewer_divisions)

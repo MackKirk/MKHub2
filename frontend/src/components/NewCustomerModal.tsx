@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { api } from '@/lib/api';
+import { sortByLabel } from '@/lib/sortOptions';
 import toast from 'react-hot-toast';
 import { useQuery } from '@tanstack/react-query';
 import { useConfirm } from '@/components/ConfirmProvider';
@@ -315,13 +316,13 @@ export default function NewCustomerModal({ onClose, onSuccess }: NewCustomerModa
                   <div>
                     <label className="text-xs text-gray-600">Status</label>
                     <select className="w-full border rounded px-3 py-2" value={form.client_status} onChange={e => setForm((s: any) => ({ ...s, client_status: e.target.value }))}>
-                      {statuses.map((s: any) => <option key={s.label} value={s.label}>{s.label}</option>)}
+                      {sortByLabel(statuses, (s: any) => (s.label || '').toString()).map((s: any) => <option key={s.label} value={s.label}>{s.label}</option>)}
                     </select>
                   </div>
                   <div>
                     <label className="text-xs text-gray-600">Type</label>
                     <select className="w-full border rounded px-3 py-2" value={form.client_type} onChange={e => setForm((s: any) => ({ ...s, client_type: e.target.value }))}>
-                      {types.map((t: any) => <option key={t.label} value={t.label}>{t.label}</option>)}
+                      {sortByLabel(types, (t: any) => (t.label || '').toString()).map((t: any) => <option key={t.label} value={t.label}>{t.label}</option>)}
                     </select>
                   </div>
                   <div><label className="text-xs text-gray-600">Email</label><input className="w-full border rounded px-3 py-2" value={form.email} onChange={e => setForm((s: any) => ({ ...s, email: e.target.value }))} /></div>
@@ -330,14 +331,14 @@ export default function NewCustomerModal({ onClose, onSuccess }: NewCustomerModa
                     <label className="text-xs text-gray-600">Lead source</label>
                     <select className="w-full border rounded px-3 py-2" value={form.lead_source || ''} onChange={e => setForm((s: any) => ({ ...s, lead_source: e.target.value }))}>
                       <option value="">Select...</option>
-                      {leadSources.map((ls: any) => { const val = ls?.value ?? ls?.id ?? ls?.label ?? ls?.name ?? String(ls); const label = ls?.label ?? ls?.name ?? String(ls); return <option key={String(val)} value={String(val)}>{label}</option>; })}
+                      {sortByLabel(leadSources, (ls: any) => (ls?.label ?? ls?.name ?? String(ls)).toString()).map((ls: any) => { const val = ls?.value ?? ls?.id ?? ls?.label ?? ls?.name ?? String(ls); const label = ls?.label ?? ls?.name ?? String(ls); return <option key={String(val)} value={String(val)}>{label}</option>; })}
                     </select>
                   </div>
                   <div>
                     <label className="text-xs text-gray-600">Estimator</label>
                     <select className="w-full border rounded px-3 py-2" value={form.estimator_id || ''} onChange={e => setForm((s: any) => ({ ...s, estimator_id: e.target.value || null }))}>
                       <option value="">Select...</option>
-                      {(employees || []).map((emp: any) => <option key={emp.id} value={emp.id}>{emp.name || emp.username}</option>)}
+                      {sortByLabel(employees || [], (emp: any) => (emp.name || emp.username || '').toString()).map((emp: any) => <option key={emp.id} value={emp.id}>{emp.name || emp.username}</option>)}
                     </select>
                   </div>
                   <div><label className="text-xs text-gray-600">Tax number</label><input className="w-full border rounded px-3 py-2" value={form.tax_number} onChange={e => setForm((s: any) => ({ ...s, tax_number: e.target.value }))} /></div>
