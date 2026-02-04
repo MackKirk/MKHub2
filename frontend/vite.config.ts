@@ -33,6 +33,22 @@ export default defineConfig({
         target: 'http://localhost:8000',
         changeOrigin: true,
       },
+      '/users': {
+        target: 'http://localhost:8000',
+        changeOrigin: true,
+      },
+      '/projects': {
+        target: 'http://localhost:8000',
+        changeOrigin: true,
+      },
+      '/tasks': {
+        target: 'http://localhost:8000',
+        changeOrigin: true,
+      },
+      '/quotes': {
+        target: 'http://localhost:8000',
+        changeOrigin: true,
+      },
     }
   },
   build: { 

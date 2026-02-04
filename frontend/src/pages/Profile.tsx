@@ -225,9 +225,9 @@ export default function Profile(){
         <div className="flex items-center gap-4 flex-1">
           {fromHome && (
             <button
-              onClick={() => navigate('/home')}
+              onClick={() => navigate('/overview')}
               className="p-2 rounded-lg hover:bg-gray-200 transition-colors flex items-center justify-center"
-              title="Back to Home"
+              title="Back to Overview"
             >
               <svg className="w-5 h-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />

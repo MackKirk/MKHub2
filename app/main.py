@@ -182,6 +182,32 @@ def create_app() -> FastAPI:
                         db.commit()
                         print("[startup] Created quotes table")
 
+                # Ensure user_home_dashboard table exists
+                if dialect == "sqlite":
+                    try:
+                        db.execute(text("SELECT 1 FROM user_home_dashboard LIMIT 1")).fetchone()
+                    except Exception:
+                        from .models.models import UserHomeDashboard
+                        Base.metadata.create_all(bind=engine, tables=[UserHomeDashboard.__table__])
+                        db.commit()
+                        print("[startup] Created user_home_dashboard table")
+                else:
+                    rows = db.execute(
+                        text(
+                            """
+                            SELECT 1
+                            FROM information_schema.tables
+                            WHERE table_name = 'user_home_dashboard'
+                            LIMIT 1
+                            """
+                        )
+                    ).fetchall()
+                    if not rows:
+                        from .models.models import UserHomeDashboard
+                        Base.metadata.create_all(bind=engine, tables=[UserHomeDashboard.__table__])
+                        db.commit()
+                        print("[startup] Created user_home_dashboard table")
+
                 # Ensure task_log_entries table exists (Task modal activity log)
                 if dialect == "sqlite":
                     try:

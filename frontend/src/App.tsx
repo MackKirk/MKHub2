@@ -14,6 +14,7 @@ import Protected from './lib/protected';
 const OnboardingWizard = lazy(() => import('./pages/OnboardingWizard'));
 import Profile from './pages/Profile';
 import HomePage from './pages/Home';
+import Overview from './pages/Overview';
 import Customers from './pages/Customers';
 import CustomerNew from './pages/CustomerNew';
 import Inventory from './pages/Inventory';
@@ -93,6 +94,7 @@ export default function App(){
         <Route element={<Protected/>}>
           <Route path="/onboarding" element={<Suspense fallback={<div className="min-h-screen flex items-center justify-center"><div>Loading...</div></div>}><OnboardingWizard/></Suspense>} />
           <Route path="/home" element={<AppShell><HomePage/></AppShell>} />
+          <Route path="/overview" element={<AppShell><Overview/></AppShell>} />
           <Route path="/profile" element={<AppShell><Profile/></AppShell>} />
           <Route path="/schedule" element={<AppShell><Schedule/></AppShell>} />
           <Route path="/clock-in-out" element={<AppShell><ClockInOut/></AppShell>} />

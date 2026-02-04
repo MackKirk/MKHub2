@@ -229,14 +229,14 @@ export default function TasksPage() {
         {fromHome && (
           <div className="flex items-center justify-between">
             <button
-              onClick={() => navigate('/home')}
+              onClick={() => navigate('/overview')}
               className="p-2 rounded-lg border border-gray-200 hover:bg-gray-50 transition-colors flex items-center gap-2"
-              title="Back to Home"
+              title="Back to Overview"
             >
               <svg className="w-4 h-4 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
               </svg>
-              <span className="text-xs font-medium text-gray-700">Back to Home</span>
+              <span className="text-xs font-medium text-gray-700">Back to Overview</span>
             </button>
           </div>
         )}

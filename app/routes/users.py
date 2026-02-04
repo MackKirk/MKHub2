@@ -1,14 +1,51 @@
+from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, HTTPException, Body
 from sqlalchemy.orm import Session
 from typing import Optional, List
 import uuid
 
 from ..db import get_db
-from ..models.models import User, Role, EmployeeProfile
+from ..models.models import User, Role, EmployeeProfile, UserHomeDashboard
 from ..auth.security import require_permissions, get_current_user
 
 
 router = APIRouter(prefix="/users", tags=["users"])
+
+
+# ---------- Home dashboard (must be before /{user_id}) ----------
+
+@router.get("/me/home-dashboard")
+def get_my_home_dashboard(db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    """Get current user's home dashboard layout and widgets. Returns null if not set (frontend uses default)."""
+    row = db.query(UserHomeDashboard).filter(UserHomeDashboard.user_id == user.id).first()
+    if not row:
+        return None
+    return {"layout": row.layout or [], "widgets": row.widgets or []}
+
+
+@router.put("/me/home-dashboard")
+def put_my_home_dashboard(
+    payload: dict = Body(...),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Create or update current user's home dashboard layout and widgets."""
+    layout = payload.get("layout")
+    widgets = payload.get("widgets")
+    if layout is None:
+        layout = []
+    if widgets is None:
+        widgets = []
+    row = db.query(UserHomeDashboard).filter(UserHomeDashboard.user_id == user.id).first()
+    if row:
+        row.layout = layout
+        row.widgets = widgets
+        row.updated_at = datetime.now(timezone.utc)
+    else:
+        row = UserHomeDashboard(user_id=user.id, layout=layout, widgets=widgets)
+        db.add(row)
+    db.commit()
+    return {"layout": row.layout, "widgets": row.widgets}
 
 
 def _user_to_dict(u: User, ep: Optional[EmployeeProfile]) -> dict:
