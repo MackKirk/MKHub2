@@ -15,6 +15,7 @@ import argparse
 # Add parent directory to path
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 from app.db import SessionLocal
 from app.models.models import User, EmployeeProfile, FileObject, EmployeeVisa, EmployeeEmergencyContact
@@ -972,9 +973,13 @@ def sync_employee_emergency_contacts(
 
 
 def find_user_by_email(db: Session, email: str) -> Optional[User]:
-    """Find user by email (personal or corporate)"""
+    """Find user by email (personal or corporate). Case-insensitive."""
+    if not email or not email.strip():
+        return None
+    normalized = email.strip().lower()
     return db.query(User).filter(
-        (User.email_personal == email) | (User.email_corporate == email)
+        (func.lower(User.email_personal) == normalized) |
+        (User.email_corporate.isnot(None) & (func.lower(User.email_corporate) == normalized))
     ).first()
 
 
@@ -1052,6 +1057,10 @@ def create_or_update_user(
     base_username = username
     counter = 1
     while db.query(User).filter(User.username == username).first():
+        # When we only import new users, do not create duplicates with suffix (e.g. bbennet1)
+        if not update_existing:
+            print(f"  [SKIP] User with username '{base_username}' already exists; skipping to avoid duplicate (update_existing=False).")
+            return None, False
         username = f"{base_username}{counter}"
         counter += 1
     

@@ -43,6 +43,7 @@ import ReviewsCompare from './pages/ReviewsCompare';
 import UserDetail from './pages/UserDetail';
 import LogHours from './pages/LogHours';
 import CompanyFiles from './pages/CompanyFiles';
+import DocumentCreator from './pages/DocumentCreator';
 import TaskRequests from './pages/TaskRequests';
 import Tasks from './pages/Tasks';
 import Schedule from './pages/Schedule';
@@ -120,6 +121,8 @@ export default function App(){
           <Route path="/business" element={<AppShell><BusinessDashboard/></AppShell>} />
           <Route path="/settings" element={<AppShell><SystemSettings/></AppShell>} />
           <Route path="/company-files" element={<AppShell><CompanyFiles/></AppShell>} />
+          <Route path="/documents/create" element={<AppShell><DocumentCreator/></AppShell>} />
+          <Route path="/documents/create/:id" element={<AppShell><DocumentCreator/></AppShell>} />
           <Route path="/log-hours" element={<AppShell><LogHours/></AppShell>} />
           <Route path="/users" element={<AppShell><Users/></AppShell>} />
           <Route path="/users/:userId" element={<AppShell><UserInfo/></AppShell>} />

@@ -387,6 +387,7 @@ export default function AppShell({ children }: PropsWithChildren){
       icon: <IconDocument />,
       items: [
         { id: 'company-files', label: 'Company Files', path: '/company-files', icon: <IconFolder />, requiredPermission: 'documents:access' },
+        { id: 'document-creator', label: 'Create document', path: '/documents/create', icon: <IconFileText />, requiredPermission: 'documents:access' },
       ]
     },
     {

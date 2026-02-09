@@ -447,6 +447,33 @@ class ClientDocument(Base):
     updated_by: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True))
 
 
+class DocumentTemplate(Base):
+    """Template for document creator: background art + optional area definitions."""
+    __tablename__ = "document_templates"
+
+    id: Mapped[uuid.UUID] = uuid_pk()
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    description: Mapped[Optional[str]] = mapped_column(String(500))
+    background_file_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), ForeignKey("file_objects.id", ondelete="SET NULL"))
+    areas_definition: Mapped[Optional[dict]] = mapped_column(JSON)  # [{ "id": str, "type": "title"|"text", "label": str, "x_pct", "y_pct", "width_pct", "height_pct" }, ...]
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
+
+    background_file = relationship("FileObject", foreign_keys=[background_file_id])
+
+
+class UserDocument(Base):
+    """User-created document instance (document creator)."""
+    __tablename__ = "user_documents"
+
+    id: Mapped[uuid.UUID] = uuid_pk()
+    title: Mapped[str] = mapped_column(String(255), nullable=False)
+    document_type_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True))  # optional, for future document types
+    pages: Mapped[Optional[dict]] = mapped_column(JSON)  # [{ "template_id": uuid, "areas_content": { "areaKey": value } }, ...]
+    created_by: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
+    updated_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+
+
 # Legacy Employee model removed in favor of EmployeeProfile linked to User
 
 

@@ -35,14 +35,19 @@ export default function Users(){
   
   const { data:me } = useQuery({ queryKey:['me'], queryFn: ()=> api<any>('GET','/auth/me') });
   
+  // System admin only (role admin) - for BambooHR sync buttons
+  const isSystemAdmin = useMemo(() => {
+    if (!me) return false;
+    return (me?.roles || []).some((r: string) => String(r || '').toLowerCase() === 'admin');
+  }, [me]);
+
   // Check if user has Administrator Access (users:write permission)
   const hasAdministratorAccess = useMemo(() => {
     if (!me) return false;
-    const isAdmin = (me?.roles || []).some((r: string) => String(r || '').toLowerCase() === 'admin');
-    if (isAdmin) return true;
+    if (isSystemAdmin) return true;
     const perms = me?.permissions || [];
     return perms.includes('users:write');
-  }, [me]);
+  }, [me, isSystemAdmin]);
   
   // Check if user has permission to invite users
   const canInviteUser = useMemo(() => {
@@ -75,12 +80,11 @@ export default function Users(){
     setPage(1);
   };
 
-  // TEMPORARY: Sync all from BambooHR
+  // Sync all from BambooHR (updates everyone)
   const handleSyncBambooHR = async () => {
-    if (!confirm('Tem certeza que deseja sincronizar todos os contatos do BambooHR? Isso pode levar alguns minutos.')) {
+    if (!confirm('Sync all contacts from BambooHR? This may take a few minutes.')) {
       return;
     }
-    
     setIsSyncing(true);
     try {
       await api('POST', '/users/sync-bamboohr-all', {
@@ -88,13 +92,35 @@ export default function Users(){
         include_photos: true,
         force_update_photos: false
       });
-      toast.success('Sincronização iniciada! Verifique os logs do servidor para detalhes.');
-      // Refresh users list after a delay
+      toast.success('Sync started. Check server logs for details.');
       setTimeout(() => {
         queryClient.invalidateQueries({ queryKey: ['users'] });
       }, 2000);
     } catch (error: any) {
-      toast.error(error?.message || 'Erro ao sincronizar contatos do BambooHR');
+      toast.error(error?.message || 'Failed to sync from BambooHR');
+    } finally {
+      setIsSyncing(false);
+    }
+  };
+
+  // Import only new users from BambooHR (does not update existing)
+  const handleImportNewOnly = async () => {
+    if (!confirm('Import only users that do not exist in MKHub yet? Existing users will not be changed.')) {
+      return;
+    }
+    setIsSyncing(true);
+    try {
+      await api('POST', '/users/sync-bamboohr-all', {
+        update_existing: false,
+        include_photos: true,
+        force_update_photos: false
+      });
+      toast.success('Import started. Check server logs for details.');
+      setTimeout(() => {
+        queryClient.invalidateQueries({ queryKey: ['users'] });
+      }, 2000);
+    } catch (error: any) {
+      toast.error(error?.message || 'Failed to import from BambooHR');
     } finally {
       setIsSyncing(false);
     }
@@ -117,16 +143,26 @@ export default function Users(){
             </div>
           </div>
           <div className="flex items-center gap-2">
-            {/* TEMPORARY: Sync from BambooHR button - only for Administrator Access */}
-            {hasAdministratorAccess && (
-              <button
-                onClick={handleSyncBambooHR}
-                disabled={isSyncing}
-                className="px-3 py-1.5 text-xs bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                title="Sincronizar todos os contatos do BambooHR (temporário)"
-              >
-                {isSyncing ? 'Sincronizando...' : '🔄 Sync BambooHR'}
-              </button>
+            {/* BambooHR sync buttons - system admin only */}
+            {isSystemAdmin && (
+              <>
+                <button
+                  onClick={handleImportNewOnly}
+                  disabled={isSyncing}
+                  className="px-3 py-1.5 text-xs bg-emerald-600 text-white rounded-lg font-medium hover:bg-emerald-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  title="Import only users that do not exist in MKHub yet"
+                >
+                  {isSyncing ? 'Importing...' : 'Import new only'}
+                </button>
+                <button
+                  onClick={handleSyncBambooHR}
+                  disabled={isSyncing}
+                  className="px-3 py-1.5 text-xs bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  title="Sync all contacts from BambooHR (updates everyone)"
+                >
+                  {isSyncing ? 'Syncing...' : 'Sync BambooHR'}
+                </button>
+              </>
             )}
             {canInviteUser && (
               <button

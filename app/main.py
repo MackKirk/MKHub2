@@ -30,6 +30,7 @@ from .routes.reviews import router as reviews_router
 from .routes.chat import router as chat_router
 from .routes.notifications import router as notifications_router
 from .routes.company_files import router as company_files_router
+from .routes.document_creator import router as document_creator_router
 from .routes.orders import router as orders_router
 from .routes.task_requests import router as task_requests_router
 from .routes.tasks_v2 import router as tasks_router
@@ -82,6 +83,7 @@ def create_app() -> FastAPI:
     app.include_router(tasks_router)
     app.include_router(community_router)
     app.include_router(company_files_router)
+    app.include_router(document_creator_router)
     app.include_router(orders_router)
     app.include_router(employee_management_router)
     app.include_router(permissions_router)
