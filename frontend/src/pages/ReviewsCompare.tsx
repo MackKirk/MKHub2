@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '@/lib/api';
+import { sortByLabel } from '@/lib/sortOptions';
 
 export default function ReviewsCompare(){
   const { data:cycles } = useQuery({ queryKey:['review-cycles'], queryFn: ()=> api<any[]>('GET','/reviews/cycles') });
@@ -43,7 +44,7 @@ export default function ReviewsCompare(){
         <span className="text-sm text-gray-600">Cycle</span>
         <select className="border rounded px-2 py-1" value={cycleId} onChange={e=> setCycleId(e.target.value)}>
           <option value="">Select...</option>
-          {(cycles||[]).map((c:any)=> <option key={c.id} value={c.id}>{c.name}</option>)}
+          {sortByLabel(cycles||[], (c:any)=> (c.name||'').toString()).map((c:any)=> <option key={c.id} value={c.id}>{c.name}</option>)}
         </select>
         <input placeholder="Search user" className="border rounded px-2 py-1 ml-3" value={q} onChange={e=>setQ(e.target.value)} />
         <label className="ml-2 text-sm flex items-center gap-1"><input type="checkbox" checked={onlyDiff} onChange={e=>setOnlyDiff(e.target.checked)} /> Only differences</label>

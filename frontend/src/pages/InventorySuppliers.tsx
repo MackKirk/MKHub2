@@ -678,8 +678,9 @@ export default function InventorySuppliers() {
 
   const deleteMut = useMutation({
     mutationFn: async (id: string) => api('DELETE', `/inventory/suppliers/${id}`),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['suppliers'] });
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ['suppliers'] });
+      await queryClient.refetchQueries({ queryKey: ['suppliers'] });
       toast.success('Supplier deleted');
     },
     onError: () => toast.error('Failed to delete supplier'),
@@ -965,14 +966,14 @@ export default function InventorySuppliers() {
             )}
             {!isLoading && Array.isArray(rows) && rows.length > 0 && (
               <>
-                {/* Column headers - same style as Customers list */}
+                {/* Column headers - sortable */}
                 <div 
                   className="grid grid-cols-[60fr_20fr_20fr] gap-2 sm:gap-3 lg:gap-4 items-center px-4 py-2 w-full text-[10px] font-semibold text-gray-700 bg-gray-50 border-b border-gray-200 rounded-t-lg"
-                  aria-hidden
+                  role="row"
                 >
-                  <div className="min-w-0" title="Supplier name and address">Supplier</div>
-                  <div className="min-w-0" title="Email">Email</div>
-                  <div className="min-w-0" title="Phone">Phone</div>
+                  <button type="button" onClick={() => handleSort('name')} className="min-w-0 text-left flex items-center gap-1 hover:text-gray-900 rounded py-0.5 outline-none focus:outline-none" title="Sort by supplier name">Supplier{sortColumn === 'name' ? (sortDirection === 'asc' ? ' ↑' : ' ↓') : ''}</button>
+                  <button type="button" onClick={() => handleSort('email')} className="min-w-0 text-left flex items-center gap-1 hover:text-gray-900 rounded py-0.5 outline-none focus:outline-none" title="Sort by email">Email{sortColumn === 'email' ? (sortDirection === 'asc' ? ' ↑' : ' ↓') : ''}</button>
+                  <button type="button" onClick={() => handleSort('phone')} className="min-w-0 text-left flex items-center gap-1 hover:text-gray-900 rounded py-0.5 outline-none focus:outline-none" title="Sort by phone">Phone{sortColumn === 'phone' ? (sortDirection === 'asc' ? ' ↑' : ' ↓') : ''}</button>
                 </div>
                 <div className="rounded-b-lg border border-t-0 border-gray-200 overflow-hidden min-w-0">
                   {rows.map((s) => (

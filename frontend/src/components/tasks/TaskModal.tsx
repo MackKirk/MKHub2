@@ -89,10 +89,80 @@ export default function TaskModal({ open, taskId, onClose, onUpdated }: Props) {
   const [statusDropdownOpen, setStatusDropdownOpen] = useState(false);
   const [commentText, setCommentText] = useState('');
   const [uploadingImages, setUploadingImages] = useState(false);
+  const [isEditMode, setIsEditMode] = useState(false);
+  const [editPriority, setEditPriority] = useState('');
+  const [editAssignType, setEditAssignType] = useState<'user' | 'division' | 'none'>('none');
+  const [editUserId, setEditUserId] = useState('');
+  const [editDivisionId, setEditDivisionId] = useState('');
+  const [userSearchQuery, setUserSearchQuery] = useState('');
+  const [userDropdownOpen, setUserDropdownOpen] = useState(false);
+  const editUserDropdownRef = useRef<HTMLDivElement | null>(null);
+
+  const { data: usersOptions = [] } = useQuery({
+    queryKey: ['usersOptions', userSearchQuery],
+    queryFn: () =>
+      api<{ id: string; username: string; email: string; name?: string }[]>(
+        'GET',
+        `/auth/users/options?limit=500${userSearchQuery ? `&q=${encodeURIComponent(userSearchQuery)}` : ''}`
+      ),
+    enabled: open && isEditMode,
+  });
+
+  const { data: settings } = useQuery({
+    queryKey: ['settings'],
+    queryFn: () => api<{ divisions?: { id: string; label: string }[] }>('GET', '/settings'),
+    enabled: open,
+  });
+  const { data: currentUser } = useQuery({
+    queryKey: ['me'],
+    queryFn: () => api<{ id: string; name?: string }>('GET', '/auth/me'),
+    enabled: open,
+  });
+  const divisions: { id: string; label: string }[] = (settings?.divisions || []) as { id: string; label: string }[];
 
   useEffect(() => {
     if (task?.title) setTitleDraft(task.title);
   }, [task?.title]);
+
+  useEffect(() => {
+    if (!open) setIsEditMode(false);
+  }, [open]);
+
+  useEffect(() => {
+    if (!task) return;
+    setEditPriority(task.priority || 'normal');
+    if (task.assigned_to?.id) {
+      setEditAssignType('user');
+      setEditUserId(task.assigned_to.id);
+      setEditDivisionId('');
+    } else if (task.assigned_to?.division) {
+      setEditAssignType('division');
+      setEditUserId('');
+      const div = divisions.find((d) => d.label === task.assigned_to?.division);
+      setEditDivisionId(div?.id || '');
+    } else {
+      setEditAssignType('none');
+      setEditUserId('');
+      setEditDivisionId('');
+    }
+  }, [task?.id, task?.priority, task?.assigned_to?.id, task?.assigned_to?.division, divisions]);
+
+  // When settings/divisions load, resolve division label to id
+  useEffect(() => {
+    if (!task?.assigned_to?.division || divisions.length === 0) return;
+    const div = divisions.find((d) => d.label === task.assigned_to!.division);
+    if (div) setEditDivisionId(div.id);
+  }, [task?.assigned_to?.division, divisions]);
+
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (editUserDropdownRef.current && !editUserDropdownRef.current.contains(e.target as Node)) {
+        setUserDropdownOpen(false);
+      }
+    };
+    if (userDropdownOpen) document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [userDropdownOpen]);
 
   useEffect(() => {
     if (!open) return;
@@ -217,6 +287,58 @@ export default function TaskModal({ open, taskId, onClose, onUpdated }: Props) {
     onError: (err: any) => toast.error(err.message || 'Failed to archive task'),
   });
 
+  const updateTaskMutation = useMutation({
+    mutationFn: (payload: { priority?: string; assigned_user_id?: string; assigned_division_id?: string }) =>
+      api<Task>('PATCH', `/tasks/${taskId}`, payload),
+    onSuccess: () => {
+      toast.success('Task updated');
+      invalidate();
+      setIsEditMode(false);
+    },
+    onError: (err: any) => toast.error(err.message || 'Failed to update task'),
+  });
+
+  const priorityOptions = [
+    { value: 'low', label: 'Low' },
+    { value: 'normal', label: 'Normal' },
+    { value: 'high', label: 'High' },
+    { value: 'urgent', label: 'Urgent' },
+  ];
+
+  const handleSaveEdit = () => {
+    if (!taskId) return;
+    const payload: { priority?: string; assigned_user_id?: string; assigned_division_id?: string } = {};
+    if (editPriority !== (task?.priority || 'normal')) {
+      payload.priority = editPriority;
+    }
+    const currentUserId = task?.assigned_to?.id || '';
+    const currentDivisionLabel = task?.assigned_to?.division || '';
+    const desiredDivisionLabel = editDivisionId ? divisions.find((d) => d.id === editDivisionId)?.label : null;
+    const assignChanged =
+      (editAssignType === 'user' && editUserId !== currentUserId) ||
+      (editAssignType === 'division' && desiredDivisionLabel !== currentDivisionLabel) ||
+      (editAssignType === 'none' && (!!currentUserId || !!currentDivisionLabel));
+    if (assignChanged) {
+      if (editAssignType === 'user') {
+        payload.assigned_user_id = editUserId || '';
+        payload.assigned_division_id = ''; // clear division when assigning to user
+      } else if (editAssignType === 'division') {
+        payload.assigned_division_id = editDivisionId || '';
+        // do not send assigned_user_id so backend only sets division
+      } else {
+        // "Unassigned" = assign to current user
+        const meId = currentUser?.id != null ? String(currentUser.id) : '';
+        payload.assigned_user_id = meId;
+        payload.assigned_division_id = '';
+      }
+    }
+    if (!payload.priority && !assignChanged) {
+      setIsEditMode(false);
+      return;
+    }
+    updateTaskMutation.mutate(payload);
+  };
+
   const statusOptions: { value: TaskStatus; label: string; disabled: boolean }[] = useMemo(() => {
     const current = task?.status;
     const base = [
@@ -245,6 +367,7 @@ export default function TaskModal({ open, taskId, onClose, onUpdated }: Props) {
     archiveMutation.isPending ||
     updateDescriptionMutation.isPending ||
     addLogMutation.isPending ||
+    updateTaskMutation.isPending ||
     savingTitle;
 
   const handleSaveTitle = async () => {
@@ -488,6 +611,23 @@ export default function TaskModal({ open, taskId, onClose, onUpdated }: Props) {
                   <span className="text-xs font-semibold mt-1.5">Archive</span>
                 </button>
               )}
+
+              <button
+                type="button"
+                onClick={() => setIsEditMode((v) => !v)}
+                disabled={isBusy}
+                className={`w-14 h-14 rounded-xl flex flex-col items-center justify-center border transition disabled:opacity-60 ${
+                  isEditMode
+                    ? 'bg-brand-red/10 text-brand-red border-brand-red/30'
+                    : 'bg-gray-50 hover:bg-gray-100 text-gray-600 border-gray-200'
+                }`}
+                title={isEditMode ? 'Cancel edit' : 'Edit task'}
+              >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                </svg>
+                <span className="text-[10px] font-semibold mt-0.5">Edit</span>
+              </button>
           </div>
 
           <button
@@ -515,6 +655,144 @@ export default function TaskModal({ open, taskId, onClose, onUpdated }: Props) {
           ) : (
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 h-full min-h-0 overflow-hidden">
               <div className="lg:col-span-2 space-y-6 min-w-0 overflow-y-auto">
+                {/* Edit task panel */}
+                {isEditMode && (
+                  <div className="rounded-xl border-2 border-brand-red/30 bg-brand-red/5 p-5 space-y-4">
+                    <div className="text-sm font-semibold text-gray-900">Edit task</div>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-xs font-semibold text-gray-600 mb-1">Priority</label>
+                        <select
+                          value={editPriority}
+                          onChange={(e) => setEditPriority(e.target.value)}
+                          disabled={isBusy}
+                          className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm bg-white focus:ring-2 focus:ring-brand-red/40"
+                        >
+                          {priorityOptions.map((o) => (
+                            <option key={o.value} value={o.value}>
+                              {o.label}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                      <div>
+                        <label className="block text-xs font-semibold text-gray-600 mb-1">Assign to</label>
+                        <div className="flex gap-2 mb-2">
+                          {(['none', 'user', 'division'] as const).map((t) => (
+                            <button
+                              key={t}
+                              type="button"
+                              onClick={() => {
+                                setEditAssignType(t);
+                                if (t !== 'user') setEditUserId('');
+                                if (t !== 'division') setEditDivisionId('');
+                              }}
+                              className={`flex-1 px-2 py-1.5 rounded-lg border text-xs font-medium ${
+                                editAssignType === t
+                                  ? 'bg-brand-red text-white border-brand-red'
+                                  : 'bg-white text-gray-700 border-gray-200 hover:bg-gray-50'
+                              }`}
+                            >
+                              {t === 'none' ? 'Unassigned' : t === 'user' ? 'User' : 'Division'}
+                            </button>
+                          ))}
+                        </div>
+                        {editAssignType === 'user' && (
+                          <div className="relative" ref={editUserDropdownRef}>
+                            <input
+                              type="text"
+                              value={
+                                editUserId
+                                  ? (usersOptions.find((u) => u.id === editUserId)?.name ||
+                                    usersOptions.find((u) => u.id === editUserId)?.username ||
+                                    '')
+                                  : userSearchQuery
+                              }
+                              onChange={(e) => {
+                                setUserSearchQuery(e.target.value);
+                                if (editUserId) setEditUserId('');
+                                setUserDropdownOpen(true);
+                              }}
+                              onFocus={() => setUserDropdownOpen(true)}
+                              placeholder="Search user..."
+                              className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm"
+                            />
+                            {userDropdownOpen && (
+                              <>
+                                <div className="fixed inset-0 z-10" onClick={() => setUserDropdownOpen(false)} />
+                                <div className="absolute z-20 w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-48 overflow-y-auto">
+                                  {usersOptions
+                                    .filter((u) => {
+                                      if (!userSearchQuery.trim()) return true;
+                                      const q = userSearchQuery.toLowerCase();
+                                      return (u.name || '').toLowerCase().includes(q) || (u.username || '').toLowerCase().includes(q) || (u.email || '').toLowerCase().includes(q);
+                                    })
+                                    .map((u) => (
+                                      <button
+                                        key={u.id}
+                                        type="button"
+                                        onClick={() => {
+                                          setEditUserId(u.id);
+                                          setUserSearchQuery('');
+                                          setUserDropdownOpen(false);
+                                        }}
+                                        className={`w-full text-left px-3 py-2 text-sm hover:bg-gray-50 ${editUserId === u.id ? 'bg-gray-100 font-medium' : ''}`}
+                                      >
+                                        {u.name || u.username} {u.email ? `(${u.email})` : ''}
+                                      </button>
+                                    ))}
+                                </div>
+                              </>
+                            )}
+                            {editUserId && (
+                              <button
+                                type="button"
+                                onClick={() => setEditUserId('')}
+                                className="mt-1 text-xs text-gray-500 hover:text-gray-700"
+                              >
+                                Clear
+                              </button>
+                            )}
+                          </div>
+                        )}
+                        {editAssignType === 'division' && (
+                          <select
+                            value={editDivisionId}
+                            onChange={(e) => setEditDivisionId(e.target.value)}
+                            disabled={isBusy}
+                            className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm bg-white"
+                          >
+                            <option value="">Select division...</option>
+                            {divisions.map((d) => (
+                              <option key={d.id} value={d.id}>
+                                {d.label}
+                              </option>
+                            ))}
+                          </select>
+                        )}
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={handleSaveEdit}
+                        disabled={isBusy || updateTaskMutation.isPending}
+                        className="px-4 py-2 bg-brand-red text-white rounded-lg text-sm font-medium hover:bg-red-700 disabled:opacity-60"
+                      >
+                        {updateTaskMutation.isPending ? 'Saving…' : 'Save changes'}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setIsEditMode(false)}
+                        disabled={updateTaskMutation.isPending}
+                        className="px-4 py-2 border border-gray-200 rounded-lg text-sm font-medium hover:bg-gray-50"
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  </div>
+                )}
+
                 {/* Description */}
                 <div className="rounded-xl border border-gray-200/60 bg-gray-50/50 p-5 space-y-3">
                   <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Description</div>

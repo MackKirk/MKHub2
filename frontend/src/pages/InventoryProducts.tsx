@@ -533,6 +533,7 @@ export default function InventoryProducts(){
       await api('DELETE', `/estimate/products/${id}`);
       toast.success('Deleted');
       resetModal(); // Close modal after deletion
+      await queryClient.invalidateQueries({ queryKey: ['estimateProducts'] });
       await refetch();
     }catch(e: any){ 
       const errorMessage = e?.message || 'Failed to delete product';

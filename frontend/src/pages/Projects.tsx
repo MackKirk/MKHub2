@@ -559,6 +559,65 @@ export default function Projects(){
   const arr = data||[];
   const [pickerOpen, setPickerOpen] = useState<{ open:boolean, clientId?:string, projectId?:string }|null>(null);
 
+  // List sort: read from URL so it persists and is shareable
+  const sortBy = (searchParams.get('sort') as 'project' | 'start' | 'eta' | 'admin' | 'value' | 'status') || 'project';
+  const sortDir = (searchParams.get('dir') === 'desc' ? 'desc' : 'asc') as 'asc' | 'desc';
+  const setListSort = (column: typeof sortBy, direction?: 'asc' | 'desc') => {
+    const params = new URLSearchParams(searchParams);
+    const nextDir = direction ?? (sortBy === column && sortDir === 'asc' ? 'desc' : 'asc');
+    params.set('sort', column);
+    params.set('dir', nextDir);
+    setSearchParams(params, { replace: true });
+  };
+
+  const sortedArr = useMemo(() => {
+    const list = [...arr];
+    const getAdminName = (p: Project) => {
+      const id = p.project_admin_id;
+      if (!id || !employees?.length) return '';
+      const emp = (employees as any[]).find((e: any) => String(e.id) === String(id));
+      if (!emp) return '';
+      return `${emp.first_name || ''} ${emp.last_name || ''}`.trim() || emp.name || emp.username || '';
+    };
+    const cmp = (a: Project, b: Project) => {
+      let aVal: string | number = '';
+      let bVal: string | number = '';
+      switch (sortBy) {
+        case 'project':
+          aVal = `${(a.name || '').toLowerCase()}\t${(a.code || '')}`;
+          bVal = `${(b.name || '').toLowerCase()}\t${(b.code || '')}`;
+          return aVal < bVal ? -1 : aVal > bVal ? 1 : 0;
+        case 'start':
+          aVal = (a.date_start || a.created_at || '').slice(0, 10);
+          bVal = (b.date_start || b.created_at || '').slice(0, 10);
+          return aVal < bVal ? -1 : aVal > bVal ? 1 : 0;
+        case 'eta':
+          aVal = (a.date_eta || '').slice(0, 10);
+          bVal = (b.date_eta || '').slice(0, 10);
+          return aVal < bVal ? -1 : aVal > bVal ? 1 : 0;
+        case 'admin':
+          aVal = getAdminName(a).toLowerCase();
+          bVal = getAdminName(b).toLowerCase();
+          return aVal < bVal ? -1 : aVal > bVal ? 1 : 0;
+        case 'value':
+          aVal = Number(a.service_value) || 0;
+          bVal = Number(b.service_value) || 0;
+          return aVal - bVal;
+        case 'status':
+          aVal = (a.status_label || '').toLowerCase();
+          bVal = (b.status_label || '').toLowerCase();
+          return aVal < bVal ? -1 : aVal > bVal ? 1 : 0;
+        default:
+          return 0;
+      }
+    };
+    list.sort((a, b) => {
+      const r = cmp(a, b);
+      return sortDir === 'asc' ? r : -r;
+    });
+    return list;
+  }, [arr, sortBy, sortDir, employees]);
+
   // Filter Builder Configuration
   const filterFields: FieldConfig[] = useMemo(() => [
     {
@@ -853,7 +912,7 @@ export default function Projects(){
               ) : null}
           </div>
         ) : (
-          <div 
+          <div
             className="flex flex-col gap-2 overflow-x-auto"
             style={animationComplete ? {} : {
               opacity: hasAnimated ? 1 : 0,
@@ -861,18 +920,17 @@ export default function Projects(){
               transition: 'opacity 400ms ease-out, transform 400ms ease-out'
             }}
           >
-            {/* Column headers - same style as Opportunities list */}
-            <div 
+            <div
               className="grid grid-cols-[10fr_3fr_3fr_4fr_4fr_4fr_auto] gap-2 sm:gap-3 lg:gap-4 items-center px-4 py-2 bg-gray-50 border-b border-gray-200 rounded-t-lg min-w-[800px] text-[10px] font-semibold text-gray-700"
               aria-hidden
             >
-              <div className="min-w-0" title="Project name, code and client">Project</div>
-              <div className="min-w-0" title="Start date">Start</div>
-              <div className="min-w-0" title="Estimated completion">ETA</div>
-              <div className="min-w-0" title="Project administrator">Project Admin</div>
-              <div className="min-w-0" title="Estimated or actual value">Value</div>
-              <div className="min-w-0" title="Current status">Status</div>
-              <div className="min-w-0 w-28" title="Quick access to Files, Proposal, Reports, etc." aria-hidden />
+              <button type="button" onClick={() => setListSort('project')} className="min-w-0 text-left flex items-center gap-1 hover:text-gray-900 rounded py-0.5 outline-none focus:outline-none" title="Sort by project name">Project{sortBy === 'project' ? (sortDir === 'asc' ? ' ↑' : ' ↓') : ''}</button>
+              <button type="button" onClick={() => setListSort('start')} className="min-w-0 text-left flex items-center gap-1 hover:text-gray-900 rounded py-0.5 outline-none focus:outline-none" title="Sort by start date">Start{sortBy === 'start' ? (sortDir === 'asc' ? ' ↑' : ' ↓') : ''}</button>
+              <button type="button" onClick={() => setListSort('eta')} className="min-w-0 text-left flex items-center gap-1 hover:text-gray-900 rounded py-0.5 outline-none focus:outline-none" title="Sort by ETA">ETA{sortBy === 'eta' ? (sortDir === 'asc' ? ' ↑' : ' ↓') : ''}</button>
+              <button type="button" onClick={() => setListSort('admin')} className="min-w-0 text-left flex items-center gap-1 hover:text-gray-900 rounded py-0.5 outline-none focus:outline-none" title="Sort by project admin">Project Admin{sortBy === 'admin' ? (sortDir === 'asc' ? ' ↑' : ' ↓') : ''}</button>
+              <button type="button" onClick={() => setListSort('value')} className="min-w-0 text-left flex items-center gap-1 hover:text-gray-900 rounded py-0.5 outline-none focus:outline-none" title="Sort by value">Value{sortBy === 'value' ? (sortDir === 'asc' ? ' ↑' : ' ↓') : ''}</button>
+              <button type="button" onClick={() => setListSort('status')} className="min-w-0 text-left flex items-center gap-1 hover:text-gray-900 rounded py-0.5 outline-none focus:outline-none" title="Sort by status">Status{sortBy === 'status' ? (sortDir === 'asc' ? ' ↑' : ' ↓') : ''}</button>
+              <div className="min-w-0 w-28" aria-hidden />
             </div>
             {isLoading && !arr.length ? (
               <>
@@ -880,16 +938,16 @@ export default function Projects(){
                   <div key={i} className="h-20 bg-gray-100 animate-pulse rounded-lg min-w-[800px]" />
                 ))}
               </>
-            ) : arr.length > 0 ? (
-                arr.map(p => (
-                  <ProjectListItem
-                    key={p.id}
-                    project={p}
-                    projectDivisions={projectDivisions}
-                    projectStatuses={projectStatuses}
-                  />
-                ))
-              ) : null}
+            ) : sortedArr.length > 0 ? (
+              sortedArr.map(p => (
+                <ProjectListItem
+                  key={p.id}
+                  project={p}
+                  projectDivisions={projectDivisions}
+                  projectStatuses={projectStatuses}
+                />
+              ))
+            ) : null}
           </div>
         )}
         {!isInitialLoading && arr.length === 0 && (
@@ -947,9 +1005,9 @@ const getDivisionIcon = (label: string): string => {
   return iconMap[label] || '📦';
 };
 
-export function ProjectListItem({ project, projectDivisions, projectStatuses }:{ project: Project, projectDivisions?: any[], projectStatuses: any[] }){
+export function ProjectListItem({ project, projectDivisions, projectStatuses, variant = 'card' }: { project: Project, projectDivisions?: any[], projectStatuses: any[]; variant?: 'card' | 'row' }){
   const navigate = useNavigate();
-  
+
   const clientName = project.client_display_name || project.client_name || '';
   const status = project.status_label || '';
   const statusLabel = String(status || '').trim();
@@ -957,23 +1015,22 @@ export function ProjectListItem({ project, projectDivisions, projectStatuses }:{
   const start = (project.date_start || project.created_at || '').slice(0,10);
   const eta = (project.date_eta || '').slice(0,10);
   const projectAdminId = project.project_admin_id || null;
-  
+
   const proposalsTotal = useProposalsTotal(project.id);
   const estimatedValue = proposalsTotal > 0 ? proposalsTotal : (project.service_value || 0);
-  
-  const { data: employeesData } = useQuery({ 
-    queryKey:['employees-for-projects-list'], 
-    queryFn: ()=> api<any[]>('GET','/employees'), 
+
+  const { data: employeesData } = useQuery({
+    queryKey:['employees-for-projects-list'],
+    queryFn: ()=> api<any[]>('GET','/employees'),
     staleTime: 300_000
   });
   const employees = employeesData || [];
-  
+
   const projectAdmin = useMemo(() => {
     if (!projectAdminId) return null;
     return employees.find((e: any) => String(e.id) === String(projectAdminId)) || null;
   }, [projectAdminId, employees]);
 
-  // Quick access buttons - same style as Opportunities list
   const tabButtons = [
     { key: 'files', icon: '📁', label: 'Files', tab: 'files' },
     { key: 'proposal', icon: '📄', label: 'Proposal', tab: 'proposal' },
@@ -981,93 +1038,119 @@ export function ProjectListItem({ project, projectDivisions, projectStatuses }:{
     { key: 'dispatch', icon: '👷', label: 'Workload', tab: 'dispatch' },
   ];
 
+  const col1 = (
+    <div className="min-w-0">
+      <div className="text-sm font-bold text-gray-900 group-hover:text-[#7f1010] transition-colors truncate">
+        {project.name || 'Project'}
+      </div>
+      <div className="flex items-center gap-2 mt-0.5 text-xs text-gray-600">
+        <span className="truncate">{project.code || '—'}</span>
+        {clientName && (
+          <>
+            <span className="text-gray-400">•</span>
+            <span className="truncate">{clientName}</span>
+          </>
+        )}
+      </div>
+    </div>
+  );
+  const col2 = (
+    <div className="min-w-0 flex items-center">
+      <span className="font-semibold text-gray-900 text-xs whitespace-nowrap truncate">{start || '—'}</span>
+    </div>
+  );
+  const col3 = (
+    <div className="min-w-0 flex items-center">
+      <span className="font-semibold text-gray-900 text-xs whitespace-nowrap truncate">{eta || '—'}</span>
+    </div>
+  );
+  const col4 = (
+    <div className="min-w-0 flex items-center">
+      {!projectAdmin ? (
+        <span className="text-xs font-semibold text-gray-400">—</span>
+      ) : (
+        <div className="flex items-center gap-2 min-w-0">
+          <UserAvatar user={projectAdmin} size="w-5 h-5" showTooltip={true} />
+          <span className="font-semibold text-gray-900 text-xs truncate min-w-0">{getUserDisplayName(projectAdmin)}</span>
+        </div>
+      )}
+    </div>
+  );
+  const col5 = (
+    <div className="min-w-0 flex items-center">
+      <span className="font-semibold text-[#7f1010] whitespace-nowrap text-xs truncate">
+        {estimatedValue > 0 ? `$${estimatedValue.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : '—'}
+      </span>
+    </div>
+  );
+  const col6 = (
+    <div className="min-w-0">
+      <span
+        className={[
+          'inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium border border-gray-200',
+          'backdrop-blur-sm text-gray-800',
+        ].join(' ')}
+        title={status}
+        style={{ backgroundColor: statusColor, color: '#000' }}
+      >
+        <span className="truncate">{status || '—'}</span>
+      </span>
+    </div>
+  );
+  const col7 = (
+    <div className="flex items-center gap-1.5 flex-shrink-0" onClick={(e) => e.stopPropagation()}>
+      {tabButtons.map((btn) => (
+        <button
+          key={btn.key}
+          type="button"
+          onClick={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            navigate(`/projects/${encodeURIComponent(String(project.id))}?tab=${btn.tab}`);
+          }}
+          className="relative group/btn w-8 h-8 rounded-lg bg-gray-100 hover:bg-gray-200 border border-gray-200 hover:border-gray-300 flex items-center justify-center text-sm transition-all hover:scale-[1.05]"
+          title={btn.label}
+        >
+          {btn.icon}
+          <span className="absolute left-1/2 -translate-x-1/2 bottom-full mb-1 px-2 py-1 bg-gray-900 text-white text-xs rounded whitespace-nowrap opacity-0 group-hover/btn:opacity-100 pointer-events-none z-20 transition-opacity">
+            {btn.label}
+            <span className="absolute -bottom-1 left-1/2 -translate-x-1/2 w-2 h-2 bg-gray-900 rotate-45" />
+          </span>
+        </button>
+      ))}
+    </div>
+  );
+
+  if (variant === 'row') {
+    return (
+      <tr
+        onClick={() => navigate(`/projects/${encodeURIComponent(String(project.id))}`)}
+        className="group hover:bg-gray-50 cursor-pointer transition-colors"
+      >
+        <td className="px-3 py-2 align-middle">{col1}</td>
+        <td className="px-3 py-2 align-middle">{col2}</td>
+        <td className="px-3 py-2 align-middle">{col3}</td>
+        <td className="px-3 py-2 align-middle">{col4}</td>
+        <td className="px-3 py-2 align-middle">{col5}</td>
+        <td className="px-3 py-2 align-middle">{col6}</td>
+        <td className="px-3 py-2 align-middle">{col7}</td>
+      </tr>
+    );
+  }
+
   return (
-    <Link 
-      to={`/projects/${encodeURIComponent(String(project.id))}`} 
+    <Link
+      to={`/projects/${encodeURIComponent(String(project.id))}`}
       className="group border border-gray-200 rounded-xl bg-white p-4 hover:shadow-md hover:border-gray-300 transition-all duration-200 min-w-[800px] block"
     >
       <div className="grid grid-cols-[10fr_3fr_3fr_4fr_4fr_4fr_auto] gap-2 sm:gap-3 lg:gap-4 items-center overflow-hidden">
-        {/* Coluna 1: Name, Code, Client - header já mostra "Project" */}
-        <div className="min-w-0">
-          <div className="text-sm font-bold text-gray-900 group-hover:text-[#7f1010] transition-colors truncate">
-            {project.name || 'Project'}
-          </div>
-          <div className="flex items-center gap-2 mt-0.5 text-xs text-gray-600">
-            <span className="truncate">{project.code || '—'}</span>
-            {clientName && (
-              <>
-                <span className="text-gray-400">•</span>
-                <span className="truncate">{clientName}</span>
-              </>
-            )}
-          </div>
-        </div>
-
-        {/* Coluna 2: Start (só valor) */}
-        <div className="min-w-0 flex items-center">
-          <span className="font-semibold text-gray-900 text-xs whitespace-nowrap truncate">{start || '—'}</span>
-        </div>
-
-        {/* Coluna 3: ETA (só valor) */}
-        <div className="min-w-0 flex items-center">
-          <span className="font-semibold text-gray-900 text-xs whitespace-nowrap truncate">{eta || '—'}</span>
-        </div>
-
-        {/* Coluna 4: Project Admin (só valor) */}
-        <div className="min-w-0 flex items-center">
-          {!projectAdmin ? (
-            <span className="text-xs font-semibold text-gray-400">—</span>
-          ) : (
-            <div className="flex items-center gap-2 min-w-0">
-              <UserAvatar user={projectAdmin} size="w-5 h-5" showTooltip={true} />
-              <span className="font-semibold text-gray-900 text-xs truncate min-w-0">{getUserDisplayName(projectAdmin)}</span>
-            </div>
-          )}
-        </div>
-
-        {/* Coluna 5: Value (só valor) */}
-        <div className="min-w-0 flex items-center">
-          <span className="font-semibold text-[#7f1010] whitespace-nowrap text-xs truncate">
-            {estimatedValue > 0 ? `$${estimatedValue.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : '—'}
-          </span>
-        </div>
-
-        {/* Coluna 6: Status */}
-        <div className="min-w-0">
-          <span
-            className={[
-              'inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium border border-gray-200',
-              'backdrop-blur-sm text-gray-800',
-            ].join(' ')}
-            title={status}
-            style={{ backgroundColor: statusColor, color: '#000' }}
-          >
-            <span className="truncate">{status || '—'}</span>
-          </span>
-        </div>
-
-        {/* Coluna 7: Quick access */}
-        <div className="flex items-center gap-1.5 flex-shrink-0" onClick={(e) => e.preventDefault()}>
-          {tabButtons.map((btn) => (
-            <button
-              key={btn.key}
-              type="button"
-              onClick={(e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                navigate(`/projects/${encodeURIComponent(String(project.id))}?tab=${btn.tab}`);
-              }}
-              className="relative group/btn w-8 h-8 rounded-lg bg-gray-100 hover:bg-gray-200 border border-gray-200 hover:border-gray-300 flex items-center justify-center text-sm transition-all hover:scale-[1.05]"
-              title={btn.label}
-            >
-              {btn.icon}
-              <span className="absolute left-1/2 -translate-x-1/2 bottom-full mb-1 px-2 py-1 bg-gray-900 text-white text-xs rounded whitespace-nowrap opacity-0 group-hover/btn:opacity-100 pointer-events-none z-20 transition-opacity">
-                {btn.label}
-                <span className="absolute -bottom-1 left-1/2 -translate-x-1/2 w-2 h-2 bg-gray-900 rotate-45" />
-              </span>
-            </button>
-          ))}
-        </div>
+        {col1}
+        {col2}
+        {col3}
+        {col4}
+        {col5}
+        {col6}
+        {col7}
       </div>
     </Link>
   );

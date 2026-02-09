@@ -27,6 +27,14 @@ body{font-family:theme(fontFamily.sans);background:#f6f7f9}
   box-shadow: 0 6px 16px rgba(209, 22, 22, 0.25) !important;
 }
 
+/* Tasks page: remove focus outline/ring from priority sort selects */
+.tasks-priority-select:focus,
+.tasks-priority-select:focus-visible {
+  outline: none !important;
+  box-shadow: none !important;
+  border-color: rgb(229 231 235) !important; /* border-gray-200 */
+}
+
 /* Filter Builder Modal Animation */
 @keyframes fadeInSlideUp {
   from {

@@ -90,6 +90,16 @@ class User(Base):
     divisions = relationship("SettingItem", secondary="user_divisions", backref="users")
 
 
+class UserHomeDashboard(Base):
+    """Per-user home dashboard layout and widgets (react-grid-layout format)."""
+    __tablename__ = "user_home_dashboard"
+
+    user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), primary_key=True, nullable=False)
+    layout: Mapped[Optional[list]] = mapped_column(JSON)  # [{ i, x, y, w, h }]
+    widgets: Mapped[Optional[list]] = mapped_column(JSON)  # [{ id, type, title?, config? }]
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
+
+
 class UsernameReservation(Base):
     __tablename__ = "username_reservations"
 

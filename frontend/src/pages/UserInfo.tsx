@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState, useImperativeHandle, forwardRef, 
 import { useParams, useSearchParams, useNavigate } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
+import { sortByLabel } from '@/lib/sortOptions';
 import { formatDateLocal, getCurrentMonthLocal } from '@/lib/dateUtils';
 import toast from 'react-hot-toast';
 import GeoSelect from '@/components/GeoSelect';
@@ -4573,7 +4574,7 @@ function SalarySection({ p, editable, userId, collectChanges, settings, canEdit 
               (settings?.pay_types?.length ? (
                 <select className="w-full rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-gray-900 focus:ring-1 focus:ring-gray-400 focus:border-gray-400" value={form.pay_type} onChange={e=>onField('pay_type', e.target.value)}>
                   <option value="">Select...</option>
-                  {settings.pay_types.map((it:any)=> <option key={it.id} value={it.label}>{it.label}</option>)}
+                  {sortByLabel(settings.pay_types, (it:any)=> (it.label||'').toString()).map((it:any)=> <option key={it.id} value={it.label}>{it.label}</option>)}
                 </select>
               ) : (
                 <input className="w-full rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-gray-900 focus:ring-1 focus:ring-gray-400 focus:border-gray-400" value={form.pay_type} onChange={e=>onField('pay_type', e.target.value)} placeholder="Hourly / Salary / Contract..." />
@@ -4715,7 +4716,7 @@ function SalaryHistorySection({ userId, canEdit, settings }:{ userId:string, can
                   {(settings?.pay_types?.length ? (
                     <select className="w-full rounded-lg border px-3 py-2" value={payType} onChange={e=>setPayType(e.target.value)}>
                       <option value="">Select...</option>
-                      {settings.pay_types.map((it:any)=> <option key={it.id} value={it.label}>{it.label}</option>)}
+                      {sortByLabel(settings.pay_types, (it:any)=> (it.label||'').toString()).map((it:any)=> <option key={it.id} value={it.label}>{it.label}</option>)}
                     </select>
                   ) : (
                     <input className="w-full rounded-lg border px-3 py-2" value={payType} onChange={e=>setPayType(e.target.value)} placeholder="Hourly / Salary / Contract..." />
@@ -7504,7 +7505,7 @@ function UserDocuments({ userId, canEdit }:{ userId:string, canEdit:boolean }){
                   <div className="text-sm">{selectedDocIds.size} selected</div>
                   <select id="bulk-move-target" className="border rounded px-2 py-1">
                     <option value="" disabled selected>Select destination</option>
-                    {(folders||[]).map((f:any)=> <option key={f.id} value={f.id}>{f.name}</option>)}
+                    {sortByLabel(folders||[], (f:any)=> (f.name||'').toString()).map((f:any)=> <option key={f.id} value={f.id}>{f.name}</option>)}
                   </select>
                   <button className="px-3 py-1.5 rounded bg-brand-red text-white" onClick={async()=>{
                     const sel = (document.getElementById('bulk-move-target') as HTMLSelectElement);
@@ -7567,7 +7568,7 @@ function UserDocuments({ userId, canEdit }:{ userId:string, canEdit:boolean }){
                 <div className="text-xs text-gray-600">Folder</div>
                 <select className="border rounded px-3 py-2 w-full" value={activeFolderId==='all'? '': activeFolderId} onChange={e=> setActiveFolderId(e.target.value||'all')}>
                   <option value="">Select a folder</option>
-                  {(folders||[]).map((f:any)=> <option key={f.id} value={f.id}>{f.name}</option>)}
+                  {sortByLabel(folders||[], (f:any)=> (f.name||'').toString()).map((f:any)=> <option key={f.id} value={f.id}>{f.name}</option>)}
                 </select>
               </div>
               <div>
@@ -7627,7 +7628,7 @@ function UserDocuments({ userId, canEdit }:{ userId:string, canEdit:boolean }){
               <div className="text-xs text-gray-600">Destination folder</div>
               <select id="move-target" className="border rounded px-3 py-2 w-full" defaultValue="">
                 <option value="" disabled>Select...</option>
-                {(folders||[]).map((f:any)=> <option key={f.id} value={f.id}>{f.name}</option>)}
+                {sortByLabel(folders||[], (f:any)=> (f.name||'').toString()).map((f:any)=> <option key={f.id} value={f.id}>{f.name}</option>)}
               </select>
             </div>
             <div className="mt-4 flex justify-end gap-2">

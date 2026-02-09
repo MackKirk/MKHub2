@@ -1,5 +1,6 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
+import { sortByLabel } from '@/lib/sortOptions';
 import { queryClient } from '@/lib/queryClient';
 import { useRef, useState, useMemo, useEffect } from 'react';
 import { motion } from 'framer-motion';
@@ -224,9 +225,9 @@ export default function Profile(){
         <div className="flex items-center gap-4 flex-1">
           {fromHome && (
             <button
-              onClick={() => navigate('/home')}
+              onClick={() => navigate('/overview')}
               className="p-2 rounded-lg hover:bg-gray-200 transition-colors flex items-center justify-center"
-              title="Back to Home"
+              title="Back to Overview"
             >
               <svg className="w-5 h-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
@@ -3009,7 +3010,7 @@ function UserDocuments({ userId, canEdit }:{ userId:string, canEdit:boolean }){
                   <div className="text-sm">{selectedDocIds.size} selected</div>
                   <select id="bulk-move-target" className="border rounded px-2 py-1">
                     <option value="" disabled selected>Select destination</option>
-                    {(folders||[]).map((f:any)=> <option key={f.id} value={f.id}>{f.name}</option>)}
+                    {sortByLabel(folders||[], (f:any)=> (f.name||'').toString()).map((f:any)=> <option key={f.id} value={f.id}>{f.name}</option>)}
                   </select>
                   <button className="px-3 py-1.5 rounded bg-brand-red text-white" onClick={async()=>{
                     const sel = (document.getElementById('bulk-move-target') as HTMLSelectElement);
@@ -3072,7 +3073,7 @@ function UserDocuments({ userId, canEdit }:{ userId:string, canEdit:boolean }){
                 <div className="text-xs text-gray-600">Folder</div>
                 <select className="border rounded px-3 py-2 w-full" value={activeFolderId==='all'? '': activeFolderId} onChange={e=> setActiveFolderId(e.target.value||'all')}>
                   <option value="">Select a folder</option>
-                  {(folders||[]).map((f:any)=> <option key={f.id} value={f.id}>{f.name}</option>)}
+                  {sortByLabel(folders||[], (f:any)=> (f.name||'').toString()).map((f:any)=> <option key={f.id} value={f.id}>{f.name}</option>)}
                 </select>
               </div>
               <div>
@@ -3132,7 +3133,7 @@ function UserDocuments({ userId, canEdit }:{ userId:string, canEdit:boolean }){
               <div className="text-xs text-gray-600">Destination folder</div>
               <select id="move-target" className="border rounded px-3 py-2 w-full" defaultValue="">
                 <option value="" disabled>Select...</option>
-                {(folders||[]).map((f:any)=> <option key={f.id} value={f.id}>{f.name}</option>)}
+                {sortByLabel(folders||[], (f:any)=> (f.name||'').toString()).map((f:any)=> <option key={f.id} value={f.id}>{f.name}</option>)}
               </select>
             </div>
             <div className="mt-4 flex justify-end gap-2">

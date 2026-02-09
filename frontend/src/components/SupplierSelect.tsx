@@ -1,6 +1,7 @@
 import { useState, useMemo, useEffect, useRef } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '@/lib/api';
+import { sortByLabel } from '@/lib/sortOptions';
 
 interface SupplierSelectProps {
   value: string;
@@ -30,7 +31,8 @@ export default function SupplierSelect({
   });
 
   const suppliers = useMemo(() => {
-    return Array.isArray(supplierOptions) ? supplierOptions : [];
+    const list = Array.isArray(supplierOptions) ? supplierOptions : [];
+    return sortByLabel(list, (s: any) => (s.name || s.id || '').toString());
   }, [supplierOptions]);
 
   const selectedLabel = useMemo(() => {

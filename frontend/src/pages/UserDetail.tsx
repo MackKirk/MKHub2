@@ -2,6 +2,7 @@ import { useParams } from 'react-router-dom';
 import { useMemo, useState, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '@/lib/api';
+import { sortByLabel } from '@/lib/sortOptions';
 import toast from 'react-hot-toast';
 import { formatDateLocal, getCurrentMonthLocal } from '@/lib/dateUtils';
 import UserLoans from '@/components/UserLoans';
@@ -148,7 +149,7 @@ export default function UserDetail(){
                   <div className="mb-2 text-gray-600">Roles</div>
                   <div className="flex flex-wrap gap-2 mb-2">{(user.roles||[]).map((r:string)=> <span key={r} className="px-2 py-1 rounded-full border text-xs">{r} <button className="ml-1" onClick={()=>{ user.roles = (user.roles||[]).filter((x:string)=>x!==r); }}>✕</button></span>)}</div>
                   <div className="flex items-center gap-2">
-                    <select className="border rounded px-2 py-1 text-sm" value={sel} onChange={e=>setSel(e.target.value)}><option value="">Add role...</option>{(roles||[]).map((r:any)=> <option key={r.id} value={r.name}>{r.name}</option>)}</select>
+                    <select className="border rounded px-2 py-1 text-sm" value={sel} onChange={e=>setSel(e.target.value)}><option value="">Add role...</option>{sortByLabel(roles||[], (r:any)=> (r.name||'').toString()).map((r:any)=> <option key={r.id} value={r.name}>{r.name}</option>)}</select>
                     <button onClick={()=>{ if(!sel) return; if(!(user.roles||[]).includes(sel)){ user.roles = [...(user.roles||[]), sel]; } setSel(''); }} className="px-2 py-1 rounded bg-gray-100">Add</button>
                   </div>
                 </div>
@@ -656,7 +657,7 @@ function UserTimesheet({ userId }:{ userId:string }){
           <label className="text-xs text-gray-600 ml-3">Project</label>
           <select className="border rounded px-2 py-1 flex-1" value={projectId} onChange={e=>setProjectId(e.target.value)}>
             <option value="">Select...</option>
-            {(projects||[]).map((p:any)=> <option key={p.id} value={p.id}>{p.code? `${p.code} — `:''}{p.name||'Project'}</option>)}
+            {sortByLabel(projects||[], (p:any)=> (p.name||p.code||p.id||'').toString()).map((p:any)=> <option key={p.id} value={p.id}>{p.code? `${p.code} — `:''}{p.name||'Project'}</option>)}
           </select>
         </div>
         {canEditAttendance && (

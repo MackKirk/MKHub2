@@ -315,52 +315,65 @@ export default function ImageEditor({ isOpen, onClose, imageUrl, imageName = 'im
       setLoadError(null);
       setImg(null);
       
+      let urlToLoad: string;
       try {
-        const urlToLoad = `/files/${fileObjectId}/thumbnail?w=1600`;
-        const image = new Image();
-        let imageLoaded = false;
-        const loadTimeout = setTimeout(() => {
-          if (!imageLoaded) {
-            loadingRef.current = false;
-            setIsLoading(false);
-            setLoadError('Timeout loading image. Please try again.');
-            setImg(null);
-            loadedFileIdRef.current = null;
-          }
-        }, 30000);
-        
-        image.onload = () => {
-          imageLoaded = true;
-          clearTimeout(loadTimeout);
+        // Prefer full-resolution image via download URL so saved image keeps original quality
+        const r: any = await api('GET', `/files/${fileObjectId}/download`);
+        const downloadUrl = r?.download_url ? String(r.download_url) : '';
+        if (downloadUrl) {
+          urlToLoad = downloadUrl;
+        } else {
+          urlToLoad = `/files/${fileObjectId}/thumbnail?w=4096`;
+        }
+      } catch (_e) {
+        urlToLoad = `/files/${fileObjectId}/thumbnail?w=4096`;
+      }
+      
+      const image = new Image();
+      let imageLoaded = false;
+      const loadTimeout = setTimeout(() => {
+        if (!imageLoaded) {
           loadingRef.current = false;
           setIsLoading(false);
-          setLoadError(null);
-          setImg(image);
-          setAngle(0);
-          setScale(1);
-          setOffsetX(0);
-          setOffsetY(0);
-          setItems([]);
-          setSelectedIds([]);
-          setMode('select');
-        };
-        
-        image.onerror = () => {
+          setLoadError('Timeout loading image. Please try again.');
+          setImg(null);
+          loadedFileIdRef.current = null;
+        }
+      }, 60000);
+      
+      image.onload = () => {
+        imageLoaded = true;
+        clearTimeout(loadTimeout);
+        loadingRef.current = false;
+        setIsLoading(false);
+        setLoadError(null);
+        setImg(image);
+        setAngle(0);
+        setScale(1);
+        setOffsetX(0);
+        setOffsetY(0);
+        setItems([]);
+        setSelectedIds([]);
+        setMode('select');
+      };
+      
+      image.onerror = () => {
+        if (image.src.includes('/thumbnail')) {
           imageLoaded = true;
           clearTimeout(loadTimeout);
           loadingRef.current = false;
           setIsLoading(false);
           setLoadError('Failed to load image. Please check if the file exists and try again.');
           loadedFileIdRef.current = null;
-        };
-        
-        image.src = urlToLoad;
-      } catch (e: any) {
-        loadingRef.current = false;
-        setIsLoading(false);
-        setLoadError(e?.message || 'Failed to load image. Please try again.');
-        loadedFileIdRef.current = null;
-      }
+          return;
+        }
+        imageLoaded = false;
+        image.crossOrigin = '';
+        image.src = `/files/${fileObjectId}/thumbnail?w=4096`;
+      };
+      
+      image.crossOrigin = 'anonymous';
+      image.src = urlToLoad;
     };
     
     loadImage();
@@ -552,6 +565,9 @@ export default function ImageEditor({ isOpen, onClose, imageUrl, imageName = 'im
     const clamped = clampOffset(offsetXRef.current, offsetYRef.current, currentScale);
     
     ctx.save();
+    // High-quality smoothing is essential for rotation to avoid blur/artifacts
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = 'high';
     ctx.clearRect(0, 0, displayWidth, displayHeight);
     
     // Determine if we need a blur background (fast check; uses currentScale)
@@ -2332,86 +2348,97 @@ export default function ImageEditor({ isOpen, onClose, imageUrl, imageName = 'im
     
     setIsSaving(true);
     
-    // Get display dimensions (CSS pixels) - this is what the user sees
     const dpr = window.devicePixelRatio || 1;
     const displayWidth = canvas.width / dpr;
     const displayHeight = canvas.height / dpr;
-    
-    // Create final canvas with same size as the editing canvas to match what user sees
-    const finalCanvas = document.createElement('canvas');
-    finalCanvas.width = displayWidth;
-    finalCanvas.height = displayHeight;
-    const ctx = finalCanvas.getContext('2d');
-    if (!ctx) return;
-    
-    // Draw base image with transformations (same as drawBase function)
-    ctx.save();
-    const clamped = clampOffset(offsetX, offsetY);
-    ctx.clearRect(0, 0, displayWidth, displayHeight);
-    
-    // Use white background instead of blur
-    ctx.fillStyle = '#ffffff';
-    ctx.fillRect(0, 0, finalCanvas.width, finalCanvas.height);
-    
-    ctx.translate(displayWidth / 2 + clamped.x, displayHeight / 2 + clamped.y);
-    ctx.rotate(angle * Math.PI / 180);
     const iw = img.naturalWidth;
     const ih = img.naturalHeight;
     const s = scale;
-    const dw = iw * s;
-    const dh = ih * s;
-    ctx.drawImage(img, -dw / 2, -dh / 2, dw, dh);
+    const clamped = clampOffset(offsetX, offsetY);
+    const cx = displayWidth / 2;
+    const cy = displayHeight / 2;
+    const angleRad = (angle * Math.PI) / 180;
+    const cosA = Math.cos(angleRad);
+    const sinA = Math.sin(angleRad);
+    
+    // Transform display coords to image coords (full-res export)
+    const dispToImg = (xd: number, yd: number): { xi: number; yi: number } => ({
+      xi: ((xd - cx - clamped.x) * cosA + (yd - cy - clamped.y) * sinA) / s + iw / 2,
+      yi: (-(xd - cx - clamped.x) * sinA + (yd - cy - clamped.y) * cosA) / s + ih / 2,
+    });
+    const lenScale = 1 / s; // scale factor for stroke, fontSize, w, h
+    
+    // Export at original image resolution so saved file keeps same quality as before editing
+    const finalCanvas = document.createElement('canvas');
+    finalCanvas.width = iw;
+    finalCanvas.height = ih;
+    const ctx = finalCanvas.getContext('2d');
+    if (!ctx) return;
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = 'high';
+    
+    ctx.save();
+    ctx.clearRect(0, 0, iw, ih);
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(0, 0, iw, ih);
+    ctx.translate(iw / 2 + clamped.x / s, ih / 2 + clamped.y / s);
+    ctx.rotate(angleRad);
+    ctx.drawImage(img, -iw / 2, -ih / 2, iw, ih);
     ctx.restore();
     
-    // Draw annotations (same as drawOverlay function, but simplified for text)
+    // Draw annotations in image coordinates (scaled from display)
     for (const it of items) {
-      if (!it || !it.id) continue; // Skip null/undefined items
+      if (!it || !it.id) continue;
       ctx.save();
       ctx.strokeStyle = it.color;
       ctx.fillStyle = it.color;
-      ctx.lineWidth = it.stroke;
+      ctx.lineWidth = Math.max(0.5, (it.stroke || 1) * lenScale);
       
       if (it.type === 'rect') {
-        ctx.strokeRect(it.x, it.y, it.w || 0, it.h || 0);
+        const p = dispToImg(it.x, it.y);
+        const w = (it.w || 0) * lenScale;
+        const h = (it.h || 0) * lenScale;
+        ctx.strokeRect(p.xi, p.yi, w, h);
       } else if (it.type === 'arrow') {
-        const dx = (it.x2 || it.x) - it.x;
-        const dy = (it.y2 || it.y) - it.y;
+        const p1 = dispToImg(it.x, it.y);
+        const p2 = dispToImg(it.x2 ?? it.x, it.y2 ?? it.y);
+        const dx = p2.xi - p1.xi;
+        const dy = p2.yi - p1.yi;
         const len = Math.hypot(dx, dy) || 1;
         const ux = dx / len;
         const uy = dy / len;
-        const head = 10 + it.stroke * 2;
+        const head = (10 + (it.stroke || 1) * 2) * lenScale;
         ctx.beginPath();
-        ctx.moveTo(it.x, it.y);
-        ctx.lineTo(it.x2 || it.x, it.y2 || it.y);
+        ctx.moveTo(p1.xi, p1.yi);
+        ctx.lineTo(p2.xi, p2.yi);
         ctx.stroke();
         ctx.beginPath();
-        ctx.moveTo(it.x2 || it.x, it.y2 || it.y);
-        ctx.lineTo((it.x2 || it.x) - ux * head - uy * head * 0.5, (it.y2 || it.y) - uy * head + ux * head * 0.5);
-        ctx.lineTo((it.x2 || it.x) - ux * head + uy * head * 0.5, (it.y2 || it.y) - uy * head - ux * head * 0.5);
+        ctx.moveTo(p2.xi, p2.yi);
+        ctx.lineTo(p2.xi - ux * head - uy * head * 0.5, p2.yi - uy * head + ux * head * 0.5);
+        ctx.lineTo(p2.xi - ux * head + uy * head * 0.5, p2.yi - uy * head - ux * head * 0.5);
         ctx.closePath();
         ctx.fill();
       } else if (it.type === 'text') {
-        const itemFontSize = it.fontSize || fontSize;
+        const itemFontSize = Math.max(8, (it.fontSize || fontSize) * lenScale);
         ctx.font = `${itemFontSize}px Montserrat`;
-        const padding = 4;
+        const padding = 4 * lenScale;
         const textContent = it.text || '';
-        const maxWidth = (it.w || 200) - padding * 2;
+        const boxW = (it.w || 200) * lenScale;
+        const boxH = (it.h || 30) * lenScale;
+        const maxWidth = boxW - padding * 2;
         const lineHeight = itemFontSize * 1.2;
-        const startY = it.y + padding + itemFontSize;
+        const p = dispToImg(it.x, it.y);
+        const startY = p.yi + padding + itemFontSize;
         
-        // Word wrap text (same logic as drawOverlay)
         const lines: string[] = [];
         const paragraphs = textContent.split('\n');
-        
         for (const para of paragraphs) {
           if (!para.trim() && lines.length > 0) {
             lines.push('');
             continue;
           }
-          
           const words = para.split(' ');
           let currentLine = '';
-          
           for (let i = 0; i < words.length; i++) {
             const word = words[i];
             const wordMetrics = ctx.measureText(word);
@@ -2443,63 +2470,51 @@ export default function ImageEditor({ isOpen, onClose, imageUrl, imageName = 'im
               }
             }
           }
-          if (currentLine) {
-            lines.push(currentLine);
-          }
+          if (currentLine) lines.push(currentLine);
         }
+        if (lines.length === 0) lines.push('');
         
-        if (lines.length === 0) {
-          lines.push('');
-        }
-        
-        // Draw text background if enabled
         const bgEnabled = it.textBackgroundEnabled !== undefined ? it.textBackgroundEnabled : textBackgroundEnabled;
         if (bgEnabled && it.w && it.h) {
           const bgColor = it.textBackgroundColor || textBackgroundColor;
           const bgOpacity = it.textBackgroundOpacity !== undefined ? it.textBackgroundOpacity : textBackgroundOpacity;
-          
-          // Convert hex color to rgba
           const hex = bgColor.replace('#', '');
           const r = parseInt(hex.substring(0, 2), 16);
           const g = parseInt(hex.substring(2, 4), 16);
           const b = parseInt(hex.substring(4, 6), 16);
-          
           ctx.fillStyle = `rgba(${r}, ${g}, ${b}, ${bgOpacity})`;
-          ctx.fillRect(it.x, it.y, it.w, it.h);
+          ctx.fillRect(p.xi, p.yi, boxW, boxH);
         }
-        
-        // Clip to text box area
         ctx.save();
         ctx.beginPath();
-        ctx.rect(it.x, it.y, it.w || 200, it.h || 30);
+        ctx.rect(p.xi, p.yi, boxW, boxH);
         ctx.clip();
-        
         ctx.fillStyle = it.color;
         let y = startY;
-        const maxY = it.y + (it.h || 30) - padding;
-        
+        const maxY = p.yi + boxH - padding;
         for (let i = 0; i < lines.length; i++) {
           if (y > maxY) break;
-          ctx.fillText(lines[i], it.x + padding, y);
+          ctx.fillText(lines[i], p.xi + padding, y);
           y += lineHeight;
         }
-        
         ctx.restore();
       } else if (it.type === 'circle') {
-        ctx.beginPath();
+        const center = dispToImg(it.x, it.y);
         if (it.rx !== undefined && it.ry !== undefined) {
-          ctx.ellipse(it.x, it.y, Math.max(1, it.rx), Math.max(1, it.ry), 0, 0, Math.PI * 2);
+          ctx.ellipse(center.xi, center.yi, Math.max(1, (it.rx || 1) * lenScale), Math.max(1, (it.ry || 1) * lenScale), 0, 0, Math.PI * 2);
         } else {
-          ctx.arc(it.x, it.y, Math.max(1, it.r || 1), 0, Math.PI * 2);
+          ctx.arc(center.xi, center.yi, Math.max(1, (it.r || 1) * lenScale), 0, Math.PI * 2);
         }
         ctx.stroke();
       } else if (it.type === 'path') {
         const pts = it.points || [];
         if (pts.length > 1) {
+          const first = dispToImg(pts[0].x, pts[0].y);
           ctx.beginPath();
-          ctx.moveTo(pts[0].x, pts[0].y);
+          ctx.moveTo(first.xi, first.yi);
           for (let i = 1; i < pts.length; i++) {
-            ctx.lineTo(pts[i].x, pts[i].y);
+            const pt = dispToImg(pts[i].x, pts[i].y);
+            ctx.lineTo(pt.xi, pt.yi);
           }
           ctx.stroke();
         }

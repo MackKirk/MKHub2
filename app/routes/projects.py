@@ -3179,6 +3179,238 @@ def business_dashboard(
     }
 
 
+def _month_range(date_from: Optional[str], date_to: Optional[str], default_months: int = 12):
+    """Return list of month keys (YYYY-MM) from date_from to date_to, or last default_months months."""
+    from calendar import monthrange
+    today = datetime.now(timezone.utc).date()
+    if date_from and date_to:
+        try:
+            start_d = datetime.strptime(date_from, "%Y-%m-%d").date()
+            end_d = datetime.strptime(date_to, "%Y-%m-%d").date()
+        except Exception:
+            end_d = today
+            start_d = today - timedelta(days=365)
+    else:
+        end_d = today
+        start_d = today - timedelta(days=365)
+    months = []
+    y, m = start_d.year, start_d.month
+    ey, em = end_d.year, end_d.month
+    while (y, m) <= (ey, em):
+        months.append(f"{y}-{m:02d}")
+        m += 1
+        if m > 12:
+            m = 1
+            y += 1
+    return months[-default_months:] if len(months) > default_months else months
+
+
+@router.get("/business/dashboard-timeseries")
+def business_dashboard_timeseries(
+    division_id: Optional[str] = None,
+    subdivision_id: Optional[str] = None,
+    date_from: Optional[str] = None,
+    date_to: Optional[str] = None,
+    mode: Optional[str] = "quantity",
+    metric: Optional[str] = "opportunities_by_status",
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user)
+):
+    """Get dashboard stats by month for line charts. Returns months (X) and series (one line per status/division)."""
+    from ..models.models import SettingList, SettingItem
+    months = _month_range(date_from, date_to)
+    if not months:
+        return {"months": [], "series": []}
+
+    effective_start_dt = func.coalesce(Project.date_start, Project.created_at)
+
+    # Base filters for date range (full range; we bucket by month in Python)
+    try:
+        start_d = datetime.strptime(months[0] + "-01", "%Y-%m-%d").date()
+        end_last = months[-1].split("-")
+        from calendar import monthrange
+        _, last_day = monthrange(int(end_last[0]), int(end_last[1]))
+        end_d = datetime.strptime(f"{months[-1]}-{last_day}", "%Y-%m-%d").date()
+    except Exception:
+        return {"months": [], "series": []}
+
+    def apply_division_filters(q, *, subdiv_id: Optional[str] = None, div_id: Optional[str] = None):
+        if subdiv_id:
+            try:
+                opportunities_query = q.filter(
+                    or_(
+                        cast(Project.project_division_ids, String).like(f'%{subdiv_id}%'),
+                        Project.division_id == uuid.UUID(subdiv_id),
+                        cast(Project.division_ids, String).like(f'%{subdiv_id}%')
+                    )
+                )
+                return opportunities_query
+            except ValueError:
+                return q
+        if div_id:
+            try:
+                div_uuid = uuid.UUID(div_id)
+                divisions_list = db.query(SettingList).filter(SettingList.name == "project_divisions").first()
+                if divisions_list:
+                    division_items = db.query(SettingItem).filter(
+                        SettingItem.list_id == divisions_list.id,
+                        or_(SettingItem.id == div_uuid, SettingItem.parent_id == div_uuid)
+                    ).all()
+                    division_ids_list = [str(item.id) for item in division_items]
+                else:
+                    division_ids_list = [div_id]
+                all_conditions = []
+                for did in division_ids_list:
+                    try:
+                        all_conditions.append(
+                            or_(
+                                Project.division_id == uuid.UUID(did),
+                                cast(Project.project_division_ids, String).like(f'%{did}%'),
+                                cast(Project.division_ids, String).like(f'%{did}%')
+                            )
+                        )
+                    except ValueError:
+                        pass
+                if all_conditions:
+                    return q.filter(or_(*all_conditions))
+            except ValueError:
+                pass
+        return q
+
+    if metric in ("opportunities_by_status", "projects_by_status"):
+        is_opp = metric == "opportunities_by_status"
+        base = db.query(Project).filter(
+            Project.is_bidding == is_opp,
+            cast(effective_start_dt, Date) >= start_d,
+            cast(effective_start_dt, Date) <= end_d
+        )
+        base = apply_division_filters(base, subdiv_id=subdivision_id, div_id=division_id)
+        rows = base.all()
+        # Bucket (month, status) -> count or value
+        agg = {}
+        for p in rows:
+            dt = getattr(p, "date_start", None)
+            if not dt:
+                dt = getattr(p, "created_at", None)
+            if not dt:
+                continue
+            month_key = dt.strftime("%Y-%m") if hasattr(dt, "strftime") else f"{getattr(dt, 'year')}-{getattr(dt, 'month', 1):02d}"
+            if month_key not in months:
+                continue
+            status = getattr(p, "status_label", None) or "No Status"
+            key = (month_key, status)
+            if mode == "value":
+                proposal = db.query(Proposal).filter(Proposal.project_id == p.id).order_by(Proposal.created_at.desc()).first()
+                final_total = None
+                if proposal and proposal.data:
+                    try:
+                        final_total, _ = calculate_proposal_values_for_division(proposal.data, division_id=None)
+                    except Exception:
+                        pass
+                if final_total is None or final_total == 0:
+                    final_total = getattr(p, "cost_estimated" if is_opp else "cost_actual", 0) or 0
+                agg[key] = agg.get(key, 0) + final_total
+            else:
+                agg[key] = agg.get(key, 0) + 1
+
+        statuses = sorted({k[1] for k in agg.keys()})
+        series = []
+        for status in statuses:
+            values = [agg.get((m, status), 0) for m in months]
+            series.append({"label": status, "values": values})
+        return {"months": months, "series": series}
+
+    # By division: need divisions list and bucket (month, division_label)
+    if metric in ("opportunities_by_division", "projects_by_division"):
+        is_opp = metric == "opportunities_by_division"
+        divisions_list = db.query(SettingList).filter(SettingList.name == "project_divisions").first()
+        if not divisions_list:
+            return {"months": months, "series": []}
+        if division_id:
+            try:
+                div_uuid = uuid.UUID(division_id)
+                selected = db.query(SettingItem).filter(
+                    SettingItem.list_id == divisions_list.id, SettingItem.id == div_uuid
+                ).first()
+                if not selected:
+                    return {"months": months, "series": []}
+                subs = db.query(SettingItem).filter(
+                    SettingItem.list_id == divisions_list.id, SettingItem.parent_id == div_uuid
+                ).order_by(SettingItem.sort_index.asc()).all()
+                division_items = [selected] + subs if subs else [selected]
+                div_id_to_label = {str(d.id): d.label for d in division_items}
+            except ValueError:
+                return {"months": months, "series": []}
+        else:
+            main_divisions = db.query(SettingItem).filter(
+                SettingItem.list_id == divisions_list.id, SettingItem.parent_id.is_(None)
+            ).order_by(SettingItem.sort_index.asc()).all()
+            div_id_to_label = {}
+            for md in main_divisions:
+                div_id_to_label[str(md.id)] = md.label
+                subs = db.query(SettingItem).filter(
+                    SettingItem.list_id == divisions_list.id, SettingItem.parent_id == md.id
+                ).all()
+                for s in subs:
+                    div_id_to_label[str(s.id)] = md.label
+            division_items = main_divisions
+        base = db.query(Project).filter(
+            Project.is_bidding == is_opp,
+            cast(effective_start_dt, Date) >= start_d,
+            cast(effective_start_dt, Date) <= end_d
+        )
+        base = apply_division_filters(base, subdiv_id=subdivision_id, div_id=division_id)
+        rows = base.all()
+        agg = {}
+        for p in rows:
+            dt = getattr(p, "date_start", None)
+            if not dt:
+                dt = getattr(p, "created_at", None)
+            if not dt:
+                continue
+            month_key = dt.strftime("%Y-%m") if hasattr(dt, "strftime") else f"{getattr(dt, 'year')}-{getattr(dt, 'month', 1):02d}"
+            if month_key not in months:
+                continue
+            div_ids = getattr(p, "project_division_ids", None) or []
+            if not isinstance(div_ids, list):
+                div_ids = [div_ids] if div_ids else []
+            for did in div_ids:
+                label = div_id_to_label.get(str(did))
+                if not label:
+                    continue
+                key = (month_key, label)
+                if mode == "value":
+                    proposal = db.query(Proposal).filter(Proposal.project_id == p.id).order_by(Proposal.created_at.desc()).first()
+                    final_total = None
+                    if proposal and proposal.data:
+                        try:
+                            final_total, div_val = calculate_proposal_values_for_division(
+                                proposal.data, division_id=str(did)
+                            )
+                            percentages = getattr(p, "project_division_percentages", None)
+                            if percentages and isinstance(percentages, dict):
+                                pct = percentages.get(str(did), 0) or percentages.get(did, 0) or 0
+                                if pct > 0:
+                                    final_total = (final_total or 0) * (pct / 100.0)
+                                else:
+                                    final_total = div_val
+                            else:
+                                final_total = div_val
+                        except Exception:
+                            final_total = getattr(p, "cost_estimated" if is_opp else "cost_actual", 0) or 0
+                    if final_total is None or final_total == 0:
+                        final_total = getattr(p, "cost_estimated" if is_opp else "cost_actual", 0) or 0
+                    agg[key] = agg.get(key, 0) + (final_total or 0)
+                else:
+                    agg[key] = agg.get(key, 0) + 1
+
+        labels = sorted({k[1] for k in agg.keys()})
+        series = [{"label": label, "values": [agg.get((m, label), 0) for m in months]} for label in labels]
+        return {"months": months, "series": series}
+
+    return {"months": months, "series": []}
+
+
 @router.get("/business/opportunities")
 def business_opportunities(
     division_id: Optional[str] = None,

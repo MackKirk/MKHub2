@@ -196,7 +196,33 @@ export default function TaskCard({ task, onClick, showActions = true }: Props) {
     >
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0 flex-1">
-          <div className="text-sm font-semibold text-gray-900 truncate">{task.title}</div>
+          <div className="flex items-start gap-2">
+            <div className="text-sm font-semibold text-gray-900 truncate min-w-0 flex-1" title={task.title}>{task.title}</div>
+            {showActions && (
+              <div className="flex items-center gap-1 shrink-0">
+                {actions
+                  .filter((a) => a.show)
+                  .slice(0, 2)
+                  .map((a) => (
+                    <button
+                      key={a.key}
+                      type="button"
+                      title={a.title}
+                      aria-label={a.title}
+                      disabled={isBusy}
+                      onClick={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        a.onClick();
+                      }}
+                      className="px-3 py-1.5 rounded-lg text-xs font-medium border border-gray-200 bg-white hover:bg-gray-50 disabled:opacity-60"
+                    >
+                      {a.label}
+                    </button>
+                  ))}
+              </div>
+            )}
+          </div>
           <div className="mt-2 flex items-center justify-between gap-3">
             <div className="text-xs text-gray-600 font-medium">{source}</div>
             <div className="flex items-center gap-3 shrink-0">
@@ -221,32 +247,6 @@ export default function TaskCard({ task, onClick, showActions = true }: Props) {
           )}
         </div>
       </div>
-
-      {showActions && (
-        <div className="absolute top-3 right-3 flex items-center gap-1">
-          {actions
-            .filter((a) => a.show)
-            .slice(0, 2)
-            .map((a) => (
-              <button
-                key={a.key}
-                type="button"
-                title={a.title}
-                aria-label={a.title}
-                disabled={isBusy}
-                onClick={(e) => {
-                  e.preventDefault();
-                  e.stopPropagation();
-                  a.onClick();
-                }}
-                className="px-3 py-1.5 rounded-lg text-xs font-medium border border-gray-200 bg-white hover:bg-gray-50 disabled:opacity-60"
-              >
-                {a.label}
-              </button>
-            ))}
-        </div>
-      )}
     </button>
   );
 }
-

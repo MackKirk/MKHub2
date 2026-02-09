@@ -1,6 +1,7 @@
 import { useParams, Link, useLocation, useNavigate } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
+import { sortByLabel } from '@/lib/sortOptions';
 import { useEffect, useMemo, useState, ReactNode, useRef } from 'react';
 import toast from 'react-hot-toast';
 import ImagePicker from '@/components/ImagePicker';
@@ -396,6 +397,9 @@ const createDonutSlice = (startAngle: number, endAngle: number, innerRadius: num
     'Z'
   ].join(' ');
 };
+
+// Green palette for customer charts (same as business dashboard)
+const greenPalette = ['#14532d', '#166534', '#15803d', '#16a34a', '#22c55e', '#4ade80', '#86efac', '#bbf7d0'];
 
 type CustomerTab = 'overview'|'general'|'files'|'contacts'|'sites'|'projects'|'opportunities'|null;
 
@@ -1111,10 +1115,10 @@ export default function CustomerDetail(){
       return true;
     };
     
-    // Prospecting: opportunities created in range (all opportunities created, regardless of current status)
+    // Prospecting: opportunities whose current status is "prospecting" (and in date range via filteredOpportunities)
     const prospectingOpps = filteredOpportunities.filter(o => {
-      const created = o.created_at || o.details?.created_at;
-      return isInRange(created);
+      const status = (o.details?.status_label || o.status_label || '').toLowerCase();
+      return status === 'prospecting';
     });
     
     // Sent to Customer: opportunities that reached this status in range
@@ -1178,18 +1182,19 @@ export default function CustomerDetail(){
       }, 0);
     }
     
-    // Calculate percentages (relative to previous stage)
-    const sentPct = prospectingValue > 0 ? (sentValue / prospectingValue) * 100 : null;
-    // Refused can come from either Prospecting or Sent, prefer Sent if available
-    const refusedPct = sentValue > 0 ? (refusedValue / sentValue) * 100 : (prospectingValue > 0 ? (refusedValue / prospectingValue) * 100 : null);
-    // Converted comes from Sent stage
-    const convertedPct = sentValue > 0 ? (convertedValue / sentValue) * 100 : null;
+    // Percentages as share of total funnel (Prospecting + Sent + Refused + Converted = 100%)
+    const totalFunnel = prospectingValue + sentValue + refusedValue + convertedValue;
+    const prospectingPct = totalFunnel > 0 ? (prospectingValue / totalFunnel) * 100 : null;
+    const sentPct = totalFunnel > 0 ? (sentValue / totalFunnel) * 100 : null;
+    const refusedPct = totalFunnel > 0 ? (refusedValue / totalFunnel) * 100 : null;
+    const convertedPct = totalFunnel > 0 ? (convertedValue / totalFunnel) * 100 : null;
     
     return {
       prospecting: prospectingValue,
       sent: sentValue,
       refused: refusedValue,
       converted: convertedValue,
+      prospectingPct,
       sentPct,
       refusedPct,
       convertedPct,
@@ -1486,7 +1491,7 @@ export default function CustomerDetail(){
             {isAdmin && (
               <button
                 type="button"
-                onClick={async (e) => { e.stopPropagation(); const ok = await confirm({ title: 'Delete customer', message: 'Are you sure you want to delete this customer? This action cannot be undone.' }); if (!ok) return; try { await api('DELETE', `/clients/${encodeURIComponent(String(id||''))}`); toast.success('Customer deleted'); navigate('/customers'); } catch (_e) { toast.error('Failed to delete customer'); } }}
+                onClick={async (e) => { e.stopPropagation(); const ok = await confirm({ title: 'Delete customer', message: 'Are you sure you want to delete this customer? This action cannot be undone.' }); if (!ok) return; try { await api('DELETE', `/clients/${encodeURIComponent(String(id||''))}`); toast.success('Customer deleted'); await queryClient.invalidateQueries({ queryKey: ['clients'] }); navigate('/customers'); } catch (_e) { toast.error('Failed to delete customer'); } }}
                 className="absolute top-2 right-2 z-10 px-2 py-1 rounded text-[11px] font-medium border border-red-200 text-red-600 hover:bg-red-50 transition-colors"
                 title="Delete Customer"
               >
@@ -1566,7 +1571,7 @@ export default function CustomerDetail(){
             {isAdmin && (
               <button
                 type="button"
-                onClick={async (e) => { e.stopPropagation(); const ok = await confirm({ title: 'Delete customer', message: 'Are you sure you want to delete this customer? This action cannot be undone.' }); if (!ok) return; try { await api('DELETE', `/clients/${encodeURIComponent(String(id||''))}`); toast.success('Customer deleted'); navigate('/customers'); } catch (_e) { toast.error('Failed to delete customer'); } }}
+                onClick={async (e) => { e.stopPropagation(); const ok = await confirm({ title: 'Delete customer', message: 'Are you sure you want to delete this customer? This action cannot be undone.' }); if (!ok) return; try { await api('DELETE', `/clients/${encodeURIComponent(String(id||''))}`); toast.success('Customer deleted'); await queryClient.invalidateQueries({ queryKey: ['clients'] }); navigate('/customers'); } catch (_e) { toast.error('Failed to delete customer'); } }}
                 className="absolute top-2 right-2 z-10 px-2 py-1 rounded text-[11px] font-medium border border-red-200 text-red-600 hover:bg-red-50 transition-colors"
                 title="Delete Customer"
               >
@@ -1741,7 +1746,7 @@ export default function CustomerDetail(){
                             const sorted = [...entries].sort(([, a], [, b]) =>
                               globalDisplayMode === 'value' ? b.value - a.value : b.count - a.count
                             );
-                            const colors = ['#7f1010', '#b91c1c', '#dc2626', '#ea580c', '#d97706', '#ca8a04'];
+                            const colors = greenPalette;
                             const radius = 65;
                             const centerX = 65;
                             const centerY = 65;
@@ -1843,17 +1848,17 @@ export default function CustomerDetail(){
                                 <div className="space-y-2">
                                   <div className="flex items-center gap-2">
                                     <span className="text-[11px] text-gray-600 w-24">Prospecting</span>
-                                    <div className="flex-1 bg-gray-100 rounded-full h-2 min-w-0"><div className="bg-gradient-to-r from-[#7f1010] to-[#d11616] rounded-full h-2" style={{ width: `${(funnel.prospecting / maxValue) * 100}%` }} /></div>
-                                    <span className="text-[11px] font-semibold text-gray-900 min-w-[70px] text-right">{globalDisplayMode === 'value' ? formatCurrency(funnel.prospecting) : <CountUp value={funnel.prospecting} enabled={hasAnimated} />}</span>
+                                    <div className="flex-1 bg-gray-100 rounded-full h-2 min-w-0"><div className="bg-gradient-to-r from-[#14532d] to-[#22c55e] rounded-full h-2" style={{ width: `${(funnel.prospecting / maxValue) * 100}%` }} /></div>
+                                    <span className="text-[11px] font-semibold text-gray-900 min-w-[70px] text-right">{globalDisplayMode === 'value' ? formatCurrency(funnel.prospecting) : <CountUp value={funnel.prospecting} enabled={hasAnimated} />}{funnel.prospectingPct != null ? <span className="text-gray-500 ml-0.5">({funnel.prospectingPct.toFixed(0)}%)</span> : null}</span>
                                   </div>
                                   <div className="flex items-center gap-2">
                                     <span className="text-[11px] text-gray-600 w-24">Sent</span>
-                                    <div className="flex-1 bg-gray-100 rounded-full h-2 min-w-0"><div className="bg-gradient-to-r from-[#7f1010] to-[#d11616] rounded-full h-2" style={{ width: `${(funnel.sent / maxValue) * 100}%` }} /></div>
+                                    <div className="flex-1 bg-gray-100 rounded-full h-2 min-w-0"><div className="bg-gradient-to-r from-[#14532d] to-[#22c55e] rounded-full h-2" style={{ width: `${(funnel.sent / maxValue) * 100}%` }} /></div>
                                     <span className="text-[11px] font-semibold text-gray-900 min-w-[70px] text-right">{globalDisplayMode === 'value' ? formatCurrency(funnel.sent) : <CountUp value={funnel.sent} enabled={hasAnimated} />}{funnel.sentPct != null ? <span className="text-gray-500 ml-0.5">({funnel.sentPct.toFixed(0)}%)</span> : null}</span>
                                   </div>
                                   <div className="flex items-center gap-2">
                                     <span className="text-[11px] text-gray-600 w-24">Refused</span>
-                                    <div className="flex-1 bg-gray-100 rounded-full h-2 min-w-0"><div className="bg-gradient-to-r from-[#7f1010] to-[#d11616] rounded-full h-2" style={{ width: `${(funnel.refused / maxValue) * 100}%` }} /></div>
+                                    <div className="flex-1 bg-gray-100 rounded-full h-2 min-w-0"><div className="bg-gradient-to-r from-[#14532d] to-[#22c55e] rounded-full h-2" style={{ width: `${(funnel.refused / maxValue) * 100}%` }} /></div>
                                     <span className="text-[11px] font-semibold text-gray-900 min-w-[70px] text-right">{globalDisplayMode === 'value' ? formatCurrency(funnel.refused) : <CountUp value={funnel.refused} enabled={hasAnimated} />}{funnel.refusedPct != null ? <span className="text-gray-500 ml-0.5">({funnel.refusedPct.toFixed(0)}%)</span> : null}</span>
                                   </div>
                                   <div className="flex items-center gap-2 border-t border-gray-100 pt-2">
@@ -2011,7 +2016,7 @@ export default function CustomerDetail(){
                                   <path
                                     d={pipelinePath}
                                     fill="none"
-                                    stroke="#7f1010"
+                                    stroke="#14532d"
                                     strokeWidth="2.5"
                                     strokeLinecap="round"
                                     strokeLinejoin="round"
@@ -2066,7 +2071,7 @@ export default function CustomerDetail(){
                                         cx={point.x}
                                         cy={point.y}
                                         r="4"
-                                        fill="#7f1010"
+                                        fill="#14532d"
                                         className="hover:r-5 transition-all cursor-pointer"
                                       />
                                       <title>{tooltipText}</title>
@@ -2100,7 +2105,7 @@ export default function CustomerDetail(){
                                   <span className="text-xs text-gray-600 whitespace-nowrap">{mode === 'value' ? 'Closed' : 'Projects'}</span>
                                 </div>
                                 <div className="flex items-center gap-1.5">
-                                  <div className="w-3 h-0.5 bg-[#7f1010] flex-shrink-0"></div>
+                                  <div className="w-3 h-0.5 bg-[#14532d] flex-shrink-0"></div>
                                   <span className="text-xs text-gray-600 whitespace-nowrap">{mode === 'value' ? 'Pipeline' : 'Opportunities'}</span>
                                 </div>
                               </div>
@@ -2235,7 +2240,7 @@ export default function CustomerDetail(){
                           {isEditingGeneral ? (
                             <select className="w-full border rounded px-3 py-2" value={form.client_type||''} onChange={e=>set('client_type', e.target.value)}>
                               <option value="">Select...</option>
-                              {(settings?.client_types||[]).map((t:any)=> <option key={t.value||t.label} value={t.label}>{t.label}</option>)}
+                              {sortByLabel(settings?.client_types||[], (t:any)=> (t.label||'').toString()).map((t:any)=> <option key={t.value||t.label} value={t.label}>{t.label}</option>)}
                             </select>
                           ) : (
                             <div className="text-gray-900 font-medium py-1 break-words">{String(form.client_type||'') || '—'}</div>
@@ -2245,7 +2250,7 @@ export default function CustomerDetail(){
                           {isEditingGeneral ? (
                             <select className="w-full border rounded px-3 py-2" value={form.client_status||''} onChange={e=>set('client_status', e.target.value)}>
                               <option value="">Select...</option>
-                              {(settings?.client_statuses||[]).map((t:any)=> <option key={t.value||t.label} value={t.label}>{t.label}</option>)}
+                              {sortByLabel(settings?.client_statuses||[], (t:any)=> (t.label||'').toString()).map((t:any)=> <option key={t.value||t.label} value={t.label}>{t.label}</option>)}
                             </select>
                           ) : (
                             <div className="text-gray-900 font-medium py-1 break-words">{String(form.client_status||'') || '—'}</div>
@@ -2255,7 +2260,7 @@ export default function CustomerDetail(){
                           {isEditingGeneral ? (
                             <select className="w-full border rounded px-3 py-2" value={form.lead_source||''} onChange={e=>set('lead_source', e.target.value)}>
                               <option value="">Select...</option>
-                              {leadSources.map((ls:any)=>{
+                              {sortByLabel(leadSources, (ls:any)=> (ls?.label ?? ls?.name ?? '').toString()).map((ls:any)=>{
                                 const val = ls?.value ?? ls?.id ?? ls?.label ?? ls?.name ?? String(ls);
                                 const label = ls?.label ?? ls?.name ?? String(ls);
                                 return <option key={String(val)} value={String(val)}>{label}</option>;
@@ -2957,7 +2962,7 @@ function CustomerDocuments({ id, files, sites, onRefresh, hasEditPermission }: {
         {which==='site' && (
           <select className="border rounded px-3 py-2" value={siteId} onChange={e=>setSiteId(e.target.value)}>
             <option value="">Select site...</option>
-            {sites.map(s=> <option key={String(s.id)} value={String(s.id)}>{s.site_name||s.site_address_line1||s.id}</option>)}
+            {sortByLabel(sites, s=> (s.site_name||s.site_address_line1||String(s.id)).toString()).map(s=> <option key={String(s.id)} value={String(s.id)}>{s.site_name||s.site_address_line1||s.id}</option>)}
           </select>
         )}
       </div>
@@ -3030,7 +3035,7 @@ function CustomerDocuments({ id, files, sites, onRefresh, hasEditPermission }: {
                     <div className="text-sm">{selectedDocIds.size} selected</div>
                     <select id="bulk-move-target-client" className="border rounded px-2 py-1">
                       <option value="" disabled selected>Select destination</option>
-                      {(folders||[]).map((f:any)=> <option key={f.id} value={f.id}>{f.name}</option>)}
+                      {sortByLabel(folders||[], (f:any)=> (f.name||'').toString()).map((f:any)=> <option key={f.id} value={f.id}>{f.name}</option>)}
                     </select>
                     <button className="px-3 py-1.5 rounded bg-brand-red text-white" onClick={async()=>{
                       const sel = document.getElementById('bulk-move-target-client') as HTMLSelectElement;
@@ -3106,7 +3111,7 @@ function CustomerDocuments({ id, files, sites, onRefresh, hasEditPermission }: {
                 <div className="text-xs text-gray-600">Folder</div>
                 <select className="border rounded px-3 py-2 w-full" value={activeFolderId==='all'? '': activeFolderId} onChange={e=> setActiveFolderId(e.target.value||'all')}>
                   <option value="">Select a folder</option>
-                  {(folders||[]).map((f:any)=> <option key={f.id} value={f.id}>{f.name}</option>)}
+                  {sortByLabel(folders||[], (f:any)=> (f.name||'').toString()).map((f:any)=> <option key={f.id} value={f.id}>{f.name}</option>)}
                 </select>
               </div>
               <div>
@@ -3182,7 +3187,7 @@ function CustomerDocuments({ id, files, sites, onRefresh, hasEditPermission }: {
               <div className="text-xs text-gray-600">Destination folder</div>
               <select id="move-target-client" className="border rounded px-3 py-2 w-full" defaultValue="">
                 <option value="" disabled>Select...</option>
-                {(folders||[]).map((f:any)=> <option key={f.id} value={f.id}>{f.name}</option>)}
+                {sortByLabel(folders||[], (f:any)=> (f.name||'').toString()).map((f:any)=> <option key={f.id} value={f.id}>{f.name}</option>)}
               </select>
             </div>
             <div className="mt-4 flex justify-end gap-2">
