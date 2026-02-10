@@ -1,3 +1,5 @@
+import { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import {
@@ -7,11 +9,14 @@ import {
   formatCurrency,
   greenPalette,
   coolPalette,
+  CHART_PALETTES,
   createPieSlice,
+  polarToCartesian,
   calculateDateRange,
   getPeriodDisplay,
   type StatusValueData,
   type DateFilterType,
+  type ChartPaletteId,
 } from './chartShared';
 
 type DashboardStats = {
@@ -48,6 +53,7 @@ type ChartWidgetProps = {
     customEnd?: string;
     division_id?: string;
     mode?: 'quantity' | 'value';
+    palette?: ChartPaletteId;
   };
 };
 
@@ -178,18 +184,33 @@ export function ChartWidget({ config }: ChartWidgetProps) {
     date_to
   );
 
-  const isOpportunities =
-    metric === 'opportunities_by_status' || metric === 'opportunities_by_division';
-  const colors = isOpportunities ? greenPalette : coolPalette;
-  const barGradient = isOpportunities
-    ? 'from-[#14532d] to-[#22c55e]'
-    : 'from-[#0b1739] to-[#1d4ed8]';
-  const lineStroke = isOpportunities ? '#14532d' : '#1d4ed8';
+  const isOpportunities = metric === 'opportunities_by_status' || metric === 'opportunities_by_division';
+  const defaultPalette = isOpportunities ? 'green' : 'cool';
+  const paletteId = (config?.palette ?? defaultPalette) as ChartPaletteId;
+  const colors = CHART_PALETTES[paletteId] ?? greenPalette;
+  const firstColor = colors[0];
+  const lastColor = colors[Math.min(4, colors.length - 1)];
+  const barGradientStyle = { background: `linear-gradient(to right, ${firstColor}, ${lastColor})` };
+  const lineStroke = firstColor;
 
   const sorted = rawEntries;
   const totalValue = sorted.reduce((s, e) => s + e.value, 0);
   const totalForPct = totalValue;
   const maxVal = Math.max(...sorted.map((e) => e.value), 1);
+
+  const [hoveredPieSlice, setHoveredPieSlice] = useState<ChartEntry | null>(null);
+  const [pieTooltipPos, setPieTooltipPos] = useState({ x: 0, y: 0 });
+  const [hoveredLinePoint, setHoveredLinePoint] = useState<{
+    seriesLabel: string;
+    month: string;
+    value: number;
+  } | null>(null);
+  const [lineTooltipPos, setLineTooltipPos] = useState({ x: 0, y: 0 });
+  const [barsMounted, setBarsMounted] = useState(false);
+  useEffect(() => {
+    const id = window.setTimeout(() => setBarsMounted(true), 80);
+    return () => clearTimeout(id);
+  }, []);
 
   const periodDisplay = getPeriodDisplay(
     period,
@@ -240,14 +261,39 @@ export function ChartWidget({ config }: ChartWidgetProps) {
           strokeWidth="1.5"
           strokeLinecap="round"
           strokeLinejoin="round"
+          style={{ transition: 'opacity 0.2s ease-out' }}
         />
       );
     });
+    const areaPathFirst =
+      series.length > 0
+        ? (() => {
+            const s = series[0];
+            const pts = s.values.map((v, i) => `${i === 0 ? 'M' : 'L'} ${x(i)} ${y(v)}`);
+            const lastI = s.values.length - 1;
+            const bottomY = pad.top + plotH;
+            return `${pts.join(' ')} L ${x(lastI)} ${bottomY} L ${x(0)} ${bottomY} Z`;
+          })()
+        : null;
 
-    const monthLabels = months.map((m) => {
+    const monthLabelsForTooltip = months.map((m) => {
       const [yy, mm] = m.split('-');
       return `${['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][parseInt(mm, 10) - 1]} ${yy?.slice(2) ?? ''}`;
     });
+    const handleLinePointEnter = (s: { label: string; values: number[] }, idx: number, ev: React.MouseEvent) => {
+      setHoveredLinePoint({
+        seriesLabel: s.label,
+        month: monthLabelsForTooltip[idx] ?? months[idx] ?? '',
+        value: s.values[idx] ?? 0,
+      });
+      setLineTooltipPos({ x: ev.clientX, y: ev.clientY });
+    };
+    const handleLinePointMove = (ev: React.MouseEvent) => {
+      if (hoveredLinePoint) setLineTooltipPos({ x: ev.clientX, y: ev.clientY });
+    };
+    const handleLinePointLeave = () => setHoveredLinePoint(null);
+
+    const monthLabels = monthLabelsForTooltip;
     // Show at most 8 month labels to avoid overlap when there are many months
     const maxLabels = 8;
     const labelStep = n > maxLabels ? Math.max(1, Math.floor(n / maxLabels)) : 1;
@@ -257,8 +303,17 @@ export function ChartWidget({ config }: ChartWidgetProps) {
         : Array.from({ length: maxLabels }, (_, j) => Math.min(j * labelStep, n - 1))
     );
 
+    // Totals per series for legend (quantity/value + percentage)
+    const seriesTotals = series.map((s) => s.values.reduce((a, v) => a + v, 0));
+    const lineChartTotal = seriesTotals.reduce((a, v) => a + v, 0);
+
+    const pointRadius = 3;
+    const lineChartPoints = series.flatMap((s, seriesIdx) =>
+      s.values.map((v, i) => ({ series: s, seriesIdx, i, x: x(i), y: y(v), value: v }))
+    );
+
     return (
-      <div className="flex flex-col min-h-0 h-full w-full">
+      <div className="flex flex-col min-h-0 h-full w-full relative">
         <Subtitle />
         <div className="flex flex-row gap-3 flex-1 min-h-0 w-full">
         <div className="flex-1 min-w-0 min-h-0 flex flex-col">
@@ -266,8 +321,48 @@ export function ChartWidget({ config }: ChartWidgetProps) {
             viewBox={`0 0 ${w} ${h}`}
             className="w-full h-full min-h-[80px]"
             preserveAspectRatio="xMidYMid meet"
+            onMouseMove={handleLinePointMove}
+            onMouseLeave={handleLinePointLeave}
           >
+            <defs>
+              <linearGradient id="lineAreaGradient" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stopColor={colors[0]} stopOpacity={0.25} />
+                <stop offset="100%" stopColor={colors[0]} stopOpacity={0} />
+              </linearGradient>
+            </defs>
+            {areaPathFirst && (
+              <path d={areaPathFirst} fill="url(#lineAreaGradient)" style={{ transition: 'opacity 0.3s ease-out' }} />
+            )}
             {paths}
+            {lineChartPoints.map((pt, k) => {
+              const isHovered = hoveredLinePoint?.seriesLabel === pt.series.label && hoveredLinePoint?.month === monthLabels[pt.i];
+              return (
+                <g key={k}>
+                  <circle
+                    cx={pt.x}
+                    cy={pt.y}
+                    r={pointRadius}
+                    fill={colors[pt.seriesIdx % colors.length]}
+                    stroke="white"
+                    strokeWidth={isHovered ? 1.5 : 1}
+                    style={{ cursor: 'pointer', opacity: isHovered ? 1 : 0.85, transition: 'opacity 0.15s ease-out, stroke-width 0.15s ease-out' }}
+                    pointerEvents="none"
+                  />
+                  {/* Invisible larger hit area for easier hover (must be on top) */}
+                  <circle
+                    cx={pt.x}
+                    cy={pt.y}
+                    r={8}
+                    fill="black"
+                    fillOpacity={0}
+                    pointerEvents="all"
+                    onMouseEnter={(ev) => handleLinePointEnter(pt.series, pt.i, ev)}
+                    onMouseLeave={handleLinePointLeave}
+                    onMouseMove={handleLinePointMove}
+                  />
+                </g>
+              );
+            })}
             <g className="fill-gray-500" style={{ fontFamily: 'sans-serif', fontSize: 7 }}>
               {months.map((_, i) =>
                 labelsToShow.has(i) ? (
@@ -278,17 +373,39 @@ export function ChartWidget({ config }: ChartWidgetProps) {
               )}
             </g>
           </svg>
+          {hoveredLinePoint &&
+            createPortal(
+              <div
+                className="fixed z-[9999] pointer-events-none px-2.5 py-1.5 rounded-lg shadow-xl bg-gray-900 text-white text-xs whitespace-nowrap transition-shadow duration-150"
+                style={{ left: lineTooltipPos.x + 10, top: lineTooltipPos.y + 10 }}
+              >
+                <div className="font-semibold">{hoveredLinePoint.seriesLabel}</div>
+                <div className="text-gray-300">{hoveredLinePoint.month}</div>
+                <div className="text-gray-300">
+                  {mode === 'value' ? formatCurrency(hoveredLinePoint.value) : hoveredLinePoint.value}
+                </div>
+              </div>,
+              document.body
+            )}
         </div>
         <ul className="flex flex-col gap-1 shrink-0 text-[10px] overflow-y-auto py-0.5 border-l border-gray-200 pl-3 min-w-0 max-w-[45%]">
-          {series.map((s, i) => (
-            <li key={s.label} className="flex items-center gap-1.5 shrink-0">
-              <span
-                className="w-2.5 h-0.5 rounded shrink-0"
-                style={{ backgroundColor: colors[i % colors.length] }}
-              />
-              <span className="text-gray-600 truncate">{s.label}</span>
-            </li>
-          ))}
+          {series.map((s, i) => {
+            const total = seriesTotals[i] ?? 0;
+            const pct = lineChartTotal > 0 ? (total / lineChartTotal) * 100 : 0;
+            const displayValue = mode === 'value' ? formatCurrency(total) : total;
+            return (
+              <li key={s.label} className="flex items-center gap-1.5 shrink-0">
+                <span
+                  className="w-2.5 h-0.5 rounded shrink-0"
+                  style={{ backgroundColor: colors[i % colors.length] }}
+                />
+                <span className="text-gray-600 truncate min-w-0">{s.label}</span>
+                <span className="text-gray-900 font-semibold tabular-nums shrink-0">
+                  {displayValue} ({pct.toFixed(0)}%)
+                </span>
+              </li>
+            );
+          })}
         </ul>
         </div>
       </div>
@@ -303,9 +420,19 @@ export function ChartWidget({ config }: ChartWidgetProps) {
     const rInner = isDonut ? 24 : 0;
     const centerX = 50;
     const centerY = 50;
+    const explodeOffset = 5;
+
+    const handleSliceMouseEnter = (e: ChartEntry, ev: React.MouseEvent) => {
+      setHoveredPieSlice(e);
+      setPieTooltipPos({ x: ev.clientX, y: ev.clientY });
+    };
+    const handleSliceMouseMove = (ev: React.MouseEvent) => {
+      if (hoveredPieSlice) setPieTooltipPos({ x: ev.clientX, y: ev.clientY });
+    };
+    const handleSliceMouseLeave = () => setHoveredPieSlice(null);
 
     return (
-      <div className="flex flex-col min-h-0 h-full w-full">
+      <div className="flex flex-col min-h-0 h-full w-full relative">
         <Subtitle />
         <div className="flex flex-row gap-3 flex-1 min-h-0 w-full">
         <div className="flex-1 min-w-0 min-h-0 flex items-center justify-center">
@@ -313,22 +440,57 @@ export function ChartWidget({ config }: ChartWidgetProps) {
             viewBox="0 0 100 100"
             className="w-full h-full max-w-full max-h-full min-h-[80px]"
             preserveAspectRatio="xMidYMid meet"
+            onMouseLeave={handleSliceMouseLeave}
           >
             {slicesForChart.map((e, i) => {
               const angle = (e.value / total) * 360;
               const startAngle = currentAngle;
               const endAngle = currentAngle + angle;
               currentAngle = endAngle;
+              const midAngle = (startAngle + endAngle) / 2;
+              const isHovered = hoveredPieSlice?.label === e.label;
+              const { x: ox, y: oy } = polarToCartesian(centerX, centerY, explodeOffset, midAngle);
+              const tx = isHovered ? ox - centerX : 0;
+              const ty = isHovered ? oy - centerY : 0;
+              const pct = total > 0 ? (e.value / total) * 100 : 0;
               return (
-                <path
+                <g
                   key={e.label}
-                  d={createPieSlice(startAngle, endAngle, radius, centerX, centerY)}
-                  fill={colors[i % colors.length]}
-                />
+                  transform={`translate(${tx}, ${ty})`}
+                  style={{ transition: 'transform 0.15s ease-out', cursor: 'pointer' }}
+                  onMouseEnter={(ev) => handleSliceMouseEnter(e, ev)}
+                  onMouseMove={handleSliceMouseMove}
+                  onMouseLeave={handleSliceMouseLeave}
+                >
+                  <path
+                    d={createPieSlice(startAngle, endAngle, radius, centerX, centerY)}
+                    fill={colors[i % colors.length]}
+                    style={{
+                      filter: isHovered ? 'brightness(1.12)' : undefined,
+                      transition: 'filter 0.2s ease-out',
+                    }}
+                  />
+                </g>
               );
             })}
             {isDonut && <circle cx={centerX} cy={centerY} r={rInner} fill="white" />}
           </svg>
+          {hoveredPieSlice &&
+            createPortal(
+              <div
+                className="fixed z-[9999] pointer-events-none px-2.5 py-1.5 rounded-lg shadow-xl bg-gray-900 text-white text-xs whitespace-nowrap transition-shadow duration-150"
+                style={{ left: pieTooltipPos.x + 10, top: pieTooltipPos.y + 10 }}
+              >
+                <div className="font-semibold">{hoveredPieSlice.label}</div>
+                <div className="text-gray-300">
+                  {mode === 'value' ? formatCurrency(hoveredPieSlice.value) : hoveredPieSlice.value} ({total > 0 ? ((hoveredPieSlice.value / total) * 100).toFixed(0) : 0}%)
+                </div>
+                {mode === 'value' && hoveredPieSlice.profit != null && hoveredPieSlice.value > 0 && (
+                  <div className="text-gray-400 text-[10px]">Profit: {formatCurrency(hoveredPieSlice.profit)}</div>
+                )}
+              </div>,
+              document.body
+            )}
         </div>
         <div className="space-y-1 text-xs shrink-0 overflow-y-auto py-0.5 border-l border-gray-200 pl-3 min-w-0 max-w-[45%]">
           {sorted.slice(0, 10).map((e, i) => {
@@ -360,7 +522,7 @@ export function ChartWidget({ config }: ChartWidgetProps) {
     );
   }
 
-  // Bar chart (same layout and colors as Business Dashboard) — responsive to card size
+  // Bar chart (same layout and colors as Business Dashboard) — responsive to card size, bars animate on mount
   const displayEntries = sorted.slice(0, 10);
   return (
     <div className="flex flex-col min-h-0 h-full w-full">
@@ -371,16 +533,17 @@ export function ChartWidget({ config }: ChartWidgetProps) {
           const percentage = totalForPct > 0 ? (e.value / totalForPct) * 100 : 0;
           const profitMargin =
             mode === 'value' && e.profit != null && e.value > 0 ? (e.profit / e.value) * 100 : 0;
+          const barWidthPct = barsMounted ? barPercentage : 0;
 
           if (mode === 'value') {
             return (
               <div key={e.label} className="space-y-1 shrink-0">
                 <div className="flex items-center gap-2 min-w-0">
                   <span className="text-xs text-gray-500 truncate w-20 sm:w-28 shrink-0">{e.label}</span>
-                  <div className="flex-1 bg-gray-100 rounded-full h-3 min-w-0 relative">
+                  <div className="flex-1 bg-gray-100 rounded-full h-3 min-w-0 relative overflow-hidden">
                     <div
-                      className={`bg-gradient-to-r ${barGradient} rounded-full h-3 transition-all duration-300 absolute inset-0`}
-                      style={{ width: `${barPercentage}%` }}
+                      className="rounded-full h-3 transition-all duration-300 ease-out absolute inset-y-0 left-0"
+                      style={{ width: `${barWidthPct}%`, ...barGradientStyle }}
                     />
                   </div>
                   <span className="text-xs font-bold text-gray-900 whitespace-nowrap shrink-0 tabular-nums">
@@ -402,10 +565,10 @@ export function ChartWidget({ config }: ChartWidgetProps) {
           return (
             <div key={e.label} className="flex items-center gap-2 min-w-0 shrink-0">
               <span className="text-xs text-gray-500 truncate w-20 sm:w-28 shrink-0">{e.label}</span>
-              <div className="flex-1 bg-gray-100 rounded-full h-3 min-w-0 relative">
+              <div className="flex-1 bg-gray-100 rounded-full h-3 min-w-0 relative overflow-hidden">
                 <div
-                  className={`bg-gradient-to-r ${barGradient} rounded-full h-3 transition-all duration-300`}
-                  style={{ width: `${barPercentage}%` }}
+                  className="rounded-full h-3 transition-all duration-300 ease-out absolute inset-y-0 left-0"
+                  style={{ width: `${barWidthPct}%`, ...barGradientStyle }}
                 />
               </div>
               <span className="text-xs font-bold text-gray-900 whitespace-nowrap shrink-0 tabular-nums">

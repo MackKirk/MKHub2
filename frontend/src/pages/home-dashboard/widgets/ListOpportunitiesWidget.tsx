@@ -2,13 +2,19 @@ import { useQuery } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 import { api } from '@/lib/api';
 
-type Project = { id: string; code?: string; name?: string; slug?: string; status_label?: string };
+type Opportunity = {
+  id: string;
+  code?: string;
+  name?: string;
+  slug?: string;
+  status_label?: string;
+};
 
-type ListProjectsWidgetProps = {
+type ListOpportunitiesWidgetProps = {
   config?: { limit?: number; division_id?: string };
 };
 
-export function ListProjectsWidget({ config }: ListProjectsWidgetProps) {
+export function ListOpportunitiesWidget({ config }: ListOpportunitiesWidgetProps) {
   const limit = Math.min(Math.max(1, config?.limit ?? 5), 20);
   const divisionId = config?.division_id;
 
@@ -16,9 +22,9 @@ export function ListProjectsWidget({ config }: ListProjectsWidgetProps) {
   qs.set('limit', String(limit));
   if (divisionId) qs.set('division_id', divisionId);
 
-  const { data, isLoading, error } = useQuery<Project[]>({
-    queryKey: ['home-list-projects', limit, divisionId],
-    queryFn: () => api('GET', `/projects/business/projects?${qs.toString()}`),
+  const { data, isLoading, error } = useQuery<Opportunity[]>({
+    queryKey: ['home-list-opportunities', limit, divisionId],
+    queryFn: () => api('GET', `/projects/business/opportunities?${qs.toString()}`),
     staleTime: 60_000,
   });
 
@@ -36,7 +42,7 @@ export function ListProjectsWidget({ config }: ListProjectsWidgetProps) {
       <div className="flex flex-col min-h-0 h-full w-full">
         <div className="flex-1 min-h-0 flex items-center justify-center p-3">
           <div className="rounded-lg border border-red-200 bg-red-50/50 px-3 py-2 text-sm text-red-600">
-            Failed to load projects
+            Failed to load opportunities
           </div>
         </div>
       </div>
@@ -55,25 +61,25 @@ export function ListProjectsWidget({ config }: ListProjectsWidgetProps) {
       <ul className="flex-1 min-h-0 flex flex-col overflow-y-auto pr-1" style={{ gap: 'clamp(0.25rem, 2cqh, 0.5rem)' }}>
       {list.length === 0 ? (
         <li className="rounded-lg border border-dashed border-gray-200 bg-gray-50/50 text-center text-gray-500 shrink-0" style={{ ...itemStyle, paddingBlock: 'clamp(0.5rem, 4cqh, 1rem)' }}>
-          No projects
+          No opportunities
         </li>
       ) : (
-        list.map((p) => (
-          <li key={p.id} className="shrink-0">
+        list.map((o) => (
+          <li key={o.id} className="shrink-0">
             <Link
-              to={`/projects/${p.id}`}
+              to={`/opportunities/${o.id}`}
               className="block rounded-lg border border-gray-200 bg-white shadow-sm transition-all hover:border-brand-red/30 hover:shadow-md hover:bg-gray-50/50"
               style={itemStyle}
             >
               <div className="font-medium text-gray-900 truncate text-sm" style={titleStyle}>
-                {p.name || p.code || p.id}
+                {o.name || o.code || o.id}
               </div>
-              {(p.code || p.status_label) && (
+              {(o.code || o.status_label) && (
                 <div className="flex flex-wrap items-center gap-1 shrink-0" style={{ marginTop: 'clamp(0.125rem, 1cqh, 0.375rem)', gap: 'clamp(0.125rem, 1cqh, 0.25rem)' }}>
-                  {p.code && <span className="font-medium text-gray-500" style={metaStyle}>{p.code}</span>}
-                  {p.status_label && (
+                  {o.code && <span className="font-medium text-gray-500" style={metaStyle}>{o.code}</span>}
+                  {o.status_label && (
                     <span className="inline-flex items-center rounded bg-gray-100 px-1.5 py-0.5 font-medium text-gray-700" style={metaStyle}>
-                      {p.status_label}
+                      {o.status_label}
                     </span>
                   )}
                 </div>
@@ -84,8 +90,8 @@ export function ListProjectsWidget({ config }: ListProjectsWidgetProps) {
       )}
       {list.length > 0 && (
         <li className="pt-0.5 shrink-0">
-          <Link to="/projects" className="inline-block font-medium text-brand-red hover:underline" style={viewAllStyle}>
-            View all projects →
+          <Link to="/opportunities" className="inline-block font-medium text-brand-red hover:underline" style={viewAllStyle}>
+            View all opportunities →
           </Link>
         </li>
       )}
