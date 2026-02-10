@@ -1,4 +1,4 @@
-import 'react-grid-layout/css/styles.css';
+import '@/styles/react-grid-layout.css';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useCallback, useEffect, useState } from 'react';
 import ReactGridLayout, { WidthProvider } from 'react-grid-layout/legacy';
