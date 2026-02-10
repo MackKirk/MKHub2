@@ -90,9 +90,9 @@ export default function DocumentAreaPanel({
   };
 
   return (
-    <div className="flex-1 flex flex-col min-w-0 rounded-xl border bg-white overflow-hidden">
+    <div className="flex-1 flex flex-col min-w-0 max-w-sm rounded-xl border bg-white overflow-hidden">
       <div className="p-3 border-b border-gray-200 text-gray-600 text-sm font-medium">
-        Elements
+        Document
       </div>
       <div className="flex-1 overflow-y-auto p-4 space-y-4">
         <div>
@@ -193,140 +193,8 @@ export default function DocumentAreaPanel({
               />
             </div>
           </div>
-
           {elements.length === 0 && (
-            <p className="text-gray-500 text-sm">Click + Text or + Image to add elements.</p>
-          )}
-
-          {selectedElement && (
-            <div className="mt-3 p-3 rounded-lg border border-gray-200 bg-gray-50 space-y-3">
-              <div className="flex items-center justify-between">
-                <span className="text-xs text-gray-600">
-                  {selectedElement.type === 'text' ? 'Text' : 'Image'}
-                </span>
-                <button
-                  type="button"
-                  onClick={() => onRemoveElement(selectedElement.id)}
-                  className="text-red-600 hover:text-red-700 text-sm"
-                >
-                  Delete
-                </button>
-              </div>
-              {selectedElement.type === 'text' ? (
-                <>
-                  <textarea
-                    value={selectedElement.content}
-                    onChange={(e) => onUpdateElement(selectedElement.id, (el) => ({ ...el, content: e.target.value }))}
-                    rows={3}
-                    className="w-full px-3 py-2 rounded border border-gray-300 text-sm resize-y focus:ring-2 focus:ring-brand-red/50 focus:border-brand-red"
-                  />
-                  <div className="grid grid-cols-2 gap-2">
-                    <div>
-                      <label className="block text-xs text-gray-600 mb-0.5">X %</label>
-                      <input
-                        type="number"
-                        min={0}
-                        max={100}
-                        value={selectedElement.x_pct}
-                        onChange={(e) => onUpdateElement(selectedElement.id, (el) => ({ ...el, x_pct: Number(e.target.value) }))}
-                        className="w-full px-2 py-1 rounded border border-gray-300 text-sm"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-xs text-gray-600 mb-0.5">Y %</label>
-                      <input
-                        type="number"
-                        min={0}
-                        max={100}
-                        value={selectedElement.y_pct}
-                        onChange={(e) => onUpdateElement(selectedElement.id, (el) => ({ ...el, y_pct: Number(e.target.value) }))}
-                        className="w-full px-2 py-1 rounded border border-gray-300 text-sm"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-xs text-gray-600 mb-0.5">Width %</label>
-                      <input
-                        type="number"
-                        min={1}
-                        max={100}
-                        value={selectedElement.width_pct}
-                        onChange={(e) => onUpdateElement(selectedElement.id, (el) => ({ ...el, width_pct: Number(e.target.value) }))}
-                        className="w-full px-2 py-1 rounded border border-gray-300 text-sm"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-xs text-gray-600 mb-0.5">Height %</label>
-                      <input
-                        type="number"
-                        min={1}
-                        max={100}
-                        value={selectedElement.height_pct}
-                        onChange={(e) => onUpdateElement(selectedElement.id, (el) => ({ ...el, height_pct: Number(e.target.value) }))}
-                        className="w-full px-2 py-1 rounded border border-gray-300 text-sm"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-xs text-gray-600 mb-0.5">Font size</label>
-                      <input
-                        type="number"
-                        min={8}
-                        max={72}
-                        value={selectedElement.fontSize ?? 12}
-                        onChange={(e) => onUpdateElement(selectedElement.id, (el) => ({ ...el, fontSize: Number(e.target.value) }))}
-                        className="w-full px-2 py-1 rounded border border-gray-300 text-sm"
-                      />
-                    </div>
-                  </div>
-                </>
-              ) : (
-                <div className="grid grid-cols-2 gap-2">
-                  <div>
-                    <label className="block text-xs text-gray-600 mb-0.5">X %</label>
-                    <input
-                      type="number"
-                      min={0}
-                      max={100}
-                      value={selectedElement.x_pct}
-                      onChange={(e) => onUpdateElement(selectedElement.id, (el) => ({ ...el, x_pct: Number(e.target.value) }))}
-                      className="w-full px-2 py-1 rounded border border-gray-300 text-sm"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-xs text-gray-600 mb-0.5">Y %</label>
-                    <input
-                      type="number"
-                      min={0}
-                      max={100}
-                      value={selectedElement.y_pct}
-                      onChange={(e) => onUpdateElement(selectedElement.id, (el) => ({ ...el, y_pct: Number(e.target.value) }))}
-                      className="w-full px-2 py-1 rounded border border-gray-300 text-sm"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-xs text-gray-600 mb-0.5">Width %</label>
-                    <input
-                      type="number"
-                      min={1}
-                      max={100}
-                      value={selectedElement.width_pct}
-                      onChange={(e) => onUpdateElement(selectedElement.id, (el) => ({ ...el, width_pct: Number(e.target.value) }))}
-                      className="w-full px-2 py-1 rounded border border-gray-300 text-sm"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-xs text-gray-600 mb-0.5">Height %</label>
-                    <input
-                      type="number"
-                      min={1}
-                      max={100}
-                      value={selectedElement.height_pct}
-                      onChange={(e) => onUpdateElement(selectedElement.id, (el) => ({ ...el, height_pct: Number(e.target.value) }))}
-                      className="w-full px-2 py-1 rounded border border-gray-300 text-sm"
-                    />
-                  </div>
-                </div>
-              )}
-            </div>
+            <p className="text-gray-500 text-sm">Add elements, then select on the slide to resize and edit.</p>
           )}
         </div>
 

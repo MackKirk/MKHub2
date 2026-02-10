@@ -458,14 +458,18 @@ class ClientDocument(Base):
 
 
 class DocumentTemplate(Base):
-    """Template for document creator: background art + optional area definitions."""
+    """Template for document creator: background art + optional area definitions, margins, default elements."""
     __tablename__ = "document_templates"
 
     id: Mapped[uuid.UUID] = uuid_pk()
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     description: Mapped[Optional[str]] = mapped_column(String(500))
     background_file_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), ForeignKey("file_objects.id", ondelete="SET NULL"))
-    areas_definition: Mapped[Optional[dict]] = mapped_column(JSON)  # [{ "id": str, "type": "title"|"text", "label": str, "x_pct", "y_pct", "width_pct", "height_pct" }, ...]
+    areas_definition: Mapped[Optional[dict]] = mapped_column(JSON)  # legacy
+    # Content area: elements cannot be placed outside. { "left_pct", "right_pct", "top_pct", "bottom_pct" } (0-100)
+    margins: Mapped[Optional[dict]] = mapped_column(JSON)
+    # Pre-defined elements when a page uses this template (user can move after). Same shape as DocElement.
+    default_elements: Mapped[Optional[dict]] = mapped_column(JSON)  # list of { type, content, x_pct, y_pct, width_pct, height_pct, fontSize? }
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
 
     background_file = relationship("FileObject", foreign_keys=[background_file_id])

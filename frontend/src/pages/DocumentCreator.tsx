@@ -1,12 +1,13 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, getToken } from '@/lib/api';
 import toast from 'react-hot-toast';
 import DocumentPreview from '@/components/DocumentPreview';
-import DocumentAreaPanel from '@/components/DocumentAreaPanel';
+import DocumentPagesStrip from '@/components/DocumentPagesStrip';
 import DocumentTemplatesTab from '@/components/DocumentTemplatesTab';
 import type { DocumentPage, DocElement } from '@/types/documentCreator';
+import { createTextElement, createImageElement, createImagePlaceholder } from '@/types/documentCreator';
 
 type Template = {
   id: string;
@@ -14,6 +15,8 @@ type Template = {
   description?: string;
   background_file_id?: string;
   areas_definition?: any;
+  margins?: { left_pct?: number; right_pct?: number; top_pct?: number; bottom_pct?: number };
+  default_elements?: DocElement[];
 };
 
 type UserDocument = {
@@ -48,6 +51,7 @@ export default function DocumentCreator() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const [title, setTitle] = useState('New document');
   const [pages, setPages] = useState<DocumentPage[]>([defaultPage()]);
   const [currentPageIndex, setCurrentPageIndex] = useState(0);
@@ -93,14 +97,29 @@ export default function DocumentCreator() {
   const backgroundUrl = backgroundFileId ? `/files/${backgroundFileId}/thumbnail?w=800` : null;
 
   const setCurrentPageTemplate = useCallback((templateId: string | null) => {
+    const template = templates.find((t) => t.id === templateId);
+    const defaultEls = template?.default_elements;
     setPages((prev) => {
       const next = [...prev];
-      if (next[currentPageIndex]) {
-        next[currentPageIndex] = { ...next[currentPageIndex], template_id: templateId };
-      }
+      if (!next[currentPageIndex]) return next;
+      const page = next[currentPageIndex];
+      const currentEls = page.elements ?? [];
+      const shouldApplyDefaults =
+        templateId && defaultEls && defaultEls.length > 0 && currentEls.length === 0;
+      const newElements = shouldApplyDefaults
+        ? defaultEls.map((el) => ({
+            ...el,
+            id: `el-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
+          }))
+        : currentEls;
+      next[currentPageIndex] = {
+        ...page,
+        template_id: templateId,
+        elements: newElements,
+      };
       return next;
     });
-  }, [currentPageIndex]);
+  }, [currentPageIndex, templates]);
 
   const setCurrentPageElements = useCallback((updater: (els: DocElement[]) => DocElement[]) => {
     setPages((prev) => {
@@ -136,6 +155,78 @@ export default function DocumentCreator() {
     setCurrentPageIndex(pages.length);
     setSelectedElementId(null);
   }, [pages.length]);
+
+  const handleAddText = useCallback(() => {
+    handleAddElement(createTextElement());
+  }, [handleAddElement]);
+
+  const handleAddImage = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !file.type.startsWith('image/')) return;
+    e.target.value = '';
+    try {
+      const up: any = await api('POST', '/files/upload', {
+        original_name: file.name,
+        content_type: file.type,
+        client_id: null,
+        project_id: null,
+        employee_id: null,
+        category_id: 'document-creator',
+      });
+      const res = await fetch(up.upload_url, {
+        method: 'PUT',
+        headers: { 'Content-Type': file.type, 'x-ms-blob-type': 'BlockBlob' },
+        body: file,
+      });
+      if (!res.ok) throw new Error('Upload failed');
+      const conf: any = await api('POST', '/files/confirm', {
+        key: up.key,
+        size_bytes: file.size,
+        checksum_sha256: 'na',
+        content_type: file.type,
+      });
+      handleAddElement(createImageElement(conf.id));
+      toast.success('Image added.');
+    } catch (err) {
+      toast.error('Failed to upload image.');
+    }
+  }, [handleAddElement]);
+
+  const handleAddImagePlaceholder = useCallback(() => {
+    handleAddElement(createImagePlaceholder());
+  }, [handleAddElement]);
+
+  const handleReplaceImage = useCallback(
+    async (elementId: string, file: File) => {
+      try {
+        const up: any = await api('POST', '/files/upload', {
+          original_name: file.name,
+          content_type: file.type,
+          client_id: null,
+          project_id: null,
+          employee_id: null,
+          category_id: 'document-creator',
+        });
+        const res = await fetch(up.upload_url, {
+          method: 'PUT',
+          headers: { 'Content-Type': file.type, 'x-ms-blob-type': 'BlockBlob' },
+          body: file,
+        });
+        if (!res.ok) throw new Error('Upload failed');
+        const conf: any = await api('POST', '/files/confirm', {
+          key: up.key,
+          size_bytes: file.size,
+          checksum_sha256: 'na',
+          content_type: file.type,
+        });
+        handleUpdateElement(elementId, (el) => ({ ...el, content: conf.id }));
+        toast.success('Image updated.');
+      } catch {
+        toast.error('Failed to upload image.');
+      }
+    },
+    [handleUpdateElement]
+  );
 
   const handleSave = useCallback(async () => {
     setIsSaving(true);
@@ -181,10 +272,10 @@ export default function DocumentCreator() {
   }, [id, title]);
 
   return (
-    <div className="flex flex-col h-full min-h-[calc(100vh-6rem)] max-w-5xl">
-      <div className="mb-3 flex items-center justify-between">
-        <h1 className="text-2xl font-bold text-gray-900">Create document</h1>
-        <div className="flex gap-2">
+    <div className="flex flex-col h-full min-h-[calc(100vh-6rem)] max-w-full">
+      <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+        <div className="flex items-center gap-3">
+          <h1 className="text-2xl font-bold text-gray-900">Create document</h1>
           <button
             type="button"
             onClick={() => setActiveTab('creator')}
@@ -200,40 +291,97 @@ export default function DocumentCreator() {
             Background templates
           </button>
         </div>
+        {activeTab === 'creator' && (
+          <div className="flex flex-wrap items-center gap-2">
+            <input
+              type="text"
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+              className="w-48 px-3 py-1.5 rounded border border-gray-300 text-sm focus:ring-2 focus:ring-brand-red/50 focus:border-brand-red"
+              placeholder="Document title"
+            />
+            <select
+              value={currentTemplateId ?? ''}
+              onChange={(e) => setCurrentPageTemplate(e.target.value || null)}
+              className="px-3 py-1.5 rounded border border-gray-300 text-sm focus:ring-2 focus:ring-brand-red/50"
+            >
+              <option value="">No background</option>
+              {templates.map((t) => (
+                <option key={t.id} value={t.id}>{t.name}</option>
+              ))}
+            </select>
+            <button
+              type="button"
+              onClick={handleAddText}
+              className="px-3 py-1.5 rounded bg-gray-100 hover:bg-gray-200 border border-gray-300 text-sm text-gray-700"
+            >
+              + Texto
+            </button>
+            <button
+              type="button"
+              onClick={() => fileInputRef.current?.click()}
+              className="px-3 py-1.5 rounded bg-gray-100 hover:bg-gray-200 border border-gray-300 text-sm text-gray-700"
+            >
+              + Imagem
+            </button>
+            <button
+              type="button"
+              onClick={handleAddImagePlaceholder}
+              className="px-3 py-1.5 rounded bg-gray-100 hover:bg-gray-200 border border-gray-300 text-sm text-gray-700"
+            >
+              + Área para imagem
+            </button>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/*"
+              className="hidden"
+              onChange={handleAddImage}
+            />
+            <button
+              type="button"
+              onClick={handleSave}
+              disabled={isSaving}
+              className="px-3 py-1.5 rounded bg-brand-red text-white text-sm font-medium disabled:opacity-50"
+            >
+              {isSaving ? 'Saving...' : 'Save'}
+            </button>
+            {id && (
+              <button
+                type="button"
+                onClick={handleExportPdf}
+                className="px-3 py-1.5 rounded bg-gray-100 hover:bg-gray-200 border border-gray-300 text-sm text-gray-700"
+              >
+                Export PDF
+              </button>
+            )}
+          </div>
+        )}
       </div>
       {activeTab === 'templates' ? (
         <DocumentTemplatesTab />
       ) : (
-      <div className="flex-1 flex gap-4 min-h-0">
-        <DocumentPreview
-          backgroundUrl={backgroundUrl}
-          elements={elements}
-          onElementClick={setSelectedElementId}
-          onCanvasClick={() => setSelectedElementId(null)}
-          selectedElementId={selectedElementId}
-        />
-        <DocumentAreaPanel
-          title={title}
-          onTitleChange={setTitle}
-          pages={pages}
-          currentPageIndex={currentPageIndex}
-          onPageSelect={setCurrentPageIndex}
-          onAddPage={handleAddPage}
-          templates={templates}
-          currentTemplateId={currentTemplateId}
-          onTemplateSelect={setCurrentPageTemplate}
-          elements={elements}
-          selectedElementId={selectedElementId}
-          onSelectElement={setSelectedElementId}
-          onUpdateElement={handleUpdateElement}
-          onAddElement={handleAddElement}
-          onRemoveElement={handleRemoveElement}
-          onSave={handleSave}
-          onExportPdf={id ? handleExportPdf : undefined}
-          documentId={id ?? null}
-          isSaving={isSaving}
-        />
-      </div>
+        <div className="flex-1 flex min-h-0">
+          <DocumentPagesStrip
+            pages={pages}
+            templates={templates}
+            currentPageIndex={currentPageIndex}
+            onPageSelect={setCurrentPageIndex}
+            onAddPage={handleAddPage}
+          />
+          <DocumentPreview
+            backgroundUrl={backgroundUrl}
+            elements={elements}
+            margins={currentTemplate?.margins ?? null}
+            blockAreasVisible={false}
+            onElementClick={setSelectedElementId}
+            onCanvasClick={() => setSelectedElementId(null)}
+            selectedElementId={selectedElementId}
+            onUpdateElement={handleUpdateElement}
+            onRemoveElement={handleRemoveElement}
+            onReplaceImage={handleReplaceImage}
+          />
+        </div>
       )}
     </div>
   );

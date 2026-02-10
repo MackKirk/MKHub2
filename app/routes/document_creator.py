@@ -69,7 +69,9 @@ def _template_to_out(t: DocumentTemplate) -> dict:
         "name": t.name,
         "description": t.description,
         "background_file_id": str(t.background_file_id) if t.background_file_id else None,
-        "areas_definition": t.areas_definition,
+        "areas_definition": getattr(t, "areas_definition", None),
+        "margins": getattr(t, "margins", None),
+        "default_elements": getattr(t, "default_elements", None),
     }
 
 
@@ -120,12 +122,16 @@ class TemplateCreate(BaseModel):
     name: str
     description: Optional[str] = None
     background_file_id: Optional[str] = None
+    margins: Optional[dict] = None  # { left_pct, right_pct, top_pct, bottom_pct }
+    default_elements: Optional[List[dict]] = None  # list of DocElement-shaped dicts
 
 
 class TemplateUpdate(BaseModel):
     name: Optional[str] = None
     description: Optional[str] = None
     background_file_id: Optional[str] = None
+    margins: Optional[dict] = None
+    default_elements: Optional[List[dict]] = None
 
 
 @router.post("/templates", response_model=dict)
@@ -149,6 +155,8 @@ def create_template(
         name=body.name or "Sem nome",
         description=body.description,
         background_file_id=bg_id,
+        margins=body.margins,
+        default_elements=body.default_elements,
     )
     db.add(t)
     db.commit()
@@ -184,6 +192,10 @@ def update_template(
                 t.background_file_id = uuid.UUID(body.background_file_id)
             except ValueError:
                 raise HTTPException(status_code=400, detail="Invalid background_file_id")
+    if body.margins is not None:
+        t.margins = body.margins
+    if body.default_elements is not None:
+        t.default_elements = body.default_elements
     db.commit()
     db.refresh(t)
     return _template_to_out(t)

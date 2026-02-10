@@ -3,12 +3,16 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import toast from 'react-hot-toast';
 import { useConfirm } from '@/components/ConfirmProvider';
+import { TemplateLayoutModal } from '@/components/TemplateLayoutModal';
+import type { DocElement } from '@/types/documentCreator';
 
 type Template = {
   id: string;
   name: string;
   description?: string;
   background_file_id?: string;
+  margins?: { left_pct?: number; right_pct?: number; top_pct?: number; bottom_pct?: number };
+  default_elements?: DocElement[];
 };
 
 export default function DocumentTemplatesTab() {
@@ -18,6 +22,7 @@ export default function DocumentTemplatesTab() {
   const [description, setDescription] = useState('');
   const [uploadingFileId, setUploadingFileId] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
+  const [editingLayoutTemplate, setEditingLayoutTemplate] = useState<Template | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const { data: templates = [], isLoading } = useQuery({
@@ -85,6 +90,18 @@ export default function DocumentTemplatesTab() {
     } finally {
       setIsSaving(false);
     }
+  };
+
+  const handleSaveLayout = async (
+    templateId: string,
+    data: { margins: Record<string, number>; default_elements: DocElement[] }
+  ) => {
+    await api('PATCH', `/document-creator/templates/${templateId}`, {
+      margins: data.margins,
+      default_elements: data.default_elements,
+    });
+    toast.success('Layout saved.');
+    queryClient.invalidateQueries({ queryKey: ['document-creator-templates'] });
   };
 
   const handleDelete = async (t: Template) => {
@@ -194,18 +211,34 @@ export default function DocumentTemplatesTab() {
                     <p className="text-sm text-gray-600 mt-0.5">{t.description}</p>
                   )}
                 </div>
-                <button
-                  type="button"
-                  onClick={() => handleDelete(t)}
-                  className="mt-2 text-sm text-red-600 hover:text-red-700"
-                >
-                  Delete
-                </button>
+                <div className="mt-2 flex gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setEditingLayoutTemplate(t)}
+                    className="text-sm text-gray-700 hover:text-gray-900 border border-gray-300 rounded px-2 py-1 bg-gray-50"
+                  >
+                    Edit layout
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleDelete(t)}
+                    className="text-sm text-red-600 hover:text-red-700"
+                  >
+                    Delete
+                  </button>
+                </div>
               </div>
             ))}
           </div>
         )}
       </div>
+      {editingLayoutTemplate && (
+        <TemplateLayoutModal
+          template={editingLayoutTemplate}
+          onClose={() => setEditingLayoutTemplate(null)}
+          onSave={handleSaveLayout}
+        />
+      )}
     </div>
   );
 }

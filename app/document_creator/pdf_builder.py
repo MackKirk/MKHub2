@@ -131,13 +131,24 @@ def build_pdf_bytes(db: Session, doc: UserDocument) -> bytes:
                     content = el.get("content") or ""
                     if el_type == "text":
                         font_size = int(el.get("font_size", 11))
-                        c.setFont(font_name, font_size)
+                        is_bold = el.get("fontWeight") == "bold"
+                        c.setFont(font_bold if is_bold else font_name, font_size)
                         c.setFillColor(colors.black)
+                        text_align = el.get("textAlign") or "left"
                         lines = str(content).replace("\r\n", "\n").split("\n")
                         for i, line in enumerate(lines):
                             if i * (font_size + 2) >= h:
                                 break
-                            c.drawString(x, y + h - (i + 1) * (font_size + 2), line[: int(w / (font_size * 0.6)) or 120])
+                            line = line[: int(w / (font_size * 0.6)) or 120]
+                            line_y = y + h - (i + 1) * (font_size + 2)
+                            if text_align == "center":
+                                tw = c.stringWidth(line, font_bold if is_bold else font_name, font_size)
+                                c.drawString(x + (w - tw) / 2, line_y, line)
+                            elif text_align == "right":
+                                tw = c.stringWidth(line, font_bold if is_bold else font_name, font_size)
+                                c.drawString(x + w - tw, line_y, line)
+                            else:
+                                c.drawString(x, line_y, line)
                     elif el_type == "image" and content:
                         try:
                             fid = uuid.UUID(content) if isinstance(content, str) else None
