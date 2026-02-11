@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session
 from pydantic import BaseModel
 
 from ..db import get_db
-from ..models.models import DocumentTemplate, UserDocument, User, FileObject
+from ..models.models import DocumentTemplate, DocumentType, UserDocument, User, FileObject
 from ..auth.security import get_current_user, require_permissions
 
 
@@ -42,11 +42,13 @@ class DocumentPage(BaseModel):
 class DocumentCreate(BaseModel):
     title: str
     document_type_id: Optional[str] = None
+    project_id: Optional[str] = None
     pages: Optional[List[dict]] = None  # [{ template_id, areas_content }, ...]
 
 
 class DocumentUpdate(BaseModel):
     title: Optional[str] = None
+    project_id: Optional[str] = None  # set to "" to unlink from project
     pages: Optional[List[dict]] = None
 
 
@@ -54,6 +56,7 @@ class DocumentOut(BaseModel):
     id: str
     title: str
     document_type_id: Optional[str]
+    project_id: Optional[str]
     pages: Optional[list]
     created_by: Optional[str]
     created_at: str
@@ -80,10 +83,80 @@ def _doc_to_out(d: UserDocument) -> dict:
         "id": str(d.id),
         "title": d.title,
         "document_type_id": str(d.document_type_id) if d.document_type_id else None,
+        "project_id": str(d.project_id) if d.project_id else None,
         "pages": d.pages,
         "created_by": str(d.created_by) if d.created_by else None,
         "created_at": d.created_at.isoformat() if d.created_at else None,
         "updated_at": d.updated_at.isoformat() if d.updated_at else None,
+    }
+
+
+def _clone_elements_with_new_ids(elements: Optional[list], prefix: str) -> list:
+    """Clone default_elements and assign new ids so they are unique per page."""
+    if not elements or not isinstance(elements, list):
+        return []
+    import time
+    base = str(int(time.time() * 1000))
+    out = []
+    for i, el in enumerate(elements):
+        if not isinstance(el, dict):
+            continue
+        copy = dict(el)
+        copy["id"] = f"{prefix}-{base}-{i}-{uuid.uuid4().hex[:8]}"
+        out.append(copy)
+    return out
+
+
+# --- Document types (preset page sequences) ---
+
+@router.get("/document-types", response_model=List[dict])
+def list_document_types(
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+    _=Depends(require_permissions("documents:access", "documents:read")),
+):
+    """List document type presets (e.g. cover + back cover + content page)."""
+    types = db.query(DocumentType).order_by(DocumentType.name).all()
+    return [
+        {
+            "id": str(t.id),
+            "name": t.name,
+            "description": t.description,
+            "page_templates": t.page_templates or [],
+            "created_at": t.created_at.isoformat() if t.created_at else None,
+        }
+        for t in types
+    ]
+
+
+class DocumentTypeCreate(BaseModel):
+    name: str
+    description: Optional[str] = None
+    page_templates: Optional[List[dict]] = None  # [{ "template_id": "uuid", "label": "Cover" }]
+
+
+@router.post("/document-types", response_model=dict)
+def create_document_type(
+    body: DocumentTypeCreate,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+    _=Depends(require_permissions("documents:access", "documents:write")),
+):
+    """Create a document type preset (ordered list of page templates)."""
+    doc_type = DocumentType(
+        name=body.name or "Unnamed",
+        description=body.description,
+        page_templates=body.page_templates if body.page_templates is not None else [],
+    )
+    db.add(doc_type)
+    db.commit()
+    db.refresh(doc_type)
+    return {
+        "id": str(doc_type.id),
+        "name": doc_type.name,
+        "description": doc_type.description,
+        "page_templates": doc_type.page_templates or [],
+        "created_at": doc_type.created_at.isoformat() if doc_type.created_at else None,
     }
 
 
@@ -225,17 +298,22 @@ def delete_template(
 
 @router.get("/documents", response_model=List[dict])
 def list_documents(
+    project_id: Optional[str] = None,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
     _=Depends(require_permissions("documents:access", "documents:read")),
 ):
-    """List documents created by the current user."""
-    docs = (
-        db.query(UserDocument)
-        .filter(UserDocument.created_by == user.id)
-        .order_by(UserDocument.updated_at.desc().nullslast(), UserDocument.created_at.desc())
-        .all()
-    )
+    """List documents created by the current user. Optionally filter by project_id."""
+    q = db.query(UserDocument).filter(UserDocument.created_by == user.id)
+    if project_id:
+        try:
+            pid = uuid.UUID(project_id)
+            q = q.filter(UserDocument.project_id == pid)
+        except ValueError:
+            pass
+    docs = q.order_by(
+        UserDocument.updated_at.desc().nullslast(), UserDocument.created_at.desc()
+    ).all()
     return [_doc_to_out(d) for d in docs]
 
 
@@ -246,11 +324,46 @@ def create_document(
     user: User = Depends(get_current_user),
     _=Depends(require_permissions("documents:access", "documents:write")),
 ):
-    """Create a new user document."""
+    """Create a new user document. If document_type_id is set, pages are built from that preset."""
+    pages = body.pages if body.pages is not None else []
+    dtype_id = None
+    if body.document_type_id:
+        try:
+            dtype_id = uuid.UUID(body.document_type_id)
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Invalid document_type_id")
+        doc_type = db.query(DocumentType).filter(DocumentType.id == dtype_id).first()
+        if not doc_type:
+            raise HTTPException(status_code=404, detail="Document type not found")
+        pt_list = doc_type.page_templates or []
+        if not isinstance(pt_list, list):
+            pt_list = []
+        pages = []
+        for idx, entry in enumerate(pt_list):
+            tid = entry.get("template_id") if isinstance(entry, dict) else None
+            if not tid:
+                pages.append({"template_id": None, "elements": []})
+                continue
+            try:
+                tuid = uuid.UUID(tid) if isinstance(tid, str) else tid
+            except (ValueError, TypeError):
+                pages.append({"template_id": None, "elements": []})
+                continue
+            template = db.query(DocumentTemplate).filter(DocumentTemplate.id == tuid).first()
+            if not template:
+                pages.append({"template_id": str(tuid), "elements": []})
+                continue
+            default_els = getattr(template, "default_elements", None)
+            if isinstance(default_els, list):
+                elements = _clone_elements_with_new_ids(default_els, f"p{idx}")
+            else:
+                elements = []
+            pages.append({"template_id": str(tuid), "elements": elements})
     doc = UserDocument(
         title=body.title or "Sem título",
-        document_type_id=uuid.UUID(body.document_type_id) if body.document_type_id else None,
-        pages=body.pages if body.pages is not None else [],
+        document_type_id=dtype_id,
+        project_id=uuid.UUID(body.project_id) if body.project_id else None,
+        pages=pages,
         created_by=user.id,
     )
     db.add(doc)
@@ -299,6 +412,8 @@ def update_document(
         raise HTTPException(status_code=403, detail="Forbidden")
     if body.title is not None:
         doc.title = body.title
+    if body.project_id is not None:
+        doc.project_id = uuid.UUID(body.project_id) if body.project_id else None
     if body.pages is not None:
         doc.pages = body.pages
     from datetime import datetime, timezone

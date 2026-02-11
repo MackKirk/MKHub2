@@ -457,6 +457,65 @@ def create_app() -> FastAPI:
                         db.commit()
                         print("[startup] Added project_admin_id column to projects table")
                 
+                # Check for project_id column in user_documents (link doc to project/opportunity)
+                if dialect == "sqlite":
+                    rows = db.execute(text("PRAGMA table_info(user_documents)")).fetchall()
+                    col_names = {str(r[1]) for r in rows}
+                    if "project_id" not in col_names:
+                        db.execute(text("ALTER TABLE user_documents ADD COLUMN project_id TEXT NULL"))
+                        db.commit()
+                        print("[startup] Added project_id column to user_documents table")
+                else:
+                    rows = db.execute(
+                        text(
+                            """
+                            SELECT 1
+                            FROM information_schema.columns
+                            WHERE table_name = 'user_documents'
+                              AND column_name = 'project_id'
+                            LIMIT 1
+                            """
+                        )
+                    ).fetchall()
+                    if not rows:
+                        db.execute(text("ALTER TABLE user_documents ADD COLUMN project_id UUID NULL REFERENCES projects(id) ON DELETE SET NULL"))
+                        try:
+                            db.execute(text("CREATE INDEX IF NOT EXISTS idx_user_documents_project_id ON user_documents(project_id)"))
+                        except Exception:
+                            pass
+                        db.commit()
+                        print("[startup] Added project_id column to user_documents table")
+
+                # Create document_types table (preset document layouts: cover + back cover + content, etc.)
+                if dialect == "sqlite":
+                    rows = db.execute(text(
+                        "SELECT name FROM sqlite_master WHERE type='table' AND name='document_types'"
+                    )).fetchall()
+                    if not rows:
+                        db.execute(text("""
+                            CREATE TABLE document_types (
+                                id TEXT PRIMARY KEY,
+                                name TEXT NOT NULL,
+                                description TEXT,
+                                page_templates TEXT,
+                                created_at TEXT
+                            )
+                        """))
+                        db.commit()
+                        print("[startup] Created document_types table")
+                else:
+                    db.execute(text("""
+                        CREATE TABLE IF NOT EXISTS document_types (
+                            id UUID PRIMARY KEY,
+                            name VARCHAR(255) NOT NULL,
+                            description VARCHAR(500),
+                            page_templates JSON,
+                            created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+                        )
+                    """))
+                    db.commit()
+                    print("[startup] document_types table ready")
+
                 print("[startup] Schema migrations check completed")
             except Exception as e:
                 print(f"[startup] Schema migrations check error (non-critical): {e}")
