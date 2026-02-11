@@ -596,11 +596,10 @@ export default function BusinessDashboard() {
   // Only show overlay on first load, not on background refetches
   const isInitialLoading = (divisionsLoading && !divisionsData);
   
-  // Track when initial data is loaded to trigger entry animations
+  // Track when initial data is loaded to trigger entry animations (after overlay with logo spinner is gone)
   useEffect(() => {
     if (!isInitialLoading && !hasAnimated) {
-      // Small delay to ensure DOM is ready
-      const timer = setTimeout(() => setHasAnimated(true), 50);
+      const timer = setTimeout(() => setHasAnimated(true), 80);
       return () => clearTimeout(timer);
     }
   }, [isInitialLoading, hasAnimated]);

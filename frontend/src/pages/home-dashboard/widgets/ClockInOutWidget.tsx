@@ -4,7 +4,10 @@ import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import toast from 'react-hot-toast';
 import { formatDateLocal, getTodayLocal } from '@/lib/dateUtils';
+import FadeInOnMount from '@/components/FadeInOnMount';
+import LoadingOverlay from '@/components/LoadingOverlay';
 import { useConfirm } from '@/components/ConfirmProvider';
+import { useAnimationReady } from '@/contexts/AnimationReadyContext';
 
 type Shift = {
   id: string;
@@ -55,6 +58,7 @@ type ClockInOutWidgetProps = {
 };
 
 export function ClockInOutWidget({ config: _config }: ClockInOutWidgetProps) {
+  const { ready } = useAnimationReady();
   const queryClient = useQueryClient();
   const confirm = useConfirm();
   const todayStr = getTodayLocal();
@@ -258,8 +262,10 @@ export function ClockInOutWidget({ config: _config }: ClockInOutWidgetProps) {
 
   if (!currentUser?.id) {
     return (
-      <div className="flex flex-col min-h-0 h-full justify-center py-4 text-sm text-gray-400">
-        Loading…
+      <div className="flex flex-col min-h-0 h-full w-full">
+        <LoadingOverlay isLoading minHeight="min-h-[120px]" className="flex-1 min-h-0">
+          <div className="min-h-[120px]" />
+        </LoadingOverlay>
       </div>
     );
   }
@@ -267,7 +273,7 @@ export function ClockInOutWidget({ config: _config }: ClockInOutWidgetProps) {
   const submitting = mutateClock.isPending;
 
   return (
-    <div className="flex flex-col min-h-0 h-full w-full">
+    <FadeInOnMount enabled={ready} className="flex flex-col min-h-0 h-full w-full">
       <div className="shrink-0 mb-2">
         <div className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide">Today</div>
         <div className="text-sm font-semibold text-gray-900">
@@ -295,7 +301,9 @@ export function ClockInOutWidget({ config: _config }: ClockInOutWidgetProps) {
       </div>
 
       {loadingAttendances && (
-        <div className="flex-1 flex items-center justify-center text-sm text-gray-400">Loading…</div>
+        <LoadingOverlay isLoading minHeight="min-h-[100px]" className="flex-1 min-h-0">
+          <div className="min-h-[100px]" />
+        </LoadingOverlay>
       )}
 
       {showSummary && (
@@ -337,6 +345,6 @@ export function ClockInOutWidget({ config: _config }: ClockInOutWidgetProps) {
           Open full page →
         </Link>
       </div>
-    </div>
+    </FadeInOnMount>
   );
 }

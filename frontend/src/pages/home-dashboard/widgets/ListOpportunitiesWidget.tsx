@@ -1,5 +1,8 @@
 import { useQuery } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
+import FadeInOnMount from '@/components/FadeInOnMount';
+import LoadingOverlay from '@/components/LoadingOverlay';
+import { useAnimationReady } from '@/contexts/AnimationReadyContext';
 import { api } from '@/lib/api';
 
 type Opportunity = {
@@ -15,6 +18,7 @@ type ListOpportunitiesWidgetProps = {
 };
 
 export function ListOpportunitiesWidget({ config }: ListOpportunitiesWidgetProps) {
+  const { ready } = useAnimationReady();
   const limit = Math.min(Math.max(1, config?.limit ?? 5), 20);
   const divisionId = config?.division_id;
 
@@ -31,9 +35,9 @@ export function ListOpportunitiesWidget({ config }: ListOpportunitiesWidgetProps
   if (isLoading) {
     return (
       <div className="flex flex-col min-h-0 h-full w-full">
-        <div className="flex-1 min-h-0 flex items-center justify-center text-sm text-gray-400">
-          Loading…
-        </div>
+        <LoadingOverlay isLoading minHeight="min-h-[120px]" className="flex-1 min-h-0">
+          <div className="min-h-[120px]" />
+        </LoadingOverlay>
       </div>
     );
   }
@@ -57,7 +61,7 @@ export function ListOpportunitiesWidget({ config }: ListOpportunitiesWidgetProps
   const viewAllStyle = { fontSize: 'clamp(0.5rem, 4cqh, 0.75rem)' };
 
   return (
-    <div className="flex flex-col min-h-0 h-full w-full">
+    <FadeInOnMount enabled={ready} className="flex flex-col min-h-0 h-full w-full">
       <ul className="flex-1 min-h-0 flex flex-col overflow-y-auto pr-1" style={{ gap: 'clamp(0.25rem, 2cqh, 0.5rem)' }}>
       {list.length === 0 ? (
         <li className="rounded-lg border border-dashed border-gray-200 bg-gray-50/50 text-center text-gray-500 shrink-0" style={{ ...itemStyle, paddingBlock: 'clamp(0.5rem, 4cqh, 1rem)' }}>
@@ -96,6 +100,6 @@ export function ListOpportunitiesWidget({ config }: ListOpportunitiesWidgetProps
         </li>
       )}
     </ul>
-    </div>
+    </FadeInOnMount>
   );
 }

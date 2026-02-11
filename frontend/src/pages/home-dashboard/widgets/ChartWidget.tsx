@@ -1,6 +1,9 @@
 import { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { useQuery } from '@tanstack/react-query';
+import FadeInOnMount from '@/components/FadeInOnMount';
+import LoadingOverlay from '@/components/LoadingOverlay';
+import { useAnimationReady } from '@/contexts/AnimationReadyContext';
 import { api } from '@/lib/api';
 import {
   getValue,
@@ -206,11 +209,19 @@ export function ChartWidget({ config }: ChartWidgetProps) {
     value: number;
   } | null>(null);
   const [lineTooltipPos, setLineTooltipPos] = useState({ x: 0, y: 0 });
+  const { ready } = useAnimationReady();
   const [barsMounted, setBarsMounted] = useState(false);
+  const [pieSlicesMounted, setPieSlicesMounted] = useState(false);
   useEffect(() => {
+    if (!ready) return;
     const id = window.setTimeout(() => setBarsMounted(true), 80);
     return () => clearTimeout(id);
-  }, []);
+  }, [ready]);
+  useEffect(() => {
+    if (!ready) return;
+    const id = window.setTimeout(() => setPieSlicesMounted(true), 80);
+    return () => clearTimeout(id);
+  }, [ready]);
 
   const periodDisplay = getPeriodDisplay(
     period,
@@ -224,13 +235,31 @@ export function ChartWidget({ config }: ChartWidgetProps) {
     <p className="text-[10px] text-gray-500 shrink-0 mb-1" aria-hidden>{chartSubtitle}</p>
   );
 
-  if (isLoading) return <div className="flex flex-col min-h-0 h-full"><Subtitle /><div className="text-sm text-gray-400">Loading…</div></div>;
+  if (isLoading) {
+    return (
+      <div className="flex flex-col min-h-0 h-full">
+        <Subtitle />
+        <LoadingOverlay isLoading minHeight="min-h-[120px]" className="flex-1 min-h-0">
+          <div className="min-h-[120px]" />
+        </LoadingOverlay>
+      </div>
+    );
+  }
   if (error) return <div className="flex flex-col min-h-0 h-full"><Subtitle /><div className="text-sm text-red-500">Failed to load</div></div>;
   if (sorted.length === 0) return <div className="flex flex-col min-h-0 h-full"><Subtitle /><div className="text-sm text-gray-500">No data</div></div>;
 
   if (chartType === 'line') {
     // X-axis = months, Y-axis = value, one line per status/division (from timeseries API)
-    if (timeseries.isLoading) return <div className="flex flex-col min-h-0 h-full"><Subtitle /><div className="text-sm text-gray-400">Loading…</div></div>;
+    if (timeseries.isLoading) {
+      return (
+        <div className="flex flex-col min-h-0 h-full">
+          <Subtitle />
+          <LoadingOverlay isLoading minHeight="min-h-[120px]" className="flex-1 min-h-0">
+            <div className="min-h-[120px]" />
+          </LoadingOverlay>
+        </div>
+      );
+    }
     if (timeseries.error) return <div className="flex flex-col min-h-0 h-full"><Subtitle /><div className="text-sm text-red-500">Failed to load</div></div>;
     const ts = timeseries.data;
     if (!ts || !ts.months.length || !ts.series.length) return <div className="flex flex-col min-h-0 h-full"><Subtitle /><div className="text-sm text-gray-500">No data</div></div>;
@@ -313,7 +342,7 @@ export function ChartWidget({ config }: ChartWidgetProps) {
     );
 
     return (
-      <div className="flex flex-col min-h-0 h-full w-full relative">
+      <FadeInOnMount enabled={ready} className="flex flex-col min-h-0 h-full w-full relative">
         <Subtitle />
         <div className="flex flex-row gap-3 flex-1 min-h-0 w-full">
         <div className="flex-1 min-w-0 min-h-0 flex flex-col">
@@ -408,7 +437,7 @@ export function ChartWidget({ config }: ChartWidgetProps) {
           })}
         </ul>
         </div>
-      </div>
+      </FadeInOnMount>
     );
   }
 
@@ -432,7 +461,7 @@ export function ChartWidget({ config }: ChartWidgetProps) {
     const handleSliceMouseLeave = () => setHoveredPieSlice(null);
 
     return (
-      <div className="flex flex-col min-h-0 h-full w-full relative">
+      <FadeInOnMount enabled={ready} className="flex flex-col min-h-0 h-full w-full relative">
         <Subtitle />
         <div className="flex flex-row gap-3 flex-1 min-h-0 w-full">
         <div className="flex-1 min-w-0 min-h-0 flex items-center justify-center">
@@ -457,7 +486,11 @@ export function ChartWidget({ config }: ChartWidgetProps) {
                 <g
                   key={e.label}
                   transform={`translate(${tx}, ${ty})`}
-                  style={{ transition: 'transform 0.15s ease-out', cursor: 'pointer' }}
+                  style={{
+                    cursor: 'pointer',
+                    opacity: pieSlicesMounted ? 1 : 0,
+                    transition: `transform 0.15s ease-out, opacity 400ms ease-out ${pieSlicesMounted ? i * 80 + 'ms' : '0ms'}`,
+                  }}
                   onMouseEnter={(ev) => handleSliceMouseEnter(e, ev)}
                   onMouseMove={handleSliceMouseMove}
                   onMouseLeave={handleSliceMouseLeave}
@@ -518,14 +551,14 @@ export function ChartWidget({ config }: ChartWidgetProps) {
           })}
         </div>
         </div>
-      </div>
+      </FadeInOnMount>
     );
   }
 
   // Bar chart (same layout and colors as Business Dashboard) — responsive to card size, bars animate on mount
   const displayEntries = sorted.slice(0, 10);
   return (
-    <div className="flex flex-col min-h-0 h-full w-full">
+    <FadeInOnMount enabled={ready} className="flex flex-col min-h-0 h-full w-full">
       <Subtitle />
       <div className="flex-1 min-h-0 overflow-y-auto space-y-2 pr-1">
         {displayEntries.map((e) => {
@@ -578,6 +611,6 @@ export function ChartWidget({ config }: ChartWidgetProps) {
           );
         })}
       </div>
-    </div>
+    </FadeInOnMount>
   );
 }

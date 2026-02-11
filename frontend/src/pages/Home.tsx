@@ -8,6 +8,8 @@ import { api } from '@/lib/api';
 const GridLayout = WidthProvider(ReactGridLayout);
 import toast from 'react-hot-toast';
 import { useConfirm } from '@/components/ConfirmProvider';
+import LoadingOverlay from '@/components/LoadingOverlay';
+import { AnimationReadyProvider } from '@/contexts/AnimationReadyContext';
 import { DEFAULT_HOME_DASHBOARD } from './home-dashboard/defaultLayout';
 import type { HomeDashboardState, LayoutItem, WidgetDef } from './home-dashboard/types';
 import { WidgetWrapper } from './home-dashboard/WidgetWrapper';
@@ -111,17 +113,9 @@ export default function Home() {
     setConfigWidgetId(null);
   }, [layout, saveDashboard]);
 
-  if (isLoading) {
-    return (
-      <div className="p-6">
-        <div className="rounded-xl border bg-white p-8 flex items-center justify-center text-gray-500">
-          Loading dashboard…
-        </div>
-      </div>
-    );
-  }
-
   return (
+    <LoadingOverlay isLoading={isLoading} text="Loading dashboard…" minHeight="min-h-[50vh]">
+    <AnimationReadyProvider loaded={!isLoading} delay={80}>
     <div className="p-4 md:p-6 max-w-[1600px] mx-auto">
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
         <h1 className="text-xl font-semibold text-gray-900">My Dashboard</h1>
@@ -217,5 +211,7 @@ export default function Home() {
         onSave={handleSaveConfig}
       />
     </div>
+    </AnimationReadyProvider>
+    </LoadingOverlay>
   );
 }
