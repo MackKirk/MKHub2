@@ -5,7 +5,7 @@ from datetime import datetime, timezone
 
 from ..db import get_db
 from ..models.models import (
-    User, PermissionCategory, PermissionDefinition
+    User, PermissionCategory, PermissionDefinition, PermissionTemplate
 )
 from ..auth.security import require_permissions, get_current_user
 
@@ -306,6 +306,161 @@ def check_user_permission(
         "user_id": str(user.id),
         "permission_key": permission_key,
         "has_permission": has_perm,
+    }
+
+
+# =====================
+# Permission Templates
+# =====================
+
+def _validate_permission_keys(db: Session, keys: List[str]) -> None:
+    """Raise HTTPException if any key is not an active PermissionDefinition."""
+    if not keys:
+        return
+    keys_set = set(k for k in keys if k)
+    existing = db.query(PermissionDefinition).filter(
+        PermissionDefinition.key.in_(keys_set),
+        PermissionDefinition.is_active == True
+    ).all()
+    existing_keys = {p.key for p in existing}
+    invalid = keys_set - existing_keys
+    if invalid:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid permission keys: {', '.join(sorted(invalid))}"
+        )
+
+
+@router.get("/templates")
+def list_permission_templates(
+    db: Session = Depends(get_db),
+    _=Depends(require_permissions("users:read"))
+):
+    """List all permission templates (id, name, permission_keys)."""
+    templates = db.query(PermissionTemplate).order_by(PermissionTemplate.name.asc()).all()
+    return [
+        {
+            "id": str(t.id),
+            "name": t.name,
+            "permission_keys": t.permission_keys or [],
+        }
+        for t in templates
+    ]
+
+
+@router.get("/templates/{template_id}")
+def get_permission_template(
+    template_id: str,
+    db: Session = Depends(get_db),
+    _=Depends(require_permissions("users:read"))
+):
+    """Get a single permission template by id."""
+    template = db.query(PermissionTemplate).filter(PermissionTemplate.id == template_id).first()
+    if not template:
+        raise HTTPException(status_code=404, detail="Template not found")
+    return {
+        "id": str(template.id),
+        "name": template.name,
+        "permission_keys": template.permission_keys or [],
+    }
+
+
+@router.post("/templates")
+def create_permission_template(
+    payload: Dict[str, Any] = Body(...),
+    db: Session = Depends(get_db),
+    _=Depends(require_permissions("users:write"))
+):
+    """Create a permission template. Body: { name: string, permission_keys: string[] }."""
+    name = (payload.get("name") or "").strip()
+    if not name:
+        raise HTTPException(status_code=400, detail="name is required")
+    keys = payload.get("permission_keys")
+    if not isinstance(keys, list):
+        keys = []
+    keys = [str(k) for k in keys if k]
+    _validate_permission_keys(db, keys)
+    template = PermissionTemplate(name=name, permission_keys=keys)
+    db.add(template)
+    db.commit()
+    db.refresh(template)
+    return {
+        "id": str(template.id),
+        "name": template.name,
+        "permission_keys": template.permission_keys or [],
+        "status": "ok",
+    }
+
+
+@router.put("/templates/{template_id}")
+def update_permission_template(
+    template_id: str,
+    payload: Dict[str, Any] = Body(...),
+    db: Session = Depends(get_db),
+    _=Depends(require_permissions("users:write"))
+):
+    """Update a permission template. Body may include name and/or permission_keys."""
+    template = db.query(PermissionTemplate).filter(PermissionTemplate.id == template_id).first()
+    if not template:
+        raise HTTPException(status_code=404, detail="Template not found")
+    if "name" in payload:
+        name = (payload.get("name") or "").strip()
+        if not name:
+            raise HTTPException(status_code=400, detail="name cannot be empty")
+        template.name = name
+    if "permission_keys" in payload:
+        keys = payload.get("permission_keys")
+        if not isinstance(keys, list):
+            keys = []
+        keys = [str(k) for k in keys if k]
+        _validate_permission_keys(db, keys)
+        template.permission_keys = keys
+    db.commit()
+    db.refresh(template)
+    return {
+        "id": str(template.id),
+        "name": template.name,
+        "permission_keys": template.permission_keys or [],
+        "status": "ok",
+    }
+
+
+@router.delete("/templates/{template_id}")
+def delete_permission_template(
+    template_id: str,
+    db: Session = Depends(get_db),
+    _=Depends(require_permissions("users:write"))
+):
+    """Delete a permission template."""
+    template = db.query(PermissionTemplate).filter(PermissionTemplate.id == template_id).first()
+    if not template:
+        raise HTTPException(status_code=404, detail="Template not found")
+    db.delete(template)
+    db.commit()
+    return {"status": "ok"}
+
+
+@router.post("/templates/{template_id}/duplicate")
+def duplicate_permission_template(
+    template_id: str,
+    db: Session = Depends(get_db),
+    _=Depends(require_permissions("users:write"))
+):
+    """Create a new template with same permission_keys and name + ' (copy)'."""
+    template = db.query(PermissionTemplate).filter(PermissionTemplate.id == template_id).first()
+    if not template:
+        raise HTTPException(status_code=404, detail="Template not found")
+    new_name = (template.name or "Template").strip() + " (copy)"
+    keys = list(template.permission_keys or [])
+    new_template = PermissionTemplate(name=new_name, permission_keys=keys)
+    db.add(new_template)
+    db.commit()
+    db.refresh(new_template)
+    return {
+        "id": str(new_template.id),
+        "name": new_template.name,
+        "permission_keys": new_template.permission_keys or [],
+        "status": "ok",
     }
 
 
