@@ -11,6 +11,7 @@ import { useConfirm } from '@/components/ConfirmProvider';
 import CalendarMock from '@/components/CalendarMock';
 import DispatchTab from '@/components/DispatchTab';
 import OrdersTab from '@/components/OrdersTab';
+import ProjectDocumentsTab from '@/components/ProjectDocumentsTab';
 import { formatDateLocal, getCurrentMonthLocal } from '@/lib/dateUtils';
 
 // Helper function to calculate and format time since status change
@@ -385,8 +386,8 @@ export default function ProjectDetail(){
   const { data:employees } = useQuery({ queryKey:['employees'], queryFn: ()=>api<any[]>('GET','/employees') });
   // Check for tab query parameter
   const searchParams = new URLSearchParams(location.search);
-  const initialTab = (searchParams.get('tab') as 'overview'|'general'|'reports'|'dispatch'|'timesheet'|'files'|'photos'|'proposal'|'estimate'|'orders'|null) || null;
-  const [tab, setTab] = useState<'overview'|'general'|'reports'|'dispatch'|'timesheet'|'files'|'photos'|'proposal'|'estimate'|'orders'|null>(initialTab);
+  const initialTab = (searchParams.get('tab') as 'overview'|'general'|'reports'|'dispatch'|'timesheet'|'files'|'photos'|'documents'|'proposal'|'estimate'|'orders'|null) || null;
+  const [tab, setTab] = useState<'overview'|'general'|'reports'|'dispatch'|'timesheet'|'files'|'photos'|'documents'|'proposal'|'estimate'|'orders'|null>(initialTab);
   // Live pricing items (from ProposalForm) to update division percentages instantly without reload.
   const [livePricingItems, setLivePricingItems] = useState<any[] | null>(null);
   const [pickerOpen, setPickerOpen] = useState(false);
@@ -411,6 +412,7 @@ export default function ProjectDetail(){
         'dispatch': 'business:projects:workload:read',
         'timesheet': 'business:projects:timesheet:read',
         'files': 'business:projects:files:read',
+        'documents': 'documents:access',
         'proposal': 'business:projects:proposal:read',
         'estimate': 'business:projects:estimate:read',
         'orders': 'business:projects:orders:read',
@@ -428,8 +430,8 @@ export default function ProjectDetail(){
     }
     
     const searchParams = new URLSearchParams(location.search);
-    const tabParam = searchParams.get('tab') as 'overview'|'general'|'reports'|'dispatch'|'timesheet'|'files'|'photos'|'proposal'|'estimate'|'orders'|null;
-    if (tabParam && ['overview','general','reports','dispatch','timesheet','files','photos','proposal','orders'].includes(tabParam)) {
+    const tabParam = searchParams.get('tab') as 'overview'|'general'|'reports'|'dispatch'|'timesheet'|'files'|'photos'|'documents'|'proposal'|'estimate'|'orders'|null;
+    if (tabParam && ['overview','general','reports','dispatch','timesheet','files','photos','documents','proposal','orders'].includes(tabParam)) {
       // Check permission before setting tab
       if (tabParam === 'overview' || hasTabPermission(tabParam)) {
         setTab(tabParam);
@@ -519,8 +521,8 @@ export default function ProjectDetail(){
 
   // Base available tabs
   const baseAvailableTabs = proj?.is_bidding 
-    ? (['overview','reports','files','proposal'] as const)
-    : (['overview','reports','dispatch','timesheet','files','proposal','orders'] as const);
+    ? (['overview','reports','files','documents','proposal'] as const)
+    : (['overview','reports','dispatch','timesheet','files','documents','proposal','orders'] as const);
   
   // Filter tabs based on permissions (only when user data is loaded)
   const availableTabs = useMemo(() => {
@@ -618,6 +620,7 @@ export default function ProjectDetail(){
       'dispatch': 'Workload',
       'timesheet': 'Timesheet',
       'files': 'Project Files',
+      'documents': 'Documents',
       'proposal': 'Proposal',
       'estimate': 'Estimate',
       'orders': 'Orders',
@@ -636,6 +639,7 @@ export default function ProjectDetail(){
       'dispatch': 'Employee shifts and workload management',
       'timesheet': 'Time tracking and hours',
       'files': 'Documents, photos and files',
+      'documents': 'Create and edit documents, export to PDF',
       'proposal': 'Project proposals',
       'estimate': 'Cost estimates and budgets',
       'orders': 'Purchase orders and supplies',
@@ -1587,6 +1591,10 @@ export default function ProjectDetail(){
 
               {tab==='files' && (
                 <ProjectFilesTabEnhanced projectId={String(id)} files={files||[]} onRefresh={refetchFiles} />
+              )}
+
+              {tab==='documents' && (
+                <ProjectDocumentsTab projectId={String(id)} isBidding={proj?.is_bidding} />
               )}
 
               {tab==='proposal' && (
@@ -6649,10 +6657,10 @@ function ProjectTeamCard({ projectId, employees }: { projectId: string, employee
 }
 
 function ProjectTabCards({ availableTabs, onTabClick, proj, currentTab }: { 
-  availableTabs: readonly ('overview'|'reports'|'dispatch'|'timesheet'|'files'|'proposal'|'estimate'|'orders')[], 
+  availableTabs: readonly ('overview'|'reports'|'dispatch'|'timesheet'|'files'|'documents'|'proposal'|'estimate'|'orders')[], 
   onTabClick: (tab: typeof availableTabs[number] | 'overview' | null) => void,
   proj: any,
-  currentTab: 'overview'|'general'|'reports'|'dispatch'|'timesheet'|'files'|'photos'|'proposal'|'estimate'|'orders'|null
+  currentTab: 'overview'|'general'|'reports'|'dispatch'|'timesheet'|'files'|'photos'|'documents'|'proposal'|'estimate'|'orders'|null
 }){
   const tabConfig: Record<string, { label: string, icon: string }> = {
     overview: { label: 'Overview', icon: '📊' },
@@ -6660,6 +6668,7 @@ function ProjectTabCards({ availableTabs, onTabClick, proj, currentTab }: {
     dispatch: { label: 'Workload', icon: '👷' },
     timesheet: { label: 'Timesheet', icon: '⏰' },
     files: { label: 'Files', icon: '📁' },
+    documents: { label: 'Documents', icon: '📄' },
     proposal: { label: 'Proposal', icon: '📄' },
     estimate: { label: 'Estimate', icon: '💰' },
     orders: { label: 'Orders', icon: '🛒' },
