@@ -7,6 +7,7 @@ import { api } from '@/lib/api';
 
 const GridLayout = WidthProvider(ReactGridLayout);
 import toast from 'react-hot-toast';
+import { useConfirm } from '@/components/ConfirmProvider';
 import { DEFAULT_HOME_DASHBOARD } from './home-dashboard/defaultLayout';
 import type { HomeDashboardState, LayoutItem, WidgetDef } from './home-dashboard/types';
 import { WidgetWrapper } from './home-dashboard/WidgetWrapper';
@@ -14,12 +15,21 @@ import { renderWidget } from './home-dashboard/widgetRegistry';
 import { AddWidgetModal } from './home-dashboard/AddWidgetModal';
 import { WidgetConfigModal } from './home-dashboard/WidgetConfigModal';
 
-const COLUMNS = 4;
-const ROW_HEIGHT = 120;
+const COLUMNS = 8;
+const ROW_HEIGHT = 100;
 const MARGIN: [number, number] = [16, 16];
+
+/** Migrate layout from 4-col to 8-col scale (double x and w). */
+function migrateLayoutTo8Col(items: LayoutItem[]): LayoutItem[] {
+  if (items.length === 0) return items;
+  const maxW = Math.max(...items.map((l) => l.w));
+  if (maxW > 4) return items; // already 8-col scale
+  return items.map((l) => ({ ...l, x: l.x * 2, w: l.w * 2 }));
+}
 
 export default function Home() {
   const queryClient = useQueryClient();
+  const confirm = useConfirm();
   const { data: saved, isLoading } = useQuery({
     queryKey: ['home-dashboard'],
     queryFn: () => api<HomeDashboardState | null>('GET', '/users/me/home-dashboard'),
@@ -34,7 +44,7 @@ export default function Home() {
   useEffect(() => {
     if (saved === undefined || saved === null) return;
     if (Array.isArray(saved.layout) && Array.isArray(saved.widgets)) {
-      setLayout(saved.layout);
+      setLayout(migrateLayoutTo8Col(saved.layout));
       setWidgets(saved.widgets);
     }
   }, [saved]);
@@ -53,22 +63,35 @@ export default function Home() {
     setLayout(newLayout.map(({ i, x, y, w, h }) => ({ i, x, y, w, h })));
   }, []);
 
-  const handleRemoveWidget = useCallback((id: string) => {
+  const handleRemoveWidget = useCallback(async (id: string) => {
+    const result = await confirm({
+      title: 'Remove widget',
+      message: 'Remove this widget from your dashboard?',
+      confirmText: 'Remove',
+      cancelText: 'Cancel',
+    });
+    if (result !== 'confirm') return;
     setLayout((prev) => prev.filter((l) => l.i !== id));
     setWidgets((prev) => prev.filter((w) => w.id !== id));
-  }, []);
+  }, [confirm]);
 
   const handleAddWidget = useCallback((widget: WidgetDef, layoutItem: LayoutItem) => {
     setWidgets((prev) => [...prev, widget]);
     setLayout((prev) => [...prev, layoutItem]);
   }, []);
 
-  const handleReset = useCallback(() => {
-    if (!confirm('Reset dashboard to default layout? This cannot be undone.')) return;
+  const handleReset = useCallback(async () => {
+    const result = await confirm({
+      title: 'Reset dashboard',
+      message: 'Reset dashboard to default layout? This cannot be undone.',
+      confirmText: 'Reset',
+      cancelText: 'Cancel',
+    });
+    if (result !== 'confirm') return;
     setLayout(DEFAULT_HOME_DASHBOARD.layout);
     setWidgets(DEFAULT_HOME_DASHBOARD.widgets);
     saveDashboard(DEFAULT_HOME_DASHBOARD.layout, DEFAULT_HOME_DASHBOARD.widgets);
-  }, [saveDashboard]);
+  }, [confirm, saveDashboard]);
 
   const handleDoneEdit = useCallback(() => {
     setIsEditMode(false);
@@ -80,11 +103,13 @@ export default function Home() {
 
   const configWidget = configWidgetId ? widgets.find((w) => w.id === configWidgetId) ?? null : null;
   const handleSaveConfig = useCallback((widgetId: string, nextConfig: Record<string, unknown>, title?: string) => {
-    setWidgets((prev) =>
-      prev.map((w) => (w.id === widgetId ? { ...w, config: nextConfig, ...(title !== undefined ? { title } : {}) } : w))
-    );
+    setWidgets((prev) => {
+      const next = prev.map((w) => (w.id === widgetId ? { ...w, config: nextConfig, ...(title !== undefined ? { title } : {}) } : w));
+      saveDashboard(layout, next);
+      return next;
+    });
     setConfigWidgetId(null);
-  }, []);
+  }, [layout, saveDashboard]);
 
   if (isLoading) {
     return (

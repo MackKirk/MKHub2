@@ -39,6 +39,27 @@ export function formatCurrency(value: number): string {
 // Palettes from Business Dashboard (darkest -> lightest; largest slice can start darker)
 export const greenPalette = ['#14532d', '#166534', '#15803d', '#16a34a', '#22c55e', '#4ade80', '#86efac', '#bbf7d0'];
 export const coolPalette = ['#0b1739', '#0f2a5a', '#1d4ed8', '#2563eb', '#0284c7', '#0ea5e9', '#38bdf8', '#7dd3fc'];
+export const warmPalette = ['#7c2d12', '#9a3412', '#c2410c', '#ea580c', '#f97316', '#fb923c', '#fdba74', '#fed7aa'];
+export const purplePalette = ['#581c87', '#6b21a8', '#7e22ce', '#9333ea', '#a855f7', '#c084fc', '#d8b4fe', '#e9d5ff'];
+export const brandPalette = ['#7f1010', '#991212', '#b31414', '#d11616', '#dc2626', '#ef4444', '#f87171', '#fca5a5'];
+
+export type ChartPaletteId = 'green' | 'cool' | 'warm' | 'purple' | 'brand';
+
+export const CHART_PALETTES: Record<ChartPaletteId, string[]> = {
+  green: greenPalette,
+  cool: coolPalette,
+  warm: warmPalette,
+  purple: purplePalette,
+  brand: brandPalette,
+};
+
+export const CHART_PALETTE_OPTIONS: { value: ChartPaletteId; label: string }[] = [
+  { value: 'green', label: 'Green' },
+  { value: 'cool', label: 'Blue / Cool' },
+  { value: 'warm', label: 'Orange / Warm' },
+  { value: 'purple', label: 'Purple' },
+  { value: 'brand', label: 'Brand Red' },
+];
 
 export function polarToCartesian(centerX: number, centerY: number, radius: number, angleInDegrees: number) {
   const angleInRadians = ((angleInDegrees - 90) * Math.PI) / 180;

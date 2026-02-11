@@ -42,7 +42,7 @@ const loadGooglePlacesScript = (apiKey: string): Promise<void> => {
     }
 
     const script = document.createElement('script');
-    script.src = `https://maps.googleapis.com/maps/api/js?key=${apiKey}&libraries=places`;
+    script.src = `https://maps.googleapis.com/maps/api/js?key=${apiKey}&libraries=places&loading=async`;
     script.async = true;
     script.defer = true;
     script.onload = () => resolve();
@@ -64,6 +64,7 @@ export default function PostalCodeAutocomplete({
   const autocompleteRef = useRef<any>(null);
   const onPostalCodeSelectRef = useRef(onPostalCodeSelect);
   const onChangeRef = useRef(onChange);
+  const lastSelectedValueRef = useRef<string | null>(null);
   const [scriptLoaded, setScriptLoaded] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
 
@@ -195,7 +196,11 @@ export default function PostalCodeAutocomplete({
         return;
       }
 
-      // Update the input field with postal code
+      if (inputRef.current) {
+        inputRef.current.value = postal_code;
+      }
+      lastSelectedValueRef.current = postal_code;
+
       if (onChangeRef.current) {
         onChangeRef.current(postal_code);
       }
@@ -263,13 +268,16 @@ export default function PostalCodeAutocomplete({
 
   // Sync value with input when it changes externally (but let Google control it during typing)
   useEffect(() => {
-    if (inputRef.current && scriptLoaded) {
-      const isFocused = document.activeElement === inputRef.current;
-      // Only sync if not focused (to avoid interfering with Google's autocomplete)
-      if (!isFocused && inputRef.current.value !== value) {
-        inputRef.current.value = value || '';
-      }
+    if (!inputRef.current || !scriptLoaded) return;
+    const isFocused = document.activeElement === inputRef.current;
+    if (isFocused) return;
+    if (lastSelectedValueRef.current && inputRef.current.value === lastSelectedValueRef.current && value !== lastSelectedValueRef.current) {
+      return;
     }
+    if (inputRef.current.value !== value) {
+      inputRef.current.value = value || '';
+    }
+    lastSelectedValueRef.current = null;
   }, [value, scriptLoaded]);
 
   return (

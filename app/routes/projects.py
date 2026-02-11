@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session, defer
 from sqlalchemy.exc import ProgrammingError
 from sqlalchemy import func, extract
@@ -2994,13 +2994,26 @@ def business_dashboard(
     date_from: Optional[str] = None,
     date_to: Optional[str] = None,
     mode: Optional[str] = "quantity",
+    opportunity_status_labels: Optional[List[str]] = Query(None),
+    project_status_labels: Optional[List[str]] = Query(None),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user)
 ):
-    """Get business dashboard statistics"""
+    """Get business dashboard statistics. opportunity_status_labels / project_status_labels: optional lists to filter by status."""
     # Base queries
     opportunities_query = db.query(Project).filter(Project.is_bidding == True)
     projects_query = db.query(Project).filter(Project.is_bidding == False)
+
+    def _apply_status_filter(query, labels_param):
+        if not labels_param or len(labels_param) == 0:
+            return query
+        labels_set = {s.strip() for s in labels_param if s and s.strip()}
+        if not labels_set:
+            return query
+        return query.filter(Project.status_label.in_(labels_set))
+
+    opportunities_query = _apply_status_filter(opportunities_query, opportunity_status_labels)
+    projects_query = _apply_status_filter(projects_query, project_status_labels)
     
     # Apply date filtering
     effective_start_dt = func.coalesce(Project.date_start, Project.created_at)
@@ -3158,15 +3171,33 @@ def business_dashboard(
             status = getattr(proj, 'status_label', None) or 'No Status'
             projects_by_status[status] = projects_by_status.get(status, 0) + 1
     
-    # Get total estimated value
-    total_estimated_value = sum(
-        (getattr(p, 'cost_estimated', 0) or 0) for p in opportunities_query.all()
-    )
-    
-    # Get total actual value
-    total_actual_value = sum(
-        (getattr(p, 'cost_actual', 0) or 0) for p in projects_query.all()
-    )
+    # Get total estimated value (from proposals/estimates like Opportunities list, fallback to cost_estimated)
+    total_estimated_value = 0.0
+    for opp in opportunities_query.all():
+        proposal = db.query(Proposal).filter(Proposal.project_id == opp.id).order_by(Proposal.created_at.desc()).first()
+        final_total = None
+        if proposal and proposal.data:
+            try:
+                final_total, _ = calculate_proposal_values_for_division(proposal.data, division_id=None)
+            except Exception:
+                pass
+        if final_total is None or final_total == 0:
+            final_total = getattr(opp, 'cost_estimated', 0) or 0
+        total_estimated_value += float(final_total)
+
+    # Get total actual value (from proposals like Projects list, fallback to cost_actual)
+    total_actual_value = 0.0
+    for proj in projects_query.all():
+        proposal = db.query(Proposal).filter(Proposal.project_id == proj.id).order_by(Proposal.created_at.desc()).first()
+        final_total = None
+        if proposal and proposal.data:
+            try:
+                final_total, _ = calculate_proposal_values_for_division(proposal.data, division_id=None)
+            except Exception:
+                pass
+        if final_total is None or final_total == 0:
+            final_total = getattr(proj, 'cost_actual', 0) or 0
+        total_actual_value += float(final_total)
     
     return {
         "total_opportunities": total_opportunities,

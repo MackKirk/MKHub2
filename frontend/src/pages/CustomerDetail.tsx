@@ -2,7 +2,9 @@ import { useParams, Link, useLocation, useNavigate } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import { sortByLabel } from '@/lib/sortOptions';
+import { formatAddressDisplay } from '@/lib/addressUtils';
 import { useEffect, useMemo, useState, ReactNode, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import toast from 'react-hot-toast';
 import ImagePicker from '@/components/ImagePicker';
 import ImageEditor from '@/components/ImageEditor';
@@ -511,6 +513,10 @@ export default function CustomerDetail(){
   const [globalDateModalOpen, setGlobalDateModalOpen] = useState(false);
   const [globalDisplayMode, setGlobalDisplayMode] = useState<'quantity' | 'value'>('quantity');
   const [hasAnimated, setHasAnimated] = useState(false);
+  // Overview pie/donut charts: tooltip and position (Opportunities by Status + Projects by Status)
+  type OverviewPieTooltip = { chart: 'opp' | 'proj'; label: string; value: number; percentage: number };
+  const [overviewPieTooltip, setOverviewPieTooltip] = useState<OverviewPieTooltip | null>(null);
+  const [overviewPieTooltipPos, setOverviewPieTooltipPos] = useState({ x: 0, y: 0 });
   
   // Calculate date range for dashboard
   const globalDateRange = useMemo(() => 
@@ -1520,8 +1526,8 @@ export default function CustomerDetail(){
                     <div className="min-w-0">
                       <div>
                         <span className="text-[10px] font-bold text-gray-500 uppercase tracking-wide">Address</span>
-                        <div className="text-xs font-semibold text-gray-900 mt-0.5 truncate" title={[c.address_line1, (c as any).address_line2, c.city, c.province, c.postal_code, c.country].filter(Boolean).join(', ')}>
-                          {[c.address_line1, (c as any).address_line2, c.city, c.province, c.country].filter(Boolean).join(', ') || '—'}
+                        <div className="text-xs font-semibold text-gray-900 mt-0.5 truncate" title={formatAddressDisplay({ address_line1: c.address_line1, address_line2: (c as any).address_line2, city: c.city, province: c.province, postal_code: c.postal_code, country: c.country })}>
+                          {formatAddressDisplay({ address_line1: c.address_line1, address_line2: (c as any).address_line2, city: c.city, province: c.province, postal_code: c.postal_code, country: c.country })}
                         </div>
                       </div>
                     </div>
@@ -1734,7 +1740,7 @@ export default function CustomerDetail(){
 
                     {/* Status Overview — Opportunities by Status + Customer Funnel / Health */}
                     <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-                      {/* Opportunities by Status — pie chart */}
+                      {/* Opportunities by Status — pie chart (40% pie / 60% legend, explode + tooltip) */}
                       <div className="rounded-lg border border-gray-200 bg-white shadow-sm p-3 flex flex-col min-h-0">
                         <div className="text-[10px] font-bold text-gray-500 uppercase tracking-wide mb-2 shrink-0">Opportunities by Status</div>
                         {Object.entries(oppStatusBreakdown).length > 0 ? (
@@ -1747,10 +1753,18 @@ export default function CustomerDetail(){
                               globalDisplayMode === 'value' ? b.value - a.value : b.count - a.count
                             );
                             const colors = greenPalette;
-                            const radius = 65;
-                            const centerX = 65;
-                            const centerY = 65;
-                            const size = 150;
+                            const radius = 40;
+                            const centerX = 50;
+                            const centerY = 50;
+                            const explodeOffset = 5;
+                            const handleOppMouseEnter = (slice: { status: string; metric: number; percentage: number }, ev: React.MouseEvent) => {
+                              setOverviewPieTooltip({ chart: 'opp', label: slice.status, value: slice.metric, percentage: slice.percentage });
+                              setOverviewPieTooltipPos({ x: ev.clientX, y: ev.clientY });
+                            };
+                            const handleOppMouseMove = (ev: React.MouseEvent) => {
+                              if (overviewPieTooltip?.chart === 'opp') setOverviewPieTooltipPos({ x: ev.clientX, y: ev.clientY });
+                            };
+                            const handleOppMouseLeave = () => setOverviewPieTooltip((p) => (p?.chart === 'opp' ? null : p));
                             let currentAngle = 0;
                             const slices = sorted.map(([status, data], idx) => {
                               const metric = globalDisplayMode === 'value' ? data.value : data.count;
@@ -1762,29 +1776,71 @@ export default function CustomerDetail(){
                               return { status, metric, percentage, startAngle, endAngle, color: colors[idx % colors.length] };
                             });
                             return (
-                              <div className="flex-1 flex items-center justify-center">
-                                <div className="flex items-center gap-4">
-                                  <svg width={size} height={size} viewBox="0 0 130 130" className="shrink-0">
-                                    {slices.map((slice, idx) => (
-                                      <path
-                                        key={slice.status}
-                                        d={createDonutSlice(slice.startAngle, slice.endAngle, 0, radius, centerX, centerY)}
-                                        fill={slice.color}
-                                        style={{ opacity: hasAnimated ? 1 : 0, transition: `opacity 400ms ease-out ${hasAnimated ? idx * 80 + 'ms' : '0ms'}` }}
-                                      />
-                                    ))}
+                              <div className="flex flex-row gap-3 flex-1 min-h-0 w-full">
+                                <div className="flex-[0_0_40%] min-w-0 min-h-0 flex items-center justify-center relative">
+                                  <svg
+                                    viewBox="0 0 100 100"
+                                    className="w-full h-full max-w-full max-h-full min-h-[80px]"
+                                    preserveAspectRatio="xMidYMid meet"
+                                    onMouseLeave={handleOppMouseLeave}
+                                  >
+                                    {slices.map((slice, idx) => {
+                                      const midAngle = (slice.startAngle + slice.endAngle) / 2;
+                                      const isHovered = overviewPieTooltip?.chart === 'opp' && overviewPieTooltip?.label === slice.status;
+                                      const { x: ox, y: oy } = polarToCartesian(centerX, centerY, explodeOffset, midAngle);
+                                      const tx = isHovered ? ox - centerX : 0;
+                                      const ty = isHovered ? oy - centerY : 0;
+                                      return (
+                                        <g
+                                          key={slice.status}
+                                          transform={`translate(${tx}, ${ty})`}
+                                          style={{
+                                            cursor: 'pointer',
+                                            opacity: hasAnimated ? 1 : 0,
+                                            transition: `transform 0.15s ease-out, opacity 400ms ease-out ${hasAnimated ? idx * 80 + 'ms' : '0ms'}`,
+                                          }}
+                                          onMouseEnter={(ev) => handleOppMouseEnter(slice, ev)}
+                                          onMouseMove={handleOppMouseMove}
+                                          onMouseLeave={handleOppMouseLeave}
+                                        >
+                                          <path
+                                            d={createDonutSlice(slice.startAngle, slice.endAngle, 0, radius, centerX, centerY)}
+                                            fill={slice.color}
+                                            style={{
+                                              filter: isHovered ? 'brightness(1.12)' : undefined,
+                                              transition: 'filter 0.2s ease-out',
+                                            }}
+                                          />
+                                        </g>
+                                      );
+                                    })}
                                   </svg>
-                                  <div className="flex flex-col justify-center gap-1.5 text-[11px]">
-                                    {slices.map(slice => (
-                                      <div key={slice.status} className="flex items-center gap-1.5">
-                                        <div className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: slice.color }} />
-                                        <span className="text-gray-600 truncate">{slice.status}:</span>
-                                        <span className="font-semibold text-gray-900 whitespace-nowrap">
-                                          {globalDisplayMode === 'value' ? formatCurrency(slice.metric) : <CountUp value={slice.metric} enabled={hasAnimated} />} ({slice.percentage.toFixed(0)}%)
-                                        </span>
-                                      </div>
-                                    ))}
-                                  </div>
+                                  {overviewPieTooltip?.chart === 'opp' &&
+                                    createPortal(
+                                      <div
+                                        className="fixed z-[9999] pointer-events-none px-2.5 py-1.5 rounded-lg shadow-xl bg-gray-900 text-white text-xs whitespace-nowrap transition-shadow duration-150"
+                                        style={{ left: overviewPieTooltipPos.x + 10, top: overviewPieTooltipPos.y + 10 }}
+                                      >
+                                        <div className="font-semibold">{overviewPieTooltip.label}</div>
+                                        <div className="text-gray-300">
+                                          {globalDisplayMode === 'value'
+                                            ? `${formatCurrency(overviewPieTooltip.value)} (${overviewPieTooltip.percentage.toFixed(0)}%)`
+                                            : `${overviewPieTooltip.value} (${overviewPieTooltip.percentage.toFixed(0)}%)`}
+                                        </div>
+                                      </div>,
+                                      document.body
+                                    )}
+                                </div>
+                                <div className="flex-1 min-w-0 space-y-1 text-[11px] overflow-y-auto py-0.5 border-l border-gray-200 pl-3">
+                                  {slices.map(slice => (
+                                    <div key={slice.status} className="flex items-center gap-1.5">
+                                      <div className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: slice.color }} />
+                                      <span className="text-gray-600 truncate">{slice.status}:</span>
+                                      <span className="font-semibold text-gray-900 whitespace-nowrap">
+                                        {globalDisplayMode === 'value' ? formatCurrency(slice.metric) : <CountUp value={slice.metric} enabled={hasAnimated} />} ({slice.percentage.toFixed(0)}%)
+                                      </span>
+                                    </div>
+                                  ))}
                                 </div>
                               </div>
                             );
@@ -1798,13 +1854,25 @@ export default function CustomerDetail(){
                       <div className="rounded-lg border border-gray-200 bg-white shadow-sm p-3">
                         <div className="text-[10px] font-bold text-gray-500 uppercase tracking-wide mb-2">Customer Funnel / Health</div>
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                          <div className="flex flex-col">
-                            <div className="text-[10px] font-bold text-gray-500 uppercase tracking-wide mb-1.5 text-center">Projects by Status</div>
+                          <div className="flex flex-col min-h-0">
+                            <div className="text-[10px] font-bold text-gray-500 uppercase tracking-wide mb-1.5 text-center shrink-0">Projects by Status</div>
                             {buildProjectDonutData.length > 0 ? (
                               (() => {
                                 const total = globalDisplayMode === 'value' ? buildProjectDonutData.reduce((sum, item) => sum + item.value, 0) : buildProjectDonutData.reduce((sum, item) => sum + item.count, 0);
                                 const colors = ['#0b1739', '#1d4ed8', '#0284c7'];
-                                const radius = 40; const innerRadius = 25; const centerX = 60; const centerY = 60;
+                                const radius = 40;
+                                const innerRadius = 24;
+                                const centerX = 50;
+                                const centerY = 50;
+                                const explodeOffset = 5;
+                                const handleProjMouseEnter = (slice: { status: string; metric: number; percentage: number }, ev: React.MouseEvent) => {
+                                  setOverviewPieTooltip({ chart: 'proj', label: slice.status, value: slice.metric, percentage: slice.percentage });
+                                  setOverviewPieTooltipPos({ x: ev.clientX, y: ev.clientY });
+                                };
+                                const handleProjMouseMove = (ev: React.MouseEvent) => {
+                                  if (overviewPieTooltip?.chart === 'proj') setOverviewPieTooltipPos({ x: ev.clientX, y: ev.clientY });
+                                };
+                                const handleProjMouseLeave = () => setOverviewPieTooltip((p) => (p?.chart === 'proj' ? null : p));
                                 let currentAngle = 0;
                                 const slices = buildProjectDonutData.map((item, idx) => {
                                   const metric = globalDisplayMode === 'value' ? item.value : item.count;
@@ -1816,18 +1884,69 @@ export default function CustomerDetail(){
                                   return { ...item, metric, percentage, startAngle, endAngle, color: colors[idx % colors.length] };
                                 });
                                 return (
-                                  <div className="w-full">
-                                    <svg width="100" height="100" viewBox="0 0 120 120" className="mx-auto">
-                                      {slices.map((slice, idx) => (
-                                        <path key={slice.status} d={createDonutSlice(slice.startAngle, slice.endAngle, innerRadius, radius, centerX, centerY)} fill={slice.color} style={{ opacity: hasAnimated ? 1 : 0, transition: `opacity 400ms ease-out ${hasAnimated ? idx * 80 + 'ms' : '0ms'}` }} />
-                                      ))}
-                                    </svg>
-                                    <div className="mt-2 space-y-0.5 text-center">
+                                  <div className="flex flex-row gap-2 flex-1 min-h-0 w-full">
+                                    <div className="flex-[0_0_40%] min-w-0 min-h-0 flex items-center justify-center relative">
+                                      <svg
+                                        viewBox="0 0 100 100"
+                                        className="w-full h-full max-w-full max-h-full min-h-[60px]"
+                                        preserveAspectRatio="xMidYMid meet"
+                                        onMouseLeave={handleProjMouseLeave}
+                                      >
+                                        {slices.map((slice, idx) => {
+                                          const midAngle = (slice.startAngle + slice.endAngle) / 2;
+                                          const isHovered = overviewPieTooltip?.chart === 'proj' && overviewPieTooltip?.label === slice.status;
+                                          const { x: ox, y: oy } = polarToCartesian(centerX, centerY, explodeOffset, midAngle);
+                                          const tx = isHovered ? ox - centerX : 0;
+                                          const ty = isHovered ? oy - centerY : 0;
+                                          return (
+                                            <g
+                                              key={slice.status}
+                                              transform={`translate(${tx}, ${ty})`}
+                                              style={{
+                                                cursor: 'pointer',
+                                                opacity: hasAnimated ? 1 : 0,
+                                                transition: `transform 0.15s ease-out, opacity 400ms ease-out ${hasAnimated ? idx * 80 + 'ms' : '0ms'}`,
+                                              }}
+                                              onMouseEnter={(ev) => handleProjMouseEnter(slice, ev)}
+                                              onMouseMove={handleProjMouseMove}
+                                              onMouseLeave={handleProjMouseLeave}
+                                            >
+                                              <path
+                                                d={createDonutSlice(slice.startAngle, slice.endAngle, innerRadius, radius, centerX, centerY)}
+                                                fill={slice.color}
+                                                style={{
+                                                  filter: isHovered ? 'brightness(1.12)' : undefined,
+                                                  transition: 'filter 0.2s ease-out',
+                                                }}
+                                              />
+                                            </g>
+                                          );
+                                        })}
+                                      </svg>
+                                      {overviewPieTooltip?.chart === 'proj' &&
+                                        createPortal(
+                                          <div
+                                            className="fixed z-[9999] pointer-events-none px-2.5 py-1.5 rounded-lg shadow-xl bg-gray-900 text-white text-xs whitespace-nowrap transition-shadow duration-150"
+                                            style={{ left: overviewPieTooltipPos.x + 10, top: overviewPieTooltipPos.y + 10 }}
+                                          >
+                                            <div className="font-semibold">{overviewPieTooltip.label}</div>
+                                            <div className="text-gray-300">
+                                              {globalDisplayMode === 'value'
+                                                ? `${formatCurrency(overviewPieTooltip.value)} (${overviewPieTooltip.percentage.toFixed(0)}%)`
+                                                : `${overviewPieTooltip.value} (${overviewPieTooltip.percentage.toFixed(0)}%)`}
+                                            </div>
+                                          </div>,
+                                          document.body
+                                        )}
+                                    </div>
+                                    <div className="flex-1 min-w-0 space-y-0.5 text-[11px] overflow-y-auto py-0.5 border-l border-gray-200 pl-2">
                                       {slices.map(slice => (
-                                        <div key={slice.status} className="flex items-center justify-center gap-1.5 text-[11px]">
-                                          <div className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: slice.color }}></div>
-                                          <span className="text-gray-600">{slice.status}:</span>
-                                          <span className="font-semibold text-gray-900">{globalDisplayMode === 'value' ? formatCurrency(slice.metric) : slice.metric} ({slice.percentage.toFixed(0)}%)</span>
+                                        <div key={slice.status} className="flex items-center gap-1.5">
+                                          <div className="w-1.5 h-1.5 rounded-full shrink-0" style={{ backgroundColor: slice.color }} />
+                                          <span className="text-gray-600 truncate">{slice.status}:</span>
+                                          <span className="font-semibold text-gray-900 whitespace-nowrap">
+                                            {globalDisplayMode === 'value' ? formatCurrency(slice.metric) : slice.metric} ({slice.percentage.toFixed(0)}%)
+                                          </span>
                                         </div>
                                       ))}
                                     </div>
@@ -2628,7 +2747,13 @@ export default function CustomerDetail(){
                       const cover = filesForSite.find(f=> String(f.category||'')==='site-cover-derived');
                       const img = cover || filesForSite.find(f=> (f.is_image===true) || String(f.content_type||'').startsWith('image/'));
                       const src = img? `/files/${img.file_object_id}/thumbnail?w=600` : '/ui/assets/login/logo-light.svg';
-                      const addressLine = [s.site_address_line1, s.site_city, s.site_province, s.site_country].filter(Boolean).join(', ') || '—';
+                      const addressLine = formatAddressDisplay({
+                        address_line1: s.site_address_line1,
+                        city: s.site_city,
+                        province: s.site_province,
+                        postal_code: (s as any).site_postal_code,
+                        country: s.site_country,
+                      });
                       return (
                         <Link to={`/customers/${encodeURIComponent(String(id||''))}/sites/${encodeURIComponent(String(s.id))}`} state={{ backgroundLocation: location }} key={String(s.id)} className="group rounded-xl border bg-white overflow-hidden flex">
                           <div className="w-28 bg-gray-100 flex-shrink-0 flex items-center justify-center relative min-h-[100px]">
@@ -3082,7 +3207,7 @@ function CustomerDocuments({ id, files, sites, onRefresh, hasEditPermission }: {
 
       <h4 className="font-semibold mt-4 mb-2">Pictures</h4>
       <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-3">
-        {(picList||[]).map(f=> { const isSite=!!f.site_id; const s=isSite? siteMap[String(f.site_id||'')] : undefined; const tip=isSite? `${s?.site_name||'Site'} — ${[s?.site_address_line1, s?.site_city, s?.site_province].filter(Boolean).join(', ')}` : 'General Customer image'; return (
+        {(picList||[]).map(f=> { const isSite=!!f.site_id; const s=isSite? siteMap[String(f.site_id||'')] : undefined; const tip=isSite? `${s?.site_name||'Site'} — ${formatAddressDisplay({ address_line1: s?.site_address_line1, city: s?.site_city, province: s?.site_province, country: s?.site_country })}` : 'General Customer image'; return (
           <div key={f.id} className="relative group">
             <img className="w-full h-24 object-cover rounded border" src={`/files/${f.file_object_id}/thumbnail?w=300`} />
             <div className="absolute right-2 top-2 hidden group-hover:flex gap-1">

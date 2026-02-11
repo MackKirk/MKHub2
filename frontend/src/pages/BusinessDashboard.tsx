@@ -1,6 +1,7 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import { useState, useMemo, useEffect, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { Link, useNavigate } from 'react-router-dom';
 import LoadingOverlay from '@/components/LoadingOverlay';
 
@@ -386,6 +387,11 @@ export default function BusinessDashboard() {
   const [projStatusCustomEnd, setProjStatusCustomEnd] = useState<string>('');
   const [projStatusDisplayMode, setProjStatusDisplayMode] = useState<'quantity' | 'value'>('quantity');
   const [projStatusModalOpen, setProjStatusModalOpen] = useState(false);
+
+  // Pie chart hover tooltip (division charts)
+  type PieTooltipData = { chart: 'opp' | 'proj'; label: string; value: number; percentage: number; profit?: number };
+  const [pieTooltip, setPieTooltip] = useState<PieTooltipData | null>(null);
+  const [pieTooltipPos, setPieTooltipPos] = useState({ x: 0, y: 0 });
 
   // Load persisted dashboard prefs for this user (once per user)
   useEffect(() => {
@@ -828,42 +834,102 @@ export default function BusinessDashboard() {
                       colorById.set(d.id, colors[idx % colors.length]);
                     });
 
+                    const radius = 40;
+                    const centerX = 50;
+                    const centerY = 50;
+                    const explodeOffset = 5;
+                    const handleOppSliceMouseEnter = (div: typeof divisionsForChart[0], ev: React.MouseEvent) => {
+                      const val = oppDivisionDisplayMode === 'value' ? (div.opportunities_value || 0) : (div.opportunities_count || 0);
+                      const pct = total > 0 ? (val / total) * 100 : 0;
+                      setPieTooltip({
+                        chart: 'opp',
+                        label: div.label,
+                        value: val,
+                        percentage: pct,
+                        profit: div.opportunities_profit,
+                      });
+                      setPieTooltipPos({ x: ev.clientX, y: ev.clientY });
+                    };
+                    const handleOppSliceMouseMove = (ev: React.MouseEvent) => {
+                      if (pieTooltip?.chart === 'opp') setPieTooltipPos({ x: ev.clientX, y: ev.clientY });
+                    };
+                    const handleOppSliceMouseLeave = () => {
+                      setPieTooltip((prev) => (prev?.chart === 'opp' ? null : prev));
+                    };
                     let currentAngle = 0;
-                    const radius = 50;
-                    const centerX = 60;
-                    const centerY = 60;
                     return (
-                      <div className="flex flex-col sm:flex-row items-center gap-4 justify-center w-full max-w-[760px] mx-auto px-2">
-                        <svg width="120" height="120" viewBox="0 0 120 120" className="flex-shrink-0">
-                          {!hasChartData ? (
-                            <circle cx={centerX} cy={centerY} r={radius} fill="#e5e7eb" />
-                          ) : divisionsForChart.length === 1 ? (
-                            <circle cx={centerX} cy={centerY} r={radius} fill={colors[0]} />
-                          ) : (
-                            divisionsForChart.map((div, idx) => {
-                              const percentage = oppDivisionDisplayMode === 'value'
-                                ? ((div.opportunities_value || 0) / total) * 100
-                                : ((div.opportunities_count || 0) / total) * 100;
-                              const angle = (percentage / 100) * 360;
-                              const startAngle = currentAngle;
-                              const endAngle = currentAngle + angle;
-                              currentAngle = endAngle;
-                              return (
-                                <path
-                                  key={div.id}
-                                  d={createPieSlice(startAngle, endAngle, radius, centerX, centerY)}
-                                  fill={colorById.get(div.id) || colors[idx % colors.length]}
-                                  className="hover:opacity-80 transition-opacity"
-                                  style={{
-                                    opacity: hasAnimated ? 1 : 0,
-                                    transition: `opacity 400ms ease-out ${hasAnimated ? idx * 80 + 'ms' : '0ms'}`
-                                  }}
-                                />
-                              );
-                            })
-                          )}
-                        </svg>
-                        <div className="space-y-1 text-xs w-full flex-1 min-w-0">
+                      <div className="flex flex-row gap-3 flex-1 min-h-0 w-full">
+                        <div className="flex-[0_0_40%] min-w-0 min-h-0 flex items-center justify-center relative">
+                          <svg
+                            viewBox="0 0 100 100"
+                            className="w-full h-full max-w-full max-h-full min-h-[80px]"
+                            preserveAspectRatio="xMidYMid meet"
+                            onMouseLeave={handleOppSliceMouseLeave}
+                          >
+                            {!hasChartData ? (
+                              <circle cx={centerX} cy={centerY} r={radius} fill="#e5e7eb" />
+                            ) : divisionsForChart.length === 1 ? (
+                              <circle cx={centerX} cy={centerY} r={radius} fill={colors[0]} />
+                            ) : (
+                              divisionsForChart.map((div, idx) => {
+                                const percentage = oppDivisionDisplayMode === 'value'
+                                  ? ((div.opportunities_value || 0) / total) * 100
+                                  : ((div.opportunities_count || 0) / total) * 100;
+                                const angle = (percentage / 100) * 360;
+                                const startAngle = currentAngle;
+                                const endAngle = currentAngle + angle;
+                                currentAngle = endAngle;
+                                const midAngle = (startAngle + endAngle) / 2;
+                                const isHovered = pieTooltip?.chart === 'opp' && pieTooltip?.label === div.label;
+                                const { x: ox, y: oy } = polarToCartesian(centerX, centerY, explodeOffset, midAngle);
+                                const tx = isHovered ? ox - centerX : 0;
+                                const ty = isHovered ? oy - centerY : 0;
+                                return (
+                                  <g
+                                    key={div.id}
+                                    transform={`translate(${tx}, ${ty})`}
+                                    style={{
+                                      cursor: 'pointer',
+                                      opacity: hasAnimated ? 1 : 0,
+                                      transition: `transform 0.15s ease-out, opacity 400ms ease-out ${hasAnimated ? idx * 80 + 'ms' : '0ms'}`,
+                                    }}
+                                    onMouseEnter={(ev) => handleOppSliceMouseEnter(div, ev)}
+                                    onMouseMove={handleOppSliceMouseMove}
+                                    onMouseLeave={handleOppSliceMouseLeave}
+                                  >
+                                    <path
+                                      d={createPieSlice(startAngle, endAngle, radius, centerX, centerY)}
+                                      fill={colorById.get(div.id) || colors[idx % colors.length]}
+                                      style={{
+                                        filter: isHovered ? 'brightness(1.12)' : undefined,
+                                        transition: 'filter 0.2s ease-out',
+                                      }}
+                                    />
+                                  </g>
+                                );
+                              })
+                            )}
+                          </svg>
+                          {pieTooltip?.chart === 'opp' &&
+                            createPortal(
+                              <div
+                                className="fixed z-[9999] pointer-events-none px-2.5 py-1.5 rounded-lg shadow-xl bg-gray-900 text-white text-xs whitespace-nowrap transition-shadow duration-150"
+                                style={{ left: pieTooltipPos.x + 10, top: pieTooltipPos.y + 10 }}
+                              >
+                                <div className="font-semibold">{pieTooltip.label}</div>
+                                <div className="text-gray-300">
+                                  {oppDivisionDisplayMode === 'value'
+                                    ? `${formatCurrency(pieTooltip.value)} (${pieTooltip.percentage.toFixed(0)}%)`
+                                    : `${pieTooltip.value} (${pieTooltip.percentage.toFixed(0)}%)`}
+                                </div>
+                                {oppDivisionDisplayMode === 'value' && pieTooltip.profit != null && (
+                                  <div className="text-gray-400 text-[10px]">Profit: {formatCurrency(pieTooltip.profit)}</div>
+                                )}
+                              </div>,
+                              document.body
+                            )}
+                        </div>
+                        <div className="flex-1 min-w-0 space-y-1 text-xs overflow-y-auto py-0.5 border-l border-gray-200 pl-3">
                           {divisionsForList.length === 0 ? (
                             <div className="text-xs text-gray-400">No data</div>
                           ) : divisionsForList.slice(0, 7).map((div) => {
@@ -1005,42 +1071,102 @@ export default function BusinessDashboard() {
                       colorById.set(d.id, colors[idx % colors.length]);
                     });
 
+                    const radius = 40;
+                    const centerX = 50;
+                    const centerY = 50;
+                    const explodeOffset = 5;
+                    const handleProjSliceMouseEnter = (div: typeof divisionsForChart[0], ev: React.MouseEvent) => {
+                      const val = projDivisionDisplayMode === 'value' ? (div.projects_value || 0) : (div.projects_count || 0);
+                      const pct = total > 0 ? (val / total) * 100 : 0;
+                      setPieTooltip({
+                        chart: 'proj',
+                        label: div.label,
+                        value: val,
+                        percentage: pct,
+                        profit: div.projects_profit,
+                      });
+                      setPieTooltipPos({ x: ev.clientX, y: ev.clientY });
+                    };
+                    const handleProjSliceMouseMove = (ev: React.MouseEvent) => {
+                      if (pieTooltip?.chart === 'proj') setPieTooltipPos({ x: ev.clientX, y: ev.clientY });
+                    };
+                    const handleProjSliceMouseLeave = () => {
+                      setPieTooltip((prev) => (prev?.chart === 'proj' ? null : prev));
+                    };
                     let currentAngle = 0;
-                    const radius = 50;
-                    const centerX = 60;
-                    const centerY = 60;
                     return (
-                      <div className="flex flex-col sm:flex-row items-center gap-4 justify-center w-full max-w-[760px] mx-auto px-2">
-                        <svg width="120" height="120" viewBox="0 0 120 120" className="flex-shrink-0">
-                          {!hasChartData ? (
-                            <circle cx={centerX} cy={centerY} r={radius} fill="#e5e7eb" />
-                          ) : divisionsForChart.length === 1 ? (
-                            <circle cx={centerX} cy={centerY} r={radius} fill={colors[0]} />
-                          ) : (
-                            divisionsForChart.map((div, idx) => {
-                              const percentage = projDivisionDisplayMode === 'value'
-                                ? ((div.projects_value || 0) / total) * 100
-                                : ((div.projects_count || 0) / total) * 100;
-                              const angle = (percentage / 100) * 360;
-                              const startAngle = currentAngle;
-                              const endAngle = currentAngle + angle;
-                              currentAngle = endAngle;
-                              return (
-                                <path
-                                  key={div.id}
-                                  d={createPieSlice(startAngle, endAngle, radius, centerX, centerY)}
-                                  fill={colorById.get(div.id) || colors[idx % colors.length]}
-                                  className="hover:opacity-80 transition-opacity"
-                                  style={{
-                                    opacity: hasAnimated ? 1 : 0,
-                                    transition: `opacity 400ms ease-out ${hasAnimated ? idx * 80 + 'ms' : '0ms'}`
-                                  }}
-                                />
-                              );
-                            })
-                          )}
-                        </svg>
-                        <div className="space-y-1 text-xs w-full flex-1 min-w-0">
+                      <div className="flex flex-row gap-3 flex-1 min-h-0 w-full">
+                        <div className="flex-[0_0_40%] min-w-0 min-h-0 flex items-center justify-center relative">
+                          <svg
+                            viewBox="0 0 100 100"
+                            className="w-full h-full max-w-full max-h-full min-h-[80px]"
+                            preserveAspectRatio="xMidYMid meet"
+                            onMouseLeave={handleProjSliceMouseLeave}
+                          >
+                            {!hasChartData ? (
+                              <circle cx={centerX} cy={centerY} r={radius} fill="#e5e7eb" />
+                            ) : divisionsForChart.length === 1 ? (
+                              <circle cx={centerX} cy={centerY} r={radius} fill={colors[0]} />
+                            ) : (
+                              divisionsForChart.map((div, idx) => {
+                                const percentage = projDivisionDisplayMode === 'value'
+                                  ? ((div.projects_value || 0) / total) * 100
+                                  : ((div.projects_count || 0) / total) * 100;
+                                const angle = (percentage / 100) * 360;
+                                const startAngle = currentAngle;
+                                const endAngle = currentAngle + angle;
+                                currentAngle = endAngle;
+                                const midAngle = (startAngle + endAngle) / 2;
+                                const isHovered = pieTooltip?.chart === 'proj' && pieTooltip?.label === div.label;
+                                const { x: ox, y: oy } = polarToCartesian(centerX, centerY, explodeOffset, midAngle);
+                                const tx = isHovered ? ox - centerX : 0;
+                                const ty = isHovered ? oy - centerY : 0;
+                                return (
+                                  <g
+                                    key={div.id}
+                                    transform={`translate(${tx}, ${ty})`}
+                                    style={{
+                                      cursor: 'pointer',
+                                      opacity: hasAnimated ? 1 : 0,
+                                      transition: `transform 0.15s ease-out, opacity 400ms ease-out ${hasAnimated ? idx * 80 + 'ms' : '0ms'}`,
+                                    }}
+                                    onMouseEnter={(ev) => handleProjSliceMouseEnter(div, ev)}
+                                    onMouseMove={handleProjSliceMouseMove}
+                                    onMouseLeave={handleProjSliceMouseLeave}
+                                  >
+                                    <path
+                                      d={createPieSlice(startAngle, endAngle, radius, centerX, centerY)}
+                                      fill={colorById.get(div.id) || colors[idx % colors.length]}
+                                      style={{
+                                        filter: isHovered ? 'brightness(1.12)' : undefined,
+                                        transition: 'filter 0.2s ease-out',
+                                      }}
+                                    />
+                                  </g>
+                                );
+                              })
+                            )}
+                          </svg>
+                          {pieTooltip?.chart === 'proj' &&
+                            createPortal(
+                              <div
+                                className="fixed z-[9999] pointer-events-none px-2.5 py-1.5 rounded-lg shadow-xl bg-gray-900 text-white text-xs whitespace-nowrap transition-shadow duration-150"
+                                style={{ left: pieTooltipPos.x + 10, top: pieTooltipPos.y + 10 }}
+                              >
+                                <div className="font-semibold">{pieTooltip.label}</div>
+                                <div className="text-gray-300">
+                                  {projDivisionDisplayMode === 'value'
+                                    ? `${formatCurrency(pieTooltip.value)} (${pieTooltip.percentage.toFixed(0)}%)`
+                                    : `${pieTooltip.value} (${pieTooltip.percentage.toFixed(0)}%)`}
+                                </div>
+                                {projDivisionDisplayMode === 'value' && pieTooltip.profit != null && (
+                                  <div className="text-gray-400 text-[10px]">Profit: {formatCurrency(pieTooltip.profit)}</div>
+                                )}
+                              </div>,
+                              document.body
+                            )}
+                        </div>
+                        <div className="flex-1 min-w-0 space-y-1 text-xs overflow-y-auto py-0.5 border-l border-gray-200 pl-3">
                           {divisionsForList.length === 0 ? (
                             <div className="text-xs text-gray-400">No data</div>
                           ) : divisionsForList.slice(0, 7).map((div) => {

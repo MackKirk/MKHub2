@@ -68,6 +68,10 @@ export default function AddressAutocomplete({
   const autocompleteRef = useRef<any>(null);
   const onAddressSelectRef = useRef(onAddressSelect);
   const onChangeRef = useRef(onChange);
+  /** After we set value from a place, ignore the next input onChange so a stray event does not overwrite with typed text */
+  const ignoreNextInputChangeRef = useRef(false);
+  /** When we just set the input to the selected address, avoid sync effect overwriting with stale value prop */
+  const lastSelectedAddressRef = useRef<string | null>(null);
   const [scriptLoaded, setScriptLoaded] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
 
@@ -118,7 +122,7 @@ export default function AddressAutocomplete({
   }, [apiKeyValue]);
 
   useEffect(() => {
-    if (!scriptLoaded || !inputRef.current || disabled) {
+    if (!scriptLoaded || disabled) {
       return;
     }
 
@@ -126,157 +130,139 @@ export default function AddressAutocomplete({
       return;
     }
 
+    const inputEl = inputRef.current;
+    if (!inputEl) return;
+
     // Cleanup previous autocomplete if it exists
     if (autocompleteRef.current && window.google && window.google.maps) {
       window.google.maps.event.clearInstanceListeners(autocompleteRef.current);
+      autocompleteRef.current = null;
     }
 
-    // Initialize autocomplete
-    const autocomplete = new window.google.maps.places.Autocomplete(inputRef.current, {
+    const autocomplete = new window.google.maps.places.Autocomplete(inputEl, {
       types: ['address'],
-      fields: ['address_components', 'formatted_address', 'geometry'],
     });
-
     autocompleteRef.current = autocomplete;
 
-    // Handle place selection
-    const handlePlaceSelect = () => {
-      const place = autocomplete.getPlace();
-      
-      console.log('Place selected:', place);
-      
-      if (!place || !place.place_id) {
-        console.warn('Place is invalid or missing place_id');
-        return;
-      }
-      
-      if (!place.address_components || !place.geometry) {
-        console.warn('Place missing address_components or geometry');
-        return;
-      }
+    // Apply a Place result to state (full address + parsed fields for auto-fill)
+    const applyPlaceToState = (place: any) => {
+      const displayAddress = (place.formatted_address || (place as any).name || '').trim();
+      if (!displayAddress) return;
 
-      // Parse address components
-      let address_line1 = '';
       let address_line2 = '';
       let city = '';
       let province = '';
       let country = '';
       let postal_code = '';
-      const lat = place.geometry.location?.lat();
-      const lng = place.geometry.location?.lng();
+      const lat = place.geometry?.location?.lat?.();
+      const lng = place.geometry?.location?.lng?.();
 
-      console.log('Address components:', place.address_components);
+      if (place.address_components && Array.isArray(place.address_components)) {
+        place.address_components.forEach((component: any) => {
+          const types = component.types;
+          if (types.includes('subpremise')) {
+            address_line2 = component.long_name;
+          }
+          if (types.includes('locality') && !city) {
+            city = component.long_name;
+          }
+          if (types.includes('sublocality') && !city) {
+            city = component.long_name;
+          }
+          if (types.includes('sublocality_level_1') && !city) {
+            city = component.long_name;
+          }
+          if (types.includes('administrative_area_level_1')) {
+            province = component.long_name || component.short_name;
+          }
+          if (types.includes('administrative_area_level_2') && !province) {
+            province = component.long_name || component.short_name;
+          }
+          if (types.includes('country')) {
+            country = component.long_name || component.short_name;
+          }
+          if (types.includes('postal_code')) {
+            postal_code = component.long_name;
+          }
+        });
+      }
 
-      // Parse address components
-      place.address_components.forEach((component: any) => {
-        const types = component.types;
-        console.log('Component:', component.long_name, 'Types:', types);
-
-        if (types.includes('street_number')) {
-          address_line1 = (address_line1 + component.long_name + ' ').trim();
-        }
-        if (types.includes('route')) {
-          address_line1 = (address_line1 + ' ' + component.long_name).trim();
-        }
-        if (types.includes('subpremise')) {
-          address_line2 = component.long_name;
-        }
-        // Try multiple locality types
-        if (types.includes('locality') && !city) {
-          city = component.long_name;
-        }
-        if (types.includes('sublocality') && !city) {
-          city = component.long_name;
-        }
-        if (types.includes('sublocality_level_1') && !city) {
-          city = component.long_name;
-        }
-        // Try multiple administrative area types
-        if (types.includes('administrative_area_level_1')) {
-          province = component.long_name || component.short_name;
-        }
-        if (types.includes('administrative_area_level_2') && !province) {
-          province = component.long_name || component.short_name;
-        }
-        if (types.includes('country')) {
-          country = component.long_name || component.short_name;
-        }
-        if (types.includes('postal_code')) {
-          postal_code = component.long_name;
-        }
-      });
-
-      // Build street address (number + route) for address_line1
-      const streetAddress = address_line1.trim();
-      
-      // Use formatted_address from Google for display, but keep street address separate
-      const displayAddress = place.formatted_address || streetAddress;
-      
-      console.log('Parsed address:', {
-        streetAddress,
-        displayAddress,
-        address_line2,
-        city,
-        province,
-        country,
-        postal_code,
-        lat,
-        lng,
-      });
-      
-      // Update the input field with full formatted address using ref to avoid stale closure
+      if (inputRef.current) {
+        inputRef.current.value = displayAddress;
+      }
+      lastSelectedAddressRef.current = displayAddress;
+      ignoreNextInputChangeRef.current = true;
       if (onChangeRef.current) {
         onChangeRef.current(displayAddress);
       }
 
-      // Call onAddressSelect callback with parsed address using ref to avoid stale closure
-      // Always call this, even if some fields are empty, so the parent can update all fields
-      // address_line1 will contain the full formatted address for display
       const addressData = {
-        address_line1: displayAddress, // Full formatted address for display
+        address_line1: displayAddress,
         address_line2: address_line2 || undefined,
         city: city || undefined,
         province: province || undefined,
         country: country || undefined,
         postal_code: postal_code || undefined,
-        lat: lat || undefined,
-        lng: lng || undefined,
+        lat: lat !== undefined && lat !== null ? lat : undefined,
+        lng: lng !== undefined && lng !== null ? lng : undefined,
       };
-      
-      console.log('Calling onAddressSelect with:', addressData);
-      console.log('onAddressSelectRef.current:', onAddressSelectRef.current);
-      
+
       if (onAddressSelectRef.current) {
         try {
           onAddressSelectRef.current(addressData);
-          console.log('onAddressSelect called successfully');
         } catch (error) {
           console.error('Error calling onAddressSelect:', error);
         }
-      } else {
-        console.warn('onAddressSelect callback not provided');
       }
     };
 
-    // Add listener for place selection
-    const listener = autocomplete.addListener('place_changed', () => {
-      console.log('place_changed event fired');
-      // Use setTimeout to ensure the place is fully loaded
-      setTimeout(() => {
-        handlePlaceSelect();
-      }, 100);
-    });
-    console.log('Added place_changed listener');
+    const handlePlaceSelect = () => {
+      const place = autocomplete.getPlace();
+      if (!place || !place.place_id) return;
 
-    // Also listen for Enter key and blur events as fallback
+      const hasFullDetails = place.formatted_address && place.address_components && place.address_components.length > 0;
+
+      if (hasFullDetails) {
+        applyPlaceToState(place);
+        return;
+      }
+
+      // Place is incomplete (common when clicking a suggestion) – fetch full details for address + auto-fill
+      const service = new window.google.maps.places.PlacesService(
+        document.createElement('div')
+      );
+      service.getDetails(
+        {
+          placeId: place.place_id,
+          fields: ['address_components', 'formatted_address', 'geometry', 'name'],
+        },
+        (detailPlace: any, status: string) => {
+          if (status !== window.google.maps.places.PlacesServiceStatus.OK || !detailPlace) {
+            const fallbackAddress = (place.formatted_address || (place as any).name || '').trim();
+            if (fallbackAddress && onChangeRef.current) {
+              ignoreNextInputChangeRef.current = true;
+              onChangeRef.current(fallbackAddress);
+              if (onAddressSelectRef.current) {
+                onAddressSelectRef.current({ address_line1: fallbackAddress });
+              }
+            }
+            return;
+          }
+          applyPlaceToState(detailPlace);
+        }
+      );
+    };
+
+    const listener = autocomplete.addListener('place_changed', () => {
+      handlePlaceSelect();
+    });
+
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Enter') {
-        console.log('Enter key pressed, checking for place...');
-        e.preventDefault(); // Prevent form submission
+        e.preventDefault();
         setTimeout(() => {
           const place = autocomplete.getPlace();
           if (place && place.place_id) {
-            console.log('Place found on Enter key:', place);
             handlePlaceSelect();
           }
         }, 100);
@@ -284,20 +270,17 @@ export default function AddressAutocomplete({
     };
 
     const handleBlur = () => {
-      console.log('Input blurred, checking for place...');
       setTimeout(() => {
         const place = autocomplete.getPlace();
         if (place && place.place_id) {
-          console.log('Place found on blur:', place);
           handlePlaceSelect();
         }
       }, 300);
     };
 
-    const inputElement = inputRef.current;
-    if (inputElement) {
-      inputElement.addEventListener('keydown', handleKeyDown);
-      inputElement.addEventListener('blur', handleBlur);
+    if (inputEl) {
+      inputEl.addEventListener('keydown', handleKeyDown);
+      inputEl.addEventListener('blur', handleBlur);
     }
 
     // Cleanup
@@ -305,9 +288,9 @@ export default function AddressAutocomplete({
       if (listener && window.google && window.google.maps) {
         window.google.maps.event.removeListener(listener);
       }
-      if (inputElement) {
-        inputElement.removeEventListener('keydown', handleKeyDown);
-        inputElement.removeEventListener('blur', handleBlur);
+      if (inputEl) {
+        inputEl.removeEventListener('keydown', handleKeyDown);
+        inputEl.removeEventListener('blur', handleBlur);
       }
       if (autocompleteRef.current && window.google && window.google.maps) {
         window.google.maps.event.clearInstanceListeners(autocompleteRef.current);
@@ -316,15 +299,26 @@ export default function AddressAutocomplete({
     };
   }, [scriptLoaded, disabled]);
 
-  // Sync value with input when it changes externally (but let Google control it during typing)
+  // Sync value from parent into input only when it's a full address (e.g. after place select or load) or empty – never while user is typing (short value without comma).
   useEffect(() => {
-    if (inputRef.current && scriptLoaded) {
-      const isFocused = document.activeElement === inputRef.current;
-      // Only sync if not focused (to avoid interfering with Google's autocomplete)
-      if (!isFocused && inputRef.current.value !== value) {
-        inputRef.current.value = value || '';
-      }
+    if (!inputRef.current || !scriptLoaded) return;
+    const isFocused = document.activeElement === inputRef.current;
+    if (isFocused) return;
+    const val = value ?? '';
+    const looksLikeFullAddress = val.includes(',');
+    const isEmpty = val.trim() === '';
+    if (!looksLikeFullAddress && !isEmpty) return;
+    if (
+      lastSelectedAddressRef.current &&
+      inputRef.current.value === lastSelectedAddressRef.current &&
+      value !== lastSelectedAddressRef.current
+    ) {
+      return;
     }
+    if (inputRef.current.value !== val) {
+      inputRef.current.value = val;
+    }
+    lastSelectedAddressRef.current = null;
   }, [value, scriptLoaded]);
 
   return (
@@ -332,13 +326,16 @@ export default function AddressAutocomplete({
       <input
         ref={inputRef}
         type="text"
-        defaultValue={value}
+        defaultValue={value ?? ''}
         onChange={(e) => {
-          // Let Google Places control the input, but also notify parent
+          if (ignoreNextInputChangeRef.current) {
+            ignoreNextInputChangeRef.current = false;
+            return;
+          }
           onChange(e.target.value);
         }}
         onInput={(e) => {
-          // Also handle input events for better compatibility
+          if (ignoreNextInputChangeRef.current) return;
           onChange((e.target as HTMLInputElement).value);
         }}
         placeholder={placeholder}

@@ -1,6 +1,7 @@
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
+import { formatAddressDisplay } from '@/lib/addressUtils';
 import { useEffect, useMemo, useState, useRef, ReactNode } from 'react';
 import toast from 'react-hot-toast';
 import ImagePicker from '@/components/ImagePicker';
@@ -180,7 +181,13 @@ export default function SiteDetail(){
                     <div>
                       <div className="text-[10px] font-medium text-gray-500 uppercase tracking-wide mb-1">Address</div>
                       <div className="text-sm text-gray-700">
-                        {[form.site_address_line1, form.site_address_line1_complement, form.site_city, form.site_province, form.site_postal_code, form.site_country].filter(Boolean).join(', ') || '—'}
+                        {formatAddressDisplay({
+                          address_line1: [form.site_address_line1, form.site_address_line1_complement].filter(Boolean).join(', '),
+                          city: form.site_city,
+                          province: form.site_province,
+                          postal_code: form.site_postal_code,
+                          country: form.site_country,
+                        })}
                       </div>
                     </div>
                   )}
