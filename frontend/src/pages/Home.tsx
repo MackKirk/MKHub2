@@ -1,6 +1,6 @@
 import '@/styles/react-grid-layout.css';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import ReactGridLayout, { WidthProvider } from 'react-grid-layout/legacy';
 import type { Layout as RGLLayout } from 'react-grid-layout/legacy';
 import { api } from '@/lib/api';
@@ -49,6 +49,17 @@ function migrateLayoutTo8Col(items: LayoutItem[]): LayoutItem[] {
 export default function Home() {
   const queryClient = useQueryClient();
   const confirm = useConfirm();
+  const todayLabel = useMemo(
+    () =>
+      new Date().toLocaleDateString('en-CA', {
+        weekday: 'long',
+        year: 'numeric',
+        month: 'short',
+        day: 'numeric',
+      }),
+    []
+  );
+
   const { data: saved, isLoading, isFetched } = useQuery({
     queryKey: ['home-dashboard'],
     queryFn: () => api<HomeDashboardState | null>('GET', '/users/me/home-dashboard'),
@@ -132,6 +143,20 @@ export default function Home() {
     saveDashboard(layout, widgets);
   }, [layout, widgets, saveDashboard]);
 
+  const handleCancelEdit = useCallback(() => {
+    const saved = queryClient.getQueryData(['home-dashboard']) as HomeDashboardState | null | undefined;
+    if (saved != null) {
+      const rawLayout = saved.layout;
+      const rawWidgets = saved.widgets;
+      const layoutList = Array.isArray(rawLayout) ? rawLayout : (typeof rawLayout === 'string' ? (() => { try { const p = JSON.parse(rawLayout); return Array.isArray(p) ? p : []; } catch { return []; } })() : []);
+      const widgetsList = Array.isArray(rawWidgets) ? rawWidgets : (typeof rawWidgets === 'string' ? (() => { try { const p = JSON.parse(rawWidgets); return Array.isArray(p) ? p : []; } catch { return []; } })() : []);
+      setLayout(sanitizeLayout(layoutList as LayoutItem[]));
+      setWidgets(widgetsList as WidgetDef[]);
+    }
+    setIsEditMode(false);
+    setConfigWidgetId(null);
+  }, [queryClient]);
+
   const openConfig = useCallback((id: string) => setConfigWidgetId(id), []);
   const closeConfig = useCallback(() => setConfigWidgetId(null), []);
 
@@ -150,10 +175,23 @@ export default function Home() {
   return (
     <LoadingOverlay isLoading={showLoading} text="Loading dashboard…" minHeight="min-h-[50vh]">
     <AnimationReadyProvider loaded={!isLoading} delay={80}>
-    <div className="p-4 md:p-6 max-w-[1600px] mx-auto">
-      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-        <h1 className="text-xl font-semibold text-gray-900">My Dashboard</h1>
-        <div className="flex items-center gap-2">
+    <div className="max-w-[1600px] mx-auto space-y-4">
+      {/* Title Bar - same as Overview (personal) */}
+      <div className="rounded-xl border bg-white p-4">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3 flex-1">
+            <div>
+              <div className="text-xl font-semibold text-gray-900">My Dashboard</div>
+            </div>
+          </div>
+          <div className="text-right">
+            <div className="text-[10px] font-medium text-gray-500 uppercase tracking-wide">Today</div>
+            <div className="text-xs font-semibold text-gray-700 mt-0.5">{todayLabel}</div>
+          </div>
+        </div>
+      </div>
+
+      <div className="mb-4 flex flex-wrap items-center justify-start gap-2">
           {isEditMode ? (
             <>
               <button
@@ -172,6 +210,13 @@ export default function Home() {
               </button>
               <button
                 type="button"
+                onClick={handleCancelEdit}
+                className="px-3 py-2 rounded-lg border border-gray-300 bg-white text-gray-700 hover:bg-gray-50 text-sm font-medium"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
                 onClick={handleDoneEdit}
                 className="px-3 py-2 rounded-lg bg-[#7f1010] text-white hover:bg-[#a31414] text-sm font-medium"
               >
@@ -187,7 +232,6 @@ export default function Home() {
               Customize / Edit dashboard
             </button>
           )}
-        </div>
       </div>
 
       {widgets.length === 0 ? (
