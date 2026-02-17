@@ -55,6 +55,7 @@ type ChartWidgetProps = {
     customStart?: string;
     customEnd?: string;
     division_id?: string;
+    customer_id?: string;
     mode?: 'quantity' | 'value';
     palette?: ChartPaletteId;
   };
@@ -64,6 +65,7 @@ function useChartData(
   metric: ChartMetric,
   mode: 'quantity' | 'value',
   divisionId: string | undefined,
+  customerId: string | undefined,
   date_from: string | undefined,
   date_to: string | undefined
 ): { entries: ChartEntry[]; isLoading: boolean; error: unknown } {
@@ -71,10 +73,11 @@ function useChartData(
     metric === 'opportunities_by_division' || metric === 'projects_by_division';
 
   const dashboardQuery = useQuery<DashboardStats>({
-    queryKey: ['home-chart-dashboard', metric, divisionId, mode, date_from, date_to],
+    queryKey: ['home-chart-dashboard', metric, divisionId, customerId, mode, date_from, date_to],
     queryFn: () => {
       const params = new URLSearchParams();
       if (divisionId) params.set('division_id', divisionId);
+      if (customerId) params.set('customer_id', customerId);
       if (date_from) params.set('date_from', date_from);
       if (date_to) params.set('date_to', date_to);
       params.set('mode', mode);
@@ -85,10 +88,11 @@ function useChartData(
   });
 
   const divisionsQuery = useQuery<DivisionStatsRow[]>({
-    queryKey: ['home-chart-divisions', metric, divisionId, mode, date_from, date_to],
+    queryKey: ['home-chart-divisions', metric, divisionId, customerId, mode, date_from, date_to],
     queryFn: async () => {
       const params = new URLSearchParams();
       if (divisionId) params.set('division_id', divisionId);
+      if (customerId) params.set('customer_id', customerId);
       if (date_from) params.set('date_from', date_from);
       if (date_to) params.set('date_to', date_to);
       params.set('mode', mode);
@@ -142,17 +146,19 @@ function useChartTimeseries(
   metric: ChartMetric,
   mode: 'quantity' | 'value',
   divisionId: string | undefined,
+  customerId: string | undefined,
   date_from: string | undefined,
   date_to: string | undefined,
   enabled: boolean
 ): { data: TimeseriesResponse | null; isLoading: boolean; error: unknown } {
   const query = useQuery<TimeseriesResponse>({
-    queryKey: ['home-chart-timeseries', metric, mode, divisionId, date_from, date_to],
+    queryKey: ['home-chart-timeseries', metric, mode, divisionId, customerId, date_from, date_to],
     queryFn: () => {
       const params = new URLSearchParams();
       params.set('metric', metric);
       params.set('mode', mode);
       if (divisionId) params.set('division_id', divisionId);
+      if (customerId) params.set('customer_id', customerId);
       if (date_from) params.set('date_from', date_from);
       if (date_to) params.set('date_to', date_to);
       return api('GET', `/projects/business/dashboard-timeseries?${params.toString()}`);
@@ -174,15 +180,17 @@ export function ChartWidget({ config }: ChartWidgetProps) {
   const isDonut = rawChartType === 'donut';
   const mode = config?.mode ?? 'quantity';
   const divisionId = config?.division_id;
+  const customerId = config?.customer_id;
   const period = (config?.period as DateFilterType) ?? 'all';
   const { date_from, date_to } = calculateDateRange(period, config?.customStart ?? '', config?.customEnd ?? '');
 
   const isLineChart = rawChartType === 'line';
-  const timeseries = useChartTimeseries(metric, mode, divisionId, date_from, date_to, isLineChart);
+  const timeseries = useChartTimeseries(metric, mode, divisionId, customerId, date_from, date_to, isLineChart);
   const { entries: rawEntries, isLoading, error } = useChartData(
     metric,
     mode,
     divisionId,
+    customerId,
     date_from,
     date_to
   );
@@ -229,7 +237,8 @@ export function ChartWidget({ config }: ChartWidgetProps) {
     config?.customEnd ?? ''
   );
   const modeLabel = mode === 'value' ? 'Value' : 'Count';
-  const chartSubtitle = `${periodDisplay} · ${modeLabel}`;
+  const customerFilterLabel = customerId ? ' · One customer' : '';
+  const chartSubtitle = `${periodDisplay} · ${modeLabel}${customerFilterLabel}`;
 
   const Subtitle = () => (
     <p className="text-[10px] text-gray-500 shrink-0 mb-1" aria-hidden>{chartSubtitle}</p>

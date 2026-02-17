@@ -1,6 +1,6 @@
 import '@/styles/react-grid-layout.css';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import ReactGridLayout, { WidthProvider } from 'react-grid-layout/legacy';
 import type { Layout as RGLLayout } from 'react-grid-layout/legacy';
 import { api } from '@/lib/api';
@@ -35,6 +35,8 @@ export default function Home() {
   const { data: saved, isLoading } = useQuery({
     queryKey: ['home-dashboard'],
     queryFn: () => api<HomeDashboardState | null>('GET', '/users/me/home-dashboard'),
+    refetchOnWindowFocus: false,
+    staleTime: 2 * 60 * 1000,
   });
 
   const [layout, setLayout] = useState<LayoutItem[]>(DEFAULT_HOME_DASHBOARD.layout);
@@ -42,13 +44,15 @@ export default function Home() {
   const [isEditMode, setIsEditMode] = useState(false);
   const [addModalOpen, setAddModalOpen] = useState(false);
   const [configWidgetId, setConfigWidgetId] = useState<string | null>(null);
+  const hasHydratedFromServer = useRef(false);
 
   useEffect(() => {
     if (saved === undefined || saved === null) return;
-    if (Array.isArray(saved.layout) && Array.isArray(saved.widgets)) {
-      setLayout(migrateLayoutTo8Col(saved.layout));
-      setWidgets(saved.widgets);
-    }
+    if (!Array.isArray(saved.layout) || !Array.isArray(saved.widgets)) return;
+    if (hasHydratedFromServer.current) return;
+    hasHydratedFromServer.current = true;
+    setLayout(migrateLayoutTo8Col(saved.layout));
+    setWidgets(saved.widgets);
   }, [saved]);
 
   const saveDashboard = useCallback(async (nextLayout: LayoutItem[], nextWidgets: WidgetDef[]) => {
@@ -105,13 +109,13 @@ export default function Home() {
 
   const configWidget = configWidgetId ? widgets.find((w) => w.id === configWidgetId) ?? null : null;
   const handleSaveConfig = useCallback((widgetId: string, nextConfig: Record<string, unknown>, title?: string) => {
-    setWidgets((prev) => {
-      const next = prev.map((w) => (w.id === widgetId ? { ...w, config: nextConfig, ...(title !== undefined ? { title } : {}) } : w));
-      saveDashboard(layout, next);
-      return next;
-    });
+    const nextWidgets = widgets.map((w) =>
+      w.id === widgetId ? { ...w, config: nextConfig, ...(title !== undefined ? { title } : {}) } : w
+    );
+    setWidgets(nextWidgets);
+    saveDashboard(layout, nextWidgets);
     setConfigWidgetId(null);
-  }, [layout, saveDashboard]);
+  }, [layout, widgets, saveDashboard]);
 
   return (
     <LoadingOverlay isLoading={isLoading} text="Loading dashboard…" minHeight="min-h-[50vh]">

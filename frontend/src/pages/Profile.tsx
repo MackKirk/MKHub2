@@ -3,7 +3,6 @@ import { api } from '@/lib/api';
 import { sortByLabel } from '@/lib/sortOptions';
 import { queryClient } from '@/lib/queryClient';
 import { useRef, useState, useMemo, useEffect } from 'react';
-import { motion } from 'framer-motion';
 import toast from 'react-hot-toast';
 import { useConfirm } from '@/components/ConfirmProvider';
 import NationalitySelect from '@/components/NationalitySelect';
@@ -27,33 +26,38 @@ export default function Profile(){
   const [uploading, setUploading] = useState(false);
   const [tab, setTab] = useState<'personal'|'job'|'docs'|'loans'|'reports'>('personal');
   
-  // Get hero background image from settings
-  const { data: settings } = useQuery({ queryKey:['settings'], queryFn: ()=> api<any>('GET','/settings') });
-  const heroUrl = useMemo(() => {
-    if (!settings) return '/ui/assets/login/background.jpg';
-    const branding = (settings?.branding || []) as any[];
-    const hero = branding.find((i: any) => ['user_hero_background_url', 'hero_background_url', 'user hero background', 'hero background'].includes(String(i.label || '').toLowerCase()));
-    return hero?.value || '/ui/assets/login/background.jpg';
-  }, [settings]);
-  const [heroResolvedUrl, setHeroResolvedUrl] = useState<string>('');
-  useEffect(() => {
-    (async () => {
-      try {
-        if (!heroUrl) { setHeroResolvedUrl(''); return; }
-        if (heroUrl.startsWith('/files/')) {
-          const r: any = await api('GET', heroUrl);
-          setHeroResolvedUrl(r.download_url || '');
-        } else {
-          setHeroResolvedUrl(heroUrl);
-        }
-      } catch { setHeroResolvedUrl(''); }
-    })();
-  }, [heroUrl]);
   const [isEditingPersonal, setIsEditingPersonal] = useState(false);
   const [isSavingProfile, setIsSavingProfile] = useState(false);
+  const [isEmployeeCardMinimized, setIsEmployeeCardMinimized] = useState(false);
   // Get current user ID for components
   const { data:me } = useQuery({ queryKey:['me'], queryFn: ()=> api<any>('GET','/auth/me') });
   const userId = me?.id ? String(me.id) : '';
+  const { data: usersOptions } = useQuery({ queryKey: ['users-options'], queryFn: () => api<any[]>('GET', '/auth/users/options') });
+  const { data: supervisorProfile } = useQuery({
+    queryKey: ['supervisor-profile', p?.manager_user_id],
+    queryFn: () => api<any>('GET', `/auth/users/${p?.manager_user_id}/profile`),
+    enabled: !!p?.manager_user_id,
+  });
+  const supervisorName = useMemo(() => {
+    if (supervisorProfile?.profile) {
+      const fn = supervisorProfile.profile.first_name || '';
+      const ln = supervisorProfile.profile.last_name || '';
+      const full = `${fn} ${ln}`.trim();
+      if (full) return full;
+    }
+    if (!p?.manager_user_id) return '';
+    const row = (usersOptions || []).find((x: any) => String(x.id) === String(p.manager_user_id));
+    return row ? (row.username || row.email) : '';
+  }, [usersOptions, p?.manager_user_id, supervisorProfile]);
+  function calcAge(dob?: string) {
+    if (!dob) return '';
+    try { const d = new Date(dob); const now = new Date(); let a = now.getFullYear() - d.getFullYear(); const m = now.getMonth() - d.getMonth(); if (m < 0 || (m === 0 && now.getDate() < d.getDate())) a--; return a > 0 ? `${a}y` : '—'; } catch { return ''; }
+  }
+  function tenure(from?: string) {
+    if (!from) return '';
+    try { const s = new Date(from); const now = new Date(); let months = (now.getFullYear() - s.getFullYear()) * 12 + (now.getMonth() - s.getMonth()); if (now.getDate() < s.getDate()) months--; const y = Math.floor(months / 12); const m = months % 12; return y > 0 ? `${y}y ${m}m` : `${m}m`; } catch { return ''; }
+  }
+  const todayLabel = useMemo(() => new Date().toLocaleDateString('en-CA', { weekday: 'long', year: 'numeric', month: 'short', day: 'numeric' }), []);
   
   // Check if user has any loans to show the Loans tab
   const { data: userLoans } = useQuery({
@@ -209,111 +213,210 @@ export default function Profile(){
     sin_number:'SIN/SSN',
     emergency_contact:'At least one emergency contact'
   };
-  const todayLabel = useMemo(() => {
-    return new Date().toLocaleDateString('en-CA', {
-      weekday: 'long',
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric',
-    });
-  }, []);
+  const displayName = [p.first_name || u?.first_name, p.last_name || u?.last_name].filter(Boolean).join(' ') || u?.username || 'My Information';
 
   return (
     <div>
-      {/* Title above hero */}
-      <div className="bg-slate-200/50 rounded-[12px] border border-slate-200 flex items-center justify-between py-4 px-6 mb-6">
-        <div className="flex items-center gap-4 flex-1">
-          {fromHome && (
-            <button
-              onClick={() => navigate('/overview')}
-              className="p-2 rounded-lg hover:bg-gray-200 transition-colors flex items-center justify-center"
-              title="Back to Overview"
-            >
-              <svg className="w-5 h-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+      {/* Top bar: same as User Information */}
+      <div className="rounded-xl border bg-white p-4 mb-4">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3 flex-1">
+            {fromHome && (
+              <button
+                onClick={() => navigate('/overview')}
+                className="p-1.5 rounded-lg hover:bg-gray-100 transition-colors flex items-center justify-center"
+                title="Back to Overview"
+              >
+                <svg className="w-4 h-4 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+                </svg>
+              </button>
+            )}
+            <div className="w-8 h-8 rounded bg-blue-100 flex items-center justify-center flex-shrink-0">
+              <svg className="w-5 h-5 text-blue-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
               </svg>
-            </button>
-          )}
-          <div>
-            <div className="text-xl font-bold text-gray-900 tracking-tight mb-0.5">My Information</div>
-            <div className="text-sm text-gray-500 font-medium">Personal details, employment, and documents.{totalMissing>0 && <span className="ml-2">Missing {totalMissing} required fields.</span>}</div>
+            </div>
+            <div>
+              <h5 className="text-sm font-semibold text-blue-900">My Information</h5>
+              <p className="text-xs text-gray-600 mt-0.5">Personal details, employment, and documents.{totalMissing > 0 && <span className="ml-2">Missing {totalMissing} required fields.</span>}</p>
+            </div>
+          </div>
+          <div className="text-right">
+            <div className="text-[10px] text-gray-400 mb-1 font-medium uppercase tracking-wide">Today</div>
+            <div className="text-xs font-semibold text-gray-700">{todayLabel}</div>
           </div>
         </div>
-        <div className="text-right">
-          <div className="text-xs text-gray-400 mb-1.5 font-medium uppercase tracking-wide">Today</div>
-          <div className="text-sm font-semibold text-gray-700">{todayLabel}</div>
-        </div>
       </div>
-      
-      <motion.div initial={{opacity:0, y:10}} animate={{opacity:1, y:0}} className="rounded-xl border shadow-hero bg-white pb-24">
-        <div className="rounded-t-xl p-5 text-white relative overflow-hidden" style={{ backgroundImage: `url(${heroResolvedUrl||'/ui/assets/login/background.jpg'})`, backgroundSize: 'cover', backgroundPosition: 'center' }}>
-          <div className="absolute inset-0 bg-gradient-to-br from-gray-500/50 to-gray-800/60" />
-          <div className="relative z-10">
-            <div className="flex gap-4 items-stretch min-h-[210px]">
-              <div className="w-[220px] relative group">
-                <img className="w-full h-full object-cover rounded-xl border-2 border-brand-red" src={p.profile_photo_file_id? `/files/${p.profile_photo_file_id}/thumbnail?w=240`:'/ui/assets/placeholders/user.png'} />
-                <button onClick={()=>fileRef.current?.click()} className="absolute inset-0 rounded-xl bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center text-white transition-opacity">✏️ Change</button>
-                <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={async(e)=>{
-                  const f = e.target.files?.[0];
-                  if(!f) return;
-                  try{
-                    setUploading(true);
-                    const up:any = await api('POST','/files/upload',{ project_id:null, client_id:null, employee_id:null, category_id:'profile-photo', original_name:f.name, content_type: f.type||'image/jpeg' });
-                    const put = await fetch(up.upload_url, { method:'PUT', headers:{ 'Content-Type': f.type||'image/jpeg', 'x-ms-blob-type': 'BlockBlob' }, body: f });
-                    if(!put.ok) throw new Error('upload failed');
-                    const conf:any = await api('POST','/files/confirm',{ key: up.key, size_bytes: f.size, checksum_sha256:'na', content_type: f.type||'image/jpeg' });
-                    await api('PUT','/auth/me/profile',{ profile_photo_file_id: conf.id });
-                    await queryClient.invalidateQueries({ queryKey:['meProfile'] });
-                    toast.success('Profile photo updated');
-                  }catch(e){ console.error(e); toast.error('Failed to update photo'); }
-                  finally{ setUploading(false); if(fileRef.current) fileRef.current.value=''; }
-                }} />
-              </div>
-              <div className="flex-1 flex flex-col justify-start">
-                <div className="text-3xl font-extrabold">{p.first_name || u?.first_name || u?.username} {p.last_name || u?.last_name || ''}</div>
-                <div className="text-sm opacity-90 mt-1">{p.job_title || u?.email || ''}{u?.divisions && u.divisions.length > 0 ? ` — ${u.divisions.map((d: any) => d.label).join(', ')}` : (p.division ? ` — ${p.division}` : '')}</div>
-                <div className="grid md:grid-cols-3 gap-2 text-xs mt-3">
-                  <div><span className="opacity-80">Username:</span> <span className="font-semibold">{u?.username||'—'}</span></div>
-                  <div><span className="opacity-80">Phone:</span> <span className="font-semibold">{p.phone||'—'}</span></div>
-                  <div><span className="opacity-80">Personal email:</span> <span className="font-semibold">{u?.email||u?.email_personal||'—'}</span></div>
-                  <div><span className="opacity-80">Work email:</span> <span className="font-semibold">{p.work_email||'—'}</span></div>
-                  <div><span className="opacity-80">Status:</span> <span className="font-semibold">{u?.is_active? 'Active':'Terminated'}</span></div>
-                  <div><span className="opacity-80">Hire date:</span> <span className="font-semibold">{p.hire_date? String(p.hire_date).slice(0,10):'—'}</span></div>
-                </div>
-                <div className="mt-auto flex gap-2">
-                  <button onClick={()=>setTab('personal')} className={`px-4 py-2 rounded-lg border ${tab==='personal'? 'bg-black/30 border-white/30 text-white' : 'bg-white text-black'}`}>
-                    Personal {missingPersonalWithContact.length>0 && <span className="ml-2 text-xs bg-red-50 text-red-700 border border-red-200 rounded-full px-2">{missingPersonalWithContact.length}</span>}
-                  </button>
-                  <button onClick={()=>setTab('job')} className={`px-4 py-2 rounded-lg border ${tab==='job'? 'bg-black/30 border-white/30 text-white' : 'bg-white text-black'}`}>Job</button>
-                  <button onClick={()=>setTab('docs')} className={`px-4 py-2 rounded-lg border ${tab==='docs'? 'bg-black/30 border-white/30 text-white' : 'bg-white text-black'}`}>Documents</button>
-                  {hasLoans && (
-                    <button onClick={()=>setTab('loans')} className={`px-4 py-2 rounded-lg border ${tab==='loans'? 'bg-black/30 border-white/30 text-white' : 'bg-white text-black'}`}>Loans</button>
-                  )}
-                  {hasReports && (
-                    <button onClick={()=>setTab('reports')} className={`px-4 py-2 rounded-lg border ${tab==='reports'? 'bg-black/30 border-white/30 text-white' : 'bg-white text-black'}`}>Reports</button>
-                  )}
+
+      <div className="space-y-4">
+        {/* Summary card: expand/collapse like User Information */}
+        <div className="rounded-xl border bg-white p-3 relative">
+          {isEmployeeCardMinimized ? (
+            <div className="flex gap-2 items-center pr-8">
+              <img
+                className="w-10 h-10 object-cover rounded-lg border border-gray-200"
+                src={p.profile_photo_file_id ? `/files/${p.profile_photo_file_id}/thumbnail?w=80` : '/ui/assets/placeholders/user.png'}
+                alt=""
+              />
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2">
+                  <div className="flex-1 min-w-0">
+                    <div className="text-sm font-bold text-gray-900 truncate">
+                      {displayName}{u?.username ? ` (${u.username})` : ''}
+                    </div>
+                    <div className="text-[10px] text-gray-600 truncate mt-0.5">
+                      {p.job_title || '—'}{u?.divisions?.length ? ` • ${u.divisions.map((d: any) => d.label).join(', ')}` : (p.division ? ` • ${p.division}` : '')}
+                    </div>
+                  </div>
+                  <span className={`inline-flex items-center px-1.5 py-0.5 rounded-full text-[10px] font-medium flex-shrink-0 ${u?.is_active ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
+                    {u?.is_active ? 'Active' : 'Terminated'}
+                  </span>
                 </div>
               </div>
             </div>
+          ) : (
+            <div className="flex gap-3 items-start">
+              <div className="flex-shrink-0 flex flex-col items-center">
+                <div className="relative group">
+                  <img
+                    className="w-24 h-24 object-cover rounded-xl border-2 border-gray-200"
+                    src={p.profile_photo_file_id ? `/files/${p.profile_photo_file_id}/thumbnail?w=240` : '/ui/assets/placeholders/user.png'}
+                    alt=""
+                  />
+                  <button
+                    onClick={() => fileRef.current?.click()}
+                    className="absolute inset-0 rounded-xl bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center text-white transition-opacity text-xs"
+                  >
+                    Change
+                  </button>
+                  <input
+                    ref={fileRef}
+                    type="file"
+                    accept="image/*"
+                    className="hidden"
+                    onChange={async (e) => {
+                      const f = e.target.files?.[0];
+                      if (!f) return;
+                      try {
+                        setUploading(true);
+                        const up: any = await api('POST', '/files/upload', { project_id: null, client_id: null, employee_id: null, category_id: 'profile-photo', original_name: f.name, content_type: f.type || 'image/jpeg' });
+                        const put = await fetch(up.upload_url, { method: 'PUT', headers: { 'Content-Type': f.type || 'image/jpeg', 'x-ms-blob-type': 'BlockBlob' }, body: f });
+                        if (!put.ok) throw new Error('upload failed');
+                        const conf: any = await api('POST', '/files/confirm', { key: up.key, size_bytes: f.size, checksum_sha256: 'na', content_type: f.type || 'image/jpeg' });
+                        await api('PUT', '/auth/me/profile', { profile_photo_file_id: conf.id });
+                        await queryClient.invalidateQueries({ queryKey: ['meProfile'] });
+                        toast.success('Profile photo updated');
+                      } catch (err) {
+                        console.error(err);
+                        toast.error('Failed to update photo');
+                      } finally {
+                        setUploading(false);
+                        if (fileRef.current) fileRef.current.value = '';
+                      }
+                    }}
+                  />
+                </div>
+                <div className="mt-2">
+                  <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium ${u?.is_active ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
+                    {u?.is_active ? 'Active' : 'Terminated'}
+                  </span>
+                </div>
+              </div>
+              <div className="flex-1 min-w-0">
+                <div className="mb-2">
+                  <h1 className="text-sm font-bold text-gray-900">
+                    {displayName}{u?.username ? ` (${u.username})` : ''}
+                  </h1>
+                  <div className="text-xs text-gray-600 mt-0.5">
+                    {p.job_title || '—'}{u?.divisions?.length ? ` • ${u.divisions.map((d: any) => d.label).join(', ')}` : (p.division ? ` • ${p.division}` : '')}
+                  </div>
+                </div>
+                <div className="grid md:grid-cols-3 gap-x-3 gap-y-1.5">
+                  <div>
+                    <span className="text-[10px] font-medium text-gray-500 uppercase tracking-wide">Phone</span>
+                    <div className="text-xs font-semibold text-gray-900 mt-0.5">{p.phone || p.mobile_phone || '—'}</div>
+                  </div>
+                  <div>
+                    <span className="text-[10px] font-medium text-gray-500 uppercase tracking-wide">Personal Email</span>
+                    <div className="text-xs font-semibold text-gray-900 mt-0.5">{u?.email || u?.email_personal || '—'}</div>
+                  </div>
+                  <div>
+                    <span className="text-[10px] font-medium text-gray-500 uppercase tracking-wide">Work Email</span>
+                    <div className="text-xs font-semibold text-gray-900 mt-0.5">{p.work_email || '—'}</div>
+                  </div>
+                  <div>
+                    <span className="text-[10px] font-medium text-gray-500 uppercase tracking-wide">Hire Date</span>
+                    <div className="text-xs font-semibold text-gray-900 mt-0.5">
+                      {p.hire_date ? String(p.hire_date).slice(0, 10) : '—'}{p.hire_date ? ` (${tenure(p.hire_date)})` : ''}
+                    </div>
+                  </div>
+                  <div>
+                    <span className="text-[10px] font-medium text-gray-500 uppercase tracking-wide">Supervisor</span>
+                    <div className="text-xs font-semibold text-gray-900 mt-0.5">{supervisorName || '—'}</div>
+                  </div>
+                  <div>
+                    <span className="text-[10px] font-medium text-gray-500 uppercase tracking-wide">Age</span>
+                    <div className="text-xs font-semibold text-gray-900 mt-0.5">{calcAge(p.date_of_birth) || '—'}</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+          <button
+            onClick={() => setIsEmployeeCardMinimized(!isEmployeeCardMinimized)}
+            className="absolute bottom-2 right-2 p-1 rounded hover:bg-gray-100 transition-colors text-gray-500 hover:text-gray-700"
+            title={isEmployeeCardMinimized ? 'Expand' : 'Minimize'}
+          >
+            <svg className={`w-3 h-3 transition-transform ${isEmployeeCardMinimized ? '' : 'rotate-180'}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+            </svg>
+          </button>
+        </div>
+
+        {/* Tabs: red when active like User Information */}
+        <div className="rounded-xl border bg-white p-3">
+          <div className="flex flex-wrap gap-2">
+            {(['personal', 'job', 'docs', 'loans', 'reports'] as const).filter(k => (k === 'loans' ? hasLoans : k === 'reports' ? hasReports : true)).map((k) => (
+              <button
+                key={k}
+                onClick={() => setTab(k)}
+                className={`px-3 py-1.5 text-xs font-medium rounded-lg border transition-colors ${tab === k ? 'bg-brand-red text-white border-brand-red' : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50 hover:border-gray-400'}`}
+              >
+                {k[0].toUpperCase() + k.slice(1)}
+              </button>
+            ))}
           </div>
         </div>
+      </div>
+
+      {/* Main content card */}
+      <div className="rounded-xl border bg-white">
         <div className="p-5">
           {isLoading? <div className="h-24 animate-pulse bg-gray-100 rounded"/> : (
             <>
               {tab==='personal' && (
                 <div className="space-y-6 pb-24">
-                  <div>
-                    <div className="flex items-center justify-between gap-2">
-                      <h4 className="font-semibold">Basic information</h4>
+                  {/* Basic Information card - same style as User Information */}
+                  <div className="rounded-xl border bg-white p-4">
+                    <div className="mb-4 flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <div className="w-8 h-8 rounded bg-blue-100 flex items-center justify-center">
+                          <svg className="w-5 h-5 text-blue-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                          </svg>
+                        </div>
+                        <h5 className="text-sm font-semibold text-blue-900">Basic Information</h5>
+                      </div>
                       {!isEditingPersonal && (
                         <button
                           onClick={() => setIsEditingPersonal(true)}
-                          className="px-3 py-1.5 rounded-lg bg-gradient-to-r from-brand-red to-[#ee2b2b] text-white text-sm font-medium hover:opacity-90 flex items-center gap-1.5"
+                          className="p-1.5 rounded hover:bg-gray-100 text-gray-600 hover:text-brand-red transition-colors"
+                          title="Edit Basic Information"
                         >
-                          <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
                           </svg>
-                          Edit
                         </button>
                       )}
                     </div>
@@ -373,8 +476,27 @@ export default function Profile(){
                       )}
                     </div>
                   </div>
-                  <div>
-                    <div className="flex items-center gap-2"><h4 className="font-semibold">Address</h4></div>
+
+                  {/* Address card - same style as User Information */}
+                  <div className="rounded-xl border bg-white p-4">
+                    <div className="mb-4 flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <div className="w-8 h-8 rounded bg-green-100 flex items-center justify-center">
+                          <svg className="w-5 h-5 text-green-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+                          </svg>
+                        </div>
+                        <h5 className="text-sm font-semibold text-green-900">Address</h5>
+                      </div>
+                      {!isEditingPersonal && (
+                        <button onClick={() => setIsEditingPersonal(true)} className="p-1.5 rounded hover:bg-gray-100 text-gray-600 hover:text-brand-red transition-colors" title="Edit Address">
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                          </svg>
+                        </button>
+                      )}
+                    </div>
                     <div className="text-xs text-gray-500 mt-0.5 mb-2">Home address for contact and records.</div>
                     <div className="grid md:grid-cols-2 gap-4">
                       {isEditingPersonal ? (
@@ -427,8 +549,26 @@ export default function Profile(){
                       )}
                     </div>
                   </div>
-                  <div>
-                    <div className="flex items-center gap-2"><h4 className="font-semibold">Contact</h4></div>
+
+                  {/* Contact card - same style as User Information */}
+                  <div className="rounded-xl border bg-white p-4">
+                    <div className="mb-4 flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <div className="w-8 h-8 rounded bg-yellow-100 flex items-center justify-center">
+                          <svg className="w-5 h-5 text-yellow-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" />
+                          </svg>
+                        </div>
+                        <h5 className="text-sm font-semibold text-yellow-900">Contact</h5>
+                      </div>
+                      {!isEditingPersonal && (
+                        <button onClick={() => setIsEditingPersonal(true)} className="p-1.5 rounded hover:bg-gray-100 text-gray-600 hover:text-brand-red transition-colors" title="Edit Contact">
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                          </svg>
+                        </button>
+                      )}
+                    </div>
                     <div className="text-xs text-gray-500 mt-0.5 mb-2">How we can reach you.</div>
                     <div className="grid md:grid-cols-2 gap-4">
                       {isEditingPersonal ? (
@@ -444,15 +584,51 @@ export default function Profile(){
                       )}
                     </div>
                   </div>
+
                   {userId && (
                     <>
-                      <div>
-                        <div className="flex items-center gap-2"><h4 className="font-semibold">Education</h4></div>
+                      {/* Education card - same style as User Information */}
+                      <div className="rounded-xl border bg-white p-4">
+                        <div className="mb-4 flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            <div className="w-8 h-8 rounded bg-indigo-100 flex items-center justify-center">
+                              <svg className="w-5 h-5 text-indigo-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
+                              </svg>
+                            </div>
+                            <h5 className="text-sm font-semibold text-indigo-900">Education</h5>
+                          </div>
+                          {!isEditingPersonal && (
+                            <button onClick={() => setIsEditingPersonal(true)} className="p-1.5 rounded hover:bg-gray-100 text-gray-600 hover:text-brand-red transition-colors" title="Edit Education">
+                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                              </svg>
+                            </button>
+                          )}
+                        </div>
                         <div className="text-xs text-gray-500 mt-0.5 mb-2">Academic history.</div>
                         <EducationSection userId={userId} canEdit={isEditingPersonal} />
                       </div>
-                      <div>
-                        <div className="flex items-center gap-2"><h4 className="font-semibold">Legal & Documents</h4></div>
+
+                      {/* Legal & Documents card - same style as User Information */}
+                      <div className="rounded-xl border bg-white p-4">
+                        <div className="mb-4 flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            <div className="w-8 h-8 rounded bg-red-100 flex items-center justify-center">
+                              <svg className="w-5 h-5 text-red-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                              </svg>
+                            </div>
+                            <h5 className="text-sm font-semibold text-red-900">Legal & Documents</h5>
+                          </div>
+                          {!isEditingPersonal && (
+                            <button onClick={() => setIsEditingPersonal(true)} className="p-1.5 rounded hover:bg-gray-100 text-gray-600 hover:text-brand-red transition-colors" title="Edit Legal & Documents">
+                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                              </svg>
+                            </button>
+                          )}
+                        </div>
                         <div className="text-xs text-gray-500 mt-0.5 mb-2">Legal status and identification.</div>
                         <div className="grid md:grid-cols-2 gap-4 mb-4">
                           {isEditingPersonal ? (
@@ -482,8 +658,26 @@ export default function Profile(){
                           key={`work-eligibility-${p.work_eligibility_status || ''}-${form.work_eligibility_status || ''}`}
                         />
                       </div>
-                      <div>
-                        <div className="flex items-center gap-2"><h4 className="font-semibold">Emergency Contacts</h4></div>
+
+                      {/* Emergency Contacts card - same style as User Information */}
+                      <div className="rounded-xl border bg-white p-4">
+                        <div className="mb-4 flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            <div className="w-8 h-8 rounded bg-orange-100 flex items-center justify-center">
+                              <svg className="w-5 h-5 text-orange-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                              </svg>
+                            </div>
+                            <h5 className="text-sm font-semibold text-orange-900">Emergency Contacts</h5>
+                          </div>
+                          {!isEditingPersonal && (
+                            <button onClick={() => setIsEditingPersonal(true)} className="p-1.5 rounded hover:bg-gray-100 text-gray-600 hover:text-brand-red transition-colors" title="Edit Emergency Contacts">
+                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                              </svg>
+                            </button>
+                          )}
+                        </div>
                         <div className="text-xs text-gray-500 mt-0.5 mb-2">People to contact in case of emergency.</div>
                         <EmergencyContactsSection userId={userId} canEdit={isEditingPersonal} />
                       </div>
@@ -547,7 +741,7 @@ export default function Profile(){
                       </div>
                       {/* Supervisor | Hire Date */}
                       <div className="grid md:grid-cols-2 gap-4">
-                        <ViewField label="Supervisor" value={p.manager_user_id} />
+                        <ViewField label="Supervisor" value={supervisorName || undefined} />
                         <div>
                           <div className="text-xs font-medium text-gray-600 mb-1.5">Hire Date</div>
                           {isEditingPersonal ? (
@@ -616,7 +810,7 @@ export default function Profile(){
             </>
           )}
         </div>
-      </motion.div>
+      </div>
       {isEditingPersonal && (
         <div className="fixed bottom-0 left-0 right-0 z-40">
           <div className="max-w-[1200px] mx-auto px-4">
