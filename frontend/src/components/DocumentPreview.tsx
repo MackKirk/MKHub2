@@ -16,6 +16,8 @@ type DocumentPreviewProps = {
   margins?: TemplateMargins | null;
   /** When false (e.g. creating document), block elements are invisible and not editable but still block placement */
   blockAreasVisible?: boolean;
+  /** When true (e.g. editing a document created from a type), block elements are visible but not draggable/resizable/deletable */
+  lockBlockElements?: boolean;
   onElementClick?: (elementId: string) => void;
   onCanvasClick?: () => void;
   selectedElementId: string | null;
@@ -220,6 +222,7 @@ export default function DocumentPreview({
   elements,
   margins,
   blockAreasVisible = true,
+  lockBlockElements = false,
   onElementClick,
   onCanvasClick,
   selectedElementId,
@@ -254,6 +257,7 @@ export default function DocumentPreview({
     (e: React.PointerEvent, el: DocElement) => {
       e.stopPropagation();
       if (e.button !== 0) return;
+      if (el.type === 'block' && lockBlockElements) return;
       const target = e.target as HTMLElement;
       if (target.closest('textarea') || target.closest('input')) return;
       dragRef.current = {
@@ -275,6 +279,7 @@ export default function DocumentPreview({
     (e: React.PointerEvent, el: DocElement, handle: ResizeHandle) => {
       e.stopPropagation();
       if (e.button !== 0) return;
+      if (el.type === 'block' && lockBlockElements) return;
       resizeRef.current = {
         elementId: el.id,
         handle,
@@ -287,7 +292,7 @@ export default function DocumentPreview({
       };
       (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
     },
-    []
+    [lockBlockElements],
   );
 
   const handlePointerMove = useCallback(
@@ -393,7 +398,7 @@ export default function DocumentPreview({
       <div className="p-3 border-b border-gray-200 text-gray-600 text-sm font-medium">
         Preview
       </div>
-      {selectedElement && onUpdateElement && onRemoveElement && !(selectedElement.type === 'block' && !blockAreasVisible) && (
+      {selectedElement && onUpdateElement && onRemoveElement && !(selectedElement.type === 'block' && !blockAreasVisible) && !(selectedElement.type === 'block' && lockBlockElements) && (
         <ElementOptionsPopover
           element={selectedElement}
           onUpdate={onUpdateElement}
@@ -468,8 +473,8 @@ export default function DocumentPreview({
             const h = (el.height_pct ?? 8) / 100;
             const isSelected = selectedElementId === el.id;
             const isEditing = editingElementId === el.id && el.type === 'text';
-            const showHandles = isSelected && !isEditing;
             const isBlock = el.type === 'block';
+            const showHandles = isSelected && !isEditing && !(isBlock && lockBlockElements);
             const isImagePlaceholder = el.type === 'image' && !el.content;
 
             return (
@@ -486,7 +491,7 @@ export default function DocumentPreview({
                 onClick={(e) => e.stopPropagation()}
                 onDoubleClick={(e) => handleDoubleClick(e, el)}
                 className={`absolute border transition-colors rounded ${
-                  isEditing ? 'cursor-text overflow-hidden' : 'cursor-move'
+                  isEditing ? 'cursor-text overflow-hidden' : isBlock && lockBlockElements ? 'cursor-default overflow-hidden' : 'cursor-move'
                 } ${isSelected ? 'ring-2 ring-brand-red border-brand-red overflow-visible' : 'overflow-hidden border-transparent hover:border-gray-300'}`}
                 style={{
                   left: `${x * 100}%`,
@@ -496,50 +501,56 @@ export default function DocumentPreview({
                 }}
               >
                 {el.type === 'text' ? (
-                  isEditing ? (
-                    <textarea
-                      autoFocus
-                      className="block w-full h-full text-black resize-none overflow-hidden whitespace-pre-wrap break-words p-1 border-0 rounded bg-white/95 focus:outline-none focus:ring-1 focus:ring-brand-red select-text"
-                      style={{
-                        fontSize: `${Math.max(8, Math.min(72, el.fontSize ?? 12))}px`,
-                        textAlign: el.textAlign ?? 'left',
-                        fontWeight: el.fontWeight ?? 'normal',
-                        fontStyle: el.fontStyle ?? 'normal',
-                      }}
-                      value={el.content}
-                      onChange={(e) => {
-                        onUpdateElement?.(el.id, (prev) => ({ ...prev, content: e.target.value }));
-                      }}
-                      onBlur={commitInlineEdit}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Escape') {
-                          commitInlineEdit();
-                          (e.target as HTMLTextAreaElement).blur();
-                        }
-                        if (e.key === 'Enter' && !e.shiftKey) {
-                          e.preventDefault();
-                          commitInlineEdit();
-                          (e.target as HTMLTextAreaElement).blur();
-                        }
-                      }}
-                      onClick={(e) => e.stopPropagation()}
-                      onPointerDown={(e) => e.stopPropagation()}
-                      onPointerMove={(e) => e.stopPropagation()}
-                      onPointerUp={(e) => e.stopPropagation()}
-                    />
-                  ) : (
-                    <span
-                      className="block text-black overflow-hidden whitespace-pre-wrap break-words p-1 min-h-[1em]"
-                      style={{
-                        fontSize: `${Math.max(8, Math.min(72, el.fontSize ?? 12))}px`,
-                        textAlign: el.textAlign ?? 'left',
-                        fontWeight: el.fontWeight ?? 'normal',
-                        fontStyle: el.fontStyle ?? 'normal',
-                      }}
-                    >
-                      {el.content || 'Clique para editar'}
-                    </span>
-                  )
+                  (() => {
+                    const va = el.verticalAlign ?? 'top';
+                    const justifyContent = va === 'top' ? 'flex-start' : va === 'bottom' ? 'flex-end' : 'center';
+                    const textStyle = {
+                      fontSize: `${Math.max(8, Math.min(72, el.fontSize ?? 12))}px`,
+                      textAlign: el.textAlign ?? 'left',
+                      fontWeight: el.fontWeight ?? 'normal',
+                      fontStyle: el.fontStyle ?? 'normal',
+                      fontFamily: el.fontFamily === 'Open Sans' ? '"Open Sans", sans-serif' : '"Montserrat", sans-serif',
+                      color: el.color ?? '#000000',
+                    };
+                    return (
+                      <div className="w-full h-full flex flex-col" style={{ justifyContent }}>
+                        {isEditing ? (
+                          <textarea
+                            autoFocus
+                            className="block w-full flex-1 min-h-0 resize-none overflow-hidden whitespace-pre-wrap break-words p-1 border-0 rounded bg-white/95 focus:outline-none focus:ring-1 focus:ring-brand-red select-text"
+                            style={textStyle}
+                            value={el.content}
+                            onChange={(e) => {
+                              onUpdateElement?.(el.id, (prev) => ({ ...prev, content: e.target.value }));
+                            }}
+                            onBlur={commitInlineEdit}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Escape') {
+                                commitInlineEdit();
+                                (e.target as HTMLTextAreaElement).blur();
+                              }
+                              if (e.key === 'Enter' && !e.shiftKey) {
+                                e.preventDefault();
+                                commitInlineEdit();
+                                (e.target as HTMLTextAreaElement).blur();
+                              }
+                            }}
+                            onClick={(e) => e.stopPropagation()}
+                            onPointerDown={(e) => e.stopPropagation()}
+                            onPointerMove={(e) => e.stopPropagation()}
+                            onPointerUp={(e) => e.stopPropagation()}
+                          />
+                        ) : (
+                          <span
+                            className="block overflow-hidden whitespace-pre-wrap break-words p-1 min-h-[1em]"
+                            style={textStyle}
+                          >
+                            {el.content || 'Clique para editar'}
+                          </span>
+                        )}
+                      </div>
+                    );
+                  })()
                 ) : el.type === 'block' ? (
                   <div
                     className="w-full h-full rounded bg-amber-500/25 border-2 border-amber-600/50 border-dashed pointer-events-none flex items-center justify-center"

@@ -1,5 +1,6 @@
 import { useRef } from 'react';
 import type { DocElement } from '@/types/documentCreator';
+import { DOCUMENT_EDITOR_FONTS } from '@/types/documentCreator';
 
 type ElementOptionsPopoverProps = {
   element: DocElement;
@@ -30,6 +31,24 @@ const AlignCenterIcon = () => (
 const AlignRightIcon = () => (
   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="mx-auto">
     <path d="M8 6L20 6M4 12L20 12M10 18L20 18" strokeLinecap="round" strokeLinejoin="round" />
+  </svg>
+);
+
+const AlignTopIcon = () => (
+  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="mx-auto">
+    <path d="M6 5h12M6 9h12M6 13h8" strokeLinecap="round" strokeLinejoin="round" />
+  </svg>
+);
+
+const AlignMiddleIcon = () => (
+  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="mx-auto">
+    <path d="M6 7h12M6 11h12M6 15h8" strokeLinecap="round" strokeLinejoin="round" />
+  </svg>
+);
+
+const AlignBottomIcon = () => (
+  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="mx-auto">
+    <path d="M6 11h8M6 15h12M6 19h12" strokeLinecap="round" strokeLinejoin="round" />
   </svg>
 );
 
@@ -97,7 +116,45 @@ export function ElementOptionsPopover({
       {element.type === 'text' && (
         <div className="space-y-3">
           <div>
-            <span className="block text-xs text-gray-600 mb-1.5">Alignment</span>
+            <label className="block text-xs text-gray-600 mb-1">Font</label>
+            <select
+              value={element.fontFamily ?? 'Montserrat'}
+              onChange={(e) =>
+                onUpdate(id, (el) => ({ ...el, fontFamily: e.target.value as 'Montserrat' | 'Open Sans' }))
+              }
+              className="w-full px-2 py-1.5 rounded border border-gray-300 text-sm focus:ring-2 focus:ring-brand-red/50 focus:border-brand-red"
+            >
+              {DOCUMENT_EDITOR_FONTS.map((f) => (
+                <option key={f} value={f}>
+                  {f}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className="block text-xs text-gray-600 mb-1">Text color</label>
+            <div className="flex items-center gap-2 flex-wrap">
+              <input
+                type="color"
+                value={element.color ?? '#000000'}
+                onChange={(e) => onUpdate(id, (el) => ({ ...el, color: e.target.value }))}
+                className="w-9 h-9 rounded border border-gray-300 cursor-pointer p-0.5 bg-white"
+                title="Text color"
+              />
+              <input
+                type="text"
+                value={element.color ?? '#000000'}
+                onChange={(e) => {
+                  const v = e.target.value.trim();
+                  if (/^#[0-9A-Fa-f]{6}$/.test(v) || v === '') onUpdate(id, (el) => ({ ...el, color: v || '#000000' }));
+                }}
+                className="flex-1 min-w-0 w-20 px-2 py-1 rounded border border-gray-300 text-xs font-mono"
+                placeholder="#000000"
+              />
+            </div>
+          </div>
+          <div>
+            <span className="block text-xs text-gray-600 mb-1.5">Horizontal</span>
             <div className="flex gap-1 p-0.5 rounded bg-gray-100">
               <button
                 type="button"
@@ -122,6 +179,35 @@ export function ElementOptionsPopover({
                 title="Align right"
               >
                 <AlignRightIcon />
+              </button>
+            </div>
+          </div>
+          <div>
+            <span className="block text-xs text-gray-600 mb-1.5">Vertical</span>
+            <div className="flex gap-1 p-0.5 rounded bg-gray-100">
+              <button
+                type="button"
+                onClick={() => onUpdate(id, (el) => ({ ...el, verticalAlign: 'top' }))}
+                className={`flex-1 py-2 rounded flex items-center justify-center ${(element.verticalAlign ?? 'top') === 'top' ? 'bg-white shadow text-gray-900' : 'text-gray-600 hover:text-gray-900'}`}
+                title="Top"
+              >
+                <AlignTopIcon />
+              </button>
+              <button
+                type="button"
+                onClick={() => onUpdate(id, (el) => ({ ...el, verticalAlign: 'center' }))}
+                className={`flex-1 py-2 rounded flex items-center justify-center ${(element.verticalAlign ?? 'top') === 'center' ? 'bg-white shadow text-gray-900' : 'text-gray-600 hover:text-gray-900'}`}
+                title="Center"
+              >
+                <AlignMiddleIcon />
+              </button>
+              <button
+                type="button"
+                onClick={() => onUpdate(id, (el) => ({ ...el, verticalAlign: 'bottom' }))}
+                className={`flex-1 py-2 rounded flex items-center justify-center ${(element.verticalAlign ?? 'top') === 'bottom' ? 'bg-white shadow text-gray-900' : 'text-gray-600 hover:text-gray-900'}`}
+                title="Bottom"
+              >
+                <AlignBottomIcon />
               </button>
             </div>
           </div>
