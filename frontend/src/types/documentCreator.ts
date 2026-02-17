@@ -11,18 +11,37 @@ export type DocElement = {
   /** Text only */
   fontSize?: number;
   textAlign?: 'left' | 'center' | 'right';
+  /** Vertical alignment within the text box */
+  verticalAlign?: 'top' | 'center' | 'bottom';
   fontWeight?: 'normal' | 'bold';
   fontStyle?: 'normal' | 'italic';
+  /** Font family: Montserrat or Open Sans */
+  fontFamily?: 'Montserrat' | 'Open Sans';
+  /** Text color (hex, e.g. #000000) */
+  color?: string;
 };
 
-/** Page in the document: background + libre elements */
+/** Content area margins (percent). Elements cannot be placed outside. */
+export type PageMargins = {
+  left_pct?: number;
+  right_pct?: number;
+  top_pct?: number;
+  bottom_pct?: number;
+};
+
+/** Page in the document: background (template) + optional margins + elements */
 export type DocumentPage = {
   template_id: string | null;
-  /** New format: libre elements (text, image) */
+  /** Margins for this page (content area). Defined on the document, not the template. */
+  margins?: PageMargins | null;
+  /** Libre elements (text, image, image placeholder, block) */
   elements?: DocElement[];
   /** Legacy: template areas + content (for backward compat) */
   areas_content?: Record<string, string>;
 };
+
+export const DOCUMENT_EDITOR_FONTS = ['Montserrat', 'Open Sans'] as const;
+export type DocumentEditorFont = (typeof DOCUMENT_EDITOR_FONTS)[number];
 
 export function createTextElement(): DocElement {
   return {
@@ -34,6 +53,9 @@ export function createTextElement(): DocElement {
     width_pct: 80,
     height_pct: 8,
     fontSize: 12,
+    fontFamily: 'Montserrat',
+    fontWeight: 'bold',
+    color: '#000000',
   };
 }
 

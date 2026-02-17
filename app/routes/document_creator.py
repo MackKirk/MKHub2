@@ -135,6 +135,12 @@ class DocumentTypeCreate(BaseModel):
     page_templates: Optional[List[dict]] = None  # [{ "template_id": "uuid", "label": "Cover" }]
 
 
+class DocumentTypeUpdate(BaseModel):
+    name: Optional[str] = None
+    description: Optional[str] = None
+    page_templates: Optional[List[dict]] = None
+
+
 @router.post("/document-types", response_model=dict)
 def create_document_type(
     body: DocumentTypeCreate,
@@ -158,6 +164,59 @@ def create_document_type(
         "page_templates": doc_type.page_templates or [],
         "created_at": doc_type.created_at.isoformat() if doc_type.created_at else None,
     }
+
+
+@router.patch("/document-types/{document_type_id}", response_model=dict)
+def update_document_type(
+    document_type_id: str,
+    body: DocumentTypeUpdate,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+    _=Depends(require_permissions("documents:access", "documents:write")),
+):
+    """Update a document type preset."""
+    try:
+        dtid = uuid.UUID(document_type_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid document type id")
+    doc_type = db.query(DocumentType).filter(DocumentType.id == dtid).first()
+    if not doc_type:
+        raise HTTPException(status_code=404, detail="Document type not found")
+    if body.name is not None:
+        doc_type.name = body.name
+    if body.description is not None:
+        doc_type.description = body.description
+    if body.page_templates is not None:
+        doc_type.page_templates = body.page_templates
+    db.commit()
+    db.refresh(doc_type)
+    return {
+        "id": str(doc_type.id),
+        "name": doc_type.name,
+        "description": doc_type.description,
+        "page_templates": doc_type.page_templates or [],
+        "created_at": doc_type.created_at.isoformat() if doc_type.created_at else None,
+    }
+
+
+@router.delete("/document-types/{document_type_id}")
+def delete_document_type(
+    document_type_id: str,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+    _=Depends(require_permissions("documents:access", "documents:write")),
+):
+    """Delete a document type preset."""
+    try:
+        dtid = uuid.UUID(document_type_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid document type id")
+    doc_type = db.query(DocumentType).filter(DocumentType.id == dtid).first()
+    if not doc_type:
+        raise HTTPException(status_code=404, detail="Document type not found")
+    db.delete(doc_type)
+    db.commit()
+    return {"ok": True}
 
 
 # --- Templates ---
@@ -340,25 +399,26 @@ def create_document(
             pt_list = []
         pages = []
         for idx, entry in enumerate(pt_list):
-            tid = entry.get("template_id") if isinstance(entry, dict) else None
-            if not tid:
+            if not isinstance(entry, dict):
                 pages.append({"template_id": None, "elements": []})
+                continue
+            tid = entry.get("template_id")
+            if not tid:
+                pages.append({"template_id": None, "elements": [], "margins": entry.get("margins")})
                 continue
             try:
                 tuid = uuid.UUID(tid) if isinstance(tid, str) else tid
             except (ValueError, TypeError):
-                pages.append({"template_id": None, "elements": []})
+                pages.append({"template_id": None, "elements": [], "margins": entry.get("margins")})
                 continue
             template = db.query(DocumentTemplate).filter(DocumentTemplate.id == tuid).first()
             if not template:
-                pages.append({"template_id": str(tuid), "elements": []})
+                pages.append({"template_id": str(tuid), "elements": [], "margins": entry.get("margins")})
                 continue
-            default_els = getattr(template, "default_elements", None)
-            if isinstance(default_els, list):
-                elements = _clone_elements_with_new_ids(default_els, f"p{idx}")
-            else:
-                elements = []
-            pages.append({"template_id": str(tuid), "elements": elements})
+            entry_margins = entry.get("margins")
+            entry_elements = entry.get("elements") if isinstance(entry.get("elements"), list) else []
+            elements = _clone_elements_with_new_ids(entry_elements, f"p{idx}") if entry_elements else []
+            pages.append({"template_id": str(tuid), "margins": entry_margins, "elements": elements})
     doc = UserDocument(
         title=body.title or "Sem título",
         document_type_id=dtype_id,
@@ -421,6 +481,28 @@ def update_document(
     db.commit()
     db.refresh(doc)
     return _doc_to_out(doc)
+
+
+@router.delete("/documents/{document_id}")
+def delete_document(
+    document_id: str,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+    _=Depends(require_permissions("documents:access", "documents:write")),
+):
+    """Delete a document. Only owner can delete."""
+    try:
+        did = uuid.UUID(document_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid document id")
+    doc = db.query(UserDocument).filter(UserDocument.id == did).first()
+    if not doc:
+        raise HTTPException(status_code=404, detail="Document not found")
+    if doc.created_by != user.id:
+        raise HTTPException(status_code=403, detail="Forbidden")
+    db.delete(doc)
+    db.commit()
+    return {"ok": True}
 
 
 @router.post("/documents/{document_id}/export-pdf")

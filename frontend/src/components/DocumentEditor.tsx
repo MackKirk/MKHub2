@@ -6,8 +6,8 @@ import toast from 'react-hot-toast';
 import DocumentPreview from '@/components/DocumentPreview';
 import DocumentPagesStrip from '@/components/DocumentPagesStrip';
 import { AddPageTemplateModal } from '@/components/AddPageTemplateModal';
-import type { DocumentPage, DocElement } from '@/types/documentCreator';
-import { createTextElement, createImageElement, createImagePlaceholder } from '@/types/documentCreator';
+import type { DocumentPage, DocElement, PageMargins } from '@/types/documentCreator';
+import { createTextElement, createImageElement, createImagePlaceholder, createBlockElement } from '@/types/documentCreator';
 
 type Template = {
   id: string;
@@ -84,14 +84,15 @@ export default function DocumentEditor({ documentId, projectId, onClose }: Docum
     if (Array.isArray(doc.pages) && doc.pages.length > 0) {
       const converted = doc.pages.map((p) => {
         const hasElements = Array.isArray(p.elements) && p.elements.length > 0;
+        const base = { template_id: p.template_id ?? null, margins: p.margins ?? undefined };
         if (hasElements) {
-          return { template_id: p.template_id ?? null, elements: p.elements! };
+          return { ...base, elements: p.elements! };
         }
         const template = templates.find((t) => t.id === p.template_id);
         const areasDef = template?.areas_definition;
         const areas = Array.isArray(areasDef) ? areasDef : areasDef?.areas || [];
         const elements = legacyToElements(p.areas_content, areas);
-        return { template_id: p.template_id ?? null, elements: elements.length ? elements : [] };
+        return { ...base, elements: elements.length ? elements : [] };
       });
       setPages(converted);
       lastSavedRef.current = {
@@ -107,31 +108,36 @@ export default function DocumentEditor({ documentId, projectId, onClose }: Docum
   const elements = currentPage?.elements ?? [];
   const backgroundFileId = currentTemplate?.background_file_id;
   const backgroundUrl = backgroundFileId ? `/files/${backgroundFileId}/thumbnail?w=800` : null;
+  const defaultMargins: PageMargins = { left_pct: 0, right_pct: 0, top_pct: 0, bottom_pct: 0 };
+  /** Margins: page overrides template overrides default */
+  const effectiveMargins: PageMargins = {
+    ...defaultMargins,
+    ...currentTemplate?.margins,
+    ...currentPage?.margins,
+  };
 
   const setCurrentPageTemplate = useCallback((templateId: string | null) => {
-    const template = templates.find((t) => t.id === templateId);
-    const defaultEls = template?.default_elements;
     setPages((prev) => {
       const next = [...prev];
       if (!next[currentPageIndex]) return next;
-      const page = next[currentPageIndex];
-      const currentEls = page.elements ?? [];
-      const shouldApplyDefaults =
-        templateId && defaultEls && defaultEls.length > 0 && currentEls.length === 0;
-      const newElements = shouldApplyDefaults
-        ? defaultEls.map((el) => ({
-            ...el,
-            id: `el-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
-          }))
-        : currentEls;
       next[currentPageIndex] = {
-        ...page,
+        ...next[currentPageIndex],
         template_id: templateId,
-        elements: newElements,
+        /* Keep existing elements and margins; template is just the background */
       };
       return next;
     });
-  }, [currentPageIndex, templates]);
+  }, [currentPageIndex]);
+
+  const setCurrentPageMargins = useCallback((m: PageMargins) => {
+    setPages((prev) => {
+      const next = [...prev];
+      if (next[currentPageIndex]) {
+        next[currentPageIndex] = { ...next[currentPageIndex], margins: { ...m } };
+      }
+      return next;
+    });
+  }, [currentPageIndex]);
 
   const setCurrentPageElements = useCallback((updater: (els: DocElement[]) => DocElement[]) => {
     setPages((prev) => {
@@ -162,21 +168,9 @@ export default function DocumentEditor({ documentId, projectId, onClose }: Docum
     if (selectedElementId === elementId) setSelectedElementId(null);
   }, [setCurrentPageElements, selectedElementId]);
 
-  const newPageWithTemplate = useCallback(
-    (templateId: string | null): DocumentPage => {
-      if (!templateId) return { template_id: null, elements: [] };
-      const template = templates.find((t) => t.id === templateId);
-      const defaultEls = template?.default_elements ?? [];
-      return {
-        template_id: templateId,
-        elements: defaultEls.map((el) => ({
-          ...el,
-          id: `el-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
-        })),
-      };
-    },
-    [templates]
-  );
+  const newPageWithTemplate = useCallback((templateId: string | null): DocumentPage => {
+    return { template_id: templateId, elements: [] };
+  }, []);
 
   const handleAddPageWithTemplate = useCallback(
     (templateId: string | null) => {
@@ -188,8 +182,29 @@ export default function DocumentEditor({ documentId, projectId, onClose }: Docum
     [newPageWithTemplate, pages.length]
   );
 
+  const handleDeletePage = useCallback((index: number) => {
+    setPages((prev) => {
+      if (prev.length <= 1) return prev;
+      return prev.filter((_, i) => i !== index);
+    });
+    setCurrentPageIndex((prev) => {
+      if (index < prev) return prev - 1;
+      if (index === prev) return Math.max(0, prev - 1);
+      return prev;
+    });
+    setSelectedElementId(null);
+  }, []);
+
   const handleAddText = useCallback(() => {
     handleAddElement(createTextElement());
+  }, [handleAddElement]);
+
+  const handleAddImagePlaceholder = useCallback(() => {
+    handleAddElement(createImagePlaceholder());
+  }, [handleAddElement]);
+
+  const handleAddBlock = useCallback(() => {
+    handleAddElement(createBlockElement());
   }, [handleAddElement]);
 
   const handleAddImage = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -222,10 +237,6 @@ export default function DocumentEditor({ documentId, projectId, onClose }: Docum
     } catch (err) {
       toast.error('Failed to upload image.');
     }
-  }, [handleAddElement]);
-
-  const handleAddImagePlaceholder = useCallback(() => {
-    handleAddElement(createImagePlaceholder());
   }, [handleAddElement]);
 
   const handleReplaceImage = useCallback(
@@ -264,7 +275,14 @@ export default function DocumentEditor({ documentId, projectId, onClose }: Docum
     if (!id) return;
     setIsSaving(true);
     try {
-      const payload = { title, pages: pages.map((p) => ({ template_id: p.template_id, elements: p.elements ?? [] })) };
+      const payload = {
+        title,
+        pages: pages.map((p) => ({
+          template_id: p.template_id,
+          margins: p.margins ?? undefined,
+          elements: p.elements ?? [],
+        })),
+      };
       await api('PATCH', `/document-creator/documents/${id}`, payload);
       lastSavedRef.current = { title, pagesStr: JSON.stringify(pages) };
       queryClient.invalidateQueries({ queryKey: ['document-creator-doc', id] });
@@ -357,6 +375,45 @@ export default function DocumentEditor({ documentId, projectId, onClose }: Docum
               <option key={t.id} value={t.id}>{t.name}</option>
             ))}
           </select>
+          <span className="text-xs text-gray-500 font-medium">Margins</span>
+          <div className="flex items-center gap-1">
+            <input
+              type="number"
+              min={0}
+              max={50}
+              value={effectiveMargins?.left_pct ?? 0}
+              onChange={(e) => setCurrentPageMargins({ ...effectiveMargins, left_pct: Number(e.target.value) })}
+              className="w-10 px-1 py-1 rounded border border-gray-300 text-xs text-center"
+              title="Left %"
+            />
+            <input
+              type="number"
+              min={0}
+              max={50}
+              value={effectiveMargins?.right_pct ?? 0}
+              onChange={(e) => setCurrentPageMargins({ ...effectiveMargins, right_pct: Number(e.target.value) })}
+              className="w-10 px-1 py-1 rounded border border-gray-300 text-xs text-center"
+              title="Right %"
+            />
+            <input
+              type="number"
+              min={0}
+              max={50}
+              value={effectiveMargins?.top_pct ?? 0}
+              onChange={(e) => setCurrentPageMargins({ ...effectiveMargins, top_pct: Number(e.target.value) })}
+              className="w-10 px-1 py-1 rounded border border-gray-300 text-xs text-center"
+              title="Top %"
+            />
+            <input
+              type="number"
+              min={0}
+              max={50}
+              value={effectiveMargins?.bottom_pct ?? 0}
+              onChange={(e) => setCurrentPageMargins({ ...effectiveMargins, bottom_pct: Number(e.target.value) })}
+              className="w-10 px-1 py-1 rounded border border-gray-300 text-xs text-center"
+              title="Bottom %"
+            />
+          </div>
           <button
             type="button"
             onClick={handleAddText}
@@ -377,6 +434,13 @@ export default function DocumentEditor({ documentId, projectId, onClose }: Docum
             className="px-3 py-1.5 rounded bg-gray-100 hover:bg-gray-200 border border-gray-300 text-sm text-gray-700"
           >
             + Image area
+          </button>
+          <button
+            type="button"
+            onClick={handleAddBlock}
+            className="px-3 py-1.5 rounded bg-gray-100 hover:bg-gray-200 border border-gray-300 text-sm text-gray-700"
+          >
+            + Block
           </button>
           <input
             ref={fileInputRef}
@@ -402,12 +466,14 @@ export default function DocumentEditor({ documentId, projectId, onClose }: Docum
           currentPageIndex={currentPageIndex}
           onPageSelect={setCurrentPageIndex}
           onAddPage={() => setShowAddPageModal(true)}
+          onDeletePage={handleDeletePage}
         />
         <DocumentPreview
           backgroundUrl={backgroundUrl}
           elements={elements}
-          margins={currentTemplate?.margins ?? null}
-          blockAreasVisible={false}
+          margins={effectiveMargins}
+          blockAreasVisible={true}
+          lockBlockElements={true}
           onElementClick={setSelectedElementId}
           onCanvasClick={() => setSelectedElementId(null)}
           selectedElementId={selectedElementId}

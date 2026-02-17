@@ -1,8 +1,9 @@
 import { useState, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { api, getToken } from '@/lib/api';
+import { api } from '@/lib/api';
 import toast from 'react-hot-toast';
+import { useConfirm } from '@/components/ConfirmProvider';
 import DocumentTemplatesTab from '@/components/DocumentTemplatesTab';
 import DocumentTypesTab from '@/components/DocumentTypesTab';
 import DocumentEditor from '@/components/DocumentEditor';
@@ -30,9 +31,11 @@ export default function DocumentCreator() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const confirm = useConfirm();
   const [isSaving, setIsSaving] = useState(false);
   const [activeTab, setActiveTab] = useState<'creator' | 'templates' | 'types'>('creator');
   const [showChooseTypeModal, setShowChooseTypeModal] = useState(false);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
 
   const { data: templates = [] } = useQuery({
     queryKey: ['document-creator-templates'],
@@ -43,6 +46,30 @@ export default function DocumentCreator() {
     queryKey: ['document-creator-documents'],
     queryFn: () => api<UserDocument[]>('GET', '/document-creator/documents'),
   });
+
+  const handleDeleteDocument = useCallback(
+    async (docId: string, docTitle: string) => {
+      const ok = await confirm({
+        title: 'Delete document',
+        message: `Delete "${docTitle || 'Untitled document'}"? This cannot be undone.`,
+        confirmText: 'Delete',
+        cancelText: 'Cancel',
+      });
+      if (ok !== 'confirm') return;
+      setDeletingId(docId);
+      try {
+        await api('DELETE', `/document-creator/documents/${docId}`);
+        queryClient.invalidateQueries({ queryKey: ['document-creator-documents'] });
+        toast.success('Document deleted.');
+        if (id === docId) navigate('/documents/create');
+      } catch (e: any) {
+        toast.error(e?.message || 'Failed to delete document.');
+      } finally {
+        setDeletingId(null);
+      }
+    },
+    [confirm, queryClient, id, navigate]
+  );
 
   const handleCreateNewDocument = useCallback(
     async (documentTypeId: string | null) => {
@@ -133,15 +160,32 @@ export default function DocumentCreator() {
             ) : (
               <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
                 {documents.map((d) => (
-                  <button
+                  <div
                     key={d.id}
-                    type="button"
-                    onClick={() => navigate(`/documents/create/${d.id}`)}
-                    className="rounded-xl border border-gray-200 bg-white p-4 text-left hover:border-brand-red/50 hover:shadow-md transition-all"
+                    className="rounded-xl border border-gray-200 bg-white p-4 flex flex-col"
                   >
-                    <h3 className="font-medium text-gray-900 truncate">{d.title || 'Untitled document'}</h3>
-                    <p className="text-xs text-gray-500 mt-1">Updated {formatDate(d.updated_at)}</p>
-                  </button>
+                    <button
+                      type="button"
+                      onClick={() => navigate(`/documents/create/${d.id}`)}
+                      className="text-left flex-1 min-w-0"
+                    >
+                      <h3 className="font-medium text-gray-900 truncate">{d.title || 'Untitled document'}</h3>
+                      <p className="text-xs text-gray-500 mt-1">Updated {formatDate(d.updated_at)}</p>
+                    </button>
+                    <div className="mt-2 pt-2 border-t border-gray-100 flex justify-end">
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleDeleteDocument(d.id, d.title);
+                        }}
+                        disabled={deletingId === d.id}
+                        className="text-sm text-red-600 hover:text-red-700 hover:bg-red-50 px-2 py-1 rounded disabled:opacity-50"
+                      >
+                        {deletingId === d.id ? 'Deleting...' : 'Delete'}
+                      </button>
+                    </div>
+                  </div>
                 ))}
               </div>
             )}

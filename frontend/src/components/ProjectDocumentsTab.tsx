@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, getToken } from '@/lib/api';
 import toast from 'react-hot-toast';
+import { useConfirm } from '@/components/ConfirmProvider';
 import { DocumentCreatorModal } from '@/components/DocumentCreatorModal';
 import { ChooseDocumentTypeModal } from '@/components/ChooseDocumentTypeModal';
 
@@ -30,6 +31,7 @@ type ProjectDocumentsTabProps = {
 
 export default function ProjectDocumentsTab({ projectId, isBidding }: ProjectDocumentsTabProps) {
   const queryClient = useQueryClient();
+  const confirm = useConfirm();
   const [isCreating, setIsCreating] = useState(false);
   const [exportingId, setExportingId] = useState<string | null>(null);
   const [showModal, setShowModal] = useState(false);
@@ -96,6 +98,27 @@ export default function ProjectDocumentsTab({ projectId, isBidding }: ProjectDoc
     setShowModal(true);
   };
 
+  const handleDelete = async (doc: UserDocument) => {
+    const ok = await confirm({
+      title: 'Delete document',
+      message: `Delete "${doc.title || 'Untitled document'}"? This cannot be undone.`,
+      confirmText: 'Delete',
+      cancelText: 'Cancel',
+    });
+    if (ok !== 'confirm') return;
+    try {
+      await api('DELETE', `/document-creator/documents/${doc.id}`);
+      queryClient.invalidateQueries({ queryKey: ['document-creator-documents', projectId] });
+      toast.success('Document deleted.');
+      if (modalDocumentId === doc.id) {
+        setShowModal(false);
+        setModalDocumentId(null);
+      }
+    } catch (e: any) {
+      toast.error(e?.message || 'Failed to delete document.');
+    }
+  };
+
   const handleCloseModal = () => {
     setShowModal(false);
     setModalDocumentId(null);
@@ -159,6 +182,13 @@ export default function ProjectDocumentsTab({ projectId, isBidding }: ProjectDoc
                   className="px-3 py-1.5 rounded bg-gray-100 hover:bg-gray-200 border border-gray-300 text-sm text-gray-700 disabled:opacity-50"
                 >
                   {exportingId === doc.id ? 'Exporting...' : 'Export PDF'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleDelete(doc)}
+                  className="px-3 py-1.5 rounded text-red-600 hover:bg-red-50 text-sm"
+                >
+                  Delete
                 </button>
               </div>
             </li>

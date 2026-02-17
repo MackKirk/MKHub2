@@ -20,18 +20,48 @@ from ..storage.local_provider import LocalStorageProvider
 from ..storage.blob_provider import BlobStorageProvider
 
 
-# Register a default font (use ReportLab built-in or proposals fonts)
+# Register document editor fonts (Montserrat, Open Sans). Returns dict: font_family_key -> (regular_name, bold_name)
 def _register_fonts():
     import os
+    result = {}
+    fonts_path = os.path.join(os.path.dirname(__file__), "..", "proposals", "assets", "fonts")
     try:
-        fonts_path = os.path.join(os.path.dirname(__file__), "..", "proposals", "assets", "fonts")
         if os.path.exists(os.path.join(fonts_path, "Montserrat-Regular.ttf")):
             pdfmetrics.registerFont(TTFont("Montserrat", os.path.join(fonts_path, "Montserrat-Regular.ttf")))
             pdfmetrics.registerFont(TTFont("Montserrat-Bold", os.path.join(fonts_path, "Montserrat-Bold.ttf")))
-            return "Montserrat", "Montserrat-Bold"
+            result["Montserrat"] = ("Montserrat", "Montserrat-Bold")
     except Exception:
         pass
-    return "Helvetica", "Helvetica-Bold"
+    try:
+        open_sans_reg = os.path.join(fonts_path, "OpenSans-Regular.ttf")
+        open_sans_bold = os.path.join(fonts_path, "OpenSans-Bold.ttf")
+        if os.path.exists(open_sans_reg):
+            pdfmetrics.registerFont(TTFont("OpenSans", open_sans_reg))
+            if os.path.exists(open_sans_bold):
+                pdfmetrics.registerFont(TTFont("OpenSans-Bold", open_sans_bold))
+                result["Open Sans"] = ("OpenSans", "OpenSans-Bold")
+            else:
+                result["Open Sans"] = ("OpenSans", "OpenSans")
+        else:
+            result["Open Sans"] = ("Helvetica", "Helvetica-Bold")
+    except Exception:
+        result["Open Sans"] = ("Helvetica", "Helvetica-Bold")
+    if "Montserrat" not in result:
+        result["Montserrat"] = ("Helvetica", "Helvetica-Bold")
+    return result
+
+
+def _parse_hex_color(hex_str: Optional[str]):
+    """Parse #RRGGBB to ReportLab color. Default black if invalid."""
+    if not hex_str or not isinstance(hex_str, str):
+        return colors.black
+    hex_str = hex_str.strip()
+    if hex_str.startswith("#") and len(hex_str) == 7:
+        try:
+            return colors.HexColor(hex_str)
+        except Exception:
+            pass
+    return colors.black
 
 
 def _get_storage_for_file(fo: FileObject) -> StorageProvider:
@@ -68,7 +98,7 @@ def _read_file_bytes(db: Session, file_id: uuid.UUID) -> Optional[bytes]:
 
 def build_pdf_bytes(db: Session, doc: UserDocument) -> bytes:
     """Generate PDF bytes for the given UserDocument."""
-    font_name, font_bold = _register_fonts()
+    fonts_map = _register_fonts()
     buf = io.BytesIO()
     page_width, page_height = A4  # 595.28 x 841.89 points
 
@@ -76,7 +106,9 @@ def build_pdf_bytes(db: Session, doc: UserDocument) -> bytes:
     pages = doc.pages if isinstance(doc.pages, list) else []
     if not pages:
         # Single empty page
+        font_name, _ = fonts_map.get("Montserrat", ("Helvetica", "Helvetica-Bold"))
         c.setFont(font_name, 12)
+        c.setFillColor(colors.black)
         c.drawString(72, page_height - 72, doc.title or "Document")
         c.showPage()
     else:
@@ -130,25 +162,40 @@ def build_pdf_bytes(db: Session, doc: UserDocument) -> bytes:
                     h = page_height * h_pct
                     content = el.get("content") or ""
                     if el_type == "text":
-                        font_size = int(el.get("font_size", 11))
+                        font_size = int(el.get("fontSize") or el.get("font_size", 11))
+                        line_height = font_size + 2
                         is_bold = el.get("fontWeight") == "bold"
+                        font_family = el.get("fontFamily") or "Montserrat"
+                        font_name, font_bold = fonts_map.get(font_family, fonts_map.get("Montserrat", ("Helvetica", "Helvetica-Bold")))
                         c.setFont(font_bold if is_bold else font_name, font_size)
-                        c.setFillColor(colors.black)
+                        c.setFillColor(_parse_hex_color(el.get("color")))
                         text_align = el.get("textAlign") or "left"
-                        lines = str(content).replace("\r\n", "\n").split("\n")
-                        for i, line in enumerate(lines):
-                            if i * (font_size + 2) >= h:
+                        vertical_align = el.get("verticalAlign") or "top"
+                        raw_lines = str(content).replace("\r\n", "\n").split("\n")
+                        lines = []
+                        for i, line in enumerate(raw_lines):
+                            if i * line_height >= h:
                                 break
-                            line = line[: int(w / (font_size * 0.6)) or 120]
-                            line_y = y + h - (i + 1) * (font_size + 2)
-                            if text_align == "center":
-                                tw = c.stringWidth(line, font_bold if is_bold else font_name, font_size)
-                                c.drawString(x + (w - tw) / 2, line_y, line)
-                            elif text_align == "right":
-                                tw = c.stringWidth(line, font_bold if is_bold else font_name, font_size)
-                                c.drawString(x + w - tw, line_y, line)
+                            lines.append(line[: int(w / (font_size * 0.6)) or 120])
+                        n = len(lines)
+                        if n > 0:
+                            total_text_h = n * line_height
+                            if vertical_align == "bottom":
+                                start_y_offset = 0
+                            elif vertical_align == "center":
+                                start_y_offset = (h - total_text_h) / 2.0
                             else:
-                                c.drawString(x, line_y, line)
+                                start_y_offset = h - total_text_h
+                            for i, line in enumerate(lines):
+                                line_y = y + start_y_offset + (n - 1 - i) * line_height
+                                if text_align == "center":
+                                    tw = c.stringWidth(line, font_bold if is_bold else font_name, font_size)
+                                    c.drawString(x + (w - tw) / 2, line_y, line)
+                                elif text_align == "right":
+                                    tw = c.stringWidth(line, font_bold if is_bold else font_name, font_size)
+                                    c.drawString(x + w - tw, line_y, line)
+                                else:
+                                    c.drawString(x, line_y, line)
                     elif el_type == "image" and content:
                         try:
                             fid = uuid.UUID(content) if isinstance(content, str) else None
@@ -188,7 +235,8 @@ def build_pdf_bytes(db: Session, doc: UserDocument) -> bytes:
                     w = page_width * w_pct
                     h = page_height * h_pct
                     font_size = int(area.get("font_size", 11))
-                    c.setFont(font_bold if (area.get("type") == "title") else font_name, font_size)
+                    _fn, _fb = fonts_map.get("Montserrat", ("Helvetica", "Helvetica-Bold"))
+                    c.setFont(_fb if (area.get("type") == "title") else _fn, font_size)
                     c.setFillColor(colors.black)
                     lines = str(text).replace("\r\n", "\n").split("\n")[: int(h / (font_size + 2)) or 1]
                     for i, line in enumerate(lines):
