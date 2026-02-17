@@ -21,18 +21,35 @@ const COLUMNS = 8;
 const ROW_HEIGHT = 100;
 const MARGIN: [number, number] = [16, 16];
 
+function sanitizeLayout(items: LayoutItem[]): LayoutItem[] {
+  // Clamp items to the grid bounds to avoid distorted layouts on load.
+  return items.map((l) => {
+    const w = Math.min(Math.max(1, l.w), COLUMNS);
+    const h = Math.max(1, l.h);
+    let x = Math.max(0, l.x);
+    if (x + w > COLUMNS) x = Math.max(0, COLUMNS - w);
+    const y = Math.max(0, l.y);
+    return { ...l, x, y, w, h };
+  });
+}
+
 /** Migrate layout from 4-col to 8-col scale (double x and w). */
 function migrateLayoutTo8Col(items: LayoutItem[]): LayoutItem[] {
   if (items.length === 0) return items;
+  // 4-col layouts always fit within 0..4 (x+w<=4). If any item exceeds that,
+  // it's already using the 8-col scale and must NOT be migrated.
+  const maxXPlusW = Math.max(...items.map((l) => l.x + l.w));
+  const maxX = Math.max(...items.map((l) => l.x));
   const maxW = Math.max(...items.map((l) => l.w));
-  if (maxW > 4) return items; // already 8-col scale
+  const looksLike4Col = maxXPlusW <= 4 && maxX < 4 && maxW <= 4;
+  if (!looksLike4Col) return items; // already 8-col scale
   return items.map((l) => ({ ...l, x: l.x * 2, w: l.w * 2 }));
 }
 
 export default function Home() {
   const queryClient = useQueryClient();
   const confirm = useConfirm();
-  const { data: saved, isLoading } = useQuery({
+  const { data: saved, isLoading, isFetched } = useQuery({
     queryKey: ['home-dashboard'],
     queryFn: () => api<HomeDashboardState | null>('GET', '/users/me/home-dashboard'),
     refetchOnWindowFocus: false,
@@ -45,29 +62,40 @@ export default function Home() {
   const [addModalOpen, setAddModalOpen] = useState(false);
   const [configWidgetId, setConfigWidgetId] = useState<string | null>(null);
   const hasHydratedFromServer = useRef(false);
+  const [hasResolvedInitial, setHasResolvedInitial] = useState(false);
 
+  // Apply server state on initial load (and after full page reload); avoid overwriting when refetch returns stale data
   useEffect(() => {
+    if (!isFetched) return;
+    if (!hasResolvedInitial) setHasResolvedInitial(true);
     if (saved === undefined || saved === null) return;
-    if (!Array.isArray(saved.layout) || !Array.isArray(saved.widgets)) return;
+    const rawLayout = saved.layout;
+    const rawWidgets = saved.widgets;
+    const layoutList = Array.isArray(rawLayout) ? rawLayout : (typeof rawLayout === 'string' ? (() => { try { const p = JSON.parse(rawLayout); return Array.isArray(p) ? p : []; } catch { return []; } })() : []);
+    const widgetsList = Array.isArray(rawWidgets) ? rawWidgets : (typeof rawWidgets === 'string' ? (() => { try { const p = JSON.parse(rawWidgets); return Array.isArray(p) ? p : []; } catch { return []; } })() : []);
     if (hasHydratedFromServer.current) return;
     hasHydratedFromServer.current = true;
-    setLayout(migrateLayoutTo8Col(saved.layout));
-    setWidgets(saved.widgets);
-  }, [saved]);
+    setLayout(sanitizeLayout(migrateLayoutTo8Col(layoutList as LayoutItem[])));
+    setWidgets(widgetsList as WidgetDef[]);
+  }, [saved, isFetched]);
 
   const saveDashboard = useCallback(async (nextLayout: LayoutItem[], nextWidgets: WidgetDef[]) => {
     try {
-      await api('PUT', '/users/me/home-dashboard', { layout: nextLayout, widgets: nextWidgets });
-      queryClient.setQueryData(['home-dashboard'], { layout: nextLayout, widgets: nextWidgets });
+      const safeLayout = sanitizeLayout(nextLayout);
+      await api('PUT', '/users/me/home-dashboard', { layout: safeLayout, widgets: nextWidgets });
+      queryClient.setQueryData(['home-dashboard'], { layout: safeLayout, widgets: nextWidgets });
       toast.success('Dashboard saved');
     } catch {
       toast.error('Failed to save dashboard');
     }
   }, [queryClient]);
 
+  // Only apply layout changes from the grid when in edit mode. On load, the grid compacts
+  // (compactType="vertical") and fires onLayoutChange, which would overwrite the saved layout.
   const handleLayoutChange = useCallback((newLayout: RGLLayout) => {
+    if (!isEditMode) return;
     setLayout(newLayout.map(({ i, x, y, w, h }) => ({ i, x, y, w, h })));
-  }, []);
+  }, [isEditMode]);
 
   const handleRemoveWidget = useCallback(async (id: string) => {
     const result = await confirm({
@@ -117,8 +145,10 @@ export default function Home() {
     setConfigWidgetId(null);
   }, [layout, widgets, saveDashboard]);
 
+  const showLoading = isLoading || !hasResolvedInitial;
+
   return (
-    <LoadingOverlay isLoading={isLoading} text="Loading dashboard…" minHeight="min-h-[50vh]">
+    <LoadingOverlay isLoading={showLoading} text="Loading dashboard…" minHeight="min-h-[50vh]">
     <AnimationReadyProvider loaded={!isLoading} delay={80}>
     <div className="p-4 md:p-6 max-w-[1600px] mx-auto">
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
