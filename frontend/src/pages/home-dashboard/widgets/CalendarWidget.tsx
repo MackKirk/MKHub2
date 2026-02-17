@@ -1,6 +1,9 @@
 import { useState, useMemo } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
+import FadeInOnMount from '@/components/FadeInOnMount';
+import LoadingOverlay from '@/components/LoadingOverlay';
+import { useAnimationReady } from '@/contexts/AnimationReadyContext';
 import { api } from '@/lib/api';
 import { formatDateLocal } from '@/lib/dateUtils';
 
@@ -19,6 +22,7 @@ const MONTH_NAMES = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Se
 const DAY_NAMES = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
 
 export function CalendarWidget({ config: _config }: CalendarWidgetProps) {
+  const { ready } = useAnimationReady();
   const navigate = useNavigate();
   const [currentMonth, setCurrentMonth] = useState<Date>(() => {
     const d = new Date();
@@ -45,7 +49,7 @@ export function CalendarWidget({ config: _config }: CalendarWidgetProps) {
     [monthStart, monthEnd]
   );
 
-  const { data: shifts = [] } = useQuery<Shift[]>({
+  const { data: shifts = [], isLoading: shiftsLoading } = useQuery<Shift[]>({
     queryKey: ['calendar-shifts', dateRange, currentUser?.id],
     queryFn: async () => {
       const workerId = currentUser?.id;
@@ -100,8 +104,18 @@ export function CalendarWidget({ config: _config }: CalendarWidgetProps) {
     navigate(`/schedule?date=${formatDateLocal(date)}`);
   };
 
+  if (shiftsLoading && currentUser?.id) {
+    return (
+      <div className="flex flex-col min-h-0 h-full w-full">
+        <LoadingOverlay isLoading minHeight="min-h-[120px]" className="flex-1 min-h-0">
+          <div className="min-h-[120px]" />
+        </LoadingOverlay>
+      </div>
+    );
+  }
+
   return (
-    <div className="flex flex-col min-h-0 h-full w-full">
+    <FadeInOnMount enabled={ready} className="flex flex-col min-h-0 h-full w-full">
       <div className="flex items-center justify-between shrink-0 mb-2">
         <span className="text-xs font-semibold text-gray-800">
           {MONTH_NAMES[currentMonth.getMonth()]} {currentMonth.getFullYear()}
@@ -170,6 +184,6 @@ export function CalendarWidget({ config: _config }: CalendarWidgetProps) {
           Open Schedule
         </Link>
       </div>
-    </div>
+    </FadeInOnMount>
   );
 }

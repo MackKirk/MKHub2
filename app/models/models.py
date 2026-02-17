@@ -694,6 +694,16 @@ class PermissionDefinition(Base):
     )
 
 
+class PermissionTemplate(Base):
+    """Gabarito de permissões: nome + lista de permission keys (reutiliza PermissionDefinition)."""
+    __tablename__ = "permission_templates"
+
+    id: Mapped[uuid.UUID] = uuid_pk()
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    permission_keys: Mapped[Optional[list]] = mapped_column(JSON, nullable=False, default=list)  # list of permission key strings
+    created_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
+
+
 # Extended employee profile linked to users for onboarding
 class EmployeeProfile(Base):
     __tablename__ = "employee_profiles"

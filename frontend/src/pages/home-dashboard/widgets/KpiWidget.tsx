@@ -1,4 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
+import FadeInOnMount from '@/components/FadeInOnMount';
+import LoadingOverlay from '@/components/LoadingOverlay';
+import { useAnimationReady } from '@/contexts/AnimationReadyContext';
 import { api } from '@/lib/api';
 
 type DashboardResponse = {
@@ -59,6 +62,7 @@ type KpiWidgetProps = {
 };
 
 export function KpiWidget({ config }: KpiWidgetProps) {
+  const { ready } = useAnimationReady();
   const metric = config?.metric ?? 'opportunities';
   const period = (config?.period as DateFilter) ?? 'all';
   const divisionId = config?.division_id;
@@ -98,7 +102,16 @@ export function KpiWidget({ config }: KpiWidgetProps) {
     <p className="text-gray-500 shrink-0 text-[10px]" style={{ fontSize: 'clamp(0.5rem, 4cqh, 0.625rem)', marginBottom: 'clamp(0.125rem, 1cqh, 0.25rem)' }} aria-hidden>{chartSubtitle}</p>
   );
 
-  if (isLoading) return <div className="flex flex-col min-h-0 h-full w-full"><Subtitle /><div className="flex-1 min-h-0 flex items-center justify-center text-sm text-gray-400">Loading…</div></div>;
+  if (isLoading) {
+    return (
+      <div className="flex flex-col min-h-0 h-full w-full">
+        <Subtitle />
+        <LoadingOverlay isLoading minHeight="min-h-[120px]" className="flex-1 min-h-0">
+          <div className="min-h-[120px]" />
+        </LoadingOverlay>
+      </div>
+    );
+  }
   if (error) return <div className="flex flex-col min-h-0 h-full w-full"><Subtitle /><div className="flex-1 min-h-0 flex items-center justify-center text-sm text-red-500">Failed to load</div></div>;
 
   let value: number;
@@ -124,7 +137,7 @@ export function KpiWidget({ config }: KpiWidgetProps) {
   }
 
   return (
-    <div className="flex flex-col min-h-0 h-full w-full">
+    <FadeInOnMount enabled={ready} className="flex flex-col min-h-0 h-full w-full">
       <Subtitle />
       <div className="flex-1 min-h-0 flex items-center justify-center overflow-hidden min-w-0">
         <div className="flex items-center min-w-0 w-full" style={{ gap: 'clamp(0.25rem, 1.5cqh, 0.5rem)' }}>
@@ -141,6 +154,6 @@ export function KpiWidget({ config }: KpiWidgetProps) {
           </div>
         </div>
       </div>
-    </div>
+    </FadeInOnMount>
   );
 }

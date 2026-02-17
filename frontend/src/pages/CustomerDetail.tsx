@@ -710,13 +710,19 @@ export default function CustomerDetail(){
     return new Map((opportunityProposalTotalsQuery.data || []).map((r: any) => [r.id, r.total]));
   }, [opportunityProposalTotalsQuery.data]);
   
-  // Track animation
+  const isOverviewLoading =
+    projectDetailsQueries.isLoading ||
+    opportunityDetailsQueries.isLoading ||
+    projectCostsSummaryTotalsQuery.isLoading ||
+    opportunityProposalTotalsQuery.isLoading;
+
+  // Track animation — trigger after overlay with logo spinner is gone (same as Home/Business)
   useEffect(() => {
-    if (projectsWithDetails.length > 0 || opportunitiesWithDetails.length > 0) {
-      const timer = setTimeout(() => setHasAnimated(true), 50);
+    if (!isOverviewLoading && !hasAnimated) {
+      const timer = setTimeout(() => setHasAnimated(true), 80);
       return () => clearTimeout(timer);
     }
-  }, [projectsWithDetails.length, opportunitiesWithDetails.length]);
+  }, [isOverviewLoading, hasAnimated]);
   
   // Calculate KPIs — 6 metrics, each with count + value (Quantity/Value toggle)
   const kpis = useMemo(() => {
@@ -1649,18 +1655,16 @@ export default function CustomerDetail(){
           {isLoading? <div className="h-24 animate-pulse bg-gray-100 rounded"/> : (
             <>
               {tab === null && (
-                <LoadingOverlay
-                  isLoading={
-                    projectDetailsQueries.isLoading ||
-                    opportunityDetailsQueries.isLoading ||
-                    projectCostsSummaryTotalsQuery.isLoading ||
-                    opportunityProposalTotalsQuery.isLoading
-                  }
-                  text="Loading dashboard data..."
-                >
                   <div className="space-y-10">
                     {/* Overview Controls Bar */}
-                    <div className="flex items-center justify-end gap-2">
+                    <div
+                      className="flex items-center justify-end gap-2"
+                      style={{
+                        opacity: hasAnimated ? 1 : 0,
+                        transform: hasAnimated ? 'translateY(0)' : 'translateY(-8px)',
+                        transition: 'opacity 400ms ease-out, transform 400ms ease-out',
+                      }}
+                    >
                         <select
                           value={globalDateFilter}
                           onChange={(e) => {
@@ -1708,40 +1712,93 @@ export default function CustomerDetail(){
 
                     {/* KPI Snapshot — 4 metrics, Quantity/Value toggle */}
                     <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-                      <div className="rounded-lg border border-gray-200 bg-white shadow-sm p-3">
+                      <div
+                        className="rounded-xl border border-gray-200/90 bg-white shadow-md overflow-hidden transition-shadow duration-200 hover:shadow-lg hover:border-gray-300/80 relative"
+                        style={{
+                          opacity: hasAnimated ? 1 : 0,
+                          transform: hasAnimated ? 'translateY(0) scale(1)' : 'translateY(-8px) scale(0.98)',
+                          transition: 'opacity 400ms ease-out, transform 400ms ease-out',
+                        }}
+                      >
+                        <LoadingOverlay isLoading={isOverviewLoading} minHeight="min-h-[80px]">
+                        <div className="p-3">
                         <div className="text-[10px] font-bold text-gray-500 uppercase tracking-wide mb-0.5">Closed</div>
                         <div className="text-lg font-semibold text-gray-900">
                           {globalDisplayMode === 'value' ? formatCurrency(kpis.closed.value) : <CountUp value={kpis.closed.count} enabled={hasAnimated} />}
                         </div>
                         <div className="text-[11px] text-gray-500 mt-0.5 opacity-70">{globalDisplayMode === 'value' ? 'Closed value' : 'Finished projects'}</div>
+                        </div>
+                        </LoadingOverlay>
                       </div>
-                      <div className="rounded-lg border border-gray-200 bg-white shadow-sm p-3">
+                      <div
+                        className="rounded-xl border border-gray-200/90 bg-white shadow-md overflow-hidden transition-shadow duration-200 hover:shadow-lg hover:border-gray-300/80 relative"
+                        style={{
+                          opacity: hasAnimated ? 1 : 0,
+                          transform: hasAnimated ? 'translateY(0) scale(1)' : 'translateY(-8px) scale(0.98)',
+                          transition: 'opacity 400ms ease-out 50ms, transform 400ms ease-out 50ms',
+                        }}
+                      >
+                        <LoadingOverlay isLoading={isOverviewLoading} minHeight="min-h-[80px]">
+                        <div className="p-3">
                         <div className="text-[10px] font-bold text-gray-500 uppercase tracking-wide mb-0.5">Pipeline</div>
                         <div className="text-lg font-semibold text-gray-900">
                           {globalDisplayMode === 'value' ? formatCurrency(kpis.pipeline.value) : <CountUp value={kpis.pipeline.count} enabled={hasAnimated} />}
                         </div>
                         <div className="text-[11px] text-gray-500 mt-0.5 opacity-70">{globalDisplayMode === 'value' ? 'Pipeline value' : 'Open opportunities'}</div>
+                        </div>
+                        </LoadingOverlay>
                       </div>
-                      <div className="rounded-lg border border-gray-200 bg-white shadow-sm p-3">
+                      <div
+                        className="rounded-xl border border-gray-200/90 bg-white shadow-md overflow-hidden transition-shadow duration-200 hover:shadow-lg hover:border-gray-300/80 relative"
+                        style={{
+                          opacity: hasAnimated ? 1 : 0,
+                          transform: hasAnimated ? 'translateY(0) scale(1)' : 'translateY(-8px) scale(0.98)',
+                          transition: 'opacity 400ms ease-out 100ms, transform 400ms ease-out 100ms',
+                        }}
+                      >
+                        <LoadingOverlay isLoading={isOverviewLoading} minHeight="min-h-[80px]">
+                        <div className="p-3">
                         <div className="text-[10px] font-bold text-gray-500 uppercase tracking-wide mb-0.5">In Progress</div>
                         <div className="text-lg font-semibold text-gray-900">
                           {globalDisplayMode === 'value' ? formatCurrency(kpis.inProgress.value) : <CountUp value={kpis.inProgress.count} enabled={hasAnimated} />}
                         </div>
                         <div className="text-[11px] text-gray-500 mt-0.5 opacity-70">{globalDisplayMode === 'value' ? 'In progress value' : 'In progress projects'}</div>
+                        </div>
+                        </LoadingOverlay>
                       </div>
-                      <div className="rounded-lg border border-gray-200 bg-white shadow-sm p-3">
+                      <div
+                        className="rounded-xl border border-gray-200/90 bg-white shadow-md overflow-hidden transition-shadow duration-200 hover:shadow-lg hover:border-gray-300/80 relative"
+                        style={{
+                          opacity: hasAnimated ? 1 : 0,
+                          transform: hasAnimated ? 'translateY(0) scale(1)' : 'translateY(-8px) scale(0.98)',
+                          transition: 'opacity 400ms ease-out 150ms, transform 400ms ease-out 150ms',
+                        }}
+                      >
+                        <LoadingOverlay isLoading={isOverviewLoading} minHeight="min-h-[80px]">
+                        <div className="p-3">
                         <div className="text-[10px] font-bold text-gray-500 uppercase tracking-wide mb-0.5">On Hold</div>
                         <div className="text-lg font-semibold text-gray-900">
                           {globalDisplayMode === 'value' ? formatCurrency(kpis.onHold.value) : <CountUp value={kpis.onHold.count} enabled={hasAnimated} />}
                         </div>
                         <div className="text-[11px] text-gray-500 mt-0.5 opacity-70">{globalDisplayMode === 'value' ? 'On hold value' : 'On hold projects'}</div>
+                        </div>
+                        </LoadingOverlay>
                       </div>
                     </div>
 
                     {/* Status Overview — Opportunities by Status + Customer Funnel / Health */}
                     <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
                       {/* Opportunities by Status — pie chart (40% pie / 60% legend, explode + tooltip) */}
-                      <div className="rounded-lg border border-gray-200 bg-white shadow-sm p-3 flex flex-col min-h-0">
+                      <div
+                        className="rounded-xl border border-gray-200/90 bg-white shadow-md overflow-hidden transition-shadow duration-200 hover:shadow-lg hover:border-gray-300/80 flex flex-col min-h-0 relative"
+                        style={{
+                          opacity: hasAnimated ? 1 : 0,
+                          transform: hasAnimated ? 'translateY(0) scale(1)' : 'translateY(-8px) scale(0.98)',
+                          transition: 'opacity 400ms ease-out, transform 400ms ease-out',
+                        }}
+                      >
+                        <LoadingOverlay isLoading={isOverviewLoading} minHeight="min-h-[120px]" className="flex-1 min-h-0">
+                        <div className="p-3 flex flex-col flex-1 min-h-0">
                         <div className="text-[10px] font-bold text-gray-500 uppercase tracking-wide mb-2 shrink-0">Opportunities by Status</div>
                         {Object.entries(oppStatusBreakdown).length > 0 ? (
                           (() => {
@@ -1848,10 +1905,21 @@ export default function CustomerDetail(){
                         ) : (
                           <div className="flex-1 flex items-center justify-center"><div className="text-[11px] text-gray-400">No status data</div></div>
                         )}
+                        </div>
+                        </LoadingOverlay>
                       </div>
 
                       {/* Customer Funnel / Health */}
-                      <div className="rounded-lg border border-gray-200 bg-white shadow-sm p-3">
+                      <div
+                        className="rounded-xl border border-gray-200/90 bg-white shadow-md overflow-hidden transition-shadow duration-200 hover:shadow-lg hover:border-gray-300/80 relative"
+                        style={{
+                          opacity: hasAnimated ? 1 : 0,
+                          transform: hasAnimated ? 'translateY(0) scale(1)' : 'translateY(-8px) scale(0.98)',
+                          transition: 'opacity 400ms ease-out 50ms, transform 400ms ease-out 50ms',
+                        }}
+                      >
+                        <LoadingOverlay isLoading={isOverviewLoading} minHeight="min-h-[120px]">
+                        <div className="p-3">
                         <div className="text-[10px] font-bold text-gray-500 uppercase tracking-wide mb-2">Customer Funnel / Health</div>
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                           <div className="flex flex-col min-h-0">
@@ -1997,11 +2065,15 @@ export default function CustomerDetail(){
                             })()}
                           </div>
                         </div>
+                        </div>
+                        </LoadingOverlay>
                       </div>
                     </div>
 
                     {/* Value Over Time — full width */}
-                    <div className="rounded-lg border border-gray-200 bg-white shadow-sm p-3 w-full">
+                    <div className="rounded-xl border border-gray-200/90 bg-white shadow-md overflow-hidden transition-shadow duration-200 hover:shadow-lg hover:border-gray-300/80 w-full relative">
+                      <LoadingOverlay isLoading={isOverviewLoading} minHeight="min-h-[120px]">
+                      <div className="p-3">
                       <div className="text-[10px] font-bold text-gray-500 uppercase tracking-wide mb-2">
                           {globalDisplayMode === 'value' 
                             ? 'Revenue & Pipeline Over Time' 
@@ -2231,12 +2303,16 @@ export default function CustomerDetail(){
                             </div>
                           );
                         })()}
+                      </div>
+                      </LoadingOverlay>
                     </div>
 
                     {/* Insights + Activity */}
                     <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
                       {/* Customer Insights — compact list */}
-                      <div className="rounded-lg border border-gray-200 bg-white shadow-sm p-3">
+                      <div className="rounded-xl border border-gray-200/90 bg-white shadow-md overflow-hidden transition-shadow duration-200 hover:shadow-lg hover:border-gray-300/80 relative">
+                        <LoadingOverlay isLoading={isOverviewLoading} minHeight="min-h-[100px]">
+                        <div className="p-3">
                         <div className="text-[10px] font-bold text-gray-500 uppercase tracking-wide mb-2">Customer Insights</div>
                         <div className="space-y-2">
                           <div className="flex items-center justify-between text-xs">
@@ -2260,10 +2336,14 @@ export default function CustomerDetail(){
                             <span className="font-semibold text-gray-900">{insights.holdRate.toFixed(1)}%</span>
                           </div>
                         </div>
+                        </div>
+                        </LoadingOverlay>
                       </div>
 
                       {/* Recent Activity — fixed height, internal scroll */}
-                      <div className="rounded-lg border border-gray-200 bg-white shadow-sm p-3 flex flex-col min-h-0">
+                      <div className="rounded-xl border border-gray-200/90 bg-white shadow-md overflow-hidden transition-shadow duration-200 hover:shadow-lg hover:border-gray-300/80 flex flex-col min-h-0 relative">
+                        <LoadingOverlay isLoading={isOverviewLoading} minHeight="min-h-[200px]">
+                        <div className="p-3 flex flex-col flex-1 min-h-0">
                         <div className="text-[10px] font-bold text-gray-500 uppercase tracking-wide mb-2 flex-shrink-0">Recent Activity</div>
                         <div className="h-[200px] overflow-y-auto flex-shrink-0 space-y-1.5 pr-1">
                           {recentActivity.length > 0 ? (
@@ -2277,6 +2357,8 @@ export default function CustomerDetail(){
                             <div className="text-xs text-gray-400 py-4">No recent activity</div>
                           )}
                         </div>
+                        </div>
+                        </LoadingOverlay>
                       </div>
                     </div>
 
@@ -2305,7 +2387,6 @@ export default function CustomerDetail(){
                       </div>
                     )}
                   </div>
-                </LoadingOverlay>
               )}
               {tab==='general' && (
                 <div className="space-y-6 pb-24">

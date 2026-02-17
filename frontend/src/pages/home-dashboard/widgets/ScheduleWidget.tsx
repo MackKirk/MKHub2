@@ -1,6 +1,9 @@
 import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
+import FadeInOnMount from '@/components/FadeInOnMount';
+import LoadingOverlay from '@/components/LoadingOverlay';
+import { useAnimationReady } from '@/contexts/AnimationReadyContext';
 import { api } from '@/lib/api';
 import { formatDateLocal } from '@/lib/dateUtils';
 
@@ -36,6 +39,7 @@ type ScheduleWidgetProps = {
 };
 
 export function ScheduleWidget({ config: _config }: ScheduleWidgetProps) {
+  const { ready } = useAnimationReady();
   const [anchorDate, setAnchorDate] = useState<Date>(() => {
     const d = new Date();
     const day = d.getDay();
@@ -111,8 +115,10 @@ export function ScheduleWidget({ config: _config }: ScheduleWidgetProps) {
 
   if (isLoading) {
     return (
-      <div className="flex flex-col min-h-0 h-full justify-center py-4 text-sm text-gray-400">
-        Loading…
+      <div className="flex flex-col min-h-0 h-full w-full">
+        <LoadingOverlay isLoading minHeight="min-h-[120px]" className="flex-1 min-h-0">
+          <div className="min-h-[120px]" />
+        </LoadingOverlay>
       </div>
     );
   }
@@ -128,7 +134,7 @@ export function ScheduleWidget({ config: _config }: ScheduleWidgetProps) {
   const totalShifts = shifts.length;
 
   return (
-    <div className="flex flex-col min-h-0 h-full w-full">
+    <FadeInOnMount enabled={ready} className="flex flex-col min-h-0 h-full w-full">
       <div className="flex items-center justify-between shrink-0 mb-2">
         <span className="text-[10px] font-semibold text-gray-600 truncate">{weekLabel}</span>
         <div className="flex items-center gap-0.5 shrink-0">
@@ -194,6 +200,6 @@ export function ScheduleWidget({ config: _config }: ScheduleWidgetProps) {
           View full schedule →
         </Link>
       </div>
-    </div>
+    </FadeInOnMount>
   );
 }

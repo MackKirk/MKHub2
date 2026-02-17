@@ -315,6 +315,15 @@ export default function SystemSettings(){
         </div>
       </div>
 
+      {/* Permission Templates Section */}
+      <div className="rounded-xl border bg-white p-4">
+        <h3 className="font-semibold mb-3">Permission Templates</h3>
+        <p className="text-sm text-gray-600 mb-4">
+          Create and manage permission templates (gabaritos) that reuse existing permissions. Apply a template in a user&apos;s Permissions tab to quickly set multiple permissions at once. Templates do not create new permissions—they only reference existing ones.
+        </p>
+        <PermissionTemplatesSection />
+      </div>
+
       {/* Terms Templates Section */}
       <div className="rounded-xl border bg-white p-4">
         <h3 className="font-semibold mb-3">Terms Templates</h3>
@@ -620,6 +629,641 @@ export default function SystemSettings(){
             </>
           )}
         </div>
+      </div>
+    </div>
+  );
+}
+
+// Permission Templates Section Component
+type PermTemplate = { id: string; name: string; permission_keys: string[] };
+type PermDefItem = { id: string; key: string; label: string; description?: string };
+type PermDefCategory = { id: string; name: string; label: string; description?: string; permissions: PermDefItem[] };
+
+// Same list as UserInfo: only permissions NOT in this set show [WIP]
+const IMPLEMENTED_PERMISSIONS = new Set([
+  'users:read', 'users:write',
+  'timesheet:read', 'timesheet:write', 'timesheet:approve', 'timesheet:unrestricted_clock',
+  'clients:read', 'clients:write',
+  'inventory:read', 'inventory:write',
+  'reviews:read', 'reviews:admin',
+  'hr:access',
+  'hr:users:read', 'hr:users:write',
+  'hr:users:view:general', 'hr:users:view:job:compensation', 'hr:users:edit:general',
+  'hr:users:view:timesheet', 'hr:users:edit:timesheet', 'hr:users:view:permissions', 'hr:users:edit:permissions',
+  'hr:attendance:read', 'hr:attendance:write',
+  'hr:community:read', 'hr:community:write',
+  'hr:reviews:admin',
+  'hr:timesheet:read', 'hr:timesheet:write', 'hr:timesheet:approve', 'hr:timesheet:unrestricted_clock',
+  'settings:access',
+  'documents:access',
+  'documents:read', 'documents:write', 'documents:delete', 'documents:move',
+  'fleet:access',
+  'fleet:vehicles:read', 'fleet:vehicles:write',
+  'fleet:equipment:read', 'fleet:equipment:write',
+  'inventory:access',
+  'inventory:suppliers:read', 'inventory:suppliers:write',
+  'inventory:products:read', 'inventory:products:write',
+  'business:access',
+  'business:customers:read', 'business:customers:write',
+  'business:projects:read', 'business:projects:write',
+  'business:projects:reports:read', 'business:projects:reports:write',
+  'business:projects:workload:read', 'business:projects:workload:write',
+  'business:projects:timesheet:read', 'business:projects:timesheet:write',
+  'business:projects:files:read', 'business:projects:files:write',
+  'business:projects:proposal:read', 'business:projects:proposal:write',
+  'business:projects:estimate:read', 'business:projects:estimate:write',
+  'business:projects:orders:read', 'business:projects:orders:write',
+  'sales:access',
+  'sales:quotations:read', 'sales:quotations:write',
+]);
+
+function PermissionTemplatesSection() {
+  const qc = useQueryClient();
+  const confirm = useConfirm();
+  const { data: templates = [], isLoading: loadingTemplates } = useQuery({
+    queryKey: ['permission-templates'],
+    queryFn: () => api<PermTemplate[]>('GET', '/permissions/templates'),
+  });
+  const { data: definitions = [] } = useQuery({
+    queryKey: ['permission-definitions'],
+    queryFn: () => api<PermDefCategory[]>('GET', '/permissions/definitions'),
+  });
+  const [newName, setNewName] = useState('');
+  const [newSelectedKeys, setNewSelectedKeys] = useState<Set<string>>(new Set());
+  const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [edits, setEdits] = useState<Record<string, { name: string; selectedKeys: Set<string> }>>({});
+  // Expandable categories for permission list (same as UserInfo): start collapsed
+  const [expandedCategories, setExpandedCategories] = useState<Set<string>>(new Set());
+
+  // Process definitions like UserInfo: split business into Services + Business, add Sales
+  const processedDefinitions = useMemo(() => {
+    const raw = (definitions || []) as PermDefCategory[];
+    const processed: PermDefCategory[] = [];
+    let businessCat: PermDefCategory | null = null;
+    let inventoryCat: PermDefCategory | null = null;
+    raw.forEach((cat) => {
+      if (cat.name === 'business') {
+        const hasProjects = (cat.permissions || []).some((p) => p.key.includes('business:projects'));
+        const hasCustomers = (cat.permissions || []).some((p) => p.key.includes('business:customers'));
+        if (hasProjects) {
+          processed.push({
+            ...cat,
+            id: 'services',
+            name: 'services',
+            label: 'Services',
+            description: cat.description || 'Permissions for Business area. Blocking access blocks all sub-permissions.',
+            permissions: (cat.permissions || []).filter((p) => p.key.includes('business:projects')),
+          });
+        }
+        if (hasCustomers) {
+          businessCat = { ...cat, permissions: (cat.permissions || []).filter((p) => p.key.includes('business:customers')) };
+        }
+      } else if (cat.name === 'inventory') {
+        inventoryCat = cat;
+      } else if (cat.name === 'sales') {
+        processed.push(cat);
+      } else {
+        processed.push(cat);
+      }
+    });
+    if (businessCat || inventoryCat) {
+      const combined = [
+        ...(businessCat?.permissions || []),
+        ...(inventoryCat?.permissions || []),
+      ];
+      if (combined.length > 0) {
+        const insert = {
+          id: 'business',
+          name: 'business',
+          label: 'Business',
+          description: inventoryCat?.description || 'Permissions for Business area. Blocking access blocks all sub-permissions.',
+          permissions: combined,
+        };
+        const idx = processed.findIndex((c) => c.name === 'services');
+        if (idx >= 0) processed.splice(idx + 1, 0, insert);
+        else processed.unshift(insert);
+      }
+    }
+    const hasSales = processed.some((c) => c.name === 'sales');
+    if (!hasSales) {
+      const salesCat: PermDefCategory = {
+        id: 'sales',
+        name: 'sales',
+        label: 'Sales',
+        description: 'Permissions for Sales area. Blocking access blocks all sub-permissions.',
+        permissions: [],
+      };
+      const idx = processed.findIndex((c) => c.name === 'business');
+      if (idx >= 0) processed.splice(idx + 1, 0, salesCat);
+      else processed.push(salesCat);
+    }
+    return processed;
+  }, [definitions]);
+
+
+  const toggleKey = (key: string, set: Set<string>) => {
+    const next = new Set(set);
+    if (next.has(key)) next.delete(key);
+    else next.add(key);
+    return next;
+  };
+
+  // Same as UserInfo: whether this permission can be enabled given current selection (dependencies met)
+  const canEnableEditPermission = (permKey: string, selectedKeys: Set<string>): boolean => {
+    const has = (k: string) => selectedKeys.has(k);
+    if (permKey === 'hr:users:view:general' || permKey === 'hr:users:view:timesheet' || permKey === 'hr:users:view:permissions') {
+      return has('hr:users:read');
+    }
+    if (permKey === 'hr:users:view:job:compensation') {
+      return has('hr:users:read') && has('hr:users:view:general');
+    }
+    if (permKey === 'hr:users:write') {
+      return has('hr:users:read');
+    }
+    if (permKey === 'business:projects:write') {
+      return has('business:projects:read');
+    }
+    if (permKey === 'business:customers:write') {
+      return has('business:customers:read');
+    }
+    if (permKey === 'sales:quotations:write') {
+      return has('sales:quotations:read');
+    }
+    if (permKey === 'hr:users:edit:general') {
+      return has('hr:users:read') && has('hr:users:view:general');
+    }
+    if (permKey === 'hr:users:edit:timesheet') {
+      return has('hr:users:read') && has('hr:users:view:timesheet');
+    }
+    if (permKey === 'hr:users:edit:permissions') {
+      return has('hr:users:read') && has('hr:users:view:permissions');
+    }
+    if (permKey.startsWith('business:projects:') && permKey.endsWith(':read') && permKey !== 'business:projects:read') {
+      return has('business:projects:read');
+    }
+    if (permKey.startsWith('business:projects:') && permKey.endsWith(':write') && permKey !== 'business:projects:write') {
+      return has(permKey.replace(':write', ':read'));
+    }
+    return true;
+  };
+
+  // When unchecking a key, remove dependent keys (same cascade as UserInfo)
+  const applyCascadeUncheck = (uncheckedKey: string, current: Set<string>): Set<string> => {
+    const next = new Set(current);
+    const remove = (k: string) => next.delete(k);
+    if (uncheckedKey === 'hr:users:view:general') {
+      remove('hr:users:edit:general');
+      remove('hr:users:view:job:compensation');
+    } else if (uncheckedKey === 'hr:users:view:timesheet') {
+      remove('hr:users:edit:timesheet');
+    } else if (uncheckedKey === 'hr:users:view:permissions') {
+      remove('hr:users:edit:permissions');
+    } else if (uncheckedKey === 'hr:users:read') {
+      remove('hr:users:write');
+      remove('hr:users:view:general');
+      remove('hr:users:view:job:compensation');
+      remove('hr:users:view:timesheet');
+      remove('hr:users:view:permissions');
+      remove('hr:users:edit:general');
+      remove('hr:users:edit:timesheet');
+      remove('hr:users:edit:permissions');
+    } else if (uncheckedKey === 'business:customers:read') {
+      remove('business:customers:write');
+    } else if (uncheckedKey === 'sales:quotations:read') {
+      remove('sales:quotations:write');
+    } else if (uncheckedKey === 'business:projects:read') {
+      remove('business:projects:write');
+      remove('business:projects:reports:read');
+      remove('business:projects:workload:read');
+      remove('business:projects:timesheet:read');
+      remove('business:projects:files:read');
+      remove('business:projects:proposal:read');
+      remove('business:projects:estimate:read');
+      remove('business:projects:orders:read');
+    } else if (uncheckedKey === 'business:projects:write') {
+      remove('business:projects:reports:write');
+      remove('business:projects:workload:write');
+      remove('business:projects:timesheet:write');
+      remove('business:projects:files:write');
+      remove('business:projects:proposal:write');
+      remove('business:projects:estimate:write');
+      remove('business:projects:orders:write');
+    } else if (uncheckedKey.startsWith('business:projects:') && uncheckedKey.endsWith(':read') && uncheckedKey !== 'business:projects:read') {
+      remove(uncheckedKey.replace(':read', ':write'));
+    }
+    return next;
+  };
+
+  const createMutation = useMutation({
+    mutationFn: (payload: { name: string; permission_keys: string[] }) =>
+      api('POST', '/permissions/templates', payload),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['permission-templates'] });
+      setNewName('');
+      setNewSelectedKeys(new Set());
+      toast.success('Permission template created');
+    },
+    onError: (e: any) => toast.error(e?.message || 'Failed to create'),
+  });
+
+  const updateMutation = useMutation({
+    mutationFn: (payload: { id: string; name?: string; permission_keys?: string[] }) =>
+      api('PUT', `/permissions/templates/${payload.id}`, { name: payload.name, permission_keys: payload.permission_keys }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['permission-templates'] });
+      setEdits({});
+      setExpandedId(null);
+      toast.success('Updated');
+    },
+    onError: (e: any) => toast.error(e?.message || 'Failed to update'),
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: (id: string) => api('DELETE', `/permissions/templates/${id}`),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['permission-templates'] });
+      setExpandedId(null);
+      setEdits({});
+      toast.success('Deleted');
+    },
+    onError: (e: any) => toast.error(e?.message || 'Failed to delete'),
+  });
+
+  const duplicateMutation = useMutation({
+    mutationFn: (id: string) => api('POST', `/permissions/templates/${id}/duplicate`),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['permission-templates'] });
+      toast.success('Template duplicated');
+    },
+    onError: (e: any) => toast.error(e?.message || 'Failed to duplicate'),
+  });
+
+  const getEdit = (t: PermTemplate) => {
+    const e = edits[t.id];
+    if (e) return e;
+    return { name: t.name, selectedKeys: new Set(t.permission_keys || []) };
+  };
+
+  // Same layout as UserInfo permissions: expandable sections with chevron, VIEW/EDIT columns, same classes
+  const renderPermissionCheckboxes = (
+    selectedKeys: Set<string>,
+    onChange: (next: Set<string>) => void,
+    disabled?: boolean
+  ) => {
+    const toggleExpand = (categoryId: string) => {
+      setExpandedCategories((prev) => {
+        const next = new Set(prev);
+        if (next.has(categoryId)) next.delete(categoryId);
+        else next.add(categoryId);
+        return next;
+      });
+    };
+    const handlePermToggle = (key: string) => {
+      let next = toggleKey(key, selectedKeys);
+      if (!next.has(key)) next = applyCascadeUncheck(key, next);
+      onChange(next);
+    };
+    const permRow = (perm: PermDefItem, indent = false) => {
+      const isChecked = selectedKeys.has(perm.key);
+      const canEnable = canEnableEditPermission(perm.key, selectedKeys);
+      const checkboxDisabled = disabled || (!isChecked && !canEnable);
+      return (
+        <label
+          key={perm.id}
+          className={`flex items-start gap-1.5 p-1.5 rounded bg-white ${checkboxDisabled ? 'cursor-default' : 'hover:bg-gray-50 cursor-pointer'} ${indent ? 'ml-4' : ''}`}
+        >
+          <input
+            type="checkbox"
+            checked={isChecked}
+            onChange={() => handlePermToggle(perm.key)}
+            disabled={checkboxDisabled}
+            className="mt-0.5 w-3.5 h-3.5 rounded border-gray-300 text-brand-red focus:ring-brand-red flex-shrink-0 disabled:opacity-50 disabled:cursor-not-allowed"
+          />
+          <div className="flex-1 min-w-0">
+            <div className="text-xs font-medium text-gray-900 flex items-center gap-1.5">
+              <span className="truncate">{perm.label}</span>
+              {!IMPLEMENTED_PERMISSIONS.has(perm.key) && (
+                <span className="text-[10px] px-1 py-0.5 bg-yellow-100 text-yellow-800 rounded border border-yellow-300 flex-shrink-0">[WIP]</span>
+              )}
+            </div>
+            {perm.description && (
+              <div className="text-[10px] text-gray-500 mt-0.5 line-clamp-1">{perm.description}</div>
+            )}
+          </div>
+        </label>
+      );
+    };
+    const viewEditBlock = (viewPerms: PermDefItem[], editPerms: PermDefItem[], subViewIndent = false, subEditIndent = false) => (
+      <div className="grid md:grid-cols-2 gap-2.5">
+        {viewPerms.length > 0 && (
+          <div className="space-y-1.5">
+            <div className="text-[10px] font-semibold text-gray-600 mb-1.5 uppercase tracking-wide">View</div>
+            {viewPerms.map((p) => permRow(p, subViewIndent))}
+          </div>
+        )}
+        {editPerms.length > 0 && (
+          <div className="space-y-1.5">
+            <div className="text-[10px] font-semibold text-gray-600 mb-1.5 uppercase tracking-wide">Edit</div>
+            {editPerms.map((p) => permRow(p, subEditIndent))}
+          </div>
+        )}
+      </div>
+    );
+
+    return (
+      <div className="space-y-6">
+        {processedDefinitions.map((cat) => {
+          const areaAccessPerm = (cat.permissions || []).find((p) => p.key.endsWith(':access'));
+          const subPermissions = (cat.permissions || []).filter((p) => !p.key.endsWith(':access'));
+          const isExpanded = expandedCategories.has(cat.id);
+
+          return (
+            <div key={cat.id} className="border rounded-lg overflow-hidden">
+              {/* Expandable header with chevron (same as UserInfo) */}
+              <div
+                className="p-3 cursor-pointer hover:bg-gray-50 transition-colors flex items-center gap-2"
+                onClick={() => toggleExpand(cat.id)}
+              >
+                <div className="flex-shrink-0 w-4 h-4 flex items-center justify-center">
+                  <svg
+                    className={`w-3 h-3 text-gray-600 transition-transform ${isExpanded ? 'rotate-90' : ''}`}
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                  </svg>
+                </div>
+                <div className="flex-1">
+                  <h4 className="text-xs font-semibold text-gray-900">{cat.label}</h4>
+                  {cat.description && (
+                    <p className="text-[10px] text-gray-500 mt-0.5">{cat.description}</p>
+                  )}
+                </div>
+              </div>
+
+              {isExpanded && subPermissions.length > 0 && (
+                <div className="px-4 pb-4 border-t border-gray-200 pt-3 mt-0">
+                  {cat.name === 'services' ? (
+                    /* Projects & Opportunities */
+                    (() => {
+                      const all = subPermissions.filter((p) => p.key.includes('business:projects'));
+                      if (all.length === 0) return null;
+                      const mainView = all.find((p) => p.key === 'business:projects:read');
+                      const mainEdit = all.find((p) => p.key === 'business:projects:write');
+                      const subView = all.filter((p) => p.key.includes(':read') && p.key !== 'business:projects:read' && (p.key.includes(':reports:') || p.key.includes(':workload:') || p.key.includes(':timesheet:') || p.key.includes(':files:') || p.key.includes(':proposal:') || p.key.includes(':estimate:') || p.key.includes(':orders:')));
+                      const subEdit = all.filter((p) => p.key.includes(':write') && p.key !== 'business:projects:write' && (p.key.includes(':reports:') || p.key.includes(':workload:') || p.key.includes(':timesheet:') || p.key.includes(':files:') || p.key.includes(':proposal:') || p.key.includes(':estimate:') || p.key.includes(':orders:')));
+                      return (
+                        <div className="border rounded-lg p-2.5 bg-gray-50">
+                          <div className="text-xs font-semibold text-gray-700 mb-2">Projects & Opportunities</div>
+                          <div className="grid md:grid-cols-2 gap-2.5">
+                            <div className="space-y-1.5">
+                              <div className="text-[10px] font-semibold text-gray-600 mb-1.5 uppercase tracking-wide">View</div>
+                              {mainView && permRow(mainView)}
+                              {subView.map((p) => permRow(p, true))}
+                            </div>
+                            <div className="space-y-1.5">
+                              <div className="text-[10px] font-semibold text-gray-600 mb-1.5 uppercase tracking-wide">Edit</div>
+                              {mainEdit && permRow(mainEdit)}
+                              {subEdit.map((p) => permRow(p, true))}
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })()
+                  ) : cat.name === 'business' ? (
+                    <div className="space-y-4">
+                      {(() => {
+                        const areaPerms = subPermissions.filter((p) => p.key.includes('business:customers'));
+                        if (areaPerms.length === 0) return null;
+                        const v = areaPerms.filter((p) => p.key.includes(':read'));
+                        const e = areaPerms.filter((p) => p.key.includes(':write'));
+                        return (
+                          <div className="border rounded-lg p-2.5 bg-gray-50">
+                            <div className="text-xs font-semibold text-gray-700 mb-2">Customers</div>
+                            {viewEditBlock(v, e)}
+                          </div>
+                        );
+                      })()}
+                      {['suppliers', 'products'].map((area) => {
+                        const areaPerms = subPermissions.filter((p) => p.key.includes(`inventory:${area}`));
+                        if (areaPerms.length === 0) return null;
+                        const viewPerms = areaPerms.filter((p) => p.key.includes(':read'));
+                        const editPerms = areaPerms.filter((p) => p.key.includes(':write'));
+                        return (
+                          <div key={area} className="border rounded-lg p-2.5 bg-gray-50">
+                            <div className="text-xs font-semibold text-gray-700 mb-2">{area.charAt(0).toUpperCase() + area.slice(1)}</div>
+                            {viewEditBlock(viewPerms, editPerms)}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  ) : cat.name === 'human_resources' ? (
+                    <div className="space-y-4">
+                      {['users', 'attendance', 'community', 'reviews', 'timesheet'].map((area) => {
+                        const areaPerms = subPermissions.filter((p) => p.key.includes(`hr:${area}`));
+                        if (areaPerms.length === 0) return null;
+                        const viewPerms = areaPerms.filter((p) => {
+                          const k = p.key;
+                          return k.includes(':view:') || (k.includes(':read') && !k.includes(':write') && !k.includes(':edit:'));
+                        });
+                        const editPerms = areaPerms.filter((p) => {
+                          const k = p.key;
+                          return k.includes(':edit:') || (k.includes(':write') && !k.includes(':view:')) || k.includes(':admin') || k.includes(':unrestricted') || k.includes(':approve');
+                        });
+                        return (
+                          <div key={area} className="border rounded-lg p-2.5 bg-gray-50">
+                            <div className="text-xs font-semibold text-gray-700 mb-2">{area.charAt(0).toUpperCase() + area.slice(1)}</div>
+                            {viewEditBlock(viewPerms, editPerms)}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  ) : cat.name === 'fleet' ? (
+                    <div className="space-y-4">
+                      {['vehicles', 'equipment'].map((area) => {
+                        const areaPerms = subPermissions.filter((p) => p.key.includes(`fleet:${area}`));
+                        if (areaPerms.length === 0) return null;
+                        const viewPerms = areaPerms.filter((p) => p.key.includes(':read'));
+                        const editPerms = areaPerms.filter((p) => p.key.includes(':write'));
+                        return (
+                          <div key={area} className="border rounded-lg p-2.5 bg-gray-50">
+                            <div className="text-xs font-semibold text-gray-700 mb-2">{area.charAt(0).toUpperCase() + area.slice(1)}</div>
+                            {viewEditBlock(viewPerms, editPerms)}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  ) : cat.name === 'sales' ? (
+                    /* Sales: Quotations (same as UserInfo) */
+                    <div className="space-y-4">
+                      {['quotations'].map((area) => {
+                        const areaPerms = subPermissions.filter((p) => p.key.includes(`sales:${area}`));
+                        if (areaPerms.length === 0) return null;
+                        const viewPerms = areaPerms.filter((p) => p.key.includes(':read'));
+                        const editPerms = areaPerms.filter((p) => p.key.includes(':write'));
+                        return (
+                          <div key={area} className="border rounded-lg p-2.5 bg-gray-50">
+                            <div className="text-xs font-semibold text-gray-700 mb-2">Quotations</div>
+                            {viewEditBlock(viewPerms, editPerms)}
+                          </div>
+                        );
+                      })}
+                      {subPermissions.length === 0 && (
+                        <div className="text-[10px] text-gray-500">No permissions in this category.</div>
+                      )}
+                    </div>
+                  ) : (
+                    <div className="space-y-1.5">
+                      {subPermissions.map((perm) => permRow(perm))}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    );
+  };
+
+  return (
+    <div className="space-y-4">
+      <div className="border rounded-lg p-4 bg-gray-50">
+        <h4 className="font-semibold mb-3 text-sm">Create New Template</h4>
+        <div className="space-y-3">
+          <div>
+            <label className="block text-xs text-gray-600 mb-1">Template Name</label>
+            <input
+              value={newName}
+              onChange={(e) => setNewName(e.target.value)}
+              placeholder="e.g., Sales, Field Technician"
+              className="border rounded px-3 py-2 text-sm w-full"
+            />
+          </div>
+          <div>
+            <label className="block text-xs text-gray-600 mb-1">Permissions (select all that apply)</label>
+            {renderPermissionCheckboxes(newSelectedKeys, setNewSelectedKeys)}
+          </div>
+          <div className="flex justify-end">
+            <button
+              onClick={() => {
+                if (!newName.trim()) {
+                  toast.error('Template name is required');
+                  return;
+                }
+                createMutation.mutate({
+                  name: newName.trim(),
+                  permission_keys: Array.from(newSelectedKeys),
+                });
+              }}
+              className="px-4 py-2 rounded bg-brand-red text-white text-sm"
+              disabled={createMutation.isPending}
+            >
+              Create Template
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <div>
+        <h4 className="font-semibold mb-3 text-sm">Existing Templates</h4>
+        {loadingTemplates ? (
+          <div className="p-4 text-sm text-gray-500 border rounded">Loading...</div>
+        ) : (templates as PermTemplate[]).length === 0 ? (
+          <div className="p-4 text-sm text-gray-500 border rounded">No permission templates yet</div>
+        ) : (
+          <div className="space-y-2">
+            {(templates as PermTemplate[]).map((t) => {
+              const isExpanded = expandedId === t.id;
+              const e = getEdit(t);
+              return (
+                <div key={t.id} className="border rounded-lg bg-white overflow-hidden">
+                  <button
+                    onClick={() => setExpandedId(isExpanded ? null : t.id)}
+                    className="w-full px-4 py-3 flex items-center justify-between hover:bg-gray-50 transition-colors text-left"
+                  >
+                    <span className="font-medium text-sm text-gray-900">{t.name}</span>
+                    <span className="text-xs text-gray-500">
+                      {(t.permission_keys || []).length} permission(s)
+                    </span>
+                    <svg
+                      className={`w-5 h-5 text-gray-400 transition-transform ${isExpanded ? 'rotate-180' : ''}`}
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                    </svg>
+                  </button>
+                  {isExpanded && (
+                    <div className="px-4 pb-4 border-t bg-gray-50">
+                      <div className="space-y-3 pt-3">
+                        <div>
+                          <label className="block text-xs text-gray-600 mb-1">Template Name</label>
+                          <input
+                            value={e.name}
+                            onChange={(ev) =>
+                              setEdits((s) => ({
+                                ...s,
+                                [t.id]: { ...(s[t.id] || e), name: ev.target.value },
+                              }))
+                            }
+                            className="border rounded px-3 py-2 text-sm w-full"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-xs text-gray-600 mb-1">Permissions</label>
+                          {renderPermissionCheckboxes(
+                            e.selectedKeys,
+                            (next) =>
+                              setEdits((s) => ({
+                                ...s,
+                                [t.id]: { ...(s[t.id] || e), selectedKeys: next },
+                              }))
+                          )}
+                        </div>
+                        <div className="flex justify-end gap-2">
+                          <button
+                            onClick={() =>
+                              updateMutation.mutate({
+                                id: t.id,
+                                name: e.name,
+                                permission_keys: Array.from(e.selectedKeys),
+                              })
+                            }
+                            className="px-3 py-1.5 rounded bg-black text-white text-sm"
+                            disabled={updateMutation.isPending}
+                          >
+                            Save
+                          </button>
+                          <button
+                            onClick={() => duplicateMutation.mutate(t.id)}
+                            className="px-3 py-1.5 rounded border text-sm"
+                            disabled={duplicateMutation.isPending}
+                          >
+                            Duplicate
+                          </button>
+                          <button
+                            onClick={async () => {
+                              if (!(await confirm({ title: 'Delete template?', description: 'This action cannot be undone.' })))
+                                return;
+                              deleteMutation.mutate(t.id);
+                            }}
+                            className="px-3 py-1.5 rounded bg-gray-100 text-sm"
+                            disabled={deleteMutation.isPending}
+                          >
+                            Delete
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
       </div>
     </div>
   );

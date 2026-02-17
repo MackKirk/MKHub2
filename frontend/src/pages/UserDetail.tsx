@@ -224,9 +224,15 @@ function UserPermissions({ userId, user: userProp, canEdit = true }:{ userId:str
     queryKey:['user-permissions', userId], 
     queryFn: ()=> api<any>('GET', `/permissions/users/${userId}`) 
   });
+  const { data: permissionTemplates = [] } = useQuery({
+    queryKey: ['permission-templates'],
+    queryFn: () => api<{ id: string; name: string; permission_keys: string[] }[]>('GET', '/permissions/templates'),
+  });
   const [permissions, setPermissions] = useState<Record<string, boolean>>({});
   const [saving, setSaving] = useState(false);
   const [isAdminLocal, setIsAdminLocal] = useState<boolean>(false);
+  const [selectedTemplateId, setSelectedTemplateId] = useState<string>('');
+  const [showApplyTemplateModal, setShowApplyTemplateModal] = useState(false);
 
   // Initialize permissions from API data
   useEffect(() => {
@@ -317,6 +323,52 @@ function UserPermissions({ userId, user: userProp, canEdit = true }:{ userId:str
     }
   };
 
+  const applyTemplateMerge = () => {
+    if (!selectedTemplateId) return;
+    const template = (permissionTemplates as { id: string; name: string; permission_keys: string[] }[]).find(
+      (t) => t.id === selectedTemplateId
+    );
+    if (!template?.permission_keys?.length) {
+      toast.error('Template has no permissions');
+      return;
+    }
+    setPermissions((prev) => ({
+      ...prev,
+      ...Object.fromEntries((template.permission_keys || []).map((k) => [k, true])),
+    }));
+    toast.success(`Applied template "${template.name}" (merge)`);
+    setShowApplyTemplateModal(false);
+  };
+
+  const applyTemplateReplace = () => {
+    if (!selectedTemplateId) return;
+    const template = (permissionTemplates as { id: string; name: string; permission_keys: string[] }[]).find(
+      (t) => t.id === selectedTemplateId
+    );
+    if (!template) return;
+    const templateKeySet = new Set(template.permission_keys || []);
+    const allKeys: string[] = [];
+    (permissionsData?.permissions_by_category || []).forEach((cat: any) => {
+      (cat.permissions || []).forEach((p: any) => {
+        if (p.key) allKeys.push(p.key);
+      });
+    });
+    const next: Record<string, boolean> = {};
+    allKeys.forEach((k) => {
+      next[k] = templateKeySet.has(k);
+    });
+    Object.keys(next).forEach((key) => {
+      if (next[key] && key.includes(':')) {
+        const area = key.split(':')[0];
+        const areaAccessKey = `${area}:access`;
+        if (allKeys.includes(areaAccessKey)) next[areaAccessKey] = true;
+      }
+    });
+    setPermissions(next);
+    toast.success(`Applied template "${template.name}" (replace)`);
+    setShowApplyTemplateModal(false);
+  };
+
   if (!permissionsData) {
     return <div className="h-24 bg-gray-100 animate-pulse rounded" />;
   }
@@ -381,6 +433,76 @@ function UserPermissions({ userId, user: userProp, canEdit = true }:{ userId:str
             </div>
           )}
         </div>
+
+        {/* Permission Template: select template then apply with Merge or Replace confirmation */}
+        {canEdit && (
+          <div className="mb-6 p-4 border rounded-lg bg-gray-50">
+            <div className="text-sm font-medium text-gray-700 mb-2">Permission Template</div>
+            <p className="text-xs text-gray-600 mb-3">
+              Select a template and click Apply to prefill permissions. You will choose whether to merge (add to current) or replace (replace all with template).
+            </p>
+            <div className="flex flex-wrap items-center gap-3">
+              <select
+                value={selectedTemplateId}
+                onChange={(e) => setSelectedTemplateId(e.target.value)}
+                className="border rounded px-3 py-2 text-sm min-w-[200px]"
+              >
+                <option value="">— Select template —</option>
+                {(permissionTemplates as { id: string; name: string }[]).map((t) => (
+                  <option key={t.id} value={t.id}>{t.name}</option>
+                ))}
+              </select>
+              <button
+                type="button"
+                onClick={() => {
+                  if (!selectedTemplateId) {
+                    toast.error('Select a template first');
+                    return;
+                  }
+                  setShowApplyTemplateModal(true);
+                }}
+                className="px-3 py-2 rounded border bg-white text-sm font-medium hover:bg-gray-50"
+              >
+                Apply template
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Modal: Apply template as Merge or Replace */}
+        {showApplyTemplateModal && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={() => setShowApplyTemplateModal(false)}>
+            <div className="bg-white rounded-lg shadow-xl p-4 max-w-md w-full mx-4" onClick={(e) => e.stopPropagation()}>
+              <h3 className="text-base font-semibold text-gray-900 mb-2">Apply permission template</h3>
+              <p className="text-sm text-gray-600 mb-4">
+                How do you want to apply the template? <strong>Merge</strong> adds the template&apos;s permissions to the current ones. <strong>Replace</strong> clears current permissions and sets only those in the template.
+              </p>
+              <div className="flex flex-wrap gap-2 justify-end">
+                <button
+                  type="button"
+                  onClick={() => setShowApplyTemplateModal(false)}
+                  className="px-3 py-2 rounded border bg-white text-sm font-medium hover:bg-gray-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={applyTemplateMerge}
+                  className="px-3 py-2 rounded bg-gray-800 text-white text-sm font-medium hover:bg-gray-700"
+                >
+                  Merge
+                </button>
+                <button
+                  type="button"
+                  onClick={applyTemplateReplace}
+                  className="px-3 py-2 rounded bg-brand-red text-white text-sm font-medium hover:bg-red-700"
+                >
+                  Replace
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
 
       <div className="space-y-6">
         {permissionsData.permissions_by_category?.map((cat: any) => {

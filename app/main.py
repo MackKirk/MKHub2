@@ -516,6 +516,32 @@ def create_app() -> FastAPI:
                     db.commit()
                     print("[startup] document_types table ready")
 
+                # Ensure permission_templates table exists
+                if dialect == "sqlite":
+                    try:
+                        db.execute(text("SELECT 1 FROM permission_templates LIMIT 1")).fetchone()
+                    except Exception:
+                        from .models.models import PermissionTemplate
+                        Base.metadata.create_all(bind=engine, tables=[PermissionTemplate.__table__])
+                        db.commit()
+                        print("[startup] Created permission_templates table")
+                else:
+                    rows = db.execute(
+                        text(
+                            """
+                            SELECT 1
+                            FROM information_schema.tables
+                            WHERE table_name = 'permission_templates'
+                            LIMIT 1
+                            """
+                        )
+                    ).fetchall()
+                    if not rows:
+                        from .models.models import PermissionTemplate
+                        Base.metadata.create_all(bind=engine, tables=[PermissionTemplate.__table__])
+                        db.commit()
+                        print("[startup] Created permission_templates table")
+
                 print("[startup] Schema migrations check completed")
             except Exception as e:
                 print(f"[startup] Schema migrations check error (non-critical): {e}")
