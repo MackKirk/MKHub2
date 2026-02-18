@@ -5,6 +5,7 @@ export type DocumentTypePreset = {
   id: string;
   name: string;
   description?: string | null;
+  category?: string | null;
   page_templates: { template_id: string; label?: string }[];
   created_at?: string | null;
 };
@@ -34,7 +35,7 @@ export function ChooseDocumentTypeModal({
       <div className="bg-white rounded-xl shadow-xl max-w-md w-full max-h-[85vh] flex flex-col">
         <div className="p-4 border-b border-gray-200">
           <h2 className="text-lg font-semibold text-gray-900">Create document</h2>
-          <p className="text-sm text-gray-500 mt-0.5">Choose a document layout or start blank.</p>
+          <p className="text-sm text-gray-500 mt-0.5">Choose a document template or start blank.</p>
         </div>
         <div className="p-4 overflow-y-auto flex-1">
           {isLoading ? (

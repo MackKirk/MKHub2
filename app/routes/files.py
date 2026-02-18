@@ -2,6 +2,8 @@ import os
 from datetime import datetime
 from typing import Optional
 
+from urllib.parse import unquote, quote
+
 from fastapi import APIRouter, Depends, HTTPException, Request, Form, File, UploadFile
 from fastapi.responses import Response
 from sqlalchemy.orm import Session
@@ -74,8 +76,20 @@ def canonical_key(
     return f"/org/{year}/{proj}{slug_part}/{folder}/{today}_{safe_name}{ext}"
 
 
+def _is_local_origin(origin: Optional[str]) -> bool:
+    """True if the request is from a local dev origin (avoids CORS when PUTting to Azure)."""
+    if not origin:
+        return False
+    o = (origin or "").strip().lower()
+    return "localhost" in o or o.startswith("http://127.0.0.1") or o.startswith("https://127.0.0.1")
+
+
 @router.post("/upload", response_model=UploadResponse)
-def upload(req: UploadRequest, storage: StorageProvider = Depends(get_storage)):
+def upload(
+    req: UploadRequest,
+    request: Request,
+    storage: StorageProvider = Depends(get_storage),
+):
     # Use project_id OR client_id to partition blob paths so uploads from different
     # entities never overwrite when original_name is stable (e.g., 'client-logo.jpg').
     key = canonical_key(
@@ -84,6 +98,13 @@ def upload(req: UploadRequest, storage: StorageProvider = Depends(get_storage)):
         category=req.category_id or "files",
         original_name=req.original_name,
     )
+    origin = request.headers.get("origin")
+    # When running locally with blob configured, return backend proxy URL so the browser
+    # does not hit CORS when PUTting to Azure. File goes: browser -> our backend -> blob.
+    if isinstance(storage, BlobStorageProvider) and _is_local_origin(origin):
+        base = str(request.base_url).rstrip("/")
+        url = f"{base}/files/upload-via-backend?key={quote(key)}"
+        return UploadResponse(key=key, upload_url=url, expires_in=900)
     url = storage.generate_upload_url(key, req.content_type, expires_s=900)
     return UploadResponse(key=key, upload_url=url, expires_in=900)
 
@@ -519,6 +540,38 @@ def confirm(req: ConfirmRequest, db: Session = Depends(get_db), storage: Storage
     return {"id": str(fo.id)}
 
 
+@router.put("/upload-via-backend")
+async def upload_via_backend(
+    request: Request,
+    key: str = "",
+    storage: StorageProvider = Depends(get_storage),
+):
+    """
+    Proxy upload to storage (Azure Blob). Used when the client runs on localhost
+    so that the browser does not hit CORS when PUTting to blob. Backend receives
+    the file and uploads to blob; client then calls POST /files/confirm as usual.
+    """
+    if not key:
+        raise HTTPException(status_code=400, detail="key is required")
+    if not isinstance(storage, BlobStorageProvider):
+        raise HTTPException(
+            status_code=400,
+            detail="upload-via-backend is only for blob storage; configure AZURE_BLOB_* locally",
+        )
+    key_decoded = unquote(key).lstrip("/").replace("..", "").replace("\\", "/")
+    if not key_decoded:
+        raise HTTPException(status_code=400, detail="Invalid key")
+    body = await request.body()
+    try:
+        import io
+        storage.copy_in(io.BytesIO(body), key_decoded)
+    except Exception as e:
+        import logging
+        logging.getLogger(__name__).exception("upload_via_backend failed")
+        raise HTTPException(status_code=500, detail=str(e))
+    return Response(status_code=200)
+
+
 @router.get("/local/{file_path:path}")
 def serve_local_file(file_path: str):
     """Serve files from local storage for development."""
@@ -526,7 +579,7 @@ def serve_local_file(file_path: str):
     from fastapi.responses import FileResponse
     
     # Security: prevent directory traversal
-    clean_path = file_path.lstrip("/").replace("..", "").replace("\\", "/")
+    clean_path = unquote(file_path).lstrip("/").replace("..", "").replace("\\", "/")
     local_storage = LocalStorageProvider()
     file_path_obj = local_storage._get_path(clean_path)
     

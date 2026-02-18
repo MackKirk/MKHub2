@@ -1,6 +1,7 @@
 """
 Document Creator API: templates, user documents CRUD, export to PDF.
 """
+import copy
 import uuid
 from typing import Optional, List, Any
 
@@ -66,6 +67,10 @@ class DocumentOut(BaseModel):
         from_attributes = True
 
 
+class ExportPdfOptions(BaseModel):
+    canvas_width_px: Optional[float] = None
+
+
 def _template_to_out(t: DocumentTemplate) -> dict:
     return {
         "id": str(t.id),
@@ -116,12 +121,13 @@ def list_document_types(
     _=Depends(require_permissions("documents:access", "documents:read")),
 ):
     """List document type presets (e.g. cover + back cover + content page)."""
-    types = db.query(DocumentType).order_by(DocumentType.name).all()
+    types = db.query(DocumentType).order_by(DocumentType.category or "", DocumentType.name).all()
     return [
         {
             "id": str(t.id),
             "name": t.name,
             "description": t.description,
+            "category": getattr(t, "category", None),
             "page_templates": t.page_templates or [],
             "created_at": t.created_at.isoformat() if t.created_at else None,
         }
@@ -132,12 +138,14 @@ def list_document_types(
 class DocumentTypeCreate(BaseModel):
     name: str
     description: Optional[str] = None
-    page_templates: Optional[List[dict]] = None  # [{ "template_id": "uuid", "label": "Cover" }]
+    category: Optional[str] = None
+    page_templates: Optional[List[dict]] = None  # [{ "template_id": "uuid", "label": "Cover", "margins?", "elements?" }]
 
 
 class DocumentTypeUpdate(BaseModel):
     name: Optional[str] = None
     description: Optional[str] = None
+    category: Optional[str] = None
     page_templates: Optional[List[dict]] = None
 
 
@@ -152,6 +160,7 @@ def create_document_type(
     doc_type = DocumentType(
         name=body.name or "Unnamed",
         description=body.description,
+        category=body.category,
         page_templates=body.page_templates if body.page_templates is not None else [],
     )
     db.add(doc_type)
@@ -161,6 +170,7 @@ def create_document_type(
         "id": str(doc_type.id),
         "name": doc_type.name,
         "description": doc_type.description,
+        "category": doc_type.category,
         "page_templates": doc_type.page_templates or [],
         "created_at": doc_type.created_at.isoformat() if doc_type.created_at else None,
     }
@@ -186,6 +196,8 @@ def update_document_type(
         doc_type.name = body.name
     if body.description is not None:
         doc_type.description = body.description
+    if body.category is not None:
+        doc_type.category = body.category
     if body.page_templates is not None:
         doc_type.page_templates = body.page_templates
     db.commit()
@@ -194,6 +206,7 @@ def update_document_type(
         "id": str(doc_type.id),
         "name": doc_type.name,
         "description": doc_type.description,
+        "category": doc_type.category,
         "page_templates": doc_type.page_templates or [],
         "created_at": doc_type.created_at.isoformat() if doc_type.created_at else None,
     }
@@ -217,6 +230,99 @@ def delete_document_type(
     db.delete(doc_type)
     db.commit()
     return {"ok": True}
+
+
+@router.post("/document-types/{document_type_id}/duplicate", response_model=dict)
+def duplicate_document_type(
+    document_type_id: str,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+    _=Depends(require_permissions("documents:access", "documents:write")),
+):
+    """Duplicate a document type preset. Creates a new one with name + ' (copy)' and same category, description, page_templates."""
+    try:
+        dtid = uuid.UUID(document_type_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid document type id")
+    doc_type = db.query(DocumentType).filter(DocumentType.id == dtid).first()
+    if not doc_type:
+        raise HTTPException(status_code=404, detail="Document type not found")
+    copy_name = (doc_type.name or "Template").strip() + " (copy)"
+    page_templates = doc_type.page_templates
+    if isinstance(page_templates, list):
+        page_templates = copy.deepcopy(page_templates)
+    new_type = DocumentType(
+        name=copy_name,
+        description=doc_type.description,
+        category=doc_type.category,
+        page_templates=page_templates or [],
+    )
+    db.add(new_type)
+    db.commit()
+    db.refresh(new_type)
+    return {
+        "id": str(new_type.id),
+        "name": new_type.name,
+        "description": new_type.description,
+        "category": new_type.category,
+        "page_templates": new_type.page_templates or [],
+        "created_at": new_type.created_at.isoformat() if new_type.created_at else None,
+    }
+
+
+@router.get("/document-types/{document_type_id}/expand-pages", response_model=List[dict])
+def expand_document_type_pages(
+    document_type_id: str,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+    _=Depends(require_permissions("documents:access", "documents:read")),
+):
+    """Expand a document type into a list of pages (template_id, margins, elements) with cloned element ids.
+    Use when adding pages from a template to an existing document. Uses template default_elements when entry has no elements."""
+    try:
+        dtid = uuid.UUID(document_type_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid document type id")
+    doc_type = db.query(DocumentType).filter(DocumentType.id == dtid).first()
+    if not doc_type:
+        raise HTTPException(status_code=404, detail="Document type not found")
+    pt_list = doc_type.page_templates or []
+    if not isinstance(pt_list, list):
+        pt_list = []
+    pages: List[dict] = []
+    for idx, entry in enumerate(pt_list):
+        if not isinstance(entry, dict):
+            pages.append({"template_id": None, "margins": None, "elements": []})
+            continue
+        tid = entry.get("template_id")
+        if not tid:
+            pages.append({
+                "template_id": None,
+                "margins": entry.get("margins"),
+                "elements": _clone_elements_with_new_ids(entry.get("elements") if isinstance(entry.get("elements"), list) else [], f"p{idx}"),
+            })
+            continue
+        try:
+            tuid = uuid.UUID(tid) if isinstance(tid, str) else tid
+        except (ValueError, TypeError):
+            pages.append({"template_id": None, "margins": entry.get("margins"), "elements": []})
+            continue
+        template = db.query(DocumentTemplate).filter(DocumentTemplate.id == tuid).first()
+        if not template:
+            pages.append({"template_id": str(tuid), "margins": entry.get("margins"), "elements": []})
+            continue
+        entry_margins = entry.get("margins")
+        entry_elements = entry.get("elements") if isinstance(entry.get("elements"), list) else None
+        if entry_elements:
+            elements = _clone_elements_with_new_ids(entry_elements, f"p{idx}")
+        else:
+            elements = _clone_elements_with_new_ids(
+                template.default_elements if isinstance(template.default_elements, list) else [],
+                f"p{idx}",
+            )
+        margins = entry_margins if entry_margins is not None else getattr(template, "margins", None)
+        pages.append({"template_id": str(tuid), "margins": margins, "elements": elements})
+    return pages
 
 
 # --- Templates ---
@@ -508,6 +614,7 @@ def delete_document(
 @router.post("/documents/{document_id}/export-pdf")
 def export_document_pdf(
     document_id: str,
+    body: Optional[ExportPdfOptions] = Body(default=None),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
     _=Depends(require_permissions("documents:access", "documents:read")),
@@ -525,7 +632,7 @@ def export_document_pdf(
 
     try:
         from ..document_creator.pdf_builder import build_pdf_bytes
-        pdf_bytes = build_pdf_bytes(db, doc)
+        pdf_bytes = build_pdf_bytes(db, doc, canvas_width_px=(body.canvas_width_px if body else None))
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"PDF generation failed: {str(e)}")
 

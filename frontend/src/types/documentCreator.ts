@@ -19,6 +19,12 @@ export type DocElement = {
   fontFamily?: 'Montserrat' | 'Open Sans';
   /** Text color (hex, e.g. #000000) */
   color?: string;
+  /** Image only: how the image fits inside its box (CSS object-fit) */
+  imageFit?: 'contain' | 'cover' | 'fill' | 'none';
+  /** Image only: where the image is anchored inside its box (CSS object-position, e.g. "50% 50%") */
+  imagePosition?: string;
+  /** When true, element cannot be moved, resized, or edited until unlocked */
+  locked?: boolean;
 };
 
 /** Content area margins (percent). Elements cannot be placed outside. */

@@ -52,6 +52,39 @@ const AlignBottomIcon = () => (
   </svg>
 );
 
+/** Explicit dot positions in viewBox 0 0 12 12 (SVG: x right, y down). Maps object-position value to (cx, cy). */
+const POSITION_ICON_COORDS: Record<string, { cx: number; cy: number }> = {
+  '0% 0%': { cx: 2, cy: 2 },     // top-left
+  '50% 0%': { cx: 6, cy: 2 },    // top
+  '100% 0%': { cx: 10, cy: 2 },  // top-right
+  '0% 50%': { cx: 2, cy: 6 },    // left
+  '50% 50%': { cx: 6, cy: 6 },   // center
+  '100% 50%': { cx: 10, cy: 6 }, // right
+  '0% 100%': { cx: 2, cy: 10 },  // bottom-left
+  '50% 100%': { cx: 6, cy: 10 }, // bottom
+  '100% 100%': { cx: 10, cy: 10 }, // bottom-right
+};
+
+function PositionIcon({ value }: { value: string }) {
+  const normal = value.trim();
+  const { cx, cy } = POSITION_ICON_COORDS[normal] ?? { cx: 6, cy: 6 };
+  return (
+    <svg
+      width="14"
+      height="14"
+      viewBox="0 0 12 12"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.2"
+      className="block shrink-0"
+      preserveAspectRatio="xMinYMin meet"
+    >
+      <rect x="0.5" y="0.5" width="11" height="11" rx="1" />
+      <circle cx={cx} cy={cy} r="1.2" fill="currentColor" />
+    </svg>
+  );
+}
+
 export function ElementOptionsPopover({
   element,
   onUpdate,
@@ -95,7 +128,7 @@ export function ElementOptionsPopover({
       </div>
 
       {element.type === 'image' && onReplaceImage && (
-        <div>
+        <div className="space-y-3">
           <input
             ref={fileInputRef}
             type="file"
@@ -110,6 +143,53 @@ export function ElementOptionsPopover({
           >
             {element.content ? 'Replace image' : 'Add image'}
           </button>
+          {element.content && (
+            <div className="space-y-2">
+              <span className="block text-xs text-gray-600 mb-0.5">Edit position</span>
+              <div>
+                <span className="block text-xs text-gray-500 mb-0.5">Fit</span>
+                <div className="flex flex-wrap gap-px w-fit rounded overflow-hidden border border-gray-200 bg-gray-200">
+                  {(['contain', 'cover', 'fill', 'none'] as const).map((fit) => (
+                    <button
+                      key={fit}
+                      type="button"
+                      onClick={() => onUpdate(id, (el) => ({ ...el, imageFit: fit }))}
+                      className={`min-w-[2.25rem] h-7 px-1.5 rounded-none first:rounded-l last:rounded-r text-[10px] capitalize ${(element.imageFit ?? 'contain') === fit ? 'bg-white shadow-sm text-gray-900' : 'bg-gray-50 text-gray-500 hover:bg-gray-100 hover:text-gray-700'}`}
+                      title={fit}
+                    >
+                      {fit}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <div>
+                <span className="block text-xs text-gray-500 mb-0.5">Position</span>
+                <div className="grid grid-cols-3 gap-px w-fit rounded overflow-hidden border border-gray-200 bg-gray-200">
+                  {[
+                    { value: '0% 0%', title: 'Top left' },
+                    { value: '50% 0%', title: 'Top' },
+                    { value: '100% 0%', title: 'Top right' },
+                    { value: '0% 50%', title: 'Left' },
+                    { value: '50% 50%', title: 'Center' },
+                    { value: '100% 50%', title: 'Right' },
+                    { value: '0% 100%', title: 'Bottom left' },
+                    { value: '50% 100%', title: 'Bottom' },
+                    { value: '100% 100%', title: 'Bottom right' },
+                  ].map(({ value, title }) => (
+                    <button
+                      key={value}
+                      type="button"
+                      onClick={() => onUpdate(id, (el) => ({ ...el, imagePosition: value }))}
+                      className={`w-7 h-7 flex items-center justify-center ${(element.imagePosition ?? '50% 50%') === value ? 'bg-white shadow-sm text-gray-900' : 'bg-gray-50 text-gray-500 hover:bg-gray-100 hover:text-gray-700'}`}
+                      title={title}
+                    >
+                      <PositionIcon value={value} />
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       )}
 

@@ -174,36 +174,36 @@ export default function DocumentTemplatesTab() {
   };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4">
       <div className="rounded-xl border bg-white p-4">
-        <h2 className="text-lg font-medium text-gray-900 mb-4">Add background template</h2>
-        <div className="grid gap-4 sm:grid-cols-2">
+        <h2 className="text-sm font-semibold text-gray-900 mb-3">Add background template</h2>
+        <div className="grid gap-3 sm:grid-cols-2">
           <div>
-            <label className="block text-sm text-gray-600 mb-1">Name</label>
+            <label className="block text-xs text-gray-600 mb-1">Name</label>
             <input
               type="text"
               value={name}
               onChange={(e) => setName(e.target.value)}
-              className="w-full px-3 py-2 rounded border border-gray-300 focus:ring-2 focus:ring-brand-red/50 focus:border-brand-red"
+              className="w-full px-2.5 py-1.5 rounded-lg border border-gray-300 text-sm text-gray-900 focus:ring-1 focus:ring-gray-400 focus:border-gray-400"
               placeholder="e.g. Cover with logo"
             />
           </div>
           <div>
-            <label className="block text-sm text-gray-600 mb-1">Description (optional)</label>
+            <label className="block text-xs text-gray-600 mb-1">Description (optional)</label>
             <input
               type="text"
               value={description}
               onChange={(e) => setDescription(e.target.value)}
-              className="w-full px-3 py-2 rounded border border-gray-300 focus:ring-2 focus:ring-brand-red/50 focus:border-brand-red"
+              className="w-full px-2.5 py-1.5 rounded-lg border border-gray-300 text-sm text-gray-900 focus:ring-1 focus:ring-gray-400 focus:border-gray-400"
               placeholder="e.g. Standard cover with logo and footer"
             />
           </div>
         </div>
-        <div className="mt-4 flex flex-wrap items-center gap-4">
+        <div className="mt-3 flex flex-wrap items-center gap-2">
           <button
             type="button"
             onClick={() => fileInputRef.current?.click()}
-            className="px-4 py-2 rounded bg-gray-100 hover:bg-gray-200 border border-gray-300 text-gray-700 transition-colors"
+            className="px-3 py-1.5 text-xs rounded-lg bg-gray-100 hover:bg-gray-200 border border-gray-200 text-gray-700 font-medium transition-colors"
           >
             {uploadingFileId ? 'Change image' : 'Upload background image'}
           </button>
@@ -215,68 +215,74 @@ export default function DocumentTemplatesTab() {
             onChange={handleFileChange}
           />
           {uploadingFileId && uploadingFileId !== 'uploading' && (
-            <span className="text-sm text-green-600">Image ready</span>
+            <span className="text-xs text-green-600">Image ready</span>
           )}
           {uploadingFileId === 'uploading' && (
-            <span className="text-sm text-gray-500">Uploading...</span>
+            <span className="text-xs text-gray-500">Uploading...</span>
           )}
           <button
             type="button"
             onClick={handleCreate}
             disabled={isSaving || !uploadingFileId || uploadingFileId === 'uploading' || !name.trim()}
-            className="px-4 py-2 rounded bg-brand-red text-white font-medium disabled:opacity-50 transition-colors"
+            className="px-3 py-1.5 text-xs rounded-lg bg-brand-red text-white font-medium hover:bg-[#aa1212] disabled:opacity-50 transition-colors"
           >
             {isSaving ? 'Saving...' : 'Save template'}
           </button>
         </div>
       </div>
 
-      <div>
-        <h2 className="text-lg font-medium text-gray-900 mb-4">Registered templates</h2>
+      <div className="rounded-xl border bg-white p-4">
+        <h2 className="text-sm font-semibold text-gray-900 mb-3">Registered templates</h2>
         {isLoading ? (
-          <p className="text-gray-500">Loading...</p>
+          <p className="text-xs text-gray-500">Loading...</p>
         ) : templates.length === 0 ? (
-          <p className="text-gray-500">No templates yet. Add one above.</p>
+          <p className="text-xs text-gray-500">No templates yet. Add one above.</p>
         ) : (
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          <div className="grid gap-3 sm:grid-cols-3 lg:grid-cols-5 xl:grid-cols-6">
             {templates.map((t) => (
               <div
                 key={t.id}
-                className="p-4 rounded-xl border bg-white flex flex-col"
+                className="rounded-lg border border-gray-200 bg-gray-50/50 overflow-hidden flex flex-col"
               >
-                <div className="aspect-[210/297] rounded bg-gray-100 overflow-hidden mb-3">
+                <div className="h-48 w-full rounded-t-lg bg-gray-100 overflow-hidden flex items-center justify-center">
                   {t.background_file_id ? (
                     <img
-                      src={`/files/${t.background_file_id}/thumbnail?w=300`}
+                      src={`/files/${t.background_file_id}/thumbnail?w=320`}
                       alt={t.name}
-                      className="w-full h-full object-contain"
+                      className="max-w-full max-h-full object-contain"
                     />
                   ) : (
-                    <div className="w-full h-full flex items-center justify-center text-gray-500 text-sm">
-                      No image
-                    </div>
+                    <div className="text-gray-400 text-xs">No image</div>
                   )}
                 </div>
-                <div className="flex-1">
-                  <h3 className="font-medium text-gray-900">{t.name}</h3>
+                <div className="p-2 flex-1 min-w-0">
+                  <h3 className="text-xs font-semibold text-gray-900 truncate">{t.name}</h3>
                   {t.description && (
-                    <p className="text-sm text-gray-600 mt-0.5">{t.description}</p>
+                    <p className="text-[10px] text-gray-600 mt-0.5 line-clamp-2">{t.description}</p>
                   )}
                 </div>
-                <div className="mt-2 flex flex-wrap gap-2">
+                <div className="p-2 flex items-center gap-0.5 border-t border-gray-100">
                   <button
                     type="button"
                     onClick={() => openEditTemplate(t)}
-                    className="text-sm text-gray-700 hover:text-gray-900 border border-gray-300 rounded px-2 py-1 bg-gray-50"
+                    className="p-1.5 rounded text-gray-500 hover:text-brand-red hover:bg-brand-red/10 transition-colors"
+                    title="Edit"
+                    aria-label="Edit"
                   >
-                    Edit
+                    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                    </svg>
                   </button>
                   <button
                     type="button"
                     onClick={() => handleDelete(t)}
-                    className="text-sm text-red-600 hover:text-red-700"
+                    className="p-1.5 rounded text-gray-500 hover:text-red-600 hover:bg-red-50 transition-colors"
+                    title="Delete"
+                    aria-label="Delete"
                   >
-                    Delete
+                    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                    </svg>
                   </button>
                 </div>
               </div>
