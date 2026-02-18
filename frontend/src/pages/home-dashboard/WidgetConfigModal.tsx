@@ -107,6 +107,20 @@ export function WidgetConfigModal({ widget, onClose, onSave }: WidgetConfigModal
     enabled: widget?.type === 'kpi',
   });
 
+  const { data: clientsData } = useQuery({
+    queryKey: ['clients', 'widget-chart-customers'],
+    queryFn: () => api<{ items: { id: string; name?: string; display_name?: string }[] }>('GET', '/clients?limit=500'),
+    enabled: widget?.type === 'chart',
+  });
+  const customersList = useMemo(() => {
+    const items = clientsData?.items ?? [];
+    return [...items].sort((a, b) => {
+      const na = (a.display_name || a.name || '').toLowerCase();
+      const nb = (b.display_name || b.name || '').toLowerCase();
+      return na.localeCompare(nb);
+    });
+  }, [clientsData?.items]);
+
   useEffect(() => {
     if (widget) {
       setConfig({ ...widget.config });
@@ -216,6 +230,22 @@ export function WidgetConfigModal({ widget, onClose, onSave }: WidgetConfigModal
               : dataOptions[0].value;
             return (
             <>
+              <div>
+                <label className="block text-xs font-semibold text-gray-700 mb-1">Customer</label>
+                <select
+                  value={config.customer_id !== undefined && config.customer_id !== '' ? String(config.customer_id) : ''}
+                  onChange={(e) => setConfig({ ...config, customer_id: e.target.value || undefined })}
+                  className="w-full rounded-lg border border-gray-200 px-3 py-2 text-xs focus:ring-2 focus:ring-brand-red/40 focus:border-brand-red/60"
+                >
+                  <option value="">All customers</option>
+                  {customersList.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.display_name || c.name || c.id}
+                    </option>
+                  ))}
+                </select>
+                <p className="text-[10px] text-gray-500 mt-0.5">Filter chart by customer (projects/opportunities for that customer only)</p>
+              </div>
               <div>
                 <label className="block text-xs font-semibold text-gray-700 mb-1">Data</label>
                 <select

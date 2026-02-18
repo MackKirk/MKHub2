@@ -2991,6 +2991,7 @@ def calculate_estimate_values(estimate, db: Session) -> tuple[Optional[float], O
 def business_dashboard(
     division_id: Optional[str] = None,
     subdivision_id: Optional[str] = None,
+    customer_id: Optional[str] = None,
     date_from: Optional[str] = None,
     date_to: Optional[str] = None,
     mode: Optional[str] = "quantity",
@@ -2999,10 +3000,19 @@ def business_dashboard(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user)
 ):
-    """Get business dashboard statistics. opportunity_status_labels / project_status_labels: optional lists to filter by status."""
+    """Get business dashboard statistics. opportunity_status_labels / project_status_labels: optional lists to filter by status. customer_id: optional filter by customer (client)."""
     # Base queries
     opportunities_query = db.query(Project).filter(Project.is_bidding == True)
     projects_query = db.query(Project).filter(Project.is_bidding == False)
+
+    # Filter by customer (client) if provided
+    if customer_id:
+        try:
+            cid = uuid.UUID(customer_id)
+            opportunities_query = opportunities_query.filter(Project.client_id == cid)
+            projects_query = projects_query.filter(Project.client_id == cid)
+        except ValueError:
+            pass
 
     def _apply_status_filter(query, labels_param):
         if not labels_param or len(labels_param) == 0:
@@ -3240,6 +3250,7 @@ def _month_range(date_from: Optional[str], date_to: Optional[str], default_month
 def business_dashboard_timeseries(
     division_id: Optional[str] = None,
     subdivision_id: Optional[str] = None,
+    customer_id: Optional[str] = None,
     date_from: Optional[str] = None,
     date_to: Optional[str] = None,
     mode: Optional[str] = "quantity",
@@ -3247,7 +3258,7 @@ def business_dashboard_timeseries(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user)
 ):
-    """Get dashboard stats by month for line charts. Returns months (X) and series (one line per status/division)."""
+    """Get dashboard stats by month for line charts. Returns months (X) and series (one line per status/division). customer_id: optional filter by customer (client)."""
     from ..models.models import SettingList, SettingItem
     months = _month_range(date_from, date_to)
     if not months:
@@ -3316,6 +3327,11 @@ def business_dashboard_timeseries(
             cast(effective_start_dt, Date) <= end_d
         )
         base = apply_division_filters(base, subdiv_id=subdivision_id, div_id=division_id)
+        if customer_id:
+            try:
+                base = base.filter(Project.client_id == uuid.UUID(customer_id))
+            except ValueError:
+                pass
         rows = base.all()
         # Bucket (month, status) -> count or value
         agg = {}
@@ -3391,6 +3407,11 @@ def business_dashboard_timeseries(
             cast(effective_start_dt, Date) <= end_d
         )
         base = apply_division_filters(base, subdiv_id=subdivision_id, div_id=division_id)
+        if customer_id:
+            try:
+                base = base.filter(Project.client_id == uuid.UUID(customer_id))
+            except ValueError:
+                pass
         rows = base.all()
         agg = {}
         for p in rows:
@@ -4442,16 +4463,31 @@ def business_projects(
     return result
 
 
+def _apply_customer_filter(opp_query, proj_query, customer_id: Optional[str]):
+    """Apply customer_id (client_id) filter to opportunity and project queries if customer_id is set."""
+    if not customer_id:
+        return opp_query, proj_query
+    try:
+        cid = uuid.UUID(customer_id)
+        return (
+            opp_query.filter(Project.client_id == cid),
+            proj_query.filter(Project.client_id == cid),
+        )
+    except ValueError:
+        return opp_query, proj_query
+
+
 @router.get("/business/divisions-stats")
 def business_divisions_stats(
     division_id: Optional[str] = None,
+    customer_id: Optional[str] = None,
     date_from: Optional[str] = None,
     date_to: Optional[str] = None,
     mode: Optional[str] = "quantity",
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user)
 ):
-    """Get statistics for each project division, or subdivisions of a specific division"""
+    """Get statistics for each project division, or subdivisions of a specific division. customer_id: optional filter by customer (client)."""
     from ..models.models import SettingList, SettingItem
     
     divisions_list = db.query(SettingList).filter(SettingList.name == "project_divisions").first()
@@ -4521,6 +4557,8 @@ def business_divisions_stats(
                         proj_query = proj_query.filter(cast(effective_start_dt, Date) <= end_d)
                     except Exception:
                         pass
+                
+                opp_query, proj_query = _apply_customer_filter(opp_query, proj_query, customer_id)
                 
                 opportunities_count = opp_query.count()
                 projects_count = proj_query.count()
@@ -4650,6 +4688,8 @@ def business_divisions_stats(
                         proj_query = proj_query.filter(cast(effective_start_dt, Date) <= end_d)
                     except Exception:
                         pass
+                
+                opp_query, proj_query = _apply_customer_filter(opp_query, proj_query, customer_id)
                 
                 opportunities_count = opp_query.count()
                 projects_count = proj_query.count()
@@ -4789,6 +4829,8 @@ def business_divisions_stats(
                     proj_query = proj_query.filter(cast(effective_start_dt, Date) <= end_d)
                 except Exception:
                     pass
+            
+            opp_query, proj_query = _apply_customer_filter(opp_query, proj_query, customer_id)
             
             opportunities_count = opp_query.count()
             projects_count = proj_query.count()

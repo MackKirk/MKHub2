@@ -1,6 +1,6 @@
 import '@/styles/react-grid-layout.css';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import ReactGridLayout, { WidthProvider } from 'react-grid-layout/legacy';
 import type { Layout as RGLLayout } from 'react-grid-layout/legacy';
 import { api } from '@/lib/api';
@@ -21,20 +21,50 @@ const COLUMNS = 8;
 const ROW_HEIGHT = 100;
 const MARGIN: [number, number] = [16, 16];
 
+function sanitizeLayout(items: LayoutItem[]): LayoutItem[] {
+  // Clamp items to the grid bounds to avoid distorted layouts on load.
+  return items.map((l) => {
+    const w = Math.min(Math.max(1, l.w), COLUMNS);
+    const h = Math.max(1, l.h);
+    let x = Math.max(0, l.x);
+    if (x + w > COLUMNS) x = Math.max(0, COLUMNS - w);
+    const y = Math.max(0, l.y);
+    return { ...l, x, y, w, h };
+  });
+}
+
 /** Migrate layout from 4-col to 8-col scale (double x and w). */
 function migrateLayoutTo8Col(items: LayoutItem[]): LayoutItem[] {
   if (items.length === 0) return items;
+  // 4-col layouts always fit within 0..4 (x+w<=4). If any item exceeds that,
+  // it's already using the 8-col scale and must NOT be migrated.
+  const maxXPlusW = Math.max(...items.map((l) => l.x + l.w));
+  const maxX = Math.max(...items.map((l) => l.x));
   const maxW = Math.max(...items.map((l) => l.w));
-  if (maxW > 4) return items; // already 8-col scale
+  const looksLike4Col = maxXPlusW <= 4 && maxX < 4 && maxW <= 4;
+  if (!looksLike4Col) return items; // already 8-col scale
   return items.map((l) => ({ ...l, x: l.x * 2, w: l.w * 2 }));
 }
 
 export default function Home() {
   const queryClient = useQueryClient();
   const confirm = useConfirm();
-  const { data: saved, isLoading } = useQuery({
+  const todayLabel = useMemo(
+    () =>
+      new Date().toLocaleDateString('en-CA', {
+        weekday: 'long',
+        year: 'numeric',
+        month: 'short',
+        day: 'numeric',
+      }),
+    []
+  );
+
+  const { data: saved, isLoading, isFetched } = useQuery({
     queryKey: ['home-dashboard'],
     queryFn: () => api<HomeDashboardState | null>('GET', '/users/me/home-dashboard'),
+    refetchOnWindowFocus: false,
+    staleTime: 2 * 60 * 1000,
   });
 
   const [layout, setLayout] = useState<LayoutItem[]>(DEFAULT_HOME_DASHBOARD.layout);
@@ -42,28 +72,41 @@ export default function Home() {
   const [isEditMode, setIsEditMode] = useState(false);
   const [addModalOpen, setAddModalOpen] = useState(false);
   const [configWidgetId, setConfigWidgetId] = useState<string | null>(null);
+  const hasHydratedFromServer = useRef(false);
+  const [hasResolvedInitial, setHasResolvedInitial] = useState(false);
 
+  // Apply server state on initial load (and after full page reload); avoid overwriting when refetch returns stale data
   useEffect(() => {
+    if (!isFetched) return;
+    if (!hasResolvedInitial) setHasResolvedInitial(true);
     if (saved === undefined || saved === null) return;
-    if (Array.isArray(saved.layout) && Array.isArray(saved.widgets)) {
-      setLayout(migrateLayoutTo8Col(saved.layout));
-      setWidgets(saved.widgets);
-    }
-  }, [saved]);
+    const rawLayout = saved.layout;
+    const rawWidgets = saved.widgets;
+    const layoutList = Array.isArray(rawLayout) ? rawLayout : (typeof rawLayout === 'string' ? (() => { try { const p = JSON.parse(rawLayout); return Array.isArray(p) ? p : []; } catch { return []; } })() : []);
+    const widgetsList = Array.isArray(rawWidgets) ? rawWidgets : (typeof rawWidgets === 'string' ? (() => { try { const p = JSON.parse(rawWidgets); return Array.isArray(p) ? p : []; } catch { return []; } })() : []);
+    if (hasHydratedFromServer.current) return;
+    hasHydratedFromServer.current = true;
+    setLayout(sanitizeLayout(migrateLayoutTo8Col(layoutList as LayoutItem[])));
+    setWidgets(widgetsList as WidgetDef[]);
+  }, [saved, isFetched]);
 
   const saveDashboard = useCallback(async (nextLayout: LayoutItem[], nextWidgets: WidgetDef[]) => {
     try {
-      await api('PUT', '/users/me/home-dashboard', { layout: nextLayout, widgets: nextWidgets });
-      queryClient.setQueryData(['home-dashboard'], { layout: nextLayout, widgets: nextWidgets });
+      const safeLayout = sanitizeLayout(nextLayout);
+      await api('PUT', '/users/me/home-dashboard', { layout: safeLayout, widgets: nextWidgets });
+      queryClient.setQueryData(['home-dashboard'], { layout: safeLayout, widgets: nextWidgets });
       toast.success('Dashboard saved');
     } catch {
       toast.error('Failed to save dashboard');
     }
   }, [queryClient]);
 
+  // Only apply layout changes from the grid when in edit mode. On load, the grid compacts
+  // (compactType="vertical") and fires onLayoutChange, which would overwrite the saved layout.
   const handleLayoutChange = useCallback((newLayout: RGLLayout) => {
+    if (!isEditMode) return;
     setLayout(newLayout.map(({ i, x, y, w, h }) => ({ i, x, y, w, h })));
-  }, []);
+  }, [isEditMode]);
 
   const handleRemoveWidget = useCallback(async (id: string) => {
     const result = await confirm({
@@ -100,26 +143,55 @@ export default function Home() {
     saveDashboard(layout, widgets);
   }, [layout, widgets, saveDashboard]);
 
+  const handleCancelEdit = useCallback(() => {
+    const saved = queryClient.getQueryData(['home-dashboard']) as HomeDashboardState | null | undefined;
+    if (saved != null) {
+      const rawLayout = saved.layout;
+      const rawWidgets = saved.widgets;
+      const layoutList = Array.isArray(rawLayout) ? rawLayout : (typeof rawLayout === 'string' ? (() => { try { const p = JSON.parse(rawLayout); return Array.isArray(p) ? p : []; } catch { return []; } })() : []);
+      const widgetsList = Array.isArray(rawWidgets) ? rawWidgets : (typeof rawWidgets === 'string' ? (() => { try { const p = JSON.parse(rawWidgets); return Array.isArray(p) ? p : []; } catch { return []; } })() : []);
+      setLayout(sanitizeLayout(layoutList as LayoutItem[]));
+      setWidgets(widgetsList as WidgetDef[]);
+    }
+    setIsEditMode(false);
+    setConfigWidgetId(null);
+  }, [queryClient]);
+
   const openConfig = useCallback((id: string) => setConfigWidgetId(id), []);
   const closeConfig = useCallback(() => setConfigWidgetId(null), []);
 
   const configWidget = configWidgetId ? widgets.find((w) => w.id === configWidgetId) ?? null : null;
   const handleSaveConfig = useCallback((widgetId: string, nextConfig: Record<string, unknown>, title?: string) => {
-    setWidgets((prev) => {
-      const next = prev.map((w) => (w.id === widgetId ? { ...w, config: nextConfig, ...(title !== undefined ? { title } : {}) } : w));
-      saveDashboard(layout, next);
-      return next;
-    });
+    const nextWidgets = widgets.map((w) =>
+      w.id === widgetId ? { ...w, config: nextConfig, ...(title !== undefined ? { title } : {}) } : w
+    );
+    setWidgets(nextWidgets);
+    saveDashboard(layout, nextWidgets);
     setConfigWidgetId(null);
-  }, [layout, saveDashboard]);
+  }, [layout, widgets, saveDashboard]);
+
+  const showLoading = isLoading || !hasResolvedInitial;
 
   return (
-    <LoadingOverlay isLoading={isLoading} text="Loading dashboard…" minHeight="min-h-[50vh]">
+    <LoadingOverlay isLoading={showLoading} text="Loading dashboard…" minHeight="min-h-[50vh]">
     <AnimationReadyProvider loaded={!isLoading} delay={80}>
-    <div className="p-4 md:p-6 max-w-[1600px] mx-auto">
-      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-        <h1 className="text-xl font-semibold text-gray-900">My Dashboard</h1>
-        <div className="flex items-center gap-2">
+    <div className="max-w-[1600px] mx-auto space-y-4">
+      {/* Title Bar - same as Overview (personal) */}
+      <div className="rounded-xl border bg-white p-4">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3 flex-1">
+            <div>
+              <div className="text-xl font-semibold text-gray-900">My Dashboard</div>
+            </div>
+          </div>
+          <div className="text-right">
+            <div className="text-[10px] font-medium text-gray-500 uppercase tracking-wide">Today</div>
+            <div className="text-xs font-semibold text-gray-700 mt-0.5">{todayLabel}</div>
+          </div>
+        </div>
+      </div>
+
+      <div className="mb-4 flex flex-wrap items-center justify-start gap-2">
           {isEditMode ? (
             <>
               <button
@@ -138,6 +210,13 @@ export default function Home() {
               </button>
               <button
                 type="button"
+                onClick={handleCancelEdit}
+                className="px-3 py-2 rounded-lg border border-gray-300 bg-white text-gray-700 hover:bg-gray-50 text-sm font-medium"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
                 onClick={handleDoneEdit}
                 className="px-3 py-2 rounded-lg bg-[#7f1010] text-white hover:bg-[#a31414] text-sm font-medium"
               >
@@ -153,7 +232,6 @@ export default function Home() {
               Customize / Edit dashboard
             </button>
           )}
-        </div>
       </div>
 
       {widgets.length === 0 ? (

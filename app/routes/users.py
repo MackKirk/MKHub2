@@ -1,7 +1,9 @@
+import json
 from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, HTTPException, Body
+from pydantic import BaseModel
 from sqlalchemy.orm import Session
-from typing import Optional, List
+from typing import Optional, List, Any
 import uuid
 
 from ..db import get_db
@@ -14,28 +16,52 @@ router = APIRouter(prefix="/users", tags=["users"])
 
 # ---------- Home dashboard (must be before /{user_id}) ----------
 
+
+def _ensure_list(value: Any) -> list:
+    """Ensure value is a list (SQLite/JSON columns can sometimes return str)."""
+    if value is None:
+        return []
+    if isinstance(value, list):
+        return value
+    if isinstance(value, str):
+        try:
+            parsed = json.loads(value)
+            return parsed if isinstance(parsed, list) else []
+        except (TypeError, ValueError):
+            return []
+    return []
+
+
+class HomeDashboardUpdate(BaseModel):
+    """Request body for PUT /users/me/home-dashboard."""
+    layout: List[Any] = []
+    widgets: List[Any] = []
+
+
 @router.get("/me/home-dashboard")
 def get_my_home_dashboard(db: Session = Depends(get_db), user: User = Depends(get_current_user)):
     """Get current user's home dashboard layout and widgets. Returns null if not set (frontend uses default)."""
     row = db.query(UserHomeDashboard).filter(UserHomeDashboard.user_id == user.id).first()
     if not row:
         return None
-    return {"layout": row.layout or [], "widgets": row.widgets or []}
+    layout = _ensure_list(row.layout)
+    widgets = _ensure_list(row.widgets)
+    return {"layout": layout, "widgets": widgets}
 
 
 @router.put("/me/home-dashboard")
 def put_my_home_dashboard(
-    payload: dict = Body(...),
+    payload: HomeDashboardUpdate,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
     """Create or update current user's home dashboard layout and widgets."""
-    layout = payload.get("layout")
-    widgets = payload.get("widgets")
-    if layout is None:
-        layout = []
-    if widgets is None:
-        widgets = []
+    layout = payload.layout if payload.layout is not None else []
+    widgets = payload.widgets if payload.widgets is not None else []
+    if not isinstance(layout, list):
+        layout = _ensure_list(layout)
+    if not isinstance(widgets, list):
+        widgets = _ensure_list(widgets)
     row = db.query(UserHomeDashboard).filter(UserHomeDashboard.user_id == user.id).first()
     if row:
         row.layout = layout
@@ -45,7 +71,8 @@ def put_my_home_dashboard(
         row = UserHomeDashboard(user_id=user.id, layout=layout, widgets=widgets)
         db.add(row)
     db.commit()
-    return {"layout": row.layout, "widgets": row.widgets}
+    db.refresh(row)
+    return {"layout": _ensure_list(row.layout), "widgets": _ensure_list(row.widgets)}
 
 
 def _user_to_dict(u: User, ep: Optional[EmployeeProfile]) -> dict:
