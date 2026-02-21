@@ -1,4 +1,4 @@
-import { useRef, useState, useCallback, useEffect } from 'react';
+import { useRef, useState, useCallback, useEffect, Fragment } from 'react';
 import type { DocElement } from '@/types/documentCreator';
 import { ElementOptionsPopover } from '@/components/ElementOptionsPopover';
 
@@ -457,12 +457,15 @@ export default function DocumentPreview({
       if (el.type === 'block' && lockBlockElements) return;
       const target = e.target as HTMLElement;
       if (target.closest('textarea') || target.closest('input')) return;
-      const movingIds = selectedElementIds.includes(el.id)
-        ? selectedElementIds.filter((id) => {
-            const o = elements.find((x) => x.id === id);
-            return o && !o.locked;
-          })
-        : [el.id];
+      // When element has lockPosition, we don't move it but still capture so we can select on click (movingIds = [])
+      const movingIds = el.lockPosition
+        ? []
+        : selectedElementIds.includes(el.id)
+          ? selectedElementIds.filter((id) => {
+              const o = elements.find((x) => x.id === id);
+              return o && !o.locked && !o.lockPosition;
+            })
+          : [el.id];
       const startPositions: Record<string, { x_pct: number; y_pct: number }> = {};
       movingIds.forEach((id) => {
         const o = elements.find((x) => x.id === id);
@@ -485,6 +488,7 @@ export default function DocumentPreview({
       e.stopPropagation();
       if (e.button !== 0) return;
       if (el.locked) return;
+      if (el.lockPosition) return;
       if (el.type === 'block' && lockBlockElements) return;
       resizeRef.current = {
         elementId: el.id,
@@ -545,7 +549,8 @@ export default function DocumentPreview({
       const drag = dragRef.current;
       dragRef.current = null;
       setDragGuideLines(null);
-      if (drag && drag.movingIds.includes(el.id) && !drag.hasMoved) {
+      // Select on click: either we were dragging this element and didn't move, or we clicked with lockPosition (movingIds empty)
+      if (drag && !drag.hasMoved && (drag.movingIds.includes(el.id) || drag.movingIds.length === 0)) {
         onElementClick?.(el.id, e);
       }
     },
@@ -633,7 +638,7 @@ export default function DocumentPreview({
     e.stopPropagation();
     if (el.locked) return;
     if (el.type === 'text') setEditingElementId(el.id);
-  }, []);
+  }, []); // lockPosition does not block double-click to edit
 
   const commitInlineEdit = useCallback(() => {
     setEditingElementId(null);
@@ -758,12 +763,13 @@ export default function DocumentPreview({
             const isEditing = editingElementId === el.id && el.type === 'text' && !el.locked;
             const isBlock = el.type === 'block';
             const isLocked = !!el.locked;
-            const showHandles = isSelected && !isEditing && !(isBlock && lockBlockElements) && !isLocked && selectedElementIds.length === 1;
+            const isPositionLocked = !!el.lockPosition;
+            const showHandles = isSelected && !isEditing && !(isBlock && lockBlockElements) && !isLocked && !isPositionLocked && selectedElementIds.length === 1;
             const isImagePlaceholder = el.type === 'image' && !el.content;
 
             return (
+              <Fragment key={el.id}>
               <div
-                key={el.id}
                 onPointerDown={(e) => handlePointerDown(e, el)}
                 onPointerMove={handlePointerMove}
                 onPointerUp={(e) => handlePointerUp(e, el)}
@@ -775,7 +781,7 @@ export default function DocumentPreview({
                 onClick={(e) => e.stopPropagation()}
                 onDoubleClick={(e) => handleDoubleClick(e, el)}
                 className={`absolute border transition-colors rounded ${
-                  isEditing ? 'cursor-text overflow-hidden' : isLocked ? 'cursor-default overflow-hidden' : isBlock && lockBlockElements ? 'cursor-default overflow-hidden' : 'cursor-move'
+                  isEditing ? 'cursor-text overflow-hidden' : isLocked ? 'cursor-default overflow-hidden' : isPositionLocked ? 'cursor-default overflow-hidden' : isBlock && lockBlockElements ? 'cursor-default overflow-hidden' : 'cursor-move'
                 } ${isSelected ? 'ring-2 ring-brand-red border-brand-red overflow-visible' : 'overflow-hidden border-transparent hover:border-gray-300'}`}
                 style={{
                   left: `${x * 100}%`,
@@ -848,7 +854,7 @@ export default function DocumentPreview({
                   </div>
                 ) : isImagePlaceholder ? (
                   <div className="w-full h-full rounded border-2 border-dashed border-gray-400 bg-gray-50/80 flex items-center justify-center pointer-events-none">
-                    <span className="text-xs text-gray-500">Área para imagem</span>
+                    <span className="text-xs text-gray-500">Image area</span>
                   </div>
                 ) : (
                   el.content && (
@@ -875,6 +881,32 @@ export default function DocumentPreview({
                     />
                   ))}
               </div>
+              {isSelected && isPositionLocked && !isBlock && onUpdateElement && (
+                <div
+                  className="absolute flex items-center justify-between gap-2 px-2 py-1.5 rounded bg-sky-50 border border-sky-200 shadow-sm pointer-events-auto z-10"
+                  style={{
+                    left: `${x * 100}%`,
+                    top: `${(y + h) * 100 + 0.3}%`,
+                    width: `${w * 100}%`,
+                  }}
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <span className="text-xs text-sky-800 flex-1 min-w-0 truncate">
+                    This element has movement blocked.
+                  </span>
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onUpdateElement(el.id, (prev) => ({ ...prev, lockPosition: false }));
+                    }}
+                    className="flex-shrink-0 px-2 py-1 rounded text-xs font-medium bg-sky-600 text-white hover:bg-sky-700 border-0"
+                  >
+                    Unblock
+                  </button>
+                </div>
+              )}
+            </Fragment>
             );
           })}
           {/* Snap guide lines (alignment references while dragging) */}

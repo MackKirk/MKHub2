@@ -7,7 +7,7 @@ import DocumentPreview from '@/components/DocumentPreview';
 import DocumentPagesStrip from '@/components/DocumentPagesStrip';
 import { AddPageModal } from '@/components/AddPageModal';
 import type { DocumentPage, DocElement, PageMargins } from '@/types/documentCreator';
-import { DOCUMENT_EDITOR_FONTS, createTextElement, createImageElement, createImagePlaceholder, createBlockElement } from '@/types/documentCreator';
+import { DOCUMENT_EDITOR_FONTS, TEXT_STYLE_PRESETS, createTextElement, createImageElement, createImagePlaceholder, createBlockElement } from '@/types/documentCreator';
 
 type Template = {
   id: string;
@@ -166,6 +166,16 @@ function LockIcon({ locked, className }: { locked: boolean; className?: string }
   );
 }
 
+/** Pin icon: block move (position locked) but still editable */
+function PinIcon({ pinned, className }: { pinned: boolean; className?: string }) {
+  return (
+    <svg className={className ?? 'w-4 h-4'} fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+      <path strokeLinecap="round" strokeLinejoin="round" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+    </svg>
+  );
+}
+
 type AlignKind = 'left' | 'right' | 'centerH' | 'top' | 'bottom' | 'centerV';
 
 function SelectedElementRibbon({
@@ -193,10 +203,13 @@ function SelectedElementRibbon({
   const isText = element?.type === 'text';
   const hasImage = !!element && isImage && !!element.content;
   const isLocked = !!element?.locked;
+  const isPositionLocked = !!element?.lockPosition;
   const multi = selectedElementIds.length > 1;
   const selectedEls = elements.filter((e) => selectedElementIds.includes(e.id));
   const allLocked = multi && selectedEls.every((e) => e.locked);
   const anyLocked = multi && selectedEls.some((e) => e.locked);
+  const allPositionLocked = multi && selectedEls.every((e) => e.lockPosition);
+  const anyPositionLocked = multi && selectedEls.some((e) => e.lockPosition);
 
   const handleSelectFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -245,6 +258,26 @@ function SelectedElementRibbon({
                 title="Delete selected"
               >
                 Delete
+              </button>
+              <button
+                type="button"
+                onClick={() => selectedEls.forEach((el) => onUpdate(el.id, (e) => ({ ...e, lockPosition: true })))}
+                disabled={allPositionLocked}
+                className="px-2 py-1 rounded border text-xs flex items-center gap-1 border-gray-300 text-gray-700 hover:bg-gray-50"
+                title="Block move (still editable)"
+              >
+                <PinIcon pinned={true} className="w-3.5 h-3.5" />
+                Block move
+              </button>
+              <button
+                type="button"
+                onClick={() => selectedEls.forEach((el) => onUpdate(el.id, (e) => ({ ...e, lockPosition: false })))}
+                disabled={!anyPositionLocked}
+                className="px-2 py-1 rounded border text-xs flex items-center gap-1 text-gray-700 border-gray-300 hover:bg-gray-50"
+                title="Allow move"
+              >
+                <PinIcon pinned={false} className="w-3.5 h-3.5" />
+                Allow move
               </button>
             </>
           ) : null}
@@ -309,6 +342,18 @@ function SelectedElementRibbon({
                 title={isLocked ? 'Unlock the element first to delete' : 'Delete'}
               >
                 Delete
+              </button>
+              <button
+                type="button"
+                onClick={() => element && onUpdate(id, (el) => ({ ...el, lockPosition: !el.lockPosition }))}
+                disabled={!element}
+                className={`px-2 py-1 rounded border text-xs flex items-center gap-1 ${
+                  element && isPositionLocked ? 'bg-sky-50 border-sky-200 text-sky-700' : 'border-gray-300 text-gray-700 hover:bg-gray-50'
+                }`}
+                title={isPositionLocked ? 'Allow move' : 'Block move (still edit text/image)'}
+              >
+                <PinIcon pinned={isPositionLocked} className="w-3.5 h-3.5" />
+                {isPositionLocked ? 'Allow move' : 'Block move'}
               </button>
             </>
           ) : null}
@@ -395,11 +440,30 @@ function SelectedElementRibbon({
 
         {element && isText && !isLocked && (
           <>
-            <div className="flex items-center gap-2 flex-shrink-0">
+            <div className="flex items-center gap-2 flex-shrink-0 flex-wrap">
+              <select
+                value=""
+                onChange={(e) => {
+                  const preset = TEXT_STYLE_PRESETS.find((p) => p.id === e.target.value);
+                  if (preset) onUpdate(id, (el) => ({ ...el, fontFamily: preset.fontFamily, fontWeight: preset.fontWeight, fontSize: preset.fontSize, color: preset.color }));
+                  e.target.value = '';
+                }}
+                className="h-8 pl-2 pr-6 rounded border border-gray-300 bg-white text-sm focus:ring-2 focus:ring-brand-red/40"
+                title="Aplicar padrão"
+              >
+                <option value="">Padrão...</option>
+                {TEXT_STYLE_PRESETS.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.label}
+                  </option>
+                ))}
+              </select>
+
               <select
                 value={element.fontFamily ?? 'Montserrat'}
                 onChange={(e) => onUpdate(id, (el) => ({ ...el, fontFamily: e.target.value as any }))}
                 className="h-8 px-2 rounded border border-gray-300 bg-white text-sm focus:ring-2 focus:ring-brand-red/40"
+                title="Fonte"
               >
                 {DOCUMENT_EDITOR_FONTS.map((f) => (
                   <option key={f} value={f}>
@@ -431,16 +495,20 @@ function SelectedElementRibbon({
                 </button>
               </div>
 
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-1">
+                <label className="text-xs text-gray-500 whitespace-nowrap">Tamanho</label>
                 <input
-                  type="range"
-                  min={8}
-                  max={72}
+                  type="number"
+                  min={6}
+                  max={99}
                   value={element.fontSize ?? 12}
-                  onChange={(e) => onUpdate(id, (el) => ({ ...el, fontSize: Number(e.target.value) }))}
-                  className="w-28 h-2 rounded accent-brand-red"
+                  onChange={(e) => {
+                    const n = Number(e.target.value);
+                    if (!Number.isNaN(n)) onUpdate(id, (el) => ({ ...el, fontSize: Math.max(6, Math.min(99, n)) }));
+                  }}
+                  className="h-8 w-14 px-2 rounded border border-gray-300 bg-white text-sm text-right focus:ring-2 focus:ring-brand-red/40"
+                  title="Tamanho da fonte (px)"
                 />
-                <span className="text-xs text-gray-600 w-8 text-right">{element.fontSize ?? 12}</span>
               </div>
 
               <input
@@ -448,7 +516,7 @@ function SelectedElementRibbon({
                 value={element.color ?? '#000000'}
                 onChange={(e) => onUpdate(id, (el) => ({ ...el, color: e.target.value }))}
                 className="w-8 h-8 rounded border border-gray-300 cursor-pointer p-0.5 bg-white"
-                title="Text color"
+                title="Cor do texto"
               />
             </div>
 
@@ -750,9 +818,9 @@ export default function DocumentEditor(props: DocumentEditorProps) {
         return;
       }
 
-      // Arrow keys: move all selected elements (unless locked). Shift = move by 5%
-      const step = e.shiftKey ? 5 : 1;
-      const toMove = selectedEls.filter((el) => !el.locked);
+      // Arrow keys: move all selected elements (unless locked or position locked). Shift = move by 5%
+      const step = e.shiftKey ? 1 : 0.25;
+      const toMove = selectedEls.filter((el) => !el.locked && !el.lockPosition);
       if (toMove.length > 0 && ['arrowleft', 'arrowright', 'arrowup', 'arrowdown'].includes(key)) {
         let dx = 0;
         let dy = 0;
@@ -958,7 +1026,7 @@ export default function DocumentEditor(props: DocumentEditorProps) {
     (alignment: AlignKind) => {
       const ids = selectedElementIds.filter((id) => {
         const el = elements.find((e) => e.id === id);
-        return el && !el.locked;
+        return el && !el.locked && !el.lockPosition;
       });
       if (ids.length < 2) return;
       const sel = elements.filter((e) => ids.includes(e.id));
@@ -1571,6 +1639,22 @@ export default function DocumentEditor(props: DocumentEditorProps) {
                     >
                       <LockIcon locked={!!el.locked} className="w-3.5 h-3.5" />
                     </button>
+                    {el.type !== 'block' && (
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleUpdateElementWithHistory(el.id, (prev) => ({ ...prev, lockPosition: !prev.lockPosition }));
+                        }}
+                        className={`flex-shrink-0 p-0.5 rounded transition-colors ${
+                          el.lockPosition ? 'text-sky-600 hover:bg-sky-50' : 'text-gray-400 hover:bg-gray-100 hover:text-gray-600'
+                        }`}
+                        title={el.lockPosition ? 'Allow move' : 'Block move'}
+                        aria-label={el.lockPosition ? 'Allow move' : 'Block move'}
+                      >
+                        <PinIcon pinned={!!el.lockPosition} className="w-3.5 h-3.5" />
+                      </button>
+                    )}
                     <button
                       type="button"
                       onClick={(e) => {

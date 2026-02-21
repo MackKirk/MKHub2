@@ -25,6 +25,8 @@ export type DocElement = {
   imagePosition?: string;
   /** When true, element cannot be moved, resized, or edited until unlocked */
   locked?: boolean;
+  /** When true, element cannot be moved or resized but can still be edited (text, image). Use to avoid moving by accident. */
+  lockPosition?: boolean;
 };
 
 /** Content area margins (percent). Elements cannot be placed outside. */
@@ -48,6 +50,13 @@ export type DocumentPage = {
 
 export const DOCUMENT_EDITOR_FONTS = ['Montserrat', 'Open Sans'] as const;
 export type DocumentEditorFont = (typeof DOCUMENT_EDITOR_FONTS)[number];
+
+/** Text style presets: font, weight, size, color. User can apply then override font/size. */
+export const TEXT_STYLE_PRESETS = [
+  { id: 'area-title', label: 'Padrão 01 (Area Title)', fontFamily: 'Montserrat' as const, fontWeight: 'bold' as const, fontSize: 13, color: '#B30000' },
+  { id: 'text', label: 'Padrão 02 (Text)', fontFamily: 'Montserrat' as const, fontWeight: 'normal' as const, fontSize: 12, color: '#787878' },
+  { id: 'title', label: 'Padrão 03 (Title)', fontFamily: 'Montserrat' as const, fontWeight: 'normal' as const, fontSize: 12, color: '#000000' },
+] as const;
 
 export function createTextElement(): DocElement {
   return {

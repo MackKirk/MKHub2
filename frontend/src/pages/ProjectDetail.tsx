@@ -3082,6 +3082,7 @@ function ProjectFilesTabEnhanced({ projectId, files, onRefresh }:{ projectId:str
   const [previewExcel, setPreviewExcel] = useState<{ url:string, name:string }|null>(null);
   const [sortBy, setSortBy] = useState<'uploaded_at' | 'name' | 'type'>('uploaded_at');
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
+  const [fileSearchQuery, setFileSearchQuery] = useState('');
   
   // Check permissions for files
   const { data: me } = useQuery({ queryKey:['me'], queryFn: ()=>api<any>('GET','/auth/me') });
@@ -3160,7 +3161,11 @@ function ProjectFilesTabEnhanced({ projectId, files, onRefresh }:{ projectId:str
 
   const currentFiles = useMemo(() => {
     const files = filesByCategory[selectedCategory] || [];
-    const sorted = [...files].sort((a, b) => {
+    const q = fileSearchQuery.trim().toLowerCase();
+    const filtered = q
+      ? files.filter(f => (f.original_name || f.file_object_id || '').toLowerCase().includes(q))
+      : files;
+    const sorted = [...filtered].sort((a, b) => {
       let aVal: any;
       let bVal: any;
       
@@ -3181,7 +3186,7 @@ function ProjectFilesTabEnhanced({ projectId, files, onRefresh }:{ projectId:str
     });
     
     return sorted;
-  }, [filesByCategory, selectedCategory, sortBy, sortOrder]);
+  }, [filesByCategory, selectedCategory, sortBy, sortOrder, fileSearchQuery]);
   
   const handleSort = (column: 'uploaded_at' | 'name' | 'type') => {
     if (sortBy === column) {
@@ -3475,17 +3480,41 @@ function ProjectFilesTabEnhanced({ projectId, files, onRefresh }:{ projectId:str
               }
             } : undefined}
           >
-            <div className="mb-3 flex items-center justify-between">
-              <div className="text-xs font-semibold">
-                {selectedCategory === 'all' ? 'All Files' : 
-                 selectedCategory === 'uncategorized' ? 'Uncategorized Files' :
-                 visibleCategories.find((c: any) => c.id === selectedCategory)?.name || 'Files'}
-                <span className="ml-2 text-gray-500">({currentFiles.length})</span>
+            <div className="mb-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+              <div className="flex items-center gap-3 flex-1 min-w-0">
+                <div className="relative flex-1 max-w-sm">
+                  <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none">
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
+                  </span>
+                  <input
+                    type="text"
+                    value={fileSearchQuery}
+                    onChange={(e) => setFileSearchQuery(e.target.value)}
+                    placeholder="Search by file name..."
+                    className="w-full pl-8 pr-3 py-1.5 text-xs border border-gray-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-brand-red focus:border-brand-red"
+                  />
+                  {fileSearchQuery && (
+                    <button
+                      type="button"
+                      onClick={() => setFileSearchQuery('')}
+                      className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                      aria-label="Clear search"
+                    >
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+                    </button>
+                  )}
+                </div>
+                <div className="text-xs font-semibold text-gray-700 whitespace-nowrap">
+                  {selectedCategory === 'all' ? 'All Files' : 
+                   selectedCategory === 'uncategorized' ? 'Uncategorized' :
+                   visibleCategories.find((c: any) => c.id === selectedCategory)?.name || 'Files'}
+                  <span className="ml-1 text-gray-500">({currentFiles.length})</span>
+                </div>
               </div>
               {canEditFiles && (
                 <button
                   onClick={() => setShowUpload(true)}
-                  className="px-2 py-1 rounded bg-brand-red text-white text-xs"
+                  className="px-2 py-1.5 rounded bg-brand-red text-white text-xs font-medium flex-shrink-0"
                 >
                   + Upload File
                 </button>
