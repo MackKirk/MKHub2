@@ -4,6 +4,7 @@ import { useState, useMemo, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { Link, useNavigate } from 'react-router-dom';
 import LoadingOverlay from '@/components/LoadingOverlay';
+import { DivisionIcon } from '@/components/DivisionIcon';
 
 // Hook for count-up animation
 function useCountUp(end: number, duration: number = 600, enabled: boolean = true): number {
@@ -183,23 +184,8 @@ type DashboardStats = {
   division_id?: string;
 };
 
-// Icon mapping for divisions
-const getDivisionIcon = (label: string): string => {
-  const iconMap: Record<string, string> = {
-    'Roofing': '🏠',
-    'Concrete Restoration & Waterproofing': '🏗️',
-    'Cladding & Exterior Finishes': '🧱',
-    'Repairs & Maintenance': '🔧',
-    'Mechanical': '🔩',
-    'Electrical': '⚡',
-    'Carpentry': '🪵',
-    'Welding & Custom Fabrication': '🔥',
-    'Structural Upgrading': '📐',
-    'Solar PV': '☀️',
-    'Green Roofing': '🌱',
-  };
-  return iconMap[label] || '📦';
-};
+// Division icons use images from @/icons via DivisionIcon component
+const getDivisionIcon = (label: string) => <DivisionIcon label={label} size={24} />;
 
 // Helper function to create pie chart path
 const createPieSlice = (startAngle: number, endAngle: number, radius: number, centerX: number, centerY: number): string => {

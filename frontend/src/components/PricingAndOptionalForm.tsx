@@ -1,23 +1,11 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
+import { DivisionIcon } from '@/components/DivisionIcon';
 
-const getDivisionIcon = (label: string): string => {
-  const iconMap: Record<string, string> = {
-    'Roofing': '🏠',
-    'Concrete Restoration & Waterproofing': '🏗️',
-    'Cladding & Exterior Finishes': '🧱',
-    'Repairs & Maintenance': '🔧',
-    'Mechanical': '🔩',
-    'Electrical': '⚡',
-    'Carpentry': '🪵',
-    'Welding & Custom Fabrication': '🔥',
-    'Structural Upgrading': '📐',
-    'Solar PV': '☀️',
-    'Green Roofing': '🌱',
-  };
-  return iconMap[label] || '📦';
-};
+function getDivisionIcon(label: string) {
+  return <DivisionIcon label={label} size={24} />;
+}
 
 function getDivisionInfoById(divisionId: string | undefined, projectDivisions: any[] | undefined): { icon: string; label: string } | null {
   if (!divisionId || !projectDivisions) return null;

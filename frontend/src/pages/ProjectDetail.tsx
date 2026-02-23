@@ -1,5 +1,6 @@
 import { useParams, Link, useLocation, useNavigate } from 'react-router-dom';
 import { useMemo, useState, useEffect, useCallback, useRef } from 'react';
+import type { ReactNode } from 'react';
 import { useQuery, useQueryClient, useQueries } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import { sortByLabel } from '@/lib/sortOptions';
@@ -13,6 +14,7 @@ import DispatchTab from '@/components/DispatchTab';
 import OrdersTab from '@/components/OrdersTab';
 import ProjectDocumentsTab from '@/components/ProjectDocumentsTab';
 import { formatDateLocal, getCurrentMonthLocal } from '@/lib/dateUtils';
+import { DivisionIcon } from '@/components/DivisionIcon';
 
 // Helper function to calculate and format time since status change
 function getTimeSinceStatusChange(project: any): string {
@@ -6917,23 +6919,8 @@ function ProjectQuickEdit({ projectId, proj, settings }:{ projectId:string, proj
   );
 }
 
-// Icon mapping for divisions
-const getDivisionIcon = (label: string): string => {
-  const iconMap: Record<string, string> = {
-    'Roofing': '🏠',
-    'Concrete Restoration & Waterproofing': '🏗️',
-    'Cladding & Exterior Finishes': '🧱',
-    'Repairs & Maintenance': '🔧',
-    'Mechanical': '🔩',
-    'Electrical': '⚡',
-    'Carpentry': '🪵',
-    'Welding & Custom Fabrication': '🔥',
-    'Structural Upgrading': '📐',
-    'Solar PV': '☀️',
-    'Green Roofing': '🌱',
-  };
-  return iconMap[label] || '📦';
-};
+// Division icons use images from @/icons via DivisionIcon component
+const getDivisionIcon = (label: string) => <DivisionIcon label={label} size={20} />;
 
 // Edit Status Modal Component
 function EditStatusModal({ projectId, currentStatus, currentStatusLabel, settings, isBidding, onClose, onSave }: {
@@ -7875,7 +7862,7 @@ function ProjectDivisionsHeroSection({ projectId, proj, hasEditPermission, liveP
   // Get division icons and labels with percentages
   const divisionIcons = useMemo(() => {
     if (!Array.isArray(projectDivIds) || projectDivIds.length === 0 || !projectDivisions) return [];
-    const icons: Array<{ icon: string; label: string; id: string; percentage: number }> = [];
+    const icons: Array<{ icon: ReactNode; label: string; id: string; percentage: number }> = [];
     for (const divId of projectDivIds) {
       for (const div of (projectDivisions || [])) {
         if (String(div.id) === String(divId)) {
@@ -8311,7 +8298,7 @@ function ProjectGeneralInfoCard({ projectId, proj, files, hasEditPermission }:{ 
   // Get division icons and labels
   const divisionIcons = useMemo(() => {
     if (!Array.isArray(projectDivIds) || projectDivIds.length === 0 || !projectDivisions) return [];
-    const icons: Array<{ icon: string; label: string; id: string }> = [];
+    const icons: Array<{ icon: ReactNode; label: string; id: string }> = [];
     for (const divId of projectDivIds) {
       for (const div of (projectDivisions || [])) {
         if (String(div.id) === String(divId)) {
