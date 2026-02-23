@@ -120,6 +120,7 @@ export default function ProposalForm({ mode, clientId: clientIdProp, siteId: sit
   const [additionalNotes, setAdditionalNotes] = useState<string>('');
   const [pricingItems, setPricingItems] = useState<{ name:string, price:string, quantity?:string, pst?:boolean, gst?:boolean, division_id?:string }[]>([]);
   const [optionalServices, setOptionalServices] = useState<{ service:string, price:string }[]>([]);
+  const [showDivisionModal, setShowDivisionModal] = useState(false);
   const [showSectionTypeModal, setShowSectionTypeModal] = useState(false);
   const [showTotalInPdf, setShowTotalInPdf] = useState<boolean>(true);
   const [pstRate, setPstRate] = useState<number>(7);
@@ -1835,7 +1836,301 @@ By signing the accompanying proposal, the Owner agrees to these Terms and Condit
         </div>
         )}
 
-        {/* Pricing and Optional Services are now in the dedicated Pricing tab. */}
+        {/* Pricing content - no card/header */}
+        <div className="p-3">
+          {!disabled && (
+            <div className="sticky top-0 z-30 bg-white/95 backdrop-blur mb-3 py-2 border-b">
+              <div className="flex items-center gap-2">
+                <div className="ml-auto flex items-center gap-3">
+                  <div className="text-xs font-medium text-gray-600">PST (%)</div>
+                  <input 
+                    type="number" 
+                    className="rounded-lg border border-gray-300 bg-white px-2 py-1 w-20 text-xs text-gray-900 focus:ring-1 focus:ring-gray-400 focus:border-gray-400" 
+                    value={pstRate} 
+                    min={0} 
+                    step={1} 
+                    onChange={e=>setPstRate(Number(e.target.value||0))} 
+                    disabled={disabled}
+                  />
+                  <div className="text-xs font-medium text-gray-600">GST (%)</div>
+                  <input 
+                    type="number" 
+                    className="rounded-lg border border-gray-300 bg-white px-2 py-1 w-20 text-xs text-gray-900 focus:ring-1 focus:ring-gray-400 focus:border-gray-400" 
+                    value={gstRate} 
+                    min={0} 
+                    step={1} 
+                    onChange={e=>setGstRate(Number(e.target.value||0))} 
+                    disabled={disabled}
+                  />
+                </div>
+              </div>
+            </div>
+          )}
+          {disabled && (
+            <div className="mb-4 flex items-center gap-4">
+              <div className="flex items-center gap-2">
+                <div className="text-xs font-medium text-gray-600">PST (%)</div>
+                <div className="text-sm font-semibold text-gray-900">{pstRate}%</div>
+              </div>
+              <div className="flex items-center gap-2">
+                <div className="text-xs font-medium text-gray-600">GST (%)</div>
+                <div className="text-sm font-semibold text-gray-900">{gstRate}%</div>
+              </div>
+            </div>
+          )}
+          <div className="space-y-2">
+            {pricingItems.map((c, i)=> {
+              const priceNum = parseFloat(parseAccounting(c.price || '0').replace(/,/g, '')) || 0;
+              const qtyNum = parseFloat(c.quantity || '1') || 1;
+              const lineTotal = priceNum * qtyNum;
+              
+              // Get division info for icon display
+              const divisionInfo = getDivisionInfoById(c.division_id, projectDivisions);
+              
+              return (
+                <div key={i} className="flex flex-col sm:flex-row gap-1.5 sm:gap-2 items-stretch sm:items-center w-full min-w-0">
+                  {/* Division Icon */}
+                  {divisionInfo && (
+                    <div className="relative group/divicon flex-shrink-0">
+                      <div className="text-lg cursor-pointer hover:scale-110 transition-transform flex items-center justify-center w-8 h-8">
+                        {divisionInfo.icon}
+                      </div>
+                      <div className="absolute left-0 bottom-full mb-1 px-2 py-1 bg-gray-900 text-white text-xs rounded whitespace-nowrap opacity-0 group-hover/divicon:opacity-100 transition-opacity pointer-events-none z-[9999] shadow-lg">
+                        {divisionInfo.label}
+                        <div className="absolute -bottom-1 left-2 w-2 h-2 bg-gray-900 rotate-45"></div>
+                      </div>
+                    </div>
+                  )}
+                  <input 
+                    className={`flex-1 min-w-0 rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-gray-900 focus:ring-1 focus:ring-gray-400 focus:border-gray-400 ${disabled ? 'bg-gray-100 cursor-not-allowed' : ''}`} 
+                    placeholder="Name" 
+                    value={c.name} 
+                    onChange={e=>{ 
+                      const v=e.target.value; 
+                      setPricingItems(arr=> arr.map((x,j)=> j===i? { ...x, name:v }: x)); 
+                    }}
+                    disabled={disabled} 
+                    readOnly={disabled} 
+                  />
+                  <input 
+                    type="text" 
+                    className={`flex-1 min-w-[100px] max-w-[140px] rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-gray-900 focus:ring-1 focus:ring-gray-400 focus:border-gray-400 ${disabled ? 'bg-gray-100 cursor-not-allowed' : ''}`} 
+                    placeholder="Price" 
+                    value={c.price} 
+                    onChange={e=>{ 
+                      const v = parseAccounting(e.target.value); 
+                      setPricingItems(arr=> arr.map((x,j)=> j===i? { ...x, price:v }: x)); 
+                    }} 
+                    onBlur={!disabled ? ()=> setPricingItems(arr=> arr.map((x,j)=> j===i? { ...x, price: formatAccounting(x.price) }: x)) : undefined} 
+                    disabled={disabled} 
+                    readOnly={disabled} 
+                  />
+                  <div className="flex items-center rounded-lg border border-gray-300 overflow-hidden min-w-[80px] max-w-[120px]">
+                    <input 
+                      type="number" 
+                      min="1"
+                      step="1"
+                      className={`flex-1 min-w-0 border-0 rounded-none px-2 py-1.5 text-xs text-gray-900 appearance-none [-moz-appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none ${disabled ? 'bg-gray-100 cursor-not-allowed' : ''}`} 
+                      placeholder="Qty" 
+                      value={c.quantity || '1'} 
+                      onChange={e=>{ 
+                        const v = e.target.value;
+                        const num = parseInt(v) || 1;
+                        const finalValue = num < 1 ? '1' : String(num);
+                        setPricingItems(arr=> arr.map((x,j)=> j===i? { ...x, quantity: finalValue }: x)); 
+                      }} 
+                      disabled={disabled} 
+                      readOnly={disabled} 
+                    />
+                    {!disabled && (
+                      <div className="flex flex-col flex-none border-l bg-white w-6">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const currentQty = parseInt(c.quantity || '1') || 1;
+                            const newQty = currentQty + 1;
+                            setPricingItems(arr=> arr.map((x,j)=> j===i? { ...x, quantity: String(newQty) }: x));
+                          }}
+                          className="px-0.5 py-0 text-[9px] leading-tight border-b hover:bg-gray-100 flex items-center justify-center flex-1"
+                          title="Increase"
+                        >
+                          ▲
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const currentQty = parseInt(c.quantity || '1') || 1;
+                            const newQty = Math.max(1, currentQty - 1);
+                            setPricingItems(arr=> arr.map((x,j)=> j===i? { ...x, quantity: String(newQty) }: x));
+                          }}
+                          className="px-0.5 py-0 text-[9px] leading-tight hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center flex-1"
+                          title="Decrease"
+                          disabled={parseInt(c.quantity || '1') <= 1}
+                        >
+                          ▼
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                  <div className={`rounded-lg border border-gray-300 px-2 py-1.5 bg-gray-50 min-w-[100px] max-w-[140px] flex-shrink-0 ${disabled ? 'cursor-not-allowed' : ''}`}>
+                    <div className="text-xs font-medium text-gray-700 text-right whitespace-nowrap overflow-hidden">
+                      ${formatAccounting(lineTotal)}
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-1.5 flex-shrink-0">
+                    <label className={`flex items-center gap-1 text-xs flex-shrink-0 ${disabled ? 'cursor-not-allowed' : 'cursor-pointer'}`}>
+                      <input 
+                        type="checkbox" 
+                        checked={c.pst === true}
+                        onChange={e=> setPricingItems(arr=> arr.map((x,j)=> j===i? { ...x, pst: e.target.checked }: x))}
+                        className={disabled ? 'cursor-not-allowed' : 'cursor-pointer'}
+                        disabled={disabled}
+                      />
+                      <span className="text-gray-700 whitespace-nowrap">PST</span>
+                    </label>
+                    <label className={`flex items-center gap-1 text-xs flex-shrink-0 ${disabled ? 'cursor-not-allowed' : 'cursor-pointer'}`}>
+                      <input 
+                        type="checkbox" 
+                        checked={c.gst === true}
+                        onChange={e=> setPricingItems(arr=> arr.map((x,j)=> j===i? { ...x, gst: e.target.checked }: x))}
+                        className={disabled ? 'cursor-not-allowed' : 'cursor-pointer'}
+                        disabled={disabled}
+                      />
+                      <span className="text-gray-700 whitespace-nowrap">GST</span>
+                    </label>
+                  </div>
+                  {!disabled && (
+                    <button 
+                      className="p-1 rounded bg-red-100 hover:bg-red-200 flex items-center justify-center transition-colors flex-shrink-0 w-7 h-7" 
+                      onClick={()=> setPricingItems(arr=> arr.filter((_,j)=> j!==i))}
+                      title="Remove"
+                    >
+                      <svg className="w-4 h-4 text-red-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                      </svg>
+                    </button>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+          {!disabled && (
+            <button 
+              className="mt-3 w-full border-2 border-dashed border-gray-300 rounded-lg p-2.5 hover:border-brand-red hover:bg-gray-50 transition-all text-center bg-white flex items-center justify-center disabled:opacity-60"
+              onClick={()=> {
+                // Only show modal if projectId exists and has divisions
+                if (projectId && project?.project_division_ids && project.project_division_ids.length > 0) {
+                  setShowDivisionModal(true);
+                } else {
+                  // Fallback: add item without division if no project/divisions
+                  setPricingItems(arr=> [...arr, { name:'', price:'', quantity:'1', pst: false, gst: false }]);
+                }
+              }}
+            >
+              <div className="text-lg text-gray-400 mr-2">+</div>
+              <div className="font-medium text-xs text-gray-700">Add Pricing Item</div>
+            </button>
+          )}
+
+          {/* Summary Section */}
+          <div className="mt-6">
+            <div className="rounded-xl border bg-white overflow-hidden">
+              {/* Summary Header - Gray */}
+              <div className="bg-gray-500 p-2.5 text-white font-semibold text-xs">
+                Summary
+              </div>
+              
+              {/* Two Cards Grid - inside Summary card */}
+              <div className="p-3">
+                <div className="grid md:grid-cols-2 gap-3">
+                  {/* Left Card */}
+                  <div className="rounded-lg border border-gray-200 bg-white p-3">
+                    <div className="space-y-1">
+                      <div className="flex items-center justify-between hover:bg-gray-50 rounded px-1 py-1 -mx-1"><span className="text-xs font-semibold">Total Direct Costs</span><span className="text-xs font-semibold">${totalNum.toFixed(2)}</span></div>
+                      {showPstInPdf && pst > 0 && (
+                        <div className="flex items-center justify-between hover:bg-gray-50 rounded px-1 py-1 -mx-1"><span className="text-xs">PST ({pstRate}%)</span><span className="text-xs">${pst.toFixed(2)}</span></div>
+                      )}
+                      <div className="flex items-center justify-between hover:bg-gray-50 rounded px-1 py-1 -mx-1"><span className="text-xs font-semibold">Sub-total</span><span className="text-xs font-semibold">${subtotal.toFixed(2)}</span></div>
+                    </div>
+                  </div>
+                  {/* Right Card */}
+                  <div className="rounded-lg border border-gray-200 bg-white p-3">
+                    <div className="space-y-1">
+                      {showGstInPdf && gst > 0 && (
+                        <div className="flex items-center justify-between hover:bg-gray-50 rounded px-1 py-1 -mx-1"><span className="text-xs">GST ({gstRate}%)</span><span className="text-xs">${gst.toFixed(2)}</span></div>
+                      )}
+                      <div className="flex items-center justify-between hover:bg-gray-50 rounded px-1 py-1 -mx-1"><span className="text-xs font-semibold">Final Total (with GST)</span><span className="text-xs font-semibold">${grandTotal.toFixed(2)}</span></div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Total and Show in PDF checkbox - hidden when showOnlyPricing */}
+          {!showOnlyPricing && (
+          <div className="mt-3 space-y-2">
+            <div className="flex items-center gap-2">
+              <div className="text-xs font-semibold">Total: <span className="text-gray-600">${formatAccounting(grandTotal)}</span></div>
+              <label className={`flex items-center gap-1 text-xs text-gray-600 ${disabled ? 'cursor-not-allowed' : 'cursor-pointer'}`}>
+                <input 
+                  type="checkbox" 
+                  checked={showTotalInPdf} 
+                  onChange={e=> setShowTotalInPdf(e.target.checked)}
+                  className={disabled ? 'cursor-not-allowed' : 'cursor-pointer'}
+                  disabled={disabled}
+                />
+                <span>Show Total in PDF</span>
+              </label>
+            </div>
+        </div>
+          )}
+        </div>
+
+        {/* Optional Services Block - hidden when showOnlyPricing */}
+        {!showOnlyPricing && (
+        <div className="rounded-xl border bg-white overflow-hidden">
+          <div 
+            className="bg-slate-200 p-2.5 text-gray-900 font-semibold text-xs flex items-center justify-between cursor-pointer hover:opacity-90 transition-opacity"
+            onClick={() => setSectionsExpanded(prev => ({ ...prev, optionalServices: !prev.optionalServices }))}
+          >
+            <span>Optional Services</span>
+            <svg 
+              className={`w-5 h-5 transition-transform duration-200 ${sectionsExpanded.optionalServices ? 'rotate-180' : ''}`}
+              fill="none" 
+              stroke="currentColor" 
+              viewBox="0 0 24 24"
+            >
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+            </svg>
+          </div>
+          {sectionsExpanded.optionalServices && (
+          <div className="p-3">
+          <div className="text-[10px] text-gray-600 mb-2">If no services are added, the "Optional Services" section will be hidden in the PDF.</div>
+            <div className="space-y-2">
+              {optionalServices.map((s, i)=> (
+                <div key={i} className="grid grid-cols-5 gap-2">
+                  <input className={`col-span-3 rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-gray-900 focus:ring-1 focus:ring-gray-400 focus:border-gray-400 ${disabled ? 'bg-gray-100 cursor-not-allowed' : ''}`} placeholder="Service" value={s.service} onChange={e=>{ const v=e.target.value; setOptionalServices(arr=> arr.map((x,j)=> j===i? { ...x, service:v }: x)); }} disabled={disabled} readOnly={disabled} />
+                  <input type="text" className={`col-span-1 rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-gray-900 focus:ring-1 focus:ring-gray-400 focus:border-gray-400 ${disabled ? 'bg-gray-100 cursor-not-allowed' : ''}`} placeholder="Price" value={s.price} onChange={e=>{ const v = parseAccounting(e.target.value); setOptionalServices(arr=> arr.map((x,j)=> j===i? { ...x, price:v }: x)); }} onBlur={!disabled ? ()=> setOptionalServices(arr=> arr.map((x,j)=> j===i? { ...x, price: formatAccounting(x.price) }: x)) : undefined} disabled={disabled} readOnly={disabled} />
+                  {!disabled && (
+                    <button className="col-span-1 px-2 py-1 rounded bg-gray-100 hover:bg-gray-200 text-xs" onClick={()=> setOptionalServices(arr=> arr.filter((_,j)=> j!==i))}>Remove</button>
+                  )}
+                </div>
+              ))}
+              {!disabled && (
+                <button 
+                  className="mt-3 w-full border-2 border-dashed border-gray-300 rounded-lg p-2.5 hover:border-brand-red hover:bg-gray-50 transition-all text-center bg-white flex items-center justify-center disabled:opacity-60"
+                  onClick={()=> setOptionalServices(arr=> [...arr, { service:'', price:'' }])}
+                >
+                  <div className="text-lg text-gray-400 mr-2">+</div>
+                  <div className="font-medium text-xs text-gray-700">Add Service</div>
+                </button>
+              )}
+            </div>
+          </div>
+          )}
+        </div>
+        )}
 
         {/* Terms Block - hidden when showOnlyPricing */}
         {!showOnlyPricing && (
@@ -2409,6 +2704,19 @@ By signing the accompanying proposal, the Owner agrees to these Terms and Condit
               setPickerForContact(null);
             }
           }}
+        />
+      )}
+
+      {/* Division Selection Modal */}
+      {showDivisionModal && projectId && project?.project_division_ids && (
+        <DivisionSelectionModal
+          projectDivisions={projectDivisions || []}
+          projectDivisionIds={project.project_division_ids || []}
+          onSelect={(divisionId) => {
+            setPricingItems(arr => [...arr, { name: '', price: '', quantity: '1', pst: false, gst: false, division_id: divisionId }]);
+            setShowDivisionModal(false);
+          }}
+          onClose={() => setShowDivisionModal(false)}
         />
       )}
 

@@ -7,7 +7,6 @@ import toast from 'react-hot-toast';
 import ImagePicker from '@/components/ImagePicker';
 import EstimateBuilder, { type EstimateBuilderRef } from '@/components/EstimateBuilder';
 import ProposalForm from '@/components/ProposalForm';
-import PricingAndOptionalForm from '@/components/PricingAndOptionalForm';
 import { useConfirm } from '@/components/ConfirmProvider';
 import CalendarMock from '@/components/CalendarMock';
 import DispatchTab from '@/components/DispatchTab';
@@ -387,8 +386,8 @@ export default function ProjectDetail(){
   const { data:employees } = useQuery({ queryKey:['employees'], queryFn: ()=>api<any[]>('GET','/employees') });
   // Check for tab query parameter
   const searchParams = new URLSearchParams(location.search);
-  const initialTab = (searchParams.get('tab') as 'overview'|'general'|'reports'|'dispatch'|'timesheet'|'files'|'photos'|'documents'|'proposal'|'pricing'|'estimate'|'orders'|null) || null;
-  const [tab, setTab] = useState<'overview'|'general'|'reports'|'dispatch'|'timesheet'|'files'|'photos'|'documents'|'proposal'|'pricing'|'estimate'|'orders'|null>(initialTab);
+  const initialTab = (searchParams.get('tab') as 'overview'|'general'|'reports'|'dispatch'|'timesheet'|'files'|'photos'|'documents'|'proposal'|'estimate'|'orders'|null) || null;
+  const [tab, setTab] = useState<'overview'|'general'|'reports'|'dispatch'|'timesheet'|'files'|'photos'|'documents'|'proposal'|'estimate'|'orders'|null>(initialTab);
   // Live pricing items (from ProposalForm) to update division percentages instantly without reload.
   const [livePricingItems, setLivePricingItems] = useState<any[] | null>(null);
   const [pickerOpen, setPickerOpen] = useState(false);
@@ -415,7 +414,6 @@ export default function ProjectDetail(){
         'files': 'business:projects:files:read',
         'documents': 'documents:access',
         'proposal': 'business:projects:proposal:read',
-        'pricing': 'business:projects:proposal:read',
         'estimate': 'business:projects:estimate:read',
         'orders': 'business:projects:orders:read',
       };
@@ -432,8 +430,8 @@ export default function ProjectDetail(){
     }
     
     const searchParams = new URLSearchParams(location.search);
-    const tabParam = searchParams.get('tab') as 'overview'|'general'|'reports'|'dispatch'|'timesheet'|'files'|'photos'|'documents'|'proposal'|'pricing'|'estimate'|'orders'|null;
-    if (tabParam && ['overview','general','reports','dispatch','timesheet','files','photos','documents','proposal','pricing','orders'].includes(tabParam)) {
+    const tabParam = searchParams.get('tab') as 'overview'|'general'|'reports'|'dispatch'|'timesheet'|'files'|'photos'|'documents'|'proposal'|'estimate'|'orders'|null;
+    if (tabParam && ['overview','general','reports','dispatch','timesheet','files','photos','documents','proposal','orders'].includes(tabParam)) {
       // Check permission before setting tab
       if (tabParam === 'overview' || hasTabPermission(tabParam)) {
         setTab(tabParam);
@@ -523,8 +521,8 @@ export default function ProjectDetail(){
 
   // Base available tabs
   const baseAvailableTabs = proj?.is_bidding 
-    ? (['overview','reports','files','documents','proposal','pricing'] as const)
-    : (['overview','reports','dispatch','timesheet','files','documents','proposal','pricing','orders'] as const);
+    ? (['overview','reports','files','documents','proposal'] as const)
+    : (['overview','reports','dispatch','timesheet','files','documents','proposal','orders'] as const);
   
   // Filter tabs based on permissions (only when user data is loaded)
   const availableTabs = useMemo(() => {
@@ -623,8 +621,7 @@ export default function ProjectDetail(){
       'timesheet': 'Timesheet',
       'files': 'Project Files',
       'documents': 'Documents',
-      'proposal': 'Proposal',
-      'pricing': 'Pricing',
+      'proposal': 'Pricing',
       'estimate': 'Estimate',
       'orders': 'Orders',
     };
@@ -643,8 +640,7 @@ export default function ProjectDetail(){
       'timesheet': 'Time tracking and hours',
       'files': 'Documents, photos and files',
       'documents': 'Create and edit documents, export to PDF',
-      'proposal': 'Project proposals',
-      'pricing': 'Pricing items and optional services',
+      'proposal': 'Project pricing',
       'estimate': 'Cost estimates and budgets',
       'orders': 'Purchase orders and supplies',
     };
@@ -1604,9 +1600,7 @@ export default function ProjectDetail(){
               {tab==='proposal' && (
                 <ProjectProposalTab projectId={String(id)} clientId={String(proj?.client_id||'')} siteId={String(proj?.site_id||'')} proposals={proposals||[]} statusLabel={proj?.status_label||''} settings={settings||{}} isBidding={proj?.is_bidding} onPricingItemsChange={setLivePricingItems} />
               )}
-              {tab==='pricing' && (
-                <ProjectPricingTab projectId={String(id)} clientId={String(proj?.client_id||'')} siteId={String(proj?.site_id||'')} proposals={proposals||[]} statusLabel={proj?.status_label||''} settings={settings||{}} isBidding={proj?.is_bidding} onPricingItemsChange={setLivePricingItems} />
-              )}
+
               {tab==='estimate' && (
                 <div className="rounded-xl border bg-white p-4">
                   <EstimateBuilder ref={estimateBuilderRef} projectId={String(id)} statusLabel={proj?.status_label||''} settings={settings||{}} isBidding={proj?.is_bidding} canEdit={canEditEstimate} />
@@ -4214,183 +4208,6 @@ function ProjectProposalTab({ projectId, clientId, siteId, proposals, statusLabe
   );
 }
 
-function ProjectPricingTab({ projectId, clientId, siteId, proposals, statusLabel, settings, isBidding, onPricingItemsChange }: { projectId: string; clientId: string; siteId?: string; proposals: Proposal[]; statusLabel: string; settings: any; isBidding?: boolean; onPricingItemsChange?: (items: any[]) => void }) {
-  const queryClient = useQueryClient();
-  const [selectedTab, setSelectedTab] = useState<string>('proposal');
-
-  const { data: me } = useQuery({ queryKey: ['me'], queryFn: () => api<any>('GET', '/auth/me') });
-  const isAdmin = (me?.roles || []).includes('admin');
-  const permissions = new Set(me?.permissions || []);
-  const hasEditProposalPermission = isAdmin || permissions.has('business:projects:proposal:write');
-
-  const organizedProposals = useMemo(() => {
-    const original = proposals.find((p) => !p.is_change_order);
-    const changeOrders = proposals
-      .filter((p) => p.is_change_order)
-      .sort((a, b) => (a.change_order_number || 0) - (b.change_order_number || 0));
-    return { original: original || null, changeOrders };
-  }, [proposals]);
-
-  const selectedProposal = useMemo(() => {
-    if (selectedTab === 'proposal') return organizedProposals.original;
-    if (selectedTab.startsWith('change-order-')) {
-      const orderNum = parseInt(selectedTab.replace('change-order-', ''), 10);
-      return organizedProposals.changeOrders.find((co) => co.change_order_number === orderNum);
-    }
-    return null;
-  }, [selectedTab, organizedProposals]);
-
-  const { data: proposalData, isLoading: isLoadingProposal } = useQuery({
-    queryKey: ['proposal', selectedProposal?.id],
-    queryFn: () => (selectedProposal?.id ? api<any>('GET', `/proposals/${selectedProposal.id}`) : Promise.resolve(null)),
-    enabled: !!selectedProposal?.id,
-  });
-
-  const { data: project } = useQuery({
-    queryKey: ['project', projectId],
-    queryFn: () => api<any>('GET', `/projects/${projectId}`),
-    enabled: !!projectId,
-  });
-  const { data: projectDivisions } = useQuery({
-    queryKey: ['project-divisions'],
-    queryFn: () => api<any[]>('GET', '/settings/project-divisions'),
-    staleTime: 300_000,
-  });
-
-  useEffect(() => {
-    if (organizedProposals.original && selectedTab === 'proposal') return;
-    if (organizedProposals.original) setSelectedTab('proposal');
-    else if (organizedProposals.changeOrders.length > 0) setSelectedTab(`change-order-${organizedProposals.changeOrders[0].change_order_number}`);
-  }, [organizedProposals, selectedTab]);
-
-  const canEdit = useMemo(() => {
-    if (!hasEditProposalPermission) return false;
-    if (selectedTab.startsWith('change-order-')) {
-      const orderNum = parseInt(selectedTab.replace('change-order-', ''), 10);
-      const changeOrder = organizedProposals.changeOrders.find((co) => co.change_order_number === orderNum);
-      if (changeOrder?.approval_status === 'approved' || changeOrder?.approved_report_id) return false;
-      return true;
-    }
-    if (!statusLabel) return true;
-    const statusLabelLower = statusLabel.toLowerCase().trim();
-    if (isBidding) {
-      if (statusLabelLower === 'prospecting') return true;
-      if (statusLabelLower === 'sent to customer' || statusLabelLower === 'refused') return false;
-      return true;
-    }
-    return statusLabelLower === 'prospecting';
-  }, [statusLabel, hasEditProposalPermission, isBidding, selectedTab, organizedProposals]);
-
-  const handleSave = useCallback(
-    async (partial: {
-      additional_costs: any[];
-      optional_services: any[];
-      pst_rate: number;
-      gst_rate: number;
-      show_total_in_pdf: boolean;
-      show_pst_in_pdf: boolean;
-      show_gst_in_pdf: boolean;
-      total: number;
-    }) => {
-      if (!selectedProposal?.id || !proposalData) return;
-      const base = { ...proposalData, ...(proposalData.data || {}) };
-      const payload = {
-        id: proposalData.id,
-        project_id: proposalData.project_id ?? projectId,
-        client_id: proposalData.client_id ?? clientId,
-        site_id: proposalData.site_id ?? siteId,
-        cover_title: base.cover_title,
-        template_style: base.template_style,
-        order_number: base.order_number ?? project?.code,
-        date: base.date,
-        proposal_created_for: base.proposal_created_for,
-        primary_contact_name: base.primary_contact_name,
-        primary_contact_phone: base.primary_contact_phone,
-        primary_contact_email: base.primary_contact_email,
-        type_of_project: base.type_of_project,
-        other_notes: base.other_notes,
-        project_description: base.project_description,
-        additional_project_notes: base.additional_project_notes,
-        bid_price: 0,
-        total: partial.total,
-        terms_text: base.terms_text ?? '',
-        show_total_in_pdf: partial.show_total_in_pdf,
-        show_pst_in_pdf: partial.show_pst_in_pdf,
-        show_gst_in_pdf: partial.show_gst_in_pdf,
-        additional_costs: partial.additional_costs,
-        optional_services: partial.optional_services,
-        pst_rate: partial.pst_rate,
-        gst_rate: partial.gst_rate,
-        sections: Array.isArray(base.sections) ? base.sections : [],
-        cover_file_object_id: base.cover_file_object_id ?? null,
-        page2_file_object_id: base.page2_file_object_id ?? null,
-      };
-      await api('POST', '/proposals', payload);
-      queryClient.invalidateQueries({ queryKey: ['proposal', selectedProposal.id] });
-      queryClient.invalidateQueries({ queryKey: ['projectProposals', projectId] });
-      queryClient.invalidateQueries({ queryKey: ['project', projectId] });
-      onPricingItemsChange?.(partial.additional_costs);
-    },
-    [selectedProposal, proposalData, projectId, clientId, siteId, project?.code, queryClient, onPricingItemsChange]
-  );
-
-  return (
-    <div className="space-y-4">
-      <div className="rounded-xl border bg-white p-4">
-        <div className="flex items-center gap-2 mb-4">
-          <div className="w-8 h-8 rounded bg-emerald-100 flex items-center justify-center">
-            <svg className="w-5 h-5 text-emerald-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-            </svg>
-          </div>
-          <h2 className="text-sm font-semibold text-gray-900">Pricing</h2>
-        </div>
-
-        {(organizedProposals.original || organizedProposals.changeOrders.length > 0) && (
-          <div className="border-b border-gray-200 mb-4">
-            <nav className="-mb-px flex space-x-4" aria-label="Tabs">
-              {organizedProposals.original && (
-                <button
-                  onClick={() => setSelectedTab('proposal')}
-                  className={`whitespace-nowrap py-2 px-2 border-b-2 font-semibold text-xs ${selectedTab === 'proposal' ? 'border-brand-red text-brand-red' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'}`}
-                >
-                  Proposal
-                </button>
-              )}
-              {organizedProposals.changeOrders.map((co) => (
-                <button
-                  key={co.id}
-                  onClick={() => setSelectedTab(`change-order-${co.change_order_number}`)}
-                  className={`whitespace-nowrap py-2 px-2 border-b-2 font-semibold text-xs flex items-center gap-1.5 ${selectedTab === `change-order-${co.change_order_number}` ? 'border-brand-red text-brand-red' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'}`}
-                >
-                  <span>Change Order {co.change_order_number}</span>
-                  {(co.approval_status === 'approved' || co.approved_report_id) && <span className="text-[10px] px-1 py-0.5 rounded bg-green-100 text-green-700">✓</span>}
-                </button>
-              ))}
-            </nav>
-          </div>
-        )}
-
-        {!selectedProposal ? (
-          <div className="text-center py-8 text-gray-500 text-sm">Create a proposal in the Proposal tab first, then add pricing here.</div>
-        ) : isLoadingProposal ? (
-          <div className="h-20 bg-gray-100 animate-pulse rounded" />
-        ) : (
-          <PricingAndOptionalForm
-            projectId={projectId}
-            project={project}
-            projectDivisions={projectDivisions}
-            initial={proposalData?.data ?? null}
-            disabled={!canEdit}
-            onSave={handleSave}
-            onPricingItemsChange={onPricingItemsChange}
-          />
-        )}
-      </div>
-    </div>
-  );
-}
-
 function ClientName({ clientId }:{ clientId:string }){
   const { data } = useQuery({ queryKey:['client-name', clientId], queryFn: ()=> clientId? api<any>('GET', `/clients/${clientId}`): Promise.resolve(null) });
   const name = data?.display_name || data?.name || clientId || '-';
@@ -6870,10 +6687,10 @@ function ProjectTeamCard({ projectId, employees }: { projectId: string, employee
 }
 
 function ProjectTabCards({ availableTabs, onTabClick, proj, currentTab }: { 
-availableTabs: readonly ('overview'|'reports'|'dispatch'|'timesheet'|'files'|'documents'|'proposal'|'pricing'|'estimate'|'orders')[],
+  availableTabs: readonly ('overview'|'reports'|'dispatch'|'timesheet'|'files'|'documents'|'proposal'|'estimate'|'orders')[], 
   onTabClick: (tab: typeof availableTabs[number] | 'overview' | null) => void,
   proj: any,
-  currentTab: 'overview'|'general'|'reports'|'dispatch'|'timesheet'|'files'|'photos'|'documents'|'proposal'|'pricing'|'estimate'|'orders'|null
+  currentTab: 'overview'|'general'|'reports'|'dispatch'|'timesheet'|'files'|'photos'|'documents'|'proposal'|'estimate'|'orders'|null
 }){
   const tabConfig: Record<string, { label: string, icon: string }> = {
     overview: { label: 'Overview', icon: '📊' },
@@ -6882,8 +6699,7 @@ availableTabs: readonly ('overview'|'reports'|'dispatch'|'timesheet'|'files'|'do
     timesheet: { label: 'Timesheet', icon: '⏰' },
     files: { label: 'Files', icon: '📁' },
     documents: { label: 'Documents', icon: '📄' },
-    proposal: { label: 'Proposal', icon: '📄' },
-    pricing: { label: 'Pricing', icon: '💰' },
+    proposal: { label: 'Pricing', icon: '📄' },
     estimate: { label: 'Estimate', icon: '💰' },
     orders: { label: 'Orders', icon: '🛒' },
   };
