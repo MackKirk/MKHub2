@@ -79,7 +79,7 @@ class Condition(str, Enum):
 # Fleet Asset Schemas
 class FleetAssetBase(BaseModel):
     asset_type: FleetAssetType
-    name: str
+    name: Optional[str] = None  # Optional; at least one other field should be set (enforced by frontend)
     unit_number: Optional[str] = None
     vin: Optional[str] = None
     license_plate: Optional[str] = None
@@ -103,6 +103,20 @@ class FleetAssetBase(BaseModel):
     # Physical specifications
     ferry_length: Optional[str] = None
     gvw_kg: Optional[int] = None
+    # Master Sheet / Fleet Master fields
+    fuel_type: Optional[str] = None
+    vehicle_type: Optional[str] = None
+    driver_contact_phone: Optional[str] = None
+    yard_location: Optional[str] = None
+    gvw_value: Optional[int] = None
+    gvw_unit: Optional[str] = None
+    equipment_type_label: Optional[str] = None
+    odometer_next_due_at: Optional[int] = None
+    odometer_noted_issues: Optional[str] = None
+    propane_sticker_cert: Optional[str] = None
+    propane_sticker_date: Optional[datetime] = None
+    hours_next_due_at: Optional[float] = None
+    hours_noted_issues: Optional[str] = None
     photos: Optional[List[uuid.UUID]] = None
     documents: Optional[List[uuid.UUID]] = None
     notes: Optional[str] = None
@@ -137,6 +151,19 @@ class FleetAssetUpdate(BaseModel):
     # Physical specifications
     ferry_length: Optional[str] = None
     gvw_kg: Optional[int] = None
+    fuel_type: Optional[str] = None
+    vehicle_type: Optional[str] = None
+    driver_contact_phone: Optional[str] = None
+    yard_location: Optional[str] = None
+    gvw_value: Optional[int] = None
+    gvw_unit: Optional[str] = None
+    equipment_type_label: Optional[str] = None
+    odometer_next_due_at: Optional[int] = None
+    odometer_noted_issues: Optional[str] = None
+    propane_sticker_cert: Optional[str] = None
+    propane_sticker_date: Optional[datetime] = None
+    hours_next_due_at: Optional[float] = None
+    hours_noted_issues: Optional[str] = None
     photos: Optional[List[uuid.UUID]] = None
     documents: Optional[List[uuid.UUID]] = None
     notes: Optional[str] = None
@@ -156,6 +183,7 @@ class FleetAssetResponse(FleetAssetBase):
 class EquipmentBase(BaseModel):
     category: EquipmentCategory
     name: str
+    unit_number: Optional[str] = None
     serial_number: Optional[str] = None
     brand: Optional[str] = None
     model: Optional[str] = None
@@ -174,6 +202,7 @@ class EquipmentCreate(EquipmentBase):
 
 class EquipmentUpdate(BaseModel):
     name: Optional[str] = None
+    unit_number: Optional[str] = None
     serial_number: Optional[str] = None
     brand: Optional[str] = None
     model: Optional[str] = None
@@ -420,6 +449,104 @@ class FleetAssetAssignmentResponse(FleetAssetAssignmentBase):
     is_active: bool
     created_by: Optional[uuid.UUID] = None
     created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+# Fleet Compliance Record Schemas
+class FleetComplianceRecordCreate(BaseModel):
+    fleet_asset_id: uuid.UUID
+    record_type: str  # CVIP, CRANE, NDT, PROPANE, OTHER
+    facility: Optional[str] = None
+    completed_by: Optional[str] = None
+    equipment_classification: Optional[str] = None
+    equipment_make_model: Optional[str] = None
+    serial_number: Optional[str] = None
+    annual_inspection_date: Optional[datetime] = None
+    expiry_date: Optional[datetime] = None
+    file_reference_number: Optional[str] = None
+    notes: Optional[str] = None
+    documents: Optional[List[uuid.UUID]] = None
+
+
+class FleetComplianceRecordUpdate(BaseModel):
+    record_type: Optional[str] = None
+    facility: Optional[str] = None
+    completed_by: Optional[str] = None
+    equipment_classification: Optional[str] = None
+    equipment_make_model: Optional[str] = None
+    serial_number: Optional[str] = None
+    annual_inspection_date: Optional[datetime] = None
+    expiry_date: Optional[datetime] = None
+    file_reference_number: Optional[str] = None
+    notes: Optional[str] = None
+    documents: Optional[List[uuid.UUID]] = None
+
+
+class FleetComplianceRecordRead(BaseModel):
+    id: uuid.UUID
+    fleet_asset_id: uuid.UUID
+    record_type: str
+    facility: Optional[str] = None
+    completed_by: Optional[str] = None
+    equipment_classification: Optional[str] = None
+    equipment_make_model: Optional[str] = None
+    serial_number: Optional[str] = None
+    annual_inspection_date: Optional[datetime] = None
+    expiry_date: Optional[datetime] = None
+    file_reference_number: Optional[str] = None
+    notes: Optional[str] = None
+    documents: Optional[List[uuid.UUID]] = None
+
+    class Config:
+        from_attributes = True
+
+
+# Asset Assignment (unified Assign/Return) Schemas
+class AssetAssignmentAssignRequest(BaseModel):
+    assigned_to_user_id: Optional[uuid.UUID] = None
+    assigned_to_name: Optional[str] = None
+    phone_snapshot: Optional[str] = None
+    address_snapshot: Optional[str] = None
+    sleeps_snapshot: Optional[str] = None  # yard_location / Sleeps at time of assign
+    department_snapshot: Optional[str] = None
+    assigned_at: Optional[datetime] = None
+    expected_return_at: Optional[datetime] = None
+    odometer_out: Optional[int] = None
+    hours_out: Optional[float] = None
+    notes_out: Optional[str] = None
+    photos_out: Optional[List[uuid.UUID]] = None
+
+
+class AssetAssignmentReturnRequest(BaseModel):
+    odometer_in: Optional[int] = None
+    hours_in: Optional[float] = None
+    notes_in: Optional[str] = None
+    photos_in: Optional[List[uuid.UUID]] = None
+
+
+class AssetAssignmentRead(BaseModel):
+    id: uuid.UUID
+    target_type: str
+    fleet_asset_id: Optional[uuid.UUID] = None
+    equipment_id: Optional[uuid.UUID] = None
+    assigned_to_user_id: Optional[uuid.UUID] = None
+    assigned_to_name: Optional[str] = None
+    phone_snapshot: Optional[str] = None
+    address_snapshot: Optional[str] = None
+    department_snapshot: Optional[str] = None
+    assigned_at: datetime
+    expected_return_at: Optional[datetime] = None
+    returned_at: Optional[datetime] = None
+    odometer_out: Optional[int] = None
+    odometer_in: Optional[int] = None
+    hours_out: Optional[float] = None
+    hours_in: Optional[float] = None
+    notes_out: Optional[str] = None
+    notes_in: Optional[str] = None
+    photos_out: Optional[List[uuid.UUID]] = None
+    photos_in: Optional[List[uuid.UUID]] = None
 
     class Config:
         from_attributes = True

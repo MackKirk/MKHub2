@@ -30,6 +30,27 @@ def list_employees(q: Optional[str] = None, db: Session = Depends(get_db), _=Dep
             name = ' '.join([x for x in [first, last] if x])
         if not name:
             name = u.username
+        # Build formatted address from profile
+        address = None
+        if ep:
+            parts = []
+            if getattr(ep, 'address_line1', None):
+                parts.append((ep.address_line1 or '').strip())
+            if getattr(ep, 'address_line2', None):
+                parts.append((ep.address_line2 or '').strip())
+            city = (getattr(ep, 'city', None) or '').strip()
+            province = (getattr(ep, 'province', None) or '').strip()
+            postal = (getattr(ep, 'postal_code', None) or '').strip()
+            country = (getattr(ep, 'country', None) or '').strip()
+            locality = ', '.join([x for x in [city, province] if x])
+            if locality:
+                parts.append(locality)
+            if postal:
+                parts.append(postal)
+            if country:
+                parts.append(country)
+            address = ', '.join(parts) if parts else None
+
         out.append({
             "id": str(u.id),
             "username": u.username,
@@ -37,7 +58,9 @@ def list_employees(q: Optional[str] = None, db: Session = Depends(get_db), _=Dep
             "first_name": (getattr(ep, 'first_name', None) or '').strip() if ep else None,
             "last_name": (getattr(ep, 'last_name', None) or '').strip() if ep else None,
             "email": u.email_personal,
-            "phone": getattr(ep, 'phone', None) if ep else None,
+            "phone": getattr(ep, 'phone', None) or getattr(ep, 'mobile_phone', None) if ep else None,
+            "address": address,
+            "department": (getattr(ep, 'division', None) or '').strip() or None if ep else None,
             "job_title": getattr(ep, 'job_title', None) if ep else None,
             "profile_photo_file_id": str(getattr(ep, 'profile_photo_file_id')) if (ep and getattr(ep, 'profile_photo_file_id', None)) else None,
             "roles": [r.name for r in getattr(u, 'roles', [])] if hasattr(u, 'roles') else [],

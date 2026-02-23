@@ -1,13 +1,19 @@
 import uuid
 from datetime import datetime, timezone, timedelta
 from typing import List, Optional
-from sqlalchemy import or_, and_
+from sqlalchemy import or_, and_, func, case, cast, BigInteger
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Body
 from sqlalchemy.orm import Session
 
 from ..db import get_db
 from ..auth.security import get_current_user, require_permissions
+from ..services.asset_assignment_service import (
+    create_assignment_for_fleet_asset,
+    return_assignment_for_fleet_asset,
+    create_assignment_for_equipment_item,
+    return_assignment_for_equipment_item,
+)
 from ..models.models import (
     FleetAsset,
     Equipment,
@@ -18,6 +24,8 @@ from ..models.models import (
     EquipmentLog,
     EquipmentAssignment,
     FleetAssetAssignment,
+    AssetAssignment,
+    FleetComplianceRecord,
     User,
 )
 from ..schemas.fleet import (
@@ -46,6 +54,12 @@ from ..schemas.fleet import (
     FleetAssetAssignmentCreate,
     FleetAssetAssignmentReturn,
     FleetAssetAssignmentResponse,
+    FleetComplianceRecordCreate,
+    FleetComplianceRecordUpdate,
+    FleetComplianceRecordRead,
+    AssetAssignmentAssignRequest,
+    AssetAssignmentReturnRequest,
+    AssetAssignmentRead,
     FleetDashboardResponse,
     FleetAssetType,
     EquipmentCategory,
@@ -203,35 +217,116 @@ def get_dashboard(
 
 
 # ---------- FLEET ASSETS ----------
-@router.get("/assets", response_model=List[FleetAssetResponse])
+def _fleet_assets_order(sort: Optional[str], direction: str):
+    """Return SQLAlchemy order_by clause for fleet assets list. direction is 'asc' or 'desc'.
+    Use column.asc().nulls_last() so PostgreSQL gets ASC NULLS LAST (not NULLS LAST ASC)."""
+    is_asc = (direction or "asc").lower() == "asc"
+
+    if sort == "unit_number":
+        # Sort numerically when value is all digits (1, 2, 10, 21, 1231), else by string
+        is_numeric = FleetAsset.unit_number.op("~")("^[0-9]+$")
+        numeric_sort = case((is_numeric, cast(FleetAsset.unit_number, BigInteger)), else_=None)
+        if is_asc:
+            return (numeric_sort.asc().nulls_last(), FleetAsset.unit_number.asc())
+        return (numeric_sort.desc().nulls_last(), FleetAsset.unit_number.desc())
+    if sort == "name":
+        return FleetAsset.name.asc() if is_asc else FleetAsset.name.desc()
+    if sort == "type":
+        return FleetAsset.asset_type.asc() if is_asc else FleetAsset.asset_type.desc()
+    if sort == "make_model":
+        if is_asc:
+            return (FleetAsset.make.asc().nulls_last(), FleetAsset.model.asc().nulls_last())
+        return (FleetAsset.make.desc().nulls_last(), FleetAsset.model.desc().nulls_last())
+    if sort == "year":
+        return FleetAsset.year.asc().nulls_last() if is_asc else FleetAsset.year.desc().nulls_last()
+    if sort == "plate_vin":
+        c = func.coalesce(FleetAsset.license_plate, FleetAsset.vin)
+        return c.asc().nulls_last() if is_asc else c.desc().nulls_last()
+    if sort == "fuel_type":
+        return FleetAsset.fuel_type.asc().nulls_last() if is_asc else FleetAsset.fuel_type.desc().nulls_last()
+    if sort == "vehicle_type":
+        return FleetAsset.vehicle_type.asc().nulls_last() if is_asc else FleetAsset.vehicle_type.desc().nulls_last()
+    if sort == "sleeps":
+        return FleetAsset.yard_location.asc().nulls_last() if is_asc else FleetAsset.yard_location.desc().nulls_last()
+    if sort == "assignment":
+        return FleetAsset.driver_id.asc().nulls_first() if is_asc else FleetAsset.driver_id.desc().nulls_last()
+    if sort == "status":
+        return FleetAsset.status.asc() if is_asc else FleetAsset.status.desc()
+    return FleetAsset.created_at.desc()
+
+
+@router.get("/assets")
 def list_fleet_assets(
     asset_type: Optional[FleetAssetType] = Query(None),
     division_id: Optional[uuid.UUID] = Query(None),
     status: Optional[str] = Query(None),
     search: Optional[str] = Query(None),
+    fuel_type: Optional[str] = Query(None),
+    sort: Optional[str] = Query(None),
+    dir: Optional[str] = Query("asc"),
+    page: int = 1,
+    limit: int = 15,
     db: Session = Depends(get_db),
     _=Depends(require_permissions("fleet:access", "fleet:read"))
 ):
-    """List fleet assets with filters"""
+    """List fleet assets with filters, sort, and pagination. Sort applies to all pages."""
+    page = max(1, page)
+    limit = max(1, min(100, limit))
+    offset = (page - 1) * limit
+
     query = db.query(FleetAsset)
-    
+
     if asset_type:
         query = query.filter(FleetAsset.asset_type == asset_type.value)
     if division_id:
         query = query.filter(FleetAsset.division_id == division_id)
     if status:
         query = query.filter(FleetAsset.status == status)
+    if fuel_type:
+        query = query.filter(FleetAsset.fuel_type.ilike(fuel_type))
     if search:
         search_term = f"%{search}%"
         query = query.filter(
             or_(
                 FleetAsset.name.ilike(search_term),
                 FleetAsset.vin.ilike(search_term),
+                FleetAsset.license_plate.ilike(search_term),
                 FleetAsset.model.ilike(search_term),
             )
         )
-    
-    return query.order_by(FleetAsset.created_at.desc()).limit(500).all()
+
+    order_clause = _fleet_assets_order(sort, dir or "asc")
+    if isinstance(order_clause, tuple):
+        query = query.order_by(*order_clause)
+    else:
+        query = query.order_by(order_clause)
+
+    total = query.count()
+    assets = query.offset(offset).limit(limit).all()
+    total_pages = (total + limit - 1) // limit if total > 0 else 1
+
+    items = [FleetAssetResponse.model_validate(a).model_dump(mode="json") for a in assets]
+
+    # Fetch distinct fuel types for filter dropdown (when viewing vehicles or all)
+    fuel_type_options: List[str] = []
+    if asset_type is None or asset_type == FleetAssetType.vehicle:
+        from sqlalchemy import distinct
+        ft_query = db.query(distinct(FleetAsset.fuel_type)).filter(
+            FleetAsset.asset_type == "vehicle",
+            FleetAsset.fuel_type.isnot(None),
+            FleetAsset.fuel_type != "",
+        )
+        fuel_type_options = [r[0] for r in ft_query.all() if r[0]]
+        fuel_type_options.sort()
+
+    return {
+        "items": items,
+        "total": total,
+        "page": page,
+        "limit": limit,
+        "total_pages": total_pages,
+        "fuel_type_options": fuel_type_options,
+    }
 
 
 @router.get("/assets/{asset_id}", response_model=FleetAssetResponse)
@@ -254,8 +349,11 @@ def create_fleet_asset(
     user=Depends(get_current_user),
     _=Depends(require_permissions("fleet:write"))
 ):
-    """Create a new fleet asset"""
-    new_asset = FleetAsset(**asset.dict(), created_by=user.id)
+    """Create a new fleet asset. Name is optional; stored as empty string if not provided."""
+    data = asset.model_dump() if hasattr(asset, 'model_dump') else asset.dict()
+    if not (data.get('name') or '').strip():
+        data['name'] = ''
+    new_asset = FleetAsset(**data, created_by=user.id)
     db.add(new_asset)
     db.commit()
     db.refresh(new_asset)
@@ -338,6 +436,75 @@ def get_asset_logs(
     return db.query(FleetLog).filter(
         FleetLog.fleet_asset_id == asset_id
     ).order_by(FleetLog.log_date.desc()).all()
+
+
+# ---------- FLEET COMPLIANCE ----------
+@router.get("/assets/{asset_id}/compliance", response_model=List[FleetComplianceRecordRead])
+def get_asset_compliance(
+    asset_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    _=Depends(require_permissions("fleet:read"))
+):
+    """Get compliance records for a fleet asset"""
+    asset = db.query(FleetAsset).filter(FleetAsset.id == asset_id).first()
+    if not asset:
+        raise HTTPException(status_code=404, detail="Fleet asset not found")
+    return db.query(FleetComplianceRecord).filter(
+        FleetComplianceRecord.fleet_asset_id == asset_id
+    ).order_by(FleetComplianceRecord.expiry_date.desc().nulls_last()).all()
+
+
+@router.post("/assets/{asset_id}/compliance", response_model=FleetComplianceRecordRead)
+def create_asset_compliance(
+    asset_id: uuid.UUID,
+    payload: FleetComplianceRecordCreate,
+    db: Session = Depends(get_db),
+    _=Depends(require_permissions("fleet:write"))
+):
+    """Create a compliance record for a fleet asset"""
+    asset = db.query(FleetAsset).filter(FleetAsset.id == asset_id).first()
+    if not asset:
+        raise HTTPException(status_code=404, detail="Fleet asset not found")
+    data = payload.dict(exclude={"fleet_asset_id"})
+    rec = FleetComplianceRecord(fleet_asset_id=asset_id, **data)
+    db.add(rec)
+    db.commit()
+    db.refresh(rec)
+    return rec
+
+
+@router.put("/compliance/{record_id}", response_model=FleetComplianceRecordRead)
+def update_compliance(
+    record_id: uuid.UUID,
+    payload: FleetComplianceRecordUpdate,
+    db: Session = Depends(get_db),
+    _=Depends(require_permissions("fleet:write"))
+):
+    """Update a compliance record"""
+    rec = db.query(FleetComplianceRecord).filter(FleetComplianceRecord.id == record_id).first()
+    if not rec:
+        raise HTTPException(status_code=404, detail="Compliance record not found")
+    update_data = payload.dict(exclude_unset=True)
+    for key, value in update_data.items():
+        setattr(rec, key, value)
+    db.commit()
+    db.refresh(rec)
+    return rec
+
+
+@router.delete("/compliance/{record_id}")
+def delete_compliance(
+    record_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    _=Depends(require_permissions("fleet:write"))
+):
+    """Delete a compliance record"""
+    rec = db.query(FleetComplianceRecord).filter(FleetComplianceRecord.id == record_id).first()
+    if not rec:
+        raise HTTPException(status_code=404, detail="Compliance record not found")
+    db.delete(rec)
+    db.commit()
+    return {"message": "Compliance record deleted"}
 
 
 # ---------- EQUIPMENT ----------
@@ -598,70 +765,54 @@ def get_overdue_equipment(
     return overdue
 
 
-# ---------- EQUIPMENT ASSIGNMENTS ----------
-@router.get("/equipment/{equipment_id}/assignments", response_model=List[EquipmentAssignmentResponse])
+# ---------- EQUIPMENT ASSIGNMENTS (unified asset_assignments) ----------
+@router.get("/equipment/{equipment_id}/assignments", response_model=List[AssetAssignmentRead])
 def get_equipment_assignments(
     equipment_id: uuid.UUID,
     db: Session = Depends(get_db),
     _=Depends(require_permissions("equipment:read"))
 ):
-    """Get assignment history for equipment"""
-    assignments = db.query(EquipmentAssignment).filter(
-        EquipmentAssignment.equipment_id == equipment_id
-    ).order_by(EquipmentAssignment.assigned_at.desc()).all()
+    """Get assignment history for equipment (from asset_assignments)"""
+    assignments = db.query(AssetAssignment).filter(
+        AssetAssignment.equipment_id == equipment_id
+    ).order_by(AssetAssignment.assigned_at.desc()).all()
     return assignments
 
 
-@router.post("/equipment/{equipment_id}/assign", response_model=EquipmentAssignmentResponse)
+@router.post("/equipment/{equipment_id}/assign", response_model=AssetAssignmentRead)
 def assign_equipment(
     equipment_id: uuid.UUID,
-    assignment: EquipmentAssignmentCreate,
+    payload: AssetAssignmentAssignRequest,
     db: Session = Depends(get_db),
     user=Depends(get_current_user),
     _=Depends(require_permissions("equipment:write"))
 ):
-    """Assign equipment to a user"""
-    equipment = db.query(Equipment).filter(Equipment.id == equipment_id).first()
-    if not equipment:
-        raise HTTPException(status_code=404, detail="Equipment not found")
-    
-    # Deactivate any existing active assignments
-    active_assignments = db.query(EquipmentAssignment).filter(
-        and_(
-            EquipmentAssignment.equipment_id == equipment_id,
-            EquipmentAssignment.is_active == True
-        )
-    ).all()
-    for active_assignment in active_assignments:
-        active_assignment.is_active = False
-        active_assignment.returned_at = assignment.assigned_at or datetime.now(timezone.utc)
-        active_assignment.returned_to_user_id = user.id
-    
-    # Create new assignment
-    new_assignment = EquipmentAssignment(
-        equipment_id=equipment_id,
-        assigned_to_user_id=assignment.assigned_to_user_id,
-        assigned_at=assignment.assigned_at or datetime.now(timezone.utc),
-        notes=assignment.notes,
-        is_active=True,
-        created_by=user.id,
-    )
-    db.add(new_assignment)
-    
-    # Create log entry
-    log = EquipmentLog(
-        equipment_id=equipment_id,
-        log_type="assignment",
-        log_date=datetime.now(timezone.utc),
-        user_id=user.id,
-        description=f"Equipment assigned to user {assignment.assigned_to_user_id}",
-        created_by=user.id,
-    )
-    db.add(log)
-    
-    db.commit()
-    db.refresh(new_assignment)
-    return new_assignment
+    """Assign equipment to a user (unified asset_assignments)"""
+    if not payload.assigned_to_user_id and not payload.assigned_to_name:
+        raise HTTPException(status_code=400, detail="Provide assigned_to_user_id or assigned_to_name")
+    try:
+        result = create_assignment_for_equipment_item(equipment_id, payload, user.id, db)
+        db.commit()
+        return result
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.post("/equipment/{equipment_id}/return", response_model=AssetAssignmentRead)
+def return_equipment(
+    equipment_id: uuid.UUID,
+    payload: AssetAssignmentReturnRequest,
+    db: Session = Depends(get_db),
+    user=Depends(get_current_user),
+    _=Depends(require_permissions("equipment:write"))
+):
+    """Return equipment (close open assignment by equipment_id)"""
+    try:
+        result = return_assignment_for_equipment_item(equipment_id, payload, user.id, db)
+        db.commit()
+        return result
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
 
 @router.put("/equipment/assignments/{assignment_id}/return", response_model=EquipmentAssignmentResponse)
@@ -672,7 +823,7 @@ def return_equipment_assignment(
     user=Depends(get_current_user),
     _=Depends(require_permissions("equipment:write"))
 ):
-    """Return equipment assignment (unassign)"""
+    """Return equipment assignment by id (legacy equipment_assignments table)"""
     assignment = db.query(EquipmentAssignment).filter(EquipmentAssignment.id == assignment_id).first()
     if not assignment:
         raise HTTPException(status_code=404, detail="Assignment not found")
@@ -686,7 +837,6 @@ def return_equipment_assignment(
     if return_data.notes:
         assignment.notes = (assignment.notes or "") + f"\nReturn notes: {return_data.notes}"
     
-    # Create log entry
     log = EquipmentLog(
         equipment_id=assignment.equipment_id,
         log_type="return",
@@ -696,80 +846,59 @@ def return_equipment_assignment(
         created_by=user.id,
     )
     db.add(log)
-    
     db.commit()
     db.refresh(assignment)
     return assignment
 
 
-# ---------- FLEET ASSET ASSIGNMENTS ----------
-@router.get("/assets/{asset_id}/assignments", response_model=List[FleetAssetAssignmentResponse])
+# ---------- FLEET ASSET ASSIGNMENTS (unified asset_assignments) ----------
+@router.get("/assets/{asset_id}/assignments", response_model=List[AssetAssignmentRead])
 def get_fleet_asset_assignments(
     asset_id: uuid.UUID,
     db: Session = Depends(get_db),
     _=Depends(require_permissions("fleet:read"))
 ):
-    """Get assignment history for fleet asset"""
-    assignments = db.query(FleetAssetAssignment).filter(
-        FleetAssetAssignment.fleet_asset_id == asset_id
-    ).order_by(FleetAssetAssignment.assigned_at.desc()).all()
+    """Get assignment history for fleet asset (from asset_assignments)"""
+    assignments = db.query(AssetAssignment).filter(
+        AssetAssignment.fleet_asset_id == asset_id
+    ).order_by(AssetAssignment.assigned_at.desc()).all()
     return assignments
 
 
-@router.post("/assets/{asset_id}/assign", response_model=FleetAssetAssignmentResponse)
+@router.post("/assets/{asset_id}/assign", response_model=AssetAssignmentRead)
 def assign_fleet_asset(
     asset_id: uuid.UUID,
-    assignment: FleetAssetAssignmentCreate,
+    payload: AssetAssignmentAssignRequest,
     db: Session = Depends(get_db),
     user=Depends(get_current_user),
     _=Depends(require_permissions("fleet:write"))
 ):
-    """Assign fleet asset to a user"""
-    asset = db.query(FleetAsset).filter(FleetAsset.id == asset_id).first()
-    if not asset:
-        raise HTTPException(status_code=404, detail="Fleet asset not found")
-    
-    # Deactivate any existing active assignments
-    active_assignments = db.query(FleetAssetAssignment).filter(
-        and_(
-            FleetAssetAssignment.fleet_asset_id == asset_id,
-            FleetAssetAssignment.is_active == True
-        )
-    ).all()
-    for active_assignment in active_assignments:
-        active_assignment.is_active = False
-        active_assignment.returned_at = assignment.assigned_at or datetime.now(timezone.utc)
-        active_assignment.returned_to_user_id = user.id
-    
-    # Update driver_id on asset
-    asset.driver_id = assignment.assigned_to_user_id
-    asset.updated_at = datetime.now(timezone.utc)
-    
-    # Create new assignment
-    new_assignment = FleetAssetAssignment(
-        fleet_asset_id=asset_id,
-        assigned_to_user_id=assignment.assigned_to_user_id,
-        assigned_at=assignment.assigned_at or datetime.now(timezone.utc),
-        notes=assignment.notes,
-        is_active=True,
-        created_by=user.id,
-    )
-    db.add(new_assignment)
-    
-    # Create log entry
-    log = FleetLog(
-        fleet_asset_id=asset_id,
-        log_type="assignment",
-        log_date=datetime.now(timezone.utc),
-        user_id=user.id,
-        description=f"Fleet asset assigned to user {assignment.assigned_to_user_id}",
-        created_by=user.id,
-    )
-    db.add(log)
-    
-    db.commit()
-    db.refresh(new_assignment)
-    return new_assignment
+    """Assign fleet asset to a user (unified asset_assignments)"""
+    if not payload.assigned_to_user_id and not payload.assigned_to_name:
+        raise HTTPException(status_code=400, detail="Provide assigned_to_user_id or assigned_to_name")
+    try:
+        result = create_assignment_for_fleet_asset(asset_id, payload, user.id, db)
+        db.commit()
+        return result
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.post("/assets/{asset_id}/return", response_model=AssetAssignmentRead)
+def return_fleet_asset(
+    asset_id: uuid.UUID,
+    payload: AssetAssignmentReturnRequest,
+    db: Session = Depends(get_db),
+    user=Depends(get_current_user),
+    _=Depends(require_permissions("fleet:write"))
+):
+    """Return fleet asset (close open assignment by asset_id)"""
+    try:
+        result = return_assignment_for_fleet_asset(asset_id, payload, user.id, db)
+        db.commit()
+        return result
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
 
 @router.put("/assets/assignments/{assignment_id}/return", response_model=FleetAssetAssignmentResponse)
@@ -780,7 +909,7 @@ def return_fleet_asset_assignment(
     user=Depends(get_current_user),
     _=Depends(require_permissions("fleet:write"))
 ):
-    """Return fleet asset assignment (unassign)"""
+    """Return fleet asset assignment by assignment id (legacy fleet_asset_assignments table)"""
     assignment = db.query(FleetAssetAssignment).filter(FleetAssetAssignment.id == assignment_id).first()
     if not assignment:
         raise HTTPException(status_code=404, detail="Assignment not found")
@@ -794,13 +923,11 @@ def return_fleet_asset_assignment(
     if return_data.notes:
         assignment.notes = (assignment.notes or "") + f"\nReturn notes: {return_data.notes}"
     
-    # Clear driver_id on asset
     asset = db.query(FleetAsset).filter(FleetAsset.id == assignment.fleet_asset_id).first()
     if asset:
         asset.driver_id = None
         asset.updated_at = datetime.now(timezone.utc)
     
-    # Create log entry
     log = FleetLog(
         fleet_asset_id=assignment.fleet_asset_id,
         log_type="return",
@@ -810,7 +937,6 @@ def return_fleet_asset_assignment(
         created_by=user.id,
     )
     db.add(log)
-    
     db.commit()
     db.refresh(assignment)
     return assignment
