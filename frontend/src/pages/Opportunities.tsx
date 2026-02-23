@@ -1613,7 +1613,8 @@ export function OpportunityListItem({ opportunity, onOpenReportModal, projectSta
 
   const tabButtons = [
     { key: 'files', icon: '📁', label: 'Files', tab: 'files' },
-    { key: 'proposal', icon: '💰', label: 'Pricing', tab: 'proposal' },
+    { key: 'proposal', icon: '📄', label: 'Proposal', tab: 'proposal' },
+    { key: 'pricing', icon: '💰', label: 'Pricing', tab: 'pricing' },
     { key: 'reports', icon: '📋', label: 'Report', tab: 'reports' },
   ];
 
@@ -1871,10 +1872,11 @@ function OpportunityListCard({ opportunity, onOpenReportModal, projectStatuses }
     return icons;
   }, [projectDivIds, projectDivisions, calculatedPercentages]);
 
-  // Tab icons and navigation (for opportunities: files, proposal, reports)
+  // Tab icons and navigation (for opportunities: files, proposal, pricing, reports)
   const tabButtons = [
     { key: 'files', icon: '📁', label: 'Files', tab: 'files' },
-    { key: 'proposal', icon: '💰', label: 'Pricing', tab: 'proposal' },
+    { key: 'proposal', icon: '📄', label: 'Proposal', tab: 'proposal' },
+    { key: 'pricing', icon: '💰', label: 'Pricing', tab: 'pricing' },
     { key: 'reports', icon: '📋', label: 'Report', tab: 'reports' },
   ];
 

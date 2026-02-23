@@ -386,8 +386,8 @@ export default function ProjectDetail(){
   const { data:employees } = useQuery({ queryKey:['employees'], queryFn: ()=>api<any[]>('GET','/employees') });
   // Check for tab query parameter
   const searchParams = new URLSearchParams(location.search);
-  const initialTab = (searchParams.get('tab') as 'overview'|'general'|'reports'|'dispatch'|'timesheet'|'files'|'photos'|'documents'|'proposal'|'estimate'|'orders'|null) || null;
-  const [tab, setTab] = useState<'overview'|'general'|'reports'|'dispatch'|'timesheet'|'files'|'photos'|'documents'|'proposal'|'estimate'|'orders'|null>(initialTab);
+  const initialTab = (searchParams.get('tab') as 'overview'|'general'|'reports'|'dispatch'|'timesheet'|'files'|'photos'|'documents'|'proposal'|'pricing'|'estimate'|'orders'|null) || null;
+  const [tab, setTab] = useState<'overview'|'general'|'reports'|'dispatch'|'timesheet'|'files'|'photos'|'documents'|'proposal'|'pricing'|'estimate'|'orders'|null>(initialTab);
   // Live pricing items (from ProposalForm) to update division percentages instantly without reload.
   const [livePricingItems, setLivePricingItems] = useState<any[] | null>(null);
   const [pickerOpen, setPickerOpen] = useState(false);
@@ -414,6 +414,7 @@ export default function ProjectDetail(){
         'files': 'business:projects:files:read',
         'documents': 'documents:access',
         'proposal': 'business:projects:proposal:read',
+        'pricing': 'business:projects:proposal:read',
         'estimate': 'business:projects:estimate:read',
         'orders': 'business:projects:orders:read',
       };
@@ -430,8 +431,8 @@ export default function ProjectDetail(){
     }
     
     const searchParams = new URLSearchParams(location.search);
-    const tabParam = searchParams.get('tab') as 'overview'|'general'|'reports'|'dispatch'|'timesheet'|'files'|'photos'|'documents'|'proposal'|'estimate'|'orders'|null;
-    if (tabParam && ['overview','general','reports','dispatch','timesheet','files','photos','documents','proposal','orders'].includes(tabParam)) {
+    const tabParam = searchParams.get('tab') as 'overview'|'general'|'reports'|'dispatch'|'timesheet'|'files'|'photos'|'documents'|'proposal'|'pricing'|'estimate'|'orders'|null;
+    if (tabParam && ['overview','general','reports','dispatch','timesheet','files','photos','documents','proposal','pricing','orders'].includes(tabParam)) {
       // Check permission before setting tab
       if (tabParam === 'overview' || hasTabPermission(tabParam)) {
         setTab(tabParam);
@@ -521,8 +522,8 @@ export default function ProjectDetail(){
 
   // Base available tabs
   const baseAvailableTabs = proj?.is_bidding 
-    ? (['overview','reports','files','documents','proposal'] as const)
-    : (['overview','reports','dispatch','timesheet','files','documents','proposal','orders'] as const);
+    ? (['overview','reports','files','documents','proposal','pricing'] as const)
+    : (['overview','reports','dispatch','timesheet','files','documents','proposal','pricing','orders'] as const);
   
   // Filter tabs based on permissions (only when user data is loaded)
   const availableTabs = useMemo(() => {
@@ -621,7 +622,8 @@ export default function ProjectDetail(){
       'timesheet': 'Timesheet',
       'files': 'Project Files',
       'documents': 'Documents',
-      'proposal': 'Pricing',
+      'proposal': 'Proposal',
+      'pricing': 'Pricing',
       'estimate': 'Estimate',
       'orders': 'Orders',
     };
@@ -640,7 +642,8 @@ export default function ProjectDetail(){
       'timesheet': 'Time tracking and hours',
       'files': 'Documents, photos and files',
       'documents': 'Create and edit documents, export to PDF',
-      'proposal': 'Project pricing',
+      'proposal': 'Full proposal with General Information, Sections, Pricing, Optional Services, Terms',
+      'pricing': 'Project pricing',
       'estimate': 'Cost estimates and budgets',
       'orders': 'Purchase orders and supplies',
     };
@@ -1598,7 +1601,11 @@ export default function ProjectDetail(){
               )}
 
               {tab==='proposal' && (
-                <ProjectProposalTab projectId={String(id)} clientId={String(proj?.client_id||'')} siteId={String(proj?.site_id||'')} proposals={proposals||[]} statusLabel={proj?.status_label||''} settings={settings||{}} isBidding={proj?.is_bidding} onPricingItemsChange={setLivePricingItems} />
+                <ProjectProposalTab projectId={String(id)} clientId={String(proj?.client_id||'')} siteId={String(proj?.site_id||'')} proposals={proposals||[]} statusLabel={proj?.status_label||''} settings={settings||{}} isBidding={proj?.is_bidding} onPricingItemsChange={setLivePricingItems} showOnlyPricing={false} />
+              )}
+
+              {tab==='pricing' && (
+                <ProjectProposalTab projectId={String(id)} clientId={String(proj?.client_id||'')} siteId={String(proj?.site_id||'')} proposals={proposals||[]} statusLabel={proj?.status_label||''} settings={settings||{}} isBidding={proj?.is_bidding} onPricingItemsChange={setLivePricingItems} showOnlyPricing={true} />
               )}
 
               {tab==='estimate' && (
@@ -3910,7 +3917,7 @@ function ProjectFilesTabEnhanced({ projectId, files, onRefresh }:{ projectId:str
   );
 }
 
-function ProjectProposalTab({ projectId, clientId, siteId, proposals, statusLabel, settings, isBidding, onPricingItemsChange }:{ projectId:string, clientId:string, siteId?:string, proposals: Proposal[], statusLabel:string, settings:any, isBidding?:boolean, onPricingItemsChange?: (items: any[])=>void }){
+function ProjectProposalTab({ projectId, clientId, siteId, proposals, statusLabel, settings, isBidding, onPricingItemsChange, showOnlyPricing = false }:{ projectId:string, clientId:string, siteId?:string, proposals: Proposal[], statusLabel:string, settings:any, isBidding?:boolean, onPricingItemsChange?: (items: any[])=>void, showOnlyPricing?: boolean }){
   const queryClient = useQueryClient();
   const [selectedTab, setSelectedTab] = useState<string>('proposal');
   
@@ -4076,7 +4083,7 @@ function ProjectProposalTab({ projectId, clientId, siteId, proposals, statusLabe
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
             </svg>
           </div>
-          <h2 className="text-sm font-semibold text-gray-900">Pricing</h2>
+          <h2 className="text-sm font-semibold text-gray-900">{showOnlyPricing ? 'Pricing' : 'Proposal'}</h2>
         </div>
 
         {/* Tabs for proposals - only in projects (hidden in opportunities) */}
@@ -4092,7 +4099,7 @@ function ProjectProposalTab({ projectId, clientId, siteId, proposals, statusLabe
                       : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
                   }`}
                 >
-                  Pricing
+                  {showOnlyPricing ? 'Pricing' : 'Proposal'}
                 </button>
               )}
               {organizedProposals.changeOrders.map((co) => {
@@ -4154,7 +4161,7 @@ function ProjectProposalTab({ projectId, clientId, siteId, proposals, statusLabe
             projectId={projectId} 
             initial={proposalData || null}
             disabled={!canEdit}
-            showOnlyPricing={true}
+            showOnlyPricing={showOnlyPricing}
             showRestrictionWarning={!canEdit && (!!statusLabel || (selectedTab.startsWith('change-order-') && selectedProposal?.approval_status === 'approved'))}
             restrictionMessage={
               !canEdit && selectedTab.startsWith('change-order-') && selectedProposal?.approval_status === 'approved'
@@ -6687,10 +6694,10 @@ function ProjectTeamCard({ projectId, employees }: { projectId: string, employee
 }
 
 function ProjectTabCards({ availableTabs, onTabClick, proj, currentTab }: { 
-  availableTabs: readonly ('overview'|'reports'|'dispatch'|'timesheet'|'files'|'documents'|'proposal'|'estimate'|'orders')[], 
+  availableTabs: readonly ('overview'|'reports'|'dispatch'|'timesheet'|'files'|'documents'|'proposal'|'pricing'|'estimate'|'orders')[], 
   onTabClick: (tab: typeof availableTabs[number] | 'overview' | null) => void,
   proj: any,
-  currentTab: 'overview'|'general'|'reports'|'dispatch'|'timesheet'|'files'|'photos'|'documents'|'proposal'|'estimate'|'orders'|null
+  currentTab: 'overview'|'general'|'reports'|'dispatch'|'timesheet'|'files'|'photos'|'documents'|'proposal'|'pricing'|'estimate'|'orders'|null
 }){
   const tabConfig: Record<string, { label: string, icon: string }> = {
     overview: { label: 'Overview', icon: '📊' },
@@ -6699,7 +6706,8 @@ function ProjectTabCards({ availableTabs, onTabClick, proj, currentTab }: {
     timesheet: { label: 'Timesheet', icon: '⏰' },
     files: { label: 'Files', icon: '📁' },
     documents: { label: 'Documents', icon: '📄' },
-    proposal: { label: 'Pricing', icon: '💰' },
+    proposal: { label: 'Proposal', icon: '📄' },
+    pricing: { label: 'Pricing', icon: '💰' },
     estimate: { label: 'Estimate', icon: '💰' },
     orders: { label: 'Orders', icon: '🛒' },
   };

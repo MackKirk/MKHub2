@@ -1836,8 +1836,10 @@ By signing the accompanying proposal, the Owner agrees to these Terms and Condit
         </div>
         )}
 
-        {/* Pricing content - no card/header */}
-        <div className="p-3">
+        {/* Pricing content: in Pricing tab no card; in Proposal tab wrap in expandable "Pricing" card */}
+        {(() => {
+          const pricingBody = (
+            <>
           {!disabled && (
             <div className="sticky top-0 z-30 bg-white/95 backdrop-blur mb-3 py-2 border-b">
               <div className="flex items-center gap-2">
@@ -2085,7 +2087,32 @@ By signing the accompanying proposal, the Owner agrees to these Terms and Condit
             </div>
         </div>
           )}
-        </div>
+            </>
+          );
+          return showOnlyPricing ? (
+            <div className="p-3">{pricingBody}</div>
+          ) : (
+            <div className="rounded-xl border bg-white overflow-hidden">
+              <div 
+                className="bg-slate-200 p-2.5 text-gray-900 font-semibold text-xs flex items-center justify-between cursor-pointer hover:opacity-90 transition-opacity"
+                onClick={() => setSectionsExpanded(prev => ({ ...prev, pricing: !prev.pricing }))}
+              >
+                <span>Pricing</span>
+                <svg 
+                  className={`w-5 h-5 transition-transform duration-200 ${sectionsExpanded.pricing ? 'rotate-180' : ''}`}
+                  fill="none" 
+                  stroke="currentColor" 
+                  viewBox="0 0 24 24"
+                >
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                </svg>
+              </div>
+              {sectionsExpanded.pricing && (
+                <div className="p-3">{pricingBody}</div>
+              )}
+            </div>
+          );
+        })()}
 
         {/* Optional Services Block - hidden when showOnlyPricing */}
         {!showOnlyPricing && (

@@ -1034,6 +1034,7 @@ export function ProjectListItem({ project, projectDivisions, projectStatuses, va
   const tabButtons = [
     { key: 'files', icon: '📁', label: 'Files', tab: 'files' },
     { key: 'proposal', icon: '📄', label: 'Proposal', tab: 'proposal' },
+    { key: 'pricing', icon: '💰', label: 'Pricing', tab: 'pricing' },
     { key: 'reports', icon: '📋', label: 'Reports', tab: 'reports' },
     { key: 'dispatch', icon: '👷', label: 'Workload', tab: 'dispatch' },
   ];
@@ -1292,6 +1293,7 @@ function ProjectListCard({ project, projectDivisions, projectStatuses }:{ projec
     { key: 'timesheet', icon: '⏰', label: 'Timesheet', tab: 'timesheet' },
     { key: 'files', icon: '📁', label: 'Files', tab: 'files' },
     { key: 'proposal', icon: '📄', label: 'Proposal', tab: 'proposal' },
+    { key: 'pricing', icon: '💰', label: 'Pricing', tab: 'pricing' },
     { key: 'orders', icon: '🛒', label: 'Orders', tab: 'orders' },
   ];
 
