@@ -527,9 +527,6 @@ export function ChartWidget({ config }: ChartWidgetProps) {
                 <div className="text-gray-300">
                   {mode === 'value' ? formatCurrency(hoveredPieSlice.value) : hoveredPieSlice.value} ({total > 0 ? ((hoveredPieSlice.value / total) * 100).toFixed(0) : 0}%)
                 </div>
-                {mode === 'value' && hoveredPieSlice.profit != null && hoveredPieSlice.value > 0 && (
-                  <div className="text-gray-400 text-[10px]">Profit: {formatCurrency(hoveredPieSlice.profit)}</div>
-                )}
               </div>,
               document.body
             )}
@@ -539,7 +536,7 @@ export function ChartWidget({ config }: ChartWidgetProps) {
             const pct = totalForPct > 0 ? (e.value / totalForPct) * 100 : 0;
             const dotColor = colors[i % colors.length];
             return (
-              <div key={e.label} className={mode === 'value' && e.profit != null ? 'space-y-0.5' : ''}>
+              <div key={e.label}>
                 <div className="flex items-center gap-2">
                   <div className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: dotColor }} />
                   <span className="text-gray-700 truncate flex-1 min-w-0">{e.label}</span>
@@ -547,14 +544,6 @@ export function ChartWidget({ config }: ChartWidgetProps) {
                     {mode === 'value' ? formatCurrency(e.value) : e.value} ({pct.toFixed(0)}%)
                   </span>
                 </div>
-                {mode === 'value' && e.profit != null && e.value > 0 && (
-                  <div className="flex items-center gap-2 pl-4">
-                    <span className="flex-1 min-w-0" />
-                    <span className="text-gray-600 text-[11px] tabular-nums">
-                      Profit: {formatCurrency(e.profit)}
-                    </span>
-                  </div>
-                )}
               </div>
             );
           })}
@@ -573,13 +562,11 @@ export function ChartWidget({ config }: ChartWidgetProps) {
         {displayEntries.map((e) => {
           const barPercentage = (e.value / maxVal) * 100;
           const percentage = totalForPct > 0 ? (e.value / totalForPct) * 100 : 0;
-          const profitMargin =
-            mode === 'value' && e.profit != null && e.value > 0 ? (e.profit / e.value) * 100 : 0;
           const barWidthPct = barsMounted ? barPercentage : 0;
 
           if (mode === 'value') {
             return (
-              <div key={e.label} className="space-y-1 shrink-0">
+              <div key={e.label} className="shrink-0">
                 <div className="flex items-center gap-2 min-w-0">
                   <span className="text-xs text-gray-500 truncate w-20 sm:w-28 shrink-0">{e.label}</span>
                   <div className="flex-1 bg-gray-100 rounded-full h-3 min-w-0 relative overflow-hidden">
@@ -592,14 +579,6 @@ export function ChartWidget({ config }: ChartWidgetProps) {
                     {formatCurrency(e.value)} ({percentage.toFixed(0)}%)
                   </span>
                 </div>
-                {(e.profit != null || profitMargin > 0) && (
-                  <div className="flex items-center gap-2 pl-[5.5rem] sm:pl-28">
-                    <span className="flex-1 min-w-0" />
-                    <span className="text-xs text-gray-600 whitespace-nowrap tabular-nums shrink-0">
-                      Profit: {formatCurrency(e.profit ?? 0)} ({profitMargin.toFixed(0)}%)
-                    </span>
-                  </div>
-                )}
               </div>
             );
           }

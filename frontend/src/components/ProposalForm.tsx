@@ -46,7 +46,7 @@ function getDivisionInfoById(divisionId: string | undefined, projectDivisions: a
   return null;
 }
 
-export default function ProposalForm({ mode, clientId: clientIdProp, siteId: siteIdProp, projectId: projectIdProp, initial, disabled, onSave, showRestrictionWarning, restrictionMessage, onPricingItemsChange }: { mode:'new'|'edit', clientId?:string, siteId?:string, projectId?:string, initial?: any, disabled?: boolean, onSave?: ()=>void, showRestrictionWarning?: boolean, restrictionMessage?: string, onPricingItemsChange?: (items: any[])=>void }){
+export default function ProposalForm({ mode, clientId: clientIdProp, siteId: siteIdProp, projectId: projectIdProp, initial, disabled, onSave, showRestrictionWarning, restrictionMessage, onPricingItemsChange, showOnlyPricing }: { mode:'new'|'edit', clientId?:string, siteId?:string, projectId?:string, initial?: any, disabled?: boolean, onSave?: ()=>void, showRestrictionWarning?: boolean, restrictionMessage?: string, onPricingItemsChange?: (items: any[])=>void, showOnlyPricing?: boolean }){
   const nav = useNavigate();
   const queryClient = useQueryClient();
   const confirm = useConfirm();
@@ -1345,8 +1345,8 @@ By signing the accompanying proposal, the Owner agrees to these Terms and Condit
       )}
       
       <div className="space-y-4">
-        {/* General Information Block - Hidden for Change Orders */}
-        {!isChangeOrder && (
+        {/* General Information Block - Hidden for Change Orders or when showOnlyPricing */}
+        {!showOnlyPricing && !isChangeOrder && (
         <div className="rounded-xl border bg-white overflow-hidden">
           <div 
             className="bg-slate-200 p-2.5 text-gray-900 font-semibold text-xs flex items-center justify-between cursor-pointer hover:opacity-90 transition-opacity"
@@ -1493,7 +1493,8 @@ By signing the accompanying proposal, the Owner agrees to these Terms and Condit
         </div>
         )}
         
-        {/* Sections Block */}
+        {/* Sections Block - hidden when showOnlyPricing */}
+        {!showOnlyPricing && (
         <div className="rounded-xl border bg-white overflow-hidden">
           <div 
             className="bg-slate-200 p-2.5 text-gray-900 font-semibold text-xs flex items-center justify-between cursor-pointer hover:opacity-90 transition-opacity"
@@ -1833,26 +1834,10 @@ By signing the accompanying proposal, the Owner agrees to these Terms and Condit
           </div>
           )}
         </div>
+        )}
 
-        {/* Pricing Block */}
-        <div className="rounded-xl border bg-white overflow-hidden">
-          <div 
-            className="bg-slate-200 p-2.5 text-gray-900 font-semibold text-xs flex items-center justify-between cursor-pointer hover:opacity-90 transition-opacity"
-            onClick={() => setSectionsExpanded(prev => ({ ...prev, pricing: !prev.pricing }))}
-          >
-            <span>Pricing</span>
-            <svg 
-              className={`w-5 h-5 transition-transform duration-200 ${sectionsExpanded.pricing ? 'rotate-180' : ''}`}
-              fill="none" 
-              stroke="currentColor" 
-              viewBox="0 0 24 24"
-            >
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-            </svg>
-          </div>
-          {sectionsExpanded.pricing && (
-          <div className="p-3">
-          <div className="text-[10px] text-gray-600 mb-2">If no pricing items are added, the "Pricing Table" section will be hidden in the PDF.</div>
+        {/* Pricing content - no card/header */}
+        <div className="p-3">
           {!disabled && (
             <div className="sticky top-0 z-30 bg-white/95 backdrop-blur mb-3 py-2 border-b">
               <div className="flex items-center gap-2">
@@ -2082,7 +2067,8 @@ By signing the accompanying proposal, the Owner agrees to these Terms and Condit
             </div>
           </div>
 
-          {/* Total with Show in PDF checkbox */}
+          {/* Total and Show in PDF checkbox - hidden when showOnlyPricing */}
+          {!showOnlyPricing && (
           <div className="mt-3 space-y-2">
             <div className="flex items-center gap-2">
               <div className="text-xs font-semibold">Total: <span className="text-gray-600">${formatAccounting(grandTotal)}</span></div>
@@ -2097,12 +2083,12 @@ By signing the accompanying proposal, the Owner agrees to these Terms and Condit
                 <span>Show Total in PDF</span>
               </label>
             </div>
-          </div>
-          </div>
+        </div>
           )}
         </div>
 
-        {/* Optional Services Block */}
+        {/* Optional Services Block - hidden when showOnlyPricing */}
+        {!showOnlyPricing && (
         <div className="rounded-xl border bg-white overflow-hidden">
           <div 
             className="bg-slate-200 p-2.5 text-gray-900 font-semibold text-xs flex items-center justify-between cursor-pointer hover:opacity-90 transition-opacity"
@@ -2144,8 +2130,10 @@ By signing the accompanying proposal, the Owner agrees to these Terms and Condit
           </div>
           )}
         </div>
+        )}
 
-        {/* Terms Block */}
+        {/* Terms Block - hidden when showOnlyPricing */}
+        {!showOnlyPricing && (
         <div className="rounded-xl border bg-white overflow-hidden">
           <div 
             className="bg-slate-200 p-2.5 text-gray-900 font-semibold text-xs flex items-center justify-between cursor-pointer hover:opacity-90 transition-opacity"
@@ -2212,6 +2200,7 @@ By signing the accompanying proposal, the Owner agrees to these Terms and Condit
           </div>
           )}
         </div>
+        )}
         
         {downloadUrl && (renderFingerprint!==lastGeneratedHash) && (
           <div className="mb-3 p-2 rounded bg-yellow-50 border text-[12px] text-yellow-800">You have made changes since the last PDF was generated. Please click "Generate Proposal" again to update the download.</div>
@@ -2327,7 +2316,7 @@ By signing the accompanying proposal, the Owner agrees to these Terms and Condit
                   onClick={handleClearProposal}
                   disabled={effectiveDisabled}
                 >
-                  Clear Proposal
+                  {(showOnlyPricing || isChangeOrder) ? 'Clear Pricing' : 'Clear Proposal'}
                 </button>
               )}
               {/* Delete button for regular proposals or Change Orders that haven't been submitted for approval */}
@@ -2384,10 +2373,10 @@ By signing the accompanying proposal, the Owner agrees to these Terms and Condit
                   onClick={handleSave} 
                   disabled={effectiveDisabled || isSaving || !hasUnsavedChanges}
                 >
-                  {isSaving ? 'Saving...' : 'Save Proposal'}
+                  {isSaving ? 'Saving...' : ((showOnlyPricing || isChangeOrder) ? 'Save Pricing' : 'Save Proposal')}
                 </button>
               )}
-              {!isApproved && (
+              {!showOnlyPricing && !isApproved && (
                 <>
                   <div className="w-px h-4 bg-gray-300"></div>
                   <button 

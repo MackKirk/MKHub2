@@ -921,9 +921,6 @@ export default function BusinessDashboard() {
                                     ? `${formatCurrency(pieTooltip.value)} (${pieTooltip.percentage.toFixed(0)}%)`
                                     : `${pieTooltip.value} (${pieTooltip.percentage.toFixed(0)}%)`}
                                 </div>
-                                {oppDivisionDisplayMode === 'value' && pieTooltip.profit != null && (
-                                  <div className="text-gray-400 text-[10px]">Profit: {formatCurrency(pieTooltip.profit)}</div>
-                                )}
                               </div>,
                               document.body
                             )}
@@ -941,7 +938,7 @@ export default function BusinessDashboard() {
                             const dotColor = colorById.get(div.id) || '#d1d5db';
                             
                             return (
-                              <div key={div.id} className={oppDivisionDisplayMode === 'value' ? 'space-y-1' : ''}>
+                              <div key={div.id}>
                                 <div className="flex items-center gap-2">
                                   <div
                                     className="w-3 h-3 rounded-full"
@@ -960,16 +957,6 @@ export default function BusinessDashboard() {
                                     )}
                                   </span>
                                 </div>
-                                {oppDivisionDisplayMode === 'value' && div.opportunities_profit !== undefined && (
-                                  <div className="flex items-center gap-2 pl-5">
-                                    <span className="flex-1 min-w-0" />
-                                    <span className="text-gray-700 font-semibold text-xs tabular-nums text-right min-w-[160px]">
-                                      <span className="text-gray-500 font-medium">Profit:</span>{' '}
-                                      {formatCurrency(div.opportunities_profit || 0)}{' '}
-                                      {div.opportunities_value > 0 ? `(${(((div.opportunities_profit || 0) / (div.opportunities_value || 1)) * 100).toFixed(0)}%)` : '(0%)'}
-                                    </span>
-                                  </div>
-                                )}
                               </div>
                             );
                           })}
@@ -1158,9 +1145,6 @@ export default function BusinessDashboard() {
                                     ? `${formatCurrency(pieTooltip.value)} (${pieTooltip.percentage.toFixed(0)}%)`
                                     : `${pieTooltip.value} (${pieTooltip.percentage.toFixed(0)}%)`}
                                 </div>
-                                {projDivisionDisplayMode === 'value' && pieTooltip.profit != null && (
-                                  <div className="text-gray-400 text-[10px]">Profit: {formatCurrency(pieTooltip.profit)}</div>
-                                )}
                               </div>,
                               document.body
                             )}
@@ -1178,7 +1162,7 @@ export default function BusinessDashboard() {
                             const dotColor = colorById.get(div.id) || '#d1d5db';
                             
                             return (
-                              <div key={div.id} className={projDivisionDisplayMode === 'value' ? 'space-y-1' : ''}>
+                              <div key={div.id}>
                                 <div className="flex items-center gap-2">
                                   <div
                                     className="w-3 h-3 rounded-full"
@@ -1197,16 +1181,6 @@ export default function BusinessDashboard() {
                                     )}
                                   </span>
                                 </div>
-                                {projDivisionDisplayMode === 'value' && div.projects_profit !== undefined && (
-                                  <div className="flex items-center gap-2 pl-5">
-                                    <span className="flex-1 min-w-0" />
-                                    <span className="text-gray-700 font-semibold text-xs tabular-nums text-right min-w-[160px]">
-                                      <span className="text-gray-500 font-medium">Profit:</span>{' '}
-                                      {formatCurrency(div.projects_profit || 0)}{' '}
-                                      {div.projects_value > 0 ? `(${(((div.projects_profit || 0) / (div.projects_value || 1)) * 100).toFixed(0)}%)` : '(0%)'}
-                                    </span>
-                                  </div>
-                                )}
                               </div>
                             );
                           })}
@@ -1322,33 +1296,20 @@ export default function BusinessDashboard() {
                               const valueData = data as StatusValueData;
                               const finalTotalPercentage = (valueData.final_total_with_gst / maxOpportunityStatusCount) * 100;
                               const valuePercentage = totalValue > 0 ? (valueData.final_total_with_gst / totalValue) * 100 : 0;
-                              const profitMarginPercentage = valueData.final_total_with_gst > 0
-                                ? (valueData.profit / valueData.final_total_with_gst) * 100
-                                : 0;
-                              const profitBarPercentage = Math.max(0, Math.min(100, profitMarginPercentage));
                               return (
-                                <div key={status} className="space-y-1.5">
-                                  <div className="flex items-center gap-2">
-                                    <span className="text-xs text-gray-500 truncate w-28">
-                                      {status}
-                                    </span>
-                                    <div className="flex-1 bg-gray-100 rounded-full h-3 min-w-0 relative">
-                                      <div
-                                        className="bg-gradient-to-r from-[#14532d] to-[#22c55e] rounded-full h-3 transition-all duration-500 ease-out absolute inset-0"
-                                        style={{ width: `${finalTotalPercentage}%` }}
-                                      />
-                                    </div>
-                                    <span className="text-xs font-bold text-gray-900 whitespace-nowrap">
-                                      {formatCurrency(valueData.final_total_with_gst)} ({valuePercentage.toFixed(0)}%)
-                                    </span>
+                                <div key={status} className="flex items-center gap-2">
+                                  <span className="text-xs text-gray-500 truncate w-28">
+                                    {status}
+                                  </span>
+                                  <div className="flex-1 bg-gray-100 rounded-full h-3 min-w-0 relative">
+                                    <div
+                                      className="bg-gradient-to-r from-[#14532d] to-[#22c55e] rounded-full h-3 transition-all duration-500 ease-out absolute inset-0"
+                                      style={{ width: `${finalTotalPercentage}%` }}
+                                    />
                                   </div>
-                                  <div className="flex items-center gap-2 pl-28">
-                                    <span className="flex-1 min-w-0" />
-                                    <span className="text-xs font-semibold text-gray-700 whitespace-nowrap tabular-nums text-right min-w-[170px]">
-                                      <span className="text-gray-500 font-medium">Profit:</span>{' '}
-                                      {formatCurrency(valueData.profit)} ({profitMarginPercentage.toFixed(0)}%)
-                                    </span>
-                                  </div>
+                                  <span className="text-xs font-bold text-gray-900 whitespace-nowrap">
+                                    {formatCurrency(valueData.final_total_with_gst)} ({valuePercentage.toFixed(0)}%)
+                                  </span>
                                 </div>
                               );
                             } else {
@@ -1482,33 +1443,20 @@ export default function BusinessDashboard() {
                               const valueData = data as StatusValueData;
                               const finalTotalPercentage = (valueData.final_total_with_gst / maxProjectStatusCount) * 100;
                               const valuePercentage = totalValue > 0 ? (valueData.final_total_with_gst / totalValue) * 100 : 0;
-                              const profitMarginPercentage = valueData.final_total_with_gst > 0
-                                ? (valueData.profit / valueData.final_total_with_gst) * 100
-                                : 0;
-                              const profitBarPercentage = Math.max(0, Math.min(100, profitMarginPercentage));
                               return (
-                                <div key={status} className="space-y-1.5">
-                                  <div className="flex items-center gap-2">
-                                    <span className="text-xs text-gray-500 truncate w-28">
-                                      {status}
-                                    </span>
-                                    <div className="flex-1 bg-gray-100 rounded-full h-3 min-w-0 relative">
-                                      <div
-                                        className="bg-gradient-to-r from-[#0b1739] to-[#1d4ed8] rounded-full h-3 transition-all duration-500 ease-out absolute inset-0"
-                                        style={{ width: `${finalTotalPercentage}%` }}
-                                      />
-                                    </div>
-                                    <span className="text-xs font-bold text-gray-900 whitespace-nowrap">
-                                      {formatCurrency(valueData.final_total_with_gst)} ({valuePercentage.toFixed(0)}%)
-                                    </span>
+                                <div key={status} className="flex items-center gap-2">
+                                  <span className="text-xs text-gray-500 truncate w-28">
+                                    {status}
+                                  </span>
+                                  <div className="flex-1 bg-gray-100 rounded-full h-3 min-w-0 relative">
+                                    <div
+                                      className="bg-gradient-to-r from-[#0b1739] to-[#1d4ed8] rounded-full h-3 transition-all duration-500 ease-out absolute inset-0"
+                                      style={{ width: `${finalTotalPercentage}%` }}
+                                    />
                                   </div>
-                                  <div className="flex items-center gap-2 pl-28">
-                                    <span className="flex-1 min-w-0" />
-                                    <span className="text-xs font-semibold text-gray-700 whitespace-nowrap tabular-nums text-right min-w-[170px]">
-                                      <span className="text-gray-500 font-medium">Profit:</span>{' '}
-                                      {formatCurrency(valueData.profit)} ({profitMarginPercentage.toFixed(0)}%)
-                                    </span>
-                                  </div>
+                                  <span className="text-xs font-bold text-gray-900 whitespace-nowrap">
+                                    {formatCurrency(valueData.final_total_with_gst)} ({valuePercentage.toFixed(0)}%)
+                                  </span>
                                 </div>
                               );
                             } else {

@@ -621,7 +621,7 @@ export default function ProjectDetail(){
       'timesheet': 'Timesheet',
       'files': 'Project Files',
       'documents': 'Documents',
-      'proposal': 'Proposal',
+      'proposal': 'Pricing',
       'estimate': 'Estimate',
       'orders': 'Orders',
     };
@@ -640,7 +640,7 @@ export default function ProjectDetail(){
       'timesheet': 'Time tracking and hours',
       'files': 'Documents, photos and files',
       'documents': 'Create and edit documents, export to PDF',
-      'proposal': 'Project proposals',
+      'proposal': 'Project pricing',
       'estimate': 'Cost estimates and budgets',
       'orders': 'Purchase orders and supplies',
     };
@@ -4076,11 +4076,11 @@ function ProjectProposalTab({ projectId, clientId, siteId, proposals, statusLabe
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
             </svg>
           </div>
-          <h2 className="text-sm font-semibold text-gray-900">Proposal</h2>
+          <h2 className="text-sm font-semibold text-gray-900">Pricing</h2>
         </div>
 
-        {/* Tabs for proposals */}
-        {(organizedProposals.original || organizedProposals.changeOrders.length > 0 || (!isBidding && hasEditProposalPermission && organizedProposals.original)) && (
+        {/* Tabs for proposals - only in projects (hidden in opportunities) */}
+        {!isBidding && (organizedProposals.original || organizedProposals.changeOrders.length > 0 || (hasEditProposalPermission && organizedProposals.original)) && (
           <div className="border-b border-gray-200 mb-4">
             <nav className="-mb-px flex space-x-4" aria-label="Tabs">
               {organizedProposals.original && (
@@ -4092,7 +4092,7 @@ function ProjectProposalTab({ projectId, clientId, siteId, proposals, statusLabe
                       : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
                   }`}
                 >
-                  Proposal
+                  Pricing
                 </button>
               )}
               {organizedProposals.changeOrders.map((co) => {
@@ -4154,6 +4154,7 @@ function ProjectProposalTab({ projectId, clientId, siteId, proposals, statusLabe
             projectId={projectId} 
             initial={proposalData || null}
             disabled={!canEdit}
+            showOnlyPricing={true}
             showRestrictionWarning={!canEdit && (!!statusLabel || (selectedTab.startsWith('change-order-') && selectedProposal?.approval_status === 'approved'))}
             restrictionMessage={
               !canEdit && selectedTab.startsWith('change-order-') && selectedProposal?.approval_status === 'approved'
@@ -6698,13 +6699,13 @@ function ProjectTabCards({ availableTabs, onTabClick, proj, currentTab }: {
     timesheet: { label: 'Timesheet', icon: '⏰' },
     files: { label: 'Files', icon: '📁' },
     documents: { label: 'Documents', icon: '📄' },
-    proposal: { label: 'Proposal', icon: '📄' },
+    proposal: { label: 'Pricing', icon: '📄' },
     estimate: { label: 'Estimate', icon: '💰' },
     orders: { label: 'Orders', icon: '🛒' },
   };
 
-  // Include 'overview' and filter available tabs
-  const tabsToShow: (typeof availableTabs[number] | 'overview')[] = ['overview', ...availableTabs.filter(t => t !== 'overview')];
+  // Include 'overview' and filter available tabs (hide 'orders' tab from UI)
+  const tabsToShow: (typeof availableTabs[number] | 'overview')[] = ['overview', ...availableTabs.filter(t => t !== 'overview' && t !== 'orders')];
 
   return (
     <div className="rounded-xl border bg-white p-3">
@@ -7685,9 +7686,64 @@ function EditProgressModal({ projectId, currentProgress, onClose, onSave }: {
     }
   };
 
+  const progressPct = Math.max(0, Math.min(100, progress));
+  const progressModalSliderStyle = `
+    .edit-progress-slider {
+      -webkit-appearance: none;
+      appearance: none;
+      flex: 1;
+      height: 6px;
+      border-radius: 3px;
+      outline: none;
+      cursor: pointer;
+    }
+    .edit-progress-slider::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      appearance: none;
+      width: 18px;
+      height: 18px;
+      border-radius: 50%;
+      background: #7f1010;
+      cursor: pointer;
+      border: 2px solid #ffffff;
+      box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+      position: relative;
+      z-index: 1;
+    }
+    .edit-progress-slider::-moz-range-thumb {
+      width: 18px;
+      height: 18px;
+      border-radius: 50%;
+      background: #7f1010;
+      cursor: pointer;
+      border: 2px solid #ffffff;
+      box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+      position: relative;
+      z-index: 1;
+    }
+    .edit-progress-slider-container {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 4px;
+    }
+    .edit-progress-slider-value {
+      background: #7f1010;
+      color: white;
+      padding: 2px 8px;
+      border-radius: 4px;
+      font-size: 11px;
+      font-weight: 500;
+      white-space: nowrap;
+      line-height: 1.2;
+      flex-shrink: 0;
+    }
+  `;
+
   return (
-    <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4" onClick={onClose}>
-      <div className="bg-white rounded-xl w-full max-w-md shadow-xl" onClick={(e) => e.stopPropagation()}>
+    <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4">
+      <style>{progressModalSliderStyle}</style>
+      <div className="bg-white rounded-xl w-full max-w-md shadow-xl">
         <div className="p-4 border-b flex items-center justify-between">
           <h3 className="text-lg font-semibold">Edit Progress</h3>
           <button onClick={onClose} className="text-gray-400 hover:text-gray-600">
@@ -7707,11 +7763,19 @@ function EditProgressModal({ projectId, currentProgress, onClose, onSave }: {
             className="w-full border rounded px-3 py-2 mb-2"
           />
           <div className="mb-4">
-            <div className="flex items-center gap-3">
-              <div className="flex-1 h-3 bg-gray-200 rounded-full overflow-hidden">
-                <div className="h-full bg-brand-red rounded-full transition-all" style={{ width: `${Math.max(0, Math.min(100, progress))}%` }} />
-              </div>
-              <span className="text-sm font-semibold text-gray-700 w-12 text-right">{Math.max(0, Math.min(100, progress))}%</span>
+            <div className="edit-progress-slider-container">
+              <input
+                type="range"
+                min={0}
+                max={100}
+                value={progressPct}
+                onChange={(e) => setProgress(Number(e.target.value))}
+                className="edit-progress-slider"
+                style={{
+                  background: `linear-gradient(to right, #7f1010 0%, #7f1010 ${progressPct}%, #e5e7eb ${progressPct}%, #e5e7eb 100%)`
+                }}
+              />
+              <div className="edit-progress-slider-value">{progressPct}%</div>
             </div>
           </div>
           <div className="flex gap-2">
