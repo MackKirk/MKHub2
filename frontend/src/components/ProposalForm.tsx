@@ -120,7 +120,6 @@ export default function ProposalForm({ mode, clientId: clientIdProp, siteId: sit
   const [additionalNotes, setAdditionalNotes] = useState<string>('');
   const [pricingItems, setPricingItems] = useState<{ name:string, price:string, quantity?:string, pst?:boolean, gst?:boolean, division_id?:string }[]>([]);
   const [optionalServices, setOptionalServices] = useState<{ service:string, price:string }[]>([]);
-  const [showDivisionModal, setShowDivisionModal] = useState(false);
   const [showSectionTypeModal, setShowSectionTypeModal] = useState(false);
   const [showTotalInPdf, setShowTotalInPdf] = useState<boolean>(true);
   const [pstRate, setPstRate] = useState<number>(7);
@@ -1836,6 +1835,7 @@ By signing the accompanying proposal, the Owner agrees to these Terms and Condit
         </div>
         )}
 
+<<<<<<< HEAD
         {/* Pricing content - no card/header */}
         <div className="p-3">
           {!disabled && (
@@ -2131,6 +2131,9 @@ By signing the accompanying proposal, the Owner agrees to these Terms and Condit
           )}
         </div>
         )}
+=======
+        {/* Pricing and Optional Services are now in the dedicated Pricing tab. */}
+>>>>>>> 7fb843164cc3e281c076991527d4d18a3f92a5c2
 
         {/* Terms Block - hidden when showOnlyPricing */}
         {!showOnlyPricing && (
@@ -2704,19 +2707,6 @@ By signing the accompanying proposal, the Owner agrees to these Terms and Condit
               setPickerForContact(null);
             }
           }}
-        />
-      )}
-
-      {/* Division Selection Modal */}
-      {showDivisionModal && projectId && project?.project_division_ids && (
-        <DivisionSelectionModal
-          projectDivisions={projectDivisions || []}
-          projectDivisionIds={project.project_division_ids || []}
-          onSelect={(divisionId) => {
-            setPricingItems(arr => [...arr, { name: '', price: '', quantity: '1', pst: false, gst: false, division_id: divisionId }]);
-            setShowDivisionModal(false);
-          }}
-          onClose={() => setShowDivisionModal(false)}
         />
       )}
 
