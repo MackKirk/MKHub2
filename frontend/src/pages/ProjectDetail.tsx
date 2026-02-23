@@ -623,12 +623,8 @@ export default function ProjectDetail(){
       'timesheet': 'Timesheet',
       'files': 'Project Files',
       'documents': 'Documents',
-<<<<<<< HEAD
-      'proposal': 'Pricing',
-=======
       'proposal': 'Proposal',
       'pricing': 'Pricing',
->>>>>>> 7fb843164cc3e281c076991527d4d18a3f92a5c2
       'estimate': 'Estimate',
       'orders': 'Orders',
     };
@@ -647,12 +643,8 @@ export default function ProjectDetail(){
       'timesheet': 'Time tracking and hours',
       'files': 'Documents, photos and files',
       'documents': 'Create and edit documents, export to PDF',
-<<<<<<< HEAD
-      'proposal': 'Project pricing',
-=======
       'proposal': 'Project proposals',
       'pricing': 'Pricing items and optional services',
->>>>>>> 7fb843164cc3e281c076991527d4d18a3f92a5c2
       'estimate': 'Cost estimates and budgets',
       'orders': 'Purchase orders and supplies',
     };
@@ -6890,12 +6882,8 @@ availableTabs: readonly ('overview'|'reports'|'dispatch'|'timesheet'|'files'|'do
     timesheet: { label: 'Timesheet', icon: '⏰' },
     files: { label: 'Files', icon: '📁' },
     documents: { label: 'Documents', icon: '📄' },
-<<<<<<< HEAD
-    proposal: { label: 'Pricing', icon: '📄' },
-=======
     proposal: { label: 'Proposal', icon: '📄' },
     pricing: { label: 'Pricing', icon: '💰' },
->>>>>>> 7fb843164cc3e281c076991527d4d18a3f92a5c2
     estimate: { label: 'Estimate', icon: '💰' },
     orders: { label: 'Orders', icon: '🛒' },
   };
