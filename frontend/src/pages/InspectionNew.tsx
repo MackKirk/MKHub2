@@ -36,10 +36,11 @@ export default function InspectionNew() {
     queryFn: () => api<any[]>('GET', '/employees'),
   });
 
-  const { data: assets = [] } = useQuery({
+  const { data: assetsRes } = useQuery({
     queryKey: ['fleetAssets'],
-    queryFn: () => api<any[]>('GET', '/fleet/assets'),
+    queryFn: () => api<{ items: any[] }>('GET', '/fleet/assets?limit=500'),
   });
+  const assets = assetsRes?.items ?? [];
 
   const { data: checklistTemplate } = useQuery<ChecklistTemplate>({
     queryKey: ['inspectionChecklistTemplate'],

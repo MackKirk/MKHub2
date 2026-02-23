@@ -19,6 +19,7 @@ from sqlalchemy import (
     BigInteger,
     Text,
     Index,
+    text,
 )
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship, Mapped, mapped_column
@@ -1891,7 +1892,7 @@ class FleetAsset(Base):
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     unit_number: Mapped[Optional[str]] = mapped_column(String(50), index=True)  # UNIT # from maintenance sheet
     vin: Mapped[Optional[str]] = mapped_column(String(100))  # VIN for vehicles, serial for others
-    license_plate: Mapped[Optional[str]] = mapped_column(String(50), index=True)  # License plate for vehicles
+    license_plate: Mapped[Optional[str]] = mapped_column(String(50), index=True)  # License plate for vehicles; for heavy_machinery/other UI label is "License"
     make: Mapped[Optional[str]] = mapped_column(String(100))  # MAKE (brand/manufacturer)
     model: Mapped[Optional[str]] = mapped_column(String(255))
     year: Mapped[Optional[int]] = mapped_column(Integer)
@@ -1912,22 +1913,64 @@ class FleetAsset(Base):
     # Physical specifications
     ferry_length: Mapped[Optional[str]] = mapped_column(String(50))  # FERRY LENGTH (e.g., "22L 8H")
     gvw_kg: Mapped[Optional[int]] = mapped_column(Integer)  # GVW (KG) - Gross Vehicle Weight in kg
+    # Master Sheet / Fleet Master fields
+    fuel_type: Mapped[Optional[str]] = mapped_column(String(100))
+    vehicle_type: Mapped[Optional[str]] = mapped_column(String(100))  # Not shown in UI for heavy_machinery or other
+    driver_contact_phone: Mapped[Optional[str]] = mapped_column(String(100))
+    yard_location: Mapped[Optional[str]] = mapped_column(String(255))  # Excel "SLEEPS"
+    gvw_value: Mapped[Optional[int]] = mapped_column(Integer)
+    gvw_unit: Mapped[Optional[str]] = mapped_column(String(10))  # 'kg' or 'lbs'
+    equipment_type_label: Mapped[Optional[str]] = mapped_column(String(255))  # For heavy_machinery/other; UI label is "Type"
+    odometer_next_due_at: Mapped[Optional[int]] = mapped_column(Integer)
+    odometer_noted_issues: Mapped[Optional[str]] = mapped_column(Text)
+    propane_sticker_cert: Mapped[Optional[str]] = mapped_column(String(100))
+    propane_sticker_date: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))  # DATE stored as datetime
+    hours_next_due_at: Mapped[Optional[float]] = mapped_column(Numeric(12, 2))
+    hours_noted_issues: Mapped[Optional[str]] = mapped_column(Text)
     photos: Mapped[Optional[list]] = mapped_column(JSON)  # Array of file_object_ids
     documents: Mapped[Optional[list]] = mapped_column(JSON)  # Array of file_object_ids
     notes: Mapped[Optional[str]] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
     updated_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
     created_by: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"))
-    
+
     # Relationships
     driver = relationship("User", foreign_keys=[driver_id])
     assignments = relationship("FleetAssetAssignment", back_populates="fleet_asset", cascade="all, delete-orphan", order_by="FleetAssetAssignment.assigned_at.desc()")
+    asset_assignments = relationship("AssetAssignment", back_populates="fleet_asset", foreign_keys="AssetAssignment.fleet_asset_id", cascade="all, delete-orphan", order_by="AssetAssignment.assigned_at.desc()")
+    compliance_records = relationship("FleetComplianceRecord", back_populates="fleet_asset", cascade="all, delete-orphan", order_by="FleetComplianceRecord.expiry_date.desc()")
     inspections = relationship("FleetInspection", back_populates="fleet_asset", cascade="all, delete-orphan", order_by="FleetInspection.inspection_date.desc()")
     logs = relationship("FleetLog", back_populates="fleet_asset", cascade="all, delete-orphan", order_by="FleetLog.log_date.desc()")
 
     # Indexes
     __table_args__ = (
         Index('idx_fleet_asset_type_status', 'asset_type', 'status'),
+    )
+
+
+class FleetComplianceRecord(Base):
+    """CVIP/CRANE/NDT/PROPANE compliance records for fleet assets"""
+    __tablename__ = "fleet_compliance_records"
+
+    id: Mapped[uuid.UUID] = uuid_pk()
+    fleet_asset_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("fleet_assets.id", ondelete="CASCADE"), nullable=False, index=True)
+    record_type: Mapped[str] = mapped_column(String(50), nullable=False, index=True)  # CVIP, CRANE, NDT, PROPANE, OTHER
+    facility: Mapped[Optional[str]] = mapped_column(String(255))
+    completed_by: Mapped[Optional[str]] = mapped_column(String(255))
+    equipment_classification: Mapped[Optional[str]] = mapped_column(String(255))
+    equipment_make_model: Mapped[Optional[str]] = mapped_column(String(255))
+    serial_number: Mapped[Optional[str]] = mapped_column(String(255))
+    annual_inspection_date: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    expiry_date: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    file_reference_number: Mapped[Optional[str]] = mapped_column(String(255))
+    notes: Mapped[Optional[str]] = mapped_column(Text)
+    documents: Mapped[Optional[list]] = mapped_column(JSON)  # Array of file_object_ids
+
+    fleet_asset = relationship("FleetAsset", back_populates="compliance_records")
+
+    __table_args__ = (
+        Index('idx_fleet_compliance_asset_type_expiry', 'fleet_asset_id', 'record_type', 'expiry_date'),
+        Index('idx_fleet_compliance_expiry', 'expiry_date'),
     )
 
 
@@ -1938,6 +1981,7 @@ class Equipment(Base):
     id: Mapped[uuid.UUID] = uuid_pk()
     category: Mapped[str] = mapped_column(String(50), nullable=False, index=True)  # generator|tool|electronics|small_tool|safety
     name: Mapped[str] = mapped_column(String(255), nullable=False)
+    unit_number: Mapped[Optional[str]] = mapped_column(String(50), index=True)
     serial_number: Mapped[Optional[str]] = mapped_column(String(255), index=True)
     brand: Mapped[Optional[str]] = mapped_column(String(100))
     model: Mapped[Optional[str]] = mapped_column(String(255))
@@ -1956,6 +2000,7 @@ class Equipment(Base):
     checkouts = relationship("EquipmentCheckout", back_populates="equipment", cascade="all, delete-orphan", order_by="EquipmentCheckout.checked_out_at.desc()")
     logs = relationship("EquipmentLog", back_populates="equipment", cascade="all, delete-orphan", order_by="EquipmentLog.log_date.desc()")
     assignments = relationship("EquipmentAssignment", back_populates="equipment", cascade="all, delete-orphan", order_by="EquipmentAssignment.assigned_at.desc()")
+    asset_assignments = relationship("AssetAssignment", back_populates="equipment", foreign_keys="AssetAssignment.equipment_id", cascade="all, delete-orphan", order_by="AssetAssignment.assigned_at.desc()")
 
     # Indexes
     __table_args__ = (
@@ -2160,6 +2205,42 @@ class EquipmentAssignment(Base):
     __table_args__ = (
         Index('idx_equipment_assignment_equipment_active', 'equipment_id', 'is_active'),
         Index('idx_equipment_assignment_user_active', 'assigned_to_user_id', 'is_active'),
+    )
+
+
+class AssetAssignment(Base):
+    """Unified assignment for FleetAsset and Equipment (Assign/Return with snapshots, odometer/hours, photos)"""
+    __tablename__ = "asset_assignments"
+
+    id: Mapped[uuid.UUID] = uuid_pk()
+    target_type: Mapped[str] = mapped_column(String(50), nullable=False, index=True)  # fleet | equipment
+    fleet_asset_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), ForeignKey("fleet_assets.id", ondelete="CASCADE"), index=True)
+    equipment_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), ForeignKey("equipment.id", ondelete="CASCADE"), index=True)
+    assigned_to_user_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), index=True)
+    assigned_to_name: Mapped[Optional[str]] = mapped_column(String(255))
+    phone_snapshot: Mapped[Optional[str]] = mapped_column(String(255))
+    address_snapshot: Mapped[Optional[str]] = mapped_column(Text)
+    department_snapshot: Mapped[Optional[str]] = mapped_column(String(255))
+    assigned_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, index=True)
+    expected_return_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    returned_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    odometer_out: Mapped[Optional[int]] = mapped_column(Integer)
+    odometer_in: Mapped[Optional[int]] = mapped_column(Integer)
+    hours_out: Mapped[Optional[float]] = mapped_column(Numeric(12, 2))
+    hours_in: Mapped[Optional[float]] = mapped_column(Numeric(12, 2))
+    notes_out: Mapped[Optional[str]] = mapped_column(Text)
+    notes_in: Mapped[Optional[str]] = mapped_column(Text)
+    photos_out: Mapped[Optional[list]] = mapped_column(JSON)  # Array of file_object_ids
+    photos_in: Mapped[Optional[list]] = mapped_column(JSON)  # Array of file_object_ids
+
+    fleet_asset = relationship("FleetAsset", back_populates="asset_assignments", foreign_keys=[fleet_asset_id])
+    equipment = relationship("Equipment", back_populates="asset_assignments", foreign_keys=[equipment_id])
+    assigned_to_user = relationship("User", foreign_keys=[assigned_to_user_id])
+
+    __table_args__ = (
+        Index('idx_asset_assignments_open_fleet', 'fleet_asset_id', postgresql_where=text('returned_at IS NULL')),
+        Index('idx_asset_assignments_open_equipment', 'equipment_id', postgresql_where=text('returned_at IS NULL')),
+        Index('idx_asset_assignments_user', 'assigned_to_user_id'),
     )
 
 
