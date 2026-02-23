@@ -4071,9 +4071,9 @@ function ProjectProposalTab({ projectId, clientId, siteId, proposals, statusLabe
       {/* Main Proposal Section Card */}
       <div className="rounded-xl border bg-white p-4">
         <div className="flex items-center gap-2 mb-4">
-          <div className="w-8 h-8 rounded bg-purple-100 flex items-center justify-center">
-            <svg className="w-5 h-5 text-purple-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+          <div className="w-8 h-8 rounded bg-emerald-100 flex items-center justify-center">
+            <svg className="w-5 h-5 text-emerald-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
             </svg>
           </div>
           <h2 className="text-sm font-semibold text-gray-900">Pricing</h2>
@@ -6699,7 +6699,7 @@ function ProjectTabCards({ availableTabs, onTabClick, proj, currentTab }: {
     timesheet: { label: 'Timesheet', icon: '⏰' },
     files: { label: 'Files', icon: '📁' },
     documents: { label: 'Documents', icon: '📄' },
-    proposal: { label: 'Pricing', icon: '📄' },
+    proposal: { label: 'Pricing', icon: '💰' },
     estimate: { label: 'Estimate', icon: '💰' },
     orders: { label: 'Orders', icon: '🛒' },
   };

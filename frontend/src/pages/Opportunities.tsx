@@ -1613,7 +1613,7 @@ export function OpportunityListItem({ opportunity, onOpenReportModal, projectSta
 
   const tabButtons = [
     { key: 'files', icon: '📁', label: 'Files', tab: 'files' },
-    { key: 'proposal', icon: '📄', label: 'Pricing', tab: 'proposal' },
+    { key: 'proposal', icon: '💰', label: 'Pricing', tab: 'proposal' },
     { key: 'reports', icon: '📋', label: 'Report', tab: 'reports' },
   ];
 
@@ -1874,7 +1874,7 @@ function OpportunityListCard({ opportunity, onOpenReportModal, projectStatuses }
   // Tab icons and navigation (for opportunities: files, proposal, reports)
   const tabButtons = [
     { key: 'files', icon: '📁', label: 'Files', tab: 'files' },
-    { key: 'proposal', icon: '📄', label: 'Pricing', tab: 'proposal' },
+    { key: 'proposal', icon: '💰', label: 'Pricing', tab: 'proposal' },
     { key: 'reports', icon: '📋', label: 'Report', tab: 'reports' },
   ];
 
