@@ -13,6 +13,7 @@ import ClothSizeSelect from '@/components/ClothSizeSelect';
 import { useUnsavedChangesGuard } from '@/hooks/useUnsavedChangesGuard';
 import UserLoans from '@/components/UserLoans';
 import UserReports from '@/components/UserReports';
+import { DivisionIcon } from '@/components/DivisionIcon';
 
 // List of implemented permissions (permissions that are actually checked in the codebase)
 const IMPLEMENTED_PERMISSIONS = new Set([
@@ -4879,23 +4880,8 @@ function SalaryHistorySection({ userId, canEdit, settings }:{ userId:string, can
 }
 
 
-// Icon mapping for divisions (same as Projects.tsx)
-const getDivisionIcon = (label: string): string => {
-  const iconMap: Record<string, string> = {
-    'Roofing': '🏠',
-    'Concrete Restoration & Waterproofing': '🏗️',
-    'Cladding & Exterior Finishes': '🧱',
-    'Repairs & Maintenance': '🔧',
-    'Mechanical': '🔩',
-    'Electrical': '⚡',
-    'Carpentry': '🪵',
-    'Welding & Custom Fabrication': '🔥',
-    'Structural Upgrading': '📐',
-    'Solar PV': '☀️',
-    'Green Roofing': '🌱',
-  };
-  return iconMap[label] || '📦';
-};
+// Division icons use images from @/icons via DivisionIcon component
+const getDivisionIcon = (label: string) => <DivisionIcon label={label} size={14} />;
 
 // Personal tab sections
 function BasicInformationSection({ p, editable, userId, collectChanges, profileData, onEditClick, canEdit }: { p: any, editable: boolean, userId: string, collectChanges: (kv: Record<string, any>) => void, profileData?: any, onEditClick?: () => void, canEdit?: boolean }) {
@@ -5458,7 +5444,7 @@ function OrganizationSection({ p, editable, userId, collectChanges, usersOptions
                     const divisionIcon = getDivisionIcon(division.isMain ? division.label : division.parentLabel);
                     return (
                       <div key={id} className="flex items-center gap-1.5">
-                        <span className="text-xs">{divisionIcon}</span>
+                        <span className="inline-flex items-center">{divisionIcon}</span>
                         <span className="text-sm font-semibold text-gray-900">{divisionLabel}</span>
                       </div>
                     );

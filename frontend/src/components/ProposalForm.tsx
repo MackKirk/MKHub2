@@ -7,25 +7,13 @@ import toast from 'react-hot-toast';
 import ImagePicker from '@/components/ImagePicker';
 import { useConfirm } from '@/components/ConfirmProvider';
 import { useUnsavedChanges } from '@/components/UnsavedChangesProvider';
+import { DivisionIcon } from '@/components/DivisionIcon';
 // EstimateBuilder removed - now using simple pricing items
 
-// Icon mapping for divisions (same as in Projects.tsx)
-const getDivisionIcon = (label: string): string => {
-  const iconMap: Record<string, string> = {
-    'Roofing': '🏠',
-    'Concrete Restoration & Waterproofing': '🏗️',
-    'Cladding & Exterior Finishes': '🧱',
-    'Repairs & Maintenance': '🔧',
-    'Mechanical': '🔩',
-    'Electrical': '⚡',
-    'Carpentry': '🪵',
-    'Welding & Custom Fabrication': '🔥',
-    'Structural Upgrading': '📐',
-    'Solar PV': '☀️',
-    'Green Roofing': '🌱',
-  };
-  return iconMap[label] || '📦';
-};
+// Division icons use images from @/icons via DivisionIcon component
+function getDivisionIcon(label: string) {
+  return <DivisionIcon label={label} size={20} />;
+}
 
 type Client = { id:string, name?:string, display_name?:string, address_line1?:string, city?:string, province?:string, country?:string };
 type Site = { id:string, site_name?:string, site_address_line1?:string, site_address_line2?:string, site_city?:string, site_province?:string, site_postal_code?:string, site_country?:string };

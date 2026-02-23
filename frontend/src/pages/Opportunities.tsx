@@ -1,10 +1,12 @@
 import { useQuery } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import { useMemo, useState, useEffect } from 'react';
+import type { ReactNode } from 'react';
 import ImagePicker from '@/components/ImagePicker';
 import toast from 'react-hot-toast';
 import { Link, useLocation, useSearchParams, useNavigate } from 'react-router-dom';
 import LoadingOverlay from '@/components/LoadingOverlay';
+import { DivisionIcon } from '@/components/DivisionIcon';
 
 // Helper function to get user initials
 function getUserInitials(user: any): string {
@@ -1313,23 +1315,8 @@ export default function Opportunities(){
   );
 }
 
-// Icon mapping for divisions
-const getDivisionIcon = (label: string): string => {
-  const iconMap: Record<string, string> = {
-    'Roofing': '🏠',
-    'Concrete Restoration & Waterproofing': '🏗️',
-    'Cladding & Exterior Finishes': '🧱',
-    'Repairs & Maintenance': '🔧',
-    'Mechanical': '🔩',
-    'Electrical': '⚡',
-    'Carpentry': '🪵',
-    'Welding & Custom Fabrication': '🔥',
-    'Structural Upgrading': '📐',
-    'Solar PV': '☀️',
-    'Green Roofing': '🌱',
-  };
-  return iconMap[label] || '📦';
-};
+// Division icons use images from @/icons via DivisionIcon component
+const getDivisionIcon = (label: string) => <DivisionIcon label={label} size={16} />;
 
 export function CreateReportModal({ projectId, reportCategories, onClose, onSuccess }: {
   projectId: string,
@@ -1844,7 +1831,7 @@ function OpportunityListCard({ opportunity, onOpenReportModal, projectStatuses }
   // Get division icons and labels with percentages
   const divisionIcons = useMemo(() => {
     if (!Array.isArray(projectDivIds) || projectDivIds.length === 0 || !projectDivisions) return [];
-    const icons: Array<{ icon: string; label: string; percentage: number }> = [];
+    const icons: Array<{ icon: ReactNode; label: string; percentage: number }> = [];
     for (const divId of projectDivIds.slice(0, 5)) {
       for (const div of (projectDivisions || [])) {
         if (String(div.id) === String(divId)) {

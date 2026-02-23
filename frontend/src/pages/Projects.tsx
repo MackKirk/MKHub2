@@ -1,7 +1,9 @@
 import { useQuery, useQueries } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import { useMemo, useState, useEffect } from 'react';
+import type { ReactNode } from 'react';
 import ImagePicker from '@/components/ImagePicker';
+import { DivisionIcon } from '@/components/DivisionIcon';
 import toast from 'react-hot-toast';
 import { Link, useSearchParams, useNavigate, useLocation } from 'react-router-dom';
 import LoadingOverlay from '@/components/LoadingOverlay';
@@ -987,23 +989,8 @@ export default function Projects(){
   );
 }
 
-// Icon mapping for divisions
-const getDivisionIcon = (label: string): string => {
-  const iconMap: Record<string, string> = {
-    'Roofing': '🏠',
-    'Concrete Restoration & Waterproofing': '🏗️',
-    'Cladding & Exterior Finishes': '🧱',
-    'Repairs & Maintenance': '🔧',
-    'Mechanical': '🔩',
-    'Electrical': '⚡',
-    'Carpentry': '🪵',
-    'Welding & Custom Fabrication': '🔥',
-    'Structural Upgrading': '📐',
-    'Solar PV': '☀️',
-    'Green Roofing': '🌱',
-  };
-  return iconMap[label] || '📦';
-};
+// Division icons use images from @/icons via DivisionIcon component
+const getDivisionIcon = (label: string) => <DivisionIcon label={label} size={16} />;
 
 export function ProjectListItem({ project, projectDivisions, projectStatuses, variant = 'card' }: { project: Project, projectDivisions?: any[], projectStatuses: any[]; variant?: 'card' | 'row' }){
   const navigate = useNavigate();
@@ -1256,7 +1243,7 @@ function ProjectListCard({ project, projectDivisions, projectStatuses }:{ projec
   // Get division icons and labels with percentages (only if projectDivisions is already loaded)
   const divisionIcons = useMemo(() => {
     if (!Array.isArray(projectDivIds) || projectDivIds.length === 0 || !projectDivisions) return [];
-    const icons: Array<{ icon: string; label: string; id: string; percentage: number }> = [];
+    const icons: Array<{ icon: ReactNode; label: string; id: string; percentage: number }> = [];
     for (const divId of projectDivIds.slice(0, 5)) {
       for (const div of (projectDivisions || [])) {
         if (String(div.id) === String(divId)) {
@@ -1401,7 +1388,7 @@ function ProjectListCard({ project, projectDivisions, projectStatuses }:{ projec
               <div className="flex items-center gap-2 flex-wrap">
                 {divisionIcons.map((div, idx) => (
                   <div key={idx} className="relative group/icon flex flex-col items-center" title={div.label}>
-                    <div className="text-base cursor-pointer hover:scale-110 transition-transform">
+                    <div className="flex items-center justify-center cursor-pointer hover:scale-110 transition-transform">
                       {div.icon}
                     </div>
                     <div className="text-[10px] font-semibold text-gray-600 mt-0.5">
