@@ -497,23 +497,43 @@ def create_app() -> FastAPI:
                                 id TEXT PRIMARY KEY,
                                 name TEXT NOT NULL,
                                 description TEXT,
+                                category TEXT,
                                 page_templates TEXT,
                                 created_at TEXT
                             )
                         """))
                         db.commit()
                         print("[startup] Created document_types table")
+                    else:
+                        try:
+                            db.execute(text("ALTER TABLE document_types ADD COLUMN category TEXT"))
+                            db.commit()
+                            print("[startup] Added category column to document_types table")
+                        except Exception as e:
+                            if "duplicate" not in str(e).lower():
+                                raise
                 else:
                     db.execute(text("""
                         CREATE TABLE IF NOT EXISTS document_types (
                             id UUID PRIMARY KEY,
                             name VARCHAR(255) NOT NULL,
                             description VARCHAR(500),
+                            category VARCHAR(100),
                             page_templates JSON,
                             created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
                         )
                     """))
                     db.commit()
+                    try:
+                        rows = db.execute(text(
+                            "SELECT 1 FROM information_schema.columns WHERE table_name = 'document_types' AND column_name = 'category' LIMIT 1"
+                        )).fetchall()
+                        if not rows:
+                            db.execute(text("ALTER TABLE document_types ADD COLUMN category VARCHAR(100)"))
+                            db.commit()
+                            print("[startup] Added category column to document_types table")
+                    except Exception:
+                        raise
                     print("[startup] document_types table ready")
 
                 # Ensure permission_templates table exists

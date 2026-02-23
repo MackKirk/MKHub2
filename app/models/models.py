@@ -483,7 +483,9 @@ class DocumentType(Base):
     id: Mapped[uuid.UUID] = uuid_pk()
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     description: Mapped[Optional[str]] = mapped_column(String(500))
-    # Ordered list of { "template_id": "uuid", "label": "Cover" }. Each entry becomes one page.
+    # Optional category for grouping (e.g. "Commercial proposal", "Contract").
+    category: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    # Ordered list of { "template_id": "uuid", "label": "Cover", "margins?", "elements?" }. Each entry becomes one page.
     page_templates: Mapped[Optional[list]] = mapped_column(JSON)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
 

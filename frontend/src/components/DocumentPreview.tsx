@@ -1,4 +1,4 @@
-import { useRef, useState, useCallback, useEffect } from 'react';
+import { useRef, useState, useCallback, useEffect, Fragment } from 'react';
 import type { DocElement } from '@/types/documentCreator';
 import { ElementOptionsPopover } from '@/components/ElementOptionsPopover';
 
@@ -18,9 +18,18 @@ type DocumentPreviewProps = {
   blockAreasVisible?: boolean;
   /** When true (e.g. editing a document created from a type), block elements are visible but not draggable/resizable/deletable */
   lockBlockElements?: boolean;
-  onElementClick?: (elementId: string) => void;
+  /** When false, do not render the floating ElementOptionsPopover (use external ribbon/toolbar instead). */
+  showElementOptionsPopover?: boolean;
+  /** Optional: reports current rendered canvas width (px). Useful for export fidelity. */
+  onCanvasWidthPxChange?: (widthPx: number) => void;
+  /** Optional: called when a user action begins (drag/resize). Useful for undo/redo snapshots. */
+  onBeginUserAction?: () => void;
+  /** Zoom factor applied to the page canvas (1 = 100%). */
+  zoom?: number;
+  onElementClick?: (elementId: string, event?: React.PointerEvent) => void;
   onCanvasClick?: () => void;
-  selectedElementId: string | null;
+  /** When array: multi-selection. When empty: none selected. */
+  selectedElementIds: string[];
   onUpdateElement?: (elementId: string, updater: (el: DocElement) => DocElement) => void;
   onRemoveElement?: (elementId: string) => void;
   /** For image elements: replace or set image (upload handled by parent) */
@@ -29,6 +38,9 @@ type DocumentPreviewProps = {
 
 const A4_ASPECT = 210 / 297;
 const MIN_SIZE_PCT = 2;
+// Reference width used to keep font sizing stable across window sizes.
+// Font sizes are stored in "reference px" and scaled by (canvasWidth / REFERENCE_CANVAS_WIDTH_PX).
+const REFERENCE_CANVAS_WIDTH_PX = 910;
 
 type ResizeHandle = 'n' | 's' | 'e' | 'w' | 'nw' | 'ne' | 'sw' | 'se';
 
@@ -92,6 +104,133 @@ function overlapsAnyBlock(
       b.id !== excludeId &&
       rectsOverlap(x_pct, y_pct, width_pct, height_pct, b.x_pct ?? 0, b.y_pct ?? 0, b.width_pct ?? 10, b.height_pct ?? 10)
   );
+}
+
+// --- Snap guides (alignment lines when dragging) ---
+const SNAP_THRESHOLD_PCT = 2.5;
+/** Only consider alignment to elements in the same "band" (vertical band for vertical lines, horizontal for horizontal). */
+const PROXIMITY_BAND_PCT = 18;
+
+function getReferenceLines(
+  elements: DocElement[],
+  movingIds: string[],
+  margins: TemplateMargins | null | undefined,
+  movingBbox: { left: number; right: number; top: number; bottom: number }
+): { vertical: number[]; horizontal: number[] } {
+  const vertical = new Set<number>();
+  const horizontal = new Set<number>();
+  const { left: mL, right: mR, top: mT, bottom: mB } = movingBbox;
+  const L = margins?.left_pct ?? 0;
+  const R = margins?.right_pct ?? 0;
+  const T = margins?.top_pct ?? 0;
+  const B = margins?.bottom_pct ?? 0;
+  if (Math.abs(mL - L) <= PROXIMITY_BAND_PCT || Math.abs(mR - (100 - R)) <= PROXIMITY_BAND_PCT) {
+    vertical.add(L);
+    vertical.add(100 - R);
+  }
+  if (Math.abs(mT - T) <= PROXIMITY_BAND_PCT || Math.abs(mB - (100 - B)) <= PROXIMITY_BAND_PCT) {
+    horizontal.add(T);
+    horizontal.add(100 - B);
+  }
+  elements.forEach((el) => {
+    if (movingIds.includes(el.id)) return;
+    const x = el.x_pct ?? 10;
+    const y = el.y_pct ?? 20;
+    const w = el.width_pct ?? 80;
+    const h = el.height_pct ?? 8;
+    const elRight = x + w;
+    const elBottom = y + h;
+    const verticalOverlap = elBottom >= mT - PROXIMITY_BAND_PCT && y <= mB + PROXIMITY_BAND_PCT;
+    if (verticalOverlap) {
+      vertical.add(x);
+      vertical.add(x + w / 2);
+      vertical.add(elRight);
+    }
+    const horizontalOverlap = elRight >= mL - PROXIMITY_BAND_PCT && x <= mR + PROXIMITY_BAND_PCT;
+    if (horizontalOverlap) {
+      horizontal.add(y);
+      horizontal.add(y + h / 2);
+      horizontal.add(elBottom);
+    }
+  });
+  return {
+    vertical: Array.from(vertical),
+    horizontal: Array.from(horizontal),
+  };
+}
+
+function getGroupBbox(
+  movingIds: string[],
+  startPositions: Record<string, { x_pct: number; y_pct: number }>,
+  elements: DocElement[],
+  dx: number,
+  dy: number
+): { left: number; right: number; top: number; bottom: number; centerX: number; centerY: number } {
+  let left = 100;
+  let right = 0;
+  let top = 100;
+  let bottom = 0;
+  movingIds.forEach((id) => {
+    const pos = startPositions[id];
+    const el = elements.find((e) => e.id === id);
+    if (!pos || !el) return;
+    const w = el.width_pct ?? 80;
+    const h = el.height_pct ?? 8;
+    const x = pos.x_pct + dx;
+    const y = pos.y_pct + dy;
+    left = Math.min(left, x);
+    right = Math.max(right, x + w);
+    top = Math.min(top, y);
+    bottom = Math.max(bottom, y + h);
+  });
+  return {
+    left,
+    right,
+    top,
+    bottom,
+    centerX: (left + right) / 2,
+    centerY: (top + bottom) / 2,
+  };
+}
+
+function computeSnap(
+  bbox: { left: number; right: number; top: number; bottom: number; centerX: number; centerY: number },
+  refV: number[],
+  refH: number[],
+  dx: number,
+  dy: number
+): { dx: number; dy: number; guides: { v: number[]; h: number[] } } {
+  const guides = { v: [] as number[], h: [] as number[] };
+  let outDx = dx;
+  let outDy = dy;
+
+  let bestDistV = SNAP_THRESHOLD_PCT + 1;
+  for (const V of refV) {
+    for (const anchor of [bbox.left, bbox.centerX, bbox.right] as const) {
+      const current = anchor + dx;
+      const dist = Math.abs(current - V);
+      if (dist <= SNAP_THRESHOLD_PCT && dist < bestDistV) {
+        bestDistV = dist;
+        outDx = V - anchor;
+        guides.v = [V];
+      }
+    }
+  }
+
+  let bestDistH = SNAP_THRESHOLD_PCT + 1;
+  for (const H of refH) {
+    for (const anchor of [bbox.top, bbox.centerY, bbox.bottom] as const) {
+      const current = anchor + dy;
+      const dist = Math.abs(current - H);
+      if (dist <= SNAP_THRESHOLD_PCT && dist < bestDistH) {
+        bestDistH = dist;
+        outDy = H - anchor;
+        guides.h = [H];
+      }
+    }
+  }
+
+  return { dx: outDx, dy: outDy, guides };
 }
 
 function applyResize(
@@ -223,22 +362,33 @@ export default function DocumentPreview({
   margins,
   blockAreasVisible = true,
   lockBlockElements = false,
+  showElementOptionsPopover = true,
+  onCanvasWidthPxChange,
+  onBeginUserAction,
+  zoom = 1,
   onElementClick,
   onCanvasClick,
-  selectedElementId,
+  selectedElementIds,
   onUpdateElement,
   onRemoveElement,
   onReplaceImage,
 }: DocumentPreviewProps) {
+  const scrollRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLDivElement>(null);
+  const [canvasWidthPx, setCanvasWidthPx] = useState<number>(REFERENCE_CANVAS_WIDTH_PX);
+  const panRef = useRef<{ active: boolean; startX: number; startY: number; startLeft: number; startTop: number }>({
+    active: false,
+    startX: 0,
+    startY: 0,
+    startLeft: 0,
+    startTop: 0,
+  });
+  const [spaceDown, setSpaceDown] = useState(false);
   const dragRef = useRef<{
-    elementId: string;
+    movingIds: string[];
+    startPositions: Record<string, { x_pct: number; y_pct: number }>;
     startX: number;
     startY: number;
-    startX_pct: number;
-    startY_pct: number;
-    width_pct: number;
-    height_pct: number;
     hasMoved: boolean;
   } | null>(null);
   const resizeRef = useRef<{
@@ -250,35 +400,95 @@ export default function DocumentPreview({
     startY_pct: number;
     startW_pct: number;
     startH_pct: number;
+    hasResized: boolean;
   } | null>(null);
   const [editingElementId, setEditingElementId] = useState<string | null>(null);
+  /** Guide lines shown during drag when snapping to other elements/margins */
+  const [dragGuideLines, setDragGuideLines] = useState<{ v: number[]; h: number[] } | null>(null);
+
+  useEffect(() => {
+    const el = canvasRef.current;
+    if (!el) return;
+    const update = () => {
+      const w = el.getBoundingClientRect().width || REFERENCE_CANVAS_WIDTH_PX;
+      setCanvasWidthPx(w);
+      // Report logical (unzoomed) canvas width for export fidelity.
+      onCanvasWidthPxChange?.(w / Math.max(0.01, zoom));
+    };
+    update();
+    // Keep it stable across resizes so wrapping/size doesn't change relative to the page.
+    if (typeof ResizeObserver !== 'undefined') {
+      const ro = new ResizeObserver(() => update());
+      ro.observe(el);
+      return () => ro.disconnect();
+    }
+    // Fallback for older browsers/environments without ResizeObserver
+    window.addEventListener('resize', update);
+    return () => window.removeEventListener('resize', update);
+  }, [onCanvasWidthPxChange, zoom]);
+
+  // Spacebar pan (like design tools). We don't intercept when typing.
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      const t = e.target as HTMLElement | null;
+      const tag = t?.tagName?.toLowerCase();
+      const isTyping = tag === 'input' || tag === 'textarea' || tag === 'select' || (t?.isContentEditable ?? false);
+      if (isTyping) return;
+      if (e.code === 'Space') {
+        setSpaceDown(true);
+      }
+    };
+    const onKeyUp = (e: KeyboardEvent) => {
+      if (e.code === 'Space') setSpaceDown(false);
+    };
+    window.addEventListener('keydown', onKeyDown);
+    window.addEventListener('keyup', onKeyUp);
+    return () => {
+      window.removeEventListener('keydown', onKeyDown);
+      window.removeEventListener('keyup', onKeyUp);
+    };
+  }, []);
 
   const handlePointerDown = useCallback(
     (e: React.PointerEvent, el: DocElement) => {
       e.stopPropagation();
       if (e.button !== 0) return;
+      if (el.locked) return;
       if (el.type === 'block' && lockBlockElements) return;
       const target = e.target as HTMLElement;
       if (target.closest('textarea') || target.closest('input')) return;
+      // When element has lockPosition, we don't move it but still capture so we can select on click (movingIds = [])
+      const movingIds = el.lockPosition
+        ? []
+        : selectedElementIds.includes(el.id)
+          ? selectedElementIds.filter((id) => {
+              const o = elements.find((x) => x.id === id);
+              return o && !o.locked && !o.lockPosition;
+            })
+          : [el.id];
+      const startPositions: Record<string, { x_pct: number; y_pct: number }> = {};
+      movingIds.forEach((id) => {
+        const o = elements.find((x) => x.id === id);
+        if (o) startPositions[id] = { x_pct: o.x_pct ?? 10, y_pct: o.y_pct ?? 20 };
+      });
       dragRef.current = {
-        elementId: el.id,
+        movingIds,
+        startPositions,
         startX: e.clientX,
         startY: e.clientY,
-        startX_pct: el.x_pct ?? 10,
-        startY_pct: el.y_pct ?? 20,
-        width_pct: el.width_pct ?? 80,
-        height_pct: el.height_pct ?? 8,
         hasMoved: false,
       };
       (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
     },
-    []
+    [selectedElementIds, elements]
   );
 
   const handleResizePointerDown = useCallback(
     (e: React.PointerEvent, el: DocElement, handle: ResizeHandle) => {
       e.stopPropagation();
       if (e.button !== 0) return;
+      if (el.locked) return;
+      if (el.lockPosition) return;
       if (el.type === 'block' && lockBlockElements) return;
       resizeRef.current = {
         elementId: el.id,
@@ -289,6 +499,7 @@ export default function DocumentPreview({
         startY_pct: el.y_pct ?? 20,
         startW_pct: el.width_pct ?? 80,
         startH_pct: el.height_pct ?? 8,
+        hasResized: false,
       };
       (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
     },
@@ -299,18 +510,35 @@ export default function DocumentPreview({
     (e: React.PointerEvent) => {
       const drag = dragRef.current;
       if (!drag || !canvasRef.current || !onUpdateElement) return;
-      const el = elements.find((x) => x.id === drag.elementId);
-      const blocks = elements.filter((x) => x.type === 'block');
-      const isBlock = el?.type === 'block';
       const rect = canvasRef.current.getBoundingClientRect();
-      const dx = ((e.clientX - drag.startX) / rect.width) * 100;
-      const dy = ((e.clientY - drag.startY) / rect.height) * 100;
+      let dx = ((e.clientX - drag.startX) / rect.width) * 100;
+      let dy = ((e.clientY - drag.startY) / rect.height) * 100;
+      if (e.shiftKey) {
+        if (Math.abs(dx) > Math.abs(dy)) dy = 0;
+        else dx = 0;
+      }
+      const bbox = getGroupBbox(drag.movingIds, drag.startPositions, elements, dx, dy);
+      const { vertical: refV, horizontal: refH } = getReferenceLines(elements, drag.movingIds, margins, bbox);
+      const snapped = computeSnap(bbox, refV, refH, dx, dy);
+      // Show guide lines when close to alignment, but do not snap (use raw dx, dy)
+      const hasGuides = snapped.guides.v.length > 0 || snapped.guides.h.length > 0;
+      setDragGuideLines(hasGuides ? snapped.guides : null);
       if (Math.abs(dx) > 0.5 || Math.abs(dy) > 0.5) drag.hasMoved = true;
-      const b = isBlock ? contentBoundsBlock(drag.width_pct, drag.height_pct) : contentBounds(margins, drag.width_pct, drag.height_pct);
-      const newX_pct = Math.max(b.minX, Math.min(b.maxX, drag.startX_pct + dx));
-      const newY_pct = Math.max(b.minY, Math.min(b.maxY, drag.startY_pct + dy));
-      if (!isBlock && overlapsAnyBlock(newX_pct, newY_pct, drag.width_pct, drag.height_pct, blocks, drag.elementId)) return;
-      onUpdateElement(drag.elementId, (el) => ({ ...el, x_pct: newX_pct, y_pct: newY_pct }));
+      const blocks = elements.filter((x) => x.type === 'block');
+      drag.movingIds.forEach((elementId) => {
+        const el = elements.find((x) => x.id === elementId);
+        if (!el) return;
+        const pos = drag.startPositions[elementId];
+        if (!pos) return;
+        const isBlock = el.type === 'block';
+        const w = el.width_pct ?? 80;
+        const h = el.height_pct ?? 8;
+        const b = isBlock ? contentBoundsBlock(w, h) : contentBounds(margins, w, h);
+        const newX_pct = Math.max(b.minX, Math.min(b.maxX, pos.x_pct + dx));
+        const newY_pct = Math.max(b.minY, Math.min(b.maxY, pos.y_pct + dy));
+        if (!isBlock && overlapsAnyBlock(newX_pct, newY_pct, w, h, blocks, elementId)) return;
+        onUpdateElement(elementId, (prev) => ({ ...prev, x_pct: newX_pct, y_pct: newY_pct }));
+      });
     },
     [onUpdateElement, margins, elements]
   );
@@ -320,8 +548,10 @@ export default function DocumentPreview({
       (e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId);
       const drag = dragRef.current;
       dragRef.current = null;
-      if (drag && drag.elementId === el.id && !drag.hasMoved) {
-        onElementClick?.(el.id);
+      setDragGuideLines(null);
+      // Select on click: either we were dragging this element and didn't move, or we clicked with lockPosition (movingIds empty)
+      if (drag && !drag.hasMoved && (drag.movingIds.includes(el.id) || drag.movingIds.length === 0)) {
+        onElementClick?.(el.id, e);
       }
     },
     [onElementClick]
@@ -337,18 +567,37 @@ export default function DocumentPreview({
     const onDocMove = (e: PointerEvent) => {
       const drag = dragRef.current;
       if (drag && canvasRef.current) {
-        const el = elements.find((x) => x.id === drag.elementId);
-        const blocks = elements.filter((x) => x.type === 'block');
-        const isBlock = el?.type === 'block';
         const rect = canvasRef.current.getBoundingClientRect();
-        const dx = ((e.clientX - drag.startX) / rect.width) * 100;
-        const dy = ((e.clientY - drag.startY) / rect.height) * 100;
-        if (Math.abs(dx) > 0.5 || Math.abs(dy) > 0.5) drag.hasMoved = true;
-        const b = isBlock ? contentBoundsBlock(drag.width_pct, drag.height_pct) : contentBounds(margins, drag.width_pct, drag.height_pct);
-        const newX_pct = Math.max(b.minX, Math.min(b.maxX, drag.startX_pct + dx));
-        const newY_pct = Math.max(b.minY, Math.min(b.maxY, drag.startY_pct + dy));
-        if (!isBlock && overlapsAnyBlock(newX_pct, newY_pct, drag.width_pct, drag.height_pct, blocks, drag.elementId)) return;
-        onUpdateElement(drag.elementId, (el) => ({ ...el, x_pct: newX_pct, y_pct: newY_pct }));
+        let dx = ((e.clientX - drag.startX) / rect.width) * 100;
+        let dy = ((e.clientY - drag.startY) / rect.height) * 100;
+        if (e.shiftKey) {
+          if (Math.abs(dx) > Math.abs(dy)) dy = 0;
+          else dx = 0;
+        }
+        const bbox = getGroupBbox(drag.movingIds, drag.startPositions, elements, dx, dy);
+        const { vertical: refV, horizontal: refH } = getReferenceLines(elements, drag.movingIds, margins, bbox);
+        const snapped = computeSnap(bbox, refV, refH, dx, dy);
+        const hasGuides = snapped.guides.v.length > 0 || snapped.guides.h.length > 0;
+        setDragGuideLines(hasGuides ? snapped.guides : null);
+        if (Math.abs(dx) > 0.5 || Math.abs(dy) > 0.5) {
+          if (!drag.hasMoved) onBeginUserAction?.();
+          drag.hasMoved = true;
+        }
+        const blocks = elements.filter((x) => x.type === 'block');
+        drag.movingIds.forEach((elementId) => {
+          const el = elements.find((x) => x.id === elementId);
+          if (!el) return;
+          const pos = drag.startPositions[elementId];
+          if (!pos) return;
+          const isBlock = el.type === 'block';
+          const w = el.width_pct ?? 80;
+          const h = el.height_pct ?? 8;
+          const b = isBlock ? contentBoundsBlock(w, h) : contentBounds(margins, w, h);
+          const newX_pct = Math.max(b.minX, Math.min(b.maxX, pos.x_pct + dx));
+          const newY_pct = Math.max(b.minY, Math.min(b.maxY, pos.y_pct + dy));
+          if (!isBlock && overlapsAnyBlock(newX_pct, newY_pct, w, h, blocks, elementId)) return;
+          onUpdateElement(elementId, (prev) => ({ ...prev, x_pct: newX_pct, y_pct: newY_pct }));
+        });
         return;
       }
       const resize = resizeRef.current;
@@ -359,6 +608,10 @@ export default function DocumentPreview({
         const rect = canvasRef.current.getBoundingClientRect();
         const dx = ((e.clientX - resize.startX) / rect.width) * 100;
         const dy = ((e.clientY - resize.startY) / rect.height) * 100;
+        if (!resize.hasResized && (Math.abs(dx) > 0.2 || Math.abs(dy) > 0.2)) {
+          onBeginUserAction?.();
+          resize.hasResized = true;
+        }
         const next = isBlock
           ? applyResizeBlock(resize.handle, dx, dy, resize.startX_pct, resize.startY_pct, resize.startW_pct, resize.startH_pct)
           : applyResize(resize.handle, dx, dy, resize.startX_pct, resize.startY_pct, resize.startW_pct, resize.startH_pct, margins);
@@ -369,6 +622,7 @@ export default function DocumentPreview({
     const onDocUp = () => {
       dragRef.current = null;
       resizeRef.current = null;
+      setDragGuideLines(null);
     };
     document.addEventListener('pointermove', onDocMove);
     document.addEventListener('pointerup', onDocUp);
@@ -382,23 +636,27 @@ export default function DocumentPreview({
 
   const handleDoubleClick = useCallback((e: React.MouseEvent, el: DocElement) => {
     e.stopPropagation();
+    if (el.locked) return;
     if (el.type === 'text') setEditingElementId(el.id);
-  }, []);
+  }, []); // lockPosition does not block double-click to edit
 
   const commitInlineEdit = useCallback(() => {
     setEditingElementId(null);
   }, []);
 
-  const selectedElement = selectedElementId
-    ? elements.find((e) => e.id === selectedElementId)
-    : null;
+  const selectedElement = selectedElementIds.length === 1 ? elements.find((e) => e.id === selectedElementIds[0]) : null;
 
   return (
     <div className="flex-1 flex flex-col min-w-0 rounded-xl border bg-white overflow-hidden relative">
       <div className="p-3 border-b border-gray-200 text-gray-600 text-sm font-medium">
         Preview
       </div>
-      {selectedElement && onUpdateElement && onRemoveElement && !(selectedElement.type === 'block' && !blockAreasVisible) && !(selectedElement.type === 'block' && lockBlockElements) && (
+      {showElementOptionsPopover &&
+        selectedElement &&
+        onUpdateElement &&
+        onRemoveElement &&
+        !(selectedElement.type === 'block' && !blockAreasVisible) &&
+        !(selectedElement.type === 'block' && lockBlockElements) && (
         <ElementOptionsPopover
           element={selectedElement}
           onUpdate={onUpdateElement}
@@ -410,15 +668,45 @@ export default function DocumentPreview({
           onReplaceImage={onReplaceImage}
         />
       )}
-      <div className="flex-1 min-h-0 flex items-start justify-center p-4 overflow-auto">
+      <div
+        ref={scrollRef}
+        className={`flex-1 min-h-0 flex items-start justify-center p-4 overflow-auto ${spaceDown ? 'cursor-grab' : ''}`}
+        onPointerDown={(e) => {
+          if (!spaceDown || e.button !== 0) return;
+          const sc = scrollRef.current;
+          if (!sc) return;
+          panRef.current = {
+            active: true,
+            startX: e.clientX,
+            startY: e.clientY,
+            startLeft: sc.scrollLeft,
+            startTop: sc.scrollTop,
+          };
+          (e.currentTarget as HTMLElement).setPointerCapture?.(e.pointerId);
+        }}
+        onPointerMove={(e) => {
+          const sc = scrollRef.current;
+          if (!sc || !panRef.current.active) return;
+          sc.scrollLeft = panRef.current.startLeft - (e.clientX - panRef.current.startX);
+          sc.scrollTop = panRef.current.startTop - (e.clientY - panRef.current.startY);
+        }}
+        onPointerUp={(e) => {
+          if (!panRef.current.active) return;
+          panRef.current.active = false;
+          (e.currentTarget as HTMLElement).releasePointerCapture?.(e.pointerId);
+        }}
+        onPointerCancel={() => {
+          panRef.current.active = false;
+        }}
+      >
         <div
           ref={canvasRef}
           className="bg-white shadow-lg rounded-sm overflow-visible relative select-none flex-shrink-0"
           style={{
             aspectRatio: `${A4_ASPECT}`,
-            width: '100%',
-            minWidth: 280,
-            maxWidth: 1200,
+            width: `${Math.max(0.25, zoom) * 100}%`,
+            minWidth: 280 * zoom,
+            maxWidth: 1200 * zoom,
           }}
           onClick={(e) => {
             if (e.target === e.currentTarget) {
@@ -471,27 +759,29 @@ export default function DocumentPreview({
             const y = (el.y_pct ?? 20) / 100;
             const w = (el.width_pct ?? 80) / 100;
             const h = (el.height_pct ?? 8) / 100;
-            const isSelected = selectedElementId === el.id;
-            const isEditing = editingElementId === el.id && el.type === 'text';
+            const isSelected = selectedElementIds.includes(el.id);
+            const isEditing = editingElementId === el.id && el.type === 'text' && !el.locked;
             const isBlock = el.type === 'block';
-            const showHandles = isSelected && !isEditing && !(isBlock && lockBlockElements);
+            const isLocked = !!el.locked;
+            const isPositionLocked = !!el.lockPosition;
+            const showHandles = isSelected && !isEditing && !(isBlock && lockBlockElements) && !isLocked && !isPositionLocked && selectedElementIds.length === 1;
             const isImagePlaceholder = el.type === 'image' && !el.content;
 
             return (
+              <Fragment key={el.id}>
               <div
-                key={el.id}
                 onPointerDown={(e) => handlePointerDown(e, el)}
                 onPointerMove={handlePointerMove}
                 onPointerUp={(e) => handlePointerUp(e, el)}
                 onPointerLeave={(e) => {
-                  if (dragRef.current?.elementId === el.id) {
+                  if (dragRef.current?.movingIds.includes(el.id)) {
                     (e.target as HTMLElement).releasePointerCapture?.(e.pointerId);
                   }
                 }}
                 onClick={(e) => e.stopPropagation()}
                 onDoubleClick={(e) => handleDoubleClick(e, el)}
                 className={`absolute border transition-colors rounded ${
-                  isEditing ? 'cursor-text overflow-hidden' : isBlock && lockBlockElements ? 'cursor-default overflow-hidden' : 'cursor-move'
+                  isEditing ? 'cursor-text overflow-hidden' : isLocked ? 'cursor-default overflow-hidden' : isPositionLocked ? 'cursor-default overflow-hidden' : isBlock && lockBlockElements ? 'cursor-default overflow-hidden' : 'cursor-move'
                 } ${isSelected ? 'ring-2 ring-brand-red border-brand-red overflow-visible' : 'overflow-hidden border-transparent hover:border-gray-300'}`}
                 style={{
                   left: `${x * 100}%`,
@@ -504,8 +794,10 @@ export default function DocumentPreview({
                   (() => {
                     const va = el.verticalAlign ?? 'top';
                     const justifyContent = va === 'top' ? 'flex-start' : va === 'bottom' ? 'flex-end' : 'center';
+                    const scale = canvasWidthPx / REFERENCE_CANVAS_WIDTH_PX;
+                    const refFontSize = Math.max(8, Math.min(72, el.fontSize ?? 12));
                     const textStyle = {
-                      fontSize: `${Math.max(8, Math.min(72, el.fontSize ?? 12))}px`,
+                      fontSize: `${Math.max(6, refFontSize * scale)}px`,
                       textAlign: el.textAlign ?? 'left',
                       fontWeight: el.fontWeight ?? 'normal',
                       fontStyle: el.fontStyle ?? 'normal',
@@ -558,18 +850,22 @@ export default function DocumentPreview({
                       backgroundImage: 'repeating-linear-gradient(-45deg, transparent, transparent 6px, rgba(245,158,11,0.15) 6px, rgba(245,158,11,0.15) 12px)',
                     }}
                   >
-                    <span className="text-xs font-medium text-amber-800/80">Bloqueio</span>
+                    <span className="text-xs font-medium text-amber-800/80">Blocked area</span>
                   </div>
                 ) : isImagePlaceholder ? (
                   <div className="w-full h-full rounded border-2 border-dashed border-gray-400 bg-gray-50/80 flex items-center justify-center pointer-events-none">
-                    <span className="text-xs text-gray-500">Área para imagem</span>
+                    <span className="text-xs text-gray-500">Image area</span>
                   </div>
                 ) : (
                   el.content && (
                     <img
                       src={`/files/${el.content}/thumbnail?w=400`}
                       alt=""
-                      className="w-full h-full object-contain pointer-events-none"
+                      className="w-full h-full pointer-events-none"
+                      style={{
+                        objectFit: el.imageFit ?? 'contain',
+                        objectPosition: el.imagePosition ?? '50% 50%',
+                      }}
                     />
                   )
                 )}
@@ -585,8 +881,53 @@ export default function DocumentPreview({
                     />
                   ))}
               </div>
+              {isSelected && isPositionLocked && !isBlock && onUpdateElement && (
+                <div
+                  className="absolute flex items-center justify-between gap-2 px-2 py-1.5 rounded bg-sky-50 border border-sky-200 shadow-sm pointer-events-auto z-10"
+                  style={{
+                    left: `${x * 100}%`,
+                    top: `${(y + h) * 100 + 0.3}%`,
+                    width: `${w * 100}%`,
+                  }}
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <span className="text-xs text-sky-800 flex-1 min-w-0 truncate">
+                    This element has movement blocked.
+                  </span>
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onUpdateElement(el.id, (prev) => ({ ...prev, lockPosition: false }));
+                    }}
+                    className="flex-shrink-0 px-2 py-1 rounded text-xs font-medium bg-sky-600 text-white hover:bg-sky-700 border-0"
+                  >
+                    Unblock
+                  </button>
+                </div>
+              )}
+            </Fragment>
             );
           })}
+          {/* Snap guide lines (alignment references while dragging) */}
+          {dragGuideLines && (
+            <div className="absolute inset-0 pointer-events-none rounded-sm" aria-hidden>
+              {dragGuideLines.v.map((pct) => (
+                <div
+                  key={`v-${pct}`}
+                  className="absolute top-0 bottom-0 w-0.5 -translate-x-1/2 bg-brand-red/80"
+                  style={{ left: `${pct}%` }}
+                />
+              ))}
+              {dragGuideLines.h.map((pct) => (
+                <div
+                  key={`h-${pct}`}
+                  className="absolute left-0 right-0 h-0.5 -translate-y-1/2 bg-brand-red/80"
+                  style={{ top: `${pct}%` }}
+                />
+              ))}
+            </div>
+          )}
         </div>
       </div>
     </div>

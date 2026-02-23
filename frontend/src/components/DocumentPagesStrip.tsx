@@ -1,6 +1,9 @@
+import { useEffect, useRef, useState } from 'react';
 import type { DocumentPage, DocElement } from '@/types/documentCreator';
 
 const A4_ASPECT = 210 / 297;
+// Keep thumbnails visually consistent with the main editor scaling.
+const REFERENCE_CANVAS_WIDTH_PX = 910;
 
 type Template = { id: string; name: string; background_file_id?: string };
 
@@ -12,6 +15,8 @@ type DocumentPagesStripProps = {
   onAddPage: () => void;
   /** When set, show delete button on each page (only when more than one page). */
   onDeletePage?: (index: number) => void;
+  /** When set, show duplicate button on each page. */
+  onDuplicatePage?: (index: number) => void;
 };
 
 function PageThumbnail({
@@ -26,9 +31,28 @@ function PageThumbnail({
   onClick: () => void;
 }) {
   const elements = page.elements ?? [];
+  const thumbRef = useRef<HTMLButtonElement>(null);
+  const [thumbWidthPx, setThumbWidthPx] = useState<number>(130);
+
+  useEffect(() => {
+    const el = thumbRef.current;
+    if (!el) return;
+    const update = () => setThumbWidthPx(el.getBoundingClientRect().width || 130);
+    update();
+    if (typeof ResizeObserver !== 'undefined') {
+      const ro = new ResizeObserver(() => update());
+      ro.observe(el);
+      return () => ro.disconnect();
+    }
+    window.addEventListener('resize', update);
+    return () => window.removeEventListener('resize', update);
+  }, []);
+
+  const scale = Math.max(0.08, Math.min(0.3, thumbWidthPx / REFERENCE_CANVAS_WIDTH_PX));
 
   return (
     <button
+      ref={thumbRef}
       type="button"
       onClick={onClick}
       className={`relative w-full rounded-lg border-2 overflow-hidden bg-white transition-all flex-shrink-0 ${
@@ -63,20 +87,46 @@ function PageThumbnail({
               }}
             >
               {el.type === 'text' ? (
-                <span
-                  className="block text-black text-left overflow-hidden whitespace-pre-wrap break-words p-0.5 leading-tight"
+                (() => {
+                  const va = el.verticalAlign ?? 'top';
+                  const justifyContent = va === 'top' ? 'flex-start' : va === 'bottom' ? 'flex-end' : 'center';
+                  const refFontSize = Math.max(8, Math.min(72, el.fontSize ?? 12));
+                  const fontSizePx = Math.max(2, Math.min(10, refFontSize * scale));
+                  const textStyle: React.CSSProperties = {
+                    fontSize: `${fontSizePx}px`,
+                    textAlign: el.textAlign ?? 'left',
+                    fontWeight: el.fontWeight ?? 'normal',
+                    fontStyle: el.fontStyle ?? 'normal',
+                    fontFamily: el.fontFamily === 'Open Sans' ? '"Open Sans", sans-serif' : '"Montserrat", sans-serif',
+                    color: el.color ?? '#000000',
+                    lineHeight: 1.15,
+                  };
+                  return (
+                    <div className="w-full h-full flex flex-col" style={{ justifyContent }}>
+                      <span className="block overflow-hidden whitespace-pre-wrap break-words p-0.5 min-h-[1em]" style={textStyle}>
+                        {el.content || ''}
+                      </span>
+                    </div>
+                  );
+                })()
+              ) : el.type === 'block' ? (
+                <div
+                  className="w-full h-full rounded bg-amber-500/20 border border-amber-600/40"
                   style={{
-                    fontSize: `${Math.max(6, Math.min(10, Math.round((el.fontSize ?? 12) * 0.35)))}px`,
+                    backgroundImage:
+                      'repeating-linear-gradient(-45deg, transparent, transparent 6px, rgba(245,158,11,0.12) 6px, rgba(245,158,11,0.12) 12px)',
                   }}
-                >
-                  {el.content || ''}
-                </span>
+                />
               ) : (
                 el.content && (
                   <img
                     src={`/files/${el.content}/thumbnail?w=80`}
                     alt=""
-                    className="w-full h-full object-contain"
+                    className="w-full h-full"
+                    style={{
+                      objectFit: el.imageFit ?? 'contain',
+                      objectPosition: el.imagePosition ?? '50% 50%',
+                    }}
                   />
                 )
               )}
@@ -95,8 +145,10 @@ export default function DocumentPagesStrip({
   onPageSelect,
   onAddPage,
   onDeletePage,
+  onDuplicatePage,
 }: DocumentPagesStripProps) {
   const canDelete = typeof onDeletePage === 'function' && pages.length > 1;
+  const canDuplicate = typeof onDuplicatePage === 'function';
   return (
     <div className="w-36 flex flex-col bg-gray-50/80 border-r border-gray-200 overflow-y-auto py-3 gap-2 flex-shrink-0">
       {pages.map((page, i) => {
@@ -116,6 +168,22 @@ export default function DocumentPagesStrip({
               <span className="text-center text-[10px] text-gray-500 font-medium flex-1">
                 {i === 0 ? 'Cover' : i + 1}
               </span>
+              {canDuplicate && (
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onDuplicatePage?.(i);
+                  }}
+                  className="p-0.5 rounded text-gray-400 hover:text-brand-red hover:bg-brand-red/10"
+                  aria-label="Duplicate page"
+                  title="Duplicate page"
+                >
+                  <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h2m8 0h2a2 2 0 012 2v2m0 8v2a2 2 0 01-2 2h-2m-4-4h8" />
+                  </svg>
+                </button>
+              )}
               {canDelete && (
                 <button
                   type="button"
