@@ -5,6 +5,7 @@ import { useQuery } from '@tanstack/react-query';
 import { Link, useLocation } from 'react-router-dom';
 import { api } from '@/lib/api';
 import toast from 'react-hot-toast';
+import { ReportAttachmentAreaSingle } from '@/components/ReportAttachmentArea';
 import { formatDateLocal } from '@/lib/dateUtils';
 
 // Helper function to get time-based greeting
@@ -533,22 +534,7 @@ function QuickReportModal({ onClose, onSuccess }: { onClose: () => void, onSucce
                 onChange={e => setDesc(e.target.value)}
               />
             </div>
-            <div>
-              <label className="text-xs text-gray-600 block mb-1">Attachment (optional)</label>
-              <input
-                type="file"
-                onChange={e => setFile(e.target.files?.[0] || null)}
-                className="w-full border rounded px-3 py-2 text-sm"
-                accept="image/*,.pdf,.doc,.docx"
-              />
-              {file && (
-                <div className="mt-2 text-sm text-gray-600 flex items-center gap-2">
-                  <span>📎</span>
-                  <span>{file.name}</span>
-                  <button onClick={() => setFile(null)} className="text-red-600 hover:text-red-700">×</button>
-                </div>
-              )}
-            </div>
+            <ReportAttachmentAreaSingle file={file} setFile={setFile} accept="image/*,.pdf,.doc,.docx" />
           </div>
         </div>
         <div className="p-4 border-t bg-gray-50 flex justify-end gap-2 flex-shrink-0">

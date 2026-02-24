@@ -7,6 +7,7 @@ import toast from 'react-hot-toast';
 import { Link, useLocation, useSearchParams, useNavigate } from 'react-router-dom';
 import LoadingOverlay from '@/components/LoadingOverlay';
 import { DivisionIcon } from '@/components/DivisionIcon';
+import { ReportAttachmentAreaMultiple } from '@/components/ReportAttachmentArea';
 
 // Helper function to get user initials
 function getUserInitials(user: any): string {
@@ -1295,7 +1296,7 @@ export default function Opportunities(){
           onClose={() => setReportModalOpen(null)}
           onSuccess={async () => {
             setReportModalOpen(null);
-            toast.success('Report created successfully');
+            toast.success('Note created successfully');
           }}
         />
       )}
@@ -1352,19 +1353,6 @@ export function CreateReportModal({ projectId, reportCategories, onClose, onSucc
   
   // If it's an opportunity (is_bidding), show only commercial categories
   const isBidding = project?.is_bidding === true;
-
-  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const selectedFiles = Array.from(e.target.files || []);
-    setFiles(prev => [...prev, ...selectedFiles]);
-    // Reset input to allow selecting the same file again
-    if (e.target) {
-      e.target.value = '';
-    }
-  };
-
-  const removeFile = (index: number) => {
-    setFiles(prev => prev.filter((_, i) => i !== index));
-  };
 
   const handleCreate = async () => {
     if (!title.trim()) {
@@ -1424,7 +1412,7 @@ export function CreateReportModal({ projectId, reportCategories, onClose, onSucc
       setFiles([]);
       await onSuccess();
     } catch (_e) {
-      toast.error('Failed to create report');
+      toast.error('Failed to create note');
     } finally {
       setUploading(false);
     }
@@ -1434,7 +1422,7 @@ export function CreateReportModal({ projectId, reportCategories, onClose, onSucc
     <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4">
       <div className="bg-white rounded-xl max-w-3xl w-full max-h-[90vh] overflow-hidden flex flex-col">
         <div className="bg-gradient-to-br from-[#7f1010] to-[#a31414] p-6 flex items-center justify-between flex-shrink-0">
-          <h2 className="text-xl font-semibold text-white">Create Project Report</h2>
+          <h2 className="text-xl font-semibold text-white">Create Note</h2>
           <button
             onClick={onClose}
             className="text-2xl font-bold text-white hover:text-gray-200 w-8 h-8 flex items-center justify-center rounded hover:bg-white/20"
@@ -1449,7 +1437,7 @@ export function CreateReportModal({ projectId, reportCategories, onClose, onSucc
               <input
                 type="text"
                 className="w-full border rounded px-3 py-2 text-sm"
-                placeholder="Enter report title..."
+                placeholder="Enter note title..."
                 value={title}
                 onChange={e => setTitle(e.target.value)}
               />
@@ -1495,47 +1483,7 @@ export function CreateReportModal({ projectId, reportCategories, onClose, onSucc
                 onChange={e => setDesc(e.target.value)}
               />
             </div>
-            <div>
-              <label className="text-xs text-gray-600 block mb-1">Images (optional - multiple allowed)</label>
-              <input
-                type="file"
-                onChange={handleFileSelect}
-                className="w-full border rounded px-3 py-2 text-sm"
-                accept="image/*"
-                multiple
-              />
-              {files.length > 0 && (
-                <div className="mt-3 grid grid-cols-2 md:grid-cols-3 gap-3">
-                  {files.map((file, index) => {
-                    const isImage = file.type.startsWith('image/');
-                    const previewUrl = isImage ? URL.createObjectURL(file) : null;
-                    return (
-                      <div key={index} className="relative border rounded-lg overflow-hidden bg-gray-50">
-                        {previewUrl ? (
-                          <img src={previewUrl} alt={file.name} className="w-full h-32 object-cover" />
-                        ) : (
-                          <div className="w-full h-32 flex items-center justify-center text-gray-400">
-                            📎 {file.name}
-                          </div>
-                        )}
-                        <div className="p-2 bg-white border-t">
-                          <div className="text-xs text-gray-600 truncate" title={file.name}>{file.name}</div>
-                          <button
-                            onClick={() => {
-                              if (previewUrl) URL.revokeObjectURL(previewUrl);
-                              removeFile(index);
-                            }}
-                            className="mt-1 text-xs text-red-600 hover:text-red-700"
-                          >
-                            Remove
-                          </button>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
+            <ReportAttachmentAreaMultiple files={files} setFiles={setFiles} accept="image/*,.pdf,.doc,.docx" label="Attachments (optional – multiple allowed)" />
           </div>
         </div>
         <div className="p-4 border-t bg-gray-50 flex justify-end gap-2 flex-shrink-0">
@@ -1551,7 +1499,7 @@ export function CreateReportModal({ projectId, reportCategories, onClose, onSucc
             disabled={uploading}
             className="px-4 py-2 rounded bg-brand-red hover:bg-red-700 text-white text-sm font-medium disabled:opacity-50"
           >
-            {uploading ? 'Creating...' : 'Create Report'}
+            {uploading ? 'Creating...' : 'Create Note'}
           </button>
         </div>
       </div>
@@ -1602,7 +1550,7 @@ export function OpportunityListItem({ opportunity, onOpenReportModal, projectSta
     { key: 'files', icon: '📁', label: 'Files', tab: 'files' },
     { key: 'proposal', icon: '📄', label: 'Proposal', tab: 'proposal' },
     { key: 'pricing', icon: '💰', label: 'Pricing', tab: 'pricing' },
-    { key: 'reports', icon: '📋', label: 'Report', tab: 'reports' },
+    { key: 'reports', icon: '📋', label: 'Notes/History', tab: 'reports' },
   ];
 
   const col1 = (
@@ -1859,12 +1807,12 @@ function OpportunityListCard({ opportunity, onOpenReportModal, projectStatuses }
     return icons;
   }, [projectDivIds, projectDivisions, calculatedPercentages]);
 
-  // Tab icons and navigation (for opportunities: files, proposal, pricing, reports)
+  // Tab icons and navigation (for opportunities: files, proposal, pricing, notes/history)
   const tabButtons = [
     { key: 'files', icon: '📁', label: 'Files', tab: 'files' },
     { key: 'proposal', icon: '📄', label: 'Proposal', tab: 'proposal' },
     { key: 'pricing', icon: '💰', label: 'Pricing', tab: 'pricing' },
-    { key: 'reports', icon: '📋', label: 'Report', tab: 'reports' },
+    { key: 'reports', icon: '📋', label: 'Notes/History', tab: 'reports' },
   ];
 
   return (

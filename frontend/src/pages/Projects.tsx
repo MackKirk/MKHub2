@@ -1022,7 +1022,7 @@ export function ProjectListItem({ project, projectDivisions, projectStatuses, va
     { key: 'files', icon: '📁', label: 'Files', tab: 'files' },
     { key: 'proposal', icon: '📄', label: 'Proposal', tab: 'proposal' },
     { key: 'pricing', icon: '💰', label: 'Pricing', tab: 'pricing' },
-    { key: 'reports', icon: '📋', label: 'Reports', tab: 'reports' },
+    { key: 'reports', icon: '📋', label: 'Notes/History', tab: 'reports' },
     { key: 'dispatch', icon: '👷', label: 'Workload', tab: 'dispatch' },
   ];
 
@@ -1275,7 +1275,7 @@ function ProjectListCard({ project, projectDivisions, projectStatuses }:{ projec
 
   // Tab icons and navigation - same style as Opportunities cards (w-8 h-8 rounded-lg)
   const tabButtons = [
-    { key: 'reports', icon: '📝', label: 'Reports', tab: 'reports' },
+    { key: 'reports', icon: '📝', label: 'Notes/History', tab: 'reports' },
     { key: 'dispatch', icon: '👷', label: 'Workload', tab: 'dispatch' },
     { key: 'timesheet', icon: '⏰', label: 'Timesheet', tab: 'timesheet' },
     { key: 'files', icon: '📁', label: 'Files', tab: 'files' },
