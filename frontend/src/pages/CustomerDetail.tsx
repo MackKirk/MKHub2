@@ -793,7 +793,8 @@ export default function CustomerDetail(){
     });
     return breakdown;
   }, [filteredProjects, projectCostsSummaryTotalsMap]);
-  
+
+  // Chart-specific filtered data (for per-chart date range) and status breakdowns
   // Calculate insights
   const insights = useMemo(() => {
     // Converted Projects: lifetime metric (not filtered by date range)
@@ -2052,13 +2053,6 @@ export default function CustomerDetail(){
                                     <span className="text-[11px] text-gray-600 w-24">Converted</span>
                                     <div className="flex-1 bg-gray-100 rounded-full h-2 min-w-0"><div className="bg-gradient-to-r from-[#0b1739] to-[#1d4ed8] rounded-full h-2" style={{ width: `${(funnel.converted / maxValue) * 100}%` }} /></div>
                                     <span className="text-[11px] font-semibold text-gray-900 min-w-[70px] text-right">{globalDisplayMode === 'value' ? formatCurrency(funnel.converted) : <CountUp value={funnel.converted} enabled={hasAnimated} />}{funnel.convertedPct != null ? <span className="text-gray-500 ml-0.5">({funnel.convertedPct.toFixed(0)}%)</span> : null}</span>
-                                  </div>
-                                  <div className="border-t border-gray-100 pt-2">
-                                    {funnel.refusedPct != null && funnel.refusedPct > 40 ? (
-                                      <div className="bg-amber-50 border border-amber-200 rounded px-2 py-1.5"><div className="text-[10px] font-semibold text-amber-800">Warning</div><div className="text-[10px] text-amber-700">Refusal rate: {funnel.refusedPct.toFixed(1)}%</div></div>
-                                    ) : (
-                                      <div className="bg-green-50 border border-green-200 rounded px-2 py-1.5"><div className="text-[10px] font-semibold text-green-800">Healthy pipeline</div><div className="text-[10px] text-green-700">No issues detected</div></div>
-                                    )}
                                   </div>
                                 </div>
                               );

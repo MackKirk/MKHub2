@@ -41,6 +41,7 @@ def seed_report_categories():
             {"label": "General", "value": "general", "sort_index": 0, "meta": {"group": "commercial"}},
             {"label": "Legal Action", "value": "legal-action", "sort_index": 1, "meta": {"group": "commercial"}},
             {"label": "Client Request", "value": "client-request", "sort_index": 2, "meta": {"group": "commercial"}},
+            {"label": "Prospecting", "value": "prospecting", "sort_index": 3, "meta": {"group": "commercial"}},
             {"label": "Client Communication Log", "value": "client-communication-log", "sort_index": 4, "meta": {"group": "commercial"}},
             {"label": "Client Contact Update", "value": "client-contact-update", "sort_index": 5, "meta": {"group": "commercial"}},
             # Production / Execution categories

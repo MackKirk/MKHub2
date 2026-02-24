@@ -10,6 +10,52 @@ import { useUnsavedChanges } from '@/components/UnsavedChangesProvider';
 import { DivisionIcon } from '@/components/DivisionIcon';
 // EstimateBuilder removed - now using simple pricing items
 
+export type AreaUnit = 'sqft' | 'm2' | 'sqs';
+
+export type PricingItem = {
+  name: string;
+  price: string;
+  quantity?: string;
+  pst?: boolean;
+  gst?: boolean;
+  division_id?: string;
+  area_value?: number;
+  area_unit?: AreaUnit;
+};
+
+// Area conversion: internal standard is sqft. 1 SQS = 100 sqft; 1 m² ≈ 10.7639 sqft
+const SQFT_PER_SQS = 100;
+const SQFT_PER_M2 = 10.7639;
+
+export function toSqft(value: number, unit: AreaUnit): number {
+  if (!value || value <= 0) return 0;
+  switch (unit) {
+    case 'sqft': return value;
+    case 'sqs': return value * SQFT_PER_SQS;
+    case 'm2': return value * SQFT_PER_M2;
+    default: return value;
+  }
+}
+
+export function fromSqft(sqft: number, unit: AreaUnit): number {
+  if (!sqft || sqft <= 0) return 0;
+  switch (unit) {
+    case 'sqft': return sqft;
+    case 'sqs': return sqft / SQFT_PER_SQS;
+    case 'm2': return sqft / SQFT_PER_M2;
+    default: return sqft;
+  }
+}
+
+export function formatAreaLabel(unit: AreaUnit): string {
+  switch (unit) {
+    case 'sqft': return 'sqft';
+    case 'm2': return 'm²';
+    case 'sqs': return 'SQS';
+    default: return 'sqft';
+  }
+}
+
 // Division icons use images from @/icons via DivisionIcon component
 function getDivisionIcon(label: string) {
   return <DivisionIcon label={label} size={20} />;
@@ -32,6 +78,62 @@ function getDivisionInfoById(divisionId: string | undefined, projectDivisions: a
     }
   }
   return null;
+}
+
+function AreaPopover({ value, unit, onSave, onClose }: { value?: number; unit: AreaUnit; onSave: (value: number, unit: AreaUnit) => void; onClose: () => void }) {
+  const [localValue, setLocalValue] = useState(String(value ?? ''));
+  const [localUnit, setLocalUnit] = useState<AreaUnit>(unit);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) onClose();
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [onClose]);
+
+  const handleSave = () => {
+    const num = parseFloat(localValue.replace(/,/g, ''));
+    if (!Number.isNaN(num) && num >= 0) {
+      onSave(num, localUnit);
+    } else {
+      onClose();
+    }
+  };
+
+  return (
+    <div
+      ref={ref}
+      className="absolute left-0 top-full mt-1 z-[100] w-60 min-w-[200px] p-2.5 bg-white border border-gray-200 rounded-lg shadow-lg overflow-visible"
+    >
+      <div className="text-xs font-medium text-gray-700 mb-1.5">Area</div>
+      <div className="flex gap-2 items-center">
+        <input
+          type="number"
+          min={0}
+          step="any"
+          value={localValue}
+          onChange={e => setLocalValue(e.target.value)}
+          className="flex-1 min-w-0 rounded border border-gray-300 px-2 py-1.5 text-xs"
+          placeholder="0"
+        />
+        <select
+          value={localUnit}
+          onChange={e => setLocalUnit(e.target.value as AreaUnit)}
+          className="flex-shrink-0 min-w-[72px] rounded border border-gray-300 px-2 py-1.5 text-xs pr-6"
+        >
+          <option value="sqft">sqft</option>
+          <option value="m2">m²</option>
+          <option value="sqs">SQS</option>
+        </select>
+      </div>
+      <div className="flex gap-1.5 mt-2">
+        <button type="button" onClick={handleSave} className="flex-1 py-1.5 text-xs font-medium bg-gray-800 text-white rounded hover:bg-gray-700">Save</button>
+        <button type="button" onClick={onClose} className="py-1.5 px-2 text-xs text-gray-600 hover:text-gray-900">Cancel</button>
+      </div>
+    </div>
+  );
 }
 
 export default function ProposalForm({ mode, clientId: clientIdProp, siteId: siteIdProp, projectId: projectIdProp, initial, disabled, onSave, showRestrictionWarning, restrictionMessage, onPricingItemsChange, showOnlyPricing }: { mode:'new'|'edit', clientId?:string, siteId?:string, projectId?:string, initial?: any, disabled?: boolean, onSave?: ()=>void, showRestrictionWarning?: boolean, restrictionMessage?: string, onPricingItemsChange?: (items: any[])=>void, showOnlyPricing?: boolean }){
@@ -106,10 +208,12 @@ export default function ProposalForm({ mode, clientId: clientIdProp, siteId: sit
   const [otherNotes, setOtherNotes] = useState<string>('');
   const [projectDescription, setProjectDescription] = useState<string>('');
   const [additionalNotes, setAdditionalNotes] = useState<string>('');
-  const [pricingItems, setPricingItems] = useState<{ name:string, price:string, quantity?:string, pst?:boolean, gst?:boolean, division_id?:string }[]>([]);
+  const [pricingItems, setPricingItems] = useState<PricingItem[]>([]);
+  const [areaDisplayUnit, setAreaDisplayUnit] = useState<AreaUnit>('sqft');
   const [optionalServices, setOptionalServices] = useState<{ service:string, price:string }[]>([]);
   const [showDivisionModal, setShowDivisionModal] = useState(false);
   const [showSectionTypeModal, setShowSectionTypeModal] = useState(false);
+  const [areaPopoverIndex, setAreaPopoverIndex] = useState<number | null>(null);
   const [showTotalInPdf, setShowTotalInPdf] = useState<boolean>(true);
   const [pstRate, setPstRate] = useState<number>(7);
   const [gstRate, setGstRate] = useState<number>(5);
@@ -327,7 +431,8 @@ By signing the accompanying proposal, the Owner agrees to these Terms and Condit
         quantity: c.quantity || '1',
         pst: c.pst === true,
         gst: c.gst === true,
-        division_id: c.division_id || null
+        division_id: c.division_id || null,
+        ...(c.area_value != null && c.area_value > 0 && c.area_unit ? { area_value: c.area_value, area_unit: c.area_unit } : {})
       };
     });
 
@@ -360,6 +465,21 @@ By signing the accompanying proposal, the Owner agrees to these Terms and Condit
     return subtotal + gst;
   }, [subtotal, gst]);
 
+  // Total area (sum of item areas converted to sqft) and cost per area
+  const totalAreaSqft = useMemo(() => {
+    return pricingItems.reduce((sum, c) => {
+      if (c.area_value == null || c.area_value <= 0 || !c.area_unit) return sum;
+      return sum + toSqft(c.area_value, c.area_unit);
+    }, 0);
+  }, [pricingItems]);
+
+  const costPerArea = useMemo(() => {
+    if (totalAreaSqft <= 0) return null;
+    const areaInDisplayUnit = fromSqft(totalAreaSqft, areaDisplayUnit);
+    if (areaInDisplayUnit <= 0) return null;
+    return grandTotal / areaInDisplayUnit;
+  }, [grandTotal, totalAreaSqft, areaDisplayUnit]);
+
   // Calculate if PST/GST should be shown in PDF based on items
   const showPstInPdf = useMemo(() => {
     return pricingItems.some(item => item.pst === true);
@@ -389,6 +509,7 @@ By signing the accompanying proposal, the Owner agrees to these Terms and Condit
         showGstInPdf,
         pstRate,
         gstRate,
+        areaDisplayUnit,
         terms,
         sections: sanitizeSections(sections),
         coverFoId,
@@ -422,7 +543,7 @@ By signing the accompanying proposal, the Owner agrees to these Terms and Condit
     // Load pricing items from bid_price and additional_costs (legacy support)
     const legacyBidPrice = d.bid_price ?? 0;
     const dc = Array.isArray(d.additional_costs)? d.additional_costs : [];
-    const loadedItems: { name:string, price:string, quantity?:string, pst?:boolean, gst?:boolean, division_id?:string }[] = [];
+    const loadedItems: PricingItem[] = [];
     if (legacyBidPrice && Number(legacyBidPrice) > 0) {
       loadedItems.push({ name: 'Bid Price', price: formatAccounting(legacyBidPrice), quantity: '1', pst: false, gst: false });
     }
@@ -436,7 +557,9 @@ By signing the accompanying proposal, the Owner agrees to these Terms and Condit
           quantity: c.quantity || '1',
           pst: c.pst === true || c.pst === 'true' || c.pst === 1,
           gst: c.gst === true || c.gst === 'true' || c.gst === 1,
-          division_id: c.division_id ? String(c.division_id) : undefined
+          division_id: c.division_id ? String(c.division_id) : undefined,
+          area_value: c.area_value != null && c.area_value !== '' ? Number(c.area_value) : undefined,
+          area_unit: (c.area_unit === 'sqft' || c.area_unit === 'm2' || c.area_unit === 'sqs') ? c.area_unit : undefined
         });
       }
     });
@@ -446,6 +569,8 @@ By signing the accompanying proposal, the Owner agrees to these Terms and Condit
     setShowTotalInPdf(d.show_total_in_pdf !== undefined ? Boolean(d.show_total_in_pdf) : true);
     setPstRate(d.pst_rate !== undefined && d.pst_rate !== null ? Number(d.pst_rate) : 7);
     setGstRate(d.gst_rate !== undefined && d.gst_rate !== null ? Number(d.gst_rate) : 5);
+    const displayUnit = d.area_display_unit;
+    setAreaDisplayUnit((displayUnit === 'sqft' || displayUnit === 'm2' || displayUnit === 'sqs') ? displayUnit : 'sqft');
     setTerms(String(d.terms_text||defaultTermsText));
     const loaded = Array.isArray(d.sections)? JSON.parse(JSON.stringify(d.sections)) : [];
     const normalized = loaded.map((sec:any)=>{
@@ -500,7 +625,7 @@ By signing the accompanying proposal, the Owner agrees to these Terms and Condit
     if (!isReady) return false;
     const fp = computeFingerprint();
     return fp !== lastSavedHash;
-  }, [isReady, lastSavedHash, coverTitle, templateStyle, orderNumber, date, createdFor, primary, typeOfProject, otherNotes, projectDescription, additionalNotes, pricingItems, optionalServices, showTotalInPdf, showPstInPdf, showGstInPdf, pstRate, gstRate, terms, sections, coverFoId, page2FoId, clientId, siteId, projectId, computeFingerprint]);
+  }, [isReady, lastSavedHash, coverTitle, templateStyle, orderNumber, date, createdFor, primary, typeOfProject, otherNotes, projectDescription, additionalNotes, pricingItems, optionalServices, showTotalInPdf, showPstInPdf, showGstInPdf, pstRate, gstRate, areaDisplayUnit, terms, sections, coverFoId, page2FoId, clientId, siteId, projectId, computeFingerprint]);
   
   // Sync selected contact when contacts are loaded or createdFor changes (only on initial load)
   useEffect(() => {
@@ -828,10 +953,17 @@ By signing the accompanying proposal, the Owner agrees to these Terms and Condit
         show_total_in_pdf: showTotalInPdf,
         show_pst_in_pdf: showPstInPdf,
         show_gst_in_pdf: showGstInPdf,
-        additional_costs: pricingItems.map(c=> ({ label: c.name, value: Number(parseAccounting(c.price)||'0'), quantity: c.quantity || '1', pst: c.pst === true, gst: c.gst === true, division_id: c.division_id || null })),
+        additional_costs: pricingItems.map(c=> {
+          const base = { label: c.name, value: Number(parseAccounting(c.price)||'0'), quantity: c.quantity || '1', pst: c.pst === true, gst: c.gst === true, division_id: c.division_id || null };
+          if (c.area_value != null && c.area_value > 0 && c.area_unit) {
+            return { ...base, area_value: c.area_value, area_unit: c.area_unit };
+          }
+          return base;
+        }),
         optional_services: optionalServices.map(s=> ({ service: s.service, price: Number(parseAccounting(s.price)||'0') })),
         pst_rate: pstRate,
         gst_rate: gstRate,
+        area_display_unit: areaDisplayUnit,
         sections: sanitizeSections(sections),
         cover_file_object_id: coverFoId||null,
         page2_file_object_id: page2FoId||null,
@@ -869,7 +1001,7 @@ By signing the accompanying proposal, the Owner agrees to these Terms and Condit
       lastAutoSaveRef.current = Date.now();
     }catch(e){ toast.error('Save failed'); }
     finally{ setIsSaving(false); }
-  }, [disabled, isSaving, mode, initial?.id, projectId, clientId, siteId, coverTitle, templateStyle, orderNumber, date, createdFor, primary, typeOfProject, otherNotes, projectDescription, additionalNotes, totalNum, showTotalInPdf, showPstInPdf, showGstInPdf, pstRate, gstRate, terms, pricingItems, optionalServices, sections, coverFoId, page2FoId, nav, queryClient, onSave, computeFingerprint, sanitizeSections, parseAccounting]);
+  }, [disabled, isSaving, mode, initial?.id, projectId, clientId, siteId, coverTitle, templateStyle, orderNumber, date, createdFor, primary, typeOfProject, otherNotes, projectDescription, additionalNotes, totalNum, showTotalInPdf, showPstInPdf, showGstInPdf, pstRate, gstRate, areaDisplayUnit, terms, pricingItems, optionalServices, sections, coverFoId, page2FoId, nav, queryClient, onSave, computeFingerprint, sanitizeSections, parseAccounting]);
 
   // Update ref when handleSave changes
   useEffect(() => {
@@ -958,10 +1090,17 @@ By signing the accompanying proposal, the Owner agrees to these Terms and Condit
         show_total_in_pdf: showTotalInPdf,
         show_pst_in_pdf: showPstInPdf,
         show_gst_in_pdf: showGstInPdf,
-        additional_costs: pricingItems.map(c=> ({ label: c.name, value: Number(parseAccounting(c.price)||'0'), quantity: c.quantity || '1', pst: c.pst === true, gst: c.gst === true, division_id: c.division_id || null })),
+        additional_costs: pricingItems.map(c=> {
+          const base = { label: c.name, value: Number(parseAccounting(c.price)||'0'), quantity: c.quantity || '1', pst: c.pst === true, gst: c.gst === true, division_id: c.division_id || null };
+          if (c.area_value != null && c.area_value > 0 && c.area_unit) {
+            return { ...base, area_value: c.area_value, area_unit: c.area_unit };
+          }
+          return base;
+        }),
         optional_services: optionalServices.map(s=> ({ service: s.service, price: Number(parseAccounting(s.price)||'0') })),
         pst_rate: pstRate,
         gst_rate: gstRate,
+        area_display_unit: areaDisplayUnit,
         sections: sanitizeSections(sections),
         cover_file_object_id: coverFoId||null,
         page2_file_object_id: page2FoId||null,
@@ -987,7 +1126,7 @@ By signing the accompanying proposal, the Owner agrees to these Terms and Condit
     } finally {
       isAutoSavingRef.current = false;
     }
-    }, [clientId, projectId, siteId, coverTitle, templateStyle, orderNumber, date, createdFor, primary, typeOfProject, otherNotes, projectDescription, additionalNotes, pricingItems, optionalServices, showTotalInPdf, showPstInPdf, showGstInPdf, pstRate, gstRate, totalNum, terms, sections, coverFoId, page2FoId, mode, initial, queryClient, sanitizeSections, computeFingerprint, parseAccounting]);
+    }, [clientId, projectId, siteId, coverTitle, templateStyle, orderNumber, date, createdFor, primary, typeOfProject, otherNotes, projectDescription, additionalNotes, pricingItems, optionalServices, showTotalInPdf, showPstInPdf, showGstInPdf, pstRate, gstRate, areaDisplayUnit, totalNum, terms, sections, coverFoId, page2FoId, mode, initial, queryClient, sanitizeSections, computeFingerprint, parseAccounting]);
 
   // Auto-save on changes (debounced)
   useEffect(() => {
@@ -1891,17 +2030,47 @@ By signing the accompanying proposal, the Owner agrees to these Terms and Condit
                       </div>
                     </div>
                   )}
-                  <input 
-                    className={`flex-1 min-w-0 rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-gray-900 focus:ring-1 focus:ring-gray-400 focus:border-gray-400 ${disabled ? 'bg-gray-100 cursor-not-allowed' : ''}`} 
-                    placeholder="Name" 
-                    value={c.name} 
-                    onChange={e=>{ 
-                      const v=e.target.value; 
-                      setPricingItems(arr=> arr.map((x,j)=> j===i? { ...x, name:v }: x)); 
-                    }}
-                    disabled={disabled} 
-                    readOnly={disabled} 
-                  />
+                  <div className="flex-1 min-w-0 flex flex-col gap-0.5">
+                    <input 
+                      className={`w-full rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-gray-900 focus:ring-1 focus:ring-gray-400 focus:border-gray-400 ${disabled ? 'bg-gray-100 cursor-not-allowed' : ''}`} 
+                      placeholder="Name" 
+                      value={c.name} 
+                      onChange={e=>{ 
+                        const v=e.target.value; 
+                        setPricingItems(arr=> arr.map((x,j)=> j===i? { ...x, name:v }: x)); 
+                      }}
+                      disabled={disabled} 
+                      readOnly={disabled} 
+                    />
+                    {c.area_value != null && c.area_value > 0 && c.area_unit && (
+                      <div className="text-[10px] text-gray-500 truncate">
+                        Area: {Number(c.area_value).toLocaleString('en-US', { maximumFractionDigits: 2 })} {formatAreaLabel(c.area_unit)}
+                      </div>
+                    )}
+                  </div>
+                  {!disabled && (
+                    <div className="relative flex-shrink-0">
+                      <button
+                        type="button"
+                        onClick={() => setAreaPopoverIndex(prev => prev === i ? null : i)}
+                        className="p-1.5 rounded border border-gray-300 bg-white hover:bg-gray-50 text-gray-600 hover:text-gray-900 transition-colors"
+                        title="Edit area"
+                      >
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4" /></svg>
+                      </button>
+                      {areaPopoverIndex === i && (
+                        <AreaPopover
+                          value={c.area_value}
+                          unit={c.area_unit || 'sqft'}
+                          onSave={(value, unit) => {
+                            setPricingItems(arr => arr.map((x, j) => j === i ? { ...x, area_value: value, area_unit: unit } : x));
+                            setAreaPopoverIndex(null);
+                          }}
+                          onClose={() => setAreaPopoverIndex(null)}
+                        />
+                      )}
+                    </div>
+                  )}
                   <input 
                     type="text" 
                     className={`flex-1 min-w-[100px] max-w-[140px] rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-gray-900 focus:ring-1 focus:ring-gray-400 focus:border-gray-400 ${disabled ? 'bg-gray-100 cursor-not-allowed' : ''}`} 
@@ -2030,6 +2199,22 @@ By signing the accompanying proposal, the Owner agrees to these Terms and Condit
                 Summary
               </div>
               
+              {/* Area display unit selector */}
+              {!disabled && (
+                <div className="px-3 pt-2 pb-1 border-b border-gray-100">
+                  <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide">Area display unit</label>
+                  <select
+                    value={areaDisplayUnit}
+                    onChange={e => setAreaDisplayUnit(e.target.value as AreaUnit)}
+                    className="mt-1 block w-full max-w-[120px] rounded border border-gray-300 px-2 py-1.5 text-xs"
+                  >
+                    <option value="sqft">sqft</option>
+                    <option value="m2">m²</option>
+                    <option value="sqs">SQS</option>
+                  </select>
+                </div>
+              )}
+              
               {/* Two Cards Grid - inside Summary card */}
               <div className="p-3">
                 <div className="grid md:grid-cols-2 gap-3">
@@ -2041,6 +2226,9 @@ By signing the accompanying proposal, the Owner agrees to these Terms and Condit
                         <div className="flex items-center justify-between hover:bg-gray-50 rounded px-1 py-1 -mx-1"><span className="text-xs">PST ({pstRate}%)</span><span className="text-xs">${pst.toFixed(2)}</span></div>
                       )}
                       <div className="flex items-center justify-between hover:bg-gray-50 rounded px-1 py-1 -mx-1"><span className="text-xs font-semibold">Sub-total</span><span className="text-xs font-semibold">${subtotal.toFixed(2)}</span></div>
+                      {totalAreaSqft > 0 && (
+                        <div className="flex items-center justify-between hover:bg-gray-50 rounded px-1 py-1 -mx-1"><span className="text-xs">Total Area (Pricing)</span><span className="text-xs font-medium">{fromSqft(totalAreaSqft, areaDisplayUnit).toLocaleString('en-US', { maximumFractionDigits: 2 })} {formatAreaLabel(areaDisplayUnit)}</span></div>
+                      )}
                     </div>
                   </div>
                   {/* Right Card */}
@@ -2050,6 +2238,9 @@ By signing the accompanying proposal, the Owner agrees to these Terms and Condit
                         <div className="flex items-center justify-between hover:bg-gray-50 rounded px-1 py-1 -mx-1"><span className="text-xs">GST ({gstRate}%)</span><span className="text-xs">${gst.toFixed(2)}</span></div>
                       )}
                       <div className="flex items-center justify-between hover:bg-gray-50 rounded px-1 py-1 -mx-1"><span className="text-xs font-semibold">Final Total (with GST)</span><span className="text-xs font-semibold">${grandTotal.toFixed(2)}</span></div>
+                      {costPerArea != null && totalAreaSqft > 0 && (
+                        <div className="flex items-center justify-between hover:bg-gray-50 rounded px-1 py-1 -mx-1"><span className="text-xs">Cost per Area</span><span className="text-xs font-medium">${costPerArea.toFixed(2)}/{formatAreaLabel(areaDisplayUnit)}</span></div>
+                      )}
                     </div>
                   </div>
                 </div>

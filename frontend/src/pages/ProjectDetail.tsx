@@ -7,7 +7,7 @@ import { sortByLabel } from '@/lib/sortOptions';
 import toast from 'react-hot-toast';
 import ImagePicker from '@/components/ImagePicker';
 import EstimateBuilder, { type EstimateBuilderRef } from '@/components/EstimateBuilder';
-import ProposalForm from '@/components/ProposalForm';
+import ProposalForm, { toSqft, fromSqft, formatAreaLabel, type AreaUnit } from '@/components/ProposalForm';
 import { useConfirm } from '@/components/ConfirmProvider';
 import CalendarMock from '@/components/CalendarMock';
 import DispatchTab from '@/components/DispatchTab';
@@ -719,6 +719,7 @@ export default function ProjectDetail(){
                 
                 {/* Project Divisions below image - with Edit button and modal */}
                 <ProjectDivisionsHeroSection projectId={String(id||'')} proj={proj||{}} hasEditPermission={hasEditPermission} livePricingItems={livePricingItems} />
+                <ProjectHeroPricingArea projectId={String(id||'')} proposals={proposals||[]} />
               </div>
               
               {/* Right Section - General Information */}
@@ -8830,6 +8831,92 @@ function calculateProposalTotal(proposalData: any): number {
   
   // Calculate Grand Total (Final Total with GST) = Subtotal + GST
   return subtotal + gst;
+}
+
+// Area conversion: same as ProposalForm. 1 SQS = 100 sqft; 1 m² ≈ 10.7639 sqft
+function calculateProposalTotalArea(proposalData: any): number {
+  if (!proposalData) return 0;
+  const data = proposalData?.data || proposalData || {};
+  const additionalCosts = data.additional_costs || [];
+  if (!Array.isArray(additionalCosts)) return 0;
+  const SQFT_PER_SQS = 100;
+  const SQFT_PER_M2 = 10.7639;
+  return additionalCosts.reduce((sum: number, item: any) => {
+    if (!item || typeof item !== 'object') return sum;
+    const val = Number(item.area_value);
+    if (Number.isNaN(val) || val <= 0) return sum;
+    const unit = item.area_unit;
+    if (unit === 'sqft') return sum + val;
+    if (unit === 'sqs') return sum + val * SQFT_PER_SQS;
+    if (unit === 'm2') return sum + val * SQFT_PER_M2;
+    return sum;
+  }, 0);
+}
+
+function ProjectHeroPricingArea({ projectId, proposals }: { projectId: string; proposals: any[] }) {
+  const organizedProposals = useMemo(() => {
+    const original = proposals.find((p: any) => !p.is_change_order);
+    const changeOrders = proposals
+      .filter((p: any) => p.is_change_order)
+      .sort((a: any, b: any) => (a.change_order_number || 0) - (b.change_order_number || 0));
+    return { original: original || null, changeOrders };
+  }, [proposals]);
+
+  const { data: originalProposalData } = useQuery({
+    queryKey: ['proposal', organizedProposals.original?.id],
+    queryFn: () => organizedProposals.original?.id ? api<any>('GET', `/proposals/${organizedProposals.original.id}`) : Promise.resolve(null),
+    enabled: !!organizedProposals.original?.id,
+  });
+
+  const changeOrderQueries = useQueries({
+    queries: organizedProposals.changeOrders.map((co: any) => ({
+      queryKey: ['proposal', co.id],
+      queryFn: () => api<any>('GET', `/proposals/${co.id}`),
+      enabled: !!co.id,
+    })),
+  });
+
+  const { totalAreaSqft, grandTotal, displayUnit } = useMemo(() => {
+    let totalAreaSqft = 0;
+    let grandTotal = 0;
+    let displayUnit: AreaUnit = 'sqft';
+
+    const dataOriginal = originalProposalData || organizedProposals.original;
+    if (dataOriginal) {
+      totalAreaSqft += calculateProposalTotalArea(dataOriginal);
+      grandTotal += calculateProposalTotal(dataOriginal);
+      const d = dataOriginal?.data || dataOriginal || {};
+      if (d.area_display_unit === 'sqft' || d.area_display_unit === 'm2' || d.area_display_unit === 'sqs') {
+        displayUnit = d.area_display_unit;
+      }
+    }
+    organizedProposals.changeOrders.forEach((co: any, idx: number) => {
+      const res = changeOrderQueries[idx];
+      const dataToUse = res?.data || co;
+      totalAreaSqft += calculateProposalTotalArea(dataToUse);
+      grandTotal += calculateProposalTotal(dataToUse);
+    });
+
+    return { totalAreaSqft, grandTotal, displayUnit };
+  }, [originalProposalData, organizedProposals, changeOrderQueries]);
+
+  if (totalAreaSqft <= 0) return null;
+
+  const displayArea = fromSqft(totalAreaSqft, displayUnit);
+  const costPerArea = displayArea > 0 ? grandTotal / displayArea : 0;
+
+  return (
+    <div className="mt-2 space-y-0.5">
+      <div className="text-[10px] font-medium text-gray-500 uppercase tracking-wide">Total Area (Pricing)</div>
+      <div className="text-xs font-semibold text-gray-900">
+        {displayArea.toLocaleString('en-US', { maximumFractionDigits: 2 })} {formatAreaLabel(displayUnit)}
+      </div>
+      <div className="text-[10px] font-medium text-gray-500 uppercase tracking-wide mt-1">Cost per Area</div>
+      <div className="text-xs font-semibold text-gray-900">
+        ${costPerArea.toFixed(2)}/{formatAreaLabel(displayUnit)}
+      </div>
+    </div>
+  );
 }
 
 function ProjectCostsSummary({ projectId, proposals }:{ projectId:string, proposals:any[] }){
