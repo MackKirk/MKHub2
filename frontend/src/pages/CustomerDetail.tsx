@@ -3650,7 +3650,7 @@ function ContactsCard({ id, hasEditPermission }: { id: string, hasEditPermission
                 <div className="flex items-center gap-3">
                   <button
                     type="button"
-                    onClick={()=>{ setCreateOpen(false); setCreatePhotoBlob(null); setNameError(false); }}
+                    onClick={()=>{ setCreateOpen(false); setIsCreatingContact(false); setCreatePhotoBlob(null); setNameError(false); }}
                     className="p-1.5 rounded hover:bg-gray-100 transition-colors flex items-center justify-center"
                     title="Close"
                   >
@@ -3710,7 +3710,7 @@ function ContactsCard({ id, hasEditPermission }: { id: string, hasEditPermission
             </div>
 
             <div className="flex-shrink-0 px-4 py-4 border-t border-gray-200 bg-white flex items-center justify-end gap-3 rounded-b-xl">
-              <button type="button" onClick={()=>{ setCreateOpen(false); setCreatePhotoBlob(null); setNameError(false); }} className="px-3 py-1.5 rounded-lg text-sm font-medium border border-gray-200 hover:bg-gray-50 text-gray-700">Cancel</button>
+              <button type="button" onClick={()=>{ setCreateOpen(false); setIsCreatingContact(false); setCreatePhotoBlob(null); setNameError(false); }} className="px-3 py-1.5 rounded-lg text-sm font-medium border border-gray-200 hover:bg-gray-50 text-gray-700">Cancel</button>
               <button
                 type="button"
                 onClick={async()=>{
@@ -3724,6 +3724,7 @@ function ContactsCard({ id, hasEditPermission }: { id: string, hasEditPermission
                     setIsCreatingContact(true);
                     const payload:any = { name, email, phone, role_title: role, department: dept, is_primary: primary==='true' };
                     await api('POST', `/clients/${id}/contacts`, payload);
+                    setIsCreatingContact(false);
                     setName(''); setEmail(''); setPhone(''); setRole(''); setDept(''); setPrimary('false'); setNameError(false); setCreateOpen(false); refetch();
                   } catch (e) {
                     toast.error('Failed to create contact');
