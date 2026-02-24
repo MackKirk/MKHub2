@@ -1,6 +1,7 @@
 import { useQuery, useQueries } from '@tanstack/react-query';
 import { api } from '@/lib/api';
-import { useMemo, useState, useEffect } from 'react';
+import { useMemo, useState, useEffect, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import type { ReactNode } from 'react';
 import ImagePicker from '@/components/ImagePicker';
 import { DivisionIcon } from '@/components/DivisionIcon';
@@ -32,7 +33,7 @@ function getUserDisplayName(user: any): string {
   return user?.name || user?.username || 'Unknown';
 }
 
-// Component for user avatar with tooltip
+// Component for user avatar with tooltip (portal so it's not clipped by card overflow)
 function UserAvatar({ user, size = 'w-6 h-6', showTooltip = true, tooltipText }: { 
   user: any; 
   size?: string; 
@@ -43,9 +44,29 @@ function UserAvatar({ user, size = 'w-6 h-6', showTooltip = true, tooltipText }:
   const initials = getUserInitials(user);
   const displayName = tooltipText || getUserDisplayName(user);
   const [imageError, setImageError] = useState(false);
+  const [hover, setHover] = useState(false);
+  const [coords, setCoords] = useState<{ top: number; left: number } | null>(null);
+  const wrapRef = useRef<HTMLDivElement>(null);
+
+  const updateCoords = () => {
+    if (wrapRef.current) {
+      const rect = wrapRef.current.getBoundingClientRect();
+      setCoords({ left: rect.left, top: rect.top });
+    }
+  };
+
+  useEffect(() => {
+    if (hover && wrapRef.current) updateCoords();
+    else setCoords(null);
+  }, [hover]);
 
   return (
-    <div className="relative inline-flex group/avatar">
+    <div
+      ref={wrapRef}
+      className="relative inline-flex group/avatar"
+      onMouseEnter={() => { setHover(true); updateCoords(); }}
+      onMouseLeave={() => setHover(false)}
+    >
       {photoFileId && !imageError ? (
         <img
           src={`/files/${photoFileId}/thumbnail?w=80`}
@@ -59,11 +80,15 @@ function UserAvatar({ user, size = 'w-6 h-6', showTooltip = true, tooltipText }:
         </div>
       )}
 
-      {showTooltip && (
-        <div className="absolute left-0 bottom-full mb-1 px-2 py-1 bg-gray-900 text-white text-xs rounded whitespace-nowrap opacity-0 group-hover/avatar:opacity-100 transition-opacity pointer-events-none z-20 shadow-lg">
+      {showTooltip && hover && coords && typeof document !== 'undefined' && createPortal(
+        <div
+          className="fixed px-2 py-1 bg-gray-900 text-white text-xs rounded whitespace-nowrap pointer-events-none z-[9999] shadow-lg"
+          style={{ left: coords.left, top: coords.top, transform: 'translateY(-100%) translateY(-4px)' }}
+        >
           {displayName}
-          <div className="absolute -bottom-1 left-2 w-2 h-2 bg-gray-900 rotate-45"></div>
-        </div>
+          <div className="absolute -bottom-1 left-2 w-2 h-2 bg-gray-900 rotate-45" />
+        </div>,
+        document.body
       )}
     </div>
   );
@@ -990,7 +1015,7 @@ export default function Projects(){
 }
 
 // Division icons use images from @/icons via DivisionIcon component
-const getDivisionIcon = (label: string) => <DivisionIcon label={label} size={16} />;
+const getDivisionIcon = (label: string, suppressNativeTitle?: boolean) => <DivisionIcon label={label} size={16} suppressNativeTitle={suppressNativeTitle} />;
 
 export function ProjectListItem({ project, projectDivisions, projectStatuses, variant = 'card' }: { project: Project, projectDivisions?: any[], projectStatuses: any[]; variant?: 'card' | 'row' }){
   const navigate = useNavigate();
@@ -1249,7 +1274,7 @@ function ProjectListCard({ project, projectDivisions, projectStatuses }:{ projec
       for (const div of (projectDivisions || [])) {
         if (String(div.id) === String(divId)) {
           icons.push({ 
-            icon: getDivisionIcon(div.label), 
+            icon: getDivisionIcon(div.label, true), 
             label: div.label,
             id: String(div.id),
             percentage: calculatedPercentages[String(divId)] || 0
@@ -1259,7 +1284,7 @@ function ProjectListCard({ project, projectDivisions, projectStatuses }:{ projec
         for (const sub of (div.subdivisions || [])) {
           if (String(sub.id) === String(divId)) {
             icons.push({ 
-              icon: getDivisionIcon(div.label), 
+              icon: getDivisionIcon(div.label, true), 
               label: `${div.label} - ${sub.label}`,
               id: String(sub.id),
               percentage: calculatedPercentages[String(divId)] || 0
@@ -1389,27 +1414,27 @@ function ProjectListCard({ project, projectDivisions, projectStatuses }:{ projec
             {divisionIcons.length > 0 ? (
               <div className="flex items-center gap-2 flex-wrap">
                 {divisionIcons.map((div, idx) => (
-                  <div key={idx} className="relative group/icon flex flex-col items-center" title={div.label}>
+                  <div key={idx} className="relative group/icon flex flex-col items-center">
                     <div className="flex items-center justify-center cursor-pointer hover:scale-110 transition-transform">
                       {div.icon}
                     </div>
                     <div className="text-[10px] font-semibold text-gray-600 mt-0.5">
                       {Math.round(div.percentage || 0)}%
                     </div>
-                    <div className="absolute left-0 bottom-full mb-1 px-2 py-1 bg-gray-900 text-white text-xs rounded whitespace-nowrap opacity-0 group-hover/icon:opacity-100 transition-opacity pointer-events-none z-10">
+                    <div className="absolute left-0 top-full mt-1 px-2 py-1 bg-gray-900 text-white text-xs rounded whitespace-nowrap opacity-0 group-hover/icon:opacity-100 transition-opacity pointer-events-none z-[100] shadow-lg">
                       {div.label}
-                      <div className="absolute -bottom-1 left-2 w-2 h-2 bg-gray-900 rotate-45"></div>
+                      <div className="absolute -top-1 left-2 w-2 h-2 bg-gray-900 rotate-45"></div>
                     </div>
                   </div>
                 ))}
                 {projectDivIds.length > 5 && (
                   <div className="relative group/icon">
-                    <div className="text-sm text-gray-400 cursor-pointer" title={`${projectDivIds.length - 5} more divisions`}>
+                    <div className="text-sm text-gray-400 cursor-pointer">
                       +{projectDivIds.length - 5}
                     </div>
-                    <div className="absolute left-0 bottom-full mb-1 px-2 py-1 bg-gray-900 text-white text-xs rounded whitespace-nowrap opacity-0 group-hover/icon:opacity-100 transition-opacity pointer-events-none z-10">
+                    <div className="absolute left-0 top-full mt-1 px-2 py-1 bg-gray-900 text-white text-xs rounded whitespace-nowrap opacity-0 group-hover/icon:opacity-100 transition-opacity pointer-events-none z-[100] shadow-lg">
                       {projectDivIds.length - 5} more divisions
-                      <div className="absolute -bottom-1 left-2 w-2 h-2 bg-gray-900 rotate-45"></div>
+                      <div className="absolute -top-1 left-2 w-2 h-2 bg-gray-900 rotate-45"></div>
                     </div>
                   </div>
                 )}

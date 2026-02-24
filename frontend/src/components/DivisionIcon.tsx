@@ -7,15 +7,18 @@ type DivisionIconProps = {
   /** Size in pixels for the image (width and height). Default 24. */
   size?: number;
   title?: string;
+  /** When true, do not set the native title attribute (use when parent shows a custom tooltip). */
+  suppressNativeTitle?: boolean;
 };
 
 /**
  * Renders the division icon as an image when available, otherwise as fallback emoji.
  * Use wherever division icons are shown (cards, dropdowns, tooltips, etc.).
  */
-export function DivisionIcon({ label, className = '', size = 24, title }: DivisionIconProps): React.ReactElement {
+export function DivisionIcon({ label, className = '', size = 24, title, suppressNativeTitle }: DivisionIconProps): React.ReactElement {
   const src = getDivisionIconUrl(label);
   const fallback = getDivisionIconFallback(label);
+  const nativeTitle = suppressNativeTitle ? undefined : (title ?? label);
 
   if (src) {
     return (
@@ -25,7 +28,7 @@ export function DivisionIcon({ label, className = '', size = 24, title }: Divisi
         width={size}
         height={size}
         className={`object-contain flex-shrink-0 ${className}`}
-        title={title ?? label}
+        {...(nativeTitle !== undefined ? { title: nativeTitle } : {})}
       />
     );
   }
@@ -34,7 +37,7 @@ export function DivisionIcon({ label, className = '', size = 24, title }: Divisi
     <span
       className={`inline-flex items-center justify-center flex-shrink-0 ${className}`}
       style={{ width: size, height: size }}
-      title={title ?? label}
+      {...(nativeTitle !== undefined ? { title: nativeTitle } : {})}
     >
       {fallback}
     </span>

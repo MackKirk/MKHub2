@@ -220,7 +220,6 @@ function DivisionTooltip({ label, percentage, icon }: { label: string; percentag
         onMouseEnter={() => setIsHovered(true)}
         onMouseLeave={() => setIsHovered(false)}
         className="relative group/icon flex flex-col items-center"
-        title={label}
       >
         <div className="text-base transition-transform hover:scale-110">
           {icon}
@@ -6933,7 +6932,7 @@ function ProjectQuickEdit({ projectId, proj, settings }:{ projectId:string, proj
 }
 
 // Division icons use images from @/icons via DivisionIcon component
-const getDivisionIcon = (label: string) => <DivisionIcon label={label} size={20} />;
+const getDivisionIcon = (label: string, suppressNativeTitle?: boolean) => <DivisionIcon label={label} size={20} suppressNativeTitle={suppressNativeTitle} />;
 
 // Edit Status Modal Component
 function EditStatusModal({ projectId, currentStatus, currentStatusLabel, settings, isBidding, onClose, onSave }: {
@@ -7880,7 +7879,7 @@ function ProjectDivisionsHeroSection({ projectId, proj, hasEditPermission, liveP
       for (const div of (projectDivisions || [])) {
         if (String(div.id) === String(divId)) {
           icons.push({ 
-            icon: getDivisionIcon(div.label), 
+            icon: getDivisionIcon(div.label, true), 
             label: div.label, 
             id: String(div.id),
             percentage: calculatedPercentages[String(divId)] || 0
@@ -7890,7 +7889,7 @@ function ProjectDivisionsHeroSection({ projectId, proj, hasEditPermission, liveP
         for (const sub of (div.subdivisions || [])) {
           if (String(sub.id) === String(divId)) {
             icons.push({ 
-              icon: getDivisionIcon(div.label), 
+              icon: getDivisionIcon(div.label, true), 
               label: `${div.label} - ${sub.label}`, 
               id: String(sub.id),
               percentage: calculatedPercentages[String(divId)] || 0
@@ -7928,7 +7927,6 @@ function ProjectDivisionsHeroSection({ projectId, proj, hasEditPermission, liveP
                 <div
                   key={div.id}
                   className="relative group/icon flex flex-col items-center"
-                  title={div.label}
                 >
                   <div className="text-2xl transition-transform hover:scale-110">
                     {div.icon}
@@ -7936,10 +7934,10 @@ function ProjectDivisionsHeroSection({ projectId, proj, hasEditPermission, liveP
                   <div className="text-xs font-bold mt-0.5 text-gray-600">
                     {Math.round(div.percentage || 0)}%
                   </div>
-                  {/* Tooltip */}
-                  <div className="absolute right-0 top-full mt-1 px-2 py-1 bg-gray-900 text-white text-xs rounded whitespace-nowrap opacity-0 group-hover/icon:opacity-100 transition-opacity pointer-events-none z-10">
+                  {/* Tooltip - below icon, indented right (left edge at icon so it extends right) */}
+                  <div className="absolute left-0 top-full mt-1 px-2 py-1 bg-gray-900 text-white text-xs rounded whitespace-nowrap opacity-0 group-hover/icon:opacity-100 transition-opacity pointer-events-none z-[100] shadow-lg">
                     {div.label}
-                    <div className="absolute -top-1 right-2 w-2 h-2 bg-gray-900 rotate-45"></div>
+                    <div className="absolute -top-1 left-2 w-2 h-2 bg-gray-900 rotate-45"></div>
                   </div>
                 </div>
               ))}
@@ -8315,12 +8313,12 @@ function ProjectGeneralInfoCard({ projectId, proj, files, hasEditPermission }:{ 
     for (const divId of projectDivIds) {
       for (const div of (projectDivisions || [])) {
         if (String(div.id) === String(divId)) {
-          icons.push({ icon: getDivisionIcon(div.label), label: div.label, id: String(div.id) });
+          icons.push({ icon: getDivisionIcon(div.label, true), label: div.label, id: String(div.id) });
           break;
         }
         for (const sub of (div.subdivisions || [])) {
           if (String(sub.id) === String(divId)) {
-            icons.push({ icon: getDivisionIcon(div.label), label: `${div.label} - ${sub.label}`, id: String(sub.id) });
+            icons.push({ icon: getDivisionIcon(div.label, true), label: `${div.label} - ${sub.label}`, id: String(sub.id) });
             break;
           }
         }
@@ -8348,15 +8346,14 @@ function ProjectGeneralInfoCard({ projectId, proj, files, hasEditPermission }:{ 
               <div
                 key={div.id}
                 className="relative group/icon"
-                title={div.label}
               >
                 <div className="text-2xl cursor-pointer hover:scale-110 transition-transform">
                   {div.icon}
                 </div>
-                {/* Tooltip */}
-                <div className="absolute right-0 top-full mt-1 px-2 py-1 bg-gray-900 text-white text-xs rounded whitespace-nowrap opacity-0 group-hover/icon:opacity-100 transition-opacity pointer-events-none z-10">
+                {/* Tooltip - below icon, indented right (left edge at icon so it extends right) */}
+                <div className="absolute left-0 top-full mt-1 px-2 py-1 bg-gray-900 text-white text-xs rounded whitespace-nowrap opacity-0 group-hover/icon:opacity-100 transition-opacity pointer-events-none z-[100] shadow-lg">
                   {div.label}
-                  <div className="absolute -top-1 right-2 w-2 h-2 bg-gray-900 rotate-45"></div>
+                  <div className="absolute -top-1 left-2 w-2 h-2 bg-gray-900 rotate-45"></div>
                 </div>
               </div>
             ))}
