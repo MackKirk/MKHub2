@@ -1,8 +1,9 @@
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useState, useEffect, useMemo } from 'react';
 import { api } from '@/lib/api';
 import { formatDateLocal } from '@/lib/dateUtils';
+import { WorkOrderNewForm } from './WorkOrderNew';
 
 type WorkOrder = {
   id: string;
@@ -384,9 +385,11 @@ function WorkOrderFilterBuilderModal({
 
 export default function WorkOrders() {
   const nav = useNavigate();
+  const queryClient = useQueryClient();
   const [searchParams, setSearchParams] = useSearchParams();
   const search = searchParams.get('search') ?? '';
   const [isFilterModalOpen, setIsFilterModalOpen] = useState(false);
+  const [showNewWorkOrderModal, setShowNewWorkOrderModal] = useState(false);
 
   const pageParam = parseInt(searchParams.get('page') || '1', 10);
   const [page, setPage] = useState(pageParam);
@@ -603,7 +606,7 @@ export default function WorkOrders() {
       <div className="rounded-xl border border-gray-200 bg-white overflow-hidden min-w-0">
         <button
           type="button"
-          onClick={() => nav('/fleet/work-orders/new')}
+          onClick={() => setShowNewWorkOrderModal(true)}
           className="w-full border-2 border-dashed border-gray-300 rounded-t-xl p-2.5 hover:border-brand-red hover:bg-gray-50 transition-all text-center bg-white flex items-center justify-center min-h-[60px] min-w-0"
         >
           <div className="text-lg text-gray-400 mr-2">+</div>
@@ -730,6 +733,50 @@ export default function WorkOrders() {
         onApply={handleApplyFilters}
         initialRules={currentRules}
       />
+
+      {/* New Work Order Modal */}
+      {showNewWorkOrderModal && (
+        <div
+          className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center overflow-y-auto p-4"
+          onClick={() => setShowNewWorkOrderModal(false)}
+        >
+          <div
+            className="w-[900px] max-w-[95vw] max-h-[90vh] bg-gray-100 rounded-xl overflow-hidden flex flex-col border border-gray-200 shadow-xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="rounded-t-xl border-b border-gray-200 bg-white p-4 flex-shrink-0">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <button
+                    type="button"
+                    onClick={() => setShowNewWorkOrderModal(false)}
+                    className="p-1.5 rounded hover:bg-gray-100 transition-colors flex items-center justify-center"
+                    title="Close"
+                  >
+                    <svg className="w-4 h-4 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+                    </svg>
+                  </button>
+                  <div>
+                    <div className="text-sm font-semibold text-gray-900">New Work Order</div>
+                    <div className="text-xs text-gray-500 mt-0.5">Create a new work order</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div className="overflow-y-auto flex-1 p-4">
+              <WorkOrderNewForm
+                onSuccess={(data) => {
+                  setShowNewWorkOrderModal(false);
+                  queryClient.invalidateQueries({ queryKey: ['workOrders'] });
+                  nav(`/fleet/work-orders/${data.id}`);
+                }}
+                onCancel={() => setShowNewWorkOrderModal(false)}
+              />
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -4,7 +4,7 @@ from typing import List, Optional
 from sqlalchemy import or_, and_, func, case, cast, BigInteger
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Body
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 
 from ..db import get_db
 from ..auth.security import get_current_user, require_permissions
@@ -1235,24 +1235,41 @@ def get_inspection_checklist_template():
 def list_inspections(
     fleet_asset_id: Optional[uuid.UUID] = Query(None),
     result: Optional[str] = Query(None),
+    result_not: Optional[str] = Query(None),
     start_date: Optional[datetime] = Query(None),
     end_date: Optional[datetime] = Query(None),
+    sort: Optional[str] = Query("inspection_date"),
+    dir: Optional[str] = Query("desc"),
     db: Session = Depends(get_db),
     _=Depends(require_permissions("inspections:read"))
 ):
-    """List inspections with filters"""
-    query = db.query(FleetInspection)
-    
+    """List inspections with filters and sort. Returns fleet_asset_name and inspector_name for display."""
+    query = db.query(FleetInspection).options(joinedload(FleetInspection.fleet_asset))
     if fleet_asset_id:
         query = query.filter(FleetInspection.fleet_asset_id == fleet_asset_id)
     if result:
         query = query.filter(FleetInspection.result == result)
+    if result_not:
+        query = query.filter(FleetInspection.result != result_not)
     if start_date:
         query = query.filter(FleetInspection.inspection_date >= start_date)
     if end_date:
         query = query.filter(FleetInspection.inspection_date <= end_date)
-    
-    return query.order_by(FleetInspection.inspection_date.desc()).limit(500).all()
+    is_desc = (dir or "desc").lower() == "desc"
+    if sort == "result":
+        query = query.order_by(FleetInspection.result.desc() if is_desc else FleetInspection.result.asc())
+    elif sort == "asset":
+        query = query.join(FleetInspection.fleet_asset).order_by(FleetAsset.name.desc() if is_desc else FleetAsset.name.asc())
+    else:
+        query = query.order_by(FleetInspection.inspection_date.desc() if is_desc else FleetInspection.inspection_date.asc())
+    rows = query.limit(500).all()
+    return [
+        FleetInspectionResponse.model_validate(r).model_copy(update={
+            "fleet_asset_name": r.fleet_asset.name if r.fleet_asset else None,
+            "inspector_name": get_user_display(db, r.inspector_user_id) if r.inspector_user_id else None,
+        })
+        for r in rows
+    ]
 
 
 @router.get("/inspections/{inspection_id}", response_model=FleetInspectionResponse)

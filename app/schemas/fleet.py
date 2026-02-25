@@ -275,6 +275,8 @@ class FleetInspectionResponse(FleetInspectionBase):
     auto_generated_work_order_id: Optional[uuid.UUID] = None
     created_at: datetime
     created_by: Optional[uuid.UUID] = None
+    fleet_asset_name: Optional[str] = None
+    inspector_name: Optional[str] = None
 
     class Config:
         from_attributes = True
