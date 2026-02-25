@@ -561,6 +561,12 @@ export default function AppShell({ children }: PropsWithChildren){
       if (item.id === 'business-dashboard' && item.path === '/business') {
         return location.pathname === '/business';
       }
+      // Fleet Assets: also active on /fleet/vehicles, /fleet/heavy-machinery, /fleet/other-assets
+      if (item.id === 'fleet-assets') {
+        if (['/fleet/assets', '/fleet/vehicles', '/fleet/heavy-machinery', '/fleet/other-assets'].some(p => location.pathname === p || location.pathname.startsWith(p + '/'))) {
+          return true;
+        }
+      }
       const isSelfActive = location.pathname === item.path || location.pathname.startsWith(item.path + '/');
       if (isSelfActive) return true;
       if (Array.isArray(item.children) && item.children.some(child => location.pathname === child.path || location.pathname.startsWith(child.path + '/'))) {
@@ -779,6 +785,10 @@ export default function AppShell({ children }: PropsWithChildren){
                           else if (item.id === 'business-dashboard' && item.path === '/business') {
                             isItemActive = location.pathname === '/business';
                           }
+                          // Fleet Assets: also active on /fleet/vehicles, /fleet/heavy-machinery, /fleet/other-assets
+                          else if (item.id === 'fleet-assets') {
+                            isItemActive = ['/fleet/assets', '/fleet/vehicles', '/fleet/heavy-machinery', '/fleet/other-assets'].some(p => location.pathname === p || location.pathname.startsWith(p + '/'));
+                          }
                           else {
                             isItemActive = location.pathname === item.path || location.pathname.startsWith(item.path + '/');
                           }
@@ -787,7 +797,11 @@ export default function AppShell({ children }: PropsWithChildren){
                         const visibleChildren = (item.children || []).filter(canSeeMenuItem);
                         const hasChildren = visibleChildren.length > 0;
                         const isAnyChildActive = hasChildren
-                          ? visibleChildren.some(child => location.pathname === child.path || location.pathname.startsWith(child.path + '/'))
+                          ? visibleChildren.some(child =>
+                              child.id === 'fleet-assets'
+                                ? ['/fleet/assets', '/fleet/vehicles', '/fleet/heavy-machinery', '/fleet/other-assets'].some(p => location.pathname === p || location.pathname.startsWith(p + '/'))
+                                : (location.pathname === child.path || location.pathname.startsWith(child.path + '/'))
+                            )
                           : false;
                         const isItemOrChildActive = isItemActive || isAnyChildActive;
                         // Only show children after user navigates to Suppliers (or a child like Products)
@@ -837,7 +851,11 @@ export default function AppShell({ children }: PropsWithChildren){
                               {isGroupExpanded && (
                                 <div className="mt-0.5 ml-6 space-y-0.5">
                                   {visibleChildren.map(child => {
-                                    const childActive = !isViewingOpportunity && (location.pathname === child.path || location.pathname.startsWith(child.path + '/'));
+                                    const childActive = !isViewingOpportunity && (
+                                      child.id === 'fleet-assets'
+                                        ? ['/fleet/assets', '/fleet/vehicles', '/fleet/heavy-machinery', '/fleet/other-assets'].some(p => location.pathname === p || location.pathname.startsWith(p + '/'))
+                                        : (location.pathname === child.path || location.pathname.startsWith(child.path + '/'))
+                                    );
                                     return (
                                       <NavLink
                                         key={child.id}

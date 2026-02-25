@@ -14,6 +14,7 @@ from ..services.asset_assignment_service import (
     create_assignment_for_equipment_item,
     return_assignment_for_equipment_item,
 )
+from ..services.task_service import get_user_display
 from ..models.models import (
     FleetAsset,
     Equipment,
@@ -27,6 +28,7 @@ from ..models.models import (
     AssetAssignment,
     FleetComplianceRecord,
     User,
+    EmployeeProfile,
 )
 from ..schemas.fleet import (
     FleetAssetCreate,
@@ -35,12 +37,14 @@ from ..schemas.fleet import (
     EquipmentCreate,
     EquipmentUpdate,
     EquipmentResponse,
+    EquipmentListResponse,
     FleetInspectionCreate,
     FleetInspectionUpdate,
     FleetInspectionResponse,
     WorkOrderCreate,
     WorkOrderUpdate,
     WorkOrderResponse,
+    WorkOrderListResponse,
     EquipmentCheckoutCreate,
     EquipmentCheckinUpdate,
     EquipmentCheckoutResponse,
@@ -178,6 +182,9 @@ def get_dashboard(
         for asset in assets_needing_inspection
     ]
     
+    # Assigned now (unified asset_assignments: fleet + equipment with no returned_at)
+    assigned_now_count = db.query(AssetAssignment).filter(AssetAssignment.returned_at.is_(None)).count()
+
     # Work orders
     open_wos = db.query(WorkOrder).filter(WorkOrder.status == "open").count()
     in_progress_wos = db.query(WorkOrder).filter(WorkOrder.status == "in_progress").count()
@@ -206,6 +213,7 @@ def get_dashboard(
         total_vehicles=total_vehicles,
         total_heavy_machinery=total_heavy_machinery,
         total_other_assets=total_other,
+        assigned_now_count=assigned_now_count,
         inspections_due_count=len(inspections_due),
         inspections_due=inspections_due,
         open_work_orders_count=open_wos,
@@ -258,10 +266,17 @@ def _fleet_assets_order(sort: Optional[str], direction: str):
 @router.get("/assets")
 def list_fleet_assets(
     asset_type: Optional[FleetAssetType] = Query(None),
+    asset_type_not: Optional[str] = Query(None),
     division_id: Optional[uuid.UUID] = Query(None),
+    division_id_not: Optional[uuid.UUID] = Query(None),
     status: Optional[str] = Query(None),
+    status_not: Optional[str] = Query(None),
     search: Optional[str] = Query(None),
     fuel_type: Optional[str] = Query(None),
+    fuel_type_not: Optional[str] = Query(None),
+    year: Optional[int] = Query(None),
+    year_not: Optional[int] = Query(None),
+    assigned: Optional[bool] = Query(None),
     sort: Optional[str] = Query(None),
     dir: Optional[str] = Query("asc"),
     page: int = 1,
@@ -278,22 +293,65 @@ def list_fleet_assets(
 
     if asset_type:
         query = query.filter(FleetAsset.asset_type == asset_type.value)
+    if asset_type_not:
+        query = query.filter(FleetAsset.asset_type != asset_type_not)
     if division_id:
         query = query.filter(FleetAsset.division_id == division_id)
+    if division_id_not is not None:
+        query = query.filter(FleetAsset.division_id != division_id_not)
     if status:
         query = query.filter(FleetAsset.status == status)
+    if status_not:
+        query = query.filter(FleetAsset.status != status_not)
     if fuel_type:
         query = query.filter(FleetAsset.fuel_type.ilike(fuel_type))
+    if fuel_type_not:
+        query = query.filter(or_(FleetAsset.fuel_type.is_(None), ~FleetAsset.fuel_type.ilike(fuel_type_not)))
+    if year is not None:
+        query = query.filter(FleetAsset.year == year)
+    if year_not is not None:
+        query = query.filter(FleetAsset.year != year_not)
+    if assigned is not None:
+        if assigned:
+            query = query.filter(FleetAsset.driver_id.isnot(None))
+        else:
+            query = query.filter(FleetAsset.driver_id.is_(None))
     if search:
         search_term = f"%{search}%"
-        query = query.filter(
-            or_(
-                FleetAsset.name.ilike(search_term),
-                FleetAsset.vin.ilike(search_term),
-                FleetAsset.license_plate.ilike(search_term),
-                FleetAsset.model.ilike(search_term),
-            )
+        # FleetAsset fields: name, make, model, vin, plate, unit_number, body_style, vehicle_type, fuel_type, yard_location, equipment_type_label, notes
+        asset_conditions = or_(
+            FleetAsset.name.ilike(search_term),
+            FleetAsset.vin.ilike(search_term),
+            FleetAsset.license_plate.ilike(search_term),
+            FleetAsset.model.ilike(search_term),
+            FleetAsset.make.ilike(search_term),
+            FleetAsset.unit_number.ilike(search_term),
+            FleetAsset.body_style.ilike(search_term),
+            FleetAsset.vehicle_type.ilike(search_term),
+            FleetAsset.fuel_type.ilike(search_term),
+            FleetAsset.yard_location.ilike(search_term),
+            FleetAsset.equipment_type_label.ilike(search_term),
+            FleetAsset.notes.ilike(search_term),
         )
+        # Driver name (assigned user): join User + EmployeeProfile
+        driver_user = or_(
+            User.username.ilike(search_term),
+            User.email_personal.ilike(search_term),
+        )
+        driver_profile = or_(
+            EmployeeProfile.first_name.ilike(search_term),
+            EmployeeProfile.last_name.ilike(search_term),
+            EmployeeProfile.preferred_name.ilike(search_term),
+        )
+        # Subquery: distinct asset IDs matching search (avoids SELECT DISTINCT + ORDER BY conflict in PostgreSQL)
+        matching_ids_subq = (
+            db.query(FleetAsset.id)
+            .outerjoin(User, FleetAsset.driver_id == User.id)
+            .outerjoin(EmployeeProfile, User.id == EmployeeProfile.user_id)
+            .filter(or_(asset_conditions, driver_user, driver_profile))
+            .distinct()
+        )
+        query = query.filter(FleetAsset.id.in_(matching_ids_subq))
 
     order_clause = _fleet_assets_order(sort, dir or "asc")
     if isinstance(order_clause, tuple):
@@ -305,7 +363,11 @@ def list_fleet_assets(
     assets = query.offset(offset).limit(limit).all()
     total_pages = (total + limit - 1) // limit if total > 0 else 1
 
-    items = [FleetAssetResponse.model_validate(a).model_dump(mode="json") for a in assets]
+    items = []
+    for a in assets:
+        d = FleetAssetResponse.model_validate(a).model_dump(mode="json")
+        d["driver_name"] = get_user_display(db, a.driver_id) if a.driver_id else None
+        items.append(d)
 
     # Fetch distinct fuel types for filter dropdown (when viewing vehicles or all)
     fuel_type_options: List[str] = []
@@ -508,21 +570,71 @@ def delete_compliance(
 
 
 # ---------- EQUIPMENT ----------
-@router.get("/equipment", response_model=List[EquipmentResponse])
+def _equipment_order(sort: Optional[str], direction: str):
+    """Return SQLAlchemy order_by clause for equipment list."""
+    is_asc = (direction or "asc").lower() == "asc"
+    if sort == "unit_number":
+        is_numeric = Equipment.unit_number.op("~")("^[0-9]+$")
+        numeric_sort = case((is_numeric, cast(Equipment.unit_number, BigInteger)), else_=None)
+        if is_asc:
+            return (numeric_sort.asc().nulls_last(), Equipment.unit_number.asc())
+        return (numeric_sort.desc().nulls_last(), Equipment.unit_number.desc())
+    if sort == "name":
+        return Equipment.name.asc() if is_asc else Equipment.name.desc()
+    if sort == "category":
+        return Equipment.category.asc() if is_asc else Equipment.category.desc()
+    if sort == "value":
+        return Equipment.value.asc().nulls_last() if is_asc else Equipment.value.desc().nulls_last()
+    if sort == "assignment":
+        # checked_out first when asc = "assigned" first
+        return Equipment.status.asc() if is_asc else Equipment.status.desc()
+    if sort == "status":
+        return Equipment.status.asc() if is_asc else Equipment.status.desc()
+    return Equipment.created_at.desc()
+
+
+@router.get("/equipment", response_model=EquipmentListResponse)
 def list_equipment(
     category: Optional[EquipmentCategory] = Query(None),
+    category_not: Optional[str] = Query(None),
     status: Optional[str] = Query(None),
+    status_not: Optional[str] = Query(None),
+    assigned: Optional[bool] = Query(None),
     search: Optional[str] = Query(None),
+    sort: Optional[str] = Query(None),
+    dir: Optional[str] = Query("asc"),
+    page: int = Query(1, ge=1),
+    limit: int = Query(15, ge=1, le=100),
     db: Session = Depends(get_db),
     _=Depends(require_permissions("fleet:access", "fleet:read", "equipment:read"))
 ):
-    """List equipment with filters"""
+    """List equipment with filters, sort, and pagination."""
+    offset = (page - 1) * limit
     query = db.query(Equipment)
-    
+
     if category:
         query = query.filter(Equipment.category == category.value)
+    if category_not:
+        query = query.filter(Equipment.category != category_not)
     if status:
         query = query.filter(Equipment.status == status)
+    if status_not:
+        query = query.filter(Equipment.status != status_not)
+    if assigned is not None:
+        active_assignment_equipment_ids = db.query(EquipmentAssignment.equipment_id).filter(
+            EquipmentAssignment.is_active == True
+        ).distinct()
+        if assigned:
+            query = query.filter(
+                or_(
+                    Equipment.status == "checked_out",
+                    Equipment.id.in_(active_assignment_equipment_ids)
+                )
+            )
+        else:
+            query = query.filter(Equipment.status != "checked_out").filter(
+                ~Equipment.id.in_(active_assignment_equipment_ids)
+            )
     if search:
         search_term = f"%{search}%"
         query = query.filter(
@@ -531,10 +643,59 @@ def list_equipment(
                 Equipment.serial_number.ilike(search_term),
                 Equipment.brand.ilike(search_term),
                 Equipment.model.ilike(search_term),
+                Equipment.unit_number.ilike(search_term),
+                Equipment.notes.ilike(search_term),
             )
         )
-    
-    return query.order_by(Equipment.created_at.desc()).limit(500).all()
+
+    order_clause = _equipment_order(sort, dir or "asc")
+    if isinstance(order_clause, tuple):
+        query = query.order_by(*order_clause)
+    else:
+        query = query.order_by(order_clause)
+
+    total = query.count()
+    equipment_list = query.offset(offset).limit(limit).all()
+    total_pages = (total + limit - 1) // limit if total > 0 else 1
+
+    items = []
+    for eq in equipment_list:
+        d = EquipmentResponse.model_validate(eq).model_dump(mode="json")
+        assigned_user_id = None
+        if eq.status == "checked_out":
+            checkout = (
+                db.query(EquipmentCheckout)
+                .filter(
+                    EquipmentCheckout.equipment_id == eq.id,
+                    EquipmentCheckout.status == "checked_out"
+                )
+                .order_by(EquipmentCheckout.checked_out_at.desc())
+                .first()
+            )
+            if checkout:
+                assigned_user_id = checkout.checked_out_by_user_id
+        if assigned_user_id is None:
+            assignment = (
+                db.query(EquipmentAssignment)
+                .filter(
+                    EquipmentAssignment.equipment_id == eq.id,
+                    EquipmentAssignment.is_active == True
+                )
+                .order_by(EquipmentAssignment.assigned_at.desc())
+                .first()
+            )
+            if assignment:
+                assigned_user_id = assignment.assigned_to_user_id
+        d["assigned_to_name"] = get_user_display(db, assigned_user_id) if assigned_user_id else None
+        items.append(d)
+
+    return EquipmentListResponse(
+        items=items,
+        total=total,
+        page=page,
+        limit=limit,
+        total_pages=total_pages,
+    )
 
 
 @router.get("/equipment/{equipment_id}", response_model=EquipmentResponse)
@@ -1202,34 +1363,99 @@ def generate_work_order_from_inspection(
 
 
 # ---------- WORK ORDERS ----------
-@router.get("/work-orders", response_model=List[WorkOrderResponse])
+def _work_order_order(sort: Optional[str], direction: str):
+    """Return SQLAlchemy order_by clause for work orders list."""
+    is_asc = (direction or "asc").lower() == "asc"
+    if sort == "work_order_number":
+        return WorkOrder.work_order_number.asc() if is_asc else WorkOrder.work_order_number.desc()
+    if sort == "description":
+        return WorkOrder.description.asc() if is_asc else WorkOrder.description.desc()
+    if sort == "entity_type":
+        return WorkOrder.entity_type.asc() if is_asc else WorkOrder.entity_type.desc()
+    if sort == "category":
+        return WorkOrder.category.asc() if is_asc else WorkOrder.category.desc()
+    if sort == "urgency":
+        return WorkOrder.urgency.asc() if is_asc else WorkOrder.urgency.desc()
+    if sort == "status":
+        return WorkOrder.status.asc() if is_asc else WorkOrder.status.desc()
+    if sort == "created_at":
+        return WorkOrder.created_at.asc() if is_asc else WorkOrder.created_at.desc()
+    return WorkOrder.created_at.desc()
+
+
+@router.get("/work-orders", response_model=WorkOrderListResponse)
 def list_work_orders(
     status: Optional[WorkOrderStatus] = Query(None),
+    status_not: Optional[str] = Query(None),
     assigned_to: Optional[uuid.UUID] = Query(None),
     entity_type: Optional[str] = Query(None),
+    entity_type_not: Optional[str] = Query(None),
     entity_id: Optional[uuid.UUID] = Query(None),
     category: Optional[str] = Query(None),
+    category_not: Optional[str] = Query(None),
     urgency: Optional[str] = Query(None),
+    urgency_not: Optional[str] = Query(None),
+    search: Optional[str] = Query(None),
+    sort: Optional[str] = Query(None),
+    dir: Optional[str] = Query("asc"),
+    page: int = Query(1, ge=1),
+    limit: int = Query(15, ge=1, le=100),
     db: Session = Depends(get_db),
     _=Depends(require_permissions("fleet:access", "fleet:read", "work_orders:read"))
 ):
-    """List work orders with filters"""
+    """List work orders with filters, sort, search, and pagination."""
+    offset = (page - 1) * limit
     query = db.query(WorkOrder)
-    
+
     if status:
         query = query.filter(WorkOrder.status == status.value)
+    if status_not:
+        query = query.filter(WorkOrder.status != status_not)
     if assigned_to:
         query = query.filter(WorkOrder.assigned_to_user_id == assigned_to)
     if entity_type:
         query = query.filter(WorkOrder.entity_type == entity_type)
+    if entity_type_not:
+        query = query.filter(WorkOrder.entity_type != entity_type_not)
     if entity_id:
         query = query.filter(WorkOrder.entity_id == entity_id)
     if category:
         query = query.filter(WorkOrder.category == category)
+    if category_not:
+        query = query.filter(WorkOrder.category != category_not)
     if urgency:
         query = query.filter(WorkOrder.urgency == urgency)
-    
-    return query.order_by(WorkOrder.created_at.desc()).limit(500).all()
+    if urgency_not:
+        query = query.filter(WorkOrder.urgency != urgency_not)
+    if search:
+        search_term = f"%{search}%"
+        query = query.filter(
+            or_(
+                WorkOrder.description.ilike(search_term),
+                WorkOrder.work_order_number.ilike(search_term),
+            )
+        )
+
+    order_clause = _work_order_order(sort, dir or "asc")
+    query = query.order_by(order_clause)
+
+    total = query.count()
+    work_orders_list = query.offset(offset).limit(limit).all()
+    total_pages = (total + limit - 1) // limit if total > 0 else 1
+
+    items = []
+    for wo in work_orders_list:
+        d = WorkOrderResponse.model_validate(wo).model_dump(mode="json")
+        d["assigned_to_name"] = get_user_display(db, wo.assigned_to_user_id) if wo.assigned_to_user_id else None
+        items.append(d)
+
+    return WorkOrderListResponse(
+        items=items,
+        total=total,
+        page=page,
+        limit=limit,
+        total_pages=total_pages,
+    )
 
 
 @router.get("/work-orders/{work_order_id}", response_model=WorkOrderResponse)
