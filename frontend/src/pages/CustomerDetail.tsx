@@ -793,7 +793,8 @@ export default function CustomerDetail(){
     });
     return breakdown;
   }, [filteredProjects, projectCostsSummaryTotalsMap]);
-  
+
+  // Chart-specific filtered data (for per-chart date range) and status breakdowns
   // Calculate insights
   const insights = useMemo(() => {
     // Converted Projects: lifetime metric (not filtered by date range)
@@ -2052,13 +2053,6 @@ export default function CustomerDetail(){
                                     <span className="text-[11px] text-gray-600 w-24">Converted</span>
                                     <div className="flex-1 bg-gray-100 rounded-full h-2 min-w-0"><div className="bg-gradient-to-r from-[#0b1739] to-[#1d4ed8] rounded-full h-2" style={{ width: `${(funnel.converted / maxValue) * 100}%` }} /></div>
                                     <span className="text-[11px] font-semibold text-gray-900 min-w-[70px] text-right">{globalDisplayMode === 'value' ? formatCurrency(funnel.converted) : <CountUp value={funnel.converted} enabled={hasAnimated} />}{funnel.convertedPct != null ? <span className="text-gray-500 ml-0.5">({funnel.convertedPct.toFixed(0)}%)</span> : null}</span>
-                                  </div>
-                                  <div className="border-t border-gray-100 pt-2">
-                                    {funnel.refusedPct != null && funnel.refusedPct > 40 ? (
-                                      <div className="bg-amber-50 border border-amber-200 rounded px-2 py-1.5"><div className="text-[10px] font-semibold text-amber-800">Warning</div><div className="text-[10px] text-amber-700">Refusal rate: {funnel.refusedPct.toFixed(1)}%</div></div>
-                                    ) : (
-                                      <div className="bg-green-50 border border-green-200 rounded px-2 py-1.5"><div className="text-[10px] font-semibold text-green-800">Healthy pipeline</div><div className="text-[10px] text-green-700">No issues detected</div></div>
-                                    )}
                                   </div>
                                 </div>
                               );
@@ -3656,7 +3650,7 @@ function ContactsCard({ id, hasEditPermission }: { id: string, hasEditPermission
                 <div className="flex items-center gap-3">
                   <button
                     type="button"
-                    onClick={()=>{ setCreateOpen(false); setCreatePhotoBlob(null); setNameError(false); }}
+                    onClick={()=>{ setCreateOpen(false); setIsCreatingContact(false); setCreatePhotoBlob(null); setNameError(false); }}
                     className="p-1.5 rounded hover:bg-gray-100 transition-colors flex items-center justify-center"
                     title="Close"
                   >
@@ -3716,7 +3710,7 @@ function ContactsCard({ id, hasEditPermission }: { id: string, hasEditPermission
             </div>
 
             <div className="flex-shrink-0 px-4 py-4 border-t border-gray-200 bg-white flex items-center justify-end gap-3 rounded-b-xl">
-              <button type="button" onClick={()=>{ setCreateOpen(false); setCreatePhotoBlob(null); setNameError(false); }} className="px-3 py-1.5 rounded-lg text-sm font-medium border border-gray-200 hover:bg-gray-50 text-gray-700">Cancel</button>
+              <button type="button" onClick={()=>{ setCreateOpen(false); setIsCreatingContact(false); setCreatePhotoBlob(null); setNameError(false); }} className="px-3 py-1.5 rounded-lg text-sm font-medium border border-gray-200 hover:bg-gray-50 text-gray-700">Cancel</button>
               <button
                 type="button"
                 onClick={async()=>{
@@ -3730,6 +3724,7 @@ function ContactsCard({ id, hasEditPermission }: { id: string, hasEditPermission
                     setIsCreatingContact(true);
                     const payload:any = { name, email, phone, role_title: role, department: dept, is_primary: primary==='true' };
                     await api('POST', `/clients/${id}/contacts`, payload);
+                    setIsCreatingContact(false);
                     setName(''); setEmail(''); setPhone(''); setRole(''); setDept(''); setPrimary('false'); setNameError(false); setCreateOpen(false); refetch();
                   } catch (e) {
                     toast.error('Failed to create contact');

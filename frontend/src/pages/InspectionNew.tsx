@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { api } from '@/lib/api';
@@ -26,11 +26,15 @@ type ChecklistTemplate = {
   }>;
 };
 
-export default function InspectionNew() {
-  const nav = useNavigate();
-  const [searchParams] = useSearchParams();
-  const assetId = searchParams.get('asset_id') || '';
-  
+export function InspectionNewForm({
+  initialAssetId = '',
+  onSuccess,
+  onCancel,
+}: {
+  initialAssetId?: string;
+  onSuccess: (data: { id: string }) => void;
+  onCancel: () => void;
+}) {
   const { data: employees = [] } = useQuery({
     queryKey: ['employees'],
     queryFn: () => api<any[]>('GET', '/employees'),
@@ -48,7 +52,7 @@ export default function InspectionNew() {
   });
 
   const [form, setForm] = useState({
-    fleet_asset_id: assetId,
+    fleet_asset_id: initialAssetId,
     inspection_date: formatDateLocal(new Date()),
     inspector_user_id: '',
     result: 'pass',
@@ -107,7 +111,7 @@ export default function InspectionNew() {
     },
     onSuccess: (data: any) => {
       toast.success('Inspection created successfully');
-      nav(`/fleet/inspections/${data.id}`);
+      onSuccess(data);
     },
     onError: () => {
       toast.error('Failed to create inspection');
@@ -116,42 +120,8 @@ export default function InspectionNew() {
 
   const canSubmit = form.fleet_asset_id.trim().length > 0;
 
-  const todayLabel = useMemo(() => {
-    return new Date().toLocaleDateString('en-CA', {
-      weekday: 'long',
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric',
-    });
-  }, []);
-
   return (
-    <div className="space-y-4 min-w-0 overflow-x-hidden">
-      {/* Title Bar */}
-      <div className="rounded-xl border bg-white p-4 mb-4">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-3 flex-1">
-            <div>
-              <div className="text-sm font-semibold text-gray-900">New Inspection</div>
-              <div className="text-xs text-gray-500 mt-0.5">Create a new fleet inspection</div>
-            </div>
-          </div>
-          <div className="flex items-center gap-3">
-            <div className="text-right">
-              <div className="text-[10px] font-medium text-gray-500 uppercase tracking-wide">Today</div>
-              <div className="text-xs font-semibold text-gray-700 mt-0.5">{todayLabel}</div>
-            </div>
-            <button
-              onClick={() => nav(-1)}
-              className="px-3 py-2 text-xs font-medium text-gray-700 border border-gray-200 rounded-lg bg-white hover:bg-gray-50 transition-colors"
-            >
-              Cancel
-            </button>
-          </div>
-        </div>
-      </div>
-
-      <div className="rounded-xl border border-gray-200 bg-white p-4">
+    <div className="rounded-xl border border-gray-200 bg-white p-4">
         <form
           onSubmit={(e) => {
             e.preventDefault();
@@ -377,7 +347,7 @@ export default function InspectionNew() {
           <div className="flex gap-3 justify-end">
             <button
               type="button"
-              onClick={() => nav(-1)}
+              onClick={onCancel}
               className="px-4 py-2 border rounded-lg hover:bg-gray-50"
             >
               Cancel
@@ -391,7 +361,35 @@ export default function InspectionNew() {
             </button>
           </div>
         </form>
+    </div>
+  );
+}
+
+export default function InspectionNew() {
+  const nav = useNavigate();
+  const [searchParams] = useSearchParams();
+  const assetId = searchParams.get('asset_id') || '';
+  return (
+    <div className="space-y-4 min-w-0 overflow-x-hidden">
+      <div className="rounded-xl border bg-white p-4 mb-4">
+        <div className="flex items-center justify-between">
+          <div>
+            <div className="text-sm font-semibold text-gray-900">New Inspection</div>
+            <div className="text-xs text-gray-500 mt-0.5">Create a new fleet inspection</div>
+          </div>
+          <button
+            onClick={() => nav(-1)}
+            className="px-3 py-2 text-xs font-medium text-gray-700 border border-gray-200 rounded-lg bg-white hover:bg-gray-50 transition-colors"
+          >
+            Cancel
+          </button>
+        </div>
       </div>
+      <InspectionNewForm
+        initialAssetId={assetId}
+        onSuccess={(data) => nav(`/fleet/inspections/${data.id}`)}
+        onCancel={() => nav(-1)}
+      />
     </div>
   );
 }

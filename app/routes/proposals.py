@@ -500,6 +500,21 @@ def next_code(client_id: str, db: Session = Depends(get_db)):
 
 @router.post("")
 def save_proposal(payload: dict = Body(...), db: Session = Depends(get_db), user=Depends(get_current_user)):
+    """Create or update a proposal. payload is stored as-is in p.data (JSON).
+    additional_costs items may include optional area_value (number) and area_unit ('sqft'|'m2'|'sqs').
+    Top-level area_display_unit may be set for display preference."""
+    import copy as _copy
+
+    def _normalize_data(data: dict) -> dict:
+        """Ensure additional_costs items are full dicts so no keys (e.g. area_value, area_unit) are lost."""
+        if not data:
+            return data or {}
+        out = _copy.deepcopy(data)
+        ac = out.get("additional_costs")
+        if isinstance(ac, list):
+            out["additional_costs"] = [dict(item) for item in ac if isinstance(item, dict)]
+        return out
+
     pid = payload.get('id')
     title = payload.get('cover_title') or payload.get('title') or 'Proposal'
     is_new = False
@@ -520,10 +535,9 @@ def save_proposal(payload: dict = Body(...), db: Session = Depends(get_db), user
         p.site_id = payload.get('site_id') or p.site_id
         p.order_number = payload.get('order_number') or p.order_number
         p.title = title
-        # Store only serializable snapshot; avoid mutable references
+        # Store only serializable snapshot; preserve all keys in additional_costs (e.g. area_value, area_unit)
         try:
-            import copy as _copy
-            p.data = _copy.deepcopy(payload)
+            p.data = _normalize_data(payload)
         except Exception:
             p.data = payload
         
@@ -586,13 +600,14 @@ def save_proposal(payload: dict = Body(...), db: Session = Depends(get_db), user
             # Merge with payload data (payload can override General Information if needed)
             change_order_data.update(payload)
             
-            # Ensure Sections and Pricing are empty for new Change Orders
+            # Ensure sections and pricing are set; normalize additional_costs so area_value/area_unit are preserved
             if 'sections' not in change_order_data:
                 change_order_data['sections'] = []
             if 'pricing_items' not in change_order_data:
                 change_order_data['pricing_items'] = []
             if 'optional_services' not in change_order_data:
                 change_order_data['optional_services'] = []
+            change_order_data = _normalize_data(change_order_data)
             
             p = Proposal(
                 project_id=project_id,
@@ -612,7 +627,7 @@ def save_proposal(payload: dict = Body(...), db: Session = Depends(get_db), user
                 site_id=payload.get('site_id'),
                 order_number=payload.get('order_number'),
                 title=title,
-                data=payload,
+                data=_normalize_data(payload),
             )
         
         db.add(p)

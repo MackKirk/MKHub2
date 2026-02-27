@@ -174,6 +174,7 @@ class FleetAssetResponse(FleetAssetBase):
     created_at: datetime
     updated_at: Optional[datetime] = None
     created_by: Optional[uuid.UUID] = None
+    driver_name: Optional[str] = None  # Resolved from driver_id for list display; not on model
 
     class Config:
         from_attributes = True
@@ -225,6 +226,22 @@ class EquipmentResponse(EquipmentBase):
         from_attributes = True
 
 
+class EquipmentListItemResponse(EquipmentResponse):
+    """Equipment item in list response; includes resolved assigned_to_name."""
+    assigned_to_name: Optional[str] = None
+
+    class Config:
+        from_attributes = True
+
+
+class EquipmentListResponse(BaseModel):
+    items: List[EquipmentListItemResponse]
+    total: int
+    page: int
+    limit: int
+    total_pages: int
+
+
 # Inspection Schemas
 class FleetInspectionBase(BaseModel):
     fleet_asset_id: uuid.UUID
@@ -258,6 +275,8 @@ class FleetInspectionResponse(FleetInspectionBase):
     auto_generated_work_order_id: Optional[uuid.UUID] = None
     created_at: datetime
     created_by: Optional[uuid.UUID] = None
+    fleet_asset_name: Optional[str] = None
+    inspector_name: Optional[str] = None
 
     class Config:
         from_attributes = True
@@ -310,6 +329,22 @@ class WorkOrderResponse(WorkOrderBase):
 
     class Config:
         from_attributes = True
+
+
+class WorkOrderListItemResponse(WorkOrderResponse):
+    """Work order item in list response; includes resolved assigned_to_name."""
+    assigned_to_name: Optional[str] = None
+
+    class Config:
+        from_attributes = True
+
+
+class WorkOrderListResponse(BaseModel):
+    items: List[WorkOrderListItemResponse]
+    total: int
+    page: int
+    limit: int
+    total_pages: int
 
 
 # Equipment Checkout Schemas
@@ -558,6 +593,7 @@ class FleetDashboardResponse(BaseModel):
     total_vehicles: int
     total_heavy_machinery: int
     total_other_assets: int
+    assigned_now_count: int
     inspections_due_count: int
     inspections_due: List[Dict[str, Any]]
     open_work_orders_count: int

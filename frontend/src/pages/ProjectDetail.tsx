@@ -7,7 +7,7 @@ import { sortByLabel } from '@/lib/sortOptions';
 import toast from 'react-hot-toast';
 import ImagePicker from '@/components/ImagePicker';
 import EstimateBuilder, { type EstimateBuilderRef } from '@/components/EstimateBuilder';
-import ProposalForm from '@/components/ProposalForm';
+import ProposalForm, { toSqft, fromSqft, formatAreaLabel, type AreaUnit } from '@/components/ProposalForm';
 import { useConfirm } from '@/components/ConfirmProvider';
 import CalendarMock from '@/components/CalendarMock';
 import DispatchTab from '@/components/DispatchTab';
@@ -15,6 +15,7 @@ import OrdersTab from '@/components/OrdersTab';
 import ProjectDocumentsTab from '@/components/ProjectDocumentsTab';
 import { formatDateLocal, getCurrentMonthLocal } from '@/lib/dateUtils';
 import { DivisionIcon } from '@/components/DivisionIcon';
+import { ReportAttachmentAreaMultiple } from '@/components/ReportAttachmentArea';
 
 // Helper function to calculate and format time since status change
 function getTimeSinceStatusChange(project: any): string {
@@ -219,7 +220,6 @@ function DivisionTooltip({ label, percentage, icon }: { label: string; percentag
         onMouseEnter={() => setIsHovered(true)}
         onMouseLeave={() => setIsHovered(false)}
         className="relative group/icon flex flex-col items-center"
-        title={label}
       >
         <div className="text-base transition-transform hover:scale-110">
           {icon}
@@ -619,7 +619,7 @@ export default function ProjectDetail(){
       return baseTitle;
     }
     const tabTitles: Record<string, string> = {
-      'reports': 'Project Reports',
+      'reports': 'Notes/History',
       'dispatch': 'Workload',
       'timesheet': 'Timesheet',
       'files': 'Project Files',
@@ -639,7 +639,7 @@ export default function ProjectDetail(){
       return proj?.is_bidding ? 'Overview, files, proposal and estimate.' : 'Overview, files, schedule and contacts.';
     }
     const tabDescriptions: Record<string, string> = {
-      'reports': 'Daily updates and site events',
+      'reports': 'Notes and history',
       'dispatch': 'Employee shifts and workload management',
       'timesheet': 'Time tracking and hours',
       'files': 'Documents, photos and files',
@@ -719,6 +719,7 @@ export default function ProjectDetail(){
                 
                 {/* Project Divisions below image - with Edit button and modal */}
                 <ProjectDivisionsHeroSection projectId={String(id||'')} proj={proj||{}} hasEditPermission={hasEditPermission} livePricingItems={livePricingItems} />
+                <ProjectHeroPricingArea projectId={String(id||'')} proposals={proposals||[]} />
               </div>
               
               {/* Right Section - General Information */}
@@ -1420,7 +1421,7 @@ export default function ProjectDetail(){
                 <ProjectCostsSummary projectId={String(id)} proposals={proposals||[]} />
               </div>
               
-              {/* Last Reports and Project Team Cards */}
+              {/* Last Notes/History and Project Team Cards */}
               <div className="mb-4 grid md:grid-cols-2 gap-4">
                 <LastReportsCard reports={reports||[]} />
                 <ProjectTeamCard projectId={String(id)} employees={employees||[]} />
@@ -1512,7 +1513,7 @@ export default function ProjectDetail(){
             <button onClick={async()=>{
               const result = await confirm({ 
                 title: proj?.is_bidding ? 'Delete Opportunity' : 'Delete Project', 
-                message: `Are you sure you want to delete "${proj?.name||(proj?.is_bidding ? 'this opportunity' : 'this project')}"? This action cannot be undone.${proj?.is_bidding ? '' : ' All related data (updates, reports, timesheets) will also be deleted.'}`,
+                message: `Are you sure you want to delete "${proj?.name||(proj?.is_bidding ? 'this opportunity' : 'this project')}"? This action cannot be undone.${proj?.is_bidding ? '' : ' All related data (updates, notes, timesheets) will also be deleted.'}`,
                 confirmText: 'Delete',
                 cancelText: 'Cancel'
               });
@@ -1691,7 +1692,7 @@ export default function ProjectDetail(){
                           : 'bg-white text-gray-700 hover:bg-gray-100'
                       }`}
                     >
-                      {section === 'general' ? 'General' : section[0].toUpperCase() + section.slice(1)}
+                      {section === 'general' ? 'General' : section === 'reports' ? 'Notes/History' : section[0].toUpperCase() + section.slice(1)}
                     </button>
                   ))}
                 </div>
@@ -2258,7 +2259,7 @@ function ReportsTabEnhanced({ projectId, items, onRefresh }:{ projectId:string, 
 
   return (
     <div className="space-y-4">
-      {/* Main Reports Section Card */}
+      {/* Main Notes/History Section Card */}
       <div className="rounded-xl border bg-white p-4">
         <div className="flex items-center gap-2 mb-4">
           <div className="w-8 h-8 rounded bg-orange-100 flex items-center justify-center">
@@ -2266,24 +2267,24 @@ function ReportsTabEnhanced({ projectId, items, onRefresh }:{ projectId:string, 
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
             </svg>
           </div>
-          <h2 className="text-sm font-semibold text-gray-900">Reports</h2>
+          <h2 className="text-sm font-semibold text-gray-900">Notes/History</h2>
         </div>
       </div>
 
       <div className="flex flex-col h-full">
         {/* Two-column layout */}
         <div className="flex-1 flex gap-4 min-h-0">
-          {/* Left sidebar - Reports list (30%) */}
+          {/* Left sidebar - Notes list (30%) */}
           <div className="w-[30%] flex flex-col border rounded-xl bg-white overflow-hidden">
           <div className="overflow-y-auto flex-1">
-            {/* Category Filter Dropdown - Inside the card, above New Report button */}
+            {/* Category Filter Dropdown - Inside the card, above New Note button */}
             <div className="p-3 border-b">
               <select
                 value={selectedCategoryFilter}
                 onChange={(e) => setSelectedCategoryFilter(e.target.value)}
                 className="w-full rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-1 focus:ring-gray-400 focus:border-gray-400"
               >
-                <option value="">All Reports ({categoryCounts[''] || 0})</option>
+                <option value="">All ({categoryCounts[''] || 0})</option>
                 {commercialCategories.length > 0 && (
                   <optgroup label="📌 Commercial">
                     {commercialCategories.map(cat => {
@@ -2330,7 +2331,7 @@ function ReportsTabEnhanced({ projectId, items, onRefresh }:{ projectId:string, 
                     className="border-2 border-dashed border-gray-300 rounded-lg p-4 hover:border-brand-red hover:bg-gray-50 transition-all text-center bg-white flex flex-col items-center justify-center min-h-[120px] cursor-pointer"
                   >
                     <div className="text-lg text-gray-400 mb-1.5">+</div>
-                    <div className="font-medium text-xs text-gray-700">New Report</div>
+                    <div className="font-medium text-xs text-gray-700">New Note</div>
                   </div>
                 </div>
               )}
@@ -2353,7 +2354,7 @@ function ReportsTabEnhanced({ projectId, items, onRefresh }:{ projectId:string, 
                     <img src={authorInfo.avatar} className="w-8 h-8 rounded-full flex-shrink-0" alt={authorInfo.name} />
                     <div className="flex-1 min-w-0">
                       <div className={`font-semibold text-xs mb-1 ${isSelected ? 'text-gray-900' : 'text-gray-800'}`}>
-                        {r.title || 'Untitled Report'}
+                        {r.title || 'Untitled Note'}
                       </div>
                       <div className="text-[10px] text-gray-500 mb-1">
                         {authorInfo.name}
@@ -2388,9 +2389,9 @@ function ReportsTabEnhanced({ projectId, items, onRefresh }:{ projectId:string, 
               );
             }) : (
               <div className="p-8 text-center text-gray-500">
-                <div className="text-sm mb-2">No reports yet</div>
+                <div className="text-sm mb-2">No notes yet</div>
                 {canEditReports && (
-                  <div className="text-xs">Click "New Report" to create your first project report</div>
+                  <div className="text-xs">Click "New Note" to create your first note</div>
                 )}
               </div>
             )}
@@ -2398,7 +2399,7 @@ function ReportsTabEnhanced({ projectId, items, onRefresh }:{ projectId:string, 
           </div>
           </div>
 
-        {/* Right panel - Report content (70%) */}
+        {/* Right panel - Note content (70%) */}
         <div className="flex-1 border rounded-xl bg-white overflow-hidden flex flex-col">
           {selectedReport ? (() => {
             const reportDate = selectedReport.created_at ? new Date(selectedReport.created_at) : null;
@@ -2413,7 +2414,7 @@ function ReportsTabEnhanced({ projectId, items, onRefresh }:{ projectId:string, 
                   <div className="flex items-start justify-between gap-4">
                     <div className="flex-1">
                       <h2 className="text-sm font-semibold text-gray-900 mb-2">
-                        {selectedReport.title || 'Untitled Report'}
+                        {selectedReport.title || 'Untitled Note'}
                       </h2>
                       <div className="flex items-center gap-3 flex-wrap">
                         <div className="flex items-center gap-2">
@@ -2445,7 +2446,7 @@ function ReportsTabEnhanced({ projectId, items, onRefresh }:{ projectId:string, 
                           onClick={async () => {
                             const result = await confirm({
                               title: 'Approve Change Order',
-                              message: `Are you sure you want to approve this Change Order report? The items will be added to the project's estimate.`,
+                              message: `Are you sure you want to approve this Change Order note? The items will be added to the project's estimate.`,
                               confirmText: 'Approve',
                               cancelText: 'Cancel'
                             });
@@ -2453,13 +2454,13 @@ function ReportsTabEnhanced({ projectId, items, onRefresh }:{ projectId:string, 
                             try {
                               await api('POST', `/projects/${projectId}/reports/${selectedReport.id}/approve`);
                               await onRefresh();
-                              toast.success('Report approved and items added to estimate');
+                              toast.success('Note approved and items added to estimate');
                             } catch (_e: any) {
-                              toast.error(_e.message || 'Failed to approve report');
+                              toast.error(_e.message || 'Failed to approve note');
                             }
                           }}
                           className="px-2.5 py-1.5 rounded bg-green-600 hover:bg-green-700 text-white text-xs font-medium flex-shrink-0"
-                          title="Approve report"
+                          title="Approve note"
                         >
                           ✓ Approve
                         </button>
@@ -2479,8 +2480,8 @@ function ReportsTabEnhanced({ projectId, items, onRefresh }:{ projectId:string, 
                         <button
                           onClick={async () => {
                             const result = await confirm({
-                              title: 'Delete Report',
-                              message: `Are you sure you want to delete "${selectedReport.title || 'this report'}"? This action cannot be undone.`,
+                              title: 'Delete Note',
+                              message: `Are you sure you want to delete "${selectedReport.title || 'this note'}"? This action cannot be undone.`,
                               confirmText: 'Delete',
                               cancelText: 'Cancel'
                             });
@@ -2489,13 +2490,13 @@ function ReportsTabEnhanced({ projectId, items, onRefresh }:{ projectId:string, 
                               await api('DELETE', `/projects/${projectId}/reports/${selectedReport.id}`);
                               await onRefresh();
                               setSelectedReportId(null);
-                              toast.success('Report deleted');
+                              toast.success('Note deleted');
                             } catch (_e) {
-                              toast.error('Failed to delete report');
+                              toast.error('Failed to delete note');
                             }
                           }}
                           className="px-2.5 py-1.5 rounded text-gray-500 hover:bg-red-50 hover:text-red-600 text-xs font-medium flex-shrink-0"
-                          title="Delete report"
+                          title="Delete note"
                         >
                           🗑️ Delete
                         </button>
@@ -2684,17 +2685,38 @@ function ReportsTabEnhanced({ projectId, items, onRefresh }:{ projectId:string, 
                   {attachments.length > 0 && (
                     <div className="mt-4 pt-4 border-t">
                       <h3 className="text-xs font-semibold text-gray-900 mb-2">Attachments ({attachments.length})</h3>
-                      <div className="flex flex-wrap gap-2">
-                        {attachments.map((a: any, i: number) => (
-                          <button
-                            key={i}
-                            onClick={() => handleAttachmentClick(a)}
-                            className="flex items-center gap-2 px-2.5 py-1.5 rounded border bg-white hover:bg-gray-50 text-xs text-gray-700 transition-colors"
-                          >
-                            <span className="text-sm">{getAttachmentIcon(a.content_type || '', a.original_name || '')}</span>
-                            <span>{a.original_name || 'attachment'}</span>
-                          </button>
-                        ))}
+                      <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+                        {attachments.map((a: any, i: number) => {
+                          const isImage = (a.content_type || '').startsWith('image/') || /\.(jpg|jpeg|png|gif|webp)$/i.test(a.original_name || '');
+                          return (
+                            <button
+                              key={i}
+                              type="button"
+                              onClick={() => handleAttachmentClick(a)}
+                              className="rounded-lg border bg-white hover:bg-gray-50 overflow-hidden text-left transition-colors"
+                            >
+                              {isImage ? (
+                                <>
+                                  <img
+                                    src={`/files/${a.file_object_id}/thumbnail?w=400`}
+                                    alt={a.original_name || 'attachment'}
+                                    className="w-full h-32 object-cover"
+                                  />
+                                  <div className="p-2 border-t">
+                                    <div className="text-xs text-gray-600 truncate" title={a.original_name}>
+                                      {a.original_name || 'attachment'}
+                                    </div>
+                                  </div>
+                                </>
+                              ) : (
+                                <div className="p-3 flex items-center gap-2">
+                                  <span className="text-sm">{getAttachmentIcon(a.content_type || '', a.original_name || '')}</span>
+                                  <span className="text-xs text-gray-700 truncate">{a.original_name || 'attachment'}</span>
+                                </div>
+                              )}
+                            </button>
+                          );
+                        })}
                       </div>
                     </div>
                   )}
@@ -2704,8 +2726,8 @@ function ReportsTabEnhanced({ projectId, items, onRefresh }:{ projectId:string, 
           })() : (
             <div className="flex-1 flex items-center justify-center text-gray-500">
               <div className="text-center">
-                <div className="text-lg mb-2">Select a report to view</div>
-                <div className="text-sm">Choose a report from the list on the left</div>
+                <div className="text-lg mb-2">Select a note to view</div>
+                <div className="text-sm">Choose a note from the list on the left</div>
               </div>
             </div>
           )}
@@ -2721,7 +2743,7 @@ function ReportsTabEnhanced({ projectId, items, onRefresh }:{ projectId:string, 
           onSuccess={async () => {
             setShowCreateModal(false);
             await onRefresh();
-            toast.success('Report created');
+            toast.success('Note created');
           }}
         />
       )}
@@ -2761,8 +2783,9 @@ function CreateReportModal({ projectId, reportCategories, onClose, onSuccess }: 
   const [title, setTitle] = useState('');
   const [category, setCategory] = useState('');
   const [desc, setDesc] = useState('');
-  const [file, setFile] = useState<File|null>(null);
+  const [files, setFiles] = useState<File[]>([]);
   const [financialValue, setFinancialValue] = useState<number>(0);
+  const [uploading, setUploading] = useState(false);
   const { data:project } = useQuery({ queryKey:['project', projectId], queryFn: ()=>api<any>('GET', `/projects/${projectId}`) });
   
   // Separate categories into commercial and production based on meta.group
@@ -2811,9 +2834,10 @@ function CreateReportModal({ projectId, reportCategories, onClose, onSuccess }: 
       toast.error('Please enter a description');
       return;
     }
+    setUploading(true);
     try {
-      let imgMeta: any = undefined;
-      if (file) {
+      const attachments: any[] = [];
+      for (const file of files) {
         const up: any = await api('POST', '/files/upload', {
           project_id: projectId,
           client_id: project?.client_id || null,
@@ -2836,34 +2860,36 @@ function CreateReportModal({ projectId, reportCategories, onClose, onSuccess }: 
           checksum_sha256: 'na',
           content_type: file.type || 'application/octet-stream'
         });
-        imgMeta = {
+        attachments.push({
           file_object_id: conf.id,
           original_name: file.name,
           content_type: file.type || 'application/octet-stream'
-        };
+        });
       }
-      
+
       const payload: any = {
         title: title.trim(),
         category_id: category || null,
         description: desc,
-        images: imgMeta ? { attachments: [imgMeta] } : undefined
+        images: attachments.length > 0 ? { attachments } : undefined
       };
-      
+
       if (category === 'additional-income' || category === 'additional-expense') {
         payload.financial_value = financialValue;
         payload.financial_type = category;
       }
-      
+
       await api('POST', `/projects/${projectId}/reports`, payload);
       setTitle('');
       setCategory('');
       setDesc('');
-      setFile(null);
+      setFiles([]);
       setFinancialValue(0);
       await onSuccess();
     } catch (_e) {
-      toast.error('Failed to create report');
+      toast.error('Failed to create note');
+    } finally {
+      setUploading(false);
     }
   };
 
@@ -2871,7 +2897,7 @@ function CreateReportModal({ projectId, reportCategories, onClose, onSuccess }: 
     <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4">
       <div className="bg-white rounded-xl max-w-2xl w-full max-h-[90vh] overflow-hidden flex flex-col">
         <div className="bg-gradient-to-br from-[#7f1010] to-[#a31414] p-6 flex items-center justify-between flex-shrink-0">
-          <h2 className="text-xl font-semibold text-white">Create Project Report</h2>
+          <h2 className="text-xl font-semibold text-white">Create Note</h2>
           <button
             onClick={onClose}
             className="text-2xl font-bold text-white hover:text-gray-200 w-8 h-8 flex items-center justify-center rounded hover:bg-white/20"
@@ -2886,7 +2912,7 @@ function CreateReportModal({ projectId, reportCategories, onClose, onSuccess }: 
               <input
                 type="text"
                 className="w-full border rounded px-3 py-2 text-sm"
-                placeholder="Enter report title..."
+                placeholder="Enter note title..."
                 value={title}
                 onChange={e => setTitle(e.target.value)}
               />
@@ -2965,36 +2991,23 @@ function CreateReportModal({ projectId, reportCategories, onClose, onSuccess }: 
                 />
               </div>
             )}
-            <div>
-              <label className="text-xs text-gray-600 block mb-1">Attachment (optional)</label>
-              <input
-                type="file"
-                onChange={e => setFile(e.target.files?.[0] || null)}
-                className="w-full border rounded px-3 py-2 text-sm"
-                accept="image/*,.pdf,.doc,.docx"
-              />
-              {file && (
-                <div className="mt-2 text-sm text-gray-600 flex items-center gap-2">
-                  <span>📎</span>
-                  <span>{file.name}</span>
-                  <button onClick={() => setFile(null)} className="text-red-600 hover:text-red-700">×</button>
-                </div>
-              )}
-            </div>
+            <ReportAttachmentAreaMultiple files={files} setFiles={setFiles} accept="image/*,.pdf,.doc,.docx" label="Attachments (optional – multiple allowed)" />
           </div>
         </div>
         <div className="p-4 border-t bg-gray-50 flex justify-end gap-2 flex-shrink-0">
           <button
             onClick={onClose}
-            className="px-4 py-2 rounded border bg-white hover:bg-gray-50 text-gray-700 text-sm font-medium"
+            disabled={uploading}
+            className="px-4 py-2 rounded border bg-white hover:bg-gray-50 text-gray-700 text-sm font-medium disabled:opacity-50"
           >
             Cancel
           </button>
           <button
             onClick={handleCreate}
-            className="px-4 py-2 rounded bg-brand-red hover:bg-red-700 text-white text-sm font-medium"
+            disabled={uploading}
+            className="px-4 py-2 rounded bg-brand-red hover:bg-red-700 text-white text-sm font-medium disabled:opacity-50"
           >
-            Create Report
+            {uploading ? 'Creating...' : 'Create Note'}
           </button>
         </div>
       </div>
@@ -6093,7 +6106,7 @@ function GenericAuditSection({ projectId, section, title }: { projectId: string;
 
 // Individual section components
 function ReportsAuditSection({ projectId }: { projectId: string }) {
-  return <GenericAuditSection projectId={projectId} section="reports" title="Reports Activity Log" />;
+  return <GenericAuditSection projectId={projectId} section="reports" title="Notes/History Activity Log" />;
 }
 
 function FilesAuditSection({ projectId }: { projectId: string }) {
@@ -6581,7 +6594,7 @@ function LastReportsCard({ reports }: { reports: Report[] }){
   return (
     <div className="rounded-xl border bg-white p-4">
       <div className="flex items-center justify-between mb-3">
-        <h4 className="font-semibold">Last Reports</h4>
+        <h4 className="font-semibold">Last Notes</h4>
         <select
           value={selectedCategoryFilter}
           onChange={(e) => setSelectedCategoryFilter(e.target.value)}
@@ -6630,7 +6643,7 @@ function LastReportsCard({ reports }: { reports: Report[] }){
         <div className="space-y-2">
           {recentReports.map((report) => (
             <div key={report.id} className="p-2 rounded border hover:bg-gray-50 transition-colors">
-              <div className="text-sm font-medium text-gray-900">{report.title || 'Untitled Report'}</div>
+              <div className="text-sm font-medium text-gray-900">{report.title || 'Untitled Note'}</div>
               {report.description && (
                 <div className="text-xs text-gray-600 mt-1 line-clamp-2">{report.description}</div>
               )}
@@ -6643,7 +6656,7 @@ function LastReportsCard({ reports }: { reports: Report[] }){
           ))}
         </div>
       ) : (
-        <div className="text-sm text-gray-500">No reports yet</div>
+        <div className="text-sm text-gray-500">No notes yet</div>
       )}
     </div>
   );
@@ -6703,7 +6716,7 @@ function ProjectTabCards({ availableTabs, onTabClick, proj, currentTab }: {
 }){
   const tabConfig: Record<string, { label: string, icon: string }> = {
     overview: { label: 'Overview', icon: '📊' },
-    reports: { label: 'Reports', icon: '📝' },
+    reports: { label: 'Notes/History', icon: '📝' },
     dispatch: { label: 'Workload', icon: '👷' },
     timesheet: { label: 'Timesheet', icon: '⏰' },
     files: { label: 'Files', icon: '📁' },
@@ -6920,7 +6933,7 @@ function ProjectQuickEdit({ projectId, proj, settings }:{ projectId:string, proj
 }
 
 // Division icons use images from @/icons via DivisionIcon component
-const getDivisionIcon = (label: string) => <DivisionIcon label={label} size={20} />;
+const getDivisionIcon = (label: string, suppressNativeTitle?: boolean) => <DivisionIcon label={label} size={20} suppressNativeTitle={suppressNativeTitle} />;
 
 // Edit Status Modal Component
 function EditStatusModal({ projectId, currentStatus, currentStatusLabel, settings, isBidding, onClose, onSave }: {
@@ -7867,7 +7880,7 @@ function ProjectDivisionsHeroSection({ projectId, proj, hasEditPermission, liveP
       for (const div of (projectDivisions || [])) {
         if (String(div.id) === String(divId)) {
           icons.push({ 
-            icon: getDivisionIcon(div.label), 
+            icon: getDivisionIcon(div.label, true), 
             label: div.label, 
             id: String(div.id),
             percentage: calculatedPercentages[String(divId)] || 0
@@ -7877,7 +7890,7 @@ function ProjectDivisionsHeroSection({ projectId, proj, hasEditPermission, liveP
         for (const sub of (div.subdivisions || [])) {
           if (String(sub.id) === String(divId)) {
             icons.push({ 
-              icon: getDivisionIcon(div.label), 
+              icon: getDivisionIcon(div.label, true), 
               label: `${div.label} - ${sub.label}`, 
               id: String(sub.id),
               percentage: calculatedPercentages[String(divId)] || 0
@@ -7915,7 +7928,6 @@ function ProjectDivisionsHeroSection({ projectId, proj, hasEditPermission, liveP
                 <div
                   key={div.id}
                   className="relative group/icon flex flex-col items-center"
-                  title={div.label}
                 >
                   <div className="text-2xl transition-transform hover:scale-110">
                     {div.icon}
@@ -7923,10 +7935,10 @@ function ProjectDivisionsHeroSection({ projectId, proj, hasEditPermission, liveP
                   <div className="text-xs font-bold mt-0.5 text-gray-600">
                     {Math.round(div.percentage || 0)}%
                   </div>
-                  {/* Tooltip */}
-                  <div className="absolute right-0 top-full mt-1 px-2 py-1 bg-gray-900 text-white text-xs rounded whitespace-nowrap opacity-0 group-hover/icon:opacity-100 transition-opacity pointer-events-none z-10">
+                  {/* Tooltip - below icon, indented right (left edge at icon so it extends right) */}
+                  <div className="absolute left-0 top-full mt-1 px-2 py-1 bg-gray-900 text-white text-xs rounded whitespace-nowrap opacity-0 group-hover/icon:opacity-100 transition-opacity pointer-events-none z-[100] shadow-lg">
                     {div.label}
-                    <div className="absolute -top-1 right-2 w-2 h-2 bg-gray-900 rotate-45"></div>
+                    <div className="absolute -top-1 left-2 w-2 h-2 bg-gray-900 rotate-45"></div>
                   </div>
                 </div>
               ))}
@@ -8302,12 +8314,12 @@ function ProjectGeneralInfoCard({ projectId, proj, files, hasEditPermission }:{ 
     for (const divId of projectDivIds) {
       for (const div of (projectDivisions || [])) {
         if (String(div.id) === String(divId)) {
-          icons.push({ icon: getDivisionIcon(div.label), label: div.label, id: String(div.id) });
+          icons.push({ icon: getDivisionIcon(div.label, true), label: div.label, id: String(div.id) });
           break;
         }
         for (const sub of (div.subdivisions || [])) {
           if (String(sub.id) === String(divId)) {
-            icons.push({ icon: getDivisionIcon(div.label), label: `${div.label} - ${sub.label}`, id: String(sub.id) });
+            icons.push({ icon: getDivisionIcon(div.label, true), label: `${div.label} - ${sub.label}`, id: String(sub.id) });
             break;
           }
         }
@@ -8335,15 +8347,14 @@ function ProjectGeneralInfoCard({ projectId, proj, files, hasEditPermission }:{ 
               <div
                 key={div.id}
                 className="relative group/icon"
-                title={div.label}
               >
                 <div className="text-2xl cursor-pointer hover:scale-110 transition-transform">
                   {div.icon}
                 </div>
-                {/* Tooltip */}
-                <div className="absolute right-0 top-full mt-1 px-2 py-1 bg-gray-900 text-white text-xs rounded whitespace-nowrap opacity-0 group-hover/icon:opacity-100 transition-opacity pointer-events-none z-10">
+                {/* Tooltip - below icon, indented right (left edge at icon so it extends right) */}
+                <div className="absolute left-0 top-full mt-1 px-2 py-1 bg-gray-900 text-white text-xs rounded whitespace-nowrap opacity-0 group-hover/icon:opacity-100 transition-opacity pointer-events-none z-[100] shadow-lg">
                   {div.label}
-                  <div className="absolute -top-1 right-2 w-2 h-2 bg-gray-900 rotate-45"></div>
+                  <div className="absolute -top-1 left-2 w-2 h-2 bg-gray-900 rotate-45"></div>
                 </div>
               </div>
             ))}
@@ -8820,6 +8831,92 @@ function calculateProposalTotal(proposalData: any): number {
   
   // Calculate Grand Total (Final Total with GST) = Subtotal + GST
   return subtotal + gst;
+}
+
+// Area conversion: same as ProposalForm. 1 SQS = 100 sqft; 1 m² ≈ 10.7639 sqft
+function calculateProposalTotalArea(proposalData: any): number {
+  if (!proposalData) return 0;
+  const data = proposalData?.data || proposalData || {};
+  const additionalCosts = data.additional_costs || [];
+  if (!Array.isArray(additionalCosts)) return 0;
+  const SQFT_PER_SQS = 100;
+  const SQFT_PER_M2 = 10.7639;
+  return additionalCosts.reduce((sum: number, item: any) => {
+    if (!item || typeof item !== 'object') return sum;
+    const val = Number(item.area_value);
+    if (Number.isNaN(val) || val <= 0) return sum;
+    const unit = item.area_unit;
+    if (unit === 'sqft') return sum + val;
+    if (unit === 'sqs') return sum + val * SQFT_PER_SQS;
+    if (unit === 'm2') return sum + val * SQFT_PER_M2;
+    return sum;
+  }, 0);
+}
+
+function ProjectHeroPricingArea({ projectId, proposals }: { projectId: string; proposals: any[] }) {
+  const organizedProposals = useMemo(() => {
+    const original = proposals.find((p: any) => !p.is_change_order);
+    const changeOrders = proposals
+      .filter((p: any) => p.is_change_order)
+      .sort((a: any, b: any) => (a.change_order_number || 0) - (b.change_order_number || 0));
+    return { original: original || null, changeOrders };
+  }, [proposals]);
+
+  const { data: originalProposalData } = useQuery({
+    queryKey: ['proposal', organizedProposals.original?.id],
+    queryFn: () => organizedProposals.original?.id ? api<any>('GET', `/proposals/${organizedProposals.original.id}`) : Promise.resolve(null),
+    enabled: !!organizedProposals.original?.id,
+  });
+
+  const changeOrderQueries = useQueries({
+    queries: organizedProposals.changeOrders.map((co: any) => ({
+      queryKey: ['proposal', co.id],
+      queryFn: () => api<any>('GET', `/proposals/${co.id}`),
+      enabled: !!co.id,
+    })),
+  });
+
+  const { totalAreaSqft, grandTotal, displayUnit } = useMemo(() => {
+    let totalAreaSqft = 0;
+    let grandTotal = 0;
+    let displayUnit: AreaUnit = 'sqft';
+
+    const dataOriginal = originalProposalData || organizedProposals.original;
+    if (dataOriginal) {
+      totalAreaSqft += calculateProposalTotalArea(dataOriginal);
+      grandTotal += calculateProposalTotal(dataOriginal);
+      const d = dataOriginal?.data || dataOriginal || {};
+      if (d.area_display_unit === 'sqft' || d.area_display_unit === 'm2' || d.area_display_unit === 'sqs') {
+        displayUnit = d.area_display_unit;
+      }
+    }
+    organizedProposals.changeOrders.forEach((co: any, idx: number) => {
+      const res = changeOrderQueries[idx];
+      const dataToUse = res?.data || co;
+      totalAreaSqft += calculateProposalTotalArea(dataToUse);
+      grandTotal += calculateProposalTotal(dataToUse);
+    });
+
+    return { totalAreaSqft, grandTotal, displayUnit };
+  }, [originalProposalData, organizedProposals, changeOrderQueries]);
+
+  if (totalAreaSqft <= 0) return null;
+
+  const displayArea = fromSqft(totalAreaSqft, displayUnit);
+  const costPerArea = displayArea > 0 ? grandTotal / displayArea : 0;
+
+  return (
+    <div className="mt-2 space-y-0.5">
+      <div className="text-[10px] font-medium text-gray-500 uppercase tracking-wide">Total Area (Pricing)</div>
+      <div className="text-xs font-semibold text-gray-900">
+        {displayArea.toLocaleString('en-US', { maximumFractionDigits: 2 })} {formatAreaLabel(displayUnit)}
+      </div>
+      <div className="text-[10px] font-medium text-gray-500 uppercase tracking-wide mt-1">Cost per Area</div>
+      <div className="text-xs font-semibold text-gray-900">
+        ${costPerArea.toFixed(2)}/{formatAreaLabel(displayUnit)}
+      </div>
+    </div>
+  );
 }
 
 function ProjectCostsSummary({ projectId, proposals }:{ projectId:string, proposals:any[] }){

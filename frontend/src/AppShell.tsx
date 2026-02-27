@@ -62,6 +62,12 @@ const IconClipboard = () => (
   </svg>
 );
 
+const IconClipboardCheck = () => (
+  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
+  </svg>
+);
+
 const IconRequest = () => (
   <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
@@ -386,6 +392,7 @@ export default function AppShell({ children }: PropsWithChildren){
         { id: 'fleet-assets', label: 'Fleet Assets', path: '/fleet/assets', icon: <IconTruck />, requiredPermission: 'fleet:access' },
         { id: 'equipment', label: 'Equipment', path: '/fleet/equipment', icon: <IconWrench />, requiredPermission: 'fleet:access' },
         { id: 'work-orders', label: 'Work Orders', path: '/fleet/work-orders', icon: <IconClipboard />, requiredPermission: 'fleet:access' },
+        { id: 'inspections', label: 'Inspections', path: '/fleet/inspections', icon: <IconClipboardCheck />, requiredPermission: 'fleet:access' },
       ]
     },
     {
@@ -560,6 +567,12 @@ export default function AppShell({ children }: PropsWithChildren){
       // Special handling for Business Dashboard: only match exactly /business, not sub-paths
       if (item.id === 'business-dashboard' && item.path === '/business') {
         return location.pathname === '/business';
+      }
+      // Fleet Assets: also active on /fleet/vehicles, /fleet/heavy-machinery, /fleet/other-assets
+      if (item.id === 'fleet-assets') {
+        if (['/fleet/assets', '/fleet/vehicles', '/fleet/heavy-machinery', '/fleet/other-assets'].some(p => location.pathname === p || location.pathname.startsWith(p + '/'))) {
+          return true;
+        }
       }
       const isSelfActive = location.pathname === item.path || location.pathname.startsWith(item.path + '/');
       if (isSelfActive) return true;
@@ -779,6 +792,10 @@ export default function AppShell({ children }: PropsWithChildren){
                           else if (item.id === 'business-dashboard' && item.path === '/business') {
                             isItemActive = location.pathname === '/business';
                           }
+                          // Fleet Assets: also active on /fleet/vehicles, /fleet/heavy-machinery, /fleet/other-assets
+                          else if (item.id === 'fleet-assets') {
+                            isItemActive = ['/fleet/assets', '/fleet/vehicles', '/fleet/heavy-machinery', '/fleet/other-assets'].some(p => location.pathname === p || location.pathname.startsWith(p + '/'));
+                          }
                           else {
                             isItemActive = location.pathname === item.path || location.pathname.startsWith(item.path + '/');
                           }
@@ -787,7 +804,11 @@ export default function AppShell({ children }: PropsWithChildren){
                         const visibleChildren = (item.children || []).filter(canSeeMenuItem);
                         const hasChildren = visibleChildren.length > 0;
                         const isAnyChildActive = hasChildren
-                          ? visibleChildren.some(child => location.pathname === child.path || location.pathname.startsWith(child.path + '/'))
+                          ? visibleChildren.some(child =>
+                              child.id === 'fleet-assets'
+                                ? ['/fleet/assets', '/fleet/vehicles', '/fleet/heavy-machinery', '/fleet/other-assets'].some(p => location.pathname === p || location.pathname.startsWith(p + '/'))
+                                : (location.pathname === child.path || location.pathname.startsWith(child.path + '/'))
+                            )
                           : false;
                         const isItemOrChildActive = isItemActive || isAnyChildActive;
                         // Only show children after user navigates to Suppliers (or a child like Products)
@@ -837,7 +858,11 @@ export default function AppShell({ children }: PropsWithChildren){
                               {isGroupExpanded && (
                                 <div className="mt-0.5 ml-6 space-y-0.5">
                                   {visibleChildren.map(child => {
-                                    const childActive = !isViewingOpportunity && (location.pathname === child.path || location.pathname.startsWith(child.path + '/'));
+                                    const childActive = !isViewingOpportunity && (
+                                      child.id === 'fleet-assets'
+                                        ? ['/fleet/assets', '/fleet/vehicles', '/fleet/heavy-machinery', '/fleet/other-assets'].some(p => location.pathname === p || location.pathname.startsWith(p + '/'))
+                                        : (location.pathname === child.path || location.pathname.startsWith(child.path + '/'))
+                                    );
                                     return (
                                       <NavLink
                                         key={child.id}
