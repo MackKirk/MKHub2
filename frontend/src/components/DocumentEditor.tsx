@@ -1153,6 +1153,26 @@ export default function DocumentEditor(props: DocumentEditorProps) {
     [pages, newElementId, pushHistory]
   );
 
+  const handleReorderPages = useCallback(
+    (fromIndex: number, toIndex: number) => {
+      if (fromIndex === toIndex) return;
+      pushHistory();
+      setPages((prev) => {
+        const next = [...prev];
+        const [moved] = next.splice(fromIndex, 1);
+        next.splice(toIndex, 0, moved);
+        return next;
+      });
+      setCurrentPageIndex((prev) => {
+        if (prev === fromIndex) return toIndex;
+        if (fromIndex < prev && toIndex >= prev) return prev - 1;
+        if (fromIndex > prev && toIndex <= prev) return prev + 1;
+        return prev;
+      });
+    },
+    [pushHistory]
+  );
+
   const handleAddText = useCallback(() => {
     handleAddElement(createTextElement());
   }, [handleAddElement]);
@@ -1558,6 +1578,7 @@ export default function DocumentEditor(props: DocumentEditorProps) {
           currentPageIndex={currentPageIndex}
           onPageSelect={setCurrentPageIndex}
           onAddPage={isTemplate ? () => {} : () => setShowAddPageModal(true)}
+          onReorderPages={isTemplate ? undefined : handleReorderPages}
           onDeletePage={isTemplate ? undefined : handleDeletePage}
           onDuplicatePage={
             isTemplate

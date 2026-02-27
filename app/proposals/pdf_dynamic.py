@@ -20,6 +20,7 @@ from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
 from reportlab.pdfbase.pdfmetrics import stringWidth
 from .pdf_image_optimizer import optimize_image_bytes
+from .pdf_fixed import HEADER_TITLE_MAX_WIDTH, HEADER_TITLE_BASE_SIZE, HEADER_TITLE_MIN_SIZE
 
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -93,16 +94,24 @@ def draw_template_page3(c, doc, data):
         pass
 
     # Draw header text (cover_title, company_name, order_number)
-    # This is drawn on top of the template for both quotes and proposals
+    # Unified with page 2 (pdf_fixed.build_page2): same max_width, font size range, and 2-line wrap
     c.setFillColor(colors.white)
-    # Auto-fit cover title into the available width
     title = data.get("cover_title", "") or ""
-    max_width = 520  # approx available width between margins
-    size = 17.2
-    while size > 8 and c.stringWidth(title, "Montserrat-Bold", size) > max_width:
-        size -= 0.8
-    c.setFont("Montserrat-Bold", size)
-    c.drawString(40, 784, title)
+    max_width = HEADER_TITLE_MAX_WIDTH
+    size = HEADER_TITLE_BASE_SIZE
+    while size > HEADER_TITLE_MIN_SIZE and c.stringWidth(title, "Montserrat-Bold", size) > max_width:
+        size -= 0.5
+    if c.stringWidth(title, "Montserrat-Bold", size) > max_width:
+        lines = wrap_text(title, "Montserrat-Bold", size, max_width)
+        c.setFont("Montserrat-Bold", size)
+        line_height = size + 4
+        y_title = 784
+        for line in lines[:2]:
+            c.drawString(40, y_title, line)
+            y_title -= line_height
+    else:
+        c.setFont("Montserrat-Bold", size)
+        c.drawString(40, 784, title)
     c.setFont("Montserrat-Bold", 13)
     c.drawString(40, 762, data.get("company_name", ""))
 

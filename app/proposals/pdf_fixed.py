@@ -235,10 +235,10 @@ def build_cover_page(c, data):
         y -= 25
 
     cover_title = data.get("cover_title", "") or ""
-    # Fit the main red title within page margins
+    # Fit the main red title within page margins; smaller base size so long titles stay in the black area
     max_width_title = page_width - 80  # 40pt margins
-    size = 32
-    while size > 10 and stringWidth(cover_title, "Montserrat-Bold", size) > max_width_title:
+    size = 20  # reduced from 32 so long titles don't overflow the header area
+    while size > 8 and stringWidth(cover_title, "Montserrat-Bold", size) > max_width_title:
         size -= 1.0
     c.setFont("Montserrat-Bold", size)
     c.setFillColor(colors.HexColor("#d62028"))
@@ -346,6 +346,34 @@ def draw_wrapped_text_right_aligned(c, text, right_x, y, max_width, font="Montse
     return y
 
 
+def _wrap_title_lines(text, font, size, max_width):
+    """Return list of lines (max width) for header title. Unified with pdf_dynamic header behaviour."""
+    if not text:
+        return [""]
+    words = text.split()
+    lines = []
+    current = []
+    for word in words:
+        test = " ".join(current + [word])
+        if stringWidth(test, font, size) <= max_width:
+            current.append(word)
+        else:
+            if current:
+                lines.append(" ".join(current))
+            current = [word] if stringWidth(word, font, size) <= max_width else []
+            if not current and word:
+                lines.append(word)
+    if current:
+        lines.append(" ".join(current))
+    return lines if lines else [""]
+
+
+# Unified header layout: same as pdf_dynamic (page 3+) so page 2 and 3+ look identical
+HEADER_TITLE_MAX_WIDTH = 450
+HEADER_TITLE_BASE_SIZE = 12
+HEADER_TITLE_MIN_SIZE = 6
+
+
 def build_page2(c, data):
     # Use template based on template_style
     template_style = data.get("template_style", "Mack Kirk")
@@ -361,27 +389,22 @@ def build_page2(c, data):
         c.drawImage(bg, 0, 0, width=page_width, height=page_height)
 
     c.setFillColor(colors.white)
-    # Auto-fit the small header title at top-left of page 2
-    hdr = data.get("cover_title", "") or ""
-    max_width_hdr = 360  # tighter width to avoid logo/edge
-    size_hdr = 17.2
-    while size_hdr > 6.0 and stringWidth(hdr, "Montserrat-Bold", size_hdr) > max_width_hdr:
-        size_hdr -= 0.8
-    # If still overflowing at min size, truncate with ellipsis
-    if stringWidth(hdr, "Montserrat-Bold", size_hdr) > max_width_hdr:
-        # binary search truncate
-        lo, hi = 0, len(hdr)
-        ell = "…"
-        while lo < hi:
-            mid = (lo+hi)//2
-            txt = hdr[:mid] + ell
-            if stringWidth(txt, "Montserrat-Bold", size_hdr) <= max_width_hdr:
-                lo = mid + 1
-            else:
-                hi = mid
-        hdr = hdr[:max(0, lo-1)] + ell
-    c.setFont("Montserrat-Bold", size_hdr)
-    c.drawString(40, 784, hdr)
+    # Header title: same logic as page 3+ (draw_template_page3) for consistent look
+    title = data.get("cover_title", "") or ""
+    size = HEADER_TITLE_BASE_SIZE
+    while size > HEADER_TITLE_MIN_SIZE and stringWidth(title, "Montserrat-Bold", size) > HEADER_TITLE_MAX_WIDTH:
+        size -= 0.5
+    if stringWidth(title, "Montserrat-Bold", size) > HEADER_TITLE_MAX_WIDTH:
+        lines = _wrap_title_lines(title, "Montserrat-Bold", size, HEADER_TITLE_MAX_WIDTH)
+        c.setFont("Montserrat-Bold", size)
+        line_height = size + 4
+        y_title = 784
+        for line in lines[:2]:
+            c.drawString(40, y_title, line)
+            y_title -= line_height
+    else:
+        c.setFont("Montserrat-Bold", size)
+        c.drawString(40, 784, title)
     c.setFont("Montserrat-Bold", 13)
     c.drawString(40, 762, data.get("company_name", ""))
 

@@ -13,6 +13,8 @@ type DocumentPagesStripProps = {
   currentPageIndex: number;
   onPageSelect: (index: number) => void;
   onAddPage: () => void;
+  /** When set, pages can be reordered by drag and drop. */
+  onReorderPages?: (fromIndex: number, toIndex: number) => void;
   /** When set, show delete button on each page (only when more than one page). */
   onDeletePage?: (index: number) => void;
   /** When set, show duplicate button on each page. */
@@ -144,11 +146,51 @@ export default function DocumentPagesStrip({
   currentPageIndex,
   onPageSelect,
   onAddPage,
+  onReorderPages,
   onDeletePage,
   onDuplicatePage,
 }: DocumentPagesStripProps) {
   const canDelete = typeof onDeletePage === 'function' && pages.length > 1;
   const canDuplicate = typeof onDuplicatePage === 'function';
+  const canReorder = typeof onReorderPages === 'function' && pages.length > 1;
+  const [dragPageIndex, setDragPageIndex] = useState<number | null>(null);
+  const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
+
+  const handleDragStart = (e: React.DragEvent, index: number) => {
+    if (!canReorder) return;
+    setDragPageIndex(index);
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('text/plain', String(index));
+    e.dataTransfer.setData('application/x-page-index', String(index));
+  };
+
+  const handleDragOver = (e: React.DragEvent, index: number) => {
+    if (!canReorder || dragPageIndex === null) return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    setDragOverIndex(index);
+  };
+
+  const handleDragLeave = (e: React.DragEvent) => {
+    const related = e.relatedTarget as Node | null;
+    if (related && (e.currentTarget as HTMLElement).contains(related)) return;
+    setDragOverIndex(null);
+  };
+
+  const handleDrop = (e: React.DragEvent, toIndex: number) => {
+    e.preventDefault();
+    setDragOverIndex(null);
+    setDragPageIndex(null);
+    if (!onReorderPages || dragPageIndex === null) return;
+    const fromIndex = dragPageIndex;
+    if (fromIndex !== toIndex) onReorderPages(fromIndex, toIndex);
+  };
+
+  const handleDragEnd = () => {
+    setDragPageIndex(null);
+    setDragOverIndex(null);
+  };
+
   return (
     <div className="w-36 flex flex-col bg-gray-50/80 border-r border-gray-200 overflow-y-auto py-3 gap-2 flex-shrink-0">
       {pages.map((page, i) => {
@@ -156,8 +198,21 @@ export default function DocumentPagesStrip({
         const backgroundUrl = template?.background_file_id
           ? `/files/${template.background_file_id}/thumbnail?w=200`
           : null;
+        const isDragging = dragPageIndex === i;
+        const isDropTarget = dragOverIndex === i;
         return (
-          <div key={i} className="px-2 relative group">
+          <div
+            key={i}
+            draggable={canReorder}
+            onDragStart={(e) => handleDragStart(e, i)}
+            onDragOver={(e) => handleDragOver(e, i)}
+            onDragLeave={handleDragLeave}
+            onDrop={(e) => handleDrop(e, i)}
+            onDragEnd={handleDragEnd}
+            className={`px-2 relative group transition-colors rounded-lg ${
+              canReorder ? 'cursor-grab active:cursor-grabbing' : ''
+            } ${isDropTarget ? 'ring-2 ring-brand-red/50 ring-inset bg-brand-red/5 rounded-lg' : ''} ${isDragging ? 'opacity-50' : ''}`}
+          >
             <PageThumbnail
               page={page}
               backgroundUrl={backgroundUrl}
