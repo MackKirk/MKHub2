@@ -36,7 +36,7 @@ from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from email.message import EmailMessage
 import secrets
-from sqlalchemy import and_
+from sqlalchemy import and_, func
 import random
 
 
@@ -812,10 +812,11 @@ The {settings.app_name} Team
 
 @router.post("/login", response_model=TokenResponse)
 def login(req: LoginRequest, db: Session = Depends(get_db)):
+    id_lower = (req.identifier or "").strip().lower()
     q = db.query(User).filter(
         (User.username == req.identifier)
-        | (User.email_personal == req.identifier)
-        | (User.email_corporate == req.identifier)
+        | (func.lower(User.email_personal) == id_lower)
+        | (func.lower(User.email_corporate) == id_lower)
     )
     user = q.first()
     if not user or not verify_password(req.password, user.password_hash):
@@ -1911,9 +1912,10 @@ def update_user(user_id: str, email_personal: Optional[str] = None, username: Op
 # Password reset
 @router.post("/password/forgot")
 def password_forgot(identifier: str, db: Session = Depends(get_db)):
+    id_lower = (identifier or "").strip().lower()
     user = (
         db.query(User)
-        .filter((User.username == identifier) | (User.email_personal == identifier) | (User.email_corporate == identifier))
+        .filter((User.username == identifier) | (func.lower(User.email_personal) == id_lower) | (func.lower(User.email_corporate) == id_lower))
         .first()
     )
     if not user:
