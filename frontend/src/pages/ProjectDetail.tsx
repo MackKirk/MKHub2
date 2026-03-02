@@ -3238,6 +3238,39 @@ function ProjectFilesTabEnhanced({ projectId, files, onRefresh }:{ projectId:str
     
     return sorted;
   }, [filesByCategory, selectedCategory, selectedFolderId, sortBy, sortOrder, fileSearchQuery]);
+
+  // Folders at current level (Windows-style: show in category, click to enter). Root level = parent_id null; inside folder = parent_id = selectedFolderId
+  const currentFolderChildren = useMemo(() => {
+    if (selectedCategory === 'all' || selectedCategory === 'uncategorized') return [];
+    const parentId = selectedFolderId || null;
+    return projectFolders
+      .filter((f: ProjectFolderItem) => (f.parent_id || null) === parentId)
+      .sort((a: ProjectFolderItem, b: ProjectFolderItem) => (a.name || '').localeCompare(b.name || '', undefined, { sensitivity: 'base' }));
+  }, [projectFolders, selectedCategory, selectedFolderId]);
+
+  // Parent folder id when we're inside a folder (for "Up" navigation)
+  const currentParentFolderId = useMemo(() => {
+    if (!selectedFolderId) return null;
+    const folder = projectFolders.find((f: ProjectFolderItem) => f.id === selectedFolderId);
+    return folder?.parent_id || null;
+  }, [projectFolders, selectedFolderId]);
+
+  // Breadcrumb path from root to current folder (for Location bar: "Root > Pasta A > Pasta B")
+  const locationBreadcrumb = useMemo(() => {
+    if (selectedCategory === 'all' || selectedCategory === 'uncategorized') return [];
+    const path: { id: string | null; name: string }[] = [{ id: null, name: 'Root' }];
+    if (!selectedFolderId) return path;
+    let currentId: string | null = selectedFolderId;
+    const chain: ProjectFolderItem[] = [];
+    while (currentId) {
+      const folder = projectFolders.find((f: ProjectFolderItem) => f.id === currentId);
+      if (!folder) break;
+      chain.unshift(folder);
+      currentId = folder.parent_id || null;
+    }
+    chain.forEach((f: ProjectFolderItem) => path.push({ id: f.id, name: f.name }));
+    return path;
+  }, [selectedCategory, selectedFolderId, projectFolders]);
   
   const handleSort = (column: 'uploaded_at' | 'name' | 'type') => {
     if (sortBy === column) {
@@ -3713,76 +3746,22 @@ function ProjectFilesTabEnhanced({ projectId, files, onRefresh }:{ projectId:str
               )}
             </div>
 
-            {/* Subfolders bar: only when a single category is selected */}
+            {/* Location: breadcrumb only (hierarchy of current path) */}
             {selectedCategory !== 'all' && selectedCategory !== 'uncategorized' && (
-              <div className="mb-3 flex flex-wrap items-center gap-2">
+              <div className="mb-3 flex flex-wrap items-center gap-1">
                 <span className="text-xs text-gray-500">Location:</span>
-                <button
-                  onClick={() => setSelectedFolderId(null)}
-                  onDragOver={canEditFiles ? (e) => { e.preventDefault(); e.currentTarget.classList.add('ring-2', 'ring-brand-red'); } : undefined}
-                  onDragLeave={canEditFiles ? (e) => { e.currentTarget.classList.remove('ring-2', 'ring-brand-red'); } : undefined}
-                  onDrop={canEditFiles ? (e) => {
-                    e.preventDefault();
-                    e.currentTarget.classList.remove('ring-2', 'ring-brand-red');
-                    const folderId = e.dataTransfer.getData('application/x-project-folder-id');
-                    if (folderId) handleMoveFolder(folderId, null);
-                  } : undefined}
-                  title={canEditFiles ? 'Click to view root; drop a folder here to move it to root' : undefined}
-                  className={`px-2 py-1 rounded text-xs font-medium ${!selectedFolderId ? 'bg-brand-red text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'} ${draggedFolderId ? 'transition-shadow' : ''} ${canEditFiles ? 'min-w-[4rem]' : ''}`}
-                >
-                  Root
-                </button>
-                {projectFolders.map((folder: ProjectFolderItem) => (
-                  <span key={folder.id} className="inline-flex items-center gap-0.5">
+                {locationBreadcrumb.map((item, index) => (
+                  <span key={item.id ?? 'root'} className="inline-flex items-center gap-1">
+                    {index > 0 && <span className="text-gray-400 text-xs">/</span>}
                     <button
                       type="button"
-                      draggable={canEditFiles}
-                      onDragStart={canEditFiles ? (e) => {
-                        e.dataTransfer.setData('application/x-project-folder-id', folder.id);
-                        e.dataTransfer.effectAllowed = 'move';
-                        setDraggedFolderId(folder.id);
-                      } : undefined}
-                      onDragEnd={() => setDraggedFolderId(null)}
-                      onDragOver={canEditFiles ? (e) => {
-                        e.preventDefault();
-                        if (e.dataTransfer.types.includes('application/x-project-folder-id') && e.currentTarget.getAttribute('data-folder-id') !== e.dataTransfer.getData('application/x-project-folder-id')) {
-                          e.currentTarget.classList.add('ring-2', 'ring-brand-red');
-                        }
-                      } : undefined}
-                      onDragLeave={canEditFiles ? (e) => { e.currentTarget.classList.remove('ring-2', 'ring-brand-red'); } : undefined}
-                      onDrop={canEditFiles ? (e) => {
-                        e.preventDefault();
-                        e.currentTarget.classList.remove('ring-2', 'ring-brand-red');
-                        const folderId = e.dataTransfer.getData('application/x-project-folder-id');
-                        if (folderId && folderId !== folder.id) handleMoveFolder(folderId, folder.id);
-                      } : undefined}
-                      data-folder-id={folder.id}
-                      title={canEditFiles ? 'Drag to move folder (and its files); drop on Root or another folder' : undefined}
-                      onClick={() => setSelectedFolderId(folder.id)}
-                      className={`px-2 py-1 rounded text-xs font-medium truncate max-w-[120px] ${selectedFolderId === folder.id ? 'bg-brand-red text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'} ${draggedFolderId === folder.id ? 'opacity-50' : ''} ${draggedFolderId ? 'transition-shadow' : ''} ${canEditFiles ? 'cursor-grab active:cursor-grabbing' : ''}`}
+                      onClick={() => setSelectedFolderId(item.id)}
+                      className={`px-2 py-1 rounded text-xs font-medium truncate max-w-[140px] ${item.id === selectedFolderId ? 'bg-brand-red text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}
                     >
-                      {folder.name}
+                      {item.name}
                     </button>
-                    {canEditFiles && (
-                      <button
-                        type="button"
-                        onClick={(e) => { e.stopPropagation(); handleDeleteFolder(folder.id); }}
-                        className="p-1 rounded hover:bg-red-100 text-gray-500 hover:text-red-600"
-                        title="Delete folder"
-                      >
-                        <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
-                      </button>
-                    )}
                   </span>
                 ))}
-                {canEditFiles && isWriteCategoryAllowed(selectedCategory) && (
-                  <button
-                    onClick={openNewFolderModal}
-                    className="px-2 py-1 rounded text-xs font-medium border border-dashed border-gray-400 text-gray-600 hover:bg-gray-50"
-                  >
-                    + New folder
-                  </button>
-                )}
               </div>
             )}
 
@@ -3831,7 +3810,7 @@ function ProjectFilesTabEnhanced({ projectId, files, onRefresh }:{ projectId:str
             )}
 
             <div className="rounded-lg border overflow-hidden bg-white">
-              {currentFiles.length > 0 ? (
+              {(selectedCategory !== 'all' && selectedCategory !== 'uncategorized' && (currentParentFolderId !== null || currentFolderChildren.length > 0 || currentFiles.length > 0)) || (selectedCategory === 'all' || selectedCategory === 'uncategorized') && currentFiles.length > 0 ? (
                 <div className="overflow-x-auto">
                   <table className="w-full">
                     <thead className="bg-gray-50 border-b">
@@ -3874,6 +3853,64 @@ function ProjectFilesTabEnhanced({ projectId, files, onRefresh }:{ projectId:str
                       </tr>
                     </thead>
                     <tbody className="divide-y">
+                      {/* Up one level - when inside a folder */}
+                      {selectedCategory !== 'all' && selectedCategory !== 'uncategorized' && currentParentFolderId !== null && (
+                        <tr
+                          className="hover:bg-gray-50 cursor-pointer bg-gray-50/50"
+                          onClick={() => setSelectedFolderId(currentParentFolderId)}
+                        >
+                          <td className="px-3 py-2">
+                            <div className="w-8 h-10 rounded-lg bg-amber-100 text-amber-700 flex items-center justify-center">
+                              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6" /></svg>
+                            </div>
+                          </td>
+                          <td className="px-3 py-2">
+                            <div className="text-xs font-semibold text-gray-600">..</div>
+                          </td>
+                          <td className="px-3 py-2 text-xs text-gray-500">—</td>
+                          <td className="px-3 py-2 text-xs text-gray-500">—</td>
+                          <td className="px-3 py-2"></td>
+                        </tr>
+                      )}
+                      {/* Folders first (Windows-style) */}
+                      {selectedCategory !== 'all' && selectedCategory !== 'uncategorized' && currentFolderChildren.map((folder: ProjectFolderItem) => (
+                        <tr
+                          key={folder.id}
+                          draggable={canEditFiles}
+                          onDragStart={canEditFiles ? (e) => {
+                            e.dataTransfer.setData('application/x-project-folder-id', folder.id);
+                            e.dataTransfer.effectAllowed = 'move';
+                            setDraggedFolderId(folder.id);
+                          } : undefined}
+                          onDragEnd={() => setDraggedFolderId(null)}
+                          className={`hover:bg-gray-50 ${canEditFiles ? 'cursor-grab active:cursor-grabbing' : 'cursor-pointer'} ${draggedFolderId === folder.id ? 'opacity-50' : ''}`}
+                          onClick={() => setSelectedFolderId(folder.id)}
+                        >
+                          <td className="px-3 py-2">
+                            <div className="w-8 h-10 rounded-lg bg-amber-100 text-amber-700 flex items-center justify-center flex-shrink-0">
+                              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" /></svg>
+                            </div>
+                          </td>
+                          <td className="px-3 py-2">
+                            <div className="text-xs font-semibold truncate max-w-xs">{folder.name}</div>
+                          </td>
+                          <td className="px-3 py-2 text-xs text-gray-600">Folder</td>
+                          <td className="px-3 py-2 text-xs text-gray-500">—</td>
+                          <td className="px-3 py-2" onClick={e => e.stopPropagation()}>
+                            {canEditFiles && (
+                              <button
+                                type="button"
+                                onClick={(e) => { e.stopPropagation(); handleDeleteFolder(folder.id); }}
+                                className="p-1 rounded hover:bg-red-50 text-red-600 text-xs"
+                                title="Delete folder"
+                              >
+                                🗑️
+                              </button>
+                            )}
+                          </td>
+                        </tr>
+                      ))}
+                      {/* Files */}
                       {currentFiles.map((f) => {
                         const icon = iconFor(f);
                         const isImg = f.is_image || String(f.content_type || '').startsWith('image/');
