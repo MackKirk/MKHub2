@@ -63,9 +63,21 @@ export default function TasksPage() {
   const queryClient = useQueryClient();
   const lastTasksSyncRef = useMemo(() => ({ current: null as string | null }), []);
 
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, isError, error, refetch } = useQuery({
     queryKey: ['tasks'],
-    queryFn: () => api<TaskBuckets>('GET', '/tasks'),
+    queryFn: async () => {
+      const res = await api<TaskBuckets>('GET', '/tasks');
+      // Normalize in case backend returns unexpected shape
+      if (res && typeof res === 'object') {
+        return {
+          accepted: Array.isArray(res.accepted) ? res.accepted : [],
+          in_progress: Array.isArray(res.in_progress) ? res.in_progress : [],
+          blocked: Array.isArray((res as any).blocked) ? (res as any).blocked : [],
+          done: Array.isArray(res.done) ? res.done : [],
+        };
+      }
+      return { accepted: [], in_progress: [], blocked: [], done: [] };
+    },
     staleTime: 15_000,
   });
 
@@ -197,6 +209,21 @@ export default function TasksPage() {
             </div>
           </div>
         </div>
+
+        {isError && (
+          <div className="rounded-xl border border-red-200 bg-red-50 p-4 flex items-center justify-between gap-3 flex-wrap">
+            <p className="text-sm text-red-800">
+              Failed to load tasks. {(error as Error)?.message || 'Please try again.'}
+            </p>
+            <button
+              type="button"
+              onClick={() => refetch()}
+              className="px-3 py-2 rounded-lg bg-red-600 text-white text-sm font-medium hover:bg-red-700 transition-colors"
+            >
+              Retry
+            </button>
+          </div>
+        )}
         
         {/* Quick stats (dashboard-style) */}
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">

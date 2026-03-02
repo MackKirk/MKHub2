@@ -2293,50 +2293,79 @@ By signing the accompanying proposal, the Owner agrees to these Terms and Condit
           );
         })()}
 
-        {/* Optional Services Block - hidden when showOnlyPricing */}
-        {!showOnlyPricing && (
+        {/* Optional Services Block - shown in both Proposal and Pricing (same data; does not affect total). On Pricing tab: always expanded, same style as Pricing block. */}
         <div className="rounded-xl border bg-white overflow-hidden">
-          <div 
-            className="bg-slate-200 p-2.5 text-gray-900 font-semibold text-xs flex items-center justify-between cursor-pointer hover:opacity-90 transition-opacity"
-            onClick={() => setSectionsExpanded(prev => ({ ...prev, optionalServices: !prev.optionalServices }))}
-          >
-            <span>Optional Services</span>
-            <svg 
-              className={`w-5 h-5 transition-transform duration-200 ${sectionsExpanded.optionalServices ? 'rotate-180' : ''}`}
-              fill="none" 
-              stroke="currentColor" 
-              viewBox="0 0 24 24"
-            >
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-            </svg>
-          </div>
-          {sectionsExpanded.optionalServices && (
-          <div className="p-3">
-          <div className="text-[10px] text-gray-600 mb-2">If no services are added, the "Optional Services" section will be hidden in the PDF.</div>
-            <div className="space-y-2">
-              {optionalServices.map((s, i)=> (
-                <div key={i} className="grid grid-cols-5 gap-2">
-                  <input className={`col-span-3 rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-gray-900 focus:ring-1 focus:ring-gray-400 focus:border-gray-400 ${disabled ? 'bg-gray-100 cursor-not-allowed' : ''}`} placeholder="Service" value={s.service} onChange={e=>{ const v=e.target.value; setOptionalServices(arr=> arr.map((x,j)=> j===i? { ...x, service:v }: x)); }} disabled={disabled} readOnly={disabled} />
-                  <input type="text" className={`col-span-1 rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-gray-900 focus:ring-1 focus:ring-gray-400 focus:border-gray-400 ${disabled ? 'bg-gray-100 cursor-not-allowed' : ''}`} placeholder="Price" value={s.price} onChange={e=>{ const v = parseAccounting(e.target.value); setOptionalServices(arr=> arr.map((x,j)=> j===i? { ...x, price:v }: x)); }} onBlur={!disabled ? ()=> setOptionalServices(arr=> arr.map((x,j)=> j===i? { ...x, price: formatAccounting(x.price) }: x)) : undefined} disabled={disabled} readOnly={disabled} />
+          {showOnlyPricing ? (
+            <>
+              <div className="bg-slate-200 p-2.5 text-gray-900 font-semibold text-xs">Optional Services</div>
+              <div className="p-3">
+                <div className="text-[10px] text-gray-600 mb-2">Optional services the client can accept or decline. These do not affect the proposal total.</div>
+                <div className="space-y-2">
+                  {optionalServices.map((s, i)=> (
+                    <div key={i} className="grid grid-cols-5 gap-2">
+                      <input className={`col-span-3 rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-gray-900 focus:ring-1 focus:ring-gray-400 focus:border-gray-400 ${disabled ? 'bg-gray-100 cursor-not-allowed' : ''}`} placeholder="Service" value={s.service} onChange={e=>{ const v=e.target.value; setOptionalServices(arr=> arr.map((x,j)=> j===i? { ...x, service:v }: x)); }} disabled={disabled} readOnly={disabled} />
+                      <input type="text" className={`col-span-1 rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-gray-900 focus:ring-1 focus:ring-gray-400 focus:border-gray-400 ${disabled ? 'bg-gray-100 cursor-not-allowed' : ''}`} placeholder="Price" value={s.price} onChange={e=>{ const v = parseAccounting(e.target.value); setOptionalServices(arr=> arr.map((x,j)=> j===i? { ...x, price:v }: x)); }} onBlur={!disabled ? ()=> setOptionalServices(arr=> arr.map((x,j)=> j===i? { ...x, price: formatAccounting(x.price) }: x)) : undefined} disabled={disabled} readOnly={disabled} />
+                      {!disabled && (
+                        <button className="col-span-1 px-2 py-1 rounded bg-gray-100 hover:bg-gray-200 text-xs" onClick={()=> setOptionalServices(arr=> arr.filter((_,j)=> j!==i))}>Remove</button>
+                      )}
+                    </div>
+                  ))}
                   {!disabled && (
-                    <button className="col-span-1 px-2 py-1 rounded bg-gray-100 hover:bg-gray-200 text-xs" onClick={()=> setOptionalServices(arr=> arr.filter((_,j)=> j!==i))}>Remove</button>
+                    <button 
+                      className="mt-3 w-full border-2 border-dashed border-gray-300 rounded-lg p-2.5 hover:border-brand-red hover:bg-gray-50 transition-all text-center bg-white flex items-center justify-center disabled:opacity-60"
+                      onClick={()=> setOptionalServices(arr=> [...arr, { service:'', price:'' }])}
+                    >
+                      <div className="text-lg text-gray-400 mr-2">+</div>
+                      <div className="font-medium text-xs text-gray-700">Add Service</div>
+                    </button>
                   )}
                 </div>
-              ))}
-              {!disabled && (
-                <button 
-                  className="mt-3 w-full border-2 border-dashed border-gray-300 rounded-lg p-2.5 hover:border-brand-red hover:bg-gray-50 transition-all text-center bg-white flex items-center justify-center disabled:opacity-60"
-                  onClick={()=> setOptionalServices(arr=> [...arr, { service:'', price:'' }])}
+              </div>
+            </>
+          ) : (
+            <>
+              <div 
+                className="bg-slate-200 p-2.5 text-gray-900 font-semibold text-xs flex items-center justify-between cursor-pointer hover:opacity-90 transition-opacity"
+                onClick={() => setSectionsExpanded(prev => ({ ...prev, optionalServices: !prev.optionalServices }))}
+              >
+                <span>Optional Services</span>
+                <svg 
+                  className={`w-5 h-5 transition-transform duration-200 ${sectionsExpanded.optionalServices ? 'rotate-180' : ''}`}
+                  fill="none" 
+                  stroke="currentColor" 
+                  viewBox="0 0 24 24"
                 >
-                  <div className="text-lg text-gray-400 mr-2">+</div>
-                  <div className="font-medium text-xs text-gray-700">Add Service</div>
-                </button>
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                </svg>
+              </div>
+              {sectionsExpanded.optionalServices && (
+              <div className="p-3">
+              <div className="text-[10px] text-gray-600 mb-2">If no services are added, the "Optional Services" section will be hidden in the PDF.</div>
+                <div className="space-y-2">
+                  {optionalServices.map((s, i)=> (
+                    <div key={i} className="grid grid-cols-5 gap-2">
+                      <input className={`col-span-3 rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-gray-900 focus:ring-1 focus:ring-gray-400 focus:border-gray-400 ${disabled ? 'bg-gray-100 cursor-not-allowed' : ''}`} placeholder="Service" value={s.service} onChange={e=>{ const v=e.target.value; setOptionalServices(arr=> arr.map((x,j)=> j===i? { ...x, service:v }: x)); }} disabled={disabled} readOnly={disabled} />
+                      <input type="text" className={`col-span-1 rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-gray-900 focus:ring-1 focus:ring-gray-400 focus:border-gray-400 ${disabled ? 'bg-gray-100 cursor-not-allowed' : ''}`} placeholder="Price" value={s.price} onChange={e=>{ const v = parseAccounting(e.target.value); setOptionalServices(arr=> arr.map((x,j)=> j===i? { ...x, price:v }: x)); }} onBlur={!disabled ? ()=> setOptionalServices(arr=> arr.map((x,j)=> j===i? { ...x, price: formatAccounting(x.price) }: x)) : undefined} disabled={disabled} readOnly={disabled} />
+                      {!disabled && (
+                        <button className="col-span-1 px-2 py-1 rounded bg-gray-100 hover:bg-gray-200 text-xs" onClick={()=> setOptionalServices(arr=> arr.filter((_,j)=> j!==i))}>Remove</button>
+                      )}
+                    </div>
+                  ))}
+                  {!disabled && (
+                    <button 
+                      className="mt-3 w-full border-2 border-dashed border-gray-300 rounded-lg p-2.5 hover:border-brand-red hover:bg-gray-50 transition-all text-center bg-white flex items-center justify-center disabled:opacity-60"
+                      onClick={()=> setOptionalServices(arr=> [...arr, { service:'', price:'' }])}
+                    >
+                      <div className="text-lg text-gray-400 mr-2">+</div>
+                      <div className="font-medium text-xs text-gray-700">Add Service</div>
+                    </button>
+                  )}
+                </div>
+              </div>
               )}
-            </div>
-          </div>
+            </>
           )}
         </div>
-        )}
 
         {/* Terms Block - hidden when showOnlyPricing */}
         {!showOnlyPricing && (

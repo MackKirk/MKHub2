@@ -417,6 +417,7 @@ class ClientFile(Base):
     site_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), ForeignKey("client_sites.id", ondelete="CASCADE"))
     file_object_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("file_objects.id", ondelete="CASCADE"))
     category: Mapped[Optional[str]] = mapped_column(String(100))
+    folder_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), ForeignKey("project_folders.id", ondelete="SET NULL"))
     key: Mapped[Optional[str]] = mapped_column(String(1024))
     original_name: Mapped[Optional[str]] = mapped_column(String(255))
     uploaded_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
@@ -440,6 +441,19 @@ class ClientFolder(Base):
     # If is_public is true or permissions is null/empty, all users can access
     # If is_public is false, only users in allowed_user_ids or with divisions in allowed_divisions can access
     access_permissions: Mapped[Optional[dict]] = mapped_column(JSON)
+
+
+class ProjectFolder(Base):
+    """User-created subfolders inside a project file category. Categories are fixed; only subfolders can be created."""
+    __tablename__ = "project_folders"
+
+    id: Mapped[uuid.UUID] = uuid_pk()
+    project_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("projects.id", ondelete="CASCADE"), index=True)
+    category: Mapped[str] = mapped_column(String(100), nullable=False)  # e.g. "drawings", "bid-documents"
+    parent_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), ForeignKey("project_folders.id", ondelete="CASCADE"))
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    sort_index: Mapped[int] = mapped_column(Integer, default=0)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
 
 
 class ClientDocument(Base):

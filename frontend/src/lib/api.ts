@@ -7,6 +7,8 @@ export function getToken(){
 export async function api<T=any>(method: HttpMethod, path: string, body?: any, headers?: Record<string,string>): Promise<T>{
   const h: Record<string,string> = { ...(headers||{}) };
   const t = getToken(); if (t) h.Authorization = 'Bearer ' + t;
+  // Ensure API requests are never treated as page loads by SPA middleware (Accept: text/html)
+  h.Accept = h.Accept || 'application/json';
   
   // If body is FormData, don't set Content-Type (browser will set it with boundary)
   // Otherwise, default to application/json

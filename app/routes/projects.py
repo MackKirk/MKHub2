@@ -6,7 +6,7 @@ from typing import List, Optional
 import uuid
 
 from ..db import get_db
-from ..models.models import Project, ClientFile, FileObject, Proposal, ProjectUpdate, ProjectReport, ProjectEvent, ProjectTimeEntry, ProjectTimeEntryLog, User, EmployeeProfile, Client, ClientSite, ClientFolder, ClientContact, SettingList, SettingItem, Shift, AuditLog, Estimate, EstimateItem
+from ..models.models import Project, ClientFile, FileObject, Proposal, ProjectUpdate, ProjectReport, ProjectEvent, ProjectTimeEntry, ProjectTimeEntryLog, User, EmployeeProfile, Client, ClientSite, ClientFolder, ClientContact, SettingList, SettingItem, Shift, AuditLog, Estimate, EstimateItem, ProjectFolder
 from datetime import datetime, timezone, time, timedelta
 from ..auth.security import get_current_user, require_permissions, can_approve_timesheet, has_project_files_category_permission
 from sqlalchemy import or_, and_, cast, String, Date
@@ -729,6 +729,191 @@ def delete_project(project_id: str, db: Session = Depends(get_db), user=Depends(
 
 
 # ---- Files scoped to Project ----
+@router.get("/{project_id}/folders")
+def list_project_folders(
+    project_id: str,
+    category: Optional[str] = None,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+    _=Depends(require_permissions("business:projects:files:read", "business:projects:files:write")),
+):
+    """List subfolders for a project. Optional category filter (e.g. drawings, bid-documents)."""
+    proj = db.query(Project).filter(Project.id == project_id).first()
+    if not proj:
+        raise HTTPException(status_code=404, detail="Project not found")
+    q = db.query(ProjectFolder).filter(ProjectFolder.project_id == project_id)
+    if category is not None and category != "":
+        q = q.filter(ProjectFolder.category == category)
+    rows = q.order_by(ProjectFolder.sort_index.asc(), ProjectFolder.name.asc()).all()
+    out = []
+    for f in rows:
+        if not has_project_files_category_permission(user, f.category, action="read"):
+            continue
+        out.append({
+            "id": str(f.id),
+            "name": f.name,
+            "category": f.category,
+            "parent_id": str(f.parent_id) if f.parent_id else None,
+            "sort_index": f.sort_index,
+            "created_at": f.created_at.isoformat() if f.created_at else None,
+        })
+    return out
+
+
+@router.post("/{project_id}/folders")
+def create_project_folder(
+    project_id: str,
+    payload: dict,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+    _=Depends(require_permissions("business:projects:files:write")),
+):
+    """Create a subfolder inside a project file category. Body: name, category, parent_id (optional)."""
+    proj = db.query(Project).filter(Project.id == project_id).first()
+    if not proj:
+        raise HTTPException(status_code=404, detail="Project not found")
+    name = (payload.get("name") or "").strip()
+    category = (payload.get("category") or "").strip()
+    if not name:
+        raise HTTPException(status_code=400, detail="Folder name required")
+    if not category:
+        raise HTTPException(status_code=400, detail="Category required")
+    if not has_project_files_category_permission(user, category, action="write"):
+        raise HTTPException(status_code=403, detail="Forbidden")
+    parent_id = None
+    if payload.get("parent_id"):
+        try:
+            parent_id = uuid.UUID(str(payload["parent_id"]))
+            parent = db.query(ProjectFolder).filter(
+                ProjectFolder.id == parent_id,
+                ProjectFolder.project_id == project_id,
+                ProjectFolder.category == category,
+            ).first()
+            if not parent:
+                raise HTTPException(status_code=400, detail="Parent folder not found or category mismatch")
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Invalid parent_id")
+    folder = ProjectFolder(project_id=proj.id, category=category, parent_id=parent_id, name=name)
+    db.add(folder)
+    db.commit()
+    db.refresh(folder)
+    return {"id": str(folder.id), "name": folder.name, "category": folder.category, "parent_id": str(folder.parent_id) if folder.parent_id else None}
+
+
+@router.put("/{project_id}/folders/{folder_id}")
+def update_project_folder(
+    project_id: str,
+    folder_id: str,
+    payload: dict,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+    _=Depends(require_permissions("business:projects:files:write")),
+):
+    """Update folder name, parent, or category. Body: name (optional), parent_id (optional), category (optional). When category is changed, all files in the folder are updated to the new category."""
+    proj = db.query(Project).filter(Project.id == project_id).first()
+    if not proj:
+        raise HTTPException(status_code=404, detail="Project not found")
+    try:
+        fid = uuid.UUID(str(folder_id))
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid folder id")
+    folder = db.query(ProjectFolder).filter(ProjectFolder.id == fid, ProjectFolder.project_id == project_id).first()
+    if not folder:
+        raise HTTPException(status_code=404, detail="Folder not found")
+    if not has_project_files_category_permission(user, folder.category, action="write"):
+        raise HTTPException(status_code=403, detail="Forbidden")
+    if "name" in payload:
+        name = (payload.get("name") or "").strip()
+        if not name:
+            raise HTTPException(status_code=400, detail="Folder name required")
+        folder.name = name
+    if "parent_id" in payload:
+        parent_val = payload.get("parent_id")
+        if parent_val is None or parent_val == "":
+            folder.parent_id = None
+        else:
+            try:
+                pid = uuid.UUID(str(parent_val))
+                if pid == folder.id:
+                    raise HTTPException(status_code=400, detail="Folder cannot be its own parent")
+                parent = db.query(ProjectFolder).filter(
+                    ProjectFolder.id == pid,
+                    ProjectFolder.project_id == project_id,
+                    ProjectFolder.category == folder.category,
+                ).first()
+                if not parent:
+                    raise HTTPException(status_code=400, detail="Parent folder not found or category mismatch")
+                # Prevent cycles: parent must not be a descendant of folder
+                check = pid
+                while check:
+                    if check == folder.id:
+                        raise HTTPException(status_code=400, detail="Cannot create folder cycle")
+                    p = db.query(ProjectFolder).filter(ProjectFolder.id == check).first()
+                    check = p.parent_id if p else None
+                folder.parent_id = pid
+            except ValueError:
+                raise HTTPException(status_code=400, detail="Invalid parent_id")
+    if "category" in payload:
+        new_category = (payload.get("category") or "").strip()
+        if not new_category:
+            raise HTTPException(status_code=400, detail="Category required")
+        if new_category != folder.category:
+            if not has_project_files_category_permission(user, new_category, action="write"):
+                raise HTTPException(status_code=403, detail="Forbidden")
+            # Update this folder and all descendant folders and their files to the new category
+            def update_folder_and_descendants(folder_id_uuid):
+                db.query(ProjectFolder).filter(ProjectFolder.id == folder_id_uuid).update(
+                    {ProjectFolder.category: new_category},
+                    synchronize_session="fetch"
+                )
+                db.query(ClientFile).filter(ClientFile.folder_id == folder_id_uuid).update(
+                    {ClientFile.category: new_category},
+                    synchronize_session="fetch"
+                )
+                for child in db.query(ProjectFolder).filter(ProjectFolder.parent_id == folder_id_uuid).all():
+                    update_folder_and_descendants(child.id)
+            update_folder_and_descendants(folder.id)
+    db.commit()
+    return {"status": "ok"}
+
+
+@router.delete("/{project_id}/folders/{folder_id}")
+def delete_project_folder(
+    project_id: str,
+    folder_id: str,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+    _=Depends(require_permissions("business:projects:files:write")),
+):
+    """Delete a folder only if it has no files and no subfolders."""
+    proj = db.query(Project).filter(Project.id == project_id).first()
+    if not proj:
+        raise HTTPException(status_code=404, detail="Project not found")
+    try:
+        fid = uuid.UUID(str(folder_id))
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid folder id")
+    folder = db.query(ProjectFolder).filter(ProjectFolder.id == fid, ProjectFolder.project_id == project_id).first()
+    if not folder:
+        raise HTTPException(status_code=404, detail="Folder not found")
+    if not has_project_files_category_permission(user, folder.category, action="write"):
+        raise HTTPException(status_code=403, detail="Forbidden")
+    # Check for subfolders
+    subfolders = db.query(ProjectFolder).filter(ProjectFolder.parent_id == fid).count()
+    if subfolders > 0:
+        raise HTTPException(status_code=400, detail="Folder has subfolders; remove them first")
+    # Check for files (ClientFile with folder_id and FileObject.project_id = project_id)
+    file_count = db.query(ClientFile).join(FileObject, ClientFile.file_object_id == FileObject.id).filter(
+        ClientFile.folder_id == fid,
+        FileObject.project_id == project_id,
+    ).count()
+    if file_count > 0:
+        raise HTTPException(status_code=400, detail="Folder is not empty; move or delete files first")
+    db.delete(folder)
+    db.commit()
+    return {"status": "ok"}
+
+
 @router.get("/{project_id}/files")
 def list_project_files(
     project_id: str,
@@ -759,6 +944,7 @@ def list_project_files(
             "id": str(cf.id),
             "file_object_id": str(cf.file_object_id),
             "category": cf.category,
+            "folder_id": str(cf.folder_id) if getattr(cf, "folder_id", None) else None,
             "key": cf.key,
             "original_name": cf.original_name,
             "uploaded_at": cf.uploaded_at.isoformat() if cf.uploaded_at else None,
@@ -774,11 +960,24 @@ def attach_project_file(
     file_object_id: str,
     category: Optional[str] = None,
     original_name: Optional[str] = None,
+    folder_id: Optional[str] = None,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
     _=Depends(require_permissions("business:projects:files:write")),
 ):
-    if not has_project_files_category_permission(user, category, action="write"):
+    # If folder_id is provided, category is taken from the folder and must have write permission
+    if folder_id:
+        try:
+            fid = uuid.UUID(str(folder_id))
+            folder = db.query(ProjectFolder).filter(ProjectFolder.id == fid, ProjectFolder.project_id == project_id).first()
+            if not folder:
+                raise HTTPException(status_code=400, detail="Folder not found")
+            if not has_project_files_category_permission(user, folder.category, action="write"):
+                raise HTTPException(status_code=403, detail="Forbidden")
+            category = folder.category
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Invalid folder_id")
+    elif not has_project_files_category_permission(user, category, action="write"):
         raise HTTPException(status_code=403, detail="Forbidden")
     proj = db.query(Project).filter(Project.id == project_id).first()
     if not proj:
@@ -788,7 +987,8 @@ def attach_project_file(
         raise HTTPException(status_code=404, detail="File not found")
     # Stamp project_id on FileObject to enable filtering
     fo.project_id = proj.id
-    row = ClientFile(client_id=proj.client_id, site_id=None, file_object_id=fo.id, category=category, key=fo.key, original_name=original_name)
+    cf_folder_id = uuid.UUID(str(folder_id)) if folder_id else None
+    row = ClientFile(client_id=proj.client_id, site_id=None, file_object_id=fo.id, category=category, folder_id=cf_folder_id, key=fo.key, original_name=original_name)
     db.add(row)
     db.commit()
     
@@ -846,6 +1046,7 @@ def update_project_file(
     # Capture before state for audit log
     before_state = {
         "category": getattr(cf, "category", None),
+        "folder_id": str(cf.folder_id) if getattr(cf, "folder_id", None) else None,
         "original_name": getattr(cf, "original_name", None),
     }
     
@@ -855,6 +1056,23 @@ def update_project_file(
         if not has_project_files_category_permission(user, payload.get("category"), action="write"):
             raise HTTPException(status_code=403, detail="Forbidden")
         cf.category = payload["category"]
+    if "folder_id" in payload:
+        fid_val = payload.get("folder_id")
+        if fid_val is None or fid_val == "":
+            cf.folder_id = None
+        else:
+            try:
+                fid = uuid.UUID(str(fid_val))
+                folder = db.query(ProjectFolder).filter(ProjectFolder.id == fid, ProjectFolder.project_id == project_id).first()
+                if not folder:
+                    raise HTTPException(status_code=400, detail="Folder not found")
+                if not has_project_files_category_permission(user, folder.category, action="write"):
+                    raise HTTPException(status_code=403, detail="Forbidden")
+                # File category must match folder category
+                cf.folder_id = fid
+                cf.category = folder.category
+            except ValueError:
+                raise HTTPException(status_code=400, detail="Invalid folder_id")
     if "original_name" in payload:
         cf.original_name = payload["original_name"]
     db.commit()
@@ -864,6 +1082,7 @@ def update_project_file(
         from ..services.audit import create_audit_log, compute_diff
         after_state = {
             "category": getattr(cf, "category", None),
+            "folder_id": str(cf.folder_id) if getattr(cf, "folder_id", None) else None,
             "original_name": getattr(cf, "original_name", None),
         }
         changes = compute_diff(before_state, after_state)

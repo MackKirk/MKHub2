@@ -295,6 +295,10 @@ export default function AppShell({ children }: PropsWithChildren){
       const legacyPerm = requiredPermission.replace('hr:', '');
       return has || permissionsSet.has(legacyPerm);
     }
+    // Fleet & Equipment: accept legacy/alternate permission keys so tabs show correctly
+    if (requiredPermission === 'fleet:access') return has || permissionsSet.has('fleet:read');
+    if (requiredPermission === 'fleet:vehicles:read') return has || permissionsSet.has('fleet:access') || permissionsSet.has('fleet:read');
+    if (requiredPermission === 'equipment:read') return has || permissionsSet.has('fleet:equipment:read') || permissionsSet.has('fleet:access') || permissionsSet.has('fleet:read');
     return has;
   };
 
@@ -389,8 +393,8 @@ export default function AppShell({ children }: PropsWithChildren){
       icon: <IconTruck />,
       items: [
         { id: 'fleet-dashboard', label: 'Dashboard', path: '/fleet', icon: <IconTruck />, requiredPermission: 'fleet:access' },
-        { id: 'fleet-assets', label: 'Fleet Assets', path: '/fleet/assets', icon: <IconTruck />, requiredPermission: 'fleet:access' },
-        { id: 'equipment', label: 'Equipment', path: '/fleet/equipment', icon: <IconWrench />, requiredPermission: 'fleet:access' },
+        { id: 'fleet-assets', label: 'Fleet Assets', path: '/fleet/assets', icon: <IconTruck />, requiredPermission: 'fleet:vehicles:read' },
+        { id: 'equipment', label: 'Equipment', path: '/fleet/equipment', icon: <IconWrench />, requiredPermission: 'equipment:read' },
         { id: 'work-orders', label: 'Work Orders', path: '/fleet/work-orders', icon: <IconClipboard />, requiredPermission: 'fleet:access' },
         { id: 'inspections', label: 'Inspections', path: '/fleet/inspections', icon: <IconClipboardCheck />, requiredPermission: 'fleet:access' },
       ]

@@ -536,6 +536,58 @@ def create_app() -> FastAPI:
                         raise
                     print("[startup] document_types table ready")
 
+                # Project folders (subfolders inside project file categories)
+                if dialect == "sqlite":
+                    rows = db.execute(text("SELECT name FROM sqlite_master WHERE type='table' AND name='project_folders'")).fetchall()
+                    if not rows:
+                        db.execute(text("""
+                            CREATE TABLE project_folders (
+                                id TEXT PRIMARY KEY,
+                                project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+                                category VARCHAR(100) NOT NULL,
+                                parent_id TEXT REFERENCES project_folders(id) ON DELETE CASCADE,
+                                name VARCHAR(255) NOT NULL,
+                                sort_index INTEGER NOT NULL DEFAULT 0,
+                                created_at TEXT
+                            )
+                        """))
+                        db.execute(text("CREATE INDEX IF NOT EXISTS idx_project_folders_project_id ON project_folders(project_id)"))
+                        db.commit()
+                        print("[startup] Created project_folders table")
+                    try:
+                        cols = db.execute(text("PRAGMA table_info(client_files)")).fetchall()
+                        if "folder_id" not in {str(c[1]) for c in cols}:
+                            db.execute(text("ALTER TABLE client_files ADD COLUMN folder_id TEXT REFERENCES project_folders(id) ON DELETE SET NULL"))
+                            db.commit()
+                            print("[startup] Added folder_id column to client_files")
+                    except Exception as e:
+                        if "duplicate" not in str(e).lower():
+                            pass  # non-critical
+                else:
+                    db.execute(text("""
+                        CREATE TABLE IF NOT EXISTS project_folders (
+                            id UUID PRIMARY KEY,
+                            project_id UUID NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+                            category VARCHAR(100) NOT NULL,
+                            parent_id UUID REFERENCES project_folders(id) ON DELETE CASCADE,
+                            name VARCHAR(255) NOT NULL,
+                            sort_index INTEGER NOT NULL DEFAULT 0,
+                            created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+                        )
+                    """))
+                    db.execute(text("CREATE INDEX IF NOT EXISTS idx_project_folders_project_id ON project_folders(project_id)"))
+                    db.commit()
+                    try:
+                        rows = db.execute(text(
+                            "SELECT 1 FROM information_schema.columns WHERE table_name = 'client_files' AND column_name = 'folder_id' LIMIT 1"
+                        )).fetchall()
+                        if not rows:
+                            db.execute(text("ALTER TABLE client_files ADD COLUMN folder_id UUID REFERENCES project_folders(id) ON DELETE SET NULL"))
+                            db.commit()
+                            print("[startup] Added folder_id column to client_files")
+                    except Exception:
+                        pass
+
                 # Ensure permission_templates table exists
                 if dialect == "sqlite":
                     try:

@@ -365,7 +365,7 @@ function UserAvatar({ user, size = 'w-8 h-8', showTooltip = true, tooltipText }:
 }
 
 type Project = { id:string, code?:string, name?:string, client_id?:string, client_display_name?:string, client_name?:string, address?:string, address_city?:string, address_province?:string, address_country?:string, address_postal_code?:string, description?:string, status_id?:string, division_id?:string, division_ids?:string[], project_division_ids?:string[], estimator_id?:string, estimator_ids?:string[], project_admin_id?:string, onsite_lead_id?:string, division_onsite_leads?:Record<string, string>, contact_id?:string, contact_name?:string, contact_email?:string, contact_phone?:string, date_start?:string, date_eta?:string, date_end?:string, cost_estimated?:number, cost_actual?:number, service_value?:number, progress?:number, site_id?:string, site_name?:string, site_address_line1?:string, site_address_line2?:string, site_city?:string, site_province?:string, site_country?:string, site_postal_code?:string, status_label?:string, status_changed_at?:string, is_bidding?:boolean, lead_source?:string };
-type ProjectFile = { id:string, file_object_id:string, is_image?:boolean, content_type?:string, category?:string, original_name?:string, uploaded_at?:string };
+type ProjectFile = { id:string, file_object_id:string, is_image?:boolean, content_type?:string, category?:string, folder_id?:string|null, original_name?:string, uploaded_at?:string };
 type Update = { id:string, timestamp?:string, text?:string, images?:any };
 type Report = { id:string, title?:string, category_id?:string, division_id?:string, description?:string, images?:any, status?:string, created_at?:string, created_by?:string, financial_value?:number, financial_type?:string, estimate_data?:any, approval_status?:string, approved_by?:string, approved_at?:string };
 type Proposal = { id:string, title?:string, order_number?:string, created_at?:string, data?:any, is_change_order?:boolean, change_order_number?:number, parent_proposal_id?:string, approved_report_id?:string, approval_status?:string };
@@ -3094,6 +3094,7 @@ function ProjectFilesTab({ projectId, files, onRefresh }:{ projectId:string, fil
 function ProjectFilesTabEnhanced({ projectId, files, onRefresh }:{ projectId:string, files: ProjectFile[], onRefresh: ()=>any }){
   const location = useLocation();
   const nav = useNavigate();
+  const queryClient = useQueryClient();
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
   const [isDragging, setIsDragging] = useState(false);
   const [draggedFileId, setDraggedFileId] = useState<string | null>(null);
@@ -3105,6 +3106,11 @@ function ProjectFilesTabEnhanced({ projectId, files, onRefresh }:{ projectId:str
   const [sortBy, setSortBy] = useState<'uploaded_at' | 'name' | 'type'>('uploaded_at');
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
   const [fileSearchQuery, setFileSearchQuery] = useState('');
+  const [selectedFolderId, setSelectedFolderId] = useState<string | null>(null);
+  const [newFolderName, setNewFolderName] = useState('');
+  const [showNewFolderModal, setShowNewFolderModal] = useState(false);
+  const [newFolderCategory, setNewFolderCategory] = useState<string>('');
+  const [draggedFolderId, setDraggedFolderId] = useState<string | null>(null);
   
   // Check permissions for files
   const { data: me } = useQuery({ queryKey:['me'], queryFn: ()=>api<any>('GET','/auth/me') });
@@ -3148,6 +3154,21 @@ function ProjectFilesTabEnhanced({ projectId, files, onRefresh }:{ projectId:str
     queryFn: ()=>api<any>('GET', `/projects/${projectId}`)
   });
 
+  type ProjectFolderItem = { id: string; name: string; category: string; parent_id: string | null; sort_index: number };
+  const { data: projectFoldersRaw } = useQuery({
+    queryKey: ['project-folders', projectId, selectedCategory],
+    queryFn: () => api<ProjectFolderItem[]>('GET', `/projects/${projectId}/folders${selectedCategory && selectedCategory !== 'all' && selectedCategory !== 'uncategorized' ? `?category=${encodeURIComponent(selectedCategory)}` : ''}`),
+    enabled: !!projectId,
+  });
+  const projectFolders = projectFoldersRaw || [];
+
+  // When switching category, clear folder selection if the folder is not in this category
+  useEffect(() => {
+    if (!selectedFolderId) return;
+    const inCategory = projectFolders.some((f: ProjectFolderItem) => f.id === selectedFolderId);
+    if (!inCategory) setSelectedFolderId(null);
+  }, [selectedCategory, projectFolders, selectedFolderId]);
+
   // Organize files by category
   const filesByCategory = useMemo(() => {
     const grouped: Record<string, ProjectFile[]> = { 'all': [], 'uncategorized': [] };
@@ -3182,10 +3203,18 @@ function ProjectFilesTabEnhanced({ projectId, files, onRefresh }:{ projectId:str
   };
 
   const currentFiles = useMemo(() => {
-    const files = filesByCategory[selectedCategory] || [];
+    let files = filesByCategory[selectedCategory] || [];
+    // When a category is selected, filter by folder: root (folder_id null) or selected folder
+    if (selectedCategory !== 'all' && selectedCategory !== 'uncategorized') {
+      if (selectedFolderId) {
+        files = files.filter((f: ProjectFile) => (f.folder_id || null) === selectedFolderId);
+      } else {
+        files = files.filter((f: ProjectFile) => !f.folder_id || f.folder_id === '' || f.folder_id === null);
+      }
+    }
     const q = fileSearchQuery.trim().toLowerCase();
     const filtered = q
-      ? files.filter(f => (f.original_name || f.file_object_id || '').toLowerCase().includes(q))
+      ? files.filter((f: ProjectFile) => (f.original_name || f.file_object_id || '').toLowerCase().includes(q))
       : files;
     const sorted = [...filtered].sort((a, b) => {
       let aVal: any;
@@ -3208,7 +3237,7 @@ function ProjectFilesTabEnhanced({ projectId, files, onRefresh }:{ projectId:str
     });
     
     return sorted;
-  }, [filesByCategory, selectedCategory, sortBy, sortOrder, fileSearchQuery]);
+  }, [filesByCategory, selectedCategory, selectedFolderId, sortBy, sortOrder, fileSearchQuery]);
   
   const handleSort = (column: 'uploaded_at' | 'name' | 'type') => {
     if (sortBy === column) {
@@ -3278,7 +3307,7 @@ function ProjectFilesTabEnhanced({ projectId, files, onRefresh }:{ projectId:str
     try{ const r:any = await api('GET', `/files/${fid}/download`); return String(r.download_url||''); }catch(_e){ toast.error('Download link unavailable'); return ''; }
   };
 
-  const uploadMultiple = async (fileList: File[], targetCategory?: string) => {
+  const uploadMultiple = async (fileList: File[], targetCategory?: string, targetFolderId?: string | null) => {
     const category = targetCategory !== undefined 
       ? (targetCategory === 'uncategorized' ? null : targetCategory)
       : (selectedCategory === 'all' || selectedCategory === 'uncategorized' ? undefined : selectedCategory);
@@ -3289,6 +3318,8 @@ function ProjectFilesTabEnhanced({ projectId, files, onRefresh }:{ projectId:str
       toast.error('You do not have permission to upload files to this category');
       return;
     }
+
+    const folderId = targetFolderId !== undefined ? targetFolderId : (selectedCategory !== 'all' && selectedCategory !== 'uncategorized' ? selectedFolderId : null);
 
     const newQueue = Array.from(fileList).map((file, idx) => ({
       id: `${Date.now()}-${idx}`,
@@ -3327,7 +3358,13 @@ function ProjectFilesTabEnhanced({ projectId, files, onRefresh }:{ projectId:str
           content_type: item.file.type || 'application/octet-stream'
         });
         
-        await api('POST', `/projects/${projectId}/files?file_object_id=${encodeURIComponent(conf.id)}&category=${encodeURIComponent(category || '')}&original_name=${encodeURIComponent(item.file.name)}`);
+        const params = new URLSearchParams({
+          file_object_id: conf.id,
+          category: category || '',
+          original_name: item.file.name
+        });
+        if (folderId) params.set('folder_id', folderId);
+        await api('POST', `/projects/${projectId}/files?${params.toString()}`);
         
         setUploadQueue(prev => prev.map(u => u.id === item.id ? { ...u, status: 'success', progress: 100 } : u));
       } catch (e: any) {
@@ -3348,12 +3385,108 @@ function ProjectFilesTabEnhanced({ projectId, files, onRefresh }:{ projectId:str
         return;
       }
       await api('PUT', `/projects/${projectId}/files/${fileId}`, {
-        category: newCategory === 'uncategorized' ? null : newCategory
+        category: newCategory === 'uncategorized' ? null : newCategory,
+        folder_id: null, // move to root of the target category
       });
       await onRefresh();
       toast.success('File moved');
     } catch (_e) {
       toast.error('Failed to move file');
+    }
+  };
+
+  const handleMoveFileToFolder = async (fileId: string, folderId: string | null) => {
+    try {
+      const file = files.find(f => f.id === fileId);
+      const cat = file?.category || selectedCategory;
+      if (cat === 'all' || cat === 'uncategorized') return;
+      if (!canEditFiles || !isWriteCategoryAllowed(cat)) {
+        toast.error('You do not have permission to move files');
+        return;
+      }
+      await api('PUT', `/projects/${projectId}/files/${fileId}`, {
+        folder_id: folderId,
+        ...(folderId ? {} : { category: cat })
+      });
+      await onRefresh();
+      toast.success('File moved');
+    } catch (_e) {
+      toast.error('Failed to move file');
+    }
+  };
+
+  const handleCreateFolder = async () => {
+    const name = newFolderName.trim();
+    const category = newFolderCategory || selectedCategory;
+    if (!name) return;
+    if (category === 'all' || category === 'uncategorized' || !category) {
+      toast.error('Select a category for the folder');
+      return;
+    }
+    if (!canEditFiles || !isWriteCategoryAllowed(category)) {
+      toast.error('No permission to create folder in this category');
+      return;
+    }
+    try {
+      await api('POST', `/projects/${projectId}/folders`, { name, category });
+      setNewFolderName('');
+      setNewFolderCategory('');
+      setShowNewFolderModal(false);
+      queryClient.invalidateQueries({ queryKey: ['project-folders', projectId] });
+      await onRefresh();
+      toast.success('Folder created');
+    } catch (e: any) {
+      toast.error(e?.message || 'Failed to create folder');
+    }
+  };
+
+  const openNewFolderModal = () => {
+    setNewFolderName('');
+    setNewFolderCategory(selectedCategory === 'all' || selectedCategory === 'uncategorized' ? '' : selectedCategory);
+    setShowNewFolderModal(true);
+  };
+
+  const handleDeleteFolder = async (folderId: string) => {
+    if (!confirm('Delete this folder? It must be empty.')) return;
+    try {
+      await api('DELETE', `/projects/${projectId}/folders/${folderId}`);
+      if (selectedFolderId === folderId) setSelectedFolderId(null);
+      queryClient.invalidateQueries({ queryKey: ['project-folders', projectId] });
+      await onRefresh();
+      toast.success('Folder deleted');
+    } catch (e: any) {
+      toast.error(e?.message || 'Failed to delete folder');
+    }
+  };
+
+  const handleMoveFolder = async (folderId: string, newParentId: string | null) => {
+    if (!canEditFiles) return;
+    try {
+      await api('PUT', `/projects/${projectId}/folders/${folderId}`, { parent_id: newParentId });
+      setDraggedFolderId(null);
+      queryClient.invalidateQueries({ queryKey: ['project-folders', projectId] });
+      await onRefresh();
+      toast.success('Folder moved');
+    } catch (e: any) {
+      setDraggedFolderId(null);
+      toast.error(e?.message || 'Failed to move folder');
+    }
+  };
+
+  const handleMoveFolderToCategory = async (folderId: string, categoryId: string) => {
+    if (!canEditFiles || !isWriteCategoryAllowed(categoryId)) {
+      toast.error('You do not have permission to move folders to this category');
+      return;
+    }
+    try {
+      await api('PUT', `/projects/${projectId}/folders/${folderId}`, { category: categoryId });
+      setDraggedFolderId(null);
+      queryClient.invalidateQueries({ queryKey: ['project-folders', projectId] });
+      await onRefresh();
+      toast.success('Folder and its contents moved to category');
+    } catch (e: any) {
+      setDraggedFolderId(null);
+      toast.error(e?.message || 'Failed to move folder');
     }
   };
 
@@ -3435,7 +3568,14 @@ function ProjectFilesTabEnhanced({ projectId, files, onRefresh }:{ projectId:str
                         return;
                       }
                       
-                      // Check if moving existing file
+                      // Check if moving a folder to this category
+                      const folderId = e.dataTransfer.getData('application/x-project-folder-id');
+                      if (folderId) {
+                        await handleMoveFolderToCategory(folderId, cat.id);
+                        return;
+                      }
+                      
+                      // Check if moving existing file to this category
                       if (draggedFileId) {
                         await handleMoveFile(draggedFileId, cat.id);
                         setDraggedFileId(null);
@@ -3456,9 +3596,29 @@ function ProjectFilesTabEnhanced({ projectId, files, onRefresh }:{ projectId:str
               {filesByCategory['uncategorized']?.length > 0 && (
                 <button
                   onClick={() => setSelectedCategory('uncategorized')}
+                  onDragOver={canEditFiles ? (e) => { e.preventDefault(); e.stopPropagation(); setIsDragging(true); } : undefined}
+                  onDragLeave={canEditFiles ? (e) => { e.preventDefault(); setIsDragging(false); } : undefined}
+                  onDrop={canEditFiles ? async (e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    setIsDragging(false);
+                    if (e.dataTransfer.files?.length) {
+                      await uploadMultiple(Array.from(e.dataTransfer.files), 'uncategorized');
+                      return;
+                    }
+                    const folderId = e.dataTransfer.getData('application/x-project-folder-id');
+                    if (folderId) {
+                      toast.info('Folders must stay in a category; drop on a category instead.');
+                      return;
+                    }
+                    if (draggedFileId) {
+                      await handleMoveFile(draggedFileId, 'uncategorized');
+                      setDraggedFileId(null);
+                    }
+                  } : undefined}
                   className={`w-full text-left px-3 py-2 border-b hover:bg-white transition-colors ${
                     selectedCategory === 'uncategorized' ? 'bg-white border-l-4 border-l-brand-red font-semibold' : 'text-gray-700'
-                  }`}
+                  } ${isDragging && canEditFiles ? 'bg-blue-50' : ''}`}
                 >
                   <div className="flex items-center gap-2">
                     <span className="text-xs">📦</span>
@@ -3534,14 +3694,141 @@ function ProjectFilesTabEnhanced({ projectId, files, onRefresh }:{ projectId:str
                 </div>
               </div>
               {canEditFiles && (
-                <button
-                  onClick={() => setShowUpload(true)}
-                  className="px-2 py-1.5 rounded bg-brand-red text-white text-xs font-medium flex-shrink-0"
-                >
-                  + Upload File
-                </button>
+                <div className="flex items-center gap-2 flex-shrink-0">
+                  <button
+                    onClick={openNewFolderModal}
+                    className="px-2 py-1.5 rounded border border-gray-300 bg-white text-gray-700 text-xs font-medium hover:bg-gray-50 flex items-center gap-1"
+                    title={selectedCategory !== 'all' && selectedCategory !== 'uncategorized' ? 'Create subfolder in this category' : 'Create subfolder (choose category in modal)'}
+                  >
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 13h6m-3-3v6m-10 1V7a2 2 0 012-2h6l2 2h6a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2z" /></svg>
+                    Add folder
+                  </button>
+                  <button
+                    onClick={() => setShowUpload(true)}
+                    className="px-2 py-1.5 rounded bg-brand-red text-white text-xs font-medium"
+                  >
+                    + Upload File
+                  </button>
+                </div>
               )}
             </div>
+
+            {/* Subfolders bar: only when a single category is selected */}
+            {selectedCategory !== 'all' && selectedCategory !== 'uncategorized' && (
+              <div className="mb-3 flex flex-wrap items-center gap-2">
+                <span className="text-xs text-gray-500">Location:</span>
+                <button
+                  onClick={() => setSelectedFolderId(null)}
+                  onDragOver={canEditFiles ? (e) => { e.preventDefault(); e.currentTarget.classList.add('ring-2', 'ring-brand-red'); } : undefined}
+                  onDragLeave={canEditFiles ? (e) => { e.currentTarget.classList.remove('ring-2', 'ring-brand-red'); } : undefined}
+                  onDrop={canEditFiles ? (e) => {
+                    e.preventDefault();
+                    e.currentTarget.classList.remove('ring-2', 'ring-brand-red');
+                    const folderId = e.dataTransfer.getData('application/x-project-folder-id');
+                    if (folderId) handleMoveFolder(folderId, null);
+                  } : undefined}
+                  title={canEditFiles ? 'Click to view root; drop a folder here to move it to root' : undefined}
+                  className={`px-2 py-1 rounded text-xs font-medium ${!selectedFolderId ? 'bg-brand-red text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'} ${draggedFolderId ? 'transition-shadow' : ''} ${canEditFiles ? 'min-w-[4rem]' : ''}`}
+                >
+                  Root
+                </button>
+                {projectFolders.map((folder: ProjectFolderItem) => (
+                  <span key={folder.id} className="inline-flex items-center gap-0.5">
+                    <button
+                      type="button"
+                      draggable={canEditFiles}
+                      onDragStart={canEditFiles ? (e) => {
+                        e.dataTransfer.setData('application/x-project-folder-id', folder.id);
+                        e.dataTransfer.effectAllowed = 'move';
+                        setDraggedFolderId(folder.id);
+                      } : undefined}
+                      onDragEnd={() => setDraggedFolderId(null)}
+                      onDragOver={canEditFiles ? (e) => {
+                        e.preventDefault();
+                        if (e.dataTransfer.types.includes('application/x-project-folder-id') && e.currentTarget.getAttribute('data-folder-id') !== e.dataTransfer.getData('application/x-project-folder-id')) {
+                          e.currentTarget.classList.add('ring-2', 'ring-brand-red');
+                        }
+                      } : undefined}
+                      onDragLeave={canEditFiles ? (e) => { e.currentTarget.classList.remove('ring-2', 'ring-brand-red'); } : undefined}
+                      onDrop={canEditFiles ? (e) => {
+                        e.preventDefault();
+                        e.currentTarget.classList.remove('ring-2', 'ring-brand-red');
+                        const folderId = e.dataTransfer.getData('application/x-project-folder-id');
+                        if (folderId && folderId !== folder.id) handleMoveFolder(folderId, folder.id);
+                      } : undefined}
+                      data-folder-id={folder.id}
+                      title={canEditFiles ? 'Drag to move folder (and its files); drop on Root or another folder' : undefined}
+                      onClick={() => setSelectedFolderId(folder.id)}
+                      className={`px-2 py-1 rounded text-xs font-medium truncate max-w-[120px] ${selectedFolderId === folder.id ? 'bg-brand-red text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'} ${draggedFolderId === folder.id ? 'opacity-50' : ''} ${draggedFolderId ? 'transition-shadow' : ''} ${canEditFiles ? 'cursor-grab active:cursor-grabbing' : ''}`}
+                    >
+                      {folder.name}
+                    </button>
+                    {canEditFiles && (
+                      <button
+                        type="button"
+                        onClick={(e) => { e.stopPropagation(); handleDeleteFolder(folder.id); }}
+                        className="p-1 rounded hover:bg-red-100 text-gray-500 hover:text-red-600"
+                        title="Delete folder"
+                      >
+                        <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+                      </button>
+                    )}
+                  </span>
+                ))}
+                {canEditFiles && isWriteCategoryAllowed(selectedCategory) && (
+                  <button
+                    onClick={openNewFolderModal}
+                    className="px-2 py-1 rounded text-xs font-medium border border-dashed border-gray-400 text-gray-600 hover:bg-gray-50"
+                  >
+                    + New folder
+                  </button>
+                )}
+              </div>
+            )}
+
+            {showNewFolderModal && (
+              <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={() => setShowNewFolderModal(false)}>
+                <div className="bg-white rounded-lg shadow-xl p-4 max-w-sm w-full mx-4" onClick={e => e.stopPropagation()}>
+                  <h3 className="text-sm font-semibold mb-2">New folder</h3>
+                  {(selectedCategory === 'all' || selectedCategory === 'uncategorized') && (
+                    <div className="mb-3">
+                      <label className="block text-xs font-medium text-gray-700 mb-1">Category</label>
+                      <select
+                        value={newFolderCategory}
+                        onChange={e => setNewFolderCategory(e.target.value)}
+                        className="w-full border rounded px-3 py-2 text-sm"
+                      >
+                        <option value="">Select category...</option>
+                        {visibleCategories.map((cat: any) => (
+                          <option key={cat.id} value={cat.id}>{cat.name}</option>
+                        ))}
+                      </select>
+                    </div>
+                  )}
+                  <div className="mb-3">
+                    <label className="block text-xs font-medium text-gray-700 mb-1">Folder name</label>
+                    <input
+                      type="text"
+                      value={newFolderName}
+                      onChange={e => setNewFolderName(e.target.value)}
+                      placeholder="Folder name"
+                      className="w-full border rounded px-3 py-2 text-sm"
+                      onKeyDown={e => { if (e.key === 'Enter') handleCreateFolder(); if (e.key === 'Escape') setShowNewFolderModal(false); }}
+                    />
+                  </div>
+                  <div className="flex justify-end gap-2">
+                    <button onClick={() => setShowNewFolderModal(false)} className="px-3 py-1.5 text-sm rounded border">Cancel</button>
+                    <button
+                      onClick={handleCreateFolder}
+                      disabled={!newFolderName.trim() || ((selectedCategory === 'all' || selectedCategory === 'uncategorized') && !newFolderCategory)}
+                      className="px-3 py-1.5 text-sm rounded bg-brand-red text-white disabled:opacity-50"
+                    >
+                      Create
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
 
             <div className="rounded-lg border overflow-hidden bg-white">
               {currentFiles.length > 0 ? (
@@ -3669,6 +3956,23 @@ function ProjectFilesTabEnhanced({ projectId, files, onRefresh }:{ projectId:str
                                     >
                                       📦
                                     </button>
+                                    {selectedCategory !== 'all' && selectedCategory !== 'uncategorized' && (
+                                      <select
+                                        title="Move to folder"
+                                        value={f.folder_id || ''}
+                                        onChange={(e) => {
+                                          const v = e.target.value;
+                                          handleMoveFileToFolder(f.id, v === '' ? null : v);
+                                        }}
+                                        onClick={e => e.stopPropagation()}
+                                        className="p-1 rounded border text-xs max-w-[100px]"
+                                      >
+                                        <option value="">Root</option>
+                                        {projectFolders.map((folder: ProjectFolderItem) => (
+                                          <option key={folder.id} value={folder.id}>{folder.name}</option>
+                                        ))}
+                                      </select>
+                                    )}
                                     <button
                                       onClick={(e) => {
                                         e.stopPropagation();
