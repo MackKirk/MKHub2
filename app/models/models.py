@@ -212,6 +212,9 @@ class Project(Base):
     image_file_object_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True))  # Image for general information card
     image_manually_set: Mapped[bool] = mapped_column(Boolean, default=False)  # True if user manually set the image (prevents auto-update from proposal)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
+    # Soft delete
+    deleted_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True, index=True)
+    deleted_by_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
 
 
 class ProjectUpdate(Base):
@@ -372,6 +375,9 @@ class Client(Base):
     created_by: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True))
     updated_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
     updated_by: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True))
+    # Soft delete
+    deleted_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True, index=True)
+    deleted_by_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
 
 
 class ClientContact(Base):
@@ -554,6 +560,9 @@ class Proposal(Base):
     parent_proposal_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True))
     approved_report_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True))
     approval_status: Mapped[Optional[str]] = mapped_column(String(50))  # "pending", "approved", "rejected"
+    # Soft delete
+    deleted_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True, index=True)
+    deleted_by_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
 
 
 class Quote(Base):
@@ -570,6 +579,9 @@ class Quote(Base):
     data: Mapped[Optional[dict]] = mapped_column(JSON)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow, onupdate=datetime.utcnow)
+    # Soft delete
+    deleted_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True, index=True)
+    deleted_by_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
 
 class ReviewTemplate(Base):
     __tablename__ = "review_templates"
@@ -1671,6 +1683,29 @@ class AuditLog(Base):
     __table_args__ = (
         Index('idx_audit_entity', 'entity_type', 'entity_id'),
         Index('idx_audit_actor', 'actor_id', 'timestamp_utc'),
+    )
+
+
+class SystemLog(Base):
+    """Application and error logs for debugging and diagnostics (admin only)."""
+    __tablename__ = "system_logs"
+
+    id: Mapped[uuid.UUID] = uuid_pk()
+    timestamp_utc: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow, nullable=False, index=True)
+    level: Mapped[str] = mapped_column(String(20), nullable=False, index=True)  # info, warning, error
+    category: Mapped[str] = mapped_column(String(50), nullable=False, index=True)  # request_error, auth, integration, upload, db, background
+    message: Mapped[str] = mapped_column(Text, nullable=False)
+    request_id: Mapped[Optional[str]] = mapped_column(String(64), index=True)
+    path: Mapped[Optional[str]] = mapped_column(String(512))
+    method: Mapped[Optional[str]] = mapped_column(String(10))
+    user_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), index=True)
+    status_code: Mapped[Optional[int]] = mapped_column(Integer)
+    detail: Mapped[Optional[str]] = mapped_column(Text)
+    extra: Mapped[Optional[dict]] = mapped_column(JSON)
+
+    __table_args__ = (
+        Index('idx_system_log_timestamp', 'timestamp_utc'),
+        Index('idx_system_log_level_category', 'level', 'category'),
     )
 
 

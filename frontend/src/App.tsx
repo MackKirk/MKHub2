@@ -71,6 +71,7 @@ import TrainingCourse from './pages/TrainingCourse';
 import TrainingCertificates from './pages/TrainingCertificates';
 import TrainingAdmin from './pages/TrainingAdmin';
 import TrainingCourseEdit from './pages/TrainingCourseEdit';
+import SystemAdmin from './pages/SystemAdmin';
 import Attendance from './pages/Attendance';
 import Notifications from './pages/Notifications';
 import Install from './pages/Install';
@@ -159,6 +160,7 @@ export default function App(){
           <Route path="/training/admin" element={<AppShell><TrainingAdmin/></AppShell>} />
           <Route path="/training/admin/new" element={<AppShell><TrainingCourseEdit/></AppShell>} />
           <Route path="/training/admin/:courseId" element={<AppShell><TrainingCourseEdit/></AppShell>} />
+          <Route path="/admin/system" element={<AppShell><SystemAdmin/></AppShell>} />
           <Route path="/notifications" element={<AppShell><Notifications/></AppShell>} />
         </Route>
         <Route path="*" element={<Navigate to={getToken()? '/home':'/login'} replace />} />

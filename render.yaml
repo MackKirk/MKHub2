@@ -10,8 +10,8 @@ services:
         generateValue: true
       - key: AUTO_CREATE_DB
         value: "true"
-      - key: DATABASE_URL
-        value: "sqlite:////opt/render/project/src/var/prod.db"
+      # DATABASE_URL: definir no painel do Render (Environment) com a connection string do PostgreSQL.
+      # Não definir aqui para evitar valor antigo (SQLite). Produção usa Postgres.
       - key: PUBLIC_BASE_URL
         value: "https://mkhub2.onrender.com"
       - key: MAIL_FROM

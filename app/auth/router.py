@@ -2,7 +2,7 @@ import uuid
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, status, Body
+from fastapi import APIRouter, Depends, HTTPException, status, Body, Request
 from sqlalchemy.orm import Session
 from slugify import slugify
 
@@ -611,8 +611,29 @@ def admin_delete_user_by_email(
     u = db.query(User).filter(User.email_personal == email).first()
     if not u:
         return {"deleted": False}
+    # Capture user info before deletion for audit log (no sensitive data)
+    user_info = {
+        "user_id": str(u.id),
+        "email_personal": getattr(u, "email_personal", None),
+        "username": getattr(u, "username", None),
+    }
     db.delete(u)
     db.commit()
+    try:
+        from ..services.audit import create_audit_log
+        create_audit_log(
+            db=db,
+            entity_type="user",
+            entity_id=user_info["user_id"],
+            action="DELETE",
+            actor_id=str(admin.id) if admin else None,
+            actor_role="admin",
+            source="api",
+            changes_json={"deleted_user": user_info},
+            context={"deleted_email": user_info.get("email_personal")},
+        )
+    except Exception:
+        pass
     return {"deleted": True}
 
 
@@ -811,7 +832,7 @@ The {settings.app_name} Team
 
 
 @router.post("/login", response_model=TokenResponse)
-def login(req: LoginRequest, db: Session = Depends(get_db)):
+def login(req: LoginRequest, request: Request, db: Session = Depends(get_db)):
     id_lower = (req.identifier or "").strip().lower()
     q = db.query(User).filter(
         (User.username == req.identifier)
@@ -820,6 +841,37 @@ def login(req: LoginRequest, db: Session = Depends(get_db)):
     )
     user = q.first()
     if not user or not verify_password(req.password, user.password_hash):
+        try:
+            from ..services.system_log import write_system_log
+            reason = "user_not_found" if not user else "invalid_password"
+            write_system_log(
+                db,
+                "warning",
+                "auth",
+                "Login failed",
+                request_id=getattr(request.state, "request_id", None),
+                path=request.url.path,
+                method=request.method,
+                detail=reason,
+            )
+        except Exception:
+            pass
+        raise HTTPException(status_code=401, detail="Invalid credentials")
+    if not user.is_active:
+        try:
+            from ..services.system_log import write_system_log
+            write_system_log(
+                db,
+                "warning",
+                "auth",
+                "Login failed: user inactive",
+                request_id=getattr(request.state, "request_id", None),
+                path=request.url.path,
+                method=request.method,
+                detail="user_inactive",
+            )
+        except Exception:
+            pass
         raise HTTPException(status_code=401, detail="Invalid credentials")
     access = create_access_token(str(user.id), roles=[r.name for r in user.roles])
     refresh = create_refresh_token(str(user.id))

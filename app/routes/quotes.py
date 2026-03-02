@@ -408,7 +408,7 @@ def next_code(client_id: str, db: Session = Depends(get_db)):
     except ValueError:
         raise HTTPException(status_code=400, detail="Invalid client_id format")
     
-    client = db.query(Client).filter(Client.id == client_uuid).first()
+    client = db.query(Client).filter(Client.id == client_uuid, Client.deleted_at.is_(None)).first()
     if not client:
         raise HTTPException(status_code=404, detail="Client not found")
     
@@ -421,19 +421,19 @@ def next_code(client_id: str, db: Session = Depends(get_db)):
     from sqlalchemy import func
     year = _dt.utcnow().year
     
-    # Get sequence number (5 digits: 00001, 00002, etc.) - global sequence like projects
-    seq = db.query(func.count(Quote.id)).scalar() or 0
+    # Get sequence number (5 digits: 00001, 00002, etc.) - global sequence (non-deleted only)
+    seq = db.query(func.count(Quote.id)).filter(Quote.deleted_at.is_(None)).scalar() or 0
     seq += 1
-    
+
     # Format: MKS-<seq>/<client_code>-<year> (different prefix from projects)
     # Example: MKS-00001/00001-2025
     code = f"MKS-{seq:05d}/{client_code}-{year}"
-    
-    # Ensure uniqueness
-    while db.query(Quote).filter(Quote.code == code).first():
+
+    # Ensure uniqueness among non-deleted quotes
+    while db.query(Quote).filter(Quote.code == code, Quote.deleted_at.is_(None)).first():
         seq += 1
         code = f"MKS-{seq:05d}/{client_code}-{year}"
-    
+
     return {"order_number": code}
 
 
@@ -452,7 +452,7 @@ def save_quote(payload: dict = Body(...), db: Session = Depends(get_db), user=De
         except ValueError:
             raise HTTPException(status_code=400, detail="Invalid client_id format")
         
-        client = db.query(Client).filter(Client.id == client_uuid).first()
+        client = db.query(Client).filter(Client.id == client_uuid, Client.deleted_at.is_(None)).first()
         if not client:
             raise HTTPException(status_code=404, detail="Client not found")
         
@@ -460,30 +460,30 @@ def save_quote(payload: dict = Body(...), db: Session = Depends(get_db), user=De
             raise HTTPException(status_code=400, detail="Client must have a code. Please update the client first.")
         
         client_code = client.code  # Should be 5-digit number (00001, 00002, etc.)
-        
+
         from datetime import datetime as _dt
         from sqlalchemy import func
         year = _dt.utcnow().year
-        
-        # Get sequence number (5 digits: 00001, 00002, etc.) - global sequence like projects
-        seq = db.query(func.count(Quote.id)).scalar() or 0
+
+        # Get sequence number (5 digits: 00001, 00002, etc.) - global sequence (non-deleted only)
+        seq = db.query(func.count(Quote.id)).filter(Quote.deleted_at.is_(None)).scalar() or 0
         seq += 1
-        
+
         # Format: MKS-<seq>/<client_code>-<year> (different prefix from projects)
         # Example: MKS-00001/00001-2025
         code = f"MKS-{seq:05d}/{client_code}-{year}"
-        
-        # Ensure uniqueness
-        while db.query(Quote).filter(Quote.code == code).first():
+
+        # Ensure uniqueness among non-deleted quotes
+        while db.query(Quote).filter(Quote.code == code, Quote.deleted_at.is_(None)).first():
             seq += 1
             code = f"MKS-{seq:05d}/{client_code}-{year}"
-        
+
         payload['code'] = code
         if not payload.get('order_number'):
             payload['order_number'] = code
     
     if pid:
-        q = db.query(Quote).filter(Quote.id == pid).first()
+        q = db.query(Quote).filter(Quote.id == pid, Quote.deleted_at.is_(None)).first()
         if not q:
             raise HTTPException(status_code=404, detail='Quote not found')
         q.client_id = payload.get('client_id') or q.client_id
@@ -542,9 +542,9 @@ def list_quotes(
 ):
     from ..models.models import Client
     from sqlalchemy import or_, cast, String, Date, func, and_
-    
-    query = db.query(Quote)
-    
+
+    query = db.query(Quote).filter(Quote.deleted_at.is_(None))
+
     if client_id:
         try:
             client_uuid = uuid.UUID(client_id)
@@ -610,8 +610,7 @@ def list_quotes(
         except ValueError:
             pass
     
-    # Note: Value filtering is done after fetching rows because estimated_value is computed from data field
-    # Search - include client name if client relation exists
+    # Search - include client name if client relation exists (only non-deleted clients for display)
     if q:
         query = query.outerjoin(Client, Quote.client_id == Client.id)
         query = query.filter(
@@ -814,7 +813,7 @@ def list_quotes(
 
 @router.get("/{quote_id}")
 def get_quote(quote_id: str, db: Session = Depends(get_db)):
-    q = db.query(Quote).filter(Quote.id == quote_id).first()
+    q = db.query(Quote).filter(Quote.id == quote_id, Quote.deleted_at.is_(None)).first()
     if not q:
         raise HTTPException(status_code=404, detail='Not found')
     return {
@@ -834,7 +833,7 @@ def get_quote(quote_id: str, db: Session = Depends(get_db)):
 
 @router.patch("/{quote_id}")
 def update_quote(quote_id: str, payload: dict = Body(...), db: Session = Depends(get_db), user=Depends(get_current_user)):
-    q = db.query(Quote).filter(Quote.id == quote_id).first()
+    q = db.query(Quote).filter(Quote.id == quote_id, Quote.deleted_at.is_(None)).first()
     if not q:
         raise HTTPException(status_code=404, detail='Quote not found')
     
@@ -867,10 +866,57 @@ def update_quote(quote_id: str, payload: dict = Body(...), db: Session = Depends
 
 
 @router.delete("/{quote_id}")
-def delete_quote(quote_id: str, db: Session = Depends(get_db)):
+def delete_quote(quote_id: str, db: Session = Depends(get_db), user=Depends(get_current_user)):
+    q = db.query(Quote).filter(Quote.id == quote_id, Quote.deleted_at.is_(None)).first()
+    if not q:
+        raise HTTPException(status_code=404, detail='Quote not found')
+    # Soft delete: mark as deleted instead of removing the row
+    from datetime import datetime, timezone
+    q.deleted_at = datetime.now(timezone.utc)
+    q.deleted_by_id = user.id if user else None
+    db.commit()
+    try:
+        from ..services.audit import create_audit_log
+        create_audit_log(
+            db=db,
+            entity_type="quote",
+            entity_id=quote_id,
+            action="DELETE",
+            actor_id=str(user.id) if user else None,
+            actor_role="user",
+            source="api",
+            changes_json={"deleted_quote": {"title": getattr(q, "title", None), "status": getattr(q, "status", None)}, "soft_delete": True},
+            context={"quote_title": getattr(q, "title", None)},
+        )
+    except Exception:
+        pass
+    return {"status": "ok"}
+
+
+@router.post("/{quote_id}/restore")
+def restore_quote(quote_id: str, db: Session = Depends(get_db), user=Depends(get_current_user)):
+    """Restore a soft-deleted quote. Does not filter by deleted_at so deleted quotes can be found."""
     q = db.query(Quote).filter(Quote.id == quote_id).first()
     if not q:
         raise HTTPException(status_code=404, detail='Quote not found')
-    db.delete(q)
+    if q.deleted_at is None:
+        return {"status": "ok", "message": "Quote was not deleted"}
+    q.deleted_at = None
+    q.deleted_by_id = None
     db.commit()
-    return {"status": "ok"}
+    try:
+        from ..services.audit import create_audit_log
+        create_audit_log(
+            db=db,
+            entity_type="quote",
+            entity_id=quote_id,
+            action="RESTORE",
+            actor_id=str(user.id) if user else None,
+            actor_role="user",
+            source="api",
+            changes_json={"restored": True},
+            context={},
+        )
+    except Exception:
+        pass
+    return {"status": "ok", "message": "Quote restored"}

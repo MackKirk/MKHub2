@@ -111,6 +111,7 @@ def upload(
 
 @router.post("/upload-proxy")
 async def upload_proxy(
+    request: Request,
     file: UploadFile = File(...),
     original_name: str = Form(...),
     content_type: str = Form("application/octet-stream"),
@@ -128,10 +129,59 @@ async def upload_proxy(
     """
     import logging
     logger = logging.getLogger(__name__)
-    
-    # Read file content
-    file_content = await file.read()
-    
+
+    max_bytes = settings.upload_max_mb * 1024 * 1024
+    content_length = request.headers.get("content-length")
+    if content_length and int(content_length) > max_bytes:
+        try:
+            from ..services.system_log import write_system_log
+            write_system_log(
+                db,
+                "warning",
+                "upload",
+                "File too large",
+                request_id=getattr(request.state, "request_id", None),
+                path=request.url.path,
+                method=request.method,
+                status_code=413,
+                detail="file_too_large",
+            )
+        except Exception:
+            pass
+        raise HTTPException(
+            status_code=413,
+            detail=f"File too large. Maximum size is {settings.upload_max_mb} MB.",
+        )
+
+    # Read file content (in chunks to enforce size limit when Content-Length is missing)
+    file_content = b""
+    chunk_size = 1024 * 1024  # 1 MB
+    while True:
+        chunk = await file.read(chunk_size)
+        if not chunk:
+            break
+        file_content += chunk
+        if len(file_content) > max_bytes:
+            try:
+                from ..services.system_log import write_system_log
+                write_system_log(
+                    db,
+                    "warning",
+                    "upload",
+                    "File too large",
+                    request_id=getattr(request.state, "request_id", None),
+                    path=request.url.path,
+                    method=request.method,
+                    status_code=413,
+                    detail="file_too_large",
+                )
+            except Exception:
+                pass
+            raise HTTPException(
+                status_code=413,
+                detail=f"File too large. Maximum size is {settings.upload_max_mb} MB.",
+            )
+
     # Use provided original_name or filename from upload
     if not original_name or original_name == "upload":
         original_name = file.filename or "upload"

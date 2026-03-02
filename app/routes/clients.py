@@ -6,14 +6,14 @@ from sqlalchemy import text, or_
 from typing import Optional, List
 
 from ..db import get_db
-from ..models.models import Client, ClientContact, ClientSite, ClientFile, FileObject, ClientFolder, ClientDocument, Project, Proposal
+from ..models.models import Client, ClientContact, ClientSite, ClientFile, FileObject, ClientFolder, ClientDocument, Project, Proposal, User
 import mimetypes
 from ..schemas.clients import (
     ClientCreate, ClientResponse,
     ClientContactCreate, ClientContactResponse,
     ClientSiteCreate, ClientSiteResponse,
 )
-from ..auth.security import require_permissions
+from ..auth.security import require_permissions, get_current_user
 
 
 router = APIRouter(prefix="/clients", tags=["clients"])
@@ -61,16 +61,16 @@ def create_client(
             next_code = max_code + 1
             code = f"{next_code:05d}"  # Format as 00001, 00002, etc.
             
-            # Double-check uniqueness (safety check)
+            # Double-check uniqueness (safety check) - only among non-deleted clients
             try:
-                while db.query(Client).filter(Client.code == code).first():
+                while db.query(Client).filter(Client.code == code, Client.deleted_at.is_(None)).first():
                     next_code += 1
                     code = f"{next_code:05d}"
             except ProgrammingError as e:
                 error_msg = str(e.orig) if hasattr(e, 'orig') else str(e)
                 if 'is_system' in error_msg and 'does not exist' in error_msg:
                     db.rollback()
-                    while db.query(Client).options(defer(Client.is_system)).filter(Client.code == code).first():
+                    while db.query(Client).options(defer(Client.is_system)).filter(Client.code == code, Client.deleted_at.is_(None)).first():
                         next_code += 1
                         code = f"{next_code:05d}"
                 else:
@@ -202,12 +202,12 @@ def list_clients(
     
     # Build base query
     try:
-        base_query = db.query(Client).filter(Client.is_system == False)
+        base_query = db.query(Client).filter(Client.is_system == False, Client.deleted_at.is_(None))
     except ProgrammingError as e:
         error_msg = str(e.orig) if hasattr(e, 'orig') else str(e)
         if 'is_system' in error_msg and 'does not exist' in error_msg:
             db.rollback()
-            base_query = db.query(Client).options(defer(Client.is_system))
+            base_query = db.query(Client).options(defer(Client.is_system)).filter(Client.deleted_at.is_(None))
         else:
             raise
     
@@ -440,12 +440,12 @@ def list_file_categories():
 @router.get("/{client_id}", response_model=ClientResponse)
 def get_client(client_id: str, db: Session = Depends(get_db), _=Depends(require_permissions("business:customers:read"))):
     try:
-        c = db.query(Client).filter(Client.id == client_id).first()
+        c = db.query(Client).filter(Client.id == client_id, Client.deleted_at.is_(None)).first()
     except ProgrammingError as e:
         error_msg = str(e.orig) if hasattr(e, 'orig') else str(e)
         if 'is_system' in error_msg and 'does not exist' in error_msg:
             db.rollback()
-            c = db.query(Client).options(defer(Client.is_system)).filter(Client.id == client_id).first()
+            c = db.query(Client).options(defer(Client.is_system)).filter(Client.id == client_id, Client.deleted_at.is_(None)).first()
         else:
             raise
     if not c:
@@ -456,12 +456,12 @@ def get_client(client_id: str, db: Session = Depends(get_db), _=Depends(require_
 @router.patch("/{client_id}")
 def update_client(client_id: str, payload: dict, db: Session = Depends(get_db), _=Depends(require_permissions("business:customers:write"))):
     try:
-        c = db.query(Client).filter(Client.id == client_id).first()
+        c = db.query(Client).filter(Client.id == client_id, Client.deleted_at.is_(None)).first()
     except ProgrammingError as e:
         error_msg = str(e.orig) if hasattr(e, 'orig') else str(e)
         if 'is_system' in error_msg and 'does not exist' in error_msg:
             db.rollback()
-            c = db.query(Client).options(defer(Client.is_system)).filter(Client.id == client_id).first()
+            c = db.query(Client).options(defer(Client.is_system)).filter(Client.id == client_id, Client.deleted_at.is_(None)).first()
         else:
             raise
     if not c:
@@ -485,7 +485,58 @@ def update_client(client_id: str, payload: dict, db: Session = Depends(get_db), 
 
 
 @router.delete("/{client_id}")
-def delete_client(client_id: str, db: Session = Depends(get_db), _=Depends(require_permissions("business:customers:write"))):
+def delete_client(client_id: str, db: Session = Depends(get_db), user: User = Depends(get_current_user), _=Depends(require_permissions("business:customers:write"))):
+    try:
+        c = db.query(Client).filter(Client.id == client_id, Client.deleted_at.is_(None)).first()
+    except ProgrammingError as e:
+        error_msg = str(e.orig) if hasattr(e, 'orig') else str(e)
+        if 'is_system' in error_msg and 'does not exist' in error_msg:
+            db.rollback()
+            c = db.query(Client).options(defer(Client.is_system)).filter(Client.id == client_id, Client.deleted_at.is_(None)).first()
+        else:
+            raise
+    if not c:
+        return {"status": "ok"}
+    # Check for related projects and proposals - these are NOT cascade deleted (only count non-deleted projects)
+    projects_count = db.query(Project).filter(Project.client_id == client_id, Project.deleted_at.is_(None)).count()
+    proposals_count = db.query(Proposal).filter(Proposal.client_id == client_id).count()
+    if projects_count > 0 or proposals_count > 0:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Cannot delete client: {projects_count} project(s) and {proposals_count} proposal(s) still exist. Please delete or reassign them first."
+        )
+    # Capture client info before soft delete for audit log
+    client_info = {
+        "name": getattr(c, "name", None),
+        "display_name": getattr(c, "display_name", None),
+    }
+    # Soft delete: mark as deleted instead of removing the row
+    from datetime import datetime, timezone
+    c.deleted_at = datetime.now(timezone.utc)
+    c.deleted_by_id = user.id
+    db.commit()
+    # Create audit log for client deletion
+    try:
+        from ..services.audit import create_audit_log
+        create_audit_log(
+            db=db,
+            entity_type="client",
+            entity_id=client_id,
+            action="DELETE",
+            actor_id=str(user.id) if user else None,
+            actor_role="user",
+            source="api",
+            changes_json={"deleted_client": client_info, "soft_delete": True},
+            context={"client_name": client_info.get("name") or client_info.get("display_name")},
+        )
+    except Exception:
+        pass
+    return {"status": "ok"}
+
+
+@router.post("/{client_id}/restore")
+def restore_client(client_id: str, db: Session = Depends(get_db), user: User = Depends(get_current_user), _=Depends(require_permissions("business:customers:write"))):
+    """Restore a soft-deleted client."""
     try:
         c = db.query(Client).filter(Client.id == client_id).first()
     except ProgrammingError as e:
@@ -496,24 +547,28 @@ def delete_client(client_id: str, db: Session = Depends(get_db), _=Depends(requi
         else:
             raise
     if not c:
-        return {"status": "ok"}
-    # Check for related projects and proposals - these are NOT cascade deleted
-    projects_count = db.query(Project).filter(Project.client_id == client_id).count()
-    proposals_count = db.query(Proposal).filter(Proposal.client_id == client_id).count()
-    if projects_count > 0 or proposals_count > 0:
-        raise HTTPException(
-            status_code=400, 
-            detail=f"Cannot delete client: {projects_count} project(s) and {proposals_count} proposal(s) still exist. Please delete or reassign them first."
-        )
-    # The following will be cascade deleted automatically:
-    # - ClientContact (CASCADE)
-    # - ClientSite (CASCADE)
-    # - ClientFile (CASCADE)
-    # - ClientFolder (CASCADE)
-    # - ClientDocument (CASCADE)
-    db.delete(c)
+        raise HTTPException(status_code=404, detail="Client not found")
+    if getattr(c, "deleted_at", None) is None:
+        return {"status": "ok", "message": "Client is not deleted"}
+    c.deleted_at = None
+    c.deleted_by_id = None
     db.commit()
-    return {"status": "ok"}
+    try:
+        from ..services.audit import create_audit_log
+        create_audit_log(
+            db=db,
+            entity_type="client",
+            entity_id=client_id,
+            action="RESTORE",
+            actor_id=str(user.id) if user else None,
+            actor_role="user",
+            source="api",
+            changes_json={"restored": True},
+            context={"client_name": getattr(c, "name", None) or getattr(c, "display_name", None)},
+        )
+    except Exception:
+        pass
+    return {"status": "ok", "message": "Client restored"}
 
 
 @router.post("/{client_id}/contacts", response_model=ClientContactResponse)

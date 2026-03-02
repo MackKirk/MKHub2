@@ -442,6 +442,9 @@ export default function AppShell({ children }: PropsWithChildren){
       icon: <IconSettings />,
       items: [
         { id: 'system-settings', label: 'System Settings', path: '/settings', icon: <IconSettings />, requiredPermission: 'settings:access' },
+        ...(((me?.roles||[]).includes('admin')) ? [
+          { id: 'system-admin', label: 'System Admin', path: '/admin/system', icon: <IconSettings /> }
+        ] : []),
       ]
     },
   ];

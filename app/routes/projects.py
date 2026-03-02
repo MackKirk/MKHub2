@@ -194,7 +194,7 @@ def create_project(payload: dict, db: Session = Depends(get_db), user=Depends(ge
     code = f"MK-{seq:05d}/{client_code}-{year}"
     
     # Ensure uniqueness
-    while db.query(Project).filter(Project.code == code).first():
+    while db.query(Project).filter(Project.code == code, Project.deleted_at.is_(None)).first():
         seq += 1
         code = f"MK-{seq:05d}/{client_code}-{year}"
     
@@ -305,7 +305,7 @@ def create_project(payload: dict, db: Session = Depends(get_db), user=Depends(ge
 
 @router.get("")
 def list_projects(client: Optional[str] = None, site: Optional[str] = None, status: Optional[str] = None, q: Optional[str] = None, year: Optional[int] = None, is_bidding: Optional[bool] = None, db: Session = Depends(get_db)):
-    query = db.query(Project)
+    query = db.query(Project).filter(Project.deleted_at.is_(None))
     if client:
         query = query.filter(Project.client_id == client)
     if site:
@@ -358,7 +358,7 @@ def get_project(project_id: str, db: Session = Depends(get_db)):
     except ValueError:
         raise HTTPException(status_code=404, detail="Invalid project ID format")
     
-    p = db.query(Project).filter(Project.id == project_id).first()
+    p = db.query(Project).filter(Project.id == project_id, Project.deleted_at.is_(None)).first()
     if not p:
         raise HTTPException(status_code=404, detail="Not found")
     client = None
@@ -430,7 +430,7 @@ def get_project(project_id: str, db: Session = Depends(get_db)):
 
 @router.patch("/{project_id}")
 def update_project(project_id: str, payload: dict, db: Session = Depends(get_db), user=Depends(get_current_user)):
-    p = db.query(Project).filter(Project.id == project_id).first()
+    p = db.query(Project).filter(Project.id == project_id, Project.deleted_at.is_(None)).first()
     if not p:
         raise HTTPException(status_code=404, detail="Not found")
     
@@ -676,11 +676,11 @@ def update_project(project_id: str, payload: dict, db: Session = Depends(get_db)
 
 @router.delete("/{project_id}")
 def delete_project(project_id: str, db: Session = Depends(get_db), user=Depends(get_current_user)):
-    p = db.query(Project).filter(Project.id == project_id).first()
+    p = db.query(Project).filter(Project.id == project_id, Project.deleted_at.is_(None)).first()
     if not p:
         return {"status": "ok"}
     
-    # Capture project info before deletion for audit log
+    # Capture project info before soft delete for audit log
     project_info = {
         "name": getattr(p, 'name', None),
         "code": getattr(p, 'code', None),
@@ -689,19 +689,10 @@ def delete_project(project_id: str, db: Session = Depends(get_db), user=Depends(
         "status_label": getattr(p, 'status_label', None),
     }
     
-    # Before deleting the project, remove references from estimate_items that were added via reports
-    # Get all reports for this project
-    project_reports = db.query(ProjectReport).filter(ProjectReport.project_id == project_id).all()
-    report_ids = [r.id for r in project_reports]
-    
-    if report_ids:
-        # Remove references from estimate_items that point to any of these reports
-        db.query(EstimateItem).filter(EstimateItem.added_via_report_id.in_(report_ids)).update({
-            EstimateItem.added_via_report_id: None,
-            EstimateItem.added_via_report_date: None
-        }, synchronize_session=False)
-    
-    db.delete(p)
+    # Soft delete: mark as deleted instead of removing the row
+    from datetime import timezone
+    p.deleted_at = datetime.now(timezone.utc)
+    p.deleted_by_id = user.id
     db.commit()
     
     # Create audit log for project deletion
@@ -715,7 +706,7 @@ def delete_project(project_id: str, db: Session = Depends(get_db), user=Depends(
             actor_id=str(user.id) if user else None,
             actor_role="user",
             source="api",
-            changes_json={"deleted_project": project_info},
+            changes_json={"deleted_project": project_info, "soft_delete": True},
             context={
                 "project_id": project_id,
                 "project_name": project_info.get("name"),
@@ -728,6 +719,35 @@ def delete_project(project_id: str, db: Session = Depends(get_db), user=Depends(
     return {"status": "ok"}
 
 
+@router.post("/{project_id}/restore")
+def restore_project(project_id: str, db: Session = Depends(get_db), user=Depends(get_current_user), _=Depends(require_permissions("business:projects:write"))):
+    """Restore a soft-deleted project (admin or project write permission)."""
+    p = db.query(Project).filter(Project.id == project_id).first()
+    if not p:
+        raise HTTPException(status_code=404, detail="Project not found")
+    if getattr(p, "deleted_at", None) is None:
+        return {"status": "ok", "message": "Project is not deleted"}
+    p.deleted_at = None
+    p.deleted_by_id = None
+    db.commit()
+    try:
+        from ..services.audit import create_audit_log
+        create_audit_log(
+            db=db,
+            entity_type="project",
+            entity_id=project_id,
+            action="RESTORE",
+            actor_id=str(user.id) if user else None,
+            actor_role="user",
+            source="api",
+            changes_json={"restored": True},
+            context={"project_name": getattr(p, "name", None)},
+        )
+    except Exception:
+        pass
+    return {"status": "ok", "message": "Project restored"}
+
+
 # ---- Files scoped to Project ----
 @router.get("/{project_id}/folders")
 def list_project_folders(
@@ -738,7 +758,7 @@ def list_project_folders(
     _=Depends(require_permissions("business:projects:files:read", "business:projects:files:write")),
 ):
     """List subfolders for a project. Optional category filter (e.g. drawings, bid-documents)."""
-    proj = db.query(Project).filter(Project.id == project_id).first()
+    proj = db.query(Project).filter(Project.id == project_id, Project.deleted_at.is_(None)).first()
     if not proj:
         raise HTTPException(status_code=404, detail="Project not found")
     q = db.query(ProjectFolder).filter(ProjectFolder.project_id == project_id)
@@ -769,7 +789,7 @@ def create_project_folder(
     _=Depends(require_permissions("business:projects:files:write")),
 ):
     """Create a subfolder inside a project file category. Body: name, category, parent_id (optional)."""
-    proj = db.query(Project).filter(Project.id == project_id).first()
+    proj = db.query(Project).filter(Project.id == project_id, Project.deleted_at.is_(None)).first()
     if not proj:
         raise HTTPException(status_code=404, detail="Project not found")
     name = (payload.get("name") or "").strip()
@@ -810,7 +830,7 @@ def update_project_folder(
     _=Depends(require_permissions("business:projects:files:write")),
 ):
     """Update folder name, parent, or category. Body: name (optional), parent_id (optional), category (optional). When category is changed, all files in the folder are updated to the new category."""
-    proj = db.query(Project).filter(Project.id == project_id).first()
+    proj = db.query(Project).filter(Project.id == project_id, Project.deleted_at.is_(None)).first()
     if not proj:
         raise HTTPException(status_code=404, detail="Project not found")
     try:
@@ -886,7 +906,7 @@ def delete_project_folder(
     _=Depends(require_permissions("business:projects:files:write")),
 ):
     """Delete a folder only if it has no files and no subfolders."""
-    proj = db.query(Project).filter(Project.id == project_id).first()
+    proj = db.query(Project).filter(Project.id == project_id, Project.deleted_at.is_(None)).first()
     if not proj:
         raise HTTPException(status_code=404, detail="Project not found")
     try:
@@ -921,7 +941,7 @@ def list_project_files(
     user: User = Depends(get_current_user),
     _=Depends(require_permissions("business:projects:files:read", "business:projects:files:write")),
 ):
-    proj = db.query(Project).filter(Project.id == project_id).first()
+    proj = db.query(Project).filter(Project.id == project_id, Project.deleted_at.is_(None)).first()
     if not proj:
         raise HTTPException(status_code=404, detail="Project not found")
     cfiles = db.query(ClientFile).filter(ClientFile.client_id == proj.client_id).order_by(ClientFile.uploaded_at.desc()).all()
@@ -979,7 +999,7 @@ def attach_project_file(
             raise HTTPException(status_code=400, detail="Invalid folder_id")
     elif not has_project_files_category_permission(user, category, action="write"):
         raise HTTPException(status_code=403, detail="Forbidden")
-    proj = db.query(Project).filter(Project.id == project_id).first()
+    proj = db.query(Project).filter(Project.id == project_id, Project.deleted_at.is_(None)).first()
     if not proj:
         raise HTTPException(status_code=404, detail="Project not found")
     fo = db.query(FileObject).filter(FileObject.id == file_object_id).first()
@@ -1029,7 +1049,7 @@ def update_project_file(
     _=Depends(require_permissions("business:projects:files:write")),
 ):
     """Update a project file (e.g., change category)"""
-    proj = db.query(Project).filter(Project.id == project_id).first()
+    proj = db.query(Project).filter(Project.id == project_id, Project.deleted_at.is_(None)).first()
     if not proj:
         raise HTTPException(status_code=404, detail="Project not found")
     cf = db.query(ClientFile).filter(ClientFile.id == file_id, ClientFile.client_id == proj.client_id).first()
@@ -1116,7 +1136,7 @@ def delete_project_file(
     _=Depends(require_permissions("business:projects:files:write")),
 ):
     """Delete a project file"""
-    proj = db.query(Project).filter(Project.id == project_id).first()
+    proj = db.query(Project).filter(Project.id == project_id, Project.deleted_at.is_(None)).first()
     if not proj:
         raise HTTPException(status_code=404, detail="Project not found")
     cf = db.query(ClientFile).filter(ClientFile.id == file_id, ClientFile.client_id == proj.client_id).first()
@@ -1439,7 +1459,7 @@ def approve_estimate_changes_report(project_id: str, report_id: str, db: Session
         parent_proposal_id = original_proposal.id if original_proposal else None
         
         # Get project to get client_id and site_id
-        project = db.query(Project).filter(Project.id == project_id).first()
+        project = db.query(Project).filter(Project.id == project_id, Project.deleted_at.is_(None)).first()
         if not project:
             raise HTTPException(status_code=404, detail="Project not found")
         
@@ -1737,7 +1757,7 @@ def list_project_events(project_id: str, db: Session = Depends(get_db)):
 @router.post("/{project_id}/events")
 def create_project_event(project_id: str, payload: dict, db: Session = Depends(get_db), user=Depends(get_current_user)):
     # Validate project exists
-    proj = db.query(Project).filter(Project.id == project_id).first()
+    proj = db.query(Project).filter(Project.id == project_id, Project.deleted_at.is_(None)).first()
     if not proj:
         raise HTTPException(status_code=404, detail="Project not found")
     
@@ -2299,7 +2319,7 @@ def create_time_entry(project_id: str, payload: dict, db: Session = Depends(get_
                 affected_user_name = u.username
         
         # Get project name
-        proj = db.query(Project).filter(Project.id == project_id).first()
+        proj = db.query(Project).filter(Project.id == project_id, Project.deleted_at.is_(None)).first()
         project_name = proj.name if proj else None
         
         create_audit_log(
@@ -2484,7 +2504,7 @@ def update_time_entry(project_id: str, entry_id: str, payload: dict, db: Session
                     affected_user_name = u.username
             
             # Get project name
-            proj = db.query(Project).filter(Project.id == project_id).first()
+            proj = db.query(Project).filter(Project.id == project_id, Project.deleted_at.is_(None)).first()
             project_name = proj.name if proj else None
             
             # Get work date
@@ -2584,7 +2604,7 @@ def update_time_entry(project_id: str, entry_id: str, payload: dict, db: Session
                 affected_user_name = u.username
         
         # Get project name
-        proj = db.query(Project).filter(Project.id == row.project_id).first()
+        proj = db.query(Project).filter(Project.id == row.project_id, Project.deleted_at.is_(None)).first()
         project_name = proj.name if proj else None
         
         create_audit_log(
@@ -2701,7 +2721,7 @@ def delete_time_entry(project_id: str, entry_id: str, db: Session = Depends(get_
                     affected_user_name = u.username
             
             # Get project name
-            proj = db.query(Project).filter(Project.id == project_id).first()
+            proj = db.query(Project).filter(Project.id == project_id, Project.deleted_at.is_(None)).first()
             project_name = proj.name if proj else None
             
             create_audit_log(
@@ -2810,7 +2830,7 @@ def delete_time_entry(project_id: str, entry_id: str, db: Session = Depends(get_
                     affected_user_name = u.username
             
             # Get project name
-            proj = db.query(Project).filter(Project.id == entry_project_id).first()
+            proj = db.query(Project).filter(Project.id == entry_project_id, Project.deleted_at.is_(None)).first()
             project_name = proj.name if proj else None
             
             create_audit_log(
@@ -3006,7 +3026,7 @@ def approve_time_entry(project_id: str, entry_id: str, approved: bool = True, db
                 affected_user_name = u.username
         
         # Get project name
-        proj = db.query(Project).filter(Project.id == row.project_id).first()
+        proj = db.query(Project).filter(Project.id == row.project_id, Project.deleted_at.is_(None)).first()
         project_name = proj.name if proj else None
         
         create_audit_log(
@@ -3097,7 +3117,7 @@ def get_project_audit_logs(
     from ..services.audit import get_project_audit_logs as fetch_logs
     
     # Validate project exists
-    p = db.query(Project).filter(Project.id == project_id).first()
+    p = db.query(Project).filter(Project.id == project_id, Project.deleted_at.is_(None)).first()
     if not p:
         raise HTTPException(status_code=404, detail="Project not found")
     
@@ -3118,7 +3138,7 @@ def get_project_audit_logs(
 @router.post("/{project_id}/convert-to-project")
 def convert_to_project(project_id: str, db: Session = Depends(get_db)):
     """Convert a bidding to an active project"""
-    p = db.query(Project).filter(Project.id == project_id).first()
+    p = db.query(Project).filter(Project.id == project_id, Project.deleted_at.is_(None)).first()
     if not p:
         raise HTTPException(status_code=404, detail="Not found")
     if not getattr(p, 'is_bidding', False):
@@ -3221,8 +3241,8 @@ def business_dashboard(
 ):
     """Get business dashboard statistics. opportunity_status_labels / project_status_labels: optional lists to filter by status. customer_id: optional filter by customer (client)."""
     # Base queries
-    opportunities_query = db.query(Project).filter(Project.is_bidding == True)
-    projects_query = db.query(Project).filter(Project.is_bidding == False)
+    opportunities_query = db.query(Project).filter(Project.is_bidding == True, Project.deleted_at.is_(None))
+    projects_query = db.query(Project).filter(Project.is_bidding == False, Project.deleted_at.is_(None))
 
     # Filter by customer (client) if provided
     if customer_id:
@@ -3542,6 +3562,7 @@ def business_dashboard_timeseries(
         is_opp = metric == "opportunities_by_status"
         base = db.query(Project).filter(
             Project.is_bidding == is_opp,
+            Project.deleted_at.is_(None),
             cast(effective_start_dt, Date) >= start_d,
             cast(effective_start_dt, Date) <= end_d
         )
@@ -3622,6 +3643,7 @@ def business_dashboard_timeseries(
             division_items = main_divisions
         base = db.query(Project).filter(
             Project.is_bidding == is_opp,
+            Project.deleted_at.is_(None),
             cast(effective_start_dt, Date) >= start_d,
             cast(effective_start_dt, Date) <= end_d
         )
@@ -3705,7 +3727,7 @@ def business_opportunities(
     user: User = Depends(get_current_user)
 ):
     """Get opportunities filtered by project division/subdivision"""
-    query = db.query(Project).filter(Project.is_bidding == True)
+    query = db.query(Project).filter(Project.is_bidding == True, Project.deleted_at.is_(None))
     
     # Filter by client
     if client_id:
@@ -4166,7 +4188,7 @@ def business_projects(
     user: User = Depends(get_current_user)
 ):
     """Get projects filtered by project division/subdivision"""
-    query = db.query(Project).filter(Project.is_bidding == False)
+    query = db.query(Project).filter(Project.is_bidding == False, Project.deleted_at.is_(None))
     
     # Filter by client
     if client_id:
@@ -4752,10 +4774,12 @@ def business_divisions_stats(
                 
                 opp_query = db.query(Project).filter(
                     Project.is_bidding == True,
+                    Project.deleted_at.is_(None),
                     or_(*conditions)
                 )
                 proj_query = db.query(Project).filter(
                     Project.is_bidding == False,
+                    Project.deleted_at.is_(None),
                     or_(*conditions)
                 )
                 
@@ -4883,10 +4907,12 @@ def business_divisions_stats(
                 
                 opp_query = db.query(Project).filter(
                     Project.is_bidding == True,
+                    Project.deleted_at.is_(None),
                     or_(*conditions)
                 )
                 proj_query = db.query(Project).filter(
                     Project.is_bidding == False,
+                    Project.deleted_at.is_(None),
                     or_(*conditions)
                 )
                 
@@ -5024,10 +5050,12 @@ def business_divisions_stats(
         if conditions:
             opp_query = db.query(Project).filter(
                 Project.is_bidding == True,
+                Project.deleted_at.is_(None),
                 or_(*conditions)
             )
             proj_query = db.query(Project).filter(
                 Project.is_bidding == False,
+                Project.deleted_at.is_(None),
                 or_(*conditions)
             )
             

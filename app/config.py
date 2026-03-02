@@ -61,6 +61,16 @@ class Settings(BaseSettings):
     # Rate limit
     rate_limit: str = Field(default="100/minute")
 
+    # CORS: comma-separated origins (e.g. "https://mkhub2.onrender.com"). Use "*" for allow all (dev).
+    allowed_origins: str = Field(
+        default="*",
+        alias="ALLOWED_ORIGINS",
+        description="Comma-separated origins for CORS, or * for allow all",
+    )
+
+    # Upload: max file size in MB (enforced in upload-proxy and when Content-Length is present)
+    upload_max_mb: int = Field(default=50, alias="UPLOAD_MAX_MB")
+
     # Dispatch & Time Tracking
     geo_radius_m_default: int = Field(default=150, alias="GEO_RADIUS_M_DEFAULT")
     tolerance_window_min: int = Field(default=30, alias="TOLERANCE_WINDOW_MIN")

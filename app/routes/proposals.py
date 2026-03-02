@@ -278,7 +278,7 @@ async def generate_proposal(
     is_project = bool(project_id_clean)
     if project_id_clean:
         from ..models.models import Project
-        project = db.query(Project).filter(Project.id == project_id_clean).first()
+        project = db.query(Project).filter(Project.id == project_id_clean, Project.deleted_at.is_(None)).first()
         if project:
             is_bidding = getattr(project, 'is_bidding', False) or False
     
@@ -490,9 +490,9 @@ def next_code(client_id: str, db: Session = Depends(get_db)):
         base = int.from_bytes(u.bytes[:2], byteorder='big') % 10000
     except Exception:
         base = 0
-    # Next sequence per client based on persisted proposals count
+    # Next sequence per client based on persisted proposals count (non-deleted only)
     from datetime import datetime
-    seq = (db.query(Proposal).filter(Proposal.client_id == client_id).count() or 0) + 1
+    seq = (db.query(Proposal).filter(Proposal.client_id == client_id, Proposal.deleted_at.is_(None)).count() or 0) + 1
     yy = int(datetime.utcnow().strftime("%y"))
     # Note: UI/PDF will render with the MK- prefix; here we return the internal code
     return {"order_number": f"{base:04d}-{seq:03d}-{yy:02d}"}
@@ -521,7 +521,7 @@ def save_proposal(payload: dict = Body(...), db: Session = Depends(get_db), user
     is_change_order = payload.get('is_change_order', False)
     
     if pid:
-        p = db.query(Proposal).filter(Proposal.id == pid).first()
+        p = db.query(Proposal).filter(Proposal.id == pid, Proposal.deleted_at.is_(None)).first()
         if not p:
             raise HTTPException(status_code=404, detail='Proposal not found')
         
@@ -544,7 +544,7 @@ def save_proposal(payload: dict = Body(...), db: Session = Depends(get_db), user
         # Sync cover image to project if project_id exists and user hasn't manually set it
         if p.project_id:
             from ..models.models import Project
-            project = db.query(Project).filter(Project.id == p.project_id).first()
+            project = db.query(Project).filter(Project.id == p.project_id, Project.deleted_at.is_(None)).first()
             if project and not getattr(project, 'image_manually_set', False):
                 cover_file_object_id = payload.get('cover_file_object_id')
                 if cover_file_object_id:
@@ -561,19 +561,21 @@ def save_proposal(payload: dict = Body(...), db: Session = Depends(get_db), user
             if not project_id:
                 raise HTTPException(status_code=400, detail='project_id is required for Change Orders')
             
-            # Find the original proposal
+            # Find the original proposal (non-deleted)
             original_proposal = db.query(Proposal).filter(
                 Proposal.project_id == project_id,
-                Proposal.is_change_order == False
+                Proposal.is_change_order == False,
+                Proposal.deleted_at.is_(None)
             ).order_by(Proposal.created_at.asc()).first()
             
             if not original_proposal:
                 raise HTTPException(status_code=404, detail='Original proposal not found. Please create a Proposal first.')
             
-            # Get the next change order number
+            # Get the next change order number (among non-deleted)
             latest_change_order = db.query(Proposal).filter(
                 Proposal.project_id == project_id,
-                Proposal.is_change_order == True
+                Proposal.is_change_order == True,
+                Proposal.deleted_at.is_(None)
             ).order_by(Proposal.change_order_number.desc()).first()
             
             next_change_order_number = payload.get('change_order_number')
@@ -636,7 +638,7 @@ def save_proposal(payload: dict = Body(...), db: Session = Depends(get_db), user
         # Sync cover image to project if project_id exists and user hasn't manually set it
         if p.project_id:
             from ..models.models import Project
-            project = db.query(Project).filter(Project.id == p.project_id).first()
+            project = db.query(Project).filter(Project.id == p.project_id, Project.deleted_at.is_(None)).first()
             if project and not getattr(project, 'image_manually_set', False):
                 cover_file_object_id = payload.get('cover_file_object_id')
                 if cover_file_object_id:
@@ -674,7 +676,7 @@ def save_proposal(payload: dict = Body(...), db: Session = Depends(get_db), user
 
 @router.get("")
 def list_proposals(client_id: Optional[str] = Query(None), site_id: Optional[str] = Query(None), project_id: Optional[str] = Query(None), db: Session = Depends(get_db)):
-    q = db.query(Proposal)
+    q = db.query(Proposal).filter(Proposal.deleted_at.is_(None))
     if project_id:
         q = q.filter(Proposal.project_id == project_id)
     if client_id:
@@ -705,12 +707,12 @@ def get_latest_approved_proposal(project_id: Optional[str] = Query(None), db: Se
     if not project_id:
         raise HTTPException(status_code=400, detail="project_id is required")
     
-    # First, try to find the latest approved Change Order
-    # Change Orders must have is_change_order=True and approved_report_id set (indicating they were approved)
+    # First, try to find the latest approved Change Order (non-deleted)
     latest_change_order = db.query(Proposal).filter(
         Proposal.project_id == project_id,
         Proposal.is_change_order == True,
-        Proposal.approved_report_id.isnot(None)
+        Proposal.approved_report_id.isnot(None),
+        Proposal.deleted_at.is_(None)
     ).order_by(Proposal.change_order_number.desc()).first()
     
     if latest_change_order:
@@ -728,10 +730,11 @@ def get_latest_approved_proposal(project_id: Optional[str] = Query(None), db: Se
             "parent_proposal_id": str(latest_change_order.parent_proposal_id) if latest_change_order.parent_proposal_id else None,
         }
     
-    # If no Change Orders, return the original proposal (is_change_order=False or None)
+    # If no Change Orders, return the original proposal (is_change_order=False or None, non-deleted)
     original_proposal = db.query(Proposal).filter(
         Proposal.project_id == project_id,
-        Proposal.is_change_order == False
+        Proposal.is_change_order == False,
+        Proposal.deleted_at.is_(None)
     ).order_by(Proposal.created_at.asc()).first()
     
     if original_proposal:
@@ -755,7 +758,7 @@ def get_latest_approved_proposal(project_id: Optional[str] = Query(None), db: Se
 
 @router.get("/{proposal_id}")
 def get_proposal(proposal_id: str, db: Session = Depends(get_db)):
-    p = db.query(Proposal).filter(Proposal.id == proposal_id).first()
+    p = db.query(Proposal).filter(Proposal.id == proposal_id, Proposal.deleted_at.is_(None)).first()
     if not p:
         raise HTTPException(status_code=404, detail='Not found')
     return {
@@ -780,8 +783,8 @@ def submit_proposal_for_approval(proposal_id: str, db: Session = Depends(get_db)
     """Submit a Change Order for approval by creating a report"""
     from datetime import datetime, timezone
     from ..models.models import ProjectReport
-    
-    p = db.query(Proposal).filter(Proposal.id == proposal_id).first()
+
+    p = db.query(Proposal).filter(Proposal.id == proposal_id, Proposal.deleted_at.is_(None)).first()
     if not p:
         raise HTTPException(status_code=404, detail='Proposal not found')
     
@@ -816,12 +819,65 @@ def submit_proposal_for_approval(proposal_id: str, db: Session = Depends(get_db)
 
 
 @router.delete("/{proposal_id}")
-def delete_proposal(proposal_id: str, db: Session = Depends(get_db)):
+def delete_proposal(proposal_id: str, db: Session = Depends(get_db), user=Depends(get_current_user)):
+    p = db.query(Proposal).filter(Proposal.id == proposal_id, Proposal.deleted_at.is_(None)).first()
+    if not p:
+        raise HTTPException(status_code=404, detail='Proposal not found')
+    # Soft delete: mark as deleted instead of removing the row
+    from datetime import datetime, timezone
+    p.deleted_at = datetime.now(timezone.utc)
+    p.deleted_by_id = user.id if user else None
+    db.commit()
+    try:
+        from ..services.audit import create_audit_log
+        create_audit_log(
+            db=db,
+            entity_type="proposal",
+            entity_id=proposal_id,
+            action="DELETE",
+            actor_id=str(user.id) if user else None,
+            actor_role="user",
+            source="api",
+            changes_json={
+                "deleted_proposal": {
+                    "client_id": str(getattr(p, "client_id", None)) if getattr(p, "client_id", None) else None,
+                    "title": getattr(p, "title", None),
+                },
+                "soft_delete": True,
+            },
+            context={"proposal_title": getattr(p, "title", None)},
+        )
+    except Exception:
+        pass
+    return {"status": "ok"}
+
+
+@router.post("/{proposal_id}/restore")
+def restore_proposal(proposal_id: str, db: Session = Depends(get_db), user=Depends(get_current_user)):
+    """Restore a soft-deleted proposal. Does not filter by deleted_at so deleted proposals can be found."""
     p = db.query(Proposal).filter(Proposal.id == proposal_id).first()
     if not p:
         raise HTTPException(status_code=404, detail='Proposal not found')
-    db.delete(p)
+    if p.deleted_at is None:
+        return {"status": "ok", "message": "Proposal was not deleted"}
+    p.deleted_at = None
+    p.deleted_by_id = None
     db.commit()
-    return {"status": "ok"}
+    try:
+        from ..services.audit import create_audit_log
+        create_audit_log(
+            db=db,
+            entity_type="proposal",
+            entity_id=proposal_id,
+            action="RESTORE",
+            actor_id=str(user.id) if user else None,
+            actor_role="user",
+            source="api",
+            changes_json={"restored": True},
+            context={},
+        )
+    except Exception:
+        pass
+    return {"status": "ok", "message": "Proposal restored"}
 
 

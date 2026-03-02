@@ -1,7 +1,9 @@
 import os
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import RedirectResponse, FileResponse, JSONResponse
+from fastapi.exceptions import HTTPException as FastAPIHTTPException, RequestValidationError
 from prometheus_fastapi_instrumentator import Instrumentator
 from slowapi import Limiter
 from slowapi.util import get_remote_address
@@ -9,7 +11,6 @@ from slowapi.errors import RateLimitExceeded
 from slowapi.middleware import SlowAPIMiddleware
 
 from .config import settings
-from fastapi.responses import RedirectResponse, FileResponse
 from .db import Base, engine, SessionLocal
 from sqlalchemy import text
 from .logging import setup_logging, RequestIdMiddleware
@@ -41,6 +42,7 @@ from .routes.fleet import router as fleet_router
 from .routes.training import router as training_router
 from .routes.bug_report import router as bug_report_router
 from .routes.search import router as search_router
+from .routes.admin_system import router as admin_system_router
 
 
 def create_app() -> FastAPI:
@@ -49,9 +51,10 @@ def create_app() -> FastAPI:
 
     # Middlewares
     app.add_middleware(RequestIdMiddleware)
+    origins = [o.strip() for o in settings.allowed_origins.split(",")] if settings.allowed_origins.strip() else ["*"]
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=["*"],
+        allow_origins=origins,
         allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],
@@ -59,8 +62,60 @@ def create_app() -> FastAPI:
 
     limiter = Limiter(key_func=get_remote_address, default_limits=[settings.rate_limit])
     app.state.limiter = limiter
-    app.add_exception_handler(RateLimitExceeded, lambda r, e: e)
+
+    def rate_limit_handler(request, exc: RateLimitExceeded):
+        return JSONResponse(
+            status_code=429,
+            content={"detail": "Too many requests"},
+            headers={"Retry-After": "60"},
+        )
+    app.add_exception_handler(RateLimitExceeded, rate_limit_handler)
     app.add_middleware(SlowAPIMiddleware)
+
+    def _log_request_error(request: Request, status_code: int, detail: str, level: str = "warning"):
+        try:
+            db = SessionLocal()
+            try:
+                from .services.system_log import write_system_log
+                request_id = getattr(request.state, "request_id", None) if request else None
+                write_system_log(
+                    db,
+                    level=level,
+                    category="request_error",
+                    message=detail or f"HTTP {status_code}",
+                    request_id=request_id,
+                    path=request.url.path if request else None,
+                    method=request.method if request else None,
+                    status_code=status_code,
+                    detail=detail[:500] if detail else None,
+                )
+            finally:
+                db.close()
+        except Exception:
+            pass
+
+    @app.exception_handler(FastAPIHTTPException)
+    async def http_exception_handler(request: Request, exc: FastAPIHTTPException):
+        level = "error" if exc.status_code >= 500 else "warning"
+        _log_request_error(request, exc.status_code, exc.detail or "", level)
+        return JSONResponse(status_code=exc.status_code, content={"detail": exc.detail or "Error"})
+
+    @app.exception_handler(Exception)
+    async def generic_exception_handler(request: Request, exc: Exception):
+        if isinstance(exc, RequestValidationError):
+            return JSONResponse(status_code=422, content={"detail": exc.errors()})
+        _log_request_error(request, 500, str(exc)[:500], "error")
+        return JSONResponse(status_code=500, content={"detail": "Internal server error"})
+
+    # Security headers (X-Frame-Options, X-Content-Type-Options, HSTS when HTTPS)
+    @app.middleware("http")
+    async def add_security_headers(request, call_next):
+        response = await call_next(request)
+        response.headers["X-Frame-Options"] = "DENY"
+        response.headers["X-Content-Type-Options"] = "nosniff"
+        if settings.public_base_url.strip().lower().startswith("https://"):
+            response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
+        return response
 
     # Routers
     app.include_router(auth_router)
@@ -91,6 +146,7 @@ def create_app() -> FastAPI:
     app.include_router(training_router)
     app.include_router(bug_report_router)
     app.include_router(search_router)
+    app.include_router(admin_system_router)
     from .routes import dispatch
     app.include_router(dispatch.router)
     # Legacy UI redirects to new React routes (exact paths)
@@ -140,7 +196,7 @@ def create_app() -> FastAPI:
     @app.on_event("startup")
     def _startup():
         print("[startup] Initializing application...")
-        # Ensure local SQLite directory exists
+        # Production (Render) uses PostgreSQL; SQLite branches below only run when DATABASE_URL is sqlite.
         if settings.database_url.startswith("sqlite:///./"):
             os.makedirs("var", exist_ok=True)
 
@@ -614,6 +670,58 @@ def create_app() -> FastAPI:
                         db.commit()
                         print("[startup] Created permission_templates table")
 
+                # Ensure system_logs table exists (admin panel / request_error logging)
+                if dialect == "sqlite":
+                    try:
+                        db.execute(text("SELECT 1 FROM system_logs LIMIT 1")).fetchone()
+                    except Exception:
+                        from .models.models import SystemLog
+                        Base.metadata.create_all(bind=engine, tables=[SystemLog.__table__])
+                        db.commit()
+                        print("[startup] Created system_logs table")
+                else:
+                    rows = db.execute(
+                        text(
+                            """
+                            SELECT 1
+                            FROM information_schema.tables
+                            WHERE table_name = 'system_logs'
+                            LIMIT 1
+                            """
+                        )
+                    ).fetchall()
+                    if not rows:
+                        from .models.models import SystemLog
+                        Base.metadata.create_all(bind=engine, tables=[SystemLog.__table__])
+                        db.commit()
+                        print("[startup] Created system_logs table")
+
+                # Soft delete columns on projects and clients (if missing)
+                for table_name, fk_col in [("projects", "deleted_by_id"), ("clients", "deleted_by_id"), ("proposals", "deleted_by_id"), ("quotes", "deleted_by_id")]:
+                    if dialect == "sqlite":
+                        try:
+                            cols = [r[1] for r in db.execute(text(f"PRAGMA table_info({table_name})")).fetchall()]
+                            if "deleted_at" not in cols:
+                                db.execute(text(f"ALTER TABLE {table_name} ADD COLUMN deleted_at TEXT"))
+                                db.execute(text(f"ALTER TABLE {table_name} ADD COLUMN {fk_col} TEXT REFERENCES users(id)"))
+                                db.commit()
+                                print(f"[startup] Added soft delete columns to {table_name}")
+                        except Exception:
+                            pass
+                    else:
+                        try:
+                            rows = db.execute(text("""
+                                SELECT column_name FROM information_schema.columns
+                                WHERE table_schema = 'public' AND table_name = :t AND column_name = 'deleted_at'
+                            """), {"t": table_name}).fetchall()
+                            if not rows:
+                                db.execute(text(f"ALTER TABLE {table_name} ADD COLUMN deleted_at TIMESTAMP WITH TIME ZONE"))
+                                db.execute(text(f"ALTER TABLE {table_name} ADD COLUMN {fk_col} UUID REFERENCES users(id) ON DELETE SET NULL"))
+                                db.commit()
+                                print(f"[startup] Added soft delete columns to {table_name}")
+                        except Exception:
+                            pass
+
                 print("[startup] Schema migrations check completed")
             except Exception as e:
                 print(f"[startup] Schema migrations check error (non-critical): {e}")
@@ -645,33 +753,7 @@ def create_app() -> FastAPI:
                 db.close()
         except Exception as e:
             print(f"⚠️  Could not check/seed permissions on startup: {e}")
-        
-        # Seed report categories if they don't exist (quick check only)
-        print("[startup] Checking report categories...")
-        try:
-            from sqlalchemy import text
-            db = SessionLocal()
-            try:
-                # Quick SQL-only check to avoid ORM overhead
-                result = db.execute(text("SELECT COUNT(*) FROM setting_lists WHERE name = 'report_categories'")).scalar()
-                if result == 0:
-                    print("[startup] Report categories not found (can be seeded later)")
-                else:
-                    # Quick check for items
-                    item_count = db.execute(text("""
-                        SELECT COUNT(*) FROM setting_items si
-                        JOIN setting_lists sl ON si.list_id = sl.id
-                        WHERE sl.name = 'report_categories'
-                    """)).scalar()
-                    print(f"[startup] Found {item_count} report category items")
-            except Exception as e:
-                print(f"[startup] Report categories check error (non-critical): {e}")
-            finally:
-                db.close()
-            print("[startup] Report categories check completed")
-        except Exception as e:
-            print(f"[startup] Could not check report categories (non-critical): {e}")
-        
+
         print("[startup] Application startup complete - server ready!")
 
     @app.get("/")
