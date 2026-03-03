@@ -19,7 +19,7 @@ except Exception:
 
 from ..config import settings
 from ..db import get_db
-from ..models.models import FileObject
+from ..models.models import FileObject, ClientFile
 from ..schemas.files import UploadRequest, UploadResponse, ConfirmRequest
 from ..storage.blob_provider import BlobStorageProvider
 from ..storage.local_provider import LocalStorageProvider
@@ -658,6 +658,15 @@ def serve_local_file(file_path: str):
     )
 
 
+def _download_filename(fo: FileObject, db: Session) -> str:
+    """Prefer display name from ClientFile.original_name when available."""
+    cf = db.query(ClientFile).filter(ClientFile.file_object_id == fo.id).first()
+    if cf and getattr(cf, "original_name", None) and str(cf.original_name).strip():
+        return str(cf.original_name).strip()
+    from pathlib import Path
+    return Path(fo.key).name
+
+
 @router.get("/{file_id}/download")
 def download(file_id: str, db: Session = Depends(get_db)):
     import logging
@@ -669,6 +678,8 @@ def download(file_id: str, db: Session = Depends(get_db)):
     
     # Get the appropriate storage provider for this specific file
     storage = get_storage_for_file(fo)
+    
+    download_filename = _download_filename(fo, db)
     
     # If using local storage, serve directly
     if isinstance(storage, LocalStorageProvider):
@@ -699,7 +710,7 @@ def download(file_id: str, db: Session = Depends(get_db)):
         return FileResponse(
             path=str(file_path),
             media_type=content_type,
-            filename=Path(fo.key).name
+            filename=download_filename
         )
     
     # For blob storage, return download URL

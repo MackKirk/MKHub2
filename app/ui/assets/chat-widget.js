@@ -26,7 +26,10 @@
   .mkchat-body{display:flex;flex:1;overflow:hidden}
   .mkchat-sidebar{width:280px;border-right:1px solid #e5e7eb;background:#f6f7f9;display:flex;flex-direction:column;overflow:hidden}
   .mkchat-sidebar-header{padding:12px 16px;border-bottom:1px solid #e5e7eb;background:#fff}
-  .mkchat-sidebar-header h3{margin:0;font-size:16px;font-weight:600;color:#0f172a}
+  .mkchat-sidebar-header h3{margin:0 0 8px 0;font-size:16px;font-weight:600;color:#0f172a}
+  .mkchat-sidebar-search{width:100%;padding:8px 12px;border:1px solid #e5e7eb;border-radius:8px;font-size:14px;outline:none;box-sizing:border-box}
+  .mkchat-sidebar-search:focus{border-color:#d11616}
+  .mkchat-sidebar-search::placeholder{color:#9ca3af}
   .mkchat-new-chat{width:100%;padding:10px 16px;margin:8px 12px;border:none;border-radius:8px;background:linear-gradient(90deg,#d11616,#ee2b2b);color:#fff;font-weight:600;cursor:pointer;font-size:14px;box-shadow:0 4px 12px rgba(209,22,22,.2);transition:transform .2s}
   .mkchat-new-chat:hover{transform:translateY(-1px);box-shadow:0 6px 18px rgba(209,22,22,.3)}
   .mkchat-conv-list{flex:1;overflow-y:auto;padding:8px 0}
@@ -40,6 +43,7 @@
   .mkchat-conv-preview{font-size:12px;color:#64748b;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   .mkchat-conv-meta{display:flex;flex-direction:column;align-items:flex-end;gap:4px;flex-shrink:0}
   .mkchat-conv-time{font-size:11px;color:#9ca3af}
+  .mkchat-date-separator{text-align:center;padding:8px 0;font-size:12px;color:#64748b;font-weight:500}
   .mkchat-unread{background:#d11616;color:#fff;border-radius:12px;padding:2px 6px;font-size:11px;font-weight:600;min-width:18px;text-align:center}
   .mkchat-main{flex:1;display:flex;flex-direction:column;background:#fff;overflow:hidden}
   .mkchat-main.empty{display:flex;align-items:center;justify-content:center;color:#9ca3af;font-size:14px}
@@ -52,12 +56,16 @@
   .mkchat-messages{flex:1;overflow-y:auto;padding:16px;background:#f6f7f9;display:flex;flex-direction:column;gap:8px}
   .mkchat-message{display:flex;gap:8px;align-items:flex-start}
   .mkchat-message.mine{flex-direction:row-reverse}
+  .mkchat-message.mine .mkchat-message-body{align-self:flex-end}
+  .mkchat-message-body{min-width:0;max-width:100%;display:flex;flex-direction:column}
   .mkchat-message-avatar{width:28px;height:28px;border-radius:50%;background:#e2e8f0;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:600;color:#334155;overflow:hidden;flex-shrink:0}
   .mkchat-message-avatar img{width:100%;height:100%;object-fit:cover}
-  .mkchat-message-bubble{max-width:70%;padding:10px 14px;border-radius:12px;font-size:14px;line-height:1.5;word-wrap:break-word}
+  .mkchat-message-bubble{max-width:70%;padding:10px 14px;border-radius:12px;font-size:14px;line-height:1.5;word-wrap:break-word;overflow-wrap:break-word;word-break:break-word}
   .mkchat-message:not(.mine) .mkchat-message-bubble{background:#fff;color:#0f172a;border:1px solid #e5e7eb}
   .mkchat-message.mine .mkchat-message-bubble{background:linear-gradient(90deg,#d11616,#ee2b2b);color:#fff}
   .mkchat-message-time{font-size:11px;color:#9ca3af;margin-top:4px;padding:0 4px}
+  .mkchat-chat-title .avatar{width:36px;height:36px;border-radius:50%;object-fit:cover;border:2px solid #d11616;flex-shrink:0}
+  .mkchat-chat-title .avatar-placeholder{width:36px;height:36px;border-radius:50%;background:#e2e8f0;display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:600;color:#334155;flex-shrink:0;border:2px solid #d11616}
   .mkchat-input-area{display:flex;gap:8px;padding:12px 16px;border-top:1px solid #e5e7eb;background:#fff}
   .mkchat-input-area input{flex:1;padding:10px 14px;border:1px solid #e5e7eb;border-radius:8px;font-size:14px;outline:none;transition:border-color .2s}
   .mkchat-input-area input:focus{border-color:#d11616}
@@ -66,6 +74,16 @@
   .mkchat-load-more{padding:12px;text-align:center}
   .mkchat-load-more button{padding:8px 16px;border:1px solid #e5e7eb;background:#fff;border-radius:8px;cursor:pointer;font-size:13px;color:#64748b;transition:all .2s}
   .mkchat-load-more button:hover{background:#f1f5f9;border-color:#d11616;color:#d11616}
+  .mkchat-msg-search-wrap{padding:8px 16px;border-bottom:1px solid #e5e7eb;background:#fff;display:flex;flex-direction:column;gap:8px}
+  .mkchat-msg-search{width:100%;padding:8px 12px;border:1px solid #e5e7eb;border-radius:8px;font-size:14px;outline:none;box-sizing:border-box}
+  .mkchat-msg-search:focus{border-color:#d11616}
+  .mkchat-search-results{max-height:240px;overflow-y:auto;background:#f8fafc;border-radius:8px;padding:4px}
+  .mkchat-search-result-item{padding:10px 12px;border-radius:6px;cursor:pointer;transition:background .15s;border-bottom:1px solid #e5e7eb}
+  .mkchat-search-result-item:last-child{border-bottom:none}
+  .mkchat-search-result-item:hover{background:#e2e8f0}
+  .mkchat-search-result-meta{font-size:11px;color:#64748b;margin-bottom:4px}
+  .mkchat-search-result-content{font-size:13px;color:#0f172a}
+  .mkchat-search-result-goto{font-size:11px;color:#d11616;margin-top:4px}
   .mkchat-user-list{flex:1;overflow-y:auto;padding:8px}
   .mkchat-user-item{display:flex;align-items:center;gap:12px;padding:10px 12px;border-radius:8px;cursor:pointer;transition:background .15s}
   .mkchat-user-item:hover{background:#f1f5f9}
@@ -100,6 +118,7 @@
       <div class="mkchat-sidebar">
         <div class="mkchat-sidebar-header">
           <h3>Conversations</h3>
+          <input type="text" id="mkSidebarSearch" class="mkchat-sidebar-search" placeholder="Buscar conversas..." />
         </div>
         <button class="mkchat-new-chat" id="mkNewChat">+ New Chat</button>
         <div class="mkchat-conv-list" id="mkConvList"></div>
@@ -113,6 +132,10 @@
               <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>
             </button>
           </div>
+        </div>
+        <div class="mkchat-msg-search-wrap" id="mkMsgSearchWrap" style="display:none">
+          <input type="text" id="mkMsgSearch" class="mkchat-msg-search" placeholder="Buscar nesta conversa..." />
+          <div class="mkchat-search-results" id="mkSearchResults"></div>
         </div>
         <div class="mkchat-messages" id="mkMsgs" style="display:none">
           <div class="mkchat-load-more"><button id="mkLoadMore" style="display:none">Load older messages</button></div>
@@ -153,6 +176,10 @@
   const groupInfoBtn = panel.querySelector('#mkGroupInfo');
   const groupInfoChatBtn = panel.querySelector('#mkGroupInfoChat');
   const chatTitleEl = panel.querySelector('#mkChatTitle');
+  const sidebarSearchEl = panel.querySelector('#mkSidebarSearch');
+  const msgSearchWrap = panel.querySelector('#mkMsgSearchWrap');
+  const msgSearchEl = panel.querySelector('#mkMsgSearch');
+  const searchResultsEl = panel.querySelector('#mkSearchResults');
 
   let conversations = [];
   let users = [];
@@ -161,6 +188,10 @@
   let me = null;
   let selected = new Map();
   let currentMode = 'empty'; // 'empty', 'chat', 'users', 'group-builder'
+  let sidebarSearchQuery = '';
+  let messageSearchQuery = '';
+  let messageSearchTimer = 0;
+  let searchResults = [];
 
   const wsProto = location.protocol === 'https:' ? 'wss' : 'ws';
   const ws = new WebSocket(wsProto + '://' + location.host + '/ws/chat?token=' + encodeURIComponent(token));
@@ -206,10 +237,42 @@
     }
   };
 
+  const escapeHtml = (text) => {
+    if (text == null || text === '') return '';
+    return String(text).replace(/[<>&]/g, s => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;' }[s]));
+  };
+
   const fmtInitials = (name) => {
     const parts = (name || '').trim().split(/\s+/).filter(Boolean);
     const letters = parts.slice(0, 2).map(p => p[0].toUpperCase()).join('');
     return letters || '?';
+  };
+
+  const formatDateLabel = (dateStr) => {
+    const d = new Date(dateStr);
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const yesterday = new Date(today);
+    yesterday.setDate(yesterday.getDate() - 1);
+    const dDay = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+    if (dDay.getTime() === today.getTime()) return 'Hoje';
+    if (dDay.getTime() === yesterday.getTime()) return 'Ontem';
+    return d.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' });
+  };
+
+  const relativeTime = (dateStr) => {
+    const d = new Date(dateStr);
+    const now = new Date();
+    const diffMs = now - d;
+    const diffMins = Math.floor(diffMs / 60000);
+    const diffHours = Math.floor(diffMs / 3600000);
+    const diffDays = Math.floor(diffMs / 86400000);
+    if (diffMins < 1) return 'Agora';
+    if (diffMins < 60) return diffMins + ' min';
+    if (diffHours < 24) return diffHours + ' h';
+    if (diffDays === 1) return 'Ontem';
+    if (diffDays < 7) return diffDays + ' dias';
+    return d.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
   };
 
   const getAvatarUrl = (user) => {
@@ -218,9 +281,20 @@
     return null;
   };
 
+  const getFilteredConversations = () => {
+    const q = (sidebarSearchQuery || '').trim().toLowerCase();
+    if (!q) return conversations;
+    return conversations.filter(c => {
+      const title = (c.title || '').toLowerCase();
+      const preview = (c.last_message && c.last_message.content ? String(c.last_message.content) : '').toLowerCase();
+      return title.includes(q) || preview.includes(q);
+    });
+  };
+
   const renderConversations = () => {
     convListEl.innerHTML = '';
-    conversations.forEach(c => {
+    const list = getFilteredConversations();
+    list.forEach(c => {
       const el = document.createElement('div');
       el.className = 'mkchat-conv-item' + (activeConv && c.id === activeConv.id ? ' active' : '');
       const avatarUrl = c.avatar_url || (c.other_user && getAvatarUrl(c.other_user));
@@ -230,10 +304,11 @@
       el.innerHTML = `
         ${avatar}
         <div class="mkchat-conv-info">
-          <div class="mkchat-conv-name">${c.title || 'Conversation'}</div>
-          <div class="mkchat-conv-preview">${c.last_message ? c.last_message.content : ''}</div>
+          <div class="mkchat-conv-name">${escapeHtml(c.title || 'Conversation')}</div>
+          <div class="mkchat-conv-preview">${c.last_message ? escapeHtml(c.last_message.content).slice(0, 60) + (c.last_message.content.length > 60 ? '\u2026' : '') : ''}</div>
         </div>
         <div class="mkchat-conv-meta">
+          ${c.last_message && c.last_message.created_at ? `<span class="mkchat-conv-time">${escapeHtml(relativeTime(c.last_message.created_at))}</span>` : ''}
           ${c.unread > 0 ? `<span class="mkchat-unread">${c.unread}</span>` : ''}
         </div>
       `;
@@ -283,9 +358,31 @@
   const appendMessage = (m) => {
     if (!activeConv) return;
     const mine = (me && m.sender_id === me.id);
+    const msgDate = m.created_at ? new Date(m.created_at).toISOString().slice(0, 10) : '';
+    const loadMoreContainer = msgsEl.querySelector('.mkchat-load-more');
+    const lastMsg = loadMoreContainer ? loadMoreContainer.nextElementSibling : msgsEl.querySelector('.mkchat-message');
+    let lastDate = null;
+    if (lastMsg && lastMsg.classList.contains('mkchat-message')) lastDate = lastMsg.getAttribute('data-date');
+    else if (lastMsg && lastMsg.classList.contains('mkchat-date-separator')) {
+      const prev = lastMsg.previousElementSibling;
+      if (prev && prev.classList.contains('mkchat-message')) lastDate = prev.getAttribute('data-date');
+    }
+    let insertAfter = null;
+    if (msgDate && msgDate !== lastDate) {
+      const sep = document.createElement('div');
+      sep.className = 'mkchat-date-separator';
+      sep.textContent = formatDateLabel(m.created_at);
+      if (loadMoreContainer) loadMoreContainer.insertAdjacentElement('afterend', sep);
+      else msgsEl.appendChild(sep);
+      insertAfter = sep;
+    } else {
+      const messages = msgsEl.querySelectorAll('.mkchat-message');
+      const lastMessageEl = messages.length ? messages[messages.length - 1] : null;
+      insertAfter = lastMessageEl || loadMoreContainer;
+    }
     const wrap = document.createElement('div');
     wrap.className = 'mkchat-message' + (mine ? ' mine' : '');
-    // Get members_detail from activeConv or conversations list
+    if (msgDate) wrap.setAttribute('data-date', msgDate);
     const membersDetail = activeConv?.members_detail || conversations.find(c => c.id === activeConv?.id)?.members_detail || [];
     const sender = membersDetail.find(mem => mem.id === String(m.sender_id));
     const senderName = sender?.name || sender?.username || 'User';
@@ -296,23 +393,15 @@
     const time = new Date(m.created_at).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
     wrap.innerHTML = `
       ${!mine ? avatar : ''}
-      <div style="display:flex;flex-direction:column;max-width:100%">
-        <div class="mkchat-message-bubble">${(m.content || '').replace(/[<>&]/g, s => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;' }[s]))}</div>
+      <div class="mkchat-message-body">
+        <div class="mkchat-message-bubble">${escapeHtml(m.content || '')}</div>
         <div class="mkchat-message-time" style="text-align:${mine ? 'right' : 'left'}">${time}</div>
       </div>
       ${mine ? avatar : ''}
     `;
-    // Always append to the end (after load-more button if it exists)
-    const loadMoreContainer = msgsEl.querySelector('.mkchat-load-more');
-    if (loadMoreContainer) {
-      loadMoreContainer.insertAdjacentElement('afterend', wrap);
-    } else {
-      msgsEl.appendChild(wrap);
-    }
-    // Scroll to bottom after adding message
-    setTimeout(() => {
-      msgsEl.scrollTop = msgsEl.scrollHeight;
-    }, 10);
+    if (insertAfter) insertAfter.insertAdjacentElement('afterend', wrap);
+    else msgsEl.appendChild(wrap);
+    setTimeout(() => { msgsEl.scrollTop = msgsEl.scrollHeight; }, 10);
   };
 
   const loadMessages = async (cid, before) => {
@@ -369,14 +458,19 @@
         return;
       }
       
-      // API returns messages in chronological order (oldest first), which is what we want
-      // When loading initial messages (!before), insert after load-more button
-      // When loading older messages (before), insert before load-more button
-      
-      rows.forEach(m => {
+      const getDay = (m) => m.created_at ? new Date(m.created_at).toISOString().slice(0, 10) : '';
+      const insertRow = (m, needSep, msgDate) => {
+        if (needSep && msgDate) {
+          const sep = document.createElement('div');
+          sep.className = 'mkchat-date-separator';
+          sep.textContent = formatDateLabel(m.created_at);
+          if (before) loadMoreContainer.insertAdjacentElement('beforebegin', sep);
+          else loadMoreContainer.insertAdjacentElement('afterend', sep);
+        }
         const mine = (me && m.sender_id === me.id);
         const wrap = document.createElement('div');
         wrap.className = 'mkchat-message' + (mine ? ' mine' : '');
+        if (msgDate) wrap.setAttribute('data-date', msgDate);
         const sender = membersDetail.find(mem => mem.id === String(m.sender_id));
         const senderName = sender?.name || sender?.username || 'User';
         const avatarUrl = sender && getAvatarUrl(sender);
@@ -386,20 +480,32 @@
         const time = new Date(m.created_at).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
         wrap.innerHTML = `
           ${!mine ? avatar : ''}
-          <div style="display:flex;flex-direction:column;max-width:100%">
-            <div class="mkchat-message-bubble">${(m.content || '').replace(/[<>&]/g, s => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;' }[s]))}</div>
+          <div class="mkchat-message-body">
+            <div class="mkchat-message-bubble">${escapeHtml(m.content || '')}</div>
             <div class="mkchat-message-time" style="text-align:${mine ? 'right' : 'left'}">${time}</div>
           </div>
           ${mine ? avatar : ''}
         `;
-        // If loading older messages (before), insert before load-more button
-        // If loading initial messages (!before), insert after load-more button
-        if (before) {
-          loadMoreContainer.insertAdjacentElement('beforebegin', wrap);
-        } else {
-          loadMoreContainer.insertAdjacentElement('afterend', wrap);
+        if (before) loadMoreContainer.insertAdjacentElement('beforebegin', wrap);
+        else loadMoreContainer.insertAdjacentElement('afterend', wrap);
+      };
+      if (before) {
+        for (let i = rows.length - 1; i >= 0; i--) {
+          const m = rows[i];
+          const msgDate = getDay(m);
+          const prevDate = i > 0 ? getDay(rows[i - 1]) : null;
+          const needSep = msgDate && (msgDate !== prevDate);
+          insertRow(m, needSep, msgDate);
         }
-      });
+      } else {
+        let lastDate = null;
+        rows.forEach(m => {
+          const msgDate = getDay(m);
+          const needSep = msgDate && msgDate !== lastDate;
+          if (needSep) lastDate = msgDate;
+          insertRow(m, needSep, msgDate);
+        });
+      }
       
       if (rows.length > 0) {
         // Update earliestTs to the oldest message in the batch
@@ -435,15 +541,21 @@
     activeConv = conv;
     emptyState.style.display = 'none';
     chatHeader.style.display = 'flex';
+    msgSearchWrap.style.display = 'block';
     msgsEl.style.display = 'flex';
     inputArea.style.display = 'flex';
     userListEl.style.display = 'none';
     groupBuilder.style.display = 'none';
+    if (msgSearchEl) msgSearchEl.placeholder = activeConv ? 'Buscar nesta conversa...' : 'Buscar...';
+    messageSearchQuery = '';
+    searchResults = [];
+    if (msgSearchEl) msgSearchEl.value = '';
+    renderSearchResults();
     const avatarUrl = conv.avatar_url || (conv.other_user && getAvatarUrl(conv.other_user));
     const avatar = avatarUrl
-      ? `<img src="${avatarUrl}" class="avatar" />`
-      : `<div class="avatar" style="width:36px;height:36px;border-radius:50%;background:#e2e8f0;display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:600;color:#334155">${fmtInitials(conv.title || '')}</div>`;
-    chatTitleInner.innerHTML = `${avatar}<span>${conv.title || 'Conversation'}</span>`;
+      ? `<img src="${escapeHtml(avatarUrl)}" class="avatar" alt="" />`
+      : `<div class="avatar-placeholder">${escapeHtml(fmtInitials(conv.title || ''))}</div>`;
+    chatTitleInner.innerHTML = `${avatar}<span>${escapeHtml(conv.title || 'Conversation')}</span>`;
     groupInfoBtn.style.display = conv.is_group ? 'inline-flex' : 'none';
     groupInfoChatBtn.style.display = conv.is_group ? 'inline-flex' : 'none';
     // Ensure activeConv is set before loading messages
@@ -469,6 +581,7 @@
     activeConv = null;
     emptyState.style.display = 'none';
     chatHeader.style.display = 'none';
+    msgSearchWrap.style.display = 'none';
     msgsEl.style.display = 'none';
     inputArea.style.display = 'none';
     userListEl.style.display = 'block';
@@ -476,6 +589,40 @@
     selected.clear();
     renderSelected();
     renderUsers();
+  };
+
+  const renderSearchResults = () => {
+    if (!searchResultsEl || !msgsEl || !inputArea) return;
+    if (searchResults.length === 0) {
+      searchResultsEl.innerHTML = messageSearchQuery.length >= 2 ? '<div class="mkchat-search-result-item" style="cursor:default;color:#64748b">Nenhum resultado.</div>' : '';
+      msgsEl.style.display = 'flex';
+      inputArea.style.display = 'flex';
+      return;
+    }
+    msgsEl.style.display = 'none';
+    inputArea.style.display = 'none';
+    searchResultsEl.innerHTML = searchResults.map(r => {
+      const dateStr = r.created_at ? new Date(r.created_at).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' }) : '';
+      const contentSnippet = escapeHtml(r.content || '').slice(0, 120) + (r.content && r.content.length > 120 ? '\u2026' : '');
+      return `<div class="mkchat-search-result-item" data-conv-id="${escapeHtml(r.conversation_id)}">
+        <div class="mkchat-search-result-meta">${escapeHtml(r.conversation_title)} \u2022 ${escapeHtml(r.sender_name)} \u2022 ${escapeHtml(dateStr)}</div>
+        <div class="mkchat-search-result-content">${contentSnippet}</div>
+        <div class="mkchat-search-result-goto">Ir para conversa</div>
+      </div>`;
+    }).join('');
+    searchResultsEl.querySelectorAll('.mkchat-search-result-item[data-conv-id]').forEach(el => {
+      el.addEventListener('click', () => {
+        const cid = el.getAttribute('data-conv-id');
+        const conv = conversations.find(c => c.id === cid);
+        if (conv) {
+          messageSearchQuery = '';
+          searchResults = [];
+          if (msgSearchEl) msgSearchEl.value = '';
+          renderSearchResults();
+          openConversation(conv);
+        }
+      });
+    });
   };
 
   const openConversation = async (conv) => {
@@ -523,6 +670,7 @@
       activeConv = null;
       emptyState.style.display = 'flex';
       chatHeader.style.display = 'none';
+      if (msgSearchWrap) msgSearchWrap.style.display = 'none';
       msgsEl.style.display = 'none';
       inputArea.style.display = 'none';
       userListEl.style.display = 'none';
@@ -540,6 +688,7 @@
     activeConv = null;
     emptyState.style.display = 'flex';
     chatHeader.style.display = 'none';
+    if (msgSearchWrap) msgSearchWrap.style.display = 'none';
     msgsEl.style.display = 'none';
     inputArea.style.display = 'none';
     userListEl.style.display = 'none';
@@ -616,6 +765,31 @@
   };
   groupInfoBtn.addEventListener('click', showGroupInfo);
   groupInfoChatBtn.addEventListener('click', showGroupInfo);
+
+  if (sidebarSearchEl) {
+    sidebarSearchEl.addEventListener('input', () => {
+      sidebarSearchQuery = sidebarSearchEl.value || '';
+      renderConversations();
+    });
+  }
+
+  if (msgSearchEl) {
+    msgSearchEl.addEventListener('input', () => {
+      messageSearchQuery = (msgSearchEl.value || '').trim();
+      clearTimeout(messageSearchTimer);
+      if (messageSearchQuery.length < 2) {
+        searchResults = [];
+        renderSearchResults();
+        return;
+      }
+      messageSearchTimer = setTimeout(async () => {
+        const url = '/chat/search?q=' + encodeURIComponent(messageSearchQuery) + (activeConv ? '&conversation_id=' + encodeURIComponent(activeConv.id) : '') + '&limit=30';
+        const data = await api('GET', url);
+        searchResults = Array.isArray(data) ? data : [];
+        renderSearchResults();
+      }, 300);
+    });
+  }
 
   // Bootstrap
   (async function init() {

@@ -7,8 +7,10 @@ type AuditLogEntry = {
   timestamp_utc: string;
   entity_type: string;
   entity_id: string;
+  entity_display: string | null;
   action: string;
   actor_id: string | null;
+  actor_name: string | null;
   actor_role: string | null;
   source: string | null;
   changes_json: Record<string, unknown> | null;
@@ -25,13 +27,21 @@ type SystemLogEntry = {
   path: string | null;
   method: string | null;
   user_id: string | null;
+  user_name: string | null;
   status_code: number | null;
   detail: string | null;
   extra: Record<string, unknown> | null;
 };
 
+type UserActivityEntry = {
+  user_id: string;
+  username: string;
+  email: string | null;
+  last_login_at: string | null;
+};
+
 export default function SystemAdmin() {
-  const [tab, setTab] = useState<'audit' | 'system'>('audit');
+  const [tab, setTab] = useState<'audit' | 'system' | 'last-login'>('audit');
   const [entityType, setEntityType] = useState('');
   const [actionFilter, setActionFilter] = useState('');
   const [dateFrom, setDateFrom] = useState('');
@@ -67,7 +77,13 @@ export default function SystemAdmin() {
     enabled: tab === 'system',
   });
 
-  const isLoading = tab === 'audit' ? auditLoading : systemLoading;
+  const { data: userActivity, isLoading: userActivityLoading } = useQuery<UserActivityEntry[]>({
+    queryKey: ['admin-system-user-activity'],
+    queryFn: () => api<UserActivityEntry[]>('GET', '/admin/system/user-activity?limit=200'),
+    enabled: tab === 'last-login',
+  });
+
+  const isLoading = tab === 'audit' ? auditLoading : tab === 'system' ? systemLoading : userActivityLoading;
 
   return (
     <div>
@@ -90,6 +106,13 @@ export default function SystemAdmin() {
           className={`px-4 py-2 font-medium rounded-t-lg transition-colors ${tab === 'system' ? 'bg-white border border-b-0 border-gray-200 text-gray-900' : 'text-gray-600 hover:bg-gray-100'}`}
         >
           System logs
+        </button>
+        <button
+          type="button"
+          onClick={() => setTab('last-login')}
+          className={`px-4 py-2 font-medium rounded-t-lg transition-colors ${tab === 'last-login' ? 'bg-white border border-b-0 border-gray-200 text-gray-900' : 'text-gray-600 hover:bg-gray-100'}`}
+        >
+          Last login
         </button>
       </div>
 
@@ -157,9 +180,18 @@ export default function SystemAdmin() {
                     {auditLogs.map((log) => (
                       <tr key={log.id} className="border-b border-gray-100 hover:bg-gray-50">
                         <td className="p-3 text-gray-600">{log.timestamp_utc.replace('T', ' ').slice(0, 19)}</td>
-                        <td className="p-3">{log.entity_type} / {log.entity_id.slice(0, 8)}…</td>
+                        <td className="p-3">
+                          {log.entity_display ? (
+                            <span title={`${log.entity_type} / ${log.entity_id}`}>{log.entity_display}</span>
+                          ) : (
+                            <span>{log.entity_type} / {log.entity_id.slice(0, 8)}…</span>
+                          )}
+                        </td>
                         <td className="p-3 font-medium">{log.action}</td>
-                        <td className="p-3">{log.actor_id ? `${log.actor_id.slice(0, 8)}…` : '—'} {log.actor_role ? `(${log.actor_role})` : ''}</td>
+                        <td className="p-3">
+                          {log.actor_name ?? (log.actor_id ? `${log.actor_id.slice(0, 8)}…` : '—')}
+                          {log.actor_role ? ` (${log.actor_role})` : ''}
+                        </td>
                         <td className="p-3">{log.source ?? '—'}</td>
                         <td className="p-3 max-w-xs truncate" title={log.context ? JSON.stringify(log.context) : ''}>
                           {log.context ? JSON.stringify(log.context).slice(0, 60) + '…' : '—'}
@@ -243,6 +275,7 @@ export default function SystemAdmin() {
                       <th className="text-left p-3">Level</th>
                       <th className="text-left p-3">Category</th>
                       <th className="text-left p-3">Message</th>
+                      <th className="text-left p-3">User</th>
                       <th className="text-left p-3">Path</th>
                       <th className="text-left p-3">Status</th>
                       <th className="text-left p-3">Request ID</th>
@@ -259,6 +292,7 @@ export default function SystemAdmin() {
                         </td>
                         <td className="p-3">{log.category}</td>
                         <td className="p-3 max-w-xs" title={log.detail ?? log.message}>{log.message}</td>
+                        <td className="p-3">{log.user_name ?? (log.user_id ? log.user_id.slice(0, 8) + '…' : '—')}</td>
                         <td className="p-3 max-w-[200px] truncate" title={log.path ?? ''}>{log.path ?? '—'}</td>
                         <td className="p-3">{log.status_code ?? '—'}</td>
                         <td className="p-3 font-mono text-xs">{log.request_id ? log.request_id.slice(0, 8) + '…' : '—'}</td>
@@ -270,6 +304,44 @@ export default function SystemAdmin() {
             ) : null}
           </div>
         </>
+      )}
+
+      {tab === 'last-login' && (
+        <div className="border rounded-lg overflow-hidden bg-white">
+          {userActivityLoading ? (
+            <div className="p-8 text-center text-gray-500">Carregando...</div>
+          ) : userActivity && userActivity.length === 0 ? (
+            <div className="p-8 text-center text-gray-500">Nenhum usuário ativo.</div>
+          ) : userActivity ? (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead className="bg-gray-100 border-b">
+                  <tr>
+                    <th className="text-left p-3">Usuário</th>
+                    <th className="text-left p-3">Email</th>
+                    <th className="text-left p-3">Último login</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {userActivity.map((u) => (
+                    <tr key={u.user_id} className="border-b border-gray-100 hover:bg-gray-50">
+                      <td className="p-3 font-medium">{u.username}</td>
+                      <td className="p-3 text-gray-600">{u.email ?? '—'}</td>
+                      <td className="p-3 text-gray-600">
+                        {u.last_login_at
+                          ? new Date(u.last_login_at).toLocaleString('pt-BR', {
+                              dateStyle: 'short',
+                              timeStyle: 'short',
+                            })
+                          : 'Nunca'}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : null}
+        </div>
       )}
 
       {isLoading && (

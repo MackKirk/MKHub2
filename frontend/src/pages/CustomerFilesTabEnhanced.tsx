@@ -19,6 +19,8 @@ export function CustomerFilesTabEnhanced({ clientId, files, onRefresh, hasEditPe
   const [editingImage, setEditingImage] = useState<{ fileObjectId: string; name: string } | null>(null);
   const [sortBy, setSortBy] = useState<'uploaded_at' | 'name' | 'type'>('uploaded_at');
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
+  const [editingFileNameId, setEditingFileNameId] = useState<string | null>(null);
+  const [editingFileNameValue, setEditingFileNameValue] = useState('');
 
   const { data: categories } = useQuery({
     queryKey: ['file-categories'],
@@ -203,6 +205,33 @@ export function CustomerFilesTabEnhanced({ clientId, files, onRefresh, hasEditPe
     }
   };
 
+  const handleRenameFile = async (fileId: string, newName: string) => {
+    const trimmed = (newName || '').trim();
+    if (!trimmed) {
+      toast.error('File name cannot be empty');
+      return;
+    }
+    if (trimmed.length > 255) {
+      toast.error('File name is too long');
+      return;
+    }
+    if (!canEditFiles) return;
+    try {
+      await api('PUT', `/clients/${clientId}/files/${fileId}`, { original_name: trimmed });
+      setEditingFileNameId(null);
+      setEditingFileNameValue('');
+      await onRefresh();
+      toast.success('File renamed');
+    } catch {
+      toast.error('Failed to rename file');
+    }
+  };
+
+  const startEditingFileName = (f: ClientFileForFiles) => {
+    setEditingFileNameId(f.id);
+    setEditingFileNameValue(f.original_name || f.file_object_id || '');
+  };
+
   return (
     <div className="space-y-4">
       <div className="rounded-xl border bg-white p-4">
@@ -338,8 +367,31 @@ export function CustomerFilesTabEnhanced({ clientId, files, onRefresh, hasEditPe
                                   </div>
                                 )}
                               </td>
-                              <td className="px-3 py-2 cursor-pointer" onClick={() => handleFilePreview(f)}>
-                                <div className="text-xs font-semibold truncate max-w-xs">{name}</div>
+                              <td className="px-3 py-2" onClick={(e) => { if (editingFileNameId !== f.id) { e.stopPropagation(); handleFilePreview(f); } }}>
+                                {editingFileNameId === f.id ? (
+                                  <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
+                                    <input
+                                      type="text"
+                                      value={editingFileNameValue}
+                                      onChange={(e) => setEditingFileNameValue(e.target.value)}
+                                      onKeyDown={(e) => {
+                                        if (e.key === 'Enter') handleRenameFile(f.id, editingFileNameValue);
+                                        if (e.key === 'Escape') { setEditingFileNameId(null); setEditingFileNameValue(''); }
+                                      }}
+                                      className="text-xs font-semibold border rounded px-2 py-1 max-w-xs flex-1"
+                                      autoFocus
+                                    />
+                                    <button onClick={() => handleRenameFile(f.id, editingFileNameValue)} title="Save" className="p-1 rounded hover:bg-green-100 text-green-700 text-xs">✓</button>
+                                    <button onClick={() => { setEditingFileNameId(null); setEditingFileNameValue(''); }} title="Cancel" className="p-1 rounded hover:bg-gray-100 text-xs">✕</button>
+                                  </div>
+                                ) : (
+                                  <div className="flex items-center gap-1">
+                                    <div className="text-xs font-semibold truncate max-w-xs cursor-pointer">{name}</div>
+                                    {canEditFiles && (
+                                      <button onClick={(e) => { e.stopPropagation(); startEditingFileName(f); }} title="Rename" className="p-1 rounded hover:bg-gray-100 text-xs flex-shrink-0">📝</button>
+                                    )}
+                                  </div>
+                                )}
                               </td>
                               <td className="px-3 py-2 cursor-pointer" onClick={() => handleFilePreview(f)}>
                                 <div className="text-xs text-gray-600">{getFileTypeLabel(f)}</div>

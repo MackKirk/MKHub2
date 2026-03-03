@@ -196,10 +196,7 @@ def create_app() -> FastAPI:
     @app.on_event("startup")
     def _startup():
         print("[startup] Initializing application...")
-        # Production (Render) uses PostgreSQL; SQLite branches below only run when DATABASE_URL is sqlite.
-        if settings.database_url.startswith("sqlite:///./"):
-            os.makedirs("var", exist_ok=True)
-
+        # Production (Render) uses PostgreSQL only. Schema migrations run only for PostgreSQL.
         # Lightweight schema safety checks / migrations (no Alembic in this repo).
         # Keep these idempotent and safe to run on every boot.
         print("[startup] Checking lightweight schema migrations...")
@@ -209,20 +206,10 @@ def create_app() -> FastAPI:
             db = SessionLocal()
             try:
                 dialect = db.bind.dialect.name if getattr(db, "bind", None) is not None else ""
-                
-                # Ensure quotes table exists
-                if dialect == "sqlite":
-                    # SQLite: Check if table exists
-                    try:
-                        db.execute(text("SELECT 1 FROM quotes LIMIT 1")).fetchone()
-                    except Exception:
-                        # Table doesn't exist, create it
-                        from .models.models import Quote
-                        Base.metadata.create_all(bind=engine, tables=[Quote.__table__])
-                        db.commit()
-                        print("[startup] Created quotes table")
+                if dialect != "postgresql" and "postgresql" not in dialect:
+                    print("[startup] Skipping schema migrations (non-PostgreSQL). Production requires PostgreSQL.")
                 else:
-                    # PostgreSQL / other dialects: Check if table exists
+                    # Ensure quotes table exists
                     rows = db.execute(
                         text(
                             """
@@ -234,22 +221,12 @@ def create_app() -> FastAPI:
                         )
                     ).fetchall()
                     if not rows:
-                        # Table doesn't exist, create it
                         from .models.models import Quote
                         Base.metadata.create_all(bind=engine, tables=[Quote.__table__])
                         db.commit()
                         print("[startup] Created quotes table")
 
-                # Ensure user_home_dashboard table exists
-                if dialect == "sqlite":
-                    try:
-                        db.execute(text("SELECT 1 FROM user_home_dashboard LIMIT 1")).fetchone()
-                    except Exception:
-                        from .models.models import UserHomeDashboard
-                        Base.metadata.create_all(bind=engine, tables=[UserHomeDashboard.__table__])
-                        db.commit()
-                        print("[startup] Created user_home_dashboard table")
-                else:
+                    # Ensure user_home_dashboard table exists
                     rows = db.execute(
                         text(
                             """
@@ -266,35 +243,7 @@ def create_app() -> FastAPI:
                         db.commit()
                         print("[startup] Created user_home_dashboard table")
 
-                # Ensure task_log_entries table exists (Task modal activity log)
-                if dialect == "sqlite":
-                    try:
-                        db.execute(text("SELECT 1 FROM task_log_entries LIMIT 1")).fetchone()
-                    except Exception:
-                        from .models.models import TaskLogEntry
-                        Base.metadata.create_all(bind=engine, tables=[TaskLogEntry.__table__])
-                        db.commit()
-                        print("[startup] Created task_log_entries table")
-
-                    # Ensure required columns exist (schema drift safe-guard)
-                    try:
-                        cols = db.execute(text("PRAGMA table_info(task_log_entries)")).fetchall()
-                        col_names = {str(r[1]) for r in cols}
-                        if "message" not in col_names:
-                            db.execute(text("ALTER TABLE task_log_entries ADD COLUMN message TEXT NULL"))
-                        if "entry_type" not in col_names:
-                            db.execute(text("ALTER TABLE task_log_entries ADD COLUMN entry_type TEXT NULL"))
-                        if "actor_id" not in col_names:
-                            db.execute(text("ALTER TABLE task_log_entries ADD COLUMN actor_id TEXT NULL"))
-                        if "actor_name" not in col_names:
-                            db.execute(text("ALTER TABLE task_log_entries ADD COLUMN actor_name TEXT NULL"))
-                        if "created_at" not in col_names:
-                            db.execute(text("ALTER TABLE task_log_entries ADD COLUMN created_at TEXT NULL"))
-                        db.commit()
-                    except Exception:
-                        # Best-effort only
-                        pass
-                else:
+                    # Ensure task_log_entries table exists (Task modal activity log)
                     rows = db.execute(
                         text(
                             """
@@ -313,14 +262,12 @@ def create_app() -> FastAPI:
 
                     # Ensure required columns exist (schema drift safe-guard)
                     try:
-                        # Add columns if missing (Postgres supports IF NOT EXISTS)
                         db.execute(text("ALTER TABLE task_log_entries ADD COLUMN IF NOT EXISTS message TEXT NOT NULL DEFAULT ''"))
                         db.execute(text("ALTER TABLE task_log_entries ADD COLUMN IF NOT EXISTS entry_type VARCHAR(50) NOT NULL DEFAULT 'comment'"))
                         db.execute(text("ALTER TABLE task_log_entries ADD COLUMN IF NOT EXISTS actor_id UUID NULL"))
                         db.execute(text("ALTER TABLE task_log_entries ADD COLUMN IF NOT EXISTS actor_name VARCHAR(255) NULL"))
                         db.execute(text("ALTER TABLE task_log_entries ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()"))
 
-                        # If legacy schema used "body", migrate to "message" and make body nullable
                         body_exists = db.execute(
                             text(
                                 """
@@ -333,29 +280,13 @@ def create_app() -> FastAPI:
                             )
                         ).fetchall()
                         if body_exists:
-                            # Migrate data from body to message
                             db.execute(text("UPDATE task_log_entries SET message = body WHERE (message IS NULL OR message = '') AND body IS NOT NULL"))
-                            # Make body nullable to avoid constraint violations
                             db.execute(text("ALTER TABLE task_log_entries ALTER COLUMN body DROP NOT NULL"))
                         db.commit()
                     except Exception as e:
                         print(f"[startup] task_log_entries schema check error (non-critical): {e}")
-                
-                # Check for source_attendance_id column in project_time_entries
-                has_col = False
-                if dialect == "sqlite":
-                    rows = db.execute(text("PRAGMA table_info(project_time_entries)")).fetchall()
-                    col_names = {str(r[1]) for r in rows}  # (cid, name, type, notnull, dflt_value, pk)
-                    has_col = "source_attendance_id" in col_names
-                    if not has_col:
-                        db.execute(text("ALTER TABLE project_time_entries ADD COLUMN source_attendance_id TEXT NULL"))
-                        try:
-                            db.execute(text("CREATE INDEX IF NOT EXISTS idx_project_time_entries_source_attendance_id ON project_time_entries(source_attendance_id)"))
-                        except Exception:
-                            pass
-                        db.commit()
-                else:
-                    # PostgreSQL / other dialects
+
+                    # Check for source_attendance_id column in project_time_entries
                     rows = db.execute(
                         text(
                             """
@@ -367,14 +298,12 @@ def create_app() -> FastAPI:
                             """
                         )
                     ).fetchall()
-                    has_col = bool(rows)
-                    if not has_col:
+                    if not rows:
                         db.execute(text("ALTER TABLE project_time_entries ADD COLUMN source_attendance_id UUID NULL"))
                         try:
                             db.execute(text("CREATE INDEX IF NOT EXISTS idx_project_time_entries_source_attendance_id ON project_time_entries(source_attendance_id)"))
                         except Exception:
                             pass
-                        # Best-effort FK for non-sqlite databases
                         try:
                             db.execute(
                                 text(
@@ -388,22 +317,10 @@ def create_app() -> FastAPI:
                                 )
                             )
                         except Exception:
-                            # Constraint may already exist or DB may not support it as written
                             pass
                         db.commit()
-                
-                # Check for cloth_size and cloth_sizes_custom columns in employee_profiles
-                if dialect == "sqlite":
-                    rows = db.execute(text("PRAGMA table_info(employee_profiles)")).fetchall()
-                    col_names = {str(r[1]) for r in rows}
-                    if "cloth_size" not in col_names:
-                        db.execute(text("ALTER TABLE employee_profiles ADD COLUMN cloth_size TEXT NULL"))
-                    if "cloth_sizes_custom" not in col_names:
-                        db.execute(text("ALTER TABLE employee_profiles ADD COLUMN cloth_sizes_custom TEXT NULL"))
-                    db.commit()
-                else:
-                    # PostgreSQL / other dialects
-                    # Check cloth_size column
+
+                    # Check for cloth_size and cloth_sizes_custom columns in employee_profiles
                     rows = db.execute(
                         text(
                             """
@@ -417,8 +334,7 @@ def create_app() -> FastAPI:
                     ).fetchall()
                     if not rows:
                         db.execute(text("ALTER TABLE employee_profiles ADD COLUMN cloth_size VARCHAR(50) NULL"))
-                    
-                    # Check cloth_sizes_custom column
+
                     rows = db.execute(
                         text(
                             """
@@ -432,19 +348,10 @@ def create_app() -> FastAPI:
                     ).fetchall()
                     if not rows:
                         db.execute(text("ALTER TABLE employee_profiles ADD COLUMN cloth_sizes_custom JSON NULL"))
-                    
+
                     db.commit()
-                
-                # Check for project_division_percentages column in projects
-                if dialect == "sqlite":
-                    rows = db.execute(text("PRAGMA table_info(projects)")).fetchall()
-                    col_names = {str(r[1]) for r in rows}
-                    if "project_division_percentages" not in col_names:
-                        db.execute(text("ALTER TABLE projects ADD COLUMN project_division_percentages TEXT NULL"))
-                        db.commit()
-                        print("[startup] Added project_division_percentages column to projects table")
-                else:
-                    # PostgreSQL / other dialects
+
+                    # Check for project_division_percentages column in projects
                     rows = db.execute(
                         text(
                             """
@@ -460,17 +367,8 @@ def create_app() -> FastAPI:
                         db.execute(text("ALTER TABLE projects ADD COLUMN project_division_percentages JSON NULL"))
                         db.commit()
                         print("[startup] Added project_division_percentages column to projects table")
-                
-                # Check for estimator_ids column in projects
-                if dialect == "sqlite":
-                    rows = db.execute(text("PRAGMA table_info(projects)")).fetchall()
-                    col_names = {str(r[1]) for r in rows}
-                    if "estimator_ids" not in col_names:
-                        db.execute(text("ALTER TABLE projects ADD COLUMN estimator_ids TEXT NULL"))
-                        db.commit()
-                        print("[startup] Added estimator_ids column to projects table")
-                else:
-                    # PostgreSQL / other dialects
+
+                    # Check for estimator_ids column in projects
                     rows = db.execute(
                         text(
                             """
@@ -486,17 +384,8 @@ def create_app() -> FastAPI:
                         db.execute(text("ALTER TABLE projects ADD COLUMN estimator_ids JSON NULL"))
                         db.commit()
                         print("[startup] Added estimator_ids column to projects table")
-                
-                # Check for project_admin_id column in projects
-                if dialect == "sqlite":
-                    rows = db.execute(text("PRAGMA table_info(projects)")).fetchall()
-                    col_names = {str(r[1]) for r in rows}
-                    if "project_admin_id" not in col_names:
-                        db.execute(text("ALTER TABLE projects ADD COLUMN project_admin_id TEXT NULL"))
-                        db.commit()
-                        print("[startup] Added project_admin_id column to projects table")
-                else:
-                    # PostgreSQL / other dialects
+
+                    # Check for project_admin_id column in projects
                     rows = db.execute(
                         text(
                             """
@@ -512,16 +401,8 @@ def create_app() -> FastAPI:
                         db.execute(text("ALTER TABLE projects ADD COLUMN project_admin_id UUID NULL"))
                         db.commit()
                         print("[startup] Added project_admin_id column to projects table")
-                
-                # Check for project_id column in user_documents (link doc to project/opportunity)
-                if dialect == "sqlite":
-                    rows = db.execute(text("PRAGMA table_info(user_documents)")).fetchall()
-                    col_names = {str(r[1]) for r in rows}
-                    if "project_id" not in col_names:
-                        db.execute(text("ALTER TABLE user_documents ADD COLUMN project_id TEXT NULL"))
-                        db.commit()
-                        print("[startup] Added project_id column to user_documents table")
-                else:
+
+                    # Check for project_id column in user_documents
                     rows = db.execute(
                         text(
                             """
@@ -542,33 +423,7 @@ def create_app() -> FastAPI:
                         db.commit()
                         print("[startup] Added project_id column to user_documents table")
 
-                # Create document_types table (preset document layouts: cover + back cover + content, etc.)
-                if dialect == "sqlite":
-                    rows = db.execute(text(
-                        "SELECT name FROM sqlite_master WHERE type='table' AND name='document_types'"
-                    )).fetchall()
-                    if not rows:
-                        db.execute(text("""
-                            CREATE TABLE document_types (
-                                id TEXT PRIMARY KEY,
-                                name TEXT NOT NULL,
-                                description TEXT,
-                                category TEXT,
-                                page_templates TEXT,
-                                created_at TEXT
-                            )
-                        """))
-                        db.commit()
-                        print("[startup] Created document_types table")
-                    else:
-                        try:
-                            db.execute(text("ALTER TABLE document_types ADD COLUMN category TEXT"))
-                            db.commit()
-                            print("[startup] Added category column to document_types table")
-                        except Exception as e:
-                            if "duplicate" not in str(e).lower():
-                                raise
-                else:
+                    # Create document_types table
                     db.execute(text("""
                         CREATE TABLE IF NOT EXISTS document_types (
                             id UUID PRIMARY KEY,
@@ -589,37 +444,10 @@ def create_app() -> FastAPI:
                             db.commit()
                             print("[startup] Added category column to document_types table")
                     except Exception:
-                        raise
+                        pass
                     print("[startup] document_types table ready")
 
-                # Project folders (subfolders inside project file categories)
-                if dialect == "sqlite":
-                    rows = db.execute(text("SELECT name FROM sqlite_master WHERE type='table' AND name='project_folders'")).fetchall()
-                    if not rows:
-                        db.execute(text("""
-                            CREATE TABLE project_folders (
-                                id TEXT PRIMARY KEY,
-                                project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
-                                category VARCHAR(100) NOT NULL,
-                                parent_id TEXT REFERENCES project_folders(id) ON DELETE CASCADE,
-                                name VARCHAR(255) NOT NULL,
-                                sort_index INTEGER NOT NULL DEFAULT 0,
-                                created_at TEXT
-                            )
-                        """))
-                        db.execute(text("CREATE INDEX IF NOT EXISTS idx_project_folders_project_id ON project_folders(project_id)"))
-                        db.commit()
-                        print("[startup] Created project_folders table")
-                    try:
-                        cols = db.execute(text("PRAGMA table_info(client_files)")).fetchall()
-                        if "folder_id" not in {str(c[1]) for c in cols}:
-                            db.execute(text("ALTER TABLE client_files ADD COLUMN folder_id TEXT REFERENCES project_folders(id) ON DELETE SET NULL"))
-                            db.commit()
-                            print("[startup] Added folder_id column to client_files")
-                    except Exception as e:
-                        if "duplicate" not in str(e).lower():
-                            pass  # non-critical
-                else:
+                    # Project folders
                     db.execute(text("""
                         CREATE TABLE IF NOT EXISTS project_folders (
                             id UUID PRIMARY KEY,
@@ -644,16 +472,7 @@ def create_app() -> FastAPI:
                     except Exception:
                         pass
 
-                # Ensure permission_templates table exists
-                if dialect == "sqlite":
-                    try:
-                        db.execute(text("SELECT 1 FROM permission_templates LIMIT 1")).fetchone()
-                    except Exception:
-                        from .models.models import PermissionTemplate
-                        Base.metadata.create_all(bind=engine, tables=[PermissionTemplate.__table__])
-                        db.commit()
-                        print("[startup] Created permission_templates table")
-                else:
+                    # Ensure permission_templates table exists
                     rows = db.execute(
                         text(
                             """
@@ -670,16 +489,7 @@ def create_app() -> FastAPI:
                         db.commit()
                         print("[startup] Created permission_templates table")
 
-                # Ensure system_logs table exists (admin panel / request_error logging)
-                if dialect == "sqlite":
-                    try:
-                        db.execute(text("SELECT 1 FROM system_logs LIMIT 1")).fetchone()
-                    except Exception:
-                        from .models.models import SystemLog
-                        Base.metadata.create_all(bind=engine, tables=[SystemLog.__table__])
-                        db.commit()
-                        print("[startup] Created system_logs table")
-                else:
+                    # Ensure system_logs table exists
                     rows = db.execute(
                         text(
                             """
@@ -696,19 +506,8 @@ def create_app() -> FastAPI:
                         db.commit()
                         print("[startup] Created system_logs table")
 
-                # Soft delete columns on projects and clients (if missing)
-                for table_name, fk_col in [("projects", "deleted_by_id"), ("clients", "deleted_by_id"), ("proposals", "deleted_by_id"), ("quotes", "deleted_by_id")]:
-                    if dialect == "sqlite":
-                        try:
-                            cols = [r[1] for r in db.execute(text(f"PRAGMA table_info({table_name})")).fetchall()]
-                            if "deleted_at" not in cols:
-                                db.execute(text(f"ALTER TABLE {table_name} ADD COLUMN deleted_at TEXT"))
-                                db.execute(text(f"ALTER TABLE {table_name} ADD COLUMN {fk_col} TEXT REFERENCES users(id)"))
-                                db.commit()
-                                print(f"[startup] Added soft delete columns to {table_name}")
-                        except Exception:
-                            pass
-                    else:
+                    # Soft delete columns (if missing)
+                    for table_name, fk_col in [("projects", "deleted_by_id"), ("clients", "deleted_by_id"), ("proposals", "deleted_by_id"), ("quotes", "deleted_by_id")]:
                         try:
                             rows = db.execute(text("""
                                 SELECT column_name FROM information_schema.columns
@@ -722,7 +521,7 @@ def create_app() -> FastAPI:
                         except Exception:
                             pass
 
-                print("[startup] Schema migrations check completed")
+                    print("[startup] Schema migrations check completed")
             except Exception as e:
                 print(f"[startup] Schema migrations check error (non-critical): {e}")
             finally:

@@ -236,6 +236,68 @@ def get_messages(
     ]
 
 
+@router.get("/search")
+def search_messages(
+    q: str = Query(..., min_length=1),
+    conversation_id: Optional[str] = Query(None),
+    limit: int = Query(50, ge=1, le=100),
+    db: Session = Depends(get_db),
+    me: User = Depends(get_current_user),
+):
+    """Search messages in conversations the user is a member of. Returns matches with conversation and sender context."""
+    my_conv_ids = (
+        db.query(ChatConversationMember.conversation_id)
+        .filter(ChatConversationMember.user_id == me.id)
+        .distinct()
+        .all()
+    )
+    my_conv_ids = [r[0] for r in my_conv_ids]
+    if not my_conv_ids:
+        return []
+
+    query = (
+        db.query(ChatMessage)
+        .filter(ChatMessage.conversation_id.in_(my_conv_ids))
+        .filter(ChatMessage.content.ilike(f"%{q.strip()}%"))
+    )
+    if conversation_id:
+        try:
+            cid = uuid.UUID(str(conversation_id))
+            if cid in my_conv_ids:
+                query = query.filter(ChatMessage.conversation_id == cid)
+        except ValueError:
+            pass
+    rows = query.order_by(ChatMessage.created_at.desc()).limit(limit).all()
+    if not rows:
+        return []
+
+    conv_ids = list({m.conversation_id for m in rows})
+    sender_ids = list({m.sender_id for m in rows})
+    conv_title_map = {}
+    for cid in conv_ids:
+        conv = db.query(ChatConversation).filter(ChatConversation.id == cid).first()
+        if conv:
+            conv_title_map[cid] = _conversation_summary(db, conv, me.id).get("title") or "Conversation"
+    sender_name_map = {}
+    for uid in sender_ids:
+        u = db.query(User).filter(User.id == uid).first()
+        if u:
+            ep = db.query(EmployeeProfile).filter(EmployeeProfile.user_id == uid).first()
+            sender_name_map[uid] = _user_basic(u, ep).get("name") or u.username
+    return [
+        {
+            "id": str(m.id),
+            "conversation_id": str(m.conversation_id),
+            "conversation_title": conv_title_map.get(m.conversation_id) or "Conversation",
+            "sender_id": str(m.sender_id),
+            "sender_name": sender_name_map.get(m.sender_id) or "User",
+            "content": m.content,
+            "created_at": m.created_at.isoformat(),
+        }
+        for m in rows
+    ]
+
+
 @router.post("/conversations/{conversation_id}/messages")
 def send_message(conversation_id: str, payload: dict, db: Session = Depends(get_db), me: User = Depends(get_current_user)):
     try:
