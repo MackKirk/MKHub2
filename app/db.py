@@ -3,13 +3,13 @@ from sqlalchemy import create_engine
 from .config import settings
 
 
-# Configure connection pool for better performance
+# Configure connection pool for better performance and burst traffic (e.g. many thumbnails/downloads)
 engine = create_engine(
     settings.database_url,
     future=True,
     pool_pre_ping=True,
-    pool_size=5,
-    max_overflow=10,
+    pool_size=10,
+    max_overflow=20,
     pool_recycle=3600,  # Recycle connections after 1 hour
     connect_args={"check_same_thread": False} if settings.database_url.startswith("sqlite") else {}
 )

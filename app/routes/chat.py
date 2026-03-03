@@ -6,7 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException, WebSocket, WebSocketDisco
 from sqlalchemy.orm import Session
 from sqlalchemy import func, and_
 
-from ..db import get_db
+from ..db import get_db, SessionLocal
 from ..auth.security import get_current_user, decode_token
 from ..models.models import (
     User,
@@ -410,7 +410,9 @@ def get_unread_count(db: Session = Depends(get_db), me: User = Depends(get_curre
 
 
 @router.websocket("/ws/chat")
-async def ws_chat(websocket: WebSocket, token: Optional[str] = None, db: Session = Depends(get_db)):
+async def ws_chat(websocket: WebSocket, token: Optional[str] = None):
+    # Do NOT use Depends(get_db) here: the session would be held for the entire
+    # WebSocket lifetime (minutes/hours per user), exhausting the connection pool.
     if not token:
         await websocket.close(code=4401)
         return
@@ -424,8 +426,8 @@ async def ws_chat(websocket: WebSocket, token: Optional[str] = None, db: Session
     await websocket.accept()
     await hub.connect(user_id, websocket)
 
-    # Send initial unread_count
-    # We need a DB-bound function here, so reuse logic
+    # Send initial unread_count using a short-lived session (connection released immediately)
+    db = SessionLocal()
     try:
         u = db.query(User).filter(User.id == uuid.UUID(user_id)).first()
         if u and u.is_active:
@@ -434,6 +436,8 @@ async def ws_chat(websocket: WebSocket, token: Optional[str] = None, db: Session
                 await hub.send_to_user(user_id, "unread_count", total)
     except Exception:
         pass
+    finally:
+        db.close()
 
     try:
         while True:

@@ -19,7 +19,7 @@ except Exception:
 
 from ..config import settings
 from ..db import get_db
-from ..models.models import FileObject, ClientFile
+from ..models.models import FileObject
 from ..schemas.files import UploadRequest, UploadResponse, ConfirmRequest
 from ..storage.blob_provider import BlobStorageProvider
 from ..storage.local_provider import LocalStorageProvider
@@ -658,18 +658,10 @@ def serve_local_file(file_path: str):
     )
 
 
-def _download_filename(fo: FileObject, db: Session) -> str:
-    """Prefer display name from ClientFile.original_name when available."""
-    cf = db.query(ClientFile).filter(ClientFile.file_object_id == fo.id).first()
-    if cf and getattr(cf, "original_name", None) and str(cf.original_name).strip():
-        return str(cf.original_name).strip()
-    from pathlib import Path
-    return Path(fo.key).name
-
-
 @router.get("/{file_id}/download")
 def download(file_id: str, db: Session = Depends(get_db)):
     import logging
+    from pathlib import Path
     logger = logging.getLogger(__name__)
     
     fo: Optional[FileObject] = db.query(FileObject).filter(FileObject.id == file_id).first()
@@ -679,12 +671,12 @@ def download(file_id: str, db: Session = Depends(get_db)):
     # Get the appropriate storage provider for this specific file
     storage = get_storage_for_file(fo)
     
-    download_filename = _download_filename(fo, db)
+    # Use storage key basename for download filename to avoid extra DB query in this hot path (reduces pool pressure)
+    download_filename = Path(fo.key).name
     
     # If using local storage, serve directly
     if isinstance(storage, LocalStorageProvider):
         from fastapi.responses import FileResponse
-        from pathlib import Path
         
         file_path = storage._get_path(fo.key)
         if not file_path.exists():
