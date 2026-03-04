@@ -1,5 +1,5 @@
 import { useParams, Link, useLocation, useNavigate } from 'react-router-dom';
-import { useMemo, useState, useEffect, useCallback, useRef } from 'react';
+import { useMemo, useState, useEffect, useCallback, useRef, type MutableRefObject } from 'react';
 import type { ReactNode } from 'react';
 import { useQuery, useQueryClient, useQueries } from '@tanstack/react-query';
 import { api } from '@/lib/api';
@@ -9,6 +9,7 @@ import ImagePicker from '@/components/ImagePicker';
 import EstimateBuilder, { type EstimateBuilderRef } from '@/components/EstimateBuilder';
 import ProposalForm, { toSqft, fromSqft, formatAreaLabel, type AreaUnit } from '@/components/ProposalForm';
 import { useConfirm } from '@/components/ConfirmProvider';
+import { useUnsavedChanges } from '@/components/UnsavedChangesProvider';
 import CalendarMock from '@/components/CalendarMock';
 import DispatchTab from '@/components/DispatchTab';
 import OrdersTab from '@/components/OrdersTab';
@@ -396,6 +397,8 @@ export default function ProjectDetail(){
   const [showOnSiteLeadsModal, setShowOnSiteLeadsModal] = useState(false);
   const [isHeroCollapsed, setIsHeroCollapsed] = useState(false);
   const estimateBuilderRef = useRef<EstimateBuilderRef>(null);
+  const proposalFormSaveRef = useRef<(() => Promise<void>) | undefined>(undefined);
+  const { hasUnsavedChanges, getHasUnsavedChanges } = useUnsavedChanges();
   
   // Check user permissions (moved before useEffect that uses them)
   const { data: me } = useQuery({ queryKey:['me'], queryFn: ()=>api<any>('GET','/auth/me') });
@@ -427,17 +430,14 @@ export default function ProjectDetail(){
   
   // Update tab when URL search params change
   useEffect(() => {
-    // Don't check permissions if user data is still loading
-    if (me === undefined) {
-      return;
-    }
-    
+    if (me === undefined) return;
+
     const searchParams = new URLSearchParams(location.search);
     const tabParam = searchParams.get('tab') as 'overview'|'general'|'reports'|'dispatch'|'timesheet'|'files'|'photos'|'documents'|'proposal'|'pricing'|'estimate'|'orders'|null;
-    if (tabParam && ['overview','general','reports','dispatch','timesheet','files','photos','documents','proposal','pricing','orders'].includes(tabParam)) {
-      // Check permission before setting tab
+    const validTabs = ['overview','general','reports','dispatch','timesheet','files','photos','documents','proposal','pricing','estimate','orders'];
+    if (tabParam && validTabs.includes(tabParam)) {
       if (tabParam === 'overview' || hasTabPermission(tabParam)) {
-        setTab(tabParam);
+        setTab(tabParam === 'overview' ? null : tabParam);
       } else {
         setTab(null);
         toast.error('You do not have permission to access this tab');
@@ -539,64 +539,102 @@ export default function ProjectDetail(){
     });
   }, [baseAvailableTabs, hasTabPermission, me]);
 
-  const handleTabClick = async (newTab: typeof availableTabs[number] | 'estimate' | null) => {
-    // If clicking Overview, set tab to null
+  // Invalidate queries for a tab so that when we switch to it we see fresh data (e.g. after save elsewhere)
+  const invalidateQueriesForTab = useCallback((tabName: typeof availableTabs[number] | 'estimate' | null) => {
+    if (!tabName || tabName === 'overview') return;
+    const projectId = String(id ?? '');
+    switch (tabName) {
+      case 'files':
+        queryClient.invalidateQueries({ queryKey: ['projectFiles', projectId] });
+        break;
+      case 'documents':
+        queryClient.invalidateQueries({ queryKey: ['document-creator-documents', projectId] });
+        break;
+      case 'orders':
+        queryClient.invalidateQueries({ queryKey: ['projectOrders', projectId] });
+        break;
+      case 'reports':
+        queryClient.invalidateQueries({ queryKey: ['projectReports', projectId] });
+        break;
+      case 'proposal':
+      case 'pricing':
+        queryClient.invalidateQueries({ queryKey: ['projectProposals', projectId] });
+        queryClient.invalidateQueries({ queryKey: ['proposal'] });
+        break;
+      case 'estimate':
+        queryClient.invalidateQueries({ queryKey: ['projectEstimates', projectId] });
+        queryClient.invalidateQueries({ queryKey: ['estimate'] });
+        break;
+      case 'dispatch':
+        queryClient.invalidateQueries({ queryKey: ['dispatch-shifts-all'] });
+        queryClient.invalidateQueries({ queryKey: ['dispatch-shifts', projectId] });
+        queryClient.invalidateQueries({ queryKey: ['dispatch-pending', projectId] });
+        queryClient.invalidateQueries({ queryKey: ['shifts'] });
+        queryClient.invalidateQueries({ queryKey: ['attendances'] });
+        break;
+      case 'timesheet':
+        queryClient.invalidateQueries({ queryKey: ['timesheet'] });
+        queryClient.invalidateQueries({ queryKey: ['timesheetLogs'] });
+        queryClient.invalidateQueries({ queryKey: ['timesheetLogsMini'] });
+        queryClient.invalidateQueries({ queryKey: ['attendances'] });
+        queryClient.invalidateQueries({ queryKey: ['dispatch-shifts-all'] });
+        break;
+      default:
+        break;
+    }
+  }, [id, queryClient]);
+
+  const doTabSwitch = useCallback((newTab: typeof availableTabs[number] | 'estimate' | null) => {
+    setTab(newTab);
     if (newTab === null) {
-      setTab(null);
       nav(location.pathname, { replace: true });
       setIsHeroCollapsed(false);
-      return;
+    } else {
+      nav(`${location.pathname}?tab=${newTab}`, { replace: true });
+      setIsHeroCollapsed(newTab !== 'overview');
+      invalidateQueriesForTab(newTab);
     }
-    
-    // Check permission for the tab being accessed
-    if (newTab !== 'overview' && !hasTabPermission(newTab)) {
+  }, [location.pathname, nav, invalidateQueriesForTab]);
+
+  const handleTabClick = async (newTab: typeof availableTabs[number] | 'estimate' | null) => {
+    // Check permission for the tab being accessed (when not going to overview)
+    if (newTab !== null && newTab !== 'overview' && !hasTabPermission(newTab)) {
       toast.error('You do not have permission to access this tab');
       return;
     }
-    // If leaving estimate tab and there are unsaved changes, show confirmation
-    if (tab === 'estimate' && newTab !== 'estimate' && estimateBuilderRef.current?.hasUnsavedChanges()) {
+
+    // Check if we're leaving a tab that has unsaved changes (ref + state so we never miss)
+    const proposalPricingUnsaved = getHasUnsavedChanges() || hasUnsavedChanges;
+    const leavingEstimateWithUnsaved = tab === 'estimate' && newTab !== 'estimate' && estimateBuilderRef.current?.hasUnsavedChanges();
+    // Show confirmation when leaving Proposal or Pricing (including switching between Proposal ↔ Pricing) with unsaved changes
+    const leavingProposalPricingWithUnsaved = (tab === 'proposal' || tab === 'pricing') && newTab !== tab && proposalPricingUnsaved;
+
+    if (leavingEstimateWithUnsaved || leavingProposalPricingWithUnsaved) {
+      const tabLabel = tab === 'estimate' ? 'Estimate' : tab === 'pricing' ? 'Pricing' : 'Proposal';
       const result = await confirm({
         title: 'Unsaved Changes',
-        message: 'You have unsaved changes in the Estimate tab. What would you like to do?',
+        message: `You have unsaved changes in the ${tabLabel} tab. What would you like to do?`,
         confirmText: 'Save and Continue',
         cancelText: 'Cancel',
         showDiscard: true,
         discardText: 'Discard Changes'
       });
-      
+
       if (result === 'confirm') {
-        // Save before leaving
-        const saved = await estimateBuilderRef.current?.save();
-        if (saved) {
-          setTab(newTab);
-          nav(`${location.pathname}?tab=${newTab}`, { replace: true });
-          // Collapse hero section when selecting a tab (except when going back to overview)
-          if (newTab !== 'overview') {
-            setIsHeroCollapsed(true);
-          }
+        if (leavingEstimateWithUnsaved) {
+          const saved = await estimateBuilderRef.current?.save();
+          if (saved) doTabSwitch(newTab);
+        } else {
+          await proposalFormSaveRef.current?.();
+          doTabSwitch(newTab);
         }
       } else if (result === 'discard') {
-        // Discard changes and leave
-        setTab(newTab);
-        nav(`${location.pathname}?tab=${newTab}`, { replace: true });
-        // Collapse hero section when selecting a tab (except when going back to overview)
-        if (newTab !== 'overview') {
-          setIsHeroCollapsed(true);
-        }
+        doTabSwitch(newTab);
       }
-      // If cancelled, do nothing (stay on estimate tab)
-    } else {
-      // No unsaved changes or not leaving estimate tab, proceed normally
-      setTab(newTab);
-      nav(`${location.pathname}?tab=${newTab}`, { replace: true });
-      // Collapse hero section when selecting a tab (except when going back to overview)
-      if (newTab !== 'overview') {
-        setIsHeroCollapsed(true);
-      } else {
-        // Expand hero section when going back to overview
-        setIsHeroCollapsed(false);
-      }
+      return;
     }
+
+    doTabSwitch(newTab);
   };
 
   const estimator = employees?.find((e:any) => String(e.id) === String(proj?.estimator_id));
@@ -660,10 +698,9 @@ export default function ProjectDetail(){
           <div className="flex items-center gap-3 flex-1">
             <button
               onClick={() => {
-                // If on a tab, go back to primary page; otherwise go to list
+                // If on a tab, go back to overview (may show unsaved confirmation); otherwise go to list
                 if (tab && tab !== 'overview') {
-                  setTab(null);
-                  nav(location.pathname, { replace: true });
+                  handleTabClick(null);
                 } else {
                   nav(proj?.is_bidding ? '/opportunities' : '/projects');
                 }
@@ -1604,11 +1641,11 @@ export default function ProjectDetail(){
               )}
 
               {tab==='proposal' && (
-                <ProjectProposalTab projectId={String(id)} clientId={String(proj?.client_id||'')} siteId={String(proj?.site_id||'')} proposals={proposals||[]} statusLabel={proj?.status_label||''} settings={settings||{}} isBidding={proj?.is_bidding} onPricingItemsChange={setLivePricingItems} showOnlyPricing={false} />
+                <ProjectProposalTab projectId={String(id)} clientId={String(proj?.client_id||'')} siteId={String(proj?.site_id||'')} proposals={proposals||[]} statusLabel={proj?.status_label||''} settings={settings||{}} isBidding={proj?.is_bidding} onPricingItemsChange={setLivePricingItems} showOnlyPricing={false} proposalFormSaveRef={proposalFormSaveRef} />
               )}
 
               {tab==='pricing' && (
-                <ProjectProposalTab projectId={String(id)} clientId={String(proj?.client_id||'')} siteId={String(proj?.site_id||'')} proposals={proposals||[]} statusLabel={proj?.status_label||''} settings={settings||{}} isBidding={proj?.is_bidding} onPricingItemsChange={setLivePricingItems} showOnlyPricing={true} />
+                <ProjectProposalTab projectId={String(id)} clientId={String(proj?.client_id||'')} siteId={String(proj?.site_id||'')} proposals={proposals||[]} statusLabel={proj?.status_label||''} settings={settings||{}} isBidding={proj?.is_bidding} onPricingItemsChange={setLivePricingItems} showOnlyPricing={true} proposalFormSaveRef={proposalFormSaveRef} />
               )}
 
               {tab==='estimate' && (
@@ -4348,7 +4385,7 @@ function ProjectFilesTabEnhanced({ projectId, files, onRefresh }:{ projectId:str
   );
 }
 
-function ProjectProposalTab({ projectId, clientId, siteId, proposals, statusLabel, settings, isBidding, onPricingItemsChange, showOnlyPricing = false }:{ projectId:string, clientId:string, siteId?:string, proposals: Proposal[], statusLabel:string, settings:any, isBidding?:boolean, onPricingItemsChange?: (items: any[])=>void, showOnlyPricing?: boolean }){
+function ProjectProposalTab({ projectId, clientId, siteId, proposals, statusLabel, settings, isBidding, onPricingItemsChange, showOnlyPricing = false, proposalFormSaveRef }: { projectId:string, clientId:string, siteId?:string, proposals: Proposal[], statusLabel:string, settings:any, isBidding?:boolean, onPricingItemsChange?: (items: any[])=>void, showOnlyPricing?: boolean, proposalFormSaveRef?: MutableRefObject<(() => Promise<void>) | undefined> }){
   const queryClient = useQueryClient();
   const [selectedTab, setSelectedTab] = useState<string>('proposal');
   
@@ -4593,6 +4630,7 @@ function ProjectProposalTab({ projectId, clientId, siteId, proposals, statusLabe
             initial={proposalData || null}
             disabled={!canEdit}
             showOnlyPricing={showOnlyPricing}
+            saveRef={proposalFormSaveRef}
             showRestrictionWarning={!canEdit && (!!statusLabel || (selectedTab.startsWith('change-order-') && selectedProposal?.approval_status === 'approved'))}
             restrictionMessage={
               !canEdit && selectedTab.startsWith('change-order-') && selectedProposal?.approval_status === 'approved'

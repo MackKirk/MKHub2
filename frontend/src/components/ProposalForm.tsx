@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, useRef, useCallback } from 'react';
+import { useEffect, useMemo, useState, useRef, useCallback, type MutableRefObject } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
@@ -136,7 +136,7 @@ function AreaPopover({ value, unit, onSave, onClose }: { value?: number; unit: A
   );
 }
 
-export default function ProposalForm({ mode, clientId: clientIdProp, siteId: siteIdProp, projectId: projectIdProp, initial, disabled, onSave, showRestrictionWarning, restrictionMessage, onPricingItemsChange, showOnlyPricing }: { mode:'new'|'edit', clientId?:string, siteId?:string, projectId?:string, initial?: any, disabled?: boolean, onSave?: ()=>void, showRestrictionWarning?: boolean, restrictionMessage?: string, onPricingItemsChange?: (items: any[])=>void, showOnlyPricing?: boolean }){
+export default function ProposalForm({ mode, clientId: clientIdProp, siteId: siteIdProp, projectId: projectIdProp, initial, disabled, onSave, showRestrictionWarning, restrictionMessage, onPricingItemsChange, showOnlyPricing, saveRef }: { mode:'new'|'edit', clientId?:string, siteId?:string, projectId?:string, initial?: any, disabled?: boolean, onSave?: ()=>void, showRestrictionWarning?: boolean, restrictionMessage?: string, onPricingItemsChange?: (items: any[])=>void, showOnlyPricing?: boolean, saveRef?: MutableRefObject<(() => Promise<void>) | undefined> }){
   const nav = useNavigate();
   const queryClient = useQueryClient();
   const confirm = useConfirm();
@@ -548,20 +548,19 @@ By signing the accompanying proposal, the Owner agrees to these Terms and Condit
       loadedItems.push({ name: 'Bid Price', price: formatAccounting(legacyBidPrice), quantity: '1', pst: false, gst: false });
     }
     dc.forEach((c:any)=> {
-      const label = String(c.label||'');
-      const value = c.value ?? c.amount ?? '';
-      if (label && Number(value) > 0) {
-        loadedItems.push({ 
-          name: label, 
-          price: formatAccounting(value),
-          quantity: c.quantity || '1',
-          pst: c.pst === true || c.pst === 'true' || c.pst === 1,
-          gst: c.gst === true || c.gst === 'true' || c.gst === 1,
-          division_id: c.division_id ? String(c.division_id) : undefined,
-          area_value: c.area_value != null && c.area_value !== '' ? Number(c.area_value) : undefined,
-          area_unit: (c.area_unit === 'sqft' || c.area_unit === 'm2' || c.area_unit === 'sqs') ? c.area_unit : undefined
-        });
-      }
+      const label = String(c.label ?? '').trim();
+      const value = c.value ?? c.amount ?? 0;
+      const numValue = Number(value);
+      loadedItems.push({ 
+        name: label, 
+        price: formatAccounting(Number.isNaN(numValue) ? 0 : numValue),
+        quantity: c.quantity || '1',
+        pst: c.pst === true || c.pst === 'true' || c.pst === 1,
+        gst: c.gst === true || c.gst === 'true' || c.gst === 1,
+        division_id: c.division_id ? String(c.division_id) : undefined,
+        area_value: c.area_value != null && c.area_value !== '' ? Number(c.area_value) : undefined,
+        area_unit: (c.area_unit === 'sqft' || c.area_unit === 'm2' || c.area_unit === 'sqs') ? c.area_unit : undefined
+      });
     });
     setPricingItems(loadedItems);
     const os = Array.isArray(d.optional_services)? d.optional_services : [];
@@ -1003,10 +1002,21 @@ By signing the accompanying proposal, the Owner agrees to these Terms and Condit
     finally{ setIsSaving(false); }
   }, [disabled, isSaving, mode, initial?.id, projectId, clientId, siteId, coverTitle, templateStyle, orderNumber, date, createdFor, primary, typeOfProject, otherNotes, projectDescription, additionalNotes, totalNum, showTotalInPdf, showPstInPdf, showGstInPdf, pstRate, gstRate, areaDisplayUnit, terms, pricingItems, optionalServices, sections, coverFoId, page2FoId, nav, queryClient, onSave, computeFingerprint, sanitizeSections, parseAccounting]);
 
-  // Update ref when handleSave changes
+  // Update ref when handleSave changes (for internal and parent save triggers)
   useEffect(() => {
     handleSaveRef.current = handleSave;
-  }, [handleSave]);
+    if (saveRef) saveRef.current = handleSave;
+    return () => {
+      if (saveRef) saveRef.current = undefined;
+    };
+  }, [handleSave, saveRef]);
+
+  // Clear global unsaved state when ProposalForm unmounts (e.g. user switched tab)
+  useEffect(() => {
+    return () => {
+      setGlobalUnsavedChanges(false);
+    };
+  }, [setGlobalUnsavedChanges]);
 
   // Clear proposal function - clears all fields except orderNumber, companyName, and companyAddress
   const handleClearProposal = useCallback(async () => {
@@ -1108,15 +1118,19 @@ By signing the accompanying proposal, the Owner agrees to these Terms and Condit
       const r:any = await api('POST','/proposals', payload);
       
       // Update proposal ID ref for auto-save
-      if (r?.id) {
-        proposalIdRef.current = r.id;
+      const savedId = r?.id;
+      if (savedId) {
+        proposalIdRef.current = savedId;
       }
       
-      // If this was a new proposal and now has id, update mode to edit
-      if (mode === 'new' && r?.id) {
-        queryClient.invalidateQueries({ queryKey: ['proposals'] });
-      } else if (mode === 'edit') {
-        queryClient.invalidateQueries({ queryKey: ['proposals'] });
+      // Invalidate the same queries as manual save so that when user switches tab and
+      // comes back, the proposal and list data are refetched and show the saved state
+      queryClient.invalidateQueries({ queryKey: ['proposals'] });
+      if (projectId) {
+        queryClient.invalidateQueries({ queryKey: ['projectProposals', projectId] });
+      }
+      if (savedId) {
+        queryClient.invalidateQueries({ queryKey: ['proposal', savedId] });
       }
       
       setLastSavedHash(computeFingerprint());
