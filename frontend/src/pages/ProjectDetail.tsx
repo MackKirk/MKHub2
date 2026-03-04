@@ -4488,8 +4488,8 @@ function ProjectProposalTab({ projectId, clientId, siteId, proposals, statusLabe
     }
     
     // For projects (is_bidding = false), use existing logic
-    // Only allow editing if status is "prospecting"
-    return statusLabelLower === 'prospecting';
+    // Allow editing for "Prospecting" and "In Progress"
+    return statusLabelLower === 'prospecting' || statusLabelLower === 'in progress';
   }, [statusLabel, hasEditProposalPermission, isBidding, selectedTab, organizedProposals]);
   
   // Handle creating a new Change Order
@@ -4595,8 +4595,8 @@ function ProjectProposalTab({ projectId, clientId, siteId, proposals, statusLabe
                   </button>
                 );
               })}
-              {/* Create Change Order tab - only show in projects (not opportunities) */}
-              {!isBidding && hasEditProposalPermission && organizedProposals.original && (
+              {/* Create Change Order tab - hidden for now */}
+              {false && !isBidding && hasEditProposalPermission && organizedProposals.original && (
                 <button
                   onClick={handleCreateChangeOrder}
                   className={`whitespace-nowrap py-2 px-2 border-b-2 font-semibold text-xs ${

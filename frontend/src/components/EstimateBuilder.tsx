@@ -78,11 +78,11 @@ const EstimateBuilder = forwardRef<EstimateBuilderRef, { projectId: string, esti
       }
       
       // For projects (isBidding = false), use existing logic
-      // Always allow "estimating" and "prospecting" status
-      if (statusLabelStr === 'estimating' || statusLabelStr === 'prospecting') return true;
+      // Always allow "estimating", "prospecting", and "In Progress" status
+      if (statusLabelStr === 'estimating' || statusLabelStr === 'prospecting' || statusLabelStr === 'in progress') return true;
       
-      // Always restrict "In Progress" and "On Hold" (same as proposals)
-      if (statusLabelStr === 'in progress' || statusLabelStr === 'on hold') return false;
+      // Restrict "On Hold" (same as proposals)
+      if (statusLabelStr === 'on hold') return false;
       
       // If no settings or project_statuses, allow editing
       if (!settings || !settings.project_statuses || !Array.isArray(settings.project_statuses)) return true;
@@ -119,11 +119,11 @@ const EstimateBuilder = forwardRef<EstimateBuilderRef, { projectId: string, esti
     }
     
     // For projects (isBidding = false), use existing logic
-    // Always allow "estimating" and "prospecting" status
-    if (statusLabelStr === 'estimating' || statusLabelStr === 'prospecting') return true;
+    // Always allow "estimating", "prospecting", and "In Progress" status
+    if (statusLabelStr === 'estimating' || statusLabelStr === 'prospecting' || statusLabelStr === 'in progress') return true;
     
-    // Always restrict "In Progress" and "On Hold" (same as proposals)
-    if (statusLabelStr === 'in progress' || statusLabelStr === 'on hold') return false;
+    // Restrict "On Hold" (same as proposals)
+    if (statusLabelStr === 'on hold') return false;
     
     // If no settings or project_statuses, allow editing
     if (!settings || !settings.project_statuses || !Array.isArray(settings.project_statuses)) return true;
