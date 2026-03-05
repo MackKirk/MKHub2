@@ -7802,14 +7802,27 @@ function EditEstimatorModal({ projectId, currentEstimatorIds, employees, onClose
     setEstimatorIds(prev => prev.filter(eid => eid !== id));
   };
 
-  const filteredEmployees = employees.filter((emp: any) => {
-    if (!searchQuery.trim()) return true;
-    const searchLower = searchQuery.toLowerCase();
-    const name = getUserDisplayName(emp).toLowerCase();
-    const email = (emp.email || '').toLowerCase();
-    const username = (emp.username || '').toLowerCase();
-    return name.includes(searchLower) || email.includes(searchLower) || username.includes(searchLower);
+  // Only show users that have "Sales / Estimating" in their Departments (from User.divisions or department string)
+  const ESTIMATOR_DEPARTMENT = 'Sales / Estimating';
+  const employeesInEstimatingDept = (employees || []).filter((emp: any) => {
+    const target = ESTIMATOR_DEPARTMENT.toLowerCase();
+    if (Array.isArray(emp.divisions) && emp.divisions.length > 0) {
+      return emp.divisions.some((d: any) => String(d?.label || '').trim().toLowerCase() === target);
+    }
+    const dept = String((emp.department || emp.division || '')).trim();
+    return dept.toLowerCase().includes(target);
   });
+
+  const filteredEmployees = employeesInEstimatingDept
+    .filter((emp: any) => {
+      if (!searchQuery.trim()) return true;
+      const searchLower = searchQuery.toLowerCase();
+      const name = getUserDisplayName(emp).toLowerCase();
+      const email = (emp.email || '').toLowerCase();
+      const username = (emp.username || '').toLowerCase();
+      return name.includes(searchLower) || email.includes(searchLower) || username.includes(searchLower);
+    })
+    .sort((a: any, b: any) => getUserDisplayName(a).localeCompare(getUserDisplayName(b), undefined, { sensitivity: 'base' }));
 
   const handleSave = async () => {
     const sortedIds = [...estimatorIds].sort();
@@ -7861,7 +7874,11 @@ function EditEstimatorModal({ projectId, currentEstimatorIds, employees, onClose
             <label className="text-sm font-medium text-gray-700 mb-2 block">Select Estimators</label>
             <div className="space-y-2 max-h-[300px] overflow-y-auto">
               {filteredEmployees.length === 0 ? (
-                <div className="text-sm text-gray-500 text-center py-4">No employees found matching your search.</div>
+                <div className="text-sm text-gray-500 text-center py-4">
+                  {employeesInEstimatingDept.length === 0
+                    ? 'No employees in Sales / Estimating department.'
+                    : 'No employees found matching your search.'}
+                </div>
               ) : (
                 filteredEmployees.map((emp: any) => {
                   const isSelected = estimatorIds.includes(String(emp.id));

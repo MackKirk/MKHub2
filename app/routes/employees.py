@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Depends
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 from typing import Optional, List
 
 from ..db import get_db
@@ -14,8 +14,12 @@ router = APIRouter(prefix="/employees", tags=["employees"])
 
 @router.get("")
 def list_employees(q: Optional[str] = None, db: Session = Depends(get_db), _=Depends(get_current_user)):
-    # Join users with employee profile when available
-    query = db.query(User, EmployeeProfile).outerjoin(EmployeeProfile, EmployeeProfile.user_id == User.id)
+    # Join users with employee profile when available; load User.divisions for department/estimator filter
+    query = (
+        db.query(User, EmployeeProfile)
+        .outerjoin(EmployeeProfile, EmployeeProfile.user_id == User.id)
+        .options(joinedload(User.divisions))
+    )
     if q:
         like = f"%{q}%"
         query = query.filter((User.username.ilike(like)) | (EmployeeProfile.first_name.ilike(like)) | (EmployeeProfile.last_name.ilike(like)) | (EmployeeProfile.preferred_name.ilike(like)))
@@ -51,6 +55,13 @@ def list_employees(q: Optional[str] = None, db: Session = Depends(get_db), _=Dep
                 parts.append(country)
             address = ', '.join(parts) if parts else None
 
+        # User divisions (from Users page Departments) - list of {id, label}
+        user_divisions = getattr(u, 'divisions', []) or []
+        divisions = [{"id": str(d.id), "label": (d.label or '').strip()} for d in user_divisions if d and getattr(d, 'label', None)]
+        # department: prefer comma-separated labels from User.divisions; fallback to EmployeeProfile.division
+        dept_from_divisions = ", ".join(d["label"] for d in divisions if d["label"]) if divisions else None
+        department = dept_from_divisions or ((getattr(ep, 'division', None) or '').strip() or None if ep else None)
+
         out.append({
             "id": str(u.id),
             "username": u.username,
@@ -60,7 +71,8 @@ def list_employees(q: Optional[str] = None, db: Session = Depends(get_db), _=Dep
             "email": u.email_personal,
             "phone": getattr(ep, 'phone', None) or getattr(ep, 'mobile_phone', None) if ep else None,
             "address": address,
-            "department": (getattr(ep, 'division', None) or '').strip() or None if ep else None,
+            "department": department,
+            "divisions": divisions,
             "job_title": getattr(ep, 'job_title', None) if ep else None,
             "profile_photo_file_id": str(getattr(ep, 'profile_photo_file_id')) if (ep and getattr(ep, 'profile_photo_file_id', None)) else None,
             "roles": [r.name for r in getattr(u, 'roles', [])] if hasattr(u, 'roles') else [],
