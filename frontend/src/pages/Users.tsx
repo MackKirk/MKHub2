@@ -210,9 +210,9 @@ export default function Users(){
                 <div className="flex flex-col items-center text-center gap-2 w-full">
                   <div className="relative">
                     {u.profile_photo_file_id? (
-                      <img src={`/files/${u.profile_photo_file_id}/thumbnail?w=120`} className="w-16 h-16 rounded-full object-cover border-2 border-gray-200"/>
+                      <img src={`/files/${u.profile_photo_file_id}/thumbnail?w=120`} className="w-16 h-16 rounded-full object-cover border-2 border-gray-200" loading="lazy"/>
                     ) : (
-                      <img src="/ui/assets/placeholders/user.png" className="w-16 h-16 rounded-full object-cover border-2 border-gray-200"/>
+                      <img src="/ui/assets/placeholders/user.png" className="w-16 h-16 rounded-full object-cover border-2 border-gray-200" loading="lazy"/>
                     )}
                     {isAdmin && (
                       <div className="absolute -top-1 -right-1 w-5 h-5 bg-yellow-400 rounded-full flex items-center justify-center border-2 border-white">

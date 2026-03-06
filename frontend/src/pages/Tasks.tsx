@@ -66,7 +66,7 @@ export default function TasksPage() {
   const { data, isLoading, isError, error, refetch } = useQuery({
     queryKey: ['tasks'],
     queryFn: async () => {
-      const res = await api<TaskBuckets>('GET', '/tasks');
+      const res = await api<TaskBuckets>('GET', '/tasks?limit=300');
       // Normalize in case backend returns unexpected shape
       if (res && typeof res === 'object') {
         return {

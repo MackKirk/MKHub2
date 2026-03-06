@@ -323,10 +323,10 @@ export default function ImageEditor({ isOpen, onClose, imageUrl, imageName = 'im
         if (downloadUrl) {
           urlToLoad = downloadUrl;
         } else {
-          urlToLoad = `/files/${fileObjectId}/thumbnail?w=4096`;
+          urlToLoad = `/files/${fileObjectId}/thumbnail?w=1024`;
         }
       } catch (_e) {
-        urlToLoad = `/files/${fileObjectId}/thumbnail?w=4096`;
+        urlToLoad = `/files/${fileObjectId}/thumbnail?w=1024`;
       }
       
       const image = new Image();
@@ -369,7 +369,7 @@ export default function ImageEditor({ isOpen, onClose, imageUrl, imageName = 'im
         }
         imageLoaded = false;
         image.crossOrigin = '';
-        image.src = `/files/${fileObjectId}/thumbnail?w=4096`;
+        image.src = `/files/${fileObjectId}/thumbnail?w=1024`;
       };
       
       image.crossOrigin = 'anonymous';

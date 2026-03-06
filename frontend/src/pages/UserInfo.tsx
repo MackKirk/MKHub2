@@ -3647,7 +3647,7 @@ function TimesheetBlock({ userId, canEdit = true }:{ userId:string, canEdit?: bo
   const { data: projects = [] } = useQuery({
     queryKey: ['attendance-projects'],
     queryFn: async () => {
-      const result = await api<Project[]>('GET', '/projects');
+      const result = await api<Project[]>('GET', '/projects?limit=100');
       return Array.isArray(result) ? result : [];
     },
   });

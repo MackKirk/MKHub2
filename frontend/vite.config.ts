@@ -69,7 +69,16 @@ export default defineConfig({
     },
     rollupOptions: {
       output: {
-        manualChunks: undefined
+        manualChunks(id) {
+          if (id.includes('node_modules')) {
+            // React + React-DOM must be in the SAME chunk to avoid "multiple React copies" crash
+            if (id.includes('react-dom') || id.includes('/react/')) return 'vendor-react';
+            if (id.includes('react-router') || id.includes('react-router-dom')) return 'vendor-router';
+            if (id.includes('@tanstack/react-query')) return 'vendor-query';
+            if (id.includes('framer-motion')) return 'vendor-motion';
+            // Do NOT split react-grid-layout: it extends React.Component and can run before React is ready in another chunk
+          }
+        }
       }
     }
   },

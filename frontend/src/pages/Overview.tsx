@@ -290,7 +290,7 @@ function QuickActionCard({ to, iconBg, iconColor, iconPath, label, summaryKey }:
   // Tasks summary
   const { data: tasksData } = useQuery({
     queryKey: ['tasks-summary'],
-    queryFn: () => api<any>('GET', '/tasks').catch(() => ({ accepted: [], in_progress: [], done: [] })),
+    queryFn: () => api<any>('GET', '/tasks?limit=50').catch(() => ({ accepted: [], in_progress: [], done: [] })),
     enabled: summaryKey === 'tasks',
   });
   

@@ -122,7 +122,7 @@ function PageThumbnail({
               ) : (
                 el.content && (
                   <img
-                    src={`/files/${el.content}/thumbnail?w=80`}
+                    src={`/files/${el.content}/thumbnail?w=80`} loading="lazy"
                     alt=""
                     className="w-full h-full"
                     style={{

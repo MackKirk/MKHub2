@@ -2,7 +2,7 @@ import uuid
 from datetime import datetime, timezone
 from typing import List, Optional
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from sqlalchemy import cast, String
 
@@ -17,8 +17,10 @@ router = APIRouter(prefix="/community", tags=["community"])
 @router.get("/posts")
 def list_posts(
     filter: Optional[str] = None,
+    limit: int = Query(50, ge=1, le=200),
+    offset: int = Query(0, ge=0),
     db: Session = Depends(get_db),
-    current_user = Depends(get_current_user)
+    current_user = Depends(get_current_user),
 ):
     """
     List community posts with optional filtering.
@@ -65,7 +67,7 @@ def list_posts(
         # Simple string search in JSON array - PostgreSQL stores JSON as text in some cases
         query = query.filter(cast(CommunityPost.tags, String).like('%Announcement%'))
     
-    posts = query.all()
+    posts = query.offset(offset).limit(limit).all()
     
     # Format response with author information
     result = []
@@ -390,15 +392,22 @@ def confirm_read(
 
 @router.get("/posts/my-posts")
 def list_my_posts(
+    limit: int = Query(50, ge=1, le=200),
+    offset: int = Query(0, ge=0),
     db: Session = Depends(get_db),
-    current_user = Depends(get_current_user)
+    current_user = Depends(get_current_user),
 ):
     """
     List all posts created by the current user (for history).
     """
-    posts = db.query(CommunityPost).filter(
-        CommunityPost.author_id == current_user.id
-    ).order_by(CommunityPost.created_at.desc()).all()
+    posts = (
+        db.query(CommunityPost)
+        .filter(CommunityPost.author_id == current_user.id)
+        .order_by(CommunityPost.created_at.desc())
+        .offset(offset)
+        .limit(limit)
+        .all()
+    )
     
     result = []
     for post in posts:

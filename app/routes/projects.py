@@ -3722,11 +3722,12 @@ def business_opportunities(
     value_min: Optional[int] = None,
     value_max: Optional[int] = None,
     q: Optional[str] = None,
-    limit: int = 100,
+    page: int = Query(1, ge=1),
+    limit: int = Query(25, ge=1, le=100),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user)
 ):
-    """Get opportunities filtered by project division/subdivision"""
+    """Get opportunities filtered by project division/subdivision. Returns paginated list."""
     query = db.query(Project).filter(Project.is_bidding == True, Project.deleted_at.is_(None))
     
     # Filter by client
@@ -4004,7 +4005,9 @@ def business_opportunities(
             )
         )
     
-    projects = query.order_by(Project.created_at.desc()).limit(limit).all()
+    total = query.count()
+    offset = (page - 1) * limit
+    projects = query.order_by(Project.created_at.desc()).offset(offset).limit(limit).all()
 
     # Build cover_image_url for cards (same source priority as General Information)
     project_ids = [p.id for p in projects]
@@ -4079,7 +4082,8 @@ def business_opportunities(
                 first = (getattr(ep, 'first_name', None) or '').strip() if ep else ''
                 last = (getattr(ep, 'last_name', None) or '').strip() if ep else ''
                 name = ' '.join([x for x in [first, last] if x])
-            users_map[str(user.id)] = name or None
+            avatar_file_id = str(getattr(ep, 'profile_photo_file_id', None)) if getattr(ep, 'profile_photo_file_id', None) else None
+            users_map[str(user.id)] = {"name": name or None, "profile_photo_file_id": avatar_file_id}
     
     # Fetch latest proposals and calculate Grand Total (Final Total with GST) for each project
     estimated_values_map = {}
@@ -4145,15 +4149,22 @@ def business_opportunities(
             "lead_source": getattr(p, 'lead_source', None),
         }
         
-        # Add estimator name if found
+        # Add estimator name and avatar from list so UI does not wait for /employees
         estimator_id_str = str(getattr(p, 'estimator_id', None)) if getattr(p, 'estimator_id', None) else None
         if estimator_id_str and estimator_id_str in users_map:
-            opp_dict["estimator_name"] = users_map[estimator_id_str]
+            u = users_map[estimator_id_str]
+            if isinstance(u, dict):
+                opp_dict["estimator_name"] = u.get("name")
+                if u.get("profile_photo_file_id"):
+                    opp_dict["estimator_avatar_file_id"] = u["profile_photo_file_id"]
+            else:
+                opp_dict["estimator_name"] = u
         
         # Add onsite lead name if found
         onsite_lead_id_str = str(getattr(p, 'onsite_lead_id', None)) if getattr(p, 'onsite_lead_id', None) else None
         if onsite_lead_id_str and onsite_lead_id_str in users_map:
-            opp_dict["onsite_lead_name"] = users_map[onsite_lead_id_str]
+            u = users_map[onsite_lead_id_str]
+            opp_dict["onsite_lead_name"] = u.get("name") if isinstance(u, dict) else u
         
         # Add estimated value from estimate (Final Total with GST) if available, otherwise use cost_estimated
         if pid in estimated_values_map:
@@ -4161,7 +4172,7 @@ def business_opportunities(
         
         out.append(opp_dict)
 
-    return out
+    return {"items": out, "total": total, "page": page, "limit": limit}
 
 
 @router.get("/business/projects")
@@ -4183,11 +4194,12 @@ def business_projects(
     eta_end: Optional[str] = None,
     value_min: Optional[int] = None,
     value_max: Optional[int] = None,
-    limit: int = 100,
+    page: int = Query(1, ge=1),
+    limit: int = Query(25, ge=1, le=100),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user)
 ):
-    """Get projects filtered by project division/subdivision"""
+    """Get projects filtered by project division/subdivision. Returns paginated list."""
     query = db.query(Project).filter(Project.is_bidding == False, Project.deleted_at.is_(None))
     
     # Filter by client
@@ -4431,8 +4443,10 @@ def business_projects(
         
         query = query.filter(or_(*search_conditions))
     
+    total_count = query.count()
+    offset = (page - 1) * limit
     # Get projects first (before value filtering if needed)
-    projects = query.order_by(Project.created_at.desc()).limit(limit * 2 if min_value else limit).all()
+    projects = query.order_by(Project.created_at.desc()).offset(offset).limit(limit * 2 if min_value else limit).all()
     
     # Filter by minimum value (considering Grand Total from estimates)
     if min_value is not None:
@@ -4569,10 +4583,11 @@ def business_projects(
                 "display_name": client.display_name,
             }
     
-    # Fetch estimator and onsite lead names in batch
+    # Fetch estimator, onsite lead and project_admin names/avatars in batch (so UI does not wait for /employees)
     estimator_ids = list(set([getattr(p, 'estimator_id', None) for p in projects[:limit] if getattr(p, 'estimator_id', None)]))
     onsite_lead_ids = list(set([getattr(p, 'onsite_lead_id', None) for p in projects[:limit] if getattr(p, 'onsite_lead_id', None)]))
-    all_user_ids = list(set(estimator_ids + onsite_lead_ids))
+    project_admin_ids = list(set([getattr(p, 'project_admin_id', None) for p in projects[:limit] if getattr(p, 'project_admin_id', None)]))
+    all_user_ids = list(set(estimator_ids + onsite_lead_ids + project_admin_ids))
     
     users_map = {}
     if all_user_ids:
@@ -4584,7 +4599,8 @@ def business_projects(
                 first = (getattr(ep, 'first_name', None) or '').strip() if ep else ''
                 last = (getattr(ep, 'last_name', None) or '').strip() if ep else ''
                 name = ' '.join([x for x in [first, last] if x])
-            users_map[str(user.id)] = name or None
+            avatar_file_id = str(getattr(ep, 'profile_photo_file_id', None)) if getattr(ep, 'profile_photo_file_id', None) else None
+            users_map[str(user.id)] = {"name": name or None, "profile_photo_file_id": avatar_file_id}
     
     # Fetch latest proposals and calculate Grand Total (Final Total with GST) for each project
     estimated_values_map = {}
@@ -4685,15 +4701,33 @@ def business_projects(
             project_dict["client_name"] = client_info.get("name")
             project_dict["client_display_name"] = client_info.get("display_name")
         
-        # Add estimator name if found
+        # Add estimator name and avatar from list
         estimator_id_str = str(getattr(p, 'estimator_id', None)) if getattr(p, 'estimator_id', None) else None
         if estimator_id_str and estimator_id_str in users_map:
-            project_dict["estimator_name"] = users_map[estimator_id_str]
+            u = users_map[estimator_id_str]
+            if isinstance(u, dict):
+                project_dict["estimator_name"] = u.get("name")
+                if u.get("profile_photo_file_id"):
+                    project_dict["estimator_avatar_file_id"] = u["profile_photo_file_id"]
+            else:
+                project_dict["estimator_name"] = u
         
         # Add onsite lead name if found
         onsite_lead_id_str = str(getattr(p, 'onsite_lead_id', None)) if getattr(p, 'onsite_lead_id', None) else None
         if onsite_lead_id_str and onsite_lead_id_str in users_map:
-            project_dict["onsite_lead_name"] = users_map[onsite_lead_id_str]
+            u = users_map[onsite_lead_id_str]
+            project_dict["onsite_lead_name"] = u.get("name") if isinstance(u, dict) else u
+        
+        # Add project_admin name and avatar from list
+        project_admin_id_str = str(getattr(p, 'project_admin_id', None)) if getattr(p, 'project_admin_id', None) else None
+        if project_admin_id_str and project_admin_id_str in users_map:
+            u = users_map[project_admin_id_str]
+            if isinstance(u, dict):
+                project_dict["project_admin_name"] = u.get("name")
+                if u.get("profile_photo_file_id"):
+                    project_dict["project_admin_avatar_file_id"] = u["profile_photo_file_id"]
+            else:
+                project_dict["project_admin_name"] = u
         
         # Add estimated value from estimate (Final Total with GST) if available, otherwise use service_value
         if project_id_str in estimated_values_map:
@@ -4701,7 +4735,7 @@ def business_projects(
         
         result.append(project_dict)
     
-    return result
+    return {"items": result, "total": total_count, "page": page, "limit": limit}
 
 
 def _apply_customer_filter(opp_query, proj_query, customer_id: Optional[str]):

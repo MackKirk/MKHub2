@@ -114,7 +114,10 @@ type Project = {
   estimator_id?:string,
   estimator_ids?:string[],
   estimator_name?:string,
+  estimator_avatar_file_id?:string,
   project_admin_id?:string,
+  project_admin_name?:string,
+  project_admin_avatar_file_id?:string,
   onsite_lead_id?:string,
   cost_actual?:number,
   service_value?:number,
@@ -526,12 +529,14 @@ export default function Projects(){
   
   const qs = useMemo(()=> {
     const params = new URLSearchParams(searchParams);
+    if (!params.has('page')) params.set('page', '1');
+    if (!params.has('limit')) params.set('limit', '25');
     return params.toString() ? '?' + params.toString() : '';
   }, [searchParams]);
   
   const { data, isLoading, refetch } = useQuery({ 
     queryKey:['projects', qs], 
-    queryFn: ()=> api<Project[]>('GET', `/projects/business/projects${qs}`)
+    queryFn: ()=> api<{ items: Project[]; total: number; page: number; limit: number } | Project[]>('GET', `/projects/business/projects${qs}`)
   });
   
   // Load project divisions in parallel (shared across all cards, no individual loading)
@@ -570,7 +575,7 @@ export default function Projects(){
   // Get clients for filter
   const { data: clientsData } = useQuery({ 
     queryKey:['clients-for-filter'], 
-    queryFn: ()=> api<any>('GET','/clients?limit=500'), 
+    queryFn: ()=> api<any>('GET','/clients?limit=100'), 
     staleTime: 300_000
   });
   
@@ -583,7 +588,12 @@ export default function Projects(){
   
   const projectStatuses = settings?.project_statuses || [];
   const clients = clientsData?.items || clientsData || [];
-  const arr = data||[];
+  const paginated = data && !Array.isArray(data) && 'items' in data;
+  const arr = paginated ? (data.items || []) : (Array.isArray(data) ? data : []);
+  const totalCount = paginated && typeof (data as any).total === 'number' ? (data as any).total : arr.length;
+  const currentPage = paginated && typeof (data as any).page === 'number' ? (data as any).page : 1;
+  const limitPage = paginated && typeof (data as any).limit === 'number' ? (data as any).limit : 25;
+  const totalPages = Math.max(1, Math.ceil(totalCount / limitPage));
   const [pickerOpen, setPickerOpen] = useState<{ open:boolean, clientId?:string, projectId?:string }|null>(null);
 
   // List sort: read from URL so it persists and is shareable
@@ -600,6 +610,8 @@ export default function Projects(){
   const sortedArr = useMemo(() => {
     const list = [...arr];
     const getAdminName = (p: Project) => {
+      const listName = (p as any).project_admin_name;
+      if (listName) return listName;
       const id = p.project_admin_id;
       if (!id || !employees?.length) return '';
       const emp = (employees as any[]).find((e: any) => String(e.id) === String(id));
@@ -725,6 +737,7 @@ export default function Projects(){
   const handleApplyFilters = (rules: FilterRule[]) => {
     const params = convertRulesToParams(rules);
     if (q) params.set('q', q);
+    params.set('page', '1');
     setSearchParams(params);
     refetch();
   };
@@ -982,6 +995,15 @@ export default function Projects(){
             No projects found matching your criteria.
           </div>
         )}
+        {!isInitialLoading && totalCount > 0 && (
+          <div className="flex justify-between items-center px-4 py-3 border-t bg-gray-50 rounded-b-lg">
+            <span className="text-sm text-gray-600">Page {currentPage} of {totalPages} ({totalCount} total)</span>
+            <div className="flex gap-2">
+              <button type="button" onClick={() => { const p = new URLSearchParams(searchParams); p.set('page', String(Math.max(1, currentPage - 1))); setSearchParams(p); }} disabled={currentPage <= 1} className="px-3 py-1.5 text-sm border rounded disabled:opacity-50">Previous</button>
+              <button type="button" onClick={() => { const p = new URLSearchParams(searchParams); p.set('page', String(Math.min(totalPages, currentPage + 1))); setSearchParams(p); }} disabled={currentPage >= totalPages} className="px-3 py-1.5 text-sm border rounded disabled:opacity-50">Next</button>
+            </div>
+          </div>
+        )}
       </LoadingOverlay>
       </div>
       {pickerOpen?.open && (
@@ -1043,6 +1065,14 @@ export function ProjectListItem({ project, projectDivisions, projectStatuses, va
     return employees.find((e: any) => String(e.id) === String(projectAdminId)) || null;
   }, [projectAdminId, employees]);
 
+  // Use list payload so name/avatar show before /employees loads
+  const listAdminName = (project as any).project_admin_name;
+  const listAdminAvatarFileId = (project as any).project_admin_avatar_file_id;
+  const adminDisplayName = listAdminName || (projectAdmin && getUserDisplayName(projectAdmin)) || '—';
+  const userForAdmin = projectAdmin ?? (listAdminName || listAdminAvatarFileId
+    ? { name: listAdminName, profile_photo_file_id: listAdminAvatarFileId, first_name: listAdminName }
+    : null);
+
   const tabButtons = [
     { key: 'files', icon: '📁', label: 'Files', tab: 'files' },
     { key: 'proposal', icon: '📄', label: 'Proposal', tab: 'proposal' },
@@ -1079,12 +1109,12 @@ export function ProjectListItem({ project, projectDivisions, projectStatuses, va
   );
   const col4 = (
     <div className="min-w-0 flex items-center">
-      {!projectAdmin ? (
+      {!userForAdmin && !listAdminName ? (
         <span className="text-xs font-semibold text-gray-400">—</span>
       ) : (
         <div className="flex items-center gap-2 min-w-0">
-          <UserAvatar user={projectAdmin} size="w-5 h-5" showTooltip={true} />
-          <span className="font-semibold text-gray-900 text-xs truncate min-w-0">{getUserDisplayName(projectAdmin)}</span>
+          <UserAvatar user={userForAdmin} size="w-5 h-5" showTooltip={true} tooltipText={adminDisplayName} />
+          <span className="font-semibold text-gray-900 text-xs truncate min-w-0">{adminDisplayName}</span>
         </div>
       )}
     </div>
@@ -1209,6 +1239,14 @@ function ProjectListCard({ project, projectDivisions, projectStatuses }:{ projec
     if (!projectAdminId) return null;
     return employees.find((e: any) => String(e.id) === String(projectAdminId)) || null;
   }, [projectAdminId, employees]);
+
+  // Use list payload so name/avatar show before /employees loads
+  const listAdminName = (project as any).project_admin_name;
+  const listAdminAvatarFileId = (project as any).project_admin_avatar_file_id;
+  const adminDisplayNameCard = listAdminName || (projectAdmin && getUserDisplayName(projectAdmin)) || '—';
+  const userForAdminCard = projectAdmin ?? (listAdminName || listAdminAvatarFileId
+    ? { name: listAdminName, profile_photo_file_id: listAdminAvatarFileId, first_name: listAdminName }
+    : null);
   
   // Fetch proposals to get pricing items for percentage calculation
   const { data:proposals } = useQuery({ 
@@ -1381,12 +1419,12 @@ function ProjectListCard({ project, projectDivisions, projectStatuses }:{ projec
           </div>
           <div className="min-w-0">
             <div className="text-[10px] font-medium text-gray-500 uppercase tracking-wide mb-0.5">Project Admin</div>
-            {!projectAdmin ? (
+            {!userForAdminCard && !listAdminName ? (
               <div className="text-xs font-semibold text-gray-400">—</div>
             ) : (
               <div className="flex items-center gap-2">
-                <UserAvatar user={projectAdmin} size="w-5 h-5" showTooltip={true} />
-                <div className="text-xs font-semibold text-gray-900 truncate">{getUserDisplayName(projectAdmin)}</div>
+                <UserAvatar user={userForAdminCard} size="w-5 h-5" showTooltip={true} tooltipText={adminDisplayNameCard} />
+                <div className="text-xs font-semibold text-gray-900 truncate">{adminDisplayNameCard}</div>
               </div>
             )}
           </div>

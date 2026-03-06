@@ -2,7 +2,7 @@ import uuid
 from datetime import datetime
 from typing import Any, Dict, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel
 from sqlalchemy import and_, func, or_
 from sqlalchemy.orm import Session, joinedload
@@ -146,7 +146,7 @@ def _serialize_task(task: TaskItem, viewer_id: uuid.UUID, viewer_division: Optio
     }
 
 
-def _tasks_for_user(db: Session, me: User, viewer_divisions: list[str]):
+def _tasks_for_user(db: Session, me: User, viewer_divisions: list[str], limit: Optional[int] = None, offset: int = 0):
     """
     Get tasks for user:
     - Tasks assigned directly to the user
@@ -162,8 +162,7 @@ def _tasks_for_user(db: Session, me: User, viewer_divisions: list[str]):
         if division_filters:
             ownership_filters.append(or_(*division_filters))
     
-    # Combine ownership filters with OR, then AND with archived_at IS NULL
-    return (
+    q = (
         db.query(TaskItem)
         .filter(
             and_(
@@ -172,8 +171,11 @@ def _tasks_for_user(db: Session, me: User, viewer_divisions: list[str]):
             )
         )
         .order_by(TaskItem.created_at.desc())
-        .all()
+        .offset(offset)
     )
+    if limit is not None:
+        q = q.limit(limit)
+    return q.all()
 
 
 def _tasks_filter_for_user(me: User, viewer_divisions: list[str]):
@@ -189,10 +191,15 @@ def _tasks_filter_for_user(me: User, viewer_divisions: list[str]):
 
 
 @router.get("")
-def list_tasks(db: Session = Depends(get_db), me: User = Depends(get_current_user)):
+def list_tasks(
+    limit: Optional[int] = Query(None, ge=1, le=500, description="Max tasks to return (default: all)"),
+    offset: int = Query(0, ge=0),
+    db: Session = Depends(get_db),
+    me: User = Depends(get_current_user),
+):
     viewer_divisions = _get_viewer_divisions(db, me.id)
     viewer_division = viewer_divisions[0] if viewer_divisions else None  # For backward compatibility in serialization
-    tasks = _tasks_for_user(db, me, viewer_divisions)
+    tasks = _tasks_for_user(db, me, viewer_divisions, limit=limit, offset=offset)
     grouped: Dict[str, list] = {"accepted": [], "in_progress": [], "blocked": [], "done": []}
     for task in tasks:
         payload = _serialize_task(task, viewer_id=me.id, viewer_division=viewer_division, viewer_divisions=viewer_divisions)
@@ -220,7 +227,12 @@ def tasks_sync(db: Session = Depends(get_db), me: User = Depends(get_current_use
 
 
 @router.get("/archived")
-def list_archived_tasks(db: Session = Depends(get_db), me: User = Depends(get_current_user)):
+def list_archived_tasks(
+    limit: int = Query(100, ge=1, le=200),
+    offset: int = Query(0, ge=0),
+    db: Session = Depends(get_db),
+    me: User = Depends(get_current_user),
+):
     """
     Get archived tasks for the current user.
     Returns tasks that have archived_at IS NOT NULL.
@@ -246,6 +258,8 @@ def list_archived_tasks(db: Session = Depends(get_db), me: User = Depends(get_cu
             )
         )
         .order_by(TaskItem.archived_at.desc())  # Most recently archived first
+        .offset(offset)
+        .limit(limit)
         .all()
     )
     

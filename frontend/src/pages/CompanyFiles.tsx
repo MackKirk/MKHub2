@@ -832,7 +832,7 @@ export default function CompanyFiles(){
                                     onClick={(e)=>{ e.stopPropagation(); openInSystem(); }}
                                   >
                                     <img
-                                      src={`/files/${encodeURIComponent(d.file_id||'')}/thumbnail?w=64`}
+                                      src={`/files/${encodeURIComponent(d.file_id||'')}/thumbnail?w=64`} loading="lazy"
                                       alt={d.title||'Preview'}
                                       className="w-full h-full object-cover"
                                       onError={(e)=>{

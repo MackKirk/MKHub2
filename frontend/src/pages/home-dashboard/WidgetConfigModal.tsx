@@ -109,7 +109,7 @@ export function WidgetConfigModal({ widget, onClose, onSave }: WidgetConfigModal
 
   const { data: clientsData } = useQuery({
     queryKey: ['clients', 'widget-chart-customers'],
-    queryFn: () => api<{ items: { id: string; name?: string; display_name?: string }[] }>('GET', '/clients?limit=500'),
+    queryFn: () => api<{ items: { id: string; name?: string; display_name?: string }[] }>('GET', '/clients?limit=100'),
     enabled: widget?.type === 'chart',
   });
   const customersList = useMemo(() => {

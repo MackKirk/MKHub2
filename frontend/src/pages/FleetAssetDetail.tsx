@@ -739,7 +739,7 @@ export default function FleetAssetDetail() {
               <div className="p-4 space-y-4">
                 <div><div className="text-sm text-gray-600 mb-1">Notes</div>{isEditing ? <textarea value={editForm.notes || ''} onChange={(e) => setEditForm({...editForm, notes: e.target.value})} rows={4} className="w-full px-3 py-2 border rounded-lg text-sm" /> : <div className="p-3 bg-gray-50 rounded text-sm">{asset.notes || '-'}</div>}</div>
                 {asset.photos && asset.photos.length > 0 && (
-                  <div><div className="text-sm text-gray-600 mb-2">Photos</div><div className="grid grid-cols-2 sm:grid-cols-4 gap-2">{asset.photos.map((photoId, idx) => <img key={idx} src={`/files/${photoId}/thumbnail?w=300`} alt={`Photo ${idx + 1}`} className="w-full h-24 object-cover rounded border" />)}</div></div>
+                  <div><div className="text-sm text-gray-600 mb-2">Photos</div><div className="grid grid-cols-2 sm:grid-cols-4 gap-2">{asset.photos.map((photoId, idx) => <img key={idx} src={`/files/${photoId}/thumbnail?w=300`} alt={`Photo ${idx + 1}`} className="w-full h-24 object-cover rounded border" loading="lazy" />)}</div></div>
                 )}
               </div>
             </div>
@@ -1801,7 +1801,7 @@ function AssignModal({
             {photos_out.length > 0 && (
               <div className="flex gap-2 mt-2 flex-wrap">
                 {photos_out.map((photoId, idx) => (
-                  <img key={idx} src={`/files/${photoId}/thumbnail?w=100`} alt={`Photo ${idx + 1}`} className="w-16 h-16 object-cover rounded border" />
+                  <img key={idx} src={`/files/${photoId}/thumbnail?w=100`} alt={`Photo ${idx + 1}`} className="w-16 h-16 object-cover rounded border" loading="lazy" />
                 ))}
               </div>
             )}
@@ -1990,7 +1990,7 @@ function ReturnModal({
             {photos_in.length > 0 && (
               <div className="flex gap-2 mt-2 flex-wrap">
                 {photos_in.map((photoId, idx) => (
-                  <img key={idx} src={`/files/${photoId}/thumbnail?w=100`} alt={`Photo ${idx + 1}`} className="w-16 h-16 object-cover rounded border" />
+                  <img key={idx} src={`/files/${photoId}/thumbnail?w=100`} alt={`Photo ${idx + 1}`} className="w-16 h-16 object-cover rounded border" loading="lazy" />
                 ))}
               </div>
             )}

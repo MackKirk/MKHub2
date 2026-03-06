@@ -12,7 +12,7 @@ type Division = { id: string; label: string; value?: string };
 export default function InviteUserModal({ isOpen, onClose }: InviteModalProps) {
   const queryClient = useQueryClient();
   const { data: settings } = useQuery({ queryKey: ['settings'], queryFn: () => api<any>('GET', '/settings') });
-  const { data: usersOptions } = useQuery({ queryKey: ['usersOptions'], queryFn: () => api<any[]>('GET', '/auth/users/options?limit=500') });
+  const { data: usersOptions } = useQuery({ queryKey: ['usersOptions'], queryFn: () => api<any[]>('GET', '/auth/users/options?limit=100') });
   const divisions: Division[] = (settings?.divisions || []) as Division[];
   const employmentTypes = (settings?.employment_types || []) as any[];
   

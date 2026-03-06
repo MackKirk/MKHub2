@@ -30,7 +30,7 @@ export function ListTasksWidget({ config }: ListTasksWidgetProps) {
 
   const { data, isLoading, error } = useQuery<TaskBuckets>({
     queryKey: ['home-list-tasks'],
-    queryFn: () => api('GET', '/tasks'),
+    queryFn: () => api('GET', '/tasks?limit=20'),
     staleTime: 30_000,
   });
 

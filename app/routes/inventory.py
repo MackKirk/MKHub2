@@ -2,7 +2,7 @@ import uuid
 from datetime import datetime, timezone
 from typing import List
 
-from fastapi import APIRouter, Depends, HTTPException, Body
+from fastapi import APIRouter, Depends, HTTPException, Body, Query
 from sqlalchemy.orm import Session
 
 from ..db import get_db
@@ -37,8 +37,14 @@ router = APIRouter(prefix="/inventory", tags=["inventory"])
 
 # ---------- PRODUCTS ----------
 @router.get("/products", response_model=List[ProductResponse])
-def list_products(db: Session = Depends(get_db), _=Depends(require_permissions("inventory:read"))):
-    return db.query(InventoryProduct).all()
+def list_products(
+    page: int = Query(1, ge=1),
+    limit: int = Query(100, ge=1, le=500),
+    db: Session = Depends(get_db),
+    _=Depends(require_permissions("inventory:read")),
+):
+    offset = (page - 1) * limit
+    return db.query(InventoryProduct).order_by(InventoryProduct.name).offset(offset).limit(limit).all()
 
 
 @router.post("/products", response_model=ProductResponse)
@@ -89,7 +95,9 @@ def list_suppliers(
     province_not: str | None = None,
     city: str | None = None,
     city_not: str | None = None,
-    db: Session = Depends(get_db)
+    page: int = Query(1, ge=1),
+    limit: int = Query(100, ge=1, le=200),
+    db: Session = Depends(get_db),
 ):
     try:
         query = db.query(Supplier)
@@ -121,11 +129,11 @@ def list_suppliers(
         if city_not:
             query = query.filter(Supplier.city != city_not)
         
-        # Order by created_at if column exists, otherwise just return
+        offset = (page - 1) * limit
         try:
-            return query.order_by(Supplier.created_at.desc()).limit(500).all()
+            return query.order_by(Supplier.created_at.desc()).offset(offset).limit(limit).all()
         except Exception:
-            return query.limit(500).all()
+            return query.offset(offset).limit(limit).all()
     except Exception as e:
         # Log and return empty list if there's any error
         return []
@@ -362,8 +370,20 @@ def delete_contact(contact_id: uuid.UUID, db: Session = Depends(get_db), _=Depen
 
 # ---------- ORDERS ----------
 @router.get("/orders", response_model=List[OrderResponse])
-def list_orders(db: Session = Depends(get_db), _=Depends(require_permissions("inventory:read"))):
-    return db.query(InventoryOrder).all()
+def list_orders(
+    page: int = Query(1, ge=1),
+    limit: int = Query(100, ge=1, le=200),
+    db: Session = Depends(get_db),
+    _=Depends(require_permissions("inventory:read")),
+):
+    offset = (page - 1) * limit
+    return (
+        db.query(InventoryOrder)
+        .order_by(InventoryOrder.order_date.desc())
+        .offset(offset)
+        .limit(limit)
+        .all()
+    )
 
 
 @router.post("/orders", response_model=OrderResponse)

@@ -503,7 +503,8 @@ export default function CustomerDetail(){
   }, [newProjectOpen]);
   const leadSources = (settings?.lead_sources||[]) as any[];
   const { data:projects } = useQuery({ queryKey:['clientProjects', id], queryFn: ()=>api<Project[]>('GET', `/projects?client=${encodeURIComponent(String(id||''))}&is_bidding=false`), enabled: hasProjectsRead });
-  const { data:opportunities } = useQuery({ queryKey:['clientOpportunities', id], queryFn: ()=>api<Project[]>('GET', `/projects/business/opportunities?client_id=${encodeURIComponent(String(id||''))}`), enabled: hasProjectsRead });
+  const { data:opportunitiesRaw } = useQuery({ queryKey:['clientOpportunities', id], queryFn: ()=>api<{ items: Project[] } | Project[]>('GET', `/projects/business/opportunities?client_id=${encodeURIComponent(String(id||''))}&limit=100`), enabled: hasProjectsRead });
+  const opportunities = useMemo(() => Array.isArray(opportunitiesRaw) ? opportunitiesRaw : ((opportunitiesRaw as any)?.items ?? []), [opportunitiesRaw]);
   const { data:contacts } = useQuery({ queryKey:['clientContacts', id], queryFn: ()=>api<Contact[]>('GET', `/clients/${id}/contacts`) });
   
   // Dashboard states (must be declared before useMemo that uses them)
@@ -3284,7 +3285,7 @@ function CustomerDocuments({ id, files, sites, onRefresh, hasEditPermission }: {
       <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-3">
         {(picList||[]).map(f=> { const isSite=!!f.site_id; const s=isSite? siteMap[String(f.site_id||'')] : undefined; const tip=isSite? `${s?.site_name||'Site'} — ${formatAddressDisplay({ address_line1: s?.site_address_line1, city: s?.site_city, province: s?.site_province, country: s?.site_country })}` : 'General Customer image'; return (
           <div key={f.id} className="relative group">
-            <img className="w-full h-24 object-cover rounded border" src={`/files/${f.file_object_id}/thumbnail?w=300`} />
+            <img className="w-full h-24 object-cover rounded border" src={`/files/${f.file_object_id}/thumbnail?w=300`} loading="lazy" />
             <div className="absolute right-2 top-2 hidden group-hover:flex gap-1">
               <button onClick={async(e)=>{ e.stopPropagation(); const url = await fetchDownloadUrl(String(f.file_object_id)); if(url) window.open(url,'_blank'); }} className="bg-black/70 hover:bg-black/80 text-white text-[11px] px-2 py-1 rounded" title="Zoom">🔍</button>
               <button onClick={(e)=>{ e.stopPropagation(); setEditingImage({ fileObjectId: f.file_object_id, name: f.original_name || 'image' }); }} className="bg-blue-600 hover:bg-blue-700 text-white text-[11px] px-2 py-1 rounded" title="Edit">✏️</button>
@@ -3417,7 +3418,7 @@ function CustomerDocuments({ id, files, sites, onRefresh, hasEditPermission }: {
         <ImageEditor
           isOpen={!!editingImage}
           onClose={() => setEditingImage(null)}
-          imageUrl={`/files/${editingImage.fileObjectId}/thumbnail?w=1600`}
+          imageUrl={`/files/${editingImage.fileObjectId}/thumbnail?w=1024`}
           imageName={editingImage.name}
           fileObjectId={editingImage.fileObjectId}
           onSave={async (blob) => {

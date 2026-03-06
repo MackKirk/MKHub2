@@ -102,7 +102,7 @@ export default function ScheduleCard() {
   // Fetch projects list (basic info)
   const { data: projectsList } = useQuery({
     queryKey: ['projects'],
-    queryFn: () => api<any[]>('GET', '/projects'),
+    queryFn: () => api<any[]>('GET', '/projects?limit=100'),
   });
 
   // Get unique project IDs from shifts

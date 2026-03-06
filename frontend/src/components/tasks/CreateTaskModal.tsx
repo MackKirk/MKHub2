@@ -41,7 +41,7 @@ export default function CreateTaskModal({ open, onClose, onCreated }: Props) {
   // Fetch users and divisions
   const { data: usersOptions = [] } = useQuery({
     queryKey: ['usersOptions', userSearchQuery],
-    queryFn: () => api<UserOption[]>('GET', `/auth/users/options?limit=500${userSearchQuery ? `&q=${encodeURIComponent(userSearchQuery)}` : ''}`),
+    queryFn: () => api<UserOption[]>('GET', `/auth/users/options?limit=100${userSearchQuery ? `&q=${encodeURIComponent(userSearchQuery)}` : ''}`),
     enabled: open,
   });
 

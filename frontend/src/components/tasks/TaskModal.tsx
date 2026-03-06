@@ -103,7 +103,7 @@ export default function TaskModal({ open, taskId, onClose, onUpdated }: Props) {
     queryFn: () =>
       api<{ id: string; username: string; email: string; name?: string }[]>(
         'GET',
-        `/auth/users/options?limit=500${userSearchQuery ? `&q=${encodeURIComponent(userSearchQuery)}` : ''}`
+        `/auth/users/options?limit=100${userSearchQuery ? `&q=${encodeURIComponent(userSearchQuery)}` : ''}`
       ),
     enabled: open && isEditMode,
   });

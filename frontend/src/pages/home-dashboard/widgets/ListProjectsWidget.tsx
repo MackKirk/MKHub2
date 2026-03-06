@@ -47,7 +47,7 @@ export function ListProjectsWidget({ config }: ListProjectsWidgetProps) {
     );
   }
 
-  const list = Array.isArray(data) ? data : [];
+  const list = data && typeof data === 'object' && 'items' in data ? (data as { items: Project[] }).items : (Array.isArray(data) ? data : []);
 
   const itemStyle = { padding: 'clamp(0.375rem, 3cqh, 0.75rem)' };
   const titleStyle = { fontSize: 'clamp(0.625rem, 5cqh, 0.875rem)' };

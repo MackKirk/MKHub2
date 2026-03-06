@@ -359,7 +359,7 @@ export function CustomerFilesTabEnhanced({ clientId, files, onRefresh, hasEditPe
                               <td className="px-3 py-2">
                                 {isImg ? (
                                   <div className="w-10 h-10 rounded-lg overflow-hidden bg-gray-100 cursor-pointer flex-shrink-0" onClick={() => handleFilePreview(f)}>
-                                    <img src={`/files/${f.file_object_id}/thumbnail?w=64`} alt={name} className="w-full h-full object-cover" />
+                                    <img src={`/files/${f.file_object_id}/thumbnail?w=64`} alt={name} className="w-full h-full object-cover" loading="lazy" />
                                   </div>
                                 ) : (
                                   <div className={`w-8 h-10 rounded-lg ${icon.color} text-white flex items-center justify-center text-[10px] font-extrabold select-none flex-shrink-0 cursor-pointer`} onClick={() => handleFilePreview(f)}>
@@ -528,7 +528,7 @@ export function CustomerFilesTabEnhanced({ clientId, files, onRefresh, hasEditPe
         <ImageEditor
           isOpen={!!editingImage}
           onClose={() => setEditingImage(null)}
-          imageUrl={`/files/${editingImage.fileObjectId}/thumbnail?w=1600`}
+          imageUrl={`/files/${editingImage.fileObjectId}/thumbnail?w=1024`}
           imageName={editingImage.name}
           fileObjectId={editingImage.fileObjectId}
           onSave={async (blob) => {

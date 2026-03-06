@@ -292,7 +292,7 @@ export default function ImagePicker({
             setProgressMessage('');
           };
           image.crossOrigin = 'anonymous';
-          image.src = `/files/${fileObjectId}/thumbnail?w=1200&cb=${Date.now()}`;
+          image.src = `/files/${fileObjectId}/thumbnail?w=1024&cb=${Date.now()}`;
           return;
         }
         
@@ -348,7 +348,7 @@ export default function ImagePicker({
               setProgressMessage('');
             };
             img2.crossOrigin = 'anonymous';
-            img2.src = `/files/${fileObjectId}/thumbnail?w=1200&cb=${Date.now()}`;
+            img2.src = `/files/${fileObjectId}/thumbnail?w=1024&cb=${Date.now()}`;
           }).catch((e:any)=>{
             toast.error('Failed to load image');
             setIsLoading(false); 
@@ -423,7 +423,7 @@ export default function ImagePicker({
         setProgressMessage('');
       };
       image.crossOrigin = 'anonymous';
-      image.src = `/files/${fileObjectId}/thumbnail?w=1200&cb=${Date.now()}`;
+      image.src = `/files/${fileObjectId}/thumbnail?w=1024&cb=${Date.now()}`;
     }catch(e: any){ 
       console.error('Upload failed:', e);
       const errorMsg = e?.message || e?.response?.data?.detail || 'Upload failed';
@@ -449,7 +449,7 @@ export default function ImagePicker({
       image.onerror = ()=>{ toast.error('Failed to load image'); setIsLoading(false); setShowProgress(false); setProgressMessage(''); };
       image.crossOrigin = 'anonymous';
       // Use thumbnail endpoint to ensure browser-compatible PNG (works for HEIC too)
-      image.src = `/files/${fileObjectId}/thumbnail?w=1200&cb=${Date.now()}`;
+      image.src = `/files/${fileObjectId}/thumbnail?w=1024&cb=${Date.now()}`;
     }catch(e){ toast.error('Failed to open image'); }
   };
 
@@ -574,7 +574,7 @@ export default function ImagePicker({
     }
     // If image is from a file object, use the thumbnail endpoint
     if (originalFileObjectId) {
-      return `/files/${originalFileObjectId}/thumbnail?w=1200&cb=${Date.now()}`;
+      return `/files/${originalFileObjectId}/thumbnail?w=1024&cb=${Date.now()}`;
     }
     // Fallback to image src
     return img.src;
@@ -778,7 +778,7 @@ export default function ImagePicker({
                     <div className="grid grid-cols-3 gap-2 max-h-[320px] overflow-auto">
                       {files.map(f=> (
                         <button type="button" key={f.id} className="border rounded overflow-hidden" onClick={()=>loadFromFileObject(f.file_object_id)}>
-                          <img className="w-full h-20 object-cover" src={`/files/${f.file_object_id}/thumbnail?w=160`} />
+                          <img className="w-full h-20 object-cover" src={`/files/${f.file_object_id}/thumbnail?w=160`} loading="lazy" />
                         </button>
                       ))}
                     </div>

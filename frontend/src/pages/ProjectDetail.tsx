@@ -3116,7 +3116,7 @@ function ProjectFilesTab({ projectId, files, onRefresh }:{ projectId:string, fil
         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-3">
           {pics.length? pics.map(f=> (
             <div key={f.id} className="relative group">
-              <img className="w-full h-24 object-cover rounded border" src={`/files/${f.file_object_id}/thumbnail?w=600`} />
+              <img className="w-full h-24 object-cover rounded border" src={`/files/${f.file_object_id}/thumbnail?w=600`} loading="lazy" />
               <div className="absolute right-2 top-2 hidden group-hover:flex gap-1">
                 <button onClick={async()=>{ const url = await fetchDownloadUrl(f.file_object_id); if(url) window.open(url,'_blank'); }} className="bg-black/70 hover:bg-black/80 text-white text-[11px] px-2 py-1 rounded" title="Zoom">🔍</button>
               </div>

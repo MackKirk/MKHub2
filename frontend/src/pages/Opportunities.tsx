@@ -892,15 +892,17 @@ export default function Opportunities(){
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchParams]);
   
-  // Build query string from URL params (filters are managed through modal)
+  // Build query string from URL params (filters + pagination)
   const qs = useMemo(()=> {
     const params = new URLSearchParams(searchParams);
+    if (!params.has('page')) params.set('page', '1');
+    if (!params.has('limit')) params.set('limit', '25');
     return params.toString() ? '?' + params.toString() : '';
   }, [searchParams]);
   
   const { data, isLoading, refetch } = useQuery({ 
     queryKey:['opportunities', qs], 
-    queryFn: ()=> api<Opportunity[]>('GET', `/projects/business/opportunities${qs}`)
+    queryFn: ()=> api<{ items: Opportunity[]; total: number; page: number; limit: number } | Opportunity[]>('GET', `/projects/business/opportunities${qs}`)
   });
   
   // Load project divisions in parallel
@@ -941,13 +943,18 @@ export default function Opportunities(){
   // Get clients for filter
   const { data: clientsData } = useQuery({ 
     queryKey:['clients-for-filter'], 
-    queryFn: ()=> api<any>('GET','/clients?limit=500'), 
+    queryFn: ()=> api<any>('GET','/clients?limit=100'), 
     staleTime: 300_000
   });
   
   const projectStatuses = settings?.project_statuses || [];
   const clients = clientsData?.items || clientsData || [];
-  const arr = data||[];
+  const paginated = data && !Array.isArray(data) && 'items' in data;
+  const arr = paginated ? (data.items || []) : (Array.isArray(data) ? data : []);
+  const totalCount = paginated && typeof (data as any).total === 'number' ? (data as any).total : arr.length;
+  const currentPage = paginated && typeof (data as any).page === 'number' ? (data as any).page : 1;
+  const limitPage = paginated && typeof (data as any).limit === 'number' ? (data as any).limit : 25;
+  const totalPages = Math.max(1, Math.ceil(totalCount / limitPage));
   const [pickerOpen, setPickerOpen] = useState<{ open:boolean, clientId?:string, projectId?:string }|null>(null);
   const [reportModalOpen, setReportModalOpen] = useState<{ open:boolean, projectId?:string }|null>(null);
 
@@ -1015,8 +1022,8 @@ export default function Opportunities(){
   // Handle applying filters from modal
   const handleApplyFilters = (rules: FilterRule[]) => {
     const params = convertRulesToParams(rules);
-    // Preserve search query
     if (q) params.set('q', q);
+    params.set('page', '1');
     setSearchParams(params);
     refetch();
   };
@@ -1299,6 +1306,15 @@ export default function Opportunities(){
             No opportunities found matching your criteria.
           </div>
         )}
+        {!isInitialLoading && totalCount > 0 && (
+          <div className="flex justify-between items-center px-4 py-3 border-t bg-gray-50 rounded-b-lg">
+            <span className="text-sm text-gray-600">Page {currentPage} of {totalPages} ({totalCount} total)</span>
+            <div className="flex gap-2">
+              <button type="button" onClick={() => { const p = new URLSearchParams(searchParams); p.set('page', String(Math.max(1, currentPage - 1))); setSearchParams(p); }} disabled={currentPage <= 1} className="px-3 py-1.5 text-sm border rounded disabled:opacity-50">Previous</button>
+              <button type="button" onClick={() => { const p = new URLSearchParams(searchParams); p.set('page', String(Math.min(totalPages, currentPage + 1))); setSearchParams(p); }} disabled={currentPage >= totalPages} className="px-3 py-1.5 text-sm border rounded disabled:opacity-50">Next</button>
+            </div>
+          </div>
+        )}
       </LoadingOverlay>
       </div>
       {pickerOpen?.open && (
@@ -1571,6 +1587,14 @@ export function OpportunityListItem({ opportunity, onOpenReportModal, projectSta
       .filter(Boolean);
   }, [estimatorIds, employees]);
 
+  // Use list payload so name/avatar show before /employees loads
+  const listEstimatorName = (opportunity as any).estimator_name;
+  const listEstimatorAvatarFileId = (opportunity as any).estimator_avatar_file_id;
+  const estimatorDisplayName = listEstimatorName || (estimators[0] && getUserDisplayName(estimators[0])) || (estimators.length > 1 ? 'Multiple' : '—');
+  const userForAvatar = estimators[0] ?? (listEstimatorName || listEstimatorAvatarFileId
+    ? { name: listEstimatorName, profile_photo_file_id: listEstimatorAvatarFileId, first_name: listEstimatorName }
+    : null);
+
   const tabButtons = [
     { key: 'files', icon: '📁', label: 'Files', tab: 'files' },
     { key: 'proposal', icon: '📄', label: 'Proposal', tab: 'proposal' },
@@ -1596,19 +1620,24 @@ export function OpportunityListItem({ opportunity, onOpenReportModal, projectSta
   );
   const col2 = (
     <div className="min-w-0 flex items-center">
-      {estimators.length === 0 ? (
+      {!userForAvatar && !listEstimatorName ? (
         <span className="text-xs font-semibold text-gray-400">—</span>
       ) : estimators.length === 1 ? (
         <div className="flex items-center gap-2 min-w-0">
           <UserAvatar user={estimators[0]} size="w-5 h-5" showTooltip={true} />
           <span className="font-semibold text-gray-900 text-xs truncate min-w-0">{getUserDisplayName(estimators[0])}</span>
         </div>
-      ) : (
+      ) : estimators.length > 1 ? (
         <div className="flex items-center gap-1.5">
           {estimators.slice(0, 2).map((est: any) => (
             <UserAvatar key={est.id} user={est} size="w-5 h-5" showTooltip={true} />
           ))}
           <span className="text-xs text-gray-500 ml-1">+{estimators.length - 2}</span>
+        </div>
+      ) : (
+        <div className="flex items-center gap-2 min-w-0">
+          <UserAvatar user={userForAvatar} size="w-5 h-5" showTooltip={true} tooltipText={estimatorDisplayName} />
+          <span className="font-semibold text-gray-900 text-xs truncate min-w-0">{estimatorDisplayName}</span>
         </div>
       )}
     </div>
@@ -1728,6 +1757,14 @@ function OpportunityListCard({ opportunity, onOpenReportModal, projectStatuses }
       .map((id: string) => employees.find((e: any) => String(e.id) === String(id)))
       .filter(Boolean);
   }, [estimatorIds, employees]);
+
+  // Use list payload so name/avatar show before /employees loads
+  const listEstimatorName = (opportunity as any).estimator_name;
+  const listEstimatorAvatarFileId = (opportunity as any).estimator_avatar_file_id;
+  const estimatorDisplayNameCard = listEstimatorName || (estimators[0] && getUserDisplayName(estimators[0])) || (estimators.length > 1 ? 'Multiple' : '—');
+  const userForAvatarCard = estimators[0] ?? (listEstimatorName || listEstimatorAvatarFileId
+    ? { name: listEstimatorName, profile_photo_file_id: listEstimatorAvatarFileId, first_name: listEstimatorName }
+    : null);
   
   // Fetch proposals to get pricing items for percentage calculation
   const { data:proposals } = useQuery({ 
@@ -1935,18 +1972,23 @@ function OpportunityListCard({ opportunity, onOpenReportModal, projectStatuses }
         <div className="grid grid-cols-2 gap-3">
           <div className="min-w-0">
             <div className="text-[10px] font-medium text-gray-500 uppercase tracking-wide mb-0.5">Estimator</div>
-            {estimators.length === 0 ? (
+            {!userForAvatarCard && !listEstimatorName ? (
               <div className="text-xs font-semibold text-gray-400">—</div>
             ) : estimators.length === 1 ? (
               <div className="flex items-center gap-2">
                 <UserAvatar user={estimators[0]} size="w-5 h-5" showTooltip={true} />
                 <div className="font-semibold text-gray-900 text-xs truncate">{getUserDisplayName(estimators[0])}</div>
               </div>
-            ) : (
+            ) : estimators.length > 1 ? (
               <div className="flex items-center gap-1.5 flex-wrap">
                 {estimators.map((est: any) => (
                   <UserAvatar key={est.id} user={est} size="w-5 h-5" showTooltip={true} />
                 ))}
+              </div>
+            ) : (
+              <div className="flex items-center gap-2">
+                <UserAvatar user={userForAvatarCard} size="w-5 h-5" showTooltip={true} tooltipText={estimatorDisplayNameCard} />
+                <div className="font-semibold text-gray-900 text-xs truncate">{estimatorDisplayNameCard}</div>
               </div>
             )}
           </div>

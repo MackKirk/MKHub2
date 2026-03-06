@@ -305,7 +305,7 @@ export default function Quotes(){
   // Get clients for filter
   const { data: clientsData } = useQuery({ 
     queryKey:['clients-for-filter'], 
-    queryFn: ()=> api<any>('GET','/clients?limit=500'), 
+    queryFn: ()=> api<any>('GET','/clients?limit=100'), 
     staleTime: 300_000
   });
   

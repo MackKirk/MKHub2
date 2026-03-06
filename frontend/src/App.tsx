@@ -12,6 +12,15 @@ import PasswordReset from './pages/PasswordReset';
 import Protected from './lib/protected';
 
 const OnboardingWizard = lazy(() => import('./pages/OnboardingWizard'));
+const ProjectDetail = lazy(() => import('./pages/ProjectDetail'));
+const CustomerDetail = lazy(() => import('./pages/CustomerDetail'));
+const DocumentCreator = lazy(() => import('./pages/DocumentCreator'));
+const FleetAssetDetail = lazy(() => import('./pages/FleetAssetDetail'));
+const WorkOrderDetail = lazy(() => import('./pages/WorkOrderDetail'));
+const Training = lazy(() => import('./pages/Training'));
+const SystemSettings = lazy(() => import('./pages/SystemSettings'));
+const BusinessDashboard = lazy(() => import('./pages/BusinessDashboard'));
+
 import Profile from './pages/Profile';
 import HomePage from './pages/Home';
 import Overview from './pages/Overview';
@@ -27,15 +36,11 @@ import ProposalEdit from './pages/ProposalEdit';
 import Quotes from './pages/Quotes';
 import QuoteNew from './pages/QuoteNew';
 import QuoteDetail from './pages/QuoteDetail';
-import CustomerDetail from './pages/CustomerDetail';
 import SiteDetail from './pages/SiteDetail';
 import Projects from './pages/Projects';
 import ProjectNew from './pages/ProjectNew';
-import ProjectDetail from './pages/ProjectDetail';
 import Opportunities from './pages/Opportunities';
 import OpportunityDetail from './pages/OpportunityDetail';
-import BusinessDashboard from './pages/BusinessDashboard';
-import SystemSettings from './pages/SystemSettings';
 import Users from './pages/Users';
 import UserInfo from './pages/UserInfo';
 import EmployeeReviews from './pages/EmployeeReviews';
@@ -44,7 +49,6 @@ import ReviewsCompare from './pages/ReviewsCompare';
 import UserDetail from './pages/UserDetail';
 import LogHours from './pages/LogHours';
 import CompanyFiles from './pages/CompanyFiles';
-import DocumentCreator from './pages/DocumentCreator';
 import TaskRequests from './pages/TaskRequests';
 import Tasks from './pages/Tasks';
 import Schedule from './pages/Schedule';
@@ -55,18 +59,15 @@ import CommunityInsights from './pages/CommunityInsights';
 import CommunityNewPost from './pages/CommunityNewPost';
 import FleetDashboard from './pages/FleetDashboard';
 import FleetAssets from './pages/FleetAssets';
-import FleetAssetDetail from './pages/FleetAssetDetail';
 import FleetAssetNew from './pages/FleetAssetNew';
 import EquipmentList from './pages/EquipmentList';
 import EquipmentNew from './pages/EquipmentNew';
 import EquipmentDetail from './pages/EquipmentDetail';
 import WorkOrders from './pages/WorkOrders';
 import WorkOrderNew from './pages/WorkOrderNew';
-import WorkOrderDetail from './pages/WorkOrderDetail';
 import Inspections from './pages/Inspections';
 import InspectionNew from './pages/InspectionNew';
 import InspectionDetail from './pages/InspectionDetail';
-import Training from './pages/Training';
 import TrainingCourse from './pages/TrainingCourse';
 import TrainingCertificates from './pages/TrainingCertificates';
 import TrainingAdmin from './pages/TrainingAdmin';
@@ -75,6 +76,8 @@ import SystemAdmin from './pages/SystemAdmin';
 import Attendance from './pages/Attendance';
 import Notifications from './pages/Notifications';
 import Install from './pages/Install';
+
+const RouteFallback = () => <div className="min-h-[40vh] flex items-center justify-center text-gray-500">Loading...</div>;
 
 import { getToken } from './lib/api';
 function Home(){ return <Navigate to={getToken()? '/home':'/login'} replace />; }
@@ -86,6 +89,7 @@ export default function App(){
     <QueryClientProvider client={queryClient}>
       <UnsavedChangesProvider>
       <ConfirmProvider>
+      <Suspense fallback={<RouteFallback />}>
       <Routes location={state?.backgroundLocation || location}>
         <Route path="/" element={<Home/>} />
         <Route path="/index.html" element={<Home/>} />
@@ -165,12 +169,15 @@ export default function App(){
         </Route>
         <Route path="*" element={<Navigate to={getToken()? '/home':'/login'} replace />} />
       </Routes>
+      </Suspense>
       {state?.backgroundLocation && (
-        <Routes>
-          <Route path="/customers/:customerId/sites/:siteId" element={<AppShell><SiteDetail/></AppShell>} />
-          <Route path="/projects/new" element={<AppShell><ProjectNew/></AppShell>} />
-          <Route path="/quotes/new" element={<AppShell><QuoteNew/></AppShell>} />
-        </Routes>
+        <Suspense fallback={<RouteFallback />}>
+          <Routes>
+            <Route path="/customers/:customerId/sites/:siteId" element={<AppShell><SiteDetail/></AppShell>} />
+            <Route path="/projects/new" element={<AppShell><ProjectNew/></AppShell>} />
+            <Route path="/quotes/new" element={<AppShell><QuoteNew/></AppShell>} />
+          </Routes>
+        </Suspense>
       )}
       <Toaster position="top-right" />
       </ConfirmProvider>
