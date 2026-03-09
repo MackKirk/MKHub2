@@ -242,12 +242,75 @@ class EquipmentListResponse(BaseModel):
     total_pages: int
 
 
+# Inspection Schedule Schemas (agendamento)
+class InspectionScheduleBase(BaseModel):
+    fleet_asset_id: uuid.UUID
+    scheduled_at: datetime
+    urgency: str = "normal"  # low|normal|high|urgent
+    category: str = "inspection"  # maintenance|repair|inspection|other
+    notes: Optional[str] = None
+
+
+class InspectionScheduleCreate(InspectionScheduleBase):
+    pass
+
+
+class InspectionScheduleUpdate(BaseModel):
+    scheduled_at: Optional[datetime] = None
+    urgency: Optional[str] = None
+    category: Optional[str] = None
+    notes: Optional[str] = None
+    status: Optional[str] = None  # scheduled|in_progress|completed|cancelled
+
+
+class InspectionScheduleResponse(InspectionScheduleBase):
+    id: uuid.UUID
+    status: str
+    created_at: datetime
+    created_by: Optional[uuid.UUID] = None
+    fleet_asset_name: Optional[str] = None
+
+    class Config:
+        from_attributes = True
+
+
+class InspectionScheduleStartResponse(BaseModel):
+    """Response when starting an inspection schedule: created body and mechanical inspection ids."""
+    body_inspection_id: uuid.UUID
+    mechanical_inspection_id: uuid.UUID
+
+
+class InspectionScheduleStartBodyResponse(BaseModel):
+    """Response when starting only the body/exterior inspection."""
+    body_inspection_id: uuid.UUID
+
+
+class InspectionScheduleStartMechanicalResponse(BaseModel):
+    """Response when starting only the mechanical inspection."""
+    mechanical_inspection_id: uuid.UUID
+
+
+class InspectionScheduleCalendarItem(BaseModel):
+    """Minimal inspection schedule fields for calendar view."""
+    id: uuid.UUID
+    scheduled_at: datetime
+    fleet_asset_name: Optional[str] = None
+    status: str
+    body_inspection_id: Optional[uuid.UUID] = None
+    mechanical_inspection_id: Optional[uuid.UUID] = None
+
+    class Config:
+        from_attributes = True
+
+
 # Inspection Schemas
 class FleetInspectionBase(BaseModel):
     fleet_asset_id: uuid.UUID
     inspection_date: datetime
+    inspection_type: str = "mechanical"  # body|mechanical
+    inspection_schedule_id: Optional[uuid.UUID] = None
     inspector_user_id: Optional[uuid.UUID] = None
-    checklist_results: Optional[Dict[str, Any]] = None  # {tire_condition: pass/fail, etc.}
+    checklist_results: Optional[Dict[str, Any]] = None  # mechanical: {A1: {status, comments}, ...}; body: {areas: [...], quote_amount, quote_file_ids}
     photos: Optional[List[uuid.UUID]] = None
     result: InspectionResult = InspectionResult.pass_result
     notes: Optional[str] = None
@@ -256,11 +319,12 @@ class FleetInspectionBase(BaseModel):
 
 
 class FleetInspectionCreate(FleetInspectionBase):
-    pass
+    inspection_type: str = "mechanical"
 
 
 class FleetInspectionUpdate(BaseModel):
     inspection_date: Optional[datetime] = None
+    inspection_type: Optional[str] = None
     inspector_user_id: Optional[uuid.UUID] = None
     checklist_results: Optional[Dict[str, Any]] = None
     photos: Optional[List[uuid.UUID]] = None
@@ -277,6 +341,7 @@ class FleetInspectionResponse(FleetInspectionBase):
     created_by: Optional[uuid.UUID] = None
     fleet_asset_name: Optional[str] = None
     inspector_name: Optional[str] = None
+    inspection_schedule_id: Optional[uuid.UUID] = None
 
     class Config:
         from_attributes = True
@@ -298,6 +363,15 @@ class WorkOrderBase(BaseModel):
     origin_id: Optional[uuid.UUID] = None
     odometer_reading: Optional[int] = None  # For fleet assets
     hours_reading: Optional[float] = None  # For fleet assets
+    # Workshop / revision scheduling
+    scheduled_start_at: Optional[datetime] = None
+    scheduled_end_at: Optional[datetime] = None
+    estimated_duration_minutes: Optional[int] = None
+    check_in_at: Optional[datetime] = None
+    check_out_at: Optional[datetime] = None
+    body_repair_required: bool = False
+    new_stickers_applied: bool = False
+    quote_file_ids: Optional[List[uuid.UUID]] = None  # Quote files attached to the order
 
 
 class WorkOrderCreate(WorkOrderBase):
@@ -316,6 +390,14 @@ class WorkOrderUpdate(BaseModel):
     notes: Optional[str] = None
     odometer_reading: Optional[int] = None  # For fleet assets
     hours_reading: Optional[float] = None  # For fleet assets
+    scheduled_start_at: Optional[datetime] = None
+    scheduled_end_at: Optional[datetime] = None
+    estimated_duration_minutes: Optional[int] = None
+    check_in_at: Optional[datetime] = None
+    check_out_at: Optional[datetime] = None
+    body_repair_required: Optional[bool] = None
+    new_stickers_applied: Optional[bool] = None
+    quote_file_ids: Optional[List[uuid.UUID]] = None
 
 
 class WorkOrderResponse(WorkOrderBase):
@@ -345,6 +427,21 @@ class WorkOrderListResponse(BaseModel):
     page: int
     limit: int
     total_pages: int
+
+
+class WorkOrderCalendarItem(BaseModel):
+    """Minimal work order fields for calendar/agenda view (fleet only)."""
+    id: uuid.UUID
+    work_order_number: str
+    entity_id: uuid.UUID
+    scheduled_start_at: Optional[datetime] = None
+    scheduled_end_at: Optional[datetime] = None
+    estimated_duration_minutes: Optional[int] = None
+    status: str
+    asset_name: Optional[str] = None
+
+    class Config:
+        from_attributes = True
 
 
 # Equipment Checkout Schemas

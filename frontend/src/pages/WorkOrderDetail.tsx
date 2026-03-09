@@ -32,6 +32,16 @@ type WorkOrder = {
   created_at: string;
   updated_at?: string;
   closed_at?: string;
+  scheduled_start_at?: string | null;
+  scheduled_end_at?: string | null;
+  estimated_duration_minutes?: number | null;
+  check_in_at?: string | null;
+  check_out_at?: string | null;
+  body_repair_required?: boolean;
+  new_stickers_applied?: boolean;
+  quote_file_ids?: string[] | null;
+  odometer_reading?: number | null;
+  hours_reading?: number | null;
 };
 
 export default function WorkOrderDetail() {
@@ -88,6 +98,28 @@ export default function WorkOrderDetail() {
     onError: () => {
       toast.error('Failed to update costs');
     },
+  });
+
+  const checkInMutation = useMutation({
+    mutationFn: async (body: { check_in_at?: string; odometer_reading?: number; hours_reading?: number }) => {
+      return api('PUT', `/fleet/work-orders/${id}/check-in`, body);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['workOrder', id] });
+      toast.success('Entrada registrada');
+    },
+    onError: () => toast.error('Falha ao registrar entrada'),
+  });
+
+  const checkOutMutation = useMutation({
+    mutationFn: async (body: { check_out_at?: string; odometer_reading?: number; hours_reading?: number }) => {
+      return api('PUT', `/fleet/work-orders/${id}/check-out`, body);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['workOrder', id] });
+      toast.success('Saída registrada');
+    },
+    onError: () => toast.error('Falha ao registrar saída'),
   });
 
   const statusColors: Record<string, string> = {
@@ -257,6 +289,102 @@ export default function WorkOrderDetail() {
                 </div>
               </div>
             </div>
+
+            {workOrder.entity_type === 'fleet' && (
+              <div className="border-t border-gray-200 pt-6 mt-6">
+                <h3 className="text-sm font-semibold text-gray-900 mb-3">Service / Shop</h3>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="text-sm text-gray-600">Scheduled (start)</label>
+                    <div className="font-medium mt-1">
+                      {workOrder.scheduled_start_at
+                        ? new Date(workOrder.scheduled_start_at).toLocaleString('en-CA', { dateStyle: 'short', timeStyle: 'short' })
+                        : '—'}
+                    </div>
+                  </div>
+                  <div>
+                    <label className="text-sm text-gray-600">Scheduled (end)</label>
+                    <div className="font-medium mt-1">
+                      {workOrder.scheduled_end_at
+                        ? new Date(workOrder.scheduled_end_at).toLocaleString('en-CA', { dateStyle: 'short', timeStyle: 'short' })
+                        : '—'}
+                    </div>
+                  </div>
+                  <div>
+                    <label className="text-sm text-gray-600">Duração estimada</label>
+                    <div className="font-medium mt-1">
+                      {workOrder.estimated_duration_minutes != null
+                        ? `${Math.floor(workOrder.estimated_duration_minutes / 60)}h ${workOrder.estimated_duration_minutes % 60}min`
+                        : '—'}
+                    </div>
+                  </div>
+                  <div>
+                    <label className="text-sm text-gray-600">Entrada (check-in)</label>
+                    <div className="font-medium mt-1">
+                      {workOrder.check_in_at
+                        ? new Date(workOrder.check_in_at).toLocaleString('en-CA', { dateStyle: 'short', timeStyle: 'short' })
+                        : '—'}
+                    </div>
+                    {!workOrder.check_in_at && (
+                      <button
+                        type="button"
+                        onClick={() => checkInMutation.mutate({})}
+                        disabled={checkInMutation.isPending}
+                        className="mt-1 text-xs text-brand-red hover:underline disabled:opacity-50"
+                      >
+                        {checkInMutation.isPending ? 'Registrando…' : 'Registrar entrada'}
+                      </button>
+                    )}
+                  </div>
+                  <div>
+                    <label className="text-sm text-gray-600">Saída (check-out)</label>
+                    <div className="font-medium mt-1">
+                      {workOrder.check_out_at
+                        ? new Date(workOrder.check_out_at).toLocaleString('en-CA', { dateStyle: 'short', timeStyle: 'short' })
+                        : '—'}
+                    </div>
+                    {!workOrder.check_out_at && (
+                      <button
+                        type="button"
+                        onClick={() => checkOutMutation.mutate({})}
+                        disabled={checkOutMutation.isPending}
+                        className="mt-1 text-xs text-brand-red hover:underline disabled:opacity-50"
+                      >
+                        {checkOutMutation.isPending ? 'Registrando…' : 'Registrar saída'}
+                      </button>
+                    )}
+                  </div>
+                  <div className="col-span-2 flex gap-4">
+                    <label className="flex items-center gap-2 text-sm text-gray-700">
+                      <input
+                        type="checkbox"
+                        checked={!!workOrder.body_repair_required}
+                        onChange={(e) => updateWorkOrderMutation.mutate({ body_repair_required: e.target.checked })}
+                        className="rounded border-gray-300"
+                      />
+                      Reparo de carroceria
+                    </label>
+                    <label className="flex items-center gap-2 text-sm text-gray-700">
+                      <input
+                        type="checkbox"
+                        checked={!!workOrder.new_stickers_applied}
+                        onChange={(e) => updateWorkOrderMutation.mutate({ new_stickers_applied: e.target.checked })}
+                        className="rounded border-gray-300"
+                      />
+                      Adesivos novos
+                    </label>
+                  </div>
+                </div>
+                <div className="mt-4">
+                  <label className="text-sm text-gray-600 block mb-1">Orçamentos (anexos)</label>
+                  <QuotesSubsection
+                    workOrderId={id!}
+                    quoteFileIds={workOrder.quote_file_ids || []}
+                    onUpdate={(quote_file_ids) => updateWorkOrderMutation.mutate({ quote_file_ids })}
+                  />
+                </div>
+              </div>
+            )}
           </div>
         )}
 
@@ -573,6 +701,96 @@ function FilesTab({ workOrderId, documents, onUpdate }: {
             </div>
           ))}
         </div>
+      )}
+    </div>
+  );
+}
+
+// Quotes subsection (fleet workshop - orçamentos anexados)
+function QuotesSubsection({
+  workOrderId,
+  quoteFileIds,
+  onUpdate,
+}: {
+  workOrderId: string;
+  quoteFileIds: string[];
+  onUpdate: (quote_file_ids: string[]) => void;
+}) {
+  const [uploading, setUploading] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const uploadFile = async (file: File): Promise<string> => {
+    const name = file.name;
+    const type = file.name.toLowerCase().endsWith('.pdf') ? 'application/pdf' : file.type || 'application/octet-stream';
+    const up: any = await api('POST', '/files/upload', {
+      original_name: name,
+      content_type: type,
+      employee_id: null,
+      project_id: null,
+      client_id: null,
+      category_id: 'work-order-documents',
+    });
+    await fetch(up.upload_url, {
+      method: 'PUT',
+      headers: { 'Content-Type': type, 'x-ms-blob-type': 'BlockBlob' },
+      body: file,
+    });
+    const conf: any = await api('POST', '/files/confirm', {
+      key: up.key,
+      size_bytes: file.size,
+      checksum_sha256: 'na',
+      content_type: type,
+    });
+    return conf.id;
+  };
+
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
+    setUploading(true);
+    try {
+      const uploadedIds = await Promise.all(Array.from(files).map(file => uploadFile(file)));
+      onUpdate([...quoteFileIds, ...uploadedIds]);
+      toast.success('Orçamento(s) anexado(s)');
+    } catch {
+      toast.error('Falha ao enviar arquivo');
+    } finally {
+      setUploading(false);
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    }
+  };
+
+  return (
+    <div className="space-y-2">
+      <input
+        ref={fileInputRef}
+        type="file"
+        multiple
+        accept=".pdf,.doc,.docx,.jpg,.jpeg,.png"
+        onChange={handleFileChange}
+        disabled={uploading}
+        className="hidden"
+        id="quotes-upload"
+      />
+      <label
+        htmlFor="quotes-upload"
+        className={`inline-block px-3 py-1.5 text-xs font-medium rounded-lg border border-gray-300 bg-white hover:bg-gray-50 cursor-pointer ${uploading ? 'opacity-50' : ''}`}
+      >
+        {uploading ? 'Enviando…' : '+ Anexar orçamento'}
+      </label>
+      {quoteFileIds.length > 0 && (
+        <ul className="list-disc list-inside text-sm text-gray-600 space-y-1">
+          {quoteFileIds.map((fileId, idx) => (
+            <li key={fileId} className="flex items-center gap-2">
+              <a href={`/files/${fileId}/download`} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">
+                Orçamento {idx + 1}
+              </a>
+              <button type="button" onClick={() => onUpdate(quoteFileIds.filter(id => id !== fileId))} className="text-red-600 text-xs hover:underline">
+                Remover
+              </button>
+            </li>
+          ))}
+        </ul>
       )}
     </div>
   );

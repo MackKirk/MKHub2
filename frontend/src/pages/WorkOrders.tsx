@@ -20,6 +20,7 @@ type WorkOrder = {
   updated_at?: string;
   closed_at?: string;
   origin_source?: string;
+  scheduled_start_at?: string | null;
 };
 
 type WorkOrderListResponse = {
@@ -395,8 +396,8 @@ export default function WorkOrders() {
   const [page, setPage] = useState(pageParam);
   const limit = 15;
 
-  type SortColumn = 'work_order_number' | 'description' | 'entity_type' | 'category' | 'urgency' | 'status' | 'created_at';
-  const validSorts: SortColumn[] = ['work_order_number', 'description', 'entity_type', 'category', 'urgency', 'status', 'created_at'];
+  type SortColumn = 'work_order_number' | 'description' | 'entity_type' | 'category' | 'urgency' | 'status' | 'created_at' | 'scheduled_start_at';
+  const validSorts: SortColumn[] = ['work_order_number', 'description', 'entity_type', 'category', 'urgency', 'status', 'created_at', 'scheduled_start_at'];
   const rawSort = searchParams.get('sort');
   const sortBy: SortColumn = (rawSort && validSorts.includes(rawSort as SortColumn)) ? (rawSort as SortColumn) : 'created_at';
   const sortDir = (searchParams.get('dir') === 'desc' ? 'desc' : 'asc') as 'asc' | 'desc';
@@ -638,6 +639,9 @@ export default function WorkOrders() {
                     <th className="px-3 py-2 text-left">
                       <button type="button" onClick={() => setListSort('status')} className="flex items-center gap-1 hover:text-gray-900 rounded py-0.5 outline-none focus:outline-none">Status{sortBy === 'status' ? (sortDir === 'asc' ? ' ↑' : ' ↓') : ''}</button>
                     </th>
+                    <th className="px-3 py-2 text-left">
+                      <button type="button" onClick={() => setListSort('scheduled_start_at')} className="flex items-center gap-1 hover:text-gray-900 rounded py-0.5 outline-none focus:outline-none">Scheduled{sortBy === 'scheduled_start_at' ? (sortDir === 'asc' ? ' ↑' : ' ↓') : ''}</button>
+                    </th>
                     <th className="px-3 py-2 text-left rounded-tr-lg">
                       <button type="button" onClick={() => setListSort('created_at')} className="flex items-center gap-1 hover:text-gray-900 rounded py-0.5 outline-none focus:outline-none">Created{sortBy === 'created_at' ? (sortDir === 'asc' ? ' ↑' : ' ↓') : ''}</button>
                     </th>
@@ -672,6 +676,9 @@ export default function WorkOrders() {
                           <span className={`inline-flex px-2 py-0.5 rounded text-xs font-medium ${statusColors[wo.status] || 'bg-gray-100 text-gray-800'}`}>
                             {wo.status?.replace(/_/g, ' ')}
                           </span>
+                        </td>
+                        <td className="px-3 py-3 text-xs text-gray-600 align-top whitespace-nowrap">
+                          {wo.scheduled_start_at ? formatDateLocal(new Date(wo.scheduled_start_at)) : '—'}
                         </td>
                         <td className="px-3 py-3 text-xs text-gray-600 align-top whitespace-nowrap">
                           {wo.created_at ? formatDateLocal(new Date(wo.created_at)) : '—'}

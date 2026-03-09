@@ -31,6 +31,11 @@ export function WorkOrderNewForm({
     labor_cost: '',
     parts_cost: '',
     other_cost: '',
+    scheduled_date: '',
+    scheduled_time: '',
+    estimated_duration_minutes: '',
+    body_repair_required: false,
+    new_stickers_applied: false,
   });
 
   const updateField = (field: string, value: any) => {
@@ -58,6 +63,17 @@ export function WorkOrderNewForm({
         costs: Object.keys(costs).length > 0 ? costs : null,
         origin_source: 'manual',
       };
+      if (form.entity_type === 'fleet') {
+        if (form.scheduled_date) {
+          const dateTime = form.scheduled_time
+            ? `${form.scheduled_date}T${form.scheduled_time}:00`
+            : `${form.scheduled_date}T09:00:00`;
+          payload.scheduled_start_at = new Date(dateTime).toISOString();
+        }
+        if (form.estimated_duration_minutes) payload.estimated_duration_minutes = parseInt(form.estimated_duration_minutes, 10);
+        payload.body_repair_required = !!form.body_repair_required;
+        payload.new_stickers_applied = !!form.new_stickers_applied;
+      }
       return api('POST', '/fleet/work-orders', payload);
     },
     onSuccess: (data: any) => {
@@ -164,6 +180,63 @@ export function WorkOrderNewForm({
             </select>
           </div>
         </div>
+
+        {form.entity_type === 'fleet' && (
+          <div className="border-t border-gray-200 pt-4 space-y-4">
+            <h3 className="text-sm font-semibold text-gray-900">Service / Scheduling</h3>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Scheduled date</label>
+                <input
+                  type="date"
+                  value={form.scheduled_date}
+                  onChange={(e) => updateField('scheduled_date', e.target.value)}
+                  className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-red"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Hora</label>
+                <input
+                  type="time"
+                  value={form.scheduled_time}
+                  onChange={(e) => updateField('scheduled_time', e.target.value)}
+                  className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-red"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Duração estimada (min)</label>
+                <input
+                  type="number"
+                  min={0}
+                  placeholder="ex: 120"
+                  value={form.estimated_duration_minutes}
+                  onChange={(e) => updateField('estimated_duration_minutes', e.target.value)}
+                  className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-red"
+                />
+              </div>
+              <div className="col-span-2 flex gap-6">
+                <label className="flex items-center gap-2 text-sm text-gray-700">
+                  <input
+                    type="checkbox"
+                    checked={form.body_repair_required}
+                    onChange={(e) => updateField('body_repair_required', e.target.checked)}
+                    className="rounded border-gray-300"
+                  />
+                  Reparo de carroceria
+                </label>
+                <label className="flex items-center gap-2 text-sm text-gray-700">
+                  <input
+                    type="checkbox"
+                    checked={form.new_stickers_applied}
+                    onChange={(e) => updateField('new_stickers_applied', e.target.checked)}
+                    className="rounded border-gray-300"
+                  />
+                  Adesivos novos
+                </label>
+              </div>
+            </div>
+          </div>
+        )}
 
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-1">

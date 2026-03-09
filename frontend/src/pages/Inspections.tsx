@@ -3,13 +3,15 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useState, useEffect, useMemo } from 'react';
 import { api } from '@/lib/api';
 import { formatDateLocal } from '@/lib/dateUtils';
-import { InspectionNewForm } from './InspectionNew';
+import { InspectionScheduleForm } from './InspectionNew';
 
 type Inspection = {
   id: string;
   fleet_asset_id: string;
   fleet_asset_name?: string;
   inspection_date: string;
+  inspection_type?: string; // 'body' | 'mechanical'
+  inspection_schedule_id?: string;
   inspector_user_id?: string;
   inspector_name?: string;
   result: string;
@@ -257,9 +259,12 @@ export default function Inspections() {
   const currentRules = useMemo(() => convertParamsToRules(searchParams), [searchParams]);
   const hasActiveFilters = currentRules.length > 0;
 
+  const inspectionTab = (searchParams.get('type') === 'body' ? 'body' : 'mechanical') as 'mechanical' | 'body';
+
   const { data: inspectionsRaw, isLoading } = useQuery({
     queryKey: [
       'inspections',
+      inspectionTab,
       searchParams.get('result'),
       searchParams.get('result_not'),
       sortBy,
@@ -267,6 +272,7 @@ export default function Inspections() {
     ],
     queryFn: () => {
       const params = new URLSearchParams();
+      params.set('inspection_type', inspectionTab);
       const result = searchParams.get('result');
       const resultNot = searchParams.get('result_not');
       if (result) params.set('result', result);
@@ -307,16 +313,61 @@ export default function Inspections() {
     <div className="space-y-4 min-w-0 overflow-x-hidden">
       {/* Title Bar */}
       <div className="rounded-xl border bg-white p-4 mb-4">
-        <div className="flex items-center justify-between">
+          <div className="flex items-center justify-between">
           <div>
             <div className="text-sm font-semibold text-gray-900">Fleet Inspections</div>
             <div className="text-xs text-gray-500 mt-0.5">Manage fleet inspections</div>
           </div>
-          <div className="text-right">
-            <div className="text-[10px] font-medium text-gray-500 uppercase tracking-wide">Today</div>
-            <div className="text-xs font-semibold text-gray-700 mt-0.5">{todayLabel}</div>
+          <div className="flex items-center gap-3">
+            <button
+              type="button"
+              onClick={() => nav('/fleet/calendar?view=list')}
+              className="px-3 py-2 text-xs font-medium text-gray-700 border border-gray-200 rounded-lg bg-white hover:bg-gray-50 transition-colors"
+            >
+              Schedules
+            </button>
+            <div className="text-right">
+              <div className="text-[10px] font-medium text-gray-500 uppercase tracking-wide">Today</div>
+              <div className="text-xs font-semibold text-gray-700 mt-0.5">{todayLabel}</div>
+            </div>
           </div>
         </div>
+      </div>
+
+      {/* Tabs: Mechanical | Body */}
+      <div className="flex gap-3 mb-4">
+        <button
+          type="button"
+          onClick={() => {
+            const params = new URLSearchParams(searchParams);
+            params.set('type', 'mechanical');
+            setSearchParams(params, { replace: true });
+          }}
+          className={`flex-1 min-w-0 rounded-xl border-2 p-4 flex items-center justify-center gap-3 transition-all ${
+            inspectionTab === 'mechanical'
+              ? 'border-gray-800 bg-gray-800 text-white shadow-md'
+              : 'border-gray-200 bg-white text-gray-700 hover:border-gray-300 hover:bg-gray-50'
+          }`}
+        >
+          <span className="text-2xl">🔧</span>
+          <span className="font-semibold text-sm">Mechanical</span>
+        </button>
+        <button
+          type="button"
+          onClick={() => {
+            const params = new URLSearchParams(searchParams);
+            params.set('type', 'body');
+            setSearchParams(params, { replace: true });
+          }}
+          className={`flex-1 min-w-0 rounded-xl border-2 p-4 flex items-center justify-center gap-3 transition-all ${
+            inspectionTab === 'body'
+              ? 'border-blue-600 bg-blue-600 text-white shadow-md'
+              : 'border-gray-200 bg-white text-gray-700 hover:border-gray-300 hover:bg-gray-50'
+          }`}
+        >
+          <span className="text-2xl">🚗</span>
+          <span className="font-semibold text-sm">Body</span>
+        </button>
       </div>
 
       {/* Filter Bar */}
@@ -397,7 +448,7 @@ export default function Inspections() {
           className="w-full border-2 border-dashed border-gray-300 rounded-t-xl p-2.5 hover:border-brand-red hover:bg-gray-50 transition-all text-center bg-white flex items-center justify-center min-h-[60px] min-w-0"
         >
           <div className="text-lg text-gray-400 mr-2">+</div>
-          <div className="font-medium text-xs text-gray-700">New Inspection</div>
+          <div className="font-medium text-xs text-gray-700">Schedule inspection</div>
         </button>
         {isLoading ? (
           <div className="p-8 text-center text-xs text-gray-500">Loading inspections...</div>
@@ -417,7 +468,8 @@ export default function Inspections() {
                       <button type="button" onClick={() => setListSort('result')} className="flex items-center gap-1 hover:text-gray-900 rounded py-0.5 outline-none focus:outline-none">Result{sortBy === 'result' ? (sortDir === 'asc' ? ' ↑' : ' ↓') : ''}</button>
                     </th>
                     <th className="px-3 py-2 text-left">Work Order</th>
-                    <th className="px-3 py-2 text-left rounded-tr-lg">Inspector</th>
+                    <th className="px-3 py-2 text-left">Inspector</th>
+                    <th className="px-3 py-2 text-right rounded-tr-lg">Actions</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -463,6 +515,17 @@ export default function Inspections() {
                       <td className="px-3 py-3 text-xs text-gray-600 align-top">
                         {inspection.inspector_name || inspection.inspector_user_id || '—'}
                       </td>
+                      <td className="px-3 py-3 align-top text-right">
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            nav(`/fleet/inspections/${inspection.id}`);
+                          }}
+                          className="px-3 py-1.5 text-xs font-medium text-blue-600 hover:text-blue-800 border border-blue-200 rounded-lg hover:bg-blue-50 transition-colors"
+                        >
+                          View
+                        </button>
+                      </td>
                     </tr>
                   ))}
                 </tbody>
@@ -476,7 +539,9 @@ export default function Inspections() {
             </div>
           </>
         ) : (
-          <div className="p-8 text-center text-xs text-gray-500">No inspections found</div>
+          <div className="p-8 text-center text-xs text-gray-500">
+            No {inspectionTab === 'body' ? 'body' : 'mechanical'} inspections found
+          </div>
         )}
       </div>
 
@@ -511,18 +576,19 @@ export default function Inspections() {
                     </svg>
                   </button>
                   <div>
-                    <div className="text-sm font-semibold text-gray-900">New Inspection</div>
-                    <div className="text-xs text-gray-500 mt-0.5">Create a new fleet inspection</div>
+                    <div className="text-sm font-semibold text-gray-900">Schedule inspection</div>
+                    <div className="text-xs text-gray-500 mt-0.5">Create an appointment. Start it from Schedules to open Body and Mechanical inspections.</div>
                   </div>
                 </div>
               </div>
             </div>
             <div className="overflow-y-auto flex-1 p-4">
-              <InspectionNewForm
+              <InspectionScheduleForm
                 onSuccess={(data) => {
                   setShowNewInspectionModal(false);
+                  queryClient.invalidateQueries({ queryKey: ['inspection-schedules'] });
                   queryClient.invalidateQueries({ queryKey: ['inspections'] });
-                  nav(`/fleet/inspections/${data.id}`);
+                  nav('/fleet/calendar?view=list');
                 }}
                 onCancel={() => setShowNewInspectionModal(false)}
               />

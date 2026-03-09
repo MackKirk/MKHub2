@@ -19,6 +19,7 @@ from ..models.models import (
     FleetAsset,
     Equipment,
     FleetInspection,
+    InspectionSchedule,
     WorkOrder,
     EquipmentCheckout,
     FleetLog,
@@ -38,6 +39,13 @@ from ..schemas.fleet import (
     EquipmentUpdate,
     EquipmentResponse,
     EquipmentListResponse,
+    InspectionScheduleCreate,
+    InspectionScheduleUpdate,
+    InspectionScheduleResponse,
+    InspectionScheduleStartResponse,
+    InspectionScheduleStartBodyResponse,
+    InspectionScheduleStartMechanicalResponse,
+    InspectionScheduleCalendarItem,
     FleetInspectionCreate,
     FleetInspectionUpdate,
     FleetInspectionResponse,
@@ -45,6 +53,7 @@ from ..schemas.fleet import (
     WorkOrderUpdate,
     WorkOrderResponse,
     WorkOrderListResponse,
+    WorkOrderCalendarItem,
     EquipmentCheckoutCreate,
     EquipmentCheckinUpdate,
     EquipmentCheckoutResponse,
@@ -94,12 +103,14 @@ def create_work_order_from_inspection(
     db: Session,
     user_id: Optional[uuid.UUID]
 ) -> WorkOrder:
-    """Create a work order automatically from a failed inspection"""
+    """Create a work order automatically from a failed inspection (body or mechanical)."""
+    insp_type = getattr(inspection, "inspection_type", None) or "mechanical"
+    type_label = "Body (funilaria/pintura)" if insp_type == "body" else "Mechanical"
     wo = WorkOrder(
         work_order_number=generate_work_order_number(db),
         entity_type="fleet",
         entity_id=inspection.fleet_asset_id,
-        description=f"Work order generated from failed inspection on {inspection.inspection_date.strftime('%Y-%m-%d')}",
+        description=f"Work order from {type_label} inspection on {inspection.inspection_date.strftime('%Y-%m-%d')}",
         category="repair",
         urgency="high" if inspection.result == "fail" else "normal",
         status="open",
@@ -1103,122 +1114,302 @@ def return_fleet_asset_assignment(
     return assignment
 
 
+# ---------- INSPECTION SCHEDULES (agendamentos) ----------
+@router.post("/inspection-schedules", response_model=InspectionScheduleResponse)
+def create_inspection_schedule(
+    payload: InspectionScheduleCreate,
+    db: Session = Depends(get_db),
+    user=Depends(get_current_user),
+    _=Depends(require_permissions("inspections:write")),
+):
+    """Create an inspection appointment (agendamento). Use start to create the two inspections (body + mechanical)."""
+    schedule = InspectionSchedule(
+        fleet_asset_id=payload.fleet_asset_id,
+        scheduled_at=payload.scheduled_at,
+        urgency=payload.urgency,
+        category=payload.category,
+        notes=payload.notes,
+        status="scheduled",
+        created_by=user.id,
+    )
+    db.add(schedule)
+    db.commit()
+    db.refresh(schedule)
+    out = InspectionScheduleResponse.model_validate(schedule)
+    asset = db.query(FleetAsset).filter(FleetAsset.id == schedule.fleet_asset_id).first()
+    return out.model_copy(update={"fleet_asset_name": asset.name if asset else None})
+
+
+@router.get("/inspection-schedules", response_model=List[InspectionScheduleResponse])
+def list_inspection_schedules(
+    fleet_asset_id: Optional[uuid.UUID] = Query(None),
+    status: Optional[str] = Query(None),
+    start_date: Optional[datetime] = Query(None),
+    end_date: Optional[datetime] = Query(None),
+    sort: Optional[str] = Query("scheduled_at"),
+    dir: Optional[str] = Query("desc"),
+    db: Session = Depends(get_db),
+    _=Depends(require_permissions("inspections:read")),
+):
+    """List inspection schedules with filters."""
+    query = db.query(InspectionSchedule).options(joinedload(InspectionSchedule.fleet_asset))
+    if fleet_asset_id:
+        query = query.filter(InspectionSchedule.fleet_asset_id == fleet_asset_id)
+    if status:
+        query = query.filter(InspectionSchedule.status == status)
+    if start_date:
+        query = query.filter(InspectionSchedule.scheduled_at >= start_date)
+    if end_date:
+        query = query.filter(InspectionSchedule.scheduled_at <= end_date)
+    is_desc = (dir or "desc").lower() == "desc"
+    if sort == "scheduled_at":
+        query = query.order_by(InspectionSchedule.scheduled_at.desc() if is_desc else InspectionSchedule.scheduled_at.asc())
+    elif sort == "asset":
+        query = query.join(InspectionSchedule.fleet_asset).order_by(FleetAsset.name.desc() if is_desc else FleetAsset.name.asc())
+    else:
+        query = query.order_by(InspectionSchedule.scheduled_at.desc() if is_desc else InspectionSchedule.scheduled_at.asc())
+    rows = query.limit(500).all()
+    return [
+        InspectionScheduleResponse.model_validate(r).model_copy(update={
+            "fleet_asset_name": r.fleet_asset.name if r.fleet_asset else None,
+        })
+        for r in rows
+    ]
+
+
+@router.get("/inspection-schedules/{schedule_id}", response_model=InspectionScheduleResponse)
+def get_inspection_schedule(
+    schedule_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    _=Depends(require_permissions("inspections:read")),
+):
+    """Get inspection schedule by id."""
+    schedule = db.query(InspectionSchedule).options(joinedload(InspectionSchedule.fleet_asset)).filter(InspectionSchedule.id == schedule_id).first()
+    if not schedule:
+        raise HTTPException(status_code=404, detail="Inspection schedule not found")
+    out = InspectionScheduleResponse.model_validate(schedule)
+    return out.model_copy(update={"fleet_asset_name": schedule.fleet_asset.name if schedule.fleet_asset else None})
+
+
+@router.put("/inspection-schedules/{schedule_id}", response_model=InspectionScheduleResponse)
+def update_inspection_schedule(
+    schedule_id: uuid.UUID,
+    payload: InspectionScheduleUpdate,
+    db: Session = Depends(get_db),
+    _=Depends(require_permissions("inspections:write")),
+):
+    """Update an inspection schedule (e.g. reschedule, cancel)."""
+    schedule = db.query(InspectionSchedule).options(joinedload(InspectionSchedule.fleet_asset)).filter(InspectionSchedule.id == schedule_id).first()
+    if not schedule:
+        raise HTTPException(status_code=404, detail="Inspection schedule not found")
+    update_data = payload.model_dump(exclude_unset=True)
+    for key, value in update_data.items():
+        setattr(schedule, key, value)
+    db.commit()
+    db.refresh(schedule)
+    out = InspectionScheduleResponse.model_validate(schedule)
+    return out.model_copy(update={"fleet_asset_name": schedule.fleet_asset.name if schedule.fleet_asset else None})
+
+
+def _ensure_schedule_inspections(schedule: InspectionSchedule, db: Session, user_id: uuid.UUID):
+    """Ensure body and mechanical inspections exist for this schedule; create if missing. Mark schedule in_progress. Returns (body_inspection, mechanical_inspection)."""
+    schedule = db.query(InspectionSchedule).options(joinedload(InspectionSchedule.inspections)).filter(InspectionSchedule.id == schedule.id).first()
+    if not schedule:
+        raise HTTPException(status_code=404, detail="Inspection schedule not found")
+    now = datetime.now(timezone.utc)
+    body_inspection = next((i for i in schedule.inspections if i.inspection_type == "body"), None)
+    mechanical_inspection = next((i for i in schedule.inspections if i.inspection_type == "mechanical"), None)
+    if body_inspection is None:
+        body_inspection = FleetInspection(
+            fleet_asset_id=schedule.fleet_asset_id,
+            inspection_date=now,
+            inspection_type="body",
+            inspection_schedule_id=schedule.id,
+            result="pass",
+            created_by=user_id,
+        )
+        db.add(body_inspection)
+        db.flush()
+    if mechanical_inspection is None:
+        mechanical_inspection = FleetInspection(
+            fleet_asset_id=schedule.fleet_asset_id,
+            inspection_date=now,
+            inspection_type="mechanical",
+            inspection_schedule_id=schedule.id,
+            result="pass",
+            created_by=user_id,
+        )
+        db.add(mechanical_inspection)
+        db.flush()
+    if schedule.status == "scheduled":
+        schedule.status = "in_progress"
+    db.commit()
+    db.refresh(body_inspection)
+    db.refresh(mechanical_inspection)
+    return body_inspection, mechanical_inspection
+
+
+@router.post("/inspection-schedules/{schedule_id}/start", response_model=InspectionScheduleStartResponse)
+def start_inspection_schedule(
+    schedule_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    user=Depends(get_current_user),
+    _=Depends(require_permissions("inspections:write")),
+):
+    """Start an inspection schedule: create both inspections (body and mechanical) and mark schedule in_progress."""
+    schedule = db.query(InspectionSchedule).filter(InspectionSchedule.id == schedule_id).first()
+    if not schedule:
+        raise HTTPException(status_code=404, detail="Inspection schedule not found")
+    if schedule.status not in ("scheduled", "in_progress"):
+        raise HTTPException(status_code=400, detail="Schedule already completed or cancelled")
+    body_inspection, mechanical_inspection = _ensure_schedule_inspections(schedule, db, user.id)
+    return InspectionScheduleStartResponse(
+        body_inspection_id=body_inspection.id,
+        mechanical_inspection_id=mechanical_inspection.id,
+    )
+
+
+@router.post("/inspection-schedules/{schedule_id}/start-body", response_model=InspectionScheduleStartBodyResponse)
+def start_inspection_schedule_body(
+    schedule_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    user=Depends(get_current_user),
+    _=Depends(require_permissions("inspections:write")),
+):
+    """Start (open) the body/exterior inspection for this schedule. Creates it if not yet created. Redirect to inspection screen."""
+    schedule = db.query(InspectionSchedule).filter(InspectionSchedule.id == schedule_id).first()
+    if not schedule:
+        raise HTTPException(status_code=404, detail="Inspection schedule not found")
+    if schedule.status not in ("scheduled", "in_progress"):
+        raise HTTPException(status_code=400, detail="Schedule already completed or cancelled")
+    body_inspection, _ = _ensure_schedule_inspections(schedule, db, user.id)
+    return InspectionScheduleStartBodyResponse(body_inspection_id=body_inspection.id)
+
+
+@router.post("/inspection-schedules/{schedule_id}/start-mechanical", response_model=InspectionScheduleStartMechanicalResponse)
+def start_inspection_schedule_mechanical(
+    schedule_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    user=Depends(get_current_user),
+    _=Depends(require_permissions("inspections:write")),
+):
+    """Start (open) the mechanical inspection for this schedule. Creates it if not yet created. Redirect to inspection screen."""
+    schedule = db.query(InspectionSchedule).filter(InspectionSchedule.id == schedule_id).first()
+    if not schedule:
+        raise HTTPException(status_code=404, detail="Inspection schedule not found")
+    if schedule.status not in ("scheduled", "in_progress"):
+        raise HTTPException(status_code=400, detail="Schedule already completed or cancelled")
+    _, mechanical_inspection = _ensure_schedule_inspections(schedule, db, user.id)
+    return InspectionScheduleStartMechanicalResponse(mechanical_inspection_id=mechanical_inspection.id)
+
+
+@router.get("/inspection-schedules/calendar", response_model=List[InspectionScheduleCalendarItem])
+def get_inspection_schedules_calendar(
+    start: str = Query(..., description="Start date (YYYY-MM-DD) or datetime (ISO)"),
+    end: str = Query(..., description="End date (YYYY-MM-DD) or datetime (ISO)"),
+    db: Session = Depends(get_db),
+    _=Depends(require_permissions("fleet:access", "fleet:read", "inspections:read")),
+):
+    """List inspection schedules with scheduled_at in [start, end] for calendar view."""
+    def _parse(s: str, default_time: str):
+        s = (s or "").strip()
+        if not s:
+            raise ValueError("Empty")
+        if "T" in s or " " in s:
+            dt = datetime.fromisoformat(s.replace("Z", "+00:00"))
+        else:
+            dt = datetime.fromisoformat(s + default_time)
+        return dt.replace(tzinfo=timezone.utc) if dt.tzinfo is None else dt
+
+    try:
+        start_dt = _parse(start, "T00:00:00")
+        end_dt = _parse(end, "T23:59:59.999999")
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid start or end date/datetime")
+    query = (
+        db.query(InspectionSchedule)
+        .filter(InspectionSchedule.scheduled_at >= start_dt)
+        .filter(InspectionSchedule.scheduled_at <= end_dt)
+    )
+    schedules = (
+        query.options(
+            joinedload(InspectionSchedule.fleet_asset),
+            joinedload(InspectionSchedule.inspections),
+        )
+        .order_by(InspectionSchedule.scheduled_at.asc())
+        .all()
+    )
+    out = []
+    for s in schedules:
+        body_id = None
+        mech_id = None
+        for insp in (s.inspections or []):
+            if getattr(insp, "inspection_type", None) == "body":
+                body_id = insp.id
+            elif getattr(insp, "inspection_type", None) == "mechanical":
+                mech_id = insp.id
+        out.append(
+            InspectionScheduleCalendarItem(
+                id=s.id,
+                scheduled_at=s.scheduled_at,
+                fleet_asset_name=s.fleet_asset.name if s.fleet_asset else None,
+                status=s.status,
+                body_inspection_id=body_id,
+                mechanical_inspection_id=mech_id,
+            )
+        )
+    return out
+
+
 # ---------- INSPECTIONS ----------
-@router.get("/inspections/checklist-template")
-def get_inspection_checklist_template():
-    """
-    Returns the complete inspection checklist template based on company standards.
-    This template includes all sections and items that need to be inspected.
-    """
+def _mechanical_checklist_template():
+    """Simple mechanical inspection checklist – essential items only."""
     return {
+        "type": "mechanical",
         "sections": [
             {
                 "id": "A",
-                "title": "Engine",
+                "title": "Engine & fluids",
                 "items": [
-                    {"key": "A1", "label": "Change oil and filter", "category": "maintenance"},
-                    {"key": "A2", "label": "Change fuel lines and tank cap", "category": "maintenance"},
-                    {"key": "A3", "label": "Check fuel filter (25,000 mil)", "category": "inspection"},
-                    {"key": "A4", "label": "Check air filter if needed", "category": "inspection"},
-                    {"key": "A5", "label": "Check all hoses under pressure", "category": "inspection"},
-                    {"key": "A6", "label": "Check all belts & tensioners", "category": "inspection"},
-                    {"key": "A7", "label": "Check water pump and fan bearing", "category": "inspection"},
-                    {"key": "A8", "label": "Check complete exhaust system", "category": "inspection"},
-                    {"key": "A9", "label": "Check for engine oil leaks", "category": "inspection"},
+                    {"key": "A1", "label": "Oil level and leaks", "category": "inspection"},
+                    {"key": "A2", "label": "Coolant and hoses", "category": "inspection"},
+                    {"key": "A3", "label": "Belts and tensioners", "category": "inspection"},
                 ]
             },
             {
                 "id": "B",
-                "title": "Under The Hood Fluid Levels",
+                "title": "Brakes",
                 "items": [
-                    {"key": "B1", "label": "Radiator- note strength", "category": "inspection"},
-                    {"key": "B2", "label": "Brake", "category": "inspection"},
-                    {"key": "B3", "label": "Steering", "category": "inspection"},
-                    {"key": "B4", "label": "Windshield washer", "category": "inspection"},
-                    {"key": "B5", "label": "Automatic transmission", "category": "inspection"},
-                    {"key": "B6", "label": "Rear end fluid", "category": "inspection"},
-                    {"key": "B7", "label": "Check AC (blows cold)", "category": "inspection"},
+                    {"key": "B1", "label": "Brake fluid and leaks", "category": "inspection"},
+                    {"key": "B2", "label": "Pads and rotors", "category": "inspection"},
+                    {"key": "B3", "label": "Parking brake", "category": "inspection"},
                 ]
             },
             {
                 "id": "C",
-                "title": "Chassis",
+                "title": "Steering & suspension",
                 "items": [
-                    {"key": "C1", "label": "Check steering play", "category": "inspection"},
-                    {"key": "C2", "label": "Check power steering hose", "category": "inspection"},
-                    {"key": "C3", "label": "Check steering pitman arm, drag link & idler arm", "category": "inspection"},
-                    {"key": "C4", "label": "Check tie rod ends", "category": "inspection"},
-                    {"key": "C5", "label": "Check front springs", "category": "inspection"},
-                    {"key": "C6", "label": "Check front shocks", "category": "inspection"},
-                    {"key": "C7", "label": "Check ball joints", "category": "inspection"},
-                    {"key": "C8", "label": "Check rear springs", "category": "inspection"},
-                    {"key": "C9", "label": "Check rear shocks", "category": "inspection"},
-                    {"key": "C10", "label": "Check bell housing bolts", "category": "inspection"},
-                    {"key": "C11", "label": "Check transmission mounts", "category": "inspection"},
-                    {"key": "C12", "label": "Check U-joints & grease", "category": "maintenance"},
-                    {"key": "C13", "label": "Check carrier bearings", "category": "inspection"},
-                    {"key": "C14", "label": "Check slip joint & grease", "category": "maintenance"},
-                    {"key": "C15", "label": "Check wheels and axle seals", "category": "inspection"},
+                    {"key": "C1", "label": "Steering play and linkage", "category": "inspection"},
+                    {"key": "C2", "label": "Shocks and springs", "category": "inspection"},
+                ]
+            },
+            {
+                "id": "D",
+                "title": "Tires & wheels",
+                "items": [
+                    {"key": "D1", "label": "Tire condition and inflation", "category": "inspection"},
+                    {"key": "D2", "label": "Lug nuts and rims", "category": "inspection"},
                 ]
             },
             {
                 "id": "E",
-                "title": "Brakes",
+                "title": "Safety & visibility",
                 "items": [
-                    {"key": "E1", "label": "Check for fluid leaks", "category": "inspection"},
-                    {"key": "E2", "label": "Check front pads & rotors", "category": "inspection"},
-                    {"key": "E3", "label": "Check rear brakes & adjustment", "category": "inspection"},
-                    {"key": "E4", "label": "Check parking brake operation", "category": "inspection"},
+                    {"key": "E1", "label": "Lights and signals", "category": "inspection"},
+                    {"key": "E2", "label": "Mirrors and wipers", "category": "inspection"},
+                    {"key": "E3", "label": "Fire extinguisher", "category": "safety"},
                 ]
             },
-            {
-                "id": "F",
-                "title": "Drivability Checks",
-                "items": [
-                    {"key": "F1", "label": "Check window glass and operation", "category": "inspection"},
-                    {"key": "F2", "label": "Check emergency exits", "category": "inspection"},
-                    {"key": "F3", "label": "Check mirrors", "category": "inspection"},
-                    {"key": "F4", "label": "Check wiper blades", "category": "inspection"},
-                    {"key": "F5", "label": "Check if washer fluid sprays", "category": "inspection"},
-                    {"key": "F6", "label": "Check heater & AC fans", "category": "inspection"},
-                    {"key": "F7", "label": "Check accelerator & linkage", "category": "inspection"},
-                    {"key": "F8", "label": "Check fuel tank & mounting", "category": "inspection"},
-                    {"key": "F9", "label": "Check tire condition & match", "category": "inspection"},
-                    {"key": "F10", "label": "Check tire rims & lug nuts", "category": "inspection"},
-                    {"key": "F11", "label": "Check tire inflation", "category": "inspection"},
-                    {"key": "F12", "label": "Check mud flaps", "category": "inspection"},
-                ]
-            },
-            {
-                "id": "G",
-                "title": "Safety / Emergency Items",
-                "items": [
-                    {"key": "G1", "label": "Fire extinguisher", "category": "safety"},
-                    {"key": "G2", "label": "First aid kit", "category": "safety"},
-                    {"key": "G3", "label": "Operating flashlight", "category": "safety"},
-                    {"key": "G4", "label": "Reflective triangles", "category": "safety"},
-                    {"key": "G5", "label": "Ice scraper (season applicable)", "category": "safety"},
-                    {"key": "G6", "label": "Blanket", "category": "safety"},
-                    {"key": "G7", "label": "Toolkit", "category": "safety"},
-                ]
-            },
-            {
-                "id": "H",
-                "title": "Wrap-Up",
-                "items": [
-                    {"key": "H1", "label": "Check for leaks", "category": "inspection"},
-                    {"key": "H2", "label": "Recheck oil level", "category": "inspection"},
-                    {"key": "H3", "label": "Wash engine & chassis if applicable", "category": "maintenance"},
-                    {"key": "H4", "label": "Install next PM due mileage in pocket", "category": "maintenance"},
-                    {"key": "H5", "label": "Note any other repairs needed", "category": "notes"},
-                ]
-            }
-        ],
-        "status_options": [
-            {"value": "inspected", "label": "Inspected"},
-            {"value": "okay", "label": "Okay"},
-            {"value": "repaired_adjusted", "label": "Repaired & Adjusted"},
-            {"value": "greased_lubed", "label": "Greased & Lubed"},
         ],
         "metadata_fields": [
             {"key": "unit_number", "label": "Unit #", "type": "text"},
@@ -1226,9 +1417,46 @@ def get_inspection_checklist_template():
             {"key": "hours", "label": "Hours", "type": "number"},
             {"key": "mechanic", "label": "Mechanic", "type": "text"},
             {"key": "date", "label": "Date", "type": "date"},
-            {"key": "next_pm_due", "label": "Next PM Due On", "type": "date"},
         ]
     }
+
+
+def _body_checklist_template():
+    """Body / exterior inspection template: areas for funilaria, pintura, etc. with issues and photos."""
+    return {
+        "type": "body",
+        "areas": [
+            {"key": "body_panels", "label": "Body panels", "description": "Dents, damage, alignment"},
+            {"key": "paint", "label": "Paint", "description": "Scratches, chips, rust, fading"},
+            {"key": "glass", "label": "Glass", "description": "Cracks, chips, seals"},
+            {"key": "lights", "label": "Lights", "description": "Condition, moisture"},
+            {"key": "bumpers", "label": "Bumpers", "description": "Damage, mounting"},
+            {"key": "mirrors", "label": "Mirrors", "description": "Condition, adjustment"},
+            {"key": "wheels_trim", "label": "Wheels & trim", "description": "Curb damage, missing trim"},
+            {"key": "other_exterior", "label": "Other (exterior)", "description": "Other exterior notes"},
+        ],
+        "quote_fields": True,
+        "metadata_fields": [
+            {"key": "unit_number", "label": "Unit #", "type": "text"},
+            {"key": "km", "label": "KM", "type": "number"},
+            {"key": "inspector", "label": "Inspector", "type": "text"},
+            {"key": "date", "label": "Date", "type": "date"},
+        ],
+    }
+
+
+@router.get("/inspections/checklist-template")
+def get_inspection_checklist_template(
+    type: Optional[str] = Query("mechanical", description="Inspection type: mechanical (default) or body"),
+):
+    """
+    Returns the inspection checklist template by type.
+    - type=mechanical: full A-H mechanical checklist (default).
+    - type=body: body/exterior areas (funilaria, pintura, etc.) with issues and quote.
+    """
+    if type == "body":
+        return _body_checklist_template()
+    return _mechanical_checklist_template()
 
 
 @router.get("/inspections", response_model=List[FleetInspectionResponse])
@@ -1236,6 +1464,7 @@ def list_inspections(
     fleet_asset_id: Optional[uuid.UUID] = Query(None),
     result: Optional[str] = Query(None),
     result_not: Optional[str] = Query(None),
+    inspection_type: Optional[str] = Query(None),  # body|mechanical
     start_date: Optional[datetime] = Query(None),
     end_date: Optional[datetime] = Query(None),
     sort: Optional[str] = Query("inspection_date"),
@@ -1251,6 +1480,8 @@ def list_inspections(
         query = query.filter(FleetInspection.result == result)
     if result_not:
         query = query.filter(FleetInspection.result != result_not)
+    if inspection_type:
+        query = query.filter(FleetInspection.inspection_type == inspection_type)
     if start_date:
         query = query.filter(FleetInspection.inspection_date >= start_date)
     if end_date:
@@ -1279,10 +1510,14 @@ def get_inspection(
     _=Depends(require_permissions("inspections:read"))
 ):
     """Get inspection detail"""
-    inspection = db.query(FleetInspection).filter(FleetInspection.id == inspection_id).first()
+    inspection = db.query(FleetInspection).options(joinedload(FleetInspection.fleet_asset)).filter(FleetInspection.id == inspection_id).first()
     if not inspection:
         raise HTTPException(status_code=404, detail="Inspection not found")
-    return inspection
+    out = FleetInspectionResponse.model_validate(inspection)
+    return out.model_copy(update={
+        "fleet_asset_name": inspection.fleet_asset.name if inspection.fleet_asset else None,
+        "inspector_name": get_user_display(db, inspection.inspector_user_id) if inspection.inspector_user_id else None,
+    })
 
 
 @router.post("/inspections", response_model=FleetInspectionResponse)
@@ -1292,8 +1527,9 @@ def create_inspection(
     user=Depends(get_current_user),
     _=Depends(require_permissions("inspections:write"))
 ):
-    """Create a new inspection"""
-    new_inspection = FleetInspection(**inspection.dict(), created_by=user.id)
+    """Create a new inspection (body or mechanical)."""
+    data = inspection.model_dump()
+    new_inspection = FleetInspection(**data, created_by=user.id)
     db.add(new_inspection)
     db.flush()
     
@@ -1321,14 +1557,15 @@ def update_inspection(
     inspection_id: uuid.UUID,
     inspection_update: FleetInspectionUpdate,
     db: Session = Depends(get_db),
+    user=Depends(get_current_user),
     _=Depends(require_permissions("inspections:write"))
 ):
-    """Update an inspection"""
+    """Update an inspection. If result is set to fail, a work order is created automatically."""
     inspection = db.query(FleetInspection).filter(FleetInspection.id == inspection_id).first()
     if not inspection:
         raise HTTPException(status_code=404, detail="Inspection not found")
     
-    update_data = inspection_update.dict(exclude_unset=True)
+    update_data = inspection_update.model_dump(exclude_unset=True)
     for key, value in update_data.items():
         setattr(inspection, key, value)
     
@@ -1341,11 +1578,9 @@ def update_inspection(
             db
         )
     
-    # If result changed to fail and no work order exists, create one
+    # If result changed to fail and no work order exists, create one automatically
     if inspection_update.result and (inspection_update.result == InspectionResult.fail.value or inspection_update.result == "fail") and not inspection.auto_generated_work_order_id:
-        # Get current user from dependency - we'll need to pass it
-        # For now, use created_by from inspection
-        wo = create_work_order_from_inspection(inspection, db, inspection.created_by)
+        wo = create_work_order_from_inspection(inspection, db, user.id)
         inspection.auto_generated_work_order_id = wo.id
     
     db.commit()
@@ -1397,6 +1632,8 @@ def _work_order_order(sort: Optional[str], direction: str):
         return WorkOrder.status.asc() if is_asc else WorkOrder.status.desc()
     if sort == "created_at":
         return WorkOrder.created_at.asc() if is_asc else WorkOrder.created_at.desc()
+    if sort == "scheduled_start_at":
+        return WorkOrder.scheduled_start_at.asc().nulls_last() if is_asc else WorkOrder.scheduled_start_at.desc().nulls_first()
     return WorkOrder.created_at.desc()
 
 
@@ -1473,6 +1710,56 @@ def list_work_orders(
         limit=limit,
         total_pages=total_pages,
     )
+
+
+@router.get("/work-orders/calendar", response_model=List[WorkOrderCalendarItem])
+def get_work_orders_calendar(
+    start: str = Query(..., description="Start date or datetime (ISO)"),
+    end: str = Query(..., description="End date or datetime (ISO)"),
+    db: Session = Depends(get_db),
+    _=Depends(require_permissions("fleet:access", "fleet:read", "work_orders:read"))
+):
+    """List fleet work orders with scheduled_start_at in [start, end] for calendar view."""
+    def _parse_calendar_param(s: str, default_time: str):
+        s = (s or "").strip()
+        if not s:
+            raise ValueError("Empty")
+        if "T" in s or " " in s:
+            dt = datetime.fromisoformat(s.replace("Z", "+00:00"))
+        else:
+            dt = datetime.fromisoformat(s + default_time)
+        return dt.replace(tzinfo=timezone.utc) if dt.tzinfo is None else dt
+
+    try:
+        start_dt = _parse_calendar_param(start, "T00:00:00")
+        end_dt = _parse_calendar_param(end, "T23:59:59.999999")
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid start or end date/datetime")
+    query = (
+        db.query(WorkOrder)
+        .filter(WorkOrder.entity_type == "fleet")
+        .filter(WorkOrder.scheduled_start_at.isnot(None))
+        .filter(WorkOrder.scheduled_start_at >= start_dt)
+        .filter(WorkOrder.scheduled_start_at <= end_dt)
+    )
+    work_orders = query.order_by(WorkOrder.scheduled_start_at.asc()).all()
+    out = []
+    for wo in work_orders:
+        asset_name = None
+        if wo.entity_type == "fleet":
+            asset = db.query(FleetAsset).filter(FleetAsset.id == wo.entity_id).first()
+            asset_name = (asset.name or asset.unit_number or asset.license_plate or str(wo.entity_id)) if asset else None
+        out.append(WorkOrderCalendarItem(
+            id=wo.id,
+            work_order_number=wo.work_order_number,
+            entity_id=wo.entity_id,
+            scheduled_start_at=wo.scheduled_start_at,
+            scheduled_end_at=wo.scheduled_end_at,
+            estimated_duration_minutes=wo.estimated_duration_minutes,
+            status=wo.status,
+            asset_name=asset_name,
+        ))
+    return out
 
 
 @router.get("/work-orders/{work_order_id}", response_model=WorkOrderResponse)
@@ -1571,6 +1858,82 @@ def update_work_order_status(
         wo.closed_at = datetime.now(timezone.utc)
     wo.updated_at = datetime.now(timezone.utc)
     
+    db.commit()
+    db.refresh(wo)
+    return wo
+
+
+@router.put("/work-orders/{work_order_id}/check-in", response_model=WorkOrderResponse)
+def work_order_check_in(
+    work_order_id: uuid.UUID,
+    body: dict = Body(default_factory=dict),
+    db: Session = Depends(get_db),
+    _=Depends(require_permissions("work_orders:write"))
+):
+    """Register vehicle check-in (entrada). Sets check_in_at and optional odometer/hours."""
+    wo = db.query(WorkOrder).filter(WorkOrder.id == work_order_id).first()
+    if not wo:
+        raise HTTPException(status_code=404, detail="Work order not found")
+    check_in_at = body.get("check_in_at")
+    if check_in_at is not None:
+        wo.check_in_at = (
+            datetime.fromisoformat(str(check_in_at).replace("Z", "+00:00"))
+            if isinstance(check_in_at, str) else check_in_at
+        )
+        if wo.check_in_at.tzinfo is None:
+            wo.check_in_at = wo.check_in_at.replace(tzinfo=timezone.utc)
+    else:
+        wo.check_in_at = datetime.now(timezone.utc)
+    if body.get("odometer_reading") is not None:
+        wo.odometer_reading = int(body["odometer_reading"])
+    if body.get("hours_reading") is not None:
+        wo.hours_reading = float(body["hours_reading"])
+    if wo.entity_type == "fleet" and (body.get("odometer_reading") is not None or body.get("hours_reading") is not None):
+        update_fleet_asset_last_service(
+            wo.entity_id,
+            int(body["odometer_reading"]) if body.get("odometer_reading") is not None else None,
+            float(body["hours_reading"]) if body.get("hours_reading") is not None else None,
+            db,
+        )
+    wo.updated_at = datetime.now(timezone.utc)
+    db.commit()
+    db.refresh(wo)
+    return wo
+
+
+@router.put("/work-orders/{work_order_id}/check-out", response_model=WorkOrderResponse)
+def work_order_check_out(
+    work_order_id: uuid.UUID,
+    body: dict = Body(default_factory=dict),
+    db: Session = Depends(get_db),
+    _=Depends(require_permissions("work_orders:write"))
+):
+    """Register vehicle check-out (saída). Sets check_out_at and optional odometer/hours."""
+    wo = db.query(WorkOrder).filter(WorkOrder.id == work_order_id).first()
+    if not wo:
+        raise HTTPException(status_code=404, detail="Work order not found")
+    check_out_at = body.get("check_out_at")
+    if check_out_at is not None:
+        wo.check_out_at = (
+            datetime.fromisoformat(str(check_out_at).replace("Z", "+00:00"))
+            if isinstance(check_out_at, str) else check_out_at
+        )
+        if wo.check_out_at.tzinfo is None:
+            wo.check_out_at = wo.check_out_at.replace(tzinfo=timezone.utc)
+    else:
+        wo.check_out_at = datetime.now(timezone.utc)
+    if body.get("odometer_reading") is not None:
+        wo.odometer_reading = int(body["odometer_reading"])
+    if body.get("hours_reading") is not None:
+        wo.hours_reading = float(body["hours_reading"])
+    if wo.entity_type == "fleet" and (body.get("odometer_reading") is not None or body.get("hours_reading") is not None):
+        update_fleet_asset_last_service(
+            wo.entity_id,
+            int(body["odometer_reading"]) if body.get("odometer_reading") is not None else None,
+            float(body["hours_reading"]) if body.get("hours_reading") is not None else None,
+            db,
+        )
+    wo.updated_at = datetime.now(timezone.utc)
     db.commit()
     db.refresh(wo)
     return wo

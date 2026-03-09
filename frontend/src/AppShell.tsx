@@ -395,6 +395,7 @@ export default function AppShell({ children }: PropsWithChildren){
         { id: 'fleet-dashboard', label: 'Dashboard', path: '/fleet', icon: <IconTruck />, requiredPermission: 'fleet:access' },
         { id: 'fleet-assets', label: 'Fleet Assets', path: '/fleet/assets', icon: <IconTruck />, requiredPermission: 'fleet:vehicles:read' },
         { id: 'equipment', label: 'Equipment', path: '/fleet/equipment', icon: <IconWrench />, requiredPermission: 'equipment:read' },
+        { id: 'fleet-calendar', label: 'Schedule', path: '/fleet/calendar', icon: <IconCalendar />, requiredPermission: 'fleet:access' },
         { id: 'work-orders', label: 'Work Orders', path: '/fleet/work-orders', icon: <IconClipboard />, requiredPermission: 'fleet:access' },
         { id: 'inspections', label: 'Inspections', path: '/fleet/inspections', icon: <IconClipboardCheck />, requiredPermission: 'fleet:access' },
       ]

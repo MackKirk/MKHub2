@@ -1989,6 +1989,7 @@ class FleetAsset(Base):
     asset_assignments = relationship("AssetAssignment", back_populates="fleet_asset", foreign_keys="AssetAssignment.fleet_asset_id", cascade="all, delete-orphan", order_by="AssetAssignment.assigned_at.desc()")
     compliance_records = relationship("FleetComplianceRecord", back_populates="fleet_asset", cascade="all, delete-orphan", order_by="FleetComplianceRecord.expiry_date.desc()")
     inspections = relationship("FleetInspection", back_populates="fleet_asset", cascade="all, delete-orphan", order_by="FleetInspection.inspection_date.desc()")
+    inspection_schedules = relationship("InspectionSchedule", back_populates="fleet_asset", cascade="all, delete-orphan", order_by="InspectionSchedule.scheduled_at.desc()")
     logs = relationship("FleetLog", back_populates="fleet_asset", cascade="all, delete-orphan", order_by="FleetLog.log_date.desc()")
 
     # Indexes
@@ -2057,15 +2058,41 @@ class Equipment(Base):
     )
 
 
+class InspectionSchedule(Base):
+    """Inspection appointment/schedule - vehicle, date, urgency, category. When started, creates two inspections (body + mechanical)."""
+    __tablename__ = "inspection_schedules"
+
+    id: Mapped[uuid.UUID] = uuid_pk()
+    fleet_asset_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("fleet_assets.id", ondelete="CASCADE"), nullable=False, index=True)
+    scheduled_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, index=True)
+    urgency: Mapped[str] = mapped_column(String(20), default="normal", index=True)  # low|normal|high|urgent
+    category: Mapped[str] = mapped_column(String(50), default="inspection", index=True)  # maintenance|repair|inspection|other
+    notes: Mapped[Optional[str]] = mapped_column(Text)
+    status: Mapped[str] = mapped_column(String(50), default="scheduled", index=True)  # scheduled|in_progress|completed|cancelled
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
+    created_by: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"))
+
+    # Relationships
+    fleet_asset = relationship("FleetAsset", back_populates="inspection_schedules")
+    inspections = relationship("FleetInspection", back_populates="inspection_schedule", cascade="all, delete-orphan", order_by="FleetInspection.inspection_date.desc()")
+
+    __table_args__ = (
+        Index('idx_inspection_schedule_asset_date', 'fleet_asset_id', 'scheduled_at'),
+        Index('idx_inspection_schedule_status', 'status'),
+    )
+
+
 class FleetInspection(Base):
-    """Fleet inspections with checklist results"""
+    """Fleet inspections with checklist results. Type: body (funilaria/pintura) or mechanical (checklist A-H)."""
     __tablename__ = "fleet_inspections"
 
     id: Mapped[uuid.UUID] = uuid_pk()
     fleet_asset_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("fleet_assets.id", ondelete="CASCADE"), nullable=False, index=True)
     inspection_date: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, index=True)
+    inspection_type: Mapped[str] = mapped_column(String(50), default="mechanical", index=True)  # body|mechanical
+    inspection_schedule_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), ForeignKey("inspection_schedules.id", ondelete="SET NULL"), index=True)
     inspector_user_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"))
-    checklist_results: Mapped[Optional[dict]] = mapped_column(JSON)  # {tire_condition: pass/fail, oil_level: ..., lights: ..., seatbelts: ..., dashboard_warnings: ..., interior_condition: ..., exterior_condition: ...}
+    checklist_results: Mapped[Optional[dict]] = mapped_column(JSON)  # mechanical: {A1: {status, comments}, ...}; body: {areas: [...], quote_amount, quote_file_ids}
     photos: Mapped[Optional[list]] = mapped_column(JSON)  # Array of file_object_ids
     result: Mapped[str] = mapped_column(String(50), default="pass", index=True)  # pass|fail|conditional
     notes: Mapped[Optional[str]] = mapped_column(Text)
@@ -2077,12 +2104,14 @@ class FleetInspection(Base):
 
     # Relationships
     fleet_asset = relationship("FleetAsset", back_populates="inspections")
+    inspection_schedule = relationship("InspectionSchedule", back_populates="inspections")
     auto_generated_work_order = relationship("WorkOrder", foreign_keys=[auto_generated_work_order_id], post_update=True)
 
     # Indexes
     __table_args__ = (
         Index('idx_inspection_asset_date', 'fleet_asset_id', 'inspection_date'),
         Index('idx_inspection_result', 'result'),
+        Index('idx_inspection_type', 'inspection_type'),
     )
 
 
@@ -2111,6 +2140,15 @@ class WorkOrder(Base):
     updated_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
     closed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
     created_by: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"))
+    # Workshop / revision scheduling (fleet service flow)
+    scheduled_start_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), index=True)
+    scheduled_end_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    estimated_duration_minutes: Mapped[Optional[int]] = mapped_column(Integer)
+    check_in_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    check_out_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    body_repair_required: Mapped[bool] = mapped_column(Boolean, default=False)
+    new_stickers_applied: Mapped[bool] = mapped_column(Boolean, default=False)
+    quote_file_ids: Mapped[Optional[list]] = mapped_column(JSON)  # Array of file_object_ids for quotes
 
     # Relationships - Note: entity relationships are handled via queries, not direct relationships
 

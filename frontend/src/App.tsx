@@ -68,6 +68,7 @@ import WorkOrderNew from './pages/WorkOrderNew';
 import Inspections from './pages/Inspections';
 import InspectionNew from './pages/InspectionNew';
 import InspectionDetail from './pages/InspectionDetail';
+import FleetSchedulePage from './pages/FleetSchedulePage';
 import TrainingCourse from './pages/TrainingCourse';
 import TrainingCertificates from './pages/TrainingCertificates';
 import TrainingAdmin from './pages/TrainingAdmin';
@@ -152,6 +153,8 @@ export default function App(){
           <Route path="/fleet/equipment" element={<AppShell><EquipmentList/></AppShell>} />
           <Route path="/fleet/equipment/new" element={<AppShell><EquipmentNew/></AppShell>} />
           <Route path="/fleet/equipment/:id" element={<AppShell><EquipmentDetail/></AppShell>} />
+          <Route path="/fleet/calendar" element={<AppShell><FleetSchedulePage/></AppShell>} />
+          <Route path="/fleet/inspection-schedules" element={<Navigate to="/fleet/calendar?view=list" replace />} />
           <Route path="/fleet/work-orders" element={<AppShell><WorkOrders/></AppShell>} />
           <Route path="/fleet/work-orders/new" element={<AppShell><WorkOrderNew/></AppShell>} />
           <Route path="/fleet/work-orders/:id" element={<AppShell><WorkOrderDetail/></AppShell>} />

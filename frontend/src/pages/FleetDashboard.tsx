@@ -391,6 +391,51 @@ function WorkOrdersPanel({
   );
 }
 
+// --- RevisionsCalendarPanel ---
+function RevisionsCalendarPanel({ onViewCalendar }: { onViewCalendar: () => void }) {
+  const today = useMemo(() => {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  }, []);
+  const nextWeek = useMemo(() => {
+    const d = new Date();
+    d.setDate(d.getDate() + 7);
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  }, []);
+  const { data: todayEvents = [] } = useQuery({
+    queryKey: ['fleet-calendar-today', today],
+    queryFn: () => api<any[]>('GET', `/fleet/work-orders/calendar?start=${today}&end=${today}`),
+  });
+  const { data: weekEvents = [] } = useQuery({
+    queryKey: ['fleet-calendar-week', today, nextWeek],
+    queryFn: () => api<any[]>('GET', `/fleet/work-orders/calendar?start=${today}&end=${nextWeek}`),
+  });
+  return (
+    <div className="rounded-xl border border-gray-200 bg-white p-5 min-w-0">
+      <h2 className="text-sm font-semibold text-gray-900 mb-4">Scheduled services</h2>
+      <div className="space-y-3">
+        <div className="flex justify-between text-xs">
+          <span className="text-gray-600">Today</span>
+          <span className="font-semibold text-gray-900 tabular-nums">{todayEvents.length}</span>
+        </div>
+        <div className="flex justify-between text-xs">
+          <span className="text-gray-600">Próximos 7 dias</span>
+          <span className="font-semibold text-gray-900 tabular-nums">{weekEvents.length}</span>
+        </div>
+      </div>
+      <div className="mt-4 pt-3 border-t border-gray-100">
+        <button
+          type="button"
+          onClick={onViewCalendar}
+          className="text-xs font-medium text-brand-red hover:underline"
+        >
+          View schedule →
+        </button>
+      </div>
+    </div>
+  );
+}
+
 // --- QuickActionsPanel ---
 function QuickActionCard({
   title,
@@ -576,7 +621,7 @@ export default function FleetDashboard() {
       </section>
 
       {/* Row 3 — Operations */}
-      <section className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+      <section className="grid grid-cols-1 lg:grid-cols-4 gap-4">
         <div className="lg:col-span-2">
           <DueInspectionsPanel
             items={stats.inspections_due}
@@ -591,6 +636,9 @@ export default function FleetDashboard() {
             pendingPartsCount={stats.pending_parts_work_orders_count}
             onViewAll={() => nav('/fleet/work-orders')}
           />
+        </div>
+        <div>
+          <RevisionsCalendarPanel onViewCalendar={() => nav('/fleet/calendar')} />
         </div>
       </section>
 
