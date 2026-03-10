@@ -3,11 +3,14 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import toast from 'react-hot-toast';
 import { useMemo, useState, useEffect } from 'react';
+import { INSPECTION_RESULT_LABELS, INSPECTION_RESULT_COLORS } from '@/lib/fleetBadges';
+import FleetDetailHeader from '@/components/FleetDetailHeader';
 
 type Inspection = {
   id: string;
   fleet_asset_id: string;
   fleet_asset_name?: string;
+  inspection_schedule_id?: string;
   inspection_date: string;
   inspection_type?: string; // 'body' | 'mechanical'
   inspector_user_id?: string;
@@ -349,18 +352,8 @@ export default function InspectionDetail() {
     onError: () => toast.error('Failed to delete inspection'),
   });
 
-  const resultColors: Record<string, string> = {
-    pending: 'bg-slate-100 text-slate-800',
-    pass: 'bg-green-100 text-green-800',
-    fail: 'bg-red-100 text-red-800',
-    conditional: 'bg-yellow-100 text-yellow-800',
-  };
-  const resultLabels: Record<string, string> = {
-    pending: 'Pending',
-    pass: 'Pass',
-    fail: 'Fail',
-    conditional: 'Conditional',
-  };
+  const resultColors = INSPECTION_RESULT_COLORS;
+  const resultLabels = INSPECTION_RESULT_LABELS;
 
   const todayLabel = useMemo(() => {
     return new Date().toLocaleDateString('en-CA', {
@@ -385,52 +378,53 @@ export default function InspectionDetail() {
 
   return (
     <div className="space-y-4 min-w-0 overflow-x-hidden">
-      {/* Title Bar */}
-      <div className="rounded-xl border bg-white p-4 mb-4">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-3 flex-1">
-            <button
-              onClick={() => nav('/fleet/inspections')}
-              className="p-2 rounded-lg hover:bg-gray-100 transition-colors flex items-center justify-center text-gray-600 hover:text-gray-900"
-              title="Back to Inspections"
-            >
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
-              </svg>
-            </button>
-            <div>
-              <div className="flex items-center gap-2">
-                <span className="text-sm font-semibold text-gray-900">
-                  {inspection.inspection_type === 'body' ? 'Body / Exterior inspection' : inspection.inspection_type === 'mechanical' ? 'Mechanical inspection' : 'Inspection'}
-                </span>
-                <span className={`px-2 py-0.5 rounded text-xs font-medium ${inspection.inspection_type === 'body' ? 'bg-blue-100 text-blue-800' : 'bg-gray-100 text-gray-800'}`}>
-                  {inspection.inspection_type === 'body' ? 'Body' : 'Mechanical'}
-                </span>
+      <FleetDetailHeader
+        onBack={() => nav('/fleet/inspections')}
+        title={
+          <>
+            <span className="text-sm font-semibold text-gray-900">
+              {inspection.inspection_type === 'body' ? 'Body / Exterior inspection' : inspection.inspection_type === 'mechanical' ? 'Mechanical inspection' : 'Inspection'}
+            </span>
+            <span className={`px-2 py-0.5 rounded text-xs font-medium ${inspection.inspection_type === 'body' ? 'bg-blue-100 text-blue-800' : 'bg-gray-100 text-gray-800'}`}>
+              {inspection.inspection_type === 'body' ? 'Body' : 'Mechanical'}
+            </span>
+          </>
+        }
+        subtitle={
+          <>
+            {inspection.fleet_asset_name && <span className="text-gray-700">{inspection.fleet_asset_name} · </span>}
+            {new Date(inspection.inspection_date).toLocaleDateString()}
+            {inspection.inspection_schedule_id && (
+              <div className="mt-2">
+                <a
+                  href="/fleet/calendar?view=list"
+                  onClick={(e) => { e.preventDefault(); nav('/fleet/calendar?view=list'); }}
+                  className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium bg-slate-100 text-slate-700 hover:bg-slate-200 transition-colors"
+                >
+                  Part of schedule
+                  <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" /></svg>
+                </a>
               </div>
-              <div className="text-xs text-gray-500 mt-0.5">
-                {inspection.fleet_asset_name && <span className="text-gray-700">{inspection.fleet_asset_name} · </span>}
-                {new Date(inspection.inspection_date).toLocaleDateString()}
-              </div>
-            </div>
-          </div>
-          <div className="flex items-center gap-3">
-            {isAdmin && (
-              <button
-                type="button"
-                onClick={() => window.confirm('Delete this inspection permanently?') && deleteInspectionMutation.mutate()}
-                disabled={deleteInspectionMutation.isPending}
-                className="px-3 py-1.5 rounded-lg border border-red-200 bg-red-50 text-red-700 text-xs font-medium hover:bg-red-100 disabled:opacity-50"
-              >
-                {deleteInspectionMutation.isPending ? 'Deleting…' : 'Delete'}
-              </button>
             )}
-            <div className="text-right">
-              <div className="text-[10px] font-medium text-gray-500 uppercase tracking-wide">Today</div>
-              <div className="text-xs font-semibold text-gray-700 mt-0.5">{todayLabel}</div>
-            </div>
+          </>
+        }
+        actions={isAdmin ? (
+          <button
+            type="button"
+            onClick={() => window.confirm('Delete this inspection permanently?') && deleteInspectionMutation.mutate()}
+            disabled={deleteInspectionMutation.isPending}
+            className="px-3 py-1.5 rounded-lg border border-red-200 bg-red-50 text-red-700 text-xs font-medium hover:bg-red-100 disabled:opacity-50"
+          >
+            {deleteInspectionMutation.isPending ? 'Deleting…' : 'Delete'}
+          </button>
+        ) : undefined}
+        right={
+          <div className="text-right">
+            <div className="text-[10px] font-medium text-gray-500 uppercase tracking-wide">Today</div>
+            <div className="text-xs font-semibold text-gray-700 mt-0.5">{todayLabel}</div>
           </div>
-        </div>
-      </div>
+        }
+      />
 
       <div className="rounded-xl border border-gray-200 bg-white p-4 space-y-6 min-w-0 overflow-hidden">
         {!(isBody && bodyEditMode && bodyForm && canEditBody) && !(isMechanical && mechanicalEditMode && mechanicalForm && canEditMechanical) && (

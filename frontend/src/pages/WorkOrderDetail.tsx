@@ -3,7 +3,8 @@ import { useState, useRef, useEffect, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import toast from 'react-hot-toast';
-import { formatDateLocal } from '@/lib/dateUtils';
+import { WORK_ORDER_STATUS_OPTIONS, WORK_ORDER_STATUS_COLORS, WORK_ORDER_STATUS_LABELS, URGENCY_COLORS } from '@/lib/fleetBadges';
+import FleetDetailHeader from '@/components/FleetDetailHeader';
 
 type CostItem = {
   id?: string;
@@ -21,6 +22,8 @@ type WorkOrder = {
   category: string;
   urgency: string;
   status: string;
+  origin_source?: string | null;
+  origin_id?: string | null;
   assigned_to_user_id?: string;
   photos?: string[] | { before: string[]; after: string[] };
   documents?: string[];
@@ -54,23 +57,8 @@ export default function WorkOrderDetail() {
   const [editingCost, setEditingCost] = useState<{ category: string; index?: number } | null>(null);
 
   const searchParams = new URLSearchParams(location.search);
-  const initialTab = (searchParams.get('tab') as 'general' | 'costs' | 'files' | 'photos' | null) || 'general';
-  const [tab, setTab] = useState<'general' | 'costs' | 'files' | 'photos'>(initialTab);
-  const defaultCompletionDate = useMemo(() => {
-    const d = new Date();
-    d.setDate(d.getDate() + 3);
-    return formatDateLocal(d);
-  }, []);
-  const [startExpectedCompletionDate, setStartExpectedCompletionDate] = useState(defaultCompletionDate);
-
-  useEffect(() => {
-    const searchParams = new URLSearchParams(location.search);
-    const tabParam = searchParams.get('tab') as 'general' | 'costs' | 'files' | 'photos' | null;
-    if (tabParam && ['general', 'costs', 'files', 'photos'].includes(tabParam)) {
-      setTab(tabParam);
-    }
-  }, [location.search]);
-
+  const initialTab = (searchParams.get('tab') as 'general' | 'costs' | 'files' | 'activity' | null) || 'general';
+  const [tab, setTab] = useState<'general' | 'costs' | 'files' | 'activity'>(initialTab);
   const isValidId = id && id !== 'new';
 
   const { data: workOrder, isLoading } = useQuery({
@@ -78,6 +66,22 @@ export default function WorkOrderDetail() {
     queryFn: () => api<WorkOrder>('GET', `/fleet/work-orders/${id}`),
     enabled: isValidId,
   });
+
+  useEffect(() => {
+    const searchParams = new URLSearchParams(location.search);
+    const tabParam = searchParams.get('tab') as 'general' | 'costs' | 'files' | 'activity' | null;
+    if (tabParam && ['general', 'costs', 'files', 'activity'].includes(tabParam)) {
+      setTab(tabParam);
+    }
+  }, [location.search]);
+
+  const { data: asset } = useQuery({
+    queryKey: ['fleetAsset', workOrder?.entity_id],
+    queryFn: () => api<{ id: string; name?: string; unit_number?: string; photos?: string[] }>('GET', `/fleet/assets/${workOrder!.entity_id}`),
+    enabled: !!workOrder?.entity_id && workOrder?.entity_type === 'fleet',
+  });
+
+  const assetPhotoUrl = asset?.photos?.[0] ? `/files/${asset.photos[0]}/thumbnail?w=400` : null;
 
   const { data: me } = useQuery({ queryKey: ['me'], queryFn: () => api<any>('GET', '/auth/me') });
   const isAdmin = (me?.roles || []).includes('admin');
@@ -88,6 +92,7 @@ export default function WorkOrderDetail() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['workOrder', id] });
+      queryClient.invalidateQueries({ queryKey: ['workOrderActivity', id] });
       toast.success('Work order updated');
     },
     onError: () => {
@@ -101,6 +106,7 @@ export default function WorkOrderDetail() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['workOrder', id] });
+      queryClient.invalidateQueries({ queryKey: ['workOrderActivity', id] });
       toast.success('Costs updated');
       setShowCostForm(false);
       setEditingCost(null);
@@ -116,20 +122,10 @@ export default function WorkOrderDetail() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['workOrder', id] });
+      queryClient.invalidateQueries({ queryKey: ['workOrderActivity', id] });
       toast.success('Work order started');
     },
     onError: () => toast.error('Failed to start work order'),
-  });
-
-  const checkOutMutation = useMutation({
-    mutationFn: async (body: { check_out_at?: string; odometer_reading?: number; hours_reading?: number }) => {
-      return api('PUT', `/fleet/work-orders/${id}/check-out`, body);
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['workOrder', id] });
-      toast.success('Work order finished');
-    },
-    onError: () => toast.error('Failed to finish work order'),
   });
 
   const deleteWorkOrderMutation = useMutation({
@@ -143,31 +139,8 @@ export default function WorkOrderDetail() {
     onError: () => toast.error('Failed to delete work order'),
   });
 
-  const WORK_ORDER_STATUS_OPTIONS: { value: string; label: string }[] = [
-    { value: 'open', label: 'Pending' },
-    { value: 'in_progress', label: 'In progress' },
-    { value: 'pending_parts', label: 'Awaiting parts' },
-    { value: 'closed', label: 'Finished' },
-    { value: 'not_approved', label: 'Not approved' },
-    { value: 'cancelled', label: 'Cancelled' },
-  ];
-
-  const statusColors: Record<string, string> = {
-    open: 'bg-slate-100 text-slate-800',
-    in_progress: 'bg-amber-100 text-amber-800',
-    pending_parts: 'bg-orange-100 text-orange-800',
-    closed: 'bg-green-100 text-green-800',
-    cancelled: 'bg-red-100 text-red-800',
-    not_approved: 'bg-rose-100 text-rose-800',
-  };
-
-
-  const urgencyColors: Record<string, string> = {
-    low: 'bg-blue-100 text-blue-800',
-    normal: 'bg-gray-100 text-gray-800',
-    high: 'bg-orange-100 text-orange-800',
-    urgent: 'bg-red-100 text-red-800',
-  };
+  const statusColors = WORK_ORDER_STATUS_COLORS;
+  const urgencyColors = URGENCY_COLORS;
 
   // Helper to check if costs are in new format (array) or legacy (number)
   const isCostArray = (cost: any): cost is CostItem[] => {
@@ -190,20 +163,15 @@ export default function WorkOrderDetail() {
     return getCostTotal(costs, 'labor') + getCostTotal(costs, 'parts') + getCostTotal(costs, 'other');
   };
 
-  // Helper to normalize photos structure
-  const getPhotosStructure = (photos: any): { before: string[]; after: string[] } => {
-    if (!photos) return { before: [], after: [] };
-    if (Array.isArray(photos)) {
-      // Legacy format: all photos go to "before" by default
-      return { before: photos, after: [] };
-    }
-    if (typeof photos === 'object' && photos !== null) {
-      return {
-        before: Array.isArray(photos.before) ? photos.before : [],
-        after: Array.isArray(photos.after) ? photos.after : [],
-      };
-    }
-    return { before: [], after: [] };
+  const canEditCosts = ['open', 'in_progress', 'pending_parts'].includes(workOrder?.status ?? '');
+
+  const removeCostItem = (category: 'labor' | 'parts' | 'other', index: number) => {
+    const currentCosts = workOrder?.costs || {};
+    const arr = Array.isArray(currentCosts[category]) ? [...(currentCosts[category] as CostItem[])] : [];
+    const newArr = arr.filter((_, i) => i !== index);
+    const newCosts = { ...currentCosts, [category]: newArr };
+    newCosts.total = getCostTotal(newCosts, 'labor') + getCostTotal(newCosts, 'parts') + getCostTotal(newCosts, 'other');
+    updateCostsMutation.mutate(newCosts);
   };
 
   const todayLabel = useMemo(() => {
@@ -231,43 +199,98 @@ export default function WorkOrderDetail() {
   const laborCosts = Array.isArray(costs.labor) ? costs.labor : [];
   const partsCosts = Array.isArray(costs.parts) ? costs.parts : [];
   const otherCosts = Array.isArray(costs.other) ? costs.other : [];
-  const photosStructure = getPhotosStructure(workOrder.photos);
-  const documents = workOrder.documents || [];
 
   return (
     <div className="space-y-4 min-w-0 overflow-x-hidden">
-      {/* Title Bar */}
-      <div className="rounded-xl border bg-white p-4 mb-4">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-3 flex-1">
-            <button
-              onClick={() => nav(-1)}
-              className="p-2 rounded-lg hover:bg-gray-100 transition-colors flex items-center justify-center text-gray-600 hover:text-gray-900"
-              title="Back"
-            >
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
-              </svg>
-            </button>
-            <div>
-              <div className="text-sm font-semibold text-gray-900">{workOrder.work_order_number}</div>
-              <div className="text-xs text-gray-500 mt-0.5 capitalize">{workOrder.entity_type}</div>
-            </div>
+      <FleetDetailHeader
+        onBack={() => nav('/fleet/work-orders')}
+        title={<span className="text-sm font-semibold text-gray-900">{workOrder.work_order_number}</span>}
+        subtitle={<span className="capitalize">{workOrder.entity_type}</span>}
+        actions={isAdmin ? (
+          <button
+            type="button"
+            onClick={() => window.confirm('Delete this work order permanently?') && deleteWorkOrderMutation.mutate()}
+            disabled={deleteWorkOrderMutation.isPending}
+            className="px-3 py-1.5 rounded-lg border border-red-200 bg-red-50 text-red-700 text-xs font-medium hover:bg-red-100 disabled:opacity-50"
+          >
+            {deleteWorkOrderMutation.isPending ? 'Deleting…' : 'Delete'}
+          </button>
+        ) : undefined}
+        right={
+          <div className="text-right">
+            <div className="text-[10px] font-medium text-gray-500 uppercase tracking-wide">Today</div>
+            <div className="text-xs font-semibold text-gray-700 mt-0.5">{todayLabel}</div>
           </div>
-          <div className="flex items-center gap-3">
-            {isAdmin && (
+        }
+      />
+
+      {/* Hero section - asset photo + key info (project-like) */}
+      <div className="rounded-xl border bg-white overflow-hidden p-4">
+        <div className="flex gap-4 items-start">
+          {/* Left: asset image when fleet */}
+          <div className="w-48 flex-shrink-0">
+            <div className="w-48 h-36 rounded-xl border border-gray-200 overflow-hidden bg-gray-100">
+              {workOrder.entity_type === 'fleet' && assetPhotoUrl ? (
+                <img src={assetPhotoUrl} alt={asset?.name || 'Asset'} className="w-full h-full object-cover" />
+              ) : (
+                <div className="w-full h-full flex items-center justify-center text-gray-400">
+                  <svg className="w-12 h-12" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 17a2 2 0 11-4 0 2 2 0 014 0zM19 17a2 2 0 11-4 0 2 2 0 014 0z" />
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M13 16V6a1 1 0 00-1-1H4a1 1 0 00-1 1v10a1 1 0 001 1h1m8-1a1 1 0 01-1 1h-1M4 12a2 2 0 110 4m0-4a2 2 0 100 4m0-4v2m0-4V6m16 4a2 2 0 110 4m0-4a2 2 0 100 4m0-4v2m0-4V6" />
+                  </svg>
+                </div>
+              )}
+            </div>
+            {workOrder.entity_type === 'fleet' && asset && (
               <button
                 type="button"
-                onClick={() => window.confirm('Delete this work order permanently?') && deleteWorkOrderMutation.mutate()}
-                disabled={deleteWorkOrderMutation.isPending}
-                className="px-3 py-1.5 rounded-lg border border-red-200 bg-red-50 text-red-700 text-xs font-medium hover:bg-red-100 disabled:opacity-50"
+                onClick={() => nav(`/fleet/assets/${workOrder.entity_id}`)}
+                className="mt-2 text-xs font-medium text-brand-red hover:underline"
               >
-                {deleteWorkOrderMutation.isPending ? 'Deleting…' : 'Delete'}
+                View asset
               </button>
             )}
-            <div className="text-right">
-              <div className="text-[10px] font-medium text-gray-500 uppercase tracking-wide">Today</div>
-              <div className="text-xs font-semibold text-gray-700 mt-0.5">{todayLabel}</div>
+          </div>
+          {/* Right: info grid */}
+          <div className="flex-1 min-w-0 grid grid-cols-2 sm:grid-cols-3 gap-x-6 gap-y-4">
+            <div>
+              <span className="text-[10px] font-medium text-gray-500 uppercase tracking-wide">Number</span>
+              <div className="text-sm font-semibold text-gray-900 mt-0.5">{workOrder.work_order_number}</div>
+            </div>
+            <div>
+              <span className="text-[10px] font-medium text-gray-500 uppercase tracking-wide">Status</span>
+              <div className="mt-1">
+                <select
+                  value={workOrder.status}
+                  onChange={(e) => updateWorkOrderMutation.mutate({ status: e.target.value })}
+                  disabled={updateWorkOrderMutation.isPending}
+                  className={`block w-full max-w-[180px] rounded-lg border border-gray-300 px-2.5 py-1.5 text-sm font-medium focus:ring-2 focus:ring-brand-red focus:border-brand-red ${statusColors[workOrder.status] || 'bg-gray-100 text-gray-800'}`}
+                >
+                  {WORK_ORDER_STATUS_OPTIONS.map((opt) => (
+                    <option key={opt.value} value={opt.value}>{opt.label}</option>
+                  ))}
+                </select>
+              </div>
+            </div>
+            <div>
+              <span className="text-[10px] font-medium text-gray-500 uppercase tracking-wide">Category</span>
+              <div className="text-sm font-semibold text-gray-900 mt-0.5 capitalize">{workOrder.category}</div>
+            </div>
+            <div>
+              <span className="text-[10px] font-medium text-gray-500 uppercase tracking-wide">Urgency</span>
+              <div className="mt-0.5">
+                <span className={`inline-block px-2 py-0.5 rounded text-xs font-medium ${urgencyColors[workOrder.urgency] || 'bg-gray-100 text-gray-800'}`}>
+                  {workOrder.urgency}
+                </span>
+              </div>
+            </div>
+            <div>
+              <span className="text-[10px] font-medium text-gray-500 uppercase tracking-wide">Entity</span>
+              <div className="text-sm font-semibold text-gray-900 mt-0.5 capitalize">{workOrder.entity_type}</div>
+            </div>
+            <div>
+              <span className="text-[10px] font-medium text-gray-500 uppercase tracking-wide">Created</span>
+              <div className="text-sm font-semibold text-gray-900 mt-0.5">{new Date(workOrder.created_at).toLocaleDateString()}</div>
             </div>
           </div>
         </div>
@@ -276,18 +299,18 @@ export default function WorkOrderDetail() {
       {/* Tabs */}
       <div className="rounded-xl border border-gray-200 bg-white overflow-hidden">
         <div className="flex gap-1 border-b border-gray-200 px-4">
-          {(['general', 'costs', 'files', 'photos'] as const).map(t => (
+          {(['general', 'costs', 'files', 'activity'] as const).map((tabKey) => (
             <button
-              key={t}
+              key={tabKey}
               onClick={() => {
-                setTab(t);
-                nav(`/fleet/work-orders/${id}?tab=${t}`, { replace: true });
+                setTab(tabKey);
+                nav(`/fleet/work-orders/${id}?tab=${tabKey}`, { replace: true });
               }}
-              className={`px-3 py-2 text-xs font-medium transition-colors border-b-2 -mb-[1px] capitalize ${
-                tab === t ? 'border-brand-red text-brand-red' : 'border-transparent text-gray-600 hover:text-gray-900'
+              className={`px-4 py-3 text-sm font-medium transition-colors border-b-2 -mb-[1px] capitalize ${
+                tab === tabKey ? 'border-brand-red text-brand-red' : 'border-transparent text-gray-500 hover:text-gray-900'
               }`}
             >
-              {t}
+              {tabKey}
             </button>
           ))}
         </div>
@@ -297,107 +320,29 @@ export default function WorkOrderDetail() {
       <div className="rounded-b-xl border border-t-0 border-gray-200 bg-white p-4 min-w-0 overflow-hidden">
         {tab === 'general' && (
           <div className="space-y-6">
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <label className="text-sm text-gray-600">Description</label>
-                <div className="font-medium mt-1">{workOrder.description}</div>
-              </div>
-              <div>
-                <label className="text-sm text-gray-600">Status</label>
-                <div className="mt-1">
-                  <select
-                    value={workOrder.status}
-                    onChange={(e) => updateWorkOrderMutation.mutate({ status: e.target.value })}
-                    disabled={updateWorkOrderMutation.isPending}
-                    className={`block w-full max-w-[200px] rounded-lg border border-gray-300 px-3 py-2 text-sm font-medium focus:ring-2 focus:ring-brand-red focus:border-brand-red ${statusColors[workOrder.status] || 'bg-gray-100 text-gray-800'}`}
+            <div className="rounded-xl border border-gray-200 bg-gray-50/50 p-4">
+              <span className="text-[10px] font-medium text-gray-500 uppercase tracking-wide">Description</span>
+              <div className="font-medium text-gray-900 mt-1">{workOrder.description}</div>
+              {workOrder.origin_source === 'inspection' && workOrder.origin_id && (
+                <div className="mt-3">
+                  <a
+                    href={`/fleet/inspections/${workOrder.origin_id}`}
+                    onClick={(e) => { e.preventDefault(); nav(`/fleet/inspections/${workOrder.origin_id}`); }}
+                    className="inline-flex items-center gap-1 text-xs font-medium text-brand-red hover:underline"
                   >
-                    {WORK_ORDER_STATUS_OPTIONS.map((opt) => (
-                      <option key={opt.value} value={opt.value}>
-                        {opt.label}
-                      </option>
-                    ))}
-                  </select>
+                    View originating inspection
+                    <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" /></svg>
+                  </a>
                 </div>
-              </div>
-              <div>
-                <label className="text-sm text-gray-600">Category</label>
-                <div className="font-medium mt-1 capitalize">{workOrder.category}</div>
-              </div>
-              <div>
-                <label className="text-sm text-gray-600">Urgency</label>
-                <div className="mt-1">
-                  <span className={`px-2 py-1 rounded text-xs font-medium ${urgencyColors[workOrder.urgency] || 'bg-gray-100 text-gray-800'}`}>
-                    {workOrder.urgency}
-                  </span>
-                </div>
-              </div>
-              <div>
-                <label className="text-sm text-gray-600">Entity Type</label>
-                <div className="font-medium mt-1 capitalize">{workOrder.entity_type}</div>
-              </div>
-              <div>
-                <label className="text-sm text-gray-600">Created</label>
-                <div className="font-medium mt-1">
-                  {new Date(workOrder.created_at).toLocaleDateString()}
-                </div>
-              </div>
+              )}
             </div>
 
             {workOrder.entity_type === 'fleet' && (
-              <div className="border-t border-gray-200 pt-6 mt-6">
-                <h3 className="text-sm font-semibold text-gray-900 mb-3">Service / Shop</h3>
-
-                {/* Start: set expected completion date and start */}
-                {workOrder.status === 'open' && !workOrder.check_in_at && (
-                  <div className="rounded-xl border-2 border-amber-200 bg-amber-50/50 p-4 mb-6">
-                    <div className="text-sm font-medium text-amber-900 mb-3">Expected completion date</div>
-                    <div className="flex flex-wrap items-center gap-4 mb-4">
-                      <input
-                        type="date"
-                        value={startExpectedCompletionDate}
-                        onChange={(e) => setStartExpectedCompletionDate(e.target.value)}
-                        min={formatDateLocal(new Date())}
-                        className="rounded-lg border border-gray-300 px-3 py-2 text-sm font-medium"
-                      />
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => checkInMutation.mutate({
-                        scheduled_end_at: startExpectedCompletionDate ? `${startExpectedCompletionDate}T23:59:59` : undefined,
-                      })}
-                      disabled={checkInMutation.isPending || !startExpectedCompletionDate}
-                      className="px-5 py-2.5 rounded-xl bg-amber-500 text-white font-semibold text-sm shadow-md hover:bg-amber-600 disabled:opacity-50 transition-colors"
-                    >
-                      {checkInMutation.isPending ? 'Starting…' : 'Start'}
-                    </button>
-                  </div>
-                )}
-
-                {/* Finish: when started but not checked out */}
-                {!workOrder.check_out_at && workOrder.check_in_at && ['in_progress', 'pending_parts'].includes(workOrder.status) && (
-                  <div className="rounded-xl border-2 border-green-200 bg-green-50/50 p-4 mb-6">
-                    <button
-                      type="button"
-                      onClick={() => checkOutMutation.mutate({})}
-                      disabled={checkOutMutation.isPending}
-                      className="px-5 py-2.5 rounded-xl bg-green-600 text-white font-semibold text-sm shadow-md hover:bg-green-700 disabled:opacity-50 transition-colors"
-                    >
-                      {checkOutMutation.isPending ? 'Finishing…' : 'Finish'}
-                    </button>
-                  </div>
-                )}
-
+              <div className="rounded-xl border border-gray-200 bg-white p-4">
+                <h3 className="text-sm font-semibold text-gray-900 mb-4">Service &nbsp;/&nbsp; Shop</h3>
                 <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <label className="text-sm text-gray-600">Scheduled (start)</label>
-                    <div className="font-medium mt-1">
-                      {workOrder.scheduled_start_at
-                        ? new Date(workOrder.scheduled_start_at).toLocaleString('en-CA', { dateStyle: 'short', timeStyle: 'short' })
-                        : '—'}
-                    </div>
-                  </div>
-                  <div>
-                    <label className="text-sm text-gray-600">Scheduled (end)</label>
+                    <span className="text-[10px] font-medium text-gray-500 uppercase tracking-wide">Scheduled (end)</span>
                     <div className="font-medium mt-1">
                       {workOrder.scheduled_end_at
                         ? new Date(workOrder.scheduled_end_at).toLocaleString('en-CA', { dateStyle: 'short', timeStyle: 'short' })
@@ -405,15 +350,30 @@ export default function WorkOrderDetail() {
                     </div>
                   </div>
                   <div>
-                    <label className="text-sm text-gray-600">Expected duration</label>
+                    <span className="text-[10px] font-medium text-gray-500 uppercase tracking-wide">Expected duration</span>
                     <div className="font-medium mt-1">
-                      {workOrder.estimated_duration_minutes != null
-                        ? `${Math.floor(workOrder.estimated_duration_minutes / 60)}h ${workOrder.estimated_duration_minutes % 60}min`
-                        : '—'}
+                      {(() => {
+                        const end = workOrder.scheduled_end_at ? new Date(workOrder.scheduled_end_at).getTime() : null;
+                        const start = workOrder.scheduled_start_at
+                          ? new Date(workOrder.scheduled_start_at).getTime()
+                          : workOrder.check_in_at
+                            ? new Date(workOrder.check_in_at).getTime()
+                            : workOrder.created_at
+                              ? new Date(workOrder.created_at).getTime()
+                              : null;
+                        if (end && start && end >= start) {
+                          const days = Math.ceil((end - start) / (24 * 60 * 60 * 1000));
+                          return `${days} day${days !== 1 ? 's' : ''}`;
+                        }
+                        if (workOrder.estimated_duration_minutes != null) {
+                          return `${Math.floor(workOrder.estimated_duration_minutes / 60)}h ${workOrder.estimated_duration_minutes % 60}min`;
+                        }
+                        return '—';
+                      })()}
                     </div>
                   </div>
                   <div>
-                    <label className="text-sm text-gray-600">Check-in</label>
+                    <span className="text-[10px] font-medium text-gray-500 uppercase tracking-wide">Check-in</span>
                     <div className="font-medium mt-1">
                       {workOrder.check_in_at
                         ? new Date(workOrder.check_in_at).toLocaleString('en-CA', { dateStyle: 'short', timeStyle: 'short' })
@@ -421,41 +381,13 @@ export default function WorkOrderDetail() {
                     </div>
                   </div>
                   <div>
-                    <label className="text-sm text-gray-600">Check-out</label>
+                    <span className="text-[10px] font-medium text-gray-500 uppercase tracking-wide">Check-out</span>
                     <div className="font-medium mt-1">
                       {workOrder.check_out_at
                         ? new Date(workOrder.check_out_at).toLocaleString('en-CA', { dateStyle: 'short', timeStyle: 'short' })
                         : '—'}
                     </div>
                   </div>
-                  <div className="col-span-2 flex gap-4">
-                    <label className="flex items-center gap-2 text-sm text-gray-700">
-                      <input
-                        type="checkbox"
-                        checked={!!workOrder.body_repair_required}
-                        onChange={(e) => updateWorkOrderMutation.mutate({ body_repair_required: e.target.checked })}
-                        className="rounded border-gray-300"
-                      />
-                      Body repair required
-                    </label>
-                    <label className="flex items-center gap-2 text-sm text-gray-700">
-                      <input
-                        type="checkbox"
-                        checked={!!workOrder.new_stickers_applied}
-                        onChange={(e) => updateWorkOrderMutation.mutate({ new_stickers_applied: e.target.checked })}
-                        className="rounded border-gray-300"
-                      />
-                      New stickers applied
-                    </label>
-                  </div>
-                </div>
-                <div className="mt-4">
-                  <label className="text-sm text-gray-600 block mb-1">Orçamentos (anexos)</label>
-                  <QuotesSubsection
-                    workOrderId={id!}
-                    quoteFileIds={workOrder.quote_file_ids || []}
-                    onUpdate={(quote_file_ids) => updateWorkOrderMutation.mutate({ quote_file_ids })}
-                  />
                 </div>
               </div>
             )}
@@ -464,404 +396,268 @@ export default function WorkOrderDetail() {
 
         {tab === 'costs' && (
           <div className="space-y-6">
-            <div className="flex justify-between items-center mb-3">
-              <label className="text-sm font-medium text-gray-700">Costs</label>
+            {/* Three separate category sections - add button inside each card */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              {/* Labor */}
+              <div className="rounded-xl border bg-white p-4">
+                <div className="flex items-center justify-between mb-3">
+                  <h4 className="text-sm font-semibold text-gray-900">Labor</h4>
+                  <span className="text-sm font-medium text-gray-700">${getCostTotal(costs, 'labor').toFixed(2)}</span>
+                </div>
+                {laborCosts.length === 0 ? (
+                  <p className="text-xs text-gray-500 py-2">No labor costs.</p>
+                ) : (
+                  <ul className="space-y-0">
+                    {laborCosts.map((item, idx) => (
+                      <li key={idx} className="flex items-center justify-between gap-3 py-2 border-b border-gray-100 last:border-0">
+                        <span className="text-sm text-gray-900 truncate min-w-0">{item.description || '—'}</span>
+                        <div className="flex items-center gap-2 shrink-0">
+                          <span className="text-sm font-medium text-gray-900">${item.amount.toFixed(2)}</span>
+                          {canEditCosts && (
+                            <>
+                              <button type="button" onClick={() => { setEditingCost({ category: 'labor', index: idx }); setShowCostForm(true); }} className="p-1 rounded hover:bg-gray-100 text-gray-600 hover:text-gray-900" title="Edit">
+                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" /></svg>
+                              </button>
+                              <button type="button" onClick={() => window.confirm('Remove this cost?') && removeCostItem('labor', idx)} className="p-1 rounded hover:bg-red-50 text-gray-500 hover:text-red-600" title="Delete">
+                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
+                              </button>
+                            </>
+                          )}
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+                {showCostForm && editingCost?.category === 'labor' ? (
+                  <div className="mt-3">
+                    <CostFormInline
+                    workOrderId={id!}
+                    category="labor"
+                    existingCostIndex={editingCost.index}
+                    existingCost={editingCost.index !== undefined ? laborCosts[editingCost.index] : undefined}
+                    onSuccess={(newCosts) => { updateCostsMutation.mutate(newCosts); }}
+                    onCancel={() => { setShowCostForm(false); setEditingCost(null); }}
+                  />
+                  </div>
+                ) : canEditCosts ? (
+                  <button
+                    type="button"
+                    onClick={() => { setEditingCost({ category: 'labor' }); setShowCostForm(true); }}
+                    className="mt-3 w-full border-2 border-dashed border-gray-300 rounded-lg p-2.5 hover:border-brand-red hover:bg-gray-50 transition-all text-center bg-white flex items-center justify-center gap-2"
+                  >
+                    <span className="text-lg text-gray-400">+</span>
+                    <span className="font-medium text-xs text-gray-700">Add Labor</span>
+                  </button>
+                ) : null}
+              </div>
+
+              {/* Parts */}
+              <div className="rounded-xl border bg-white p-4">
+                <div className="flex items-center justify-between mb-3">
+                  <h4 className="text-sm font-semibold text-gray-900">Parts</h4>
+                  <span className="text-sm font-medium text-gray-700">${getCostTotal(costs, 'parts').toFixed(2)}</span>
+                </div>
+                {partsCosts.length === 0 ? (
+                  <p className="text-xs text-gray-500 py-2">No parts costs.</p>
+                ) : (
+                  <ul className="space-y-0">
+                    {partsCosts.map((item, idx) => (
+                      <li key={idx} className="flex items-center justify-between gap-3 py-2 border-b border-gray-100 last:border-0">
+                        <span className="text-sm text-gray-900 truncate min-w-0">{item.description || '—'}</span>
+                        <div className="flex items-center gap-2 shrink-0">
+                          <span className="text-sm font-medium text-gray-900">${item.amount.toFixed(2)}</span>
+                          {canEditCosts && (
+                            <>
+                              <button type="button" onClick={() => { setEditingCost({ category: 'parts', index: idx }); setShowCostForm(true); }} className="p-1 rounded hover:bg-gray-100 text-gray-600 hover:text-gray-900" title="Edit">
+                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" /></svg>
+                              </button>
+                              <button type="button" onClick={() => window.confirm('Remove this cost?') && removeCostItem('parts', idx)} className="p-1 rounded hover:bg-red-50 text-gray-500 hover:text-red-600" title="Delete">
+                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
+                              </button>
+                            </>
+                          )}
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+                {showCostForm && editingCost?.category === 'parts' ? (
+                  <div className="mt-3">
+                    <CostFormInline
+                    workOrderId={id!}
+                    category="parts"
+                    existingCostIndex={editingCost.index}
+                    existingCost={editingCost.index !== undefined ? partsCosts[editingCost.index] : undefined}
+                    onSuccess={(newCosts) => { updateCostsMutation.mutate(newCosts); }}
+                    onCancel={() => { setShowCostForm(false); setEditingCost(null); }}
+                  />
+                  </div>
+                ) : canEditCosts ? (
+                  <button
+                    type="button"
+                    onClick={() => { setEditingCost({ category: 'parts' }); setShowCostForm(true); }}
+                    className="mt-3 w-full border-2 border-dashed border-gray-300 rounded-lg p-2.5 hover:border-brand-red hover:bg-gray-50 transition-all text-center bg-white flex items-center justify-center gap-2"
+                  >
+                    <span className="text-lg text-gray-400">+</span>
+                    <span className="font-medium text-xs text-gray-700">Add Parts</span>
+                  </button>
+                ) : null}
+              </div>
+
+              {/* Other */}
+              <div className="rounded-xl border bg-white p-4">
+                <div className="flex items-center justify-between mb-3">
+                  <h4 className="text-sm font-semibold text-gray-900">Other</h4>
+                  <span className="text-sm font-medium text-gray-700">${getCostTotal(costs, 'other').toFixed(2)}</span>
+                </div>
+                {otherCosts.length === 0 ? (
+                  <p className="text-xs text-gray-500 py-2">No other costs.</p>
+                ) : (
+                  <ul className="space-y-0">
+                    {otherCosts.map((item, idx) => (
+                      <li key={idx} className="flex items-center justify-between gap-3 py-2 border-b border-gray-100 last:border-0">
+                        <span className="text-sm text-gray-900 truncate min-w-0">{item.description || '—'}</span>
+                        <div className="flex items-center gap-2 shrink-0">
+                          <span className="text-sm font-medium text-gray-900">${item.amount.toFixed(2)}</span>
+                          {canEditCosts && (
+                            <>
+                              <button type="button" onClick={() => { setEditingCost({ category: 'other', index: idx }); setShowCostForm(true); }} className="p-1 rounded hover:bg-gray-100 text-gray-600 hover:text-gray-900" title="Edit">
+                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" /></svg>
+                              </button>
+                              <button type="button" onClick={() => window.confirm('Remove this cost?') && removeCostItem('other', idx)} className="p-1 rounded hover:bg-red-50 text-gray-500 hover:text-red-600" title="Delete">
+                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
+                              </button>
+                            </>
+                          )}
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+                {showCostForm && editingCost?.category === 'other' ? (
+                  <div className="mt-3">
+                    <CostFormInline
+                    workOrderId={id!}
+                    category="other"
+                    existingCostIndex={editingCost.index}
+                    existingCost={editingCost.index !== undefined ? otherCosts[editingCost.index] : undefined}
+                    onSuccess={(newCosts) => { updateCostsMutation.mutate(newCosts); }}
+                    onCancel={() => { setShowCostForm(false); setEditingCost(null); }}
+                  />
+                  </div>
+                ) : canEditCosts ? (
+                  <button
+                    type="button"
+                    onClick={() => { setEditingCost({ category: 'other' }); setShowCostForm(true); }}
+                    className="mt-3 w-full border-2 border-dashed border-gray-300 rounded-lg p-2.5 hover:border-brand-red hover:bg-gray-50 transition-all text-center bg-white flex items-center justify-center gap-2"
+                  >
+                    <span className="text-lg text-gray-400">+</span>
+                    <span className="font-medium text-xs text-gray-700">Add Other</span>
+                  </button>
+                ) : null}
+              </div>
             </div>
 
-            {showCostForm && editingCost && (
-              <CostFormInline
-                workOrderId={id!}
-                category={editingCost.category}
-                existingCostIndex={editingCost.index}
-                existingCost={editingCost.index !== undefined ? (
-                  editingCost.category === 'labor' ? laborCosts[editingCost.index] :
-                  editingCost.category === 'parts' ? partsCosts[editingCost.index] :
-                  otherCosts[editingCost.index]
-                ) : undefined}
-                onSuccess={(newCosts) => {
-                  updateCostsMutation.mutate(newCosts);
-                }}
-                onCancel={() => {
-                  setShowCostForm(false);
-                  setEditingCost(null);
-                }}
-              />
-            )}
-
-            <div className="space-y-4">
-              {/* Labor Costs */}
-              <div className="border rounded-lg p-4">
-                <div className="flex justify-between items-center mb-2">
-                  <h4 className="font-semibold">Labor</h4>
-                  <span className="text-sm font-medium">${getCostTotal(costs, 'labor').toLocaleString()}</span>
+            {/* Costs Summary - below the 3 cards, with total */}
+            <div className="rounded-xl border bg-white p-4">
+              <h4 className="text-sm font-semibold text-gray-900 mb-3">Costs Summary</h4>
+              <div className="grid grid-cols-2 md:grid-cols-3 gap-4 mb-4">
+                <div className="text-center">
+                  <div className="text-xs font-medium text-gray-600 mb-1">Labor</div>
+                  <div className="text-sm font-semibold text-gray-900">${getCostTotal(costs, 'labor').toFixed(2)}</div>
                 </div>
-                {laborCosts.length > 0 ? (
-                  <div className="space-y-2">
-                    {laborCosts.map((item, idx) => (
-                      <div key={idx} className="flex items-start justify-between p-2 bg-gray-50 rounded">
-                        <div className="flex-1">
-                          <div className="font-medium text-sm">{item.description || 'No description'}</div>
-                          <div className="text-xs text-gray-600">${item.amount.toLocaleString()}</div>
-                          {item.invoice_files && item.invoice_files.length > 0 && (
-                            <div className="text-xs text-gray-500 mt-1">
-                              {item.invoice_files.length} invoice file(s)
-                            </div>
-                          )}
-                        </div>
-                        <button
-                          onClick={() => {
-                            setEditingCost({ category: 'labor', index: idx });
-                            setShowCostForm(true);
-                          }}
-                          className="text-xs text-brand-red hover:underline ml-2"
-                        >
-                          Edit
-                        </button>
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <p className="text-sm text-gray-500">No labor costs added</p>
-                )}
-                <button
-                  onClick={() => {
-                    setEditingCost({ category: 'labor' });
-                    setShowCostForm(true);
-                  }}
-                  className="mt-2 text-xs text-brand-red hover:underline"
-                >
-                  + Add Labor Cost
-                </button>
+                <div className="text-center">
+                  <div className="text-xs font-medium text-gray-600 mb-1">Parts</div>
+                  <div className="text-sm font-semibold text-gray-900">${getCostTotal(costs, 'parts').toFixed(2)}</div>
+                </div>
+                <div className="text-center">
+                  <div className="text-xs font-medium text-gray-600 mb-1">Other</div>
+                  <div className="text-sm font-semibold text-gray-900">${getCostTotal(costs, 'other').toFixed(2)}</div>
+                </div>
               </div>
-
-              {/* Parts Costs */}
-              <div className="border rounded-lg p-4">
-                <div className="flex justify-between items-center mb-2">
-                  <h4 className="font-semibold">Parts</h4>
-                  <span className="text-sm font-medium">${getCostTotal(costs, 'parts').toLocaleString()}</span>
-                </div>
-                {partsCosts.length > 0 ? (
-                  <div className="space-y-2">
-                    {partsCosts.map((item, idx) => (
-                      <div key={idx} className="flex items-start justify-between p-2 bg-gray-50 rounded">
-                        <div className="flex-1">
-                          <div className="font-medium text-sm">{item.description || 'No description'}</div>
-                          <div className="text-xs text-gray-600">${item.amount.toLocaleString()}</div>
-                          {item.invoice_files && item.invoice_files.length > 0 && (
-                            <div className="text-xs text-gray-500 mt-1">
-                              {item.invoice_files.length} invoice file(s)
-                            </div>
-                          )}
-                        </div>
-                        <button
-                          onClick={() => {
-                            setEditingCost({ category: 'parts', index: idx });
-                            setShowCostForm(true);
-                          }}
-                          className="text-xs text-brand-red hover:underline ml-2"
-                        >
-                          Edit
-                        </button>
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <p className="text-sm text-gray-500">No parts costs added</p>
-                )}
-                <button
-                  onClick={() => {
-                    setEditingCost({ category: 'parts' });
-                    setShowCostForm(true);
-                  }}
-                  className="mt-2 text-xs text-brand-red hover:underline"
-                >
-                  + Add Parts Cost
-                </button>
-              </div>
-
-              {/* Other Costs */}
-              <div className="border rounded-lg p-4">
-                <div className="flex justify-between items-center mb-2">
-                  <h4 className="font-semibold">Other</h4>
-                  <span className="text-sm font-medium">${getCostTotal(costs, 'other').toLocaleString()}</span>
-                </div>
-                {otherCosts.length > 0 ? (
-                  <div className="space-y-2">
-                    {otherCosts.map((item, idx) => (
-                      <div key={idx} className="flex items-start justify-between p-2 bg-gray-50 rounded">
-                        <div className="flex-1">
-                          <div className="font-medium text-sm">{item.description || 'No description'}</div>
-                          <div className="text-xs text-gray-600">${item.amount.toLocaleString()}</div>
-                          {item.invoice_files && item.invoice_files.length > 0 && (
-                            <div className="text-xs text-gray-500 mt-1">
-                              {item.invoice_files.length} invoice file(s)
-                            </div>
-                          )}
-                        </div>
-                        <button
-                          onClick={() => {
-                            setEditingCost({ category: 'other', index: idx });
-                            setShowCostForm(true);
-                          }}
-                          className="text-xs text-brand-red hover:underline ml-2"
-                        >
-                          Edit
-                        </button>
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <p className="text-sm text-gray-500">No other costs added</p>
-                )}
-                <button
-                  onClick={() => {
-                    setEditingCost({ category: 'other' });
-                    setShowCostForm(true);
-                  }}
-                  className="mt-2 text-xs text-brand-red hover:underline"
-                >
-                  + Add Other Cost
-                </button>
-              </div>
-
-              {/* Total */}
-              <div className="border-t-2 pt-4">
-                <div className="flex justify-between items-center">
-                  <span className="text-lg font-bold">Total</span>
-                  <span className="text-lg font-bold">${getTotalCost(costs).toLocaleString()}</span>
-                </div>
+              <div className="flex items-center justify-between pt-3 border-t-2 border-gray-300">
+                <div className="text-sm font-semibold text-gray-900">Total</div>
+                <div className="text-lg font-bold text-brand-red">${getTotalCost(costs).toFixed(2)}</div>
               </div>
             </div>
           </div>
         )}
 
         {tab === 'files' && (
-          <FilesTab
-            workOrderId={id!}
-            documents={documents}
-            onUpdate={(newDocuments) => {
-              updateWorkOrderMutation.mutate({ documents: newDocuments });
-            }}
-          />
+          <WorkOrderFilesTab workOrderId={id!} />
         )}
 
-        {tab === 'photos' && (
-          <PhotosTab
-            workOrderId={id!}
-            photos={photosStructure}
-            onUpdate={(newPhotos) => {
-              updateWorkOrderMutation.mutate({ photos: newPhotos });
-            }}
-          />
+        {tab === 'activity' && (
+          <WorkOrderActivityTab workOrderId={id!} />
         )}
       </div>
     </div>
   );
 }
 
-// Files Tab Component
-function FilesTab({ workOrderId, documents, onUpdate }: {
-  workOrderId: string;
-  documents: string[];
-  onUpdate: (documents: string[]) => void;
-}) {
-  const [uploading, setUploading] = useState(false);
-  const fileInputRef = useRef<HTMLInputElement>(null);
+type ActivityLogEntry = {
+  id: string;
+  action: string;
+  details: Record<string, unknown>;
+  created_at: string | null;
+  created_by: string | null;
+  created_by_display: string | null;
+};
 
-  const uploadFile = async (file: File): Promise<string> => {
-    const name = file.name;
-    const type = file.type || 'application/pdf';
-    const up: any = await api('POST', '/files/upload', {
-      original_name: name,
-      content_type: type,
-      employee_id: null,
-      project_id: null,
-      client_id: null,
-      category_id: 'work-order-documents',
-    });
-    await fetch(up.upload_url, {
-      method: 'PUT',
-      headers: { 'Content-Type': type, 'x-ms-blob-type': 'BlockBlob' },
-      body: file,
-    });
-    const conf: any = await api('POST', '/files/confirm', {
-      key: up.key,
-      size_bytes: file.size,
-      checksum_sha256: 'na',
-      content_type: type,
-    });
-    return conf.id;
-  };
+function formatActivityMessage(entry: ActivityLogEntry): string {
+  const d = entry.details || {};
+  switch (entry.action) {
+    case 'file_attached':
+      return `Attached file "${d.original_name ?? 'file'}" to ${String(d.category ?? '').toLowerCase()}`;
+    case 'file_removed':
+      return `Removed file "${d.original_name ?? d.file_object_id ?? 'file'}" from ${String(d.category ?? '').toLowerCase()}`;
+    case 'status_changed':
+      const oldL = WORK_ORDER_STATUS_LABELS[d.old_status as string] ?? d.old_status;
+      const newL = WORK_ORDER_STATUS_LABELS[d.new_status as string] ?? d.new_status;
+      return `Status changed from ${oldL} to ${newL}`;
+    case 'cost_added':
+      return `Added cost: ${d.description ?? '—'} (${d.category}) $${Number(d.amount ?? 0).toFixed(2)}`;
+    case 'cost_removed':
+      return `Removed cost: ${d.description ?? '—'} (${d.category}) $${Number(d.amount ?? 0).toFixed(2)}`;
+    default:
+      return entry.action;
+  }
+}
 
-  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = e.target.files;
-    if (!files || files.length === 0) return;
-    setUploading(true);
-    try {
-      const uploadPromises = Array.from(files).map(file => uploadFile(file));
-      const uploadedIds = await Promise.all(uploadPromises);
-      onUpdate([...documents, ...uploadedIds]);
-      toast.success('Files uploaded successfully');
-    } catch (error) {
-      toast.error('Failed to upload files');
-    } finally {
-      setUploading(false);
-      if (fileInputRef.current) fileInputRef.current.value = '';
-    }
-  };
+function WorkOrderActivityTab({ workOrderId }: { workOrderId: string }) {
+  const { data: activity = [], isLoading } = useQuery({
+    queryKey: ['workOrderActivity', workOrderId],
+    queryFn: () => api<ActivityLogEntry[]>('GET', `/fleet/work-orders/${workOrderId}/activity`),
+    enabled: !!workOrderId,
+  });
 
-  const handleRemoveFile = (fileId: string) => {
-    onUpdate(documents.filter(id => id !== fileId));
-    toast.success('File removed');
-  };
+  if (isLoading) return <div className="py-4 text-gray-500">Loading activity…</div>;
 
   return (
     <div className="space-y-4">
-      <div className="flex justify-between items-center">
-        <h3 className="text-lg font-semibold">Documents & Files</h3>
-        <div>
-          <input
-            ref={fileInputRef}
-            type="file"
-            multiple
-            accept=".pdf,.doc,.docx,.xls,.xlsx,.jpg,.jpeg,.png"
-            onChange={handleFileChange}
-            disabled={uploading}
-            className="hidden"
-            id="file-upload"
-          />
-          <label
-            htmlFor="file-upload"
-            className={`px-4 py-2 bg-brand-red text-white rounded-lg hover:bg-red-700 cursor-pointer inline-block ${uploading ? 'opacity-50 cursor-not-allowed' : ''}`}
-          >
-            {uploading ? 'Uploading...' : '+ Upload Files'}
-          </label>
-        </div>
-      </div>
-
-      {documents.length === 0 ? (
-        <div className="text-center py-8 text-gray-500">
-          <p>No files uploaded yet</p>
-          <p className="text-sm mt-2">Click "Upload Files" to add documents, invoices, or other files</p>
-        </div>
+      <h3 className="text-sm font-semibold text-gray-900">Activity log</h3>
+      <p className="text-xs text-gray-500">File attachments, status changes, and cost additions/removals.</p>
+      {activity.length === 0 ? (
+        <div className="py-8 text-center text-gray-500 text-sm">No activity recorded yet.</div>
       ) : (
-        <div className="space-y-2">
-          {documents.map((docId, idx) => (
-            <div key={idx} className="flex items-center justify-between p-3 border rounded-lg hover:bg-gray-50">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 bg-gray-200 rounded flex items-center justify-center">
-                  <svg className="w-6 h-6 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                  </svg>
-                </div>
-                <div>
-                  <a
-                    href={`/files/${docId}/download`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-sm font-medium text-blue-600 hover:underline"
-                  >
-                    Document {idx + 1}
-                  </a>
-                  <p className="text-xs text-gray-500">Click to download</p>
+        <ul className="space-y-0 divide-y divide-gray-100 border border-gray-200 rounded-lg overflow-hidden bg-white">
+          {activity.map((entry) => (
+            <li key={entry.id} className="flex items-start gap-3 px-4 py-3 hover:bg-gray-50/50">
+              <span className="flex-shrink-0 w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center text-gray-600 text-xs">
+                {entry.action === 'file_attached' && '📎'}
+                {entry.action === 'file_removed' && '🗑️'}
+                {entry.action === 'status_changed' && '🔄'}
+                {entry.action === 'cost_added' && '➕'}
+                {entry.action === 'cost_removed' && '➖'}
+                {!['file_attached', 'file_removed', 'status_changed', 'cost_added', 'cost_removed'].includes(entry.action) && '•'}
+              </span>
+              <div className="min-w-0 flex-1">
+                <div className="text-sm font-medium text-gray-900">{formatActivityMessage(entry)}</div>
+                <div className="text-xs text-gray-500 mt-0.5">
+                  {entry.created_by_display ?? 'System'}
+                  {entry.created_at && ` · ${new Date(entry.created_at).toLocaleString('en-CA', { dateStyle: 'short', timeStyle: 'short' })}`}
                 </div>
               </div>
-              <button
-                onClick={() => handleRemoveFile(docId)}
-                className="text-red-600 hover:text-red-800 text-sm"
-              >
-                Remove
-              </button>
-            </div>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
-
-// Quotes subsection (fleet workshop - orçamentos anexados)
-function QuotesSubsection({
-  workOrderId,
-  quoteFileIds,
-  onUpdate,
-}: {
-  workOrderId: string;
-  quoteFileIds: string[];
-  onUpdate: (quote_file_ids: string[]) => void;
-}) {
-  const [uploading, setUploading] = useState(false);
-  const fileInputRef = useRef<HTMLInputElement>(null);
-
-  const uploadFile = async (file: File): Promise<string> => {
-    const name = file.name;
-    const type = file.name.toLowerCase().endsWith('.pdf') ? 'application/pdf' : file.type || 'application/octet-stream';
-    const up: any = await api('POST', '/files/upload', {
-      original_name: name,
-      content_type: type,
-      employee_id: null,
-      project_id: null,
-      client_id: null,
-      category_id: 'work-order-documents',
-    });
-    await fetch(up.upload_url, {
-      method: 'PUT',
-      headers: { 'Content-Type': type, 'x-ms-blob-type': 'BlockBlob' },
-      body: file,
-    });
-    const conf: any = await api('POST', '/files/confirm', {
-      key: up.key,
-      size_bytes: file.size,
-      checksum_sha256: 'na',
-      content_type: type,
-    });
-    return conf.id;
-  };
-
-  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = e.target.files;
-    if (!files || files.length === 0) return;
-    setUploading(true);
-    try {
-      const uploadedIds = await Promise.all(Array.from(files).map(file => uploadFile(file)));
-      onUpdate([...quoteFileIds, ...uploadedIds]);
-      toast.success('Orçamento(s) anexado(s)');
-    } catch {
-      toast.error('Falha ao enviar arquivo');
-    } finally {
-      setUploading(false);
-      if (fileInputRef.current) fileInputRef.current.value = '';
-    }
-  };
-
-  return (
-    <div className="space-y-2">
-      <input
-        ref={fileInputRef}
-        type="file"
-        multiple
-        accept=".pdf,.doc,.docx,.jpg,.jpeg,.png"
-        onChange={handleFileChange}
-        disabled={uploading}
-        className="hidden"
-        id="quotes-upload"
-      />
-      <label
-        htmlFor="quotes-upload"
-        className={`inline-block px-3 py-1.5 text-xs font-medium rounded-lg border border-gray-300 bg-white hover:bg-gray-50 cursor-pointer ${uploading ? 'opacity-50' : ''}`}
-      >
-        {uploading ? 'Enviando…' : '+ Anexar orçamento'}
-      </label>
-      {quoteFileIds.length > 0 && (
-        <ul className="list-disc list-inside text-sm text-gray-600 space-y-1">
-          {quoteFileIds.map((fileId, idx) => (
-            <li key={fileId} className="flex items-center gap-2">
-              <a href={`/files/${fileId}/download`} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">
-                Orçamento {idx + 1}
-              </a>
-              <button type="button" onClick={() => onUpdate(quoteFileIds.filter(id => id !== fileId))} className="text-red-600 text-xs hover:underline">
-                Remover
-              </button>
             </li>
           ))}
         </ul>
@@ -870,27 +666,117 @@ function QuotesSubsection({
   );
 }
 
-// Photos Tab Component
-function PhotosTab({ workOrderId, photos, onUpdate }: {
-  workOrderId: string;
-  photos: { before: string[]; after: string[] };
-  onUpdate: (photos: { before: string[]; after: string[] }) => void;
-}) {
-  const [uploading, setUploading] = useState(false);
-  const [uploadCategory, setUploadCategory] = useState<'before' | 'after'>('before');
-  const beforeFileInputRef = useRef<HTMLInputElement>(null);
-  const afterFileInputRef = useRef<HTMLInputElement>(null);
+// Work order files tab: project-style layout (sidebar categories + files table + drag and drop)
+const WO_FILE_CATEGORIES = [
+  { id: 'all', label: 'All Files' },
+  { id: 'orcamentos', label: 'Quotes' },
+  { id: 'photos', label: 'Photos' },
+  { id: 'invoices', label: 'Invoices' },
+  { id: 'outros', label: 'Other' },
+] as const;
 
-  const uploadPhoto = async (file: File): Promise<string> => {
-    const name = file.name;
-    const type = file.type || 'image/jpeg';
+type WorkOrderFileItem = {
+  id: string;
+  file_object_id: string;
+  category: string;
+  original_name: string | null;
+  uploaded_at: string | null;
+  content_type: string | null;
+  is_image: boolean;
+  is_legacy?: boolean;
+};
+
+function WorkOrderFilesTab({ workOrderId }: { workOrderId: string }) {
+  const queryClient = useQueryClient();
+  const [selectedCategory, setSelectedCategory] = useState<string>('all');
+  const [uploadCategory, setUploadCategory] = useState<string>('outros');
+  const [isDragging, setIsDragging] = useState(false);
+  const [draggedFileId, setDraggedFileId] = useState<string | null>(null);
+  const [showUpload, setShowUpload] = useState(false);
+  const [uploadQueue, setUploadQueue] = useState<Array<{ id: string; file: File; progress: number; status: 'pending' | 'uploading' | 'success' | 'error'; error?: string }>>([]);
+  const [sortBy, setSortBy] = useState<'uploaded_at' | 'name' | 'type'>('uploaded_at');
+  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
+  const [fileSearchQuery, setFileSearchQuery] = useState('');
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const { data: files = [], isLoading } = useQuery({
+    queryKey: ['workOrderFiles', workOrderId],
+    queryFn: () => api<WorkOrderFileItem[]>('GET', `/fleet/work-orders/${workOrderId}/files`),
+    enabled: !!workOrderId,
+  });
+
+  const filesByCategory = useMemo(() => {
+    const grouped: Record<string, WorkOrderFileItem[]> = { all: [] };
+    WO_FILE_CATEGORIES.forEach((c) => { if (c.id !== 'all') grouped[c.id] = []; });
+    files.forEach((f) => {
+      const cat = f.category || 'outros';
+      if (!grouped[cat]) grouped[cat] = [];
+      grouped[cat].push(f);
+      grouped.all.push(f);
+    });
+    return grouped;
+  }, [files]);
+
+  const getFileTypeLabel = (f: WorkOrderFileItem): string => {
+    const name = String(f.original_name || '');
+    const ext = (name.includes('.') ? name.split('.').pop() : '').toLowerCase();
+    const ct = String(f.content_type || '').toLowerCase();
+    if (f.is_image || ct.startsWith('image/')) return 'Image';
+    if (ct.includes('pdf') || ext === 'pdf') return 'PDF';
+    if (['xlsx', 'xls', 'csv'].includes(ext) || ct.includes('excel') || ct.includes('spreadsheet')) return 'Excel';
+    if (['doc', 'docx'].includes(ext) || ct.includes('word')) return 'Word';
+    return ext.toUpperCase() || 'File';
+  };
+
+  const currentFiles = useMemo(() => {
+    let list = filesByCategory[selectedCategory] || [];
+    const q = fileSearchQuery.trim().toLowerCase();
+    if (q) list = list.filter((f) => (f.original_name || f.file_object_id || '').toLowerCase().includes(q));
+    return [...list].sort((a, b) => {
+      let aVal: string | number;
+      let bVal: string | number;
+      if (sortBy === 'uploaded_at') {
+        aVal = a.uploaded_at || '';
+        bVal = b.uploaded_at || '';
+      } else if (sortBy === 'name') {
+        aVal = (a.original_name || a.file_object_id || '').toLowerCase();
+        bVal = (b.original_name || b.file_object_id || '').toLowerCase();
+      } else {
+        aVal = getFileTypeLabel(a).toLowerCase();
+        bVal = getFileTypeLabel(b).toLowerCase();
+      }
+      if (aVal < bVal) return sortOrder === 'asc' ? -1 : 1;
+      if (aVal > bVal) return sortOrder === 'asc' ? 1 : -1;
+      return 0;
+    });
+  }, [filesByCategory, selectedCategory, fileSearchQuery, sortBy, sortOrder]);
+
+  const handleSort = (column: 'uploaded_at' | 'name' | 'type') => {
+    if (sortBy === column) setSortOrder((o) => (o === 'asc' ? 'desc' : 'asc'));
+    else { setSortBy(column); setSortOrder('asc'); }
+  };
+
+  const iconFor = (f: WorkOrderFileItem) => {
+    const name = String(f.original_name || '');
+    const ext = (name.includes('.') ? name.split('.').pop() : '').toLowerCase();
+    const ct = String(f.content_type || '').toLowerCase();
+    const is = (x: string) => ct.includes(x) || ext === x;
+    if (is('pdf')) return { label: 'PDF', color: 'bg-red-500' };
+    if (['xlsx', 'xls', 'csv'].includes(ext) || ct.includes('excel') || ct.includes('spreadsheet')) return { label: 'XLS', color: 'bg-green-600' };
+    if (['doc', 'docx'].includes(ext) || ct.includes('word')) return { label: 'DOC', color: 'bg-blue-600' };
+    if (f.is_image || ct.startsWith('image/')) return { label: 'IMG', color: 'bg-purple-500' };
+    return { label: (ext || 'FILE').toUpperCase().slice(0, 4), color: 'bg-gray-600' };
+  };
+
+  const uploadFileToBlob = async (file: File): Promise<string> => {
+    const type = file.type || 'application/octet-stream';
     const up: any = await api('POST', '/files/upload', {
-      original_name: name,
+      original_name: file.name,
       content_type: type,
       employee_id: null,
       project_id: null,
       client_id: null,
-      category_id: 'work-order-photos',
+      category_id: 'work-order-files',
     });
     await fetch(up.upload_url, {
       method: 'PUT',
@@ -906,152 +792,384 @@ function PhotosTab({ workOrderId, photos, onUpdate }: {
     return conf.id;
   };
 
-  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>, category: 'before' | 'after') => {
-    const files = e.target.files;
-    if (!files || files.length === 0) return;
-    setUploading(true);
+  const uploadMultiple = async (fileList: File[], targetCategory?: string) => {
+    const category = targetCategory !== undefined ? targetCategory : (selectedCategory === 'all' ? uploadCategory : selectedCategory);
+    const newQueue = Array.from(fileList).map((file, idx) => ({
+      id: `${Date.now()}-${idx}`,
+      file,
+      progress: 0,
+      status: 'pending' as const,
+    }));
+    setUploadQueue((prev) => [...prev, ...newQueue]);
+
+    for (const item of newQueue) {
+      try {
+        setUploadQueue((prev) => prev.map((u) => (u.id === item.id ? { ...u, status: 'uploading' } : u)));
+        const fileObjectId = await uploadFileToBlob(item.file);
+        const params = new URLSearchParams({ file_object_id: fileObjectId, category });
+        params.set('original_name', item.file.name);
+        await api('POST', `/fleet/work-orders/${workOrderId}/files?${params}`);
+        setUploadQueue((prev) => prev.map((u) => (u.id === item.id ? { ...u, status: 'success', progress: 100 } : u)));
+      } catch (e: any) {
+        setUploadQueue((prev) => prev.map((u) => (u.id === item.id ? { ...u, status: 'error', error: e?.message || 'Upload failed' } : u)));
+      }
+    }
+    queryClient.invalidateQueries({ queryKey: ['workOrderFiles', workOrderId] });
+    queryClient.invalidateQueries({ queryKey: ['workOrderActivity', workOrderId] });
+    setTimeout(() => setUploadQueue((prev) => prev.filter((u) => !newQueue.find((nq) => nq.id === u.id))), 2000);
+  };
+
+  const deleteMutation = useMutation({
+    mutationFn: async (item: WorkOrderFileItem) => {
+      if (item.is_legacy && item.id.startsWith('legacy-')) {
+        return api('DELETE', `/fleet/work-orders/${workOrderId}/files/legacy/${item.file_object_id}?category=${encodeURIComponent(item.category)}`);
+      }
+      return api('DELETE', `/fleet/work-orders/${workOrderId}/files/${item.id}`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['workOrderFiles', workOrderId] });
+      queryClient.invalidateQueries({ queryKey: ['workOrderActivity', workOrderId] });
+      toast.success('File removed');
+    },
+    onError: () => toast.error('Failed to remove file'),
+  });
+
+  const updateCategoryMutation = useMutation({
+    mutationFn: async ({ fileId, category }: { fileId: string; category: string }) => {
+      return api('PUT', `/fleet/work-orders/${workOrderId}/files/${fileId}?category=${encodeURIComponent(category)}`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['workOrderFiles', workOrderId] });
+      toast.success('File moved');
+    },
+    onError: () => toast.error('Failed to move file'),
+  });
+
+  const handleMoveFile = (item: WorkOrderFileItem, newCategory: string) => {
+    if (item.is_legacy) {
+      toast.error('Legacy files cannot be moved. Remove and re-upload into the desired category.');
+      return;
+    }
+    updateCategoryMutation.mutate({ fileId: item.id, category: newCategory });
+  };
+
+  const fetchDownloadUrl = async (fid: string) => {
     try {
-      const uploadPromises = Array.from(files).map(file => uploadPhoto(file));
-      const uploadedIds = await Promise.all(uploadPromises);
-      const newPhotos = { ...photos };
-      newPhotos[category] = [...newPhotos[category], ...uploadedIds];
-      onUpdate(newPhotos);
-      toast.success(`Photos uploaded to ${category === 'before' ? 'Before' : 'After'} section`);
-    } catch (error) {
-      toast.error('Failed to upload photos');
-    } finally {
-      setUploading(false);
-      if (category === 'before' && beforeFileInputRef.current) {
-        beforeFileInputRef.current.value = '';
-      }
-      if (category === 'after' && afterFileInputRef.current) {
-        afterFileInputRef.current.value = '';
-      }
+      const r: any = await api('GET', `/files/${fid}/download`);
+      return String(r.download_url || '');
+    } catch {
+      toast.error('Download link unavailable');
+      return '';
     }
   };
 
-  const handleRemovePhoto = (photoId: string, category: 'before' | 'after') => {
-    const newPhotos = { ...photos };
-    newPhotos[category] = newPhotos[category].filter(id => id !== photoId);
-    onUpdate(newPhotos);
-    toast.success('Photo removed');
+  const onDropRight = async (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(false);
+    if (e.dataTransfer.files?.length) {
+      const category = selectedCategory === 'all' ? uploadCategory : selectedCategory;
+      await uploadMultiple(Array.from(e.dataTransfer.files), category);
+      return;
+    }
+    if (draggedFileId && selectedCategory !== 'all') {
+      const item = files.find((f) => f.id === draggedFileId);
+      if (item) handleMoveFile(item, selectedCategory);
+      setDraggedFileId(null);
+    }
   };
 
+  const onDropCategory = async (e: React.DragEvent, categoryId: string) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(false);
+    if (e.dataTransfer.files?.length) {
+      await uploadMultiple(Array.from(e.dataTransfer.files), categoryId);
+      return;
+    }
+    if (draggedFileId && categoryId !== 'all') {
+      const item = files.find((f) => f.id === draggedFileId);
+      if (item) handleMoveFile(item, categoryId);
+      setDraggedFileId(null);
+    }
+  };
+
+  if (isLoading) return <div className="py-4 text-gray-500">Loading files…</div>;
+
   return (
-    <div className="space-y-6">
-      {/* Before Maintenance Section */}
-      <div className="space-y-4">
-        <div className="flex justify-between items-center">
-          <h3 className="text-lg font-semibold">Before Maintenance</h3>
-          <div>
-            <input
-              ref={beforeFileInputRef}
-              type="file"
-              multiple
-              accept="image/*"
-              onChange={(e) => handleFileChange(e, 'before')}
-              disabled={uploading}
-              className="hidden"
-              id="before-photo-upload"
-            />
-            <label
-              htmlFor="before-photo-upload"
-              className={`px-4 py-2 bg-brand-red text-white rounded-lg hover:bg-red-700 cursor-pointer inline-block ${uploading ? 'opacity-50 cursor-not-allowed' : ''}`}
+    <div className="space-y-4">
+      <div className="rounded-xl border bg-white p-4">
+        <div className="flex items-center gap-2 mb-4">
+          <div className="w-8 h-8 rounded bg-blue-100 flex items-center justify-center">
+            <svg className="w-5 h-5 text-blue-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
+            </svg>
+          </div>
+          <h2 className="text-sm font-semibold text-gray-900">Files</h2>
+        </div>
+
+        <div className="rounded-xl border bg-white overflow-hidden">
+          <div className="flex min-h-[400px]">
+            {/* Left sidebar - categories */}
+            <div className="w-64 border-r bg-gray-50 flex flex-col shrink-0">
+              <div className="p-3 border-b">
+                <div className="text-xs font-semibold text-gray-700">File Categories</div>
+              </div>
+              <div className="flex-1 overflow-y-auto">
+                {WO_FILE_CATEGORIES.map((cat) => (
+                  <button
+                    key={cat.id}
+                    type="button"
+                    onClick={() => setSelectedCategory(cat.id)}
+                    onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); setIsDragging(true); }}
+                    onDragLeave={(e) => { e.preventDefault(); setIsDragging(false); }}
+                    onDrop={(e) => cat.id !== 'all' && onDropCategory(e, cat.id)}
+                    className={`w-full text-left px-3 py-2 border-b hover:bg-white transition-colors ${
+                      selectedCategory === cat.id ? 'bg-white border-l-4 border-l-brand-red font-semibold' : 'text-gray-700'
+                    } ${isDragging && cat.id !== 'all' ? 'bg-blue-50' : ''}`}
+                  >
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs">{cat.id === 'all' ? '📁' : '📄'}</span>
+                      <span className="text-xs">{cat.label}</span>
+                      <span className="ml-auto text-[10px] text-gray-500">({filesByCategory[cat.id]?.length ?? 0})</span>
+                    </div>
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Right content - files table + drop zone */}
+            <div
+              className={`flex-1 overflow-y-auto p-4 ${isDragging ? 'bg-blue-50 border-2 border-dashed border-blue-400' : ''}`}
+              onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); setIsDragging(true); }}
+              onDragLeave={(e) => { e.preventDefault(); setIsDragging(false); }}
+              onDrop={onDropRight}
             >
-              {uploading ? 'Uploading...' : '+ Add Before Photos'}
-            </label>
+              <div className="mb-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                <div className="flex items-center gap-3 flex-1 min-w-0">
+                  <div className="relative flex-1 max-w-sm">
+                    <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none">
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
+                    </span>
+                    <input
+                      type="text"
+                      value={fileSearchQuery}
+                      onChange={(e) => setFileSearchQuery(e.target.value)}
+                      placeholder="Search by file name..."
+                      className="w-full pl-8 pr-3 py-1.5 text-xs border border-gray-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-brand-red focus:border-brand-red"
+                    />
+                  </div>
+                  <div className="text-xs font-semibold text-gray-700 whitespace-nowrap">
+                    {WO_FILE_CATEGORIES.find((c) => c.id === selectedCategory)?.label ?? selectedCategory}
+                    <span className="ml-1 text-gray-500">({currentFiles.length})</span>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2 flex-shrink-0">
+                  {selectedCategory === 'all' && (
+                    <select
+                      value={uploadCategory}
+                      onChange={(e) => setUploadCategory(e.target.value)}
+                      className="text-xs border border-gray-300 rounded px-2 py-1.5"
+                    >
+                      {WO_FILE_CATEGORIES.filter((c) => c.id !== 'all').map((c) => (
+                        <option key={c.id} value={c.id}>{c.label}</option>
+                      ))}
+                    </select>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => setShowUpload(true)}
+                    className="px-2 py-1.5 rounded bg-brand-red text-white text-xs font-medium"
+                  >
+                    + Upload File
+                  </button>
+                </div>
+              </div>
+
+              <div className="rounded-lg border overflow-hidden bg-white">
+                {currentFiles.length > 0 ? (
+                  <div className="overflow-x-auto">
+                    <table className="w-full">
+                      <thead className="bg-gray-50 border-b">
+                        <tr>
+                          <th className="px-3 py-2 text-left text-[10px] font-semibold text-gray-700 w-12" />
+                          <th
+                            className="px-3 py-2 text-left text-[10px] font-semibold text-gray-700 cursor-pointer hover:bg-gray-100 select-none"
+                            onClick={() => handleSort('name')}
+                          >
+                            Name {sortBy === 'name' && <span className="text-xs">{sortOrder === 'asc' ? '↑' : '↓'}</span>}
+                          </th>
+                          <th
+                            className="px-3 py-2 text-left text-[10px] font-semibold text-gray-700 cursor-pointer hover:bg-gray-100 select-none"
+                            onClick={() => handleSort('type')}
+                          >
+                            Type {sortBy === 'type' && <span className="text-xs">{sortOrder === 'asc' ? '↑' : '↓'}</span>}
+                          </th>
+                          <th
+                            className="px-3 py-2 text-left text-[10px] font-semibold text-gray-700 cursor-pointer hover:bg-gray-100 select-none"
+                            onClick={() => handleSort('uploaded_at')}
+                          >
+                            Upload Date {sortBy === 'uploaded_at' && <span className="text-xs">{sortOrder === 'asc' ? '↑' : '↓'}</span>}
+                          </th>
+                          <th className="px-3 py-2 text-left text-[10px] font-semibold text-gray-700 w-24">Actions</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y">
+                        {currentFiles.map((f) => {
+                          const icon = iconFor(f);
+                          const isImg = f.is_image || String(f.content_type || '').startsWith('image/');
+                          const name = f.original_name || f.file_object_id || 'File';
+                          return (
+                            <tr
+                              key={f.id}
+                              draggable
+                              onDragStart={() => setDraggedFileId(f.id)}
+                              onDragEnd={() => setDraggedFileId(null)}
+                              className="hover:bg-gray-50 cursor-move"
+                            >
+                              <td className="px-3 py-2">
+                                {isImg ? (
+                                  <a
+                                    href={`/files/${f.file_object_id}/download`}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="w-10 h-10 rounded-lg overflow-hidden bg-gray-100 flex-shrink-0 block"
+                                  >
+                                    <img src={`/files/${f.file_object_id}/thumbnail?w=64`} alt={name} className="w-full h-full object-cover" />
+                                  </a>
+                                ) : (
+                                  <div className={`w-8 h-10 rounded-lg ${icon.color} text-white flex items-center justify-center text-[10px] font-extrabold select-none`}>
+                                    {icon.label}
+                                  </div>
+                                )}
+                              </td>
+                              <td className="px-3 py-2">
+                                <a
+                                  href={`/files/${f.file_object_id}/download`}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="text-xs font-semibold truncate max-w-xs block hover:underline"
+                                >
+                                  {name}
+                                </a>
+                              </td>
+                              <td className="px-3 py-2 text-xs text-gray-600">{getFileTypeLabel(f)}</td>
+                              <td className="px-3 py-2 text-xs text-gray-600">
+                                {f.uploaded_at ? new Date(f.uploaded_at).toLocaleDateString() : '—'}
+                              </td>
+                              <td className="px-3 py-2">
+                                <div className="flex items-center gap-0.5">
+                                  <button
+                                    type="button"
+                                    onClick={async () => {
+                                      const url = await fetchDownloadUrl(f.file_object_id);
+                                      if (url) window.open(url, '_blank');
+                                    }}
+                                    title="Download"
+                                    className="p-1 rounded hover:bg-gray-100 text-xs"
+                                  >
+                                    ⬇️
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => window.confirm('Remove this file?') && deleteMutation.mutate(f)}
+                                    title="Delete"
+                                    className="p-1 rounded hover:bg-red-50 text-red-600 text-xs"
+                                  >
+                                    🗑️
+                                  </button>
+                                </div>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                ) : (
+                  <div className="px-3 py-6 text-center text-gray-500">
+                    <div className="text-2xl mb-2">📁</div>
+                    <div className="text-xs">No files in this category</div>
+                    <div className="text-[10px] mt-1">Drag and drop files here or click &quot;Upload File&quot;</div>
+                  </div>
+                )}
+              </div>
+            </div>
           </div>
         </div>
-        {photos.before.length === 0 ? (
-          <div className="text-center py-8 text-gray-500 border-2 border-dashed rounded-lg">
-            <p>No photos uploaded yet</p>
-            <p className="text-sm mt-2">Upload photos showing the condition before maintenance</p>
-          </div>
-        ) : (
-          <div className="grid grid-cols-4 gap-4">
-            {photos.before.map((photoId, idx) => (
-              <div key={idx} className="relative group">
-                <img
-                  src={`/files/${photoId}/thumbnail?w=300`}
-                  alt={`Before ${idx + 1}`}
-                  className="w-full h-48 object-cover rounded border"
-                />
-                <button
-                  onClick={() => handleRemovePhoto(photoId, 'before')}
-                  className="absolute top-2 right-2 bg-red-600 text-white rounded-full w-6 h-6 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
-                >
-                  ×
-                </button>
-                <a
-                  href={`/files/${photoId}/download`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="absolute inset-0 flex items-center justify-center bg-black bg-opacity-0 hover:bg-opacity-50 transition-all opacity-0 group-hover:opacity-100"
-                >
-                  <span className="text-white text-sm">View Full Size</span>
-                </a>
-              </div>
-            ))}
-          </div>
-        )}
       </div>
 
-      {/* After Maintenance Section */}
-      <div className="space-y-4">
-        <div className="flex justify-between items-center">
-          <h3 className="text-lg font-semibold">After Maintenance</h3>
-          <div>
-            <input
-              ref={afterFileInputRef}
-              type="file"
-              multiple
-              accept="image/*"
-              onChange={(e) => handleFileChange(e, 'after')}
-              disabled={uploading}
-              className="hidden"
-              id="after-photo-upload"
-            />
-            <label
-              htmlFor="after-photo-upload"
-              className={`px-4 py-2 bg-brand-red text-white rounded-lg hover:bg-red-700 cursor-pointer inline-block ${uploading ? 'opacity-50 cursor-not-allowed' : ''}`}
-            >
-              {uploading ? 'Uploading...' : '+ Add After Photos'}
-            </label>
+      {/* Upload modal */}
+      {showUpload && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50" onClick={(e) => e.target === e.currentTarget && setShowUpload(false)}>
+          <div className="bg-white rounded-xl w-full max-w-md p-4" onClick={(e) => e.stopPropagation()}>
+            <div className="text-sm font-semibold mb-3">Upload Files</div>
+            <div className="space-y-3">
+              {selectedCategory === 'all' && (
+                <div>
+                  <label className="block text-xs font-medium text-gray-600 mb-1">Category</label>
+                  <select
+                    value={uploadCategory}
+                    onChange={(e) => setUploadCategory(e.target.value)}
+                    className="w-full border rounded px-3 py-2 text-sm"
+                  >
+                    {WO_FILE_CATEGORIES.filter((c) => c.id !== 'all').map((c) => (
+                      <option key={c.id} value={c.id}>{c.label}</option>
+                    ))}
+                  </select>
+                </div>
+              )}
+              <div>
+                <div className="text-xs font-medium text-gray-600 mb-1.5">Files (multiple supported)</div>
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  multiple
+                  onChange={async (e) => {
+                    const list = e.target.files;
+                    if (list?.length) {
+                      setShowUpload(false);
+                      await uploadMultiple(Array.from(list));
+                    }
+                  }}
+                  className="w-full text-xs"
+                />
+              </div>
+              <div className="text-[10px] text-gray-500">You can also drag and drop files onto a category in the sidebar or onto the file area.</div>
+            </div>
+            <div className="mt-4 flex justify-end gap-2">
+              <button type="button" onClick={() => setShowUpload(false)} className="px-3 py-1.5 rounded border text-xs">
+                Cancel
+              </button>
+            </div>
           </div>
         </div>
-        {photos.after.length === 0 ? (
-          <div className="text-center py-8 text-gray-500 border-2 border-dashed rounded-lg">
-            <p>No photos uploaded yet</p>
-            <p className="text-sm mt-2">Upload photos showing the condition after maintenance</p>
+      )}
+
+      {/* Upload progress */}
+      {uploadQueue.length > 0 && (
+        <div className="fixed bottom-4 right-4 bg-white rounded-lg shadow-2xl border w-80 max-h-96 overflow-hidden z-50">
+          <div className="p-2.5 border-b bg-gray-50 flex items-center justify-between">
+            <span className="font-semibold text-xs">Upload progress</span>
+            <button type="button" onClick={() => setUploadQueue([])} className="text-gray-500 hover:text-gray-700 text-[10px]">
+              Clear
+            </button>
           </div>
-        ) : (
-          <div className="grid grid-cols-4 gap-4">
-            {photos.after.map((photoId, idx) => (
-              <div key={idx} className="relative group">
-                <img
-                  src={`/files/${photoId}/thumbnail?w=300`}
-                  alt={`After ${idx + 1}`}
-                  className="w-full h-48 object-cover rounded border"
-                />
-                <button
-                  onClick={() => handleRemovePhoto(photoId, 'after')}
-                  className="absolute top-2 right-2 bg-red-600 text-white rounded-full w-6 h-6 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
-                >
-                  ×
-                </button>
-                <a
-                  href={`/files/${photoId}/download`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="absolute inset-0 flex items-center justify-center bg-black bg-opacity-0 hover:bg-opacity-50 transition-all opacity-0 group-hover:opacity-100"
-                >
-                  <span className="text-white text-sm">View Full Size</span>
-                </a>
+          <div className="overflow-y-auto max-h-80">
+            {uploadQueue.map((u) => (
+              <div key={u.id} className="p-2.5 border-b">
+                <div className="text-xs font-medium truncate" title={u.file.name}>{u.file.name}</div>
+                <div className="text-[10px] text-gray-500">
+                  {u.status === 'pending' && 'Waiting…'}
+                  {u.status === 'uploading' && 'Uploading…'}
+                  {u.status === 'success' && 'Done'}
+                  {u.status === 'error' && (u.error || 'Error')}
+                </div>
               </div>
             ))}
           </div>
-        )}
-      </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -1069,51 +1187,6 @@ function CostFormInline({ workOrderId, category, existingCost, existingCostIndex
     description: existingCost?.description || '',
     amount: existingCost?.amount || 0,
   });
-  const [invoiceFiles, setInvoiceFiles] = useState<string[]>(existingCost?.invoice_files || []);
-  const [uploading, setUploading] = useState(false);
-  const fileInputRef = useRef<HTMLInputElement>(null);
-
-  const uploadFile = async (file: File): Promise<string> => {
-    const name = file.name;
-    const type = file.type || 'application/pdf';
-    const up: any = await api('POST', '/files/upload', {
-      original_name: name,
-      content_type: type,
-      employee_id: null,
-      project_id: null,
-      client_id: null,
-      category_id: 'work-order-invoices',
-    });
-    await fetch(up.upload_url, {
-      method: 'PUT',
-      headers: { 'Content-Type': type, 'x-ms-blob-type': 'BlockBlob' },
-      body: file,
-    });
-    const conf: any = await api('POST', '/files/confirm', {
-      key: up.key,
-      size_bytes: file.size,
-      checksum_sha256: 'na',
-      content_type: type,
-    });
-    return conf.id;
-  };
-
-  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = e.target.files;
-    if (!files || files.length === 0) return;
-    setUploading(true);
-    try {
-      const uploadPromises = Array.from(files).map(file => uploadFile(file));
-      const uploadedIds = await Promise.all(uploadPromises);
-      setInvoiceFiles(prev => [...prev, ...uploadedIds]);
-      toast.success('Invoice files uploaded');
-    } catch (error) {
-      toast.error('Failed to upload files');
-    } finally {
-      setUploading(false);
-      if (fileInputRef.current) fileInputRef.current.value = '';
-    }
-  };
 
   const { data: workOrder } = useQuery({
     queryKey: ['workOrder', workOrderId],
@@ -1149,7 +1222,7 @@ function CostFormInline({ workOrderId, category, existingCost, existingCostIndex
     const newCostItem: CostItem = {
       description: form.description.trim(),
       amount: form.amount,
-      invoice_files: invoiceFiles,
+      invoice_files: [],
     };
 
     let newCosts: any = { ...currentCosts };
@@ -1177,65 +1250,50 @@ function CostFormInline({ workOrderId, category, existingCost, existingCostIndex
   };
 
   return (
-    <div className="border rounded-lg p-4 bg-gray-50 mb-4">
-      <h4 className="font-semibold mb-3">Add {category.charAt(0).toUpperCase() + category.slice(1)} Cost</h4>
-      <div className="space-y-4">
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">Description *</label>
-          <input
-            type="text"
-            value={form.description}
-            onChange={(e) => setForm(prev => ({ ...prev, description: e.target.value }))}
-            className="w-full px-3 py-2 border rounded-lg"
-            placeholder="e.g., Oil change, Tire replacement, etc."
-            required
-          />
-        </div>
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">Amount ($) *</label>
-          <input
-            type="number"
-            step="0.01"
-            min="0"
-            value={form.amount}
-            onChange={(e) => setForm(prev => ({ ...prev, amount: parseFloat(e.target.value) || 0 }))}
-            className="w-full px-3 py-2 border rounded-lg"
-            required
-          />
-        </div>
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">Invoice Files</label>
-          <input
-            ref={fileInputRef}
-            type="file"
-            multiple
-            accept=".pdf,.jpg,.jpeg,.png"
-            onChange={handleFileChange}
-            disabled={uploading}
-            className="w-full px-3 py-2 border rounded-lg"
-          />
-          {invoiceFiles.length > 0 && (
-            <div className="text-sm text-gray-600 mt-1">
-              {invoiceFiles.length} file(s) uploaded
-            </div>
-          )}
-        </div>
-        <div className="flex gap-3 justify-end">
-          <button
-            onClick={onCancel}
-            className="px-4 py-2 border rounded-lg hover:bg-gray-50"
-          >
-            Cancel
-          </button>
-          <button
-            onClick={handleSubmit}
-            disabled={!form.description.trim() || form.amount <= 0 || uploading}
-            className="px-4 py-2 bg-brand-red text-white rounded-lg hover:bg-red-700 disabled:opacity-50"
-          >
-            {existingCost ? 'Update' : 'Add'} Cost
-          </button>
-        </div>
+    <div className="flex flex-wrap items-center gap-2 sm:gap-2 w-full min-w-0 mb-4">
+      {/* Icon - like Project Pricing */}
+      <div className="flex-shrink-0 w-8 h-8 flex items-center justify-center text-gray-500">
+        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+        </svg>
       </div>
+      <input
+        type="text"
+        value={form.description}
+        onChange={(e) => setForm(prev => ({ ...prev, description: e.target.value }))}
+        className="flex-1 min-w-[100px] rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-gray-900 focus:ring-1 focus:ring-gray-400 focus:border-gray-400"
+        placeholder="Name"
+      />
+      <input
+        type="text"
+        inputMode="decimal"
+        value={form.amount > 0 ? form.amount : ''}
+        onChange={(e) => {
+          const v = e.target.value.replace(/,/g, '');
+          const num = parseFloat(v) || 0;
+          setForm(prev => ({ ...prev, amount: num }));
+        }}
+        className="flex-1 min-w-[100px] max-w-[140px] rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-gray-900 focus:ring-1 focus:ring-gray-400 focus:border-gray-400"
+        placeholder="Price"
+      />
+      <button
+        type="button"
+        onClick={onCancel}
+        className="p-1.5 rounded border border-gray-300 bg-white hover:bg-gray-50 text-gray-600 flex-shrink-0"
+        title="Cancel"
+      >
+        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+        </svg>
+      </button>
+      <button
+        type="button"
+        onClick={handleSubmit}
+        disabled={!form.description.trim() || form.amount <= 0}
+        className="px-3 py-1.5 rounded-lg bg-brand-red text-white text-xs font-medium hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed flex-shrink-0"
+      >
+        {existingCost ? 'Update' : 'Add'}
+      </button>
     </div>
   );
 }

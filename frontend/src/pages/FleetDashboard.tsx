@@ -12,12 +12,15 @@ type DashboardData = {
   total_other_assets: number;
   assigned_now_count: number;
   inspections_due_count: number;
+  inspections_due_total: number;
   inspections_due: Array<{ id: string; name: string; asset_type: string; last_inspection: string | null }>;
   open_work_orders_count: number;
   in_progress_work_orders_count: number;
   pending_parts_work_orders_count: number;
   overdue_equipment_count: number;
   overdue_equipment: Array<{ id: string; equipment_id: string; equipment_name: string; checked_out_by: string; expected_return_date: string | null }>;
+  compliance_expiring_count: number;
+  compliance_expiring: Array<{ id: string; fleet_asset_id: string; fleet_asset_name: string | null; record_type: string; expiry_date: string | null }>;
 };
 
 type KpiStatus = 'ok' | 'attention' | 'critical' | 'info' | 'coming_soon';
@@ -292,10 +295,12 @@ function FleetMixPanel({
 // --- DueInspectionsPanel ---
 function DueInspectionsPanel({
   items,
+  total,
   onViewAll,
   onOpen,
 }: {
   items: DashboardData['inspections_due'];
+  total?: number;
   onViewAll: () => void;
   onOpen: (id: string) => void;
 }) {
@@ -303,7 +308,9 @@ function DueInspectionsPanel({
   return (
     <div className="rounded-xl border border-gray-200 bg-white p-5 min-w-0">
       <div className="flex items-center justify-between mb-4">
-        <h2 className="text-sm font-semibold text-gray-900">Inspections Due</h2>
+        <h2 className="text-sm font-semibold text-gray-900">
+          Inspections Due{total !== undefined && total > 0 ? ` (${total})` : ''}
+        </h2>
         <button
           type="button"
           onClick={onViewAll}
@@ -337,6 +344,63 @@ function DueInspectionsPanel({
                   e.stopPropagation();
                   onOpen(item.id);
                 }}
+                className="flex-shrink-0 text-xs font-medium text-brand-red hover:underline"
+              >
+                Open
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
+// --- ComplianceExpiringPanel ---
+function ComplianceExpiringPanel({
+  items,
+  total,
+  onViewAll,
+  onOpenAsset,
+}: {
+  items: DashboardData['compliance_expiring'];
+  total: number;
+  onViewAll: () => void;
+  onOpenAsset: (assetId: string) => void;
+}) {
+  const list = items.slice(0, 5);
+  return (
+    <div className="rounded-xl border border-gray-200 bg-white p-5 min-w-0">
+      <div className="flex items-center justify-between mb-4">
+        <h2 className="text-sm font-semibold text-gray-900">
+          Compliance expiring{total > 0 ? ` (${total})` : ''}
+        </h2>
+        <button
+          type="button"
+          onClick={onViewAll}
+          className="text-xs font-medium text-brand-red hover:underline"
+        >
+          View all
+        </button>
+      </div>
+      {list.length === 0 ? (
+        <div className="py-6 flex flex-col items-center justify-center text-center">
+          <p className="text-xs text-gray-500">No compliance expiring in the next 30 days</p>
+        </div>
+      ) : (
+        <ul className="space-y-0">
+          {list.map((item, i) => (
+            <li
+              key={item.id}
+              className={`flex items-center justify-between gap-3 py-3 px-3 rounded-lg hover:bg-gray-50 transition-colors ${i % 2 === 1 ? 'bg-gray-50/50' : ''}`}
+            >
+              <div className="min-w-0 flex-1">
+                <div className="text-xs font-semibold text-gray-900 truncate">{item.fleet_asset_name || 'Asset'}</div>
+                <div className="text-[10px] text-gray-500">{item.record_type} · {item.expiry_date ? new Date(item.expiry_date).toLocaleDateString() : ''}</div>
+              </div>
+              <button
+                type="button"
+                onClick={() => onOpenAsset(item.fleet_asset_id)}
                 className="flex-shrink-0 text-xs font-medium text-brand-red hover:underline"
               >
                 Open
@@ -625,6 +689,7 @@ export default function FleetDashboard() {
         <div className="lg:col-span-2">
           <DueInspectionsPanel
             items={stats.inspections_due}
+            total={stats.inspections_due_total}
             onViewAll={() => nav('/fleet/inspections')}
             onOpen={(id) => nav(buildAssetLink(id))}
           />
@@ -639,6 +704,18 @@ export default function FleetDashboard() {
         </div>
         <div>
           <RevisionsCalendarPanel onViewCalendar={() => nav('/fleet/calendar')} />
+        </div>
+      </section>
+
+      {/* Row 3b — Compliance expiring */}
+      <section className="grid grid-cols-1 lg:grid-cols-4 gap-4">
+        <div className="lg:col-span-2">
+          <ComplianceExpiringPanel
+            items={stats.compliance_expiring}
+            total={stats.compliance_expiring_count}
+            onViewAll={() => nav('/fleet/assets')}
+            onOpenAsset={(assetId) => nav(buildAssetLink(assetId))}
+          />
         </div>
       </section>
 

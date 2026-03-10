@@ -271,6 +271,10 @@ class InspectionScheduleResponse(InspectionScheduleBase):
     created_at: datetime
     created_by: Optional[uuid.UUID] = None
     fleet_asset_name: Optional[str] = None
+    body_inspection_id: Optional[uuid.UUID] = None
+    mechanical_inspection_id: Optional[uuid.UUID] = None
+    body_result: Optional[str] = None  # pending|pass|fail|conditional
+    mechanical_result: Optional[str] = None
 
     class Config:
         from_attributes = True
@@ -700,10 +704,13 @@ class FleetDashboardResponse(BaseModel):
     total_other_assets: int
     assigned_now_count: int
     inspections_due_count: int
+    inspections_due_total: int  # Full count of assets needing inspection (no inspection in last 30 days)
     inspections_due: List[Dict[str, Any]]
     open_work_orders_count: int
     in_progress_work_orders_count: int
     pending_parts_work_orders_count: int
     overdue_equipment_count: int
     overdue_equipment: List[Dict[str, Any]]
+    compliance_expiring_count: int
+    compliance_expiring: List[Dict[str, Any]]  # Records expiring in next 30 days: id, fleet_asset_id, fleet_asset_name, record_type, expiry_date
 
