@@ -27,9 +27,11 @@ function formatDate(s: string | undefined | null): string {
 type ProjectDocumentsTabProps = {
   projectId: string;
   isBidding?: boolean;
+  /** If false, user can only view documents (no Create/Delete; Edit button becomes View and opens in read-only). Default true. */
+  canEditDocuments?: boolean;
 };
 
-export default function ProjectDocumentsTab({ projectId, isBidding }: ProjectDocumentsTabProps) {
+export default function ProjectDocumentsTab({ projectId, isBidding, canEditDocuments = true }: ProjectDocumentsTabProps) {
   const queryClient = useQueryClient();
   const confirm = useConfirm();
   const [isCreating, setIsCreating] = useState(false);
@@ -130,14 +132,16 @@ export default function ProjectDocumentsTab({ projectId, isBidding }: ProjectDoc
         <h2 className="text-lg font-semibold text-gray-900">
           {isBidding ? 'Opportunity' : 'Project'} documents
         </h2>
-        <button
-          type="button"
-          onClick={() => setShowChooseTypeModal(true)}
-          disabled={isCreating}
-          className="px-4 py-2 rounded bg-brand-red text-white text-sm font-medium hover:bg-brand-red/90 disabled:opacity-50"
-        >
-          Create new document
-        </button>
+        {canEditDocuments && (
+          <button
+            type="button"
+            onClick={() => setShowChooseTypeModal(true)}
+            disabled={isCreating}
+            className="px-4 py-2 rounded bg-brand-red text-white text-sm font-medium hover:bg-brand-red/90 disabled:opacity-50"
+          >
+            Create new document
+          </button>
+        )}
       </div>
       <p className="text-sm text-gray-600 mb-4">
         Create and edit documents linked to this {isBidding ? 'opportunity' : 'project'}. Edit in the document creator; changes auto-save.
@@ -147,14 +151,16 @@ export default function ProjectDocumentsTab({ projectId, isBidding }: ProjectDoc
       ) : documents.length === 0 ? (
         <div className="rounded-lg border border-dashed border-gray-300 bg-gray-50/50 p-8 text-center">
           <p className="text-gray-600 mb-3">No documents yet.</p>
-          <button
-            type="button"
-            onClick={() => setShowChooseTypeModal(true)}
-            disabled={isCreating}
-            className="px-4 py-2 rounded bg-brand-red text-white text-sm font-medium hover:bg-brand-red/90 disabled:opacity-50"
-          >
-            Create new document
-          </button>
+          {canEditDocuments && (
+            <button
+              type="button"
+              onClick={() => setShowChooseTypeModal(true)}
+              disabled={isCreating}
+              className="px-4 py-2 rounded bg-brand-red text-white text-sm font-medium hover:bg-brand-red/90 disabled:opacity-50"
+            >
+              Create new document
+            </button>
+          )}
         </div>
       ) : (
         <ul className="space-y-2">
@@ -173,7 +179,7 @@ export default function ProjectDocumentsTab({ projectId, isBidding }: ProjectDoc
                   onClick={() => handleEdit(doc)}
                   className="px-3 py-1.5 rounded bg-gray-100 hover:bg-gray-200 border border-gray-300 text-sm text-gray-700"
                 >
-                  Edit
+                  {canEditDocuments ? 'Edit' : 'View'}
                 </button>
                 <button
                   type="button"
@@ -183,13 +189,15 @@ export default function ProjectDocumentsTab({ projectId, isBidding }: ProjectDoc
                 >
                   {exportingId === doc.id ? 'Exporting...' : 'Export PDF'}
                 </button>
-                <button
-                  type="button"
-                  onClick={() => handleDelete(doc)}
-                  className="px-3 py-1.5 rounded text-red-600 hover:bg-red-50 text-sm"
-                >
-                  Delete
-                </button>
+                {canEditDocuments && (
+                  <button
+                    type="button"
+                    onClick={() => handleDelete(doc)}
+                    className="px-3 py-1.5 rounded text-red-600 hover:bg-red-50 text-sm"
+                  >
+                    Delete
+                  </button>
+                )}
               </div>
             </li>
           ))}
@@ -209,6 +217,7 @@ export default function ProjectDocumentsTab({ projectId, isBidding }: ProjectDoc
         projectId={projectId}
         onClose={handleCloseModal}
         onAfterClose={() => queryClient.invalidateQueries({ queryKey: ['document-creator-documents', projectId] })}
+        readOnly={!canEditDocuments}
       />
     </div>
   );

@@ -12,7 +12,8 @@ type DocumentPagesStripProps = {
   templates: Template[];
   currentPageIndex: number;
   onPageSelect: (index: number) => void;
-  onAddPage: () => void;
+  /** When set, show the "Add page" button. Omit for read-only mode. */
+  onAddPage?: () => void;
   /** When set, pages can be reordered by drag and drop. */
   onReorderPages?: (fromIndex: number, toIndex: number) => void;
   /** When set, show delete button on each page (only when more than one page). */
@@ -259,14 +260,16 @@ export default function DocumentPagesStrip({
           </div>
         );
       })}
-      <button
-        type="button"
-        onClick={onAddPage}
-        className="mx-2 mt-1 flex items-center justify-center rounded-lg border-2 border-dashed border-gray-300 hover:border-brand-red hover:bg-brand-red/5 text-gray-500 hover:text-brand-red transition-colors py-4"
-      >
-        <span className="text-lg font-light">+</span>
-        <span className="sr-only">Add page</span>
-      </button>
+      {onAddPage != null && (
+        <button
+          type="button"
+          onClick={onAddPage}
+          className="mx-2 mt-1 flex items-center justify-center rounded-lg border-2 border-dashed border-gray-300 hover:border-brand-red hover:bg-brand-red/5 text-gray-500 hover:text-brand-red transition-colors py-4"
+        >
+          <span className="text-lg font-light">+</span>
+          <span className="sr-only">Add page</span>
+        </button>
+      )}
     </div>
   );
 }

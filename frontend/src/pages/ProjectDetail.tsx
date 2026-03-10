@@ -417,7 +417,7 @@ export default function ProjectDetail(){
         'dispatch': 'business:projects:workload:read',
         'timesheet': 'business:projects:timesheet:read',
         'files': 'business:projects:files:read',
-        'documents': 'documents:access',
+        'documents': 'business:projects:documents:read',
         'proposal': 'business:projects:proposal:read',
         'pricing': 'business:projects:proposal:read',
         'estimate': 'business:projects:estimate:read',
@@ -1690,7 +1690,7 @@ export default function ProjectDetail(){
               )}
 
               {tab==='documents' && (
-                <ProjectDocumentsTab projectId={String(id)} isBidding={proj?.is_bidding} />
+                <ProjectDocumentsTab projectId={String(id)} isBidding={proj?.is_bidding} canEditDocuments={isAdmin || permissions.has('business:projects:documents:write')} />
               )}
 
               {tab==='proposal' && (
@@ -8196,13 +8196,13 @@ function EditStatusModal({ projectId, currentStatus, currentStatusLabel, setting
   const [saving, setSaving] = useState(false);
   const allProjectStatuses = (settings?.project_statuses || []) as any[];
   
-  // For opportunities, only show: Prospecting, Sent to Customer, Refused, Schedule Conflict
+  // For opportunities, only show: Prospecting, Sent to Customer, Refused, Conflict, Schedule Conflict
   // For projects, show all statuses except "Prospecting"
   const projectStatuses = useMemo(() => {
     if (isBidding) {
-      // Filter to only show the allowed statuses for opportunities (same as projects for Schedule Conflict)
+      // Filter to only show the allowed statuses for opportunities (Conflict = same as in projects)
       // Use case-insensitive comparison and trim to handle variations
-      const allowedLabels = ['Prospecting', 'Sent to Customer', 'Refused', 'Schedule Conflict'].map(l => l.toLowerCase().trim());
+      const allowedLabels = ['Prospecting', 'Sent to Customer', 'Refused', 'Conflict', 'Schedule Conflict'].map(l => l.toLowerCase().trim());
       const filtered = allProjectStatuses.filter((status: any) => {
         const statusLabel = String(status.label || '').toLowerCase().trim();
         return allowedLabels.includes(statusLabel);
@@ -8256,7 +8256,7 @@ function EditStatusModal({ projectId, currentStatus, currentStatusLabel, setting
           <label className="text-sm font-medium text-gray-700 mb-2 block">Status</label>
           {projectStatuses.length === 0 ? (
             <div className="text-sm text-gray-500 mb-4">
-              No statuses available. Please ensure the following statuses exist in settings: {isBidding ? 'Prospecting, Sent to Customer, Refused, Schedule Conflict' : 'All statuses except Prospecting'}
+              No statuses available. Please ensure the following statuses exist in settings: {isBidding ? 'Prospecting, Sent to Customer, Refused, Conflict, Schedule Conflict' : 'All statuses except Prospecting'}
             </div>
           ) : (
             <select

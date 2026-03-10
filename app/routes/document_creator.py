@@ -118,7 +118,7 @@ def _clone_elements_with_new_ids(elements: Optional[list], prefix: str) -> list:
 def list_document_types(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
-    _=Depends(require_permissions("documents:access", "documents:read")),
+    _=Depends(require_permissions("documents:access", "documents:read", "business:projects:documents:read")),
 ):
     """List document type presets (e.g. cover + back cover + content page)."""
     types = db.query(DocumentType).order_by(DocumentType.category or "", DocumentType.name).all()
@@ -154,7 +154,7 @@ def create_document_type(
     body: DocumentTypeCreate,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
-    _=Depends(require_permissions("documents:access", "documents:write")),
+    _=Depends(require_permissions("documents:access", "documents:write", "business:projects:documents:write")),
 ):
     """Create a document type preset (ordered list of page templates)."""
     doc_type = DocumentType(
@@ -182,7 +182,7 @@ def update_document_type(
     body: DocumentTypeUpdate,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
-    _=Depends(require_permissions("documents:access", "documents:write")),
+    _=Depends(require_permissions("documents:access", "documents:write", "business:projects:documents:write")),
 ):
     """Update a document type preset."""
     try:
@@ -217,7 +217,7 @@ def delete_document_type(
     document_type_id: str,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
-    _=Depends(require_permissions("documents:access", "documents:write")),
+    _=Depends(require_permissions("documents:access", "documents:write", "business:projects:documents:write")),
 ):
     """Delete a document type preset."""
     try:
@@ -237,7 +237,7 @@ def duplicate_document_type(
     document_type_id: str,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
-    _=Depends(require_permissions("documents:access", "documents:write")),
+    _=Depends(require_permissions("documents:access", "documents:write", "business:projects:documents:write")),
 ):
     """Duplicate a document type preset. Creates a new one with name + ' (copy)' and same category, description, page_templates."""
     try:
@@ -275,7 +275,7 @@ def expand_document_type_pages(
     document_type_id: str,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
-    _=Depends(require_permissions("documents:access", "documents:read")),
+    _=Depends(require_permissions("documents:access", "documents:read", "business:projects:documents:read")),
 ):
     """Expand a document type into a list of pages (template_id, margins, elements) with cloned element ids.
     Use when adding pages from a template to an existing document. Uses template default_elements when entry has no elements."""
@@ -331,7 +331,7 @@ def expand_document_type_pages(
 def list_templates(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
-    _=Depends(require_permissions("documents:access", "documents:read")),
+    _=Depends(require_permissions("documents:access", "documents:read", "business:projects:documents:read")),
 ):
     """List all document templates (name, id, thumbnail via background_file_id)."""
     templates = db.query(DocumentTemplate).order_by(DocumentTemplate.name).all()
@@ -343,7 +343,7 @@ def get_template(
     template_id: str,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
-    _=Depends(require_permissions("documents:access", "documents:read")),
+    _=Depends(require_permissions("documents:access", "documents:read", "business:projects:documents:read")),
 ):
     """Get template by id including areas_definition."""
     try:
@@ -377,7 +377,7 @@ def create_template(
     body: TemplateCreate,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
-    _=Depends(require_permissions("documents:access", "documents:write")),
+    _=Depends(require_permissions("documents:access", "documents:write", "business:projects:documents:write")),
 ):
     """Create a new document template (background)."""
     bg_id = None
@@ -408,7 +408,7 @@ def update_template(
     body: TemplateUpdate,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
-    _=Depends(require_permissions("documents:access", "documents:write")),
+    _=Depends(require_permissions("documents:access", "documents:write", "business:projects:documents:write")),
 ):
     """Update template name, description or background."""
     try:
@@ -444,7 +444,7 @@ def delete_template(
     template_id: str,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
-    _=Depends(require_permissions("documents:access", "documents:write")),
+    _=Depends(require_permissions("documents:access", "documents:write", "business:projects:documents:write")),
 ):
     """Delete a template."""
     try:
@@ -466,16 +466,25 @@ def list_documents(
     project_id: Optional[str] = None,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
-    _=Depends(require_permissions("documents:access", "documents:read")),
+    _=Depends(require_permissions("documents:access", "documents:read", "business:projects:documents:read")),
 ):
-    """List documents created by the current user. Optionally filter by project_id."""
-    q = db.query(UserDocument).filter(UserDocument.created_by == user.id)
-    if project_id:
+    """List documents. Optionally filter by project_id. With project docs permission, list all docs for that project."""
+    from ..auth.security import _has_permission
+    has_project_docs = _has_permission(user, "business:projects:documents:read") or _has_permission(user, "business:projects:documents:write")
+    if project_id and has_project_docs:
         try:
             pid = uuid.UUID(project_id)
-            q = q.filter(UserDocument.project_id == pid)
+            q = db.query(UserDocument).filter(UserDocument.project_id == pid)
         except ValueError:
-            pass
+            q = db.query(UserDocument).filter(UserDocument.created_by == user.id)
+    else:
+        q = db.query(UserDocument).filter(UserDocument.created_by == user.id)
+        if project_id:
+            try:
+                pid = uuid.UUID(project_id)
+                q = q.filter(UserDocument.project_id == pid)
+            except ValueError:
+                pass
     docs = q.order_by(
         UserDocument.updated_at.desc().nullslast(), UserDocument.created_at.desc()
     ).all()
@@ -487,7 +496,7 @@ def create_document(
     body: DocumentCreate,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
-    _=Depends(require_permissions("documents:access", "documents:write")),
+    _=Depends(require_permissions("documents:access", "documents:write", "business:projects:documents:write")),
 ):
     """Create a new user document. If document_type_id is set, pages are built from that preset."""
     pages = body.pages if body.pages is not None else []
@@ -538,14 +547,26 @@ def create_document(
     return _doc_to_out(doc)
 
 
+def _can_access_document(user: User, doc: UserDocument, require_write: bool = False) -> bool:
+    """True if user can access (read or write) this document."""
+    from ..auth.security import _has_permission
+    if doc.created_by == user.id:
+        return True
+    if not doc.project_id:
+        return False
+    if require_write:
+        return _has_permission(user, "business:projects:documents:write")
+    return _has_permission(user, "business:projects:documents:read") or _has_permission(user, "business:projects:documents:write")
+
+
 @router.get("/documents/{document_id}", response_model=dict)
 def get_document(
     document_id: str,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
-    _=Depends(require_permissions("documents:access", "documents:read")),
+    _=Depends(require_permissions("documents:access", "documents:read", "business:projects:documents:read")),
 ):
-    """Get document by id. Only owner can access."""
+    """Get document by id. Owner or user with project documents permission can access."""
     try:
         did = uuid.UUID(document_id)
     except ValueError:
@@ -553,7 +574,7 @@ def get_document(
     doc = db.query(UserDocument).filter(UserDocument.id == did).first()
     if not doc:
         raise HTTPException(status_code=404, detail="Document not found")
-    if doc.created_by != user.id:
+    if not _can_access_document(user, doc, require_write=False):
         raise HTTPException(status_code=403, detail="Forbidden")
     return _doc_to_out(doc)
 
@@ -564,9 +585,9 @@ def update_document(
     body: DocumentUpdate,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
-    _=Depends(require_permissions("documents:access", "documents:write")),
+    _=Depends(require_permissions("documents:access", "documents:write", "business:projects:documents:write")),
 ):
-    """Update document. Only owner can update."""
+    """Update document. Owner or user with project documents write permission can update."""
     try:
         did = uuid.UUID(document_id)
     except ValueError:
@@ -574,7 +595,7 @@ def update_document(
     doc = db.query(UserDocument).filter(UserDocument.id == did).first()
     if not doc:
         raise HTTPException(status_code=404, detail="Document not found")
-    if doc.created_by != user.id:
+    if not _can_access_document(user, doc, require_write=True):
         raise HTTPException(status_code=403, detail="Forbidden")
     if body.title is not None:
         doc.title = body.title
@@ -594,9 +615,9 @@ def delete_document(
     document_id: str,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
-    _=Depends(require_permissions("documents:access", "documents:write")),
+    _=Depends(require_permissions("documents:access", "documents:write", "business:projects:documents:write")),
 ):
-    """Delete a document. Only owner can delete."""
+    """Delete a document. Owner or user with project documents write permission can delete."""
     try:
         did = uuid.UUID(document_id)
     except ValueError:
@@ -604,7 +625,7 @@ def delete_document(
     doc = db.query(UserDocument).filter(UserDocument.id == did).first()
     if not doc:
         raise HTTPException(status_code=404, detail="Document not found")
-    if doc.created_by != user.id:
+    if not _can_access_document(user, doc, require_write=True):
         raise HTTPException(status_code=403, detail="Forbidden")
     db.delete(doc)
     db.commit()
@@ -617,7 +638,7 @@ def export_document_pdf(
     body: Optional[ExportPdfOptions] = Body(default=None),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
-    _=Depends(require_permissions("documents:access", "documents:read")),
+    _=Depends(require_permissions("documents:access", "documents:read", "business:projects:documents:read")),
 ):
     """Generate PDF for the document and return file."""
     try:
@@ -627,7 +648,7 @@ def export_document_pdf(
     doc = db.query(UserDocument).filter(UserDocument.id == did).first()
     if not doc:
         raise HTTPException(status_code=404, detail="Document not found")
-    if doc.created_by != user.id:
+    if not _can_access_document(user, doc, require_write=False):
         raise HTTPException(status_code=403, detail="Forbidden")
 
     try:
