@@ -14,6 +14,7 @@ from ..db import get_db
 from ..models.models import FileObject, ProposalDraft, Proposal
 from ..auth.security import get_current_user
 from sqlalchemy.orm import Session
+from sqlalchemy.orm.attributes import flag_modified
 from ..storage.provider import StorageProvider
 from ..storage.blob_provider import BlobStorageProvider
 from ..storage.hybrid_provider import HybridStorageProvider
@@ -21,6 +22,7 @@ from ..storage.provider import StorageProvider
 from ..models import models
 from ..schemas import files as file_schemas
 
+from ..services.project_utils import sanitize_division_onsite_leads
 from ..proposals.pdf_merge import generate_pdf
 from ..proposals.pdf_image_optimizer import optimize_image_bytes
 import httpx
@@ -545,12 +547,50 @@ def save_proposal(payload: dict = Body(...), db: Session = Depends(get_db), user
         if p.project_id:
             from ..models.models import Project
             project = db.query(Project).filter(Project.id == p.project_id, Project.deleted_at.is_(None)).first()
-            if project and not getattr(project, 'image_manually_set', False):
-                cover_file_object_id = payload.get('cover_file_object_id')
-                if cover_file_object_id:
-                    project.image_file_object_id = cover_file_object_id
-                    # Don't set image_manually_set to True here - it stays False so it can be auto-updated
-        
+            if project:
+                if not getattr(project, 'image_manually_set', False):
+                    cover_file_object_id = payload.get('cover_file_object_id')
+                    if cover_file_object_id:
+                        project.image_file_object_id = cover_file_object_id
+
+                # For original proposal only: recalc project_division_ids from approved items
+                # - Add new divisions when user adds pricing items (opportunities)
+                # - Remove divisions with no approved items when marking not approved (projects)
+                if not p.is_change_order:
+                    additional_costs = (p.data or {}).get("additional_costs") or []
+                    if isinstance(additional_costs, list):
+                        # Build list from approved items: unique division_ids in order of first appearance
+                        seen = set()
+                        new_division_ids = []
+                        for item in additional_costs:
+                            if isinstance(item, dict) and item.get("approved", True) is True:
+                                did = item.get("division_id")
+                                if did is not None:
+                                    did_str = str(did)
+                                    if did_str not in seen:
+                                        seen.add(did_str)
+                                        new_division_ids.append(did)
+                        current_division_ids = list(getattr(project, "project_division_ids", None) or [])
+                        # Compare as sets to detect any change (order may differ)
+                        if set(str(d) for d in new_division_ids) != set(str(d) for d in current_division_ids):
+                            project.project_division_ids = new_division_ids if new_division_ids else current_division_ids
+                            # Clear orphaned project_division_percentages for removed divisions
+                            pct = getattr(project, "project_division_percentages", None) or {}
+                            if isinstance(pct, dict) and pct:
+                                kept_ids = set(str(did) for did in (project.project_division_ids or []))
+                                filtered_pct = {k: v for k, v in pct.items() if str(k) in kept_ids}
+                                if filtered_pct != pct:
+                                    project.project_division_percentages = filtered_pct
+                                    flag_modified(project, "project_division_percentages")
+
+                        # Remove on-site leads for divisions no longer in the project
+                        dol = getattr(project, "division_onsite_leads", None) or {}
+                        if isinstance(dol, dict) and dol:
+                            filtered_dol = sanitize_division_onsite_leads(dol, project.project_division_ids or [])
+                            if filtered_dol != dol:
+                                project.division_onsite_leads = filtered_dol
+                                flag_modified(project, "division_onsite_leads")
+
         db.commit()
     else:
         is_new = True

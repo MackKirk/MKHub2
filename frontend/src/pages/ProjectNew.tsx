@@ -38,6 +38,11 @@ export default function ProjectNew(){
   const [clientSearch, setClientSearch] = useState<string>('');
   const [clientModalOpen, setClientModalOpen] = useState<boolean>(false);
   const [showClientDropdown, setShowClientDropdown] = useState<boolean>(false);
+  const [relatedClientIds, setRelatedClientIds] = useState<string[]>([]);
+  const [relatedClientSearch, setRelatedClientSearch] = useState<string>('');
+  const [showRelatedClientDropdown, setShowRelatedClientDropdown] = useState<boolean>(false);
+  const [relatedClientModalOpen, setRelatedClientModalOpen] = useState<boolean>(false);
+  const [relatedClientDisplayNames, setRelatedClientDisplayNames] = useState<Record<string, string>>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
   const nameValid = useMemo(()=> String(name||'').trim().length>0, [name]);
   const clientValid = useMemo(()=> String(clientId||'').trim().length>0, [clientId]);
@@ -72,6 +77,20 @@ export default function ProjectNew(){
     },
     enabled: !!clientSearch.trim() && !initialClientId
   });
+  const { data:relatedClientSearchResults } = useQuery({
+    queryKey: ['clients-search-related', relatedClientSearch],
+    queryFn: async () => {
+      if (!relatedClientSearch.trim()) return [];
+      const params = new URLSearchParams();
+      params.set('q', relatedClientSearch);
+      const result = await api<any>('GET', `/clients?${params.toString()}`);
+      if (Array.isArray(result)) return result as Client[];
+      if (result && Array.isArray(result.items)) return result.items as Client[];
+      if (result && Array.isArray(result.data)) return result.data as Client[];
+      return [] as Client[];
+    },
+    enabled: !!relatedClientSearch.trim(),
+  });
   const { data:sites } = useQuery({ queryKey:['clientSites', clientId], queryFn: ()=> clientId? api<Site[]>('GET', `/clients/${encodeURIComponent(clientId)}/sites`) : Promise.resolve([]), enabled: !!clientId });
   const { data:settings } = useQuery({ queryKey:['settings'], queryFn: ()=> api<any>('GET','/settings') });
   const { data:projectDivisions } = useQuery({ queryKey:['project-divisions'], queryFn: ()=> api<any[]>('GET','/settings/project-divisions'), staleTime: 300_000 });
@@ -89,6 +108,17 @@ export default function ProjectNew(){
     const list = clientSearchResults || [];
     return sortByLabel(list, c => (c.display_name || c.name || c.id || '').toString());
   }, [clientSearch, clientSearchResults, initialClientId]);
+
+  const filteredRelatedClients = useMemo(() => {
+    if (!relatedClientSearch.trim()) return [];
+    const list = relatedClientSearchResults || [];
+    const mainId = clientId || '';
+    const selectedSet = new Set(relatedClientIds);
+    return sortByLabel(
+      list.filter(c => c.id !== mainId && !selectedSet.has(c.id)),
+      c => (c.display_name || c.name || c.id || '').toString()
+    );
+  }, [relatedClientSearch, relatedClientSearchResults, clientId, relatedClientIds]);
 
   useEffect(()=>{ 
     if(initialClientId && Array.isArray(clients)) {
@@ -164,7 +194,8 @@ export default function ProjectNew(){
         estimator_id: estimatorId||null, 
         onsite_lead_id: leadId||null, 
         contact_id: contactId||null, 
-        is_bidding: isBidding 
+        is_bidding: isBidding,
+        related_client_ids: relatedClientIds.length > 0 ? relatedClientIds : null,
       };
       const proj:any = await api('POST','/projects', payload);
       if(coverBlob){
@@ -323,6 +354,97 @@ export default function ProjectNew(){
               )}
               {!clientValid && <div className="text-[11px] text-red-600 mt-1">Required</div>}
             </div>
+
+            {/* Related Customers - optional, multi-select; same row and size as Customer */}
+            <div>
+              <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">Related Customers</label>
+              <div className="flex items-center gap-2">
+                <div className="flex-1 relative">
+                  <input
+                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:ring-1 focus:ring-gray-300 focus:border-gray-300"
+                    placeholder="Search to add..."
+                    value={relatedClientSearch}
+                    onChange={(e) => {
+                      setRelatedClientSearch(e.target.value);
+                      setShowRelatedClientDropdown(!!e.target.value.trim());
+                    }}
+                    onFocus={() => relatedClientSearch.trim() && setShowRelatedClientDropdown(true)}
+                    onBlur={() => setTimeout(() => setShowRelatedClientDropdown(false), 200)}
+                  />
+                  {showRelatedClientDropdown && relatedClientSearch.trim() && filteredRelatedClients.length > 0 && (
+                    <div className="absolute z-10 w-full mt-1 bg-white border rounded-lg shadow-lg max-h-60 overflow-auto">
+                      {filteredRelatedClients.map((c) => (
+                        <button
+                          key={c.id}
+                          type="button"
+                          onMouseDown={(e) => e.preventDefault()}
+                          onClick={() => {
+                            if (c.id !== clientId && !relatedClientIds.includes(c.id)) {
+                              setRelatedClientIds((prev) => [...prev, c.id]);
+                              setRelatedClientDisplayNames((prev) => ({
+                                ...prev,
+                                [c.id]: c.display_name || c.name || c.id || '',
+                              }));
+                              setRelatedClientSearch('');
+                              setShowRelatedClientDropdown(false);
+                            }
+                          }}
+                          className="w-full text-left px-3 py-2 hover:bg-gray-50 border-b last:border-b-0"
+                        >
+                          <div className="font-medium">{c.display_name || c.name || c.id}</div>
+                          {c.city && <div className="text-xs text-gray-500">{c.city}{c.province ? `, ${c.province}` : ''}</div>}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                  {showRelatedClientDropdown && relatedClientSearch.trim() && filteredRelatedClients.length === 0 && (
+                    <div className="absolute z-10 w-full mt-1 bg-white border rounded-lg shadow-lg p-3 text-sm text-gray-500">
+                      No customers found
+                    </div>
+                  )}
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setRelatedClientModalOpen(true)}
+                  className="px-3 py-2 rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50 flex-shrink-0"
+                  title="Browse all customers"
+                >
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                  </svg>
+                </button>
+              </div>
+              {relatedClientIds.length > 0 && (
+                <div className="flex flex-wrap gap-2 mt-2">
+                  {relatedClientIds.map((rid) => (
+                    <span
+                      key={rid}
+                      className="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-gray-100 border border-gray-200 text-sm"
+                    >
+                      {relatedClientDisplayNames[rid] || rid}
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setRelatedClientIds((prev) => prev.filter((id) => id !== rid));
+                          setRelatedClientDisplayNames((prev) => {
+                            const next = { ...prev };
+                            delete next[rid];
+                            return next;
+                          });
+                        }}
+                        className="p-0.5 rounded hover:bg-gray-200 text-gray-500 hover:text-gray-700"
+                        title="Remove"
+                      >
+                        <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                        </svg>
+                      </button>
+                    </span>
+                  ))}
+                </div>
+              )}
+            </div>
+
             {!!clientId && (
               <div className="md:col-span-2">
                 <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">Customer contact</label>
@@ -571,6 +693,25 @@ export default function ProjectNew(){
         }}
       />
     )}
+    {relatedClientModalOpen && (
+      <RelatedClientSelectModal
+        open={relatedClientModalOpen}
+        onClose={() => setRelatedClientModalOpen(false)}
+        excludeClientId={clientId}
+        initialSelectedIds={relatedClientIds}
+        initialDisplayNames={relatedClientDisplayNames}
+        onApply={(clients) => {
+          const ids = clients.map((c) => c.id);
+          const names: Record<string, string> = {};
+          clients.forEach((c) => {
+            names[c.id] = c.display_name || c.name || c.id || '';
+          });
+          setRelatedClientIds(ids);
+          setRelatedClientDisplayNames((prev) => ({ ...prev, ...names }));
+          setRelatedClientModalOpen(false);
+        }}
+      />
+    )}
     </>
   );
 }
@@ -687,6 +828,200 @@ function ClientSelectModal({ open, onClose, onSelect }: { open: boolean, onClose
               No customers available
             </div>
           )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function RelatedClientSelectModal({
+  open,
+  onClose,
+  excludeClientId,
+  initialSelectedIds,
+  initialDisplayNames = {},
+  onApply,
+}: {
+  open: boolean;
+  onClose: () => void;
+  excludeClientId: string;
+  initialSelectedIds: string[];
+  initialDisplayNames?: Record<string, string>;
+  onApply: (clients: Client[]) => void;
+}) {
+  const [q, setQ] = useState('');
+  const [displayedCount, setDisplayedCount] = useState(20);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set(initialSelectedIds));
+  const [selectedClients, setSelectedClients] = useState<Client[]>([]);
+
+  const { data: allClients = [] } = useQuery<Client[]>({
+    queryKey: ['clients-all-related', q],
+    queryFn: async () => {
+      const params = new URLSearchParams();
+      if (q.trim()) params.set('q', q);
+      const result = await api<any>('GET', `/clients?${params.toString()}`);
+      if (Array.isArray(result)) return result as Client[];
+      if (result?.items) return result.items as Client[];
+      if (result?.data) return result.data as Client[];
+      return [];
+    },
+    enabled: open,
+    staleTime: 30_000,
+  });
+
+  const sortedAllClients = useMemo(
+    () => sortByLabel(allClients, (c) => (c.display_name || c.name || c.id || '').toString()),
+    [allClients]
+  );
+
+  const filteredClients = useMemo(() => {
+    const list = !q.trim() ? sortedAllClients : sortedAllClients.filter((c) => {
+      const lower = q.toLowerCase();
+      return (
+        (c.display_name || c.name || '').toLowerCase().includes(lower) ||
+        (c.city || '').toLowerCase().includes(lower) ||
+        (c.address_line1 || '').toLowerCase().includes(lower)
+      );
+    });
+    return list.filter((c) => c.id !== excludeClientId);
+  }, [sortedAllClients, q, excludeClientId]);
+
+  const list = filteredClients.slice(0, displayedCount);
+  const hasMore = filteredClients.length > displayedCount;
+
+  useEffect(() => {
+    if (!open) return;
+    setSelectedIds(new Set(initialSelectedIds));
+    setSelectedClients([]);
+  }, [open, initialSelectedIds.join(',')]);
+
+  useEffect(() => {
+    if (!open) {
+      setQ('');
+      setDisplayedCount(20);
+    }
+  }, [open]);
+
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [open, onClose]);
+
+  const toggleClient = (c: Client) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(c.id)) next.delete(c.id);
+      else next.add(c.id);
+      return next;
+    });
+    setSelectedClients((prev) => {
+      const exists = prev.find((x) => x.id === c.id);
+      if (exists) return prev.filter((x) => x.id !== c.id);
+      return [...prev, c];
+    });
+  };
+
+  const handleApply = () => {
+    const combined = new Map<string, Client>();
+    selectedClients.forEach((c) => combined.set(c.id, c));
+    list.forEach((c) => {
+      if (selectedIds.has(c.id)) combined.set(c.id, c);
+    });
+    allClients.forEach((c) => {
+      if (selectedIds.has(c.id) && c.id !== excludeClientId) combined.set(c.id, c);
+    });
+    // For any selected id without a full Client (e.g. from initial selection), use minimal object
+    selectedIds.forEach((id) => {
+      if (id !== excludeClientId && !combined.has(id) && initialDisplayNames[id]) {
+        combined.set(id, { id, display_name: initialDisplayNames[id], name: initialDisplayNames[id] });
+      }
+    });
+    onApply(Array.from(combined.values()));
+  };
+
+  if (!open) return null;
+
+  return (
+    <div className="fixed inset-0 z-[60] bg-black/50 flex items-center justify-center p-4">
+      <div className="w-[720px] max-w-[95vw] bg-gray-100 rounded-xl overflow-hidden max-h-[90vh] flex flex-col border border-gray-200 shadow-xl">
+        <div className="rounded-t-xl border-b border-gray-200 bg-white p-4 flex items-center justify-between flex-shrink-0">
+          <div>
+            <div className="text-sm font-semibold text-gray-900">Select Related Customers</div>
+            <div className="text-xs text-gray-500 mt-0.5">Search and select multiple; main customer is excluded</div>
+          </div>
+          <button onClick={onClose} className="p-1.5 rounded hover:bg-gray-100" title="Close">
+            <svg className="w-5 h-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+        <div className="p-4 space-y-3 overflow-y-auto flex-1 bg-white rounded-b-xl">
+          <div>
+            <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">Search</label>
+            <input
+              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:ring-1 focus:ring-gray-300 focus:border-gray-300"
+              placeholder="Type customer name, city, or address..."
+              value={q}
+              onChange={(e) => setQ(e.target.value)}
+              autoFocus
+            />
+          </div>
+          {list.length > 0 && (
+            <div className="max-h-96 overflow-auto rounded-xl border border-gray-200 divide-y divide-gray-100">
+              {list.map((c) => (
+                <button
+                  key={c.id}
+                  type="button"
+                  onClick={() => toggleClient(c)}
+                  className={`w-full text-left px-3 py-2.5 transition-colors text-sm flex items-center gap-2 ${selectedIds.has(c.id) ? 'bg-brand-red/10 hover:bg-brand-red/20' : 'bg-white hover:bg-gray-50'}`}
+                >
+                  <span className={`flex-shrink-0 w-4 h-4 border rounded flex items-center justify-center ${selectedIds.has(c.id) ? 'bg-brand-red border-brand-red' : 'border-gray-300'}`}>
+                    {selectedIds.has(c.id) && (
+                      <svg className="w-3 h-3 text-white" fill="currentColor" viewBox="0 0 20 20">
+                        <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                      </svg>
+                    )}
+                  </span>
+                  <div>
+                    <div className="font-semibold text-gray-900">{c.display_name || c.name || c.id}</div>
+                    <div className="text-xs text-gray-500 mt-0.5">
+                      {[c.address_line1, c.city, c.province].filter(Boolean).join(', ') || 'No address'}
+                    </div>
+                  </div>
+                </button>
+              ))}
+              {hasMore && (
+                <button
+                  type="button"
+                  onClick={() => setDisplayedCount((prev) => prev + 20)}
+                  className="w-full text-center px-3 py-2 bg-gray-50 hover:bg-gray-100 text-xs font-medium text-gray-600 border-t border-gray-100"
+                >
+                  Load more ({filteredClients.length - displayedCount} remaining)
+                </button>
+              )}
+            </div>
+          )}
+          {q.trim() && list.length === 0 && (
+            <div className="text-center py-8 text-sm text-gray-500">No customers found matching "{q}"</div>
+          )}
+          {!q.trim() && list.length === 0 && excludeClientId && (
+            <div className="text-center py-8 text-sm text-gray-500">No other customers available (main customer excluded)</div>
+          )}
+          {!q.trim() && list.length === 0 && !excludeClientId && (
+            <div className="text-center py-8 text-sm text-gray-500">No customers available</div>
+          )}
+        </div>
+        <div className="rounded-b-xl border-t border-gray-200 bg-white p-4 flex justify-end gap-2 flex-shrink-0">
+          <button type="button" onClick={onClose} className="px-3 py-1.5 rounded-lg text-sm font-medium border border-gray-200 hover:bg-gray-50">
+            Cancel
+          </button>
+          <button type="button" onClick={handleApply} className="px-3 py-1.5 rounded-lg text-sm font-medium bg-brand-red text-white hover:bg-[#aa1212]">
+            Apply ({selectedIds.size} selected)
+          </button>
         </div>
       </div>
     </div>

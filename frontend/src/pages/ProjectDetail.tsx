@@ -365,7 +365,7 @@ function UserAvatar({ user, size = 'w-8 h-8', showTooltip = true, tooltipText }:
   );
 }
 
-type Project = { id:string, code?:string, name?:string, client_id?:string, client_display_name?:string, client_name?:string, address?:string, address_city?:string, address_province?:string, address_country?:string, address_postal_code?:string, description?:string, status_id?:string, division_id?:string, division_ids?:string[], project_division_ids?:string[], estimator_id?:string, estimator_ids?:string[], project_admin_id?:string, onsite_lead_id?:string, division_onsite_leads?:Record<string, string>, contact_id?:string, contact_name?:string, contact_email?:string, contact_phone?:string, date_start?:string, date_eta?:string, date_end?:string, cost_estimated?:number, cost_actual?:number, service_value?:number, progress?:number, site_id?:string, site_name?:string, site_address_line1?:string, site_address_line2?:string, site_city?:string, site_province?:string, site_country?:string, site_postal_code?:string, status_label?:string, status_changed_at?:string, is_bidding?:boolean, lead_source?:string };
+type Project = { id:string, code?:string, name?:string, client_id?:string, client_display_name?:string, client_name?:string, related_client_ids?:string[], related_client_display_names?:string[], address?:string, address_city?:string, address_province?:string, address_country?:string, address_postal_code?:string, description?:string, status_id?:string, division_id?:string, division_ids?:string[], project_division_ids?:string[], estimator_id?:string, estimator_ids?:string[], project_admin_id?:string, onsite_lead_id?:string, division_onsite_leads?:Record<string, string>, contact_id?:string, contact_name?:string, contact_email?:string, contact_phone?:string, date_start?:string, date_eta?:string, date_end?:string, cost_estimated?:number, cost_actual?:number, service_value?:number, progress?:number, site_id?:string, site_name?:string, site_address_line1?:string, site_address_line2?:string, site_city?:string, site_province?:string, site_country?:string, site_postal_code?:string, status_label?:string, status_changed_at?:string, is_bidding?:boolean, lead_source?:string };
 type ProjectFile = { id:string, file_object_id:string, is_image?:boolean, content_type?:string, category?:string, folder_id?:string|null, original_name?:string, uploaded_at?:string };
 type Update = { id:string, timestamp?:string, text?:string, images?:any };
 type Report = { id:string, title?:string, category_id?:string, division_id?:string, description?:string, images?:any, status?:string, created_at?:string, created_by?:string, financial_value?:number, financial_type?:string, estimate_data?:any, approval_status?:string, approved_by?:string, approved_at?:string };
@@ -417,7 +417,7 @@ export default function ProjectDetail(){
         'dispatch': 'business:projects:workload:read',
         'timesheet': 'business:projects:timesheet:read',
         'files': 'business:projects:files:read',
-        'documents': 'documents:access',
+        'documents': 'business:projects:documents:read',
         'proposal': 'business:projects:proposal:read',
         'pricing': 'business:projects:proposal:read',
         'estimate': 'business:projects:estimate:read',
@@ -508,6 +508,8 @@ export default function ProjectDetail(){
   const [editEtaModal, setEditEtaModal] = useState(false);
   const [editStartDateModal, setEditStartDateModal] = useState(false);
   const [editLeadSourceModal, setEditLeadSourceModal] = useState(false);
+  const [editRelatedCustomersModal, setEditRelatedCustomersModal] = useState(false);
+  const [showConvertModal, setShowConvertModal] = useState(false);
   useEffect(()=>{
     (async()=>{
       try{
@@ -810,6 +812,43 @@ export default function ProjectDetail(){
                       </div>
                     )}
 
+                    {/* Related Customers - only show for projects */}
+                    {!proj?.is_bidding && (
+                      <div>
+                        <div className="flex items-center gap-1.5 mb-1.5">
+                          <span className="text-[10px] font-medium text-gray-500 uppercase tracking-wide">Related Customers</span>
+                          {hasEditPermission && (
+                            <button
+                              onClick={() => setEditRelatedCustomersModal(true)}
+                              className="p-0.5 text-gray-400 hover:text-[#7f1010] transition-colors"
+                              title="Edit Related Customers"
+                            >
+                              <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                              </svg>
+                            </button>
+                          )}
+                        </div>
+                        {(proj?.related_client_ids?.length ?? 0) > 0 ? (
+                          <div className="flex flex-wrap gap-x-1 gap-y-0.5 mt-0.5">
+                            {(proj?.related_client_ids ?? []).map((rid, i) => (
+                              <span key={rid}>
+                                <Link
+                                  to={`/customers/${encodeURIComponent(String(rid))}`}
+                                  className="text-xs font-semibold text-[#7f1010] hover:text-[#a31414] hover:underline break-words"
+                                >
+                                  {(proj?.related_client_display_names?.[i] ?? rid) || 'View Customer'}
+                                </Link>
+                                {i < (proj?.related_client_ids?.length ?? 0) - 1 ? ', ' : null}
+                              </span>
+                            ))}
+                          </div>
+                        ) : (
+                          <div className="text-xs font-semibold text-gray-400 mt-0.5">—</div>
+                        )}
+                      </div>
+                    )}
+
                     {/* Site - only show for projects */}
                     {!proj?.is_bidding && (
                       <div>
@@ -905,6 +944,43 @@ export default function ProjectDetail(){
                           >
                             {proj?.client_display_name || proj?.client_name || 'View Customer'}
                           </Link>
+                        ) : (
+                          <div className="text-xs font-semibold text-gray-400 mt-0.5">—</div>
+                        )}
+                      </div>
+                    )}
+
+                    {/* Related Customers - only show for opportunities */}
+                    {proj?.is_bidding && (
+                      <div>
+                        <div className="flex items-center gap-1.5 mb-1.5">
+                          <span className="text-[10px] font-medium text-gray-500 uppercase tracking-wide">Related Customers</span>
+                          {hasEditPermission && (
+                            <button
+                              onClick={() => setEditRelatedCustomersModal(true)}
+                              className="p-0.5 text-gray-400 hover:text-[#7f1010] transition-colors"
+                              title="Edit Related Customers"
+                            >
+                              <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                              </svg>
+                            </button>
+                          )}
+                        </div>
+                        {(proj?.related_client_ids?.length ?? 0) > 0 ? (
+                          <div className="flex flex-wrap gap-x-1 gap-y-0.5 mt-0.5">
+                            {(proj?.related_client_ids ?? []).map((rid, i) => (
+                              <span key={rid}>
+                                <Link
+                                  to={`/customers/${encodeURIComponent(String(rid))}`}
+                                  className="text-xs font-semibold text-[#7f1010] hover:text-[#a31414] hover:underline break-words"
+                                >
+                                  {(proj?.related_client_display_names?.[i] ?? rid) || 'View Customer'}
+                                </Link>
+                                {i < (proj?.related_client_ids?.length ?? 0) - 1 ? ', ' : null}
+                              </span>
+                            ))}
+                          </div>
                         ) : (
                           <div className="text-xs font-semibold text-gray-400 mt-0.5">—</div>
                         )}
@@ -1492,35 +1568,12 @@ export default function ProjectDetail(){
         return (
           <div className="mb-4">
             <button 
-              onClick={async()=>{
+              onClick={()=>{
                 if (!isComplete) {
                   toast.error(missingMessage);
                   return;
                 }
-                const result = await confirm({
-                  title: 'Convert to Project',
-                  message: `Are you sure you want to convert "${proj?.name||'this opportunity'}" to an active project? This will enable all project features including workload, timesheet and orders. Be careful, this action cannot be undone.`,
-                  confirmText: 'Convert',
-                  cancelText: 'Cancel'
-                });
-                if (result !== 'confirm') return;
-                try {
-                  const response = await api('POST', `/projects/${encodeURIComponent(String(id||''))}/convert-to-project`);
-                  if (response) {
-                    queryClient.removeQueries({ queryKey: ['opportunities'] });
-                    queryClient.removeQueries({ queryKey: ['projects'] });
-                    await Promise.all([
-                      queryClient.invalidateQueries({ queryKey: ['project', id] }),
-                      queryClient.invalidateQueries({ queryKey: ['clientProjects'] }),
-                      queryClient.invalidateQueries({ queryKey: ['clientOpportunities'] }),
-                    ]);
-                    toast.success('Opportunity converted to project');
-                    nav(`/projects/${encodeURIComponent(String(id||''))}`, { replace: true });
-                  }
-                } catch (e: any) {
-                  console.error('Failed to convert opportunity:', e);
-                  toast.error(e?.response?.data?.detail || e?.message || 'Failed to convert opportunity');
-                }
+                setShowConvertModal(true);
               }} 
               disabled={!isComplete}
               className={`w-full border-2 border-dashed rounded-lg p-2.5 transition-all text-center bg-white flex items-center justify-center gap-2 min-h-[60px] ${
@@ -1637,7 +1690,7 @@ export default function ProjectDetail(){
               )}
 
               {tab==='documents' && (
-                <ProjectDocumentsTab projectId={String(id)} isBidding={proj?.is_bidding} />
+                <ProjectDocumentsTab projectId={String(id)} isBidding={proj?.is_bidding} canEditDocuments={isAdmin || permissions.has('business:projects:documents:write')} />
               )}
 
               {tab==='proposal' && (
@@ -1888,6 +1941,44 @@ export default function ProjectDetail(){
           }}
         />
       )}
+
+      {editRelatedCustomersModal && proj && (
+        <EditRelatedCustomersModal
+          projectId={String(id)}
+          excludeClientId={proj.client_id || ''}
+          currentRelatedIds={proj.related_client_ids ?? []}
+          currentDisplayNames={proj.related_client_display_names ?? []}
+          onClose={() => setEditRelatedCustomersModal(false)}
+          onSave={async () => {
+            await queryClient.invalidateQueries({ queryKey: ['project', id] });
+            setEditRelatedCustomersModal(false);
+          }}
+        />
+      )}
+
+      {showConvertModal && proj?.is_bidding && (
+        <ConvertToProjectModal
+          projectId={String(id)}
+          proj={proj}
+          employees={employees || []}
+          projectDivisions={projectDivisions || []}
+          settings={settings || {}}
+          onClose={() => setShowConvertModal(false)}
+          onSuccess={async () => {
+            queryClient.removeQueries({ queryKey: ['opportunities'] });
+            queryClient.removeQueries({ queryKey: ['projects'] });
+            queryClient.removeQueries({ queryKey: ['proposal'] });
+            await Promise.all([
+              queryClient.invalidateQueries({ queryKey: ['project', id] }),
+              queryClient.invalidateQueries({ queryKey: ['clientProjects'] }),
+              queryClient.invalidateQueries({ queryKey: ['clientOpportunities'] }),
+              queryClient.invalidateQueries({ queryKey: ['projectProposals', id] }),
+            ]);
+            toast.success('Opportunity converted to project');
+            nav(`/projects/${encodeURIComponent(String(id || ''))}`, { replace: true });
+          }}
+        />
+      )}
     </div>
   );
 }
@@ -2044,6 +2135,163 @@ function EditEtaModal({ projectId, currentEta, onClose, onSave }: {
   );
 }
 
+type ClientMini = { id: string; display_name?: string; name?: string; city?: string; province?: string; address_line1?: string };
+
+function EditRelatedCustomersModal({
+  projectId,
+  excludeClientId,
+  currentRelatedIds,
+  currentDisplayNames,
+  onClose,
+  onSave,
+}: {
+  projectId: string;
+  excludeClientId: string;
+  currentRelatedIds: string[];
+  currentDisplayNames: string[];
+  onClose: () => void;
+  onSave: () => Promise<void>;
+}) {
+  const [q, setQ] = useState('');
+  const [displayedCount, setDisplayedCount] = useState(20);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set(currentRelatedIds));
+  const [saving, setSaving] = useState(false);
+
+  const { data: allClients = [] } = useQuery<ClientMini[]>({
+    queryKey: ['clients-all-edit-related', q],
+    queryFn: async () => {
+      const params = new URLSearchParams();
+      if (q.trim()) params.set('q', q);
+      const result = await api<any>('GET', `/clients?${params.toString()}`);
+      if (Array.isArray(result)) return result as ClientMini[];
+      if (result?.items) return result.items as ClientMini[];
+      if (result?.data) return result.data as ClientMini[];
+      return [];
+    },
+    staleTime: 30_000,
+  });
+
+  const filteredClients = useMemo(() => {
+    const sorted = sortByLabel(allClients, (c) => (c.display_name || c.name || c.id || '').toString());
+    return sorted.filter((c) => c.id !== excludeClientId);
+  }, [allClients, excludeClientId]);
+
+  const list = filteredClients.slice(0, displayedCount);
+  const hasMore = filteredClients.length > displayedCount;
+
+  useEffect(() => {
+    setSelectedIds(new Set(currentRelatedIds));
+  }, [currentRelatedIds.join(',')]);
+
+  const toggleClient = (c: ClientMini) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(c.id)) next.delete(c.id);
+      else next.add(c.id);
+      return next;
+    });
+  };
+
+  const handleSave = async () => {
+    try {
+      setSaving(true);
+      await api('PATCH', `/projects/${projectId}`, {
+        related_client_ids: Array.from(selectedIds),
+      });
+      toast.success('Related customers updated');
+      await onSave();
+    } catch (e: any) {
+      toast.error(e?.response?.data?.detail || 'Failed to update related customers');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4" onClick={onClose}>
+      <div className="bg-white rounded-xl w-full max-w-lg max-h-[90vh] flex flex-col shadow-xl" onClick={(e) => e.stopPropagation()}>
+        <div className="p-4 border-b flex items-center justify-between flex-shrink-0">
+          <h3 className="text-lg font-semibold">Edit Related Customers</h3>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600">
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+        <div className="p-4 overflow-y-auto flex-1">
+          <div className="mb-3">
+            <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">Search</label>
+            <input
+              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:ring-1 focus:ring-gray-300 focus:border-gray-300"
+              placeholder="Type customer name, city, or address..."
+              value={q}
+              onChange={(e) => setQ(e.target.value)}
+              autoFocus
+            />
+          </div>
+          {list.length > 0 && (
+            <div className="max-h-80 overflow-auto rounded-xl border border-gray-200 divide-y divide-gray-100">
+              {list.map((c) => (
+                <button
+                  key={c.id}
+                  type="button"
+                  onClick={() => toggleClient(c)}
+                  className={`w-full text-left px-3 py-2.5 transition-colors text-sm flex items-center gap-2 ${selectedIds.has(c.id) ? 'bg-brand-red/10 hover:bg-brand-red/20' : 'bg-white hover:bg-gray-50'}`}
+                >
+                  <span className={`flex-shrink-0 w-4 h-4 border rounded flex items-center justify-center ${selectedIds.has(c.id) ? 'bg-brand-red border-brand-red' : 'border-gray-300'}`}>
+                    {selectedIds.has(c.id) && (
+                      <svg className="w-3 h-3 text-white" fill="currentColor" viewBox="0 0 20 20">
+                        <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                      </svg>
+                    )}
+                  </span>
+                  <div>
+                    <div className="font-semibold text-gray-900">{c.display_name || c.name || c.id}</div>
+                    <div className="text-xs text-gray-500 mt-0.5">
+                      {[c.address_line1, c.city, c.province].filter(Boolean).join(', ') || 'No address'}
+                    </div>
+                  </div>
+                </button>
+              ))}
+              {hasMore && (
+                <button
+                  type="button"
+                  onClick={() => setDisplayedCount((prev) => prev + 20)}
+                  className="w-full text-center px-3 py-2 bg-gray-50 hover:bg-gray-100 text-xs font-medium text-gray-600 border-t border-gray-100"
+                >
+                  Load more ({filteredClients.length - displayedCount} remaining)
+                </button>
+              )}
+            </div>
+          )}
+          {q.trim() && list.length === 0 && (
+            <div className="text-center py-6 text-sm text-gray-500">No customers found matching "{q}"</div>
+          )}
+          {!q.trim() && list.length === 0 && (
+            <div className="text-center py-6 text-sm text-gray-500">No customers available</div>
+          )}
+        </div>
+        <div className="p-4 border-t flex justify-end gap-2 flex-shrink-0">
+          <button
+            onClick={onClose}
+            disabled={saving}
+            className="px-4 py-2 rounded border bg-white hover:bg-gray-50 text-gray-700 font-medium disabled:opacity-50"
+          >
+            Cancel
+          </button>
+          <button
+            onClick={handleSave}
+            disabled={saving}
+            className="px-4 py-2 rounded bg-brand-red text-white font-medium disabled:opacity-50"
+          >
+            {saving ? 'Saving...' : `Save (${selectedIds.size} selected)`}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function EditLeadSourceModal({ projectId, currentLeadSource, onClose, onSave }: {
   projectId: string;
   currentLeadSource: string;
@@ -2122,6 +2370,549 @@ function EditLeadSourceModal({ projectId, currentLeadSource, onClose, onSave }: 
           >
             {saving ? 'Saving...' : 'Save'}
           </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ConvertToProjectModal({
+  projectId,
+  proj,
+  employees,
+  projectDivisions,
+  settings,
+  onClose,
+  onSuccess,
+}: {
+  projectId: string;
+  proj: any;
+  employees: any[];
+  projectDivisions: any[];
+  settings: any;
+  onClose: () => void;
+  onSuccess: () => Promise<void>;
+}) {
+  const [projectAdminId, setProjectAdminId] = useState<string>(proj?.project_admin_id ? String(proj.project_admin_id) : '');
+  const [divisionLeads, setDivisionLeads] = useState<Record<string, string>>(proj?.division_onsite_leads || {});
+  const [dateEta, setDateEta] = useState<string>((proj?.date_eta || '').toString().slice(0, 10));
+  const [dateStart, setDateStart] = useState<string>((proj?.date_start || '').toString().slice(0, 10));
+  const [leadSource, setLeadSource] = useState<string>(proj?.lead_source || '');
+  const [pricingApprovals, setPricingApprovals] = useState<boolean[]>([]);
+  const [submitting, setSubmitting] = useState(false);
+  const [openDropdownId, setOpenDropdownId] = useState<string | null>(null);
+  const [searchQueries, setSearchQueries] = useState<Record<string, string>>({});
+  const [dropdownPosition, setDropdownPosition] = useState<{ top?: number; bottom?: number; left: number; width: number; maxHeight: number } | null>(null);
+  const triggerRefs = useRef<Record<string, HTMLDivElement | null>>({});
+
+  const divisionIds = Array.isArray(proj?.project_division_ids) ? proj.project_division_ids : [];
+  const { data: proposals } = useQuery({
+    queryKey: ['projectProposals', projectId],
+    queryFn: () => api<Proposal[]>('GET', `/proposals?project_id=${encodeURIComponent(projectId)}`),
+    enabled: !!projectId,
+  });
+  const originalProposal = useMemo(() => proposals?.find(p => !p.is_change_order) || null, [proposals]);
+  const { data: proposalData } = useQuery({
+    queryKey: ['proposal', originalProposal?.id],
+    queryFn: () => originalProposal?.id ? api<any>('GET', `/proposals/${originalProposal.id}`) : Promise.resolve(null),
+    enabled: !!originalProposal?.id,
+  });
+  const additionalCosts = useMemo(() => {
+    const d = proposalData?.data || proposalData || {};
+    const ac = d.additional_costs;
+    return Array.isArray(ac) ? ac : [];
+  }, [proposalData]);
+
+  useEffect(() => {
+    if (additionalCosts.length > 0 && pricingApprovals.length !== additionalCosts.length) {
+      setPricingApprovals(additionalCosts.map(() => true));
+    }
+  }, [additionalCosts.length]);
+
+  const getDivisionLabel = useCallback((divId: string) => {
+    if (!projectDivisions?.length) return divId;
+    for (const d of projectDivisions) {
+      if (String(d.id) === String(divId)) return d.label || divId;
+      for (const sub of d.subdivisions || []) {
+        if (String(sub.id) === String(divId)) return `${d.label} - ${sub.label}`;
+      }
+    }
+    return divId;
+  }, [projectDivisions]);
+
+  const getDivisionMainLabel = useCallback((divId: string) => {
+    if (!projectDivisions?.length) return divId;
+    for (const d of projectDivisions) {
+      if (String(d.id) === String(divId)) return d.label || divId;
+      for (const sub of d.subdivisions || []) {
+        if (String(sub.id) === String(divId)) return d.label || divId;
+      }
+    }
+    return divId;
+  }, [projectDivisions]);
+
+  const updateSearchQuery = useCallback((key: string, query: string) => {
+    setSearchQueries(prev => ({ ...prev, [key]: query }));
+  }, []);
+
+  const computeDropdownPosition = useCallback((key: string) => {
+    const el = triggerRefs.current[key];
+    if (!el) return;
+    const rect = el.getBoundingClientRect();
+    const PADDING = 8;
+    const DESIRED_MAX = 280;
+    const MIN_HEIGHT = 160;
+    const spaceBelow = window.innerHeight - rect.bottom - PADDING;
+    const spaceAbove = rect.top - PADDING;
+    const openUp = spaceBelow < 220 && spaceAbove > spaceBelow;
+    const available = openUp ? spaceAbove : spaceBelow;
+    const maxHeight = Math.min(DESIRED_MAX, Math.max(MIN_HEIGHT, available));
+    const width = rect.width;
+    const maxLeft = window.innerWidth - width - PADDING;
+    const left = Math.max(PADDING, Math.min(rect.left, maxLeft));
+    if (openUp) {
+      setDropdownPosition({ bottom: window.innerHeight - rect.top + PADDING, left, width, maxHeight });
+    } else {
+      setDropdownPosition({ top: rect.bottom + PADDING, left, width, maxHeight });
+    }
+  }, []);
+
+  const toggleDropdown = useCallback((key: string) => {
+    if (openDropdownId === key) {
+      setOpenDropdownId(null);
+      return;
+    }
+    setOpenDropdownId(key);
+    computeDropdownPosition(key);
+  }, [openDropdownId, computeDropdownPosition]);
+
+  const getFilteredEmployees = useCallback((key: string) => {
+    const query = (searchQueries[key] || '').trim().toLowerCase();
+    const list = !query ? (employees || []) : (employees || []).filter((emp: any) => {
+      const name = getUserDisplayName(emp).toLowerCase();
+      const email = (emp.email || '').toLowerCase();
+      const username = (emp.username || '').toLowerCase();
+      return name.includes(query) || email.includes(query) || username.includes(query);
+    });
+    return [...list].sort((a: any, b: any) => getUserDisplayName(a).localeCompare(getUserDisplayName(b)));
+  }, [employees, searchQueries]);
+
+  const leadSourcesList = (settings?.lead_sources || []) as any[];
+  const getFilteredLeadSources = useCallback((key: string) => {
+    const query = (searchQueries[key] || '').trim().toLowerCase();
+    const list = !query ? leadSourcesList : leadSourcesList.filter((ls: any) => {
+      const label = (ls.label ?? ls.value ?? String(ls)).toLowerCase();
+      const val = (ls.value ?? ls.label ?? String(ls)).toLowerCase();
+      return label.includes(query) || val.includes(query);
+    });
+    return [...list].sort((a: any, b: any) => (a.label ?? a.value ?? String(a)).localeCompare(b.label ?? b.value ?? String(b)));
+  }, [leadSourcesList, searchQueries]);
+
+  useEffect(() => {
+    if (!openDropdownId) {
+      setDropdownPosition(null);
+      return;
+    }
+    const update = () => computeDropdownPosition(openDropdownId);
+    update();
+    window.addEventListener('scroll', update, true);
+    window.addEventListener('resize', update);
+    return () => {
+      window.removeEventListener('scroll', update, true);
+      window.removeEventListener('resize', update);
+    };
+  }, [openDropdownId, computeDropdownPosition]);
+
+  const handleSubmit = async () => {
+    setSubmitting(true);
+    try {
+      const body: any = {
+        project_admin_id: projectAdminId || null,
+        division_onsite_leads: divisionLeads,
+        date_eta: dateEta || null,
+        date_start: dateStart || null,
+        lead_source: leadSource || null,
+        pricing_item_approvals: additionalCosts.length > 0 ? pricingApprovals.slice(0, additionalCosts.length) : [],
+      };
+      await api('POST', `/projects/${encodeURIComponent(projectId)}/convert-to-project`, body);
+      await onSuccess();
+      onClose();
+    } catch (e: any) {
+      toast.error(e?.response?.data?.detail || e?.message || 'Failed to convert opportunity');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const toggleApproval = (index: number) => {
+    setPricingApprovals(prev => {
+      const next = [...prev];
+      if (index < next.length) next[index] = !next[index];
+      return next;
+    });
+  };
+
+  const closeDropdown = useCallback(() => setOpenDropdownId(null), []);
+
+  return (
+    <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center overflow-y-auto p-4" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
+      <div className="w-[900px] max-w-[95vw] max-h-[90vh] bg-gray-100 rounded-xl overflow-hidden flex flex-col border border-gray-200 shadow-xl" onClick={(e) => e.stopPropagation()}>
+        {/* Title bar - same style as New Opportunity */}
+        <div className="rounded-t-xl border-b border-gray-200 bg-white p-4 flex-shrink-0">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <button type="button" onClick={onClose} className="p-1.5 rounded hover:bg-gray-100 transition-colors flex items-center justify-center" title="Close">
+                <svg className="w-5 h-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+              </button>
+              <div>
+                <div className="text-sm font-semibold text-gray-900">Convert to Project</div>
+                <div className="text-xs text-gray-500 mt-0.5">General information and pricing approvals</div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div className="overflow-y-auto flex-1 p-4">
+          <div className="rounded-xl border bg-white p-4 grid md:grid-cols-2 gap-4 items-start">
+            <div className="md:col-span-2 flex items-start gap-3 p-4 rounded-lg border border-amber-300 bg-amber-50">
+              <span className="flex-shrink-0 text-amber-600" title="Aviso">
+                <svg className="w-6 h-6" fill="currentColor" viewBox="0 0 20 20">
+                  <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+                </svg>
+              </span>
+              <p className="text-sm text-amber-900">
+                Converting &quot;{proj?.name || 'this opportunity'}&quot; to an active project will enable workload and timesheet functionality. <span className="font-medium"> Be careful, this action cannot be undone.</span>
+              </p>
+            </div>
+
+            <div className="space-y-3 min-w-0">
+              <label className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide block mb-1">Project Admin</label>
+              <div className="relative min-w-0">
+                <div
+                  ref={(el) => { triggerRefs.current['projectAdmin'] = el; }}
+                  onClick={() => toggleDropdown('projectAdmin')}
+                  className="flex items-center gap-2 border border-gray-200 rounded-lg px-3 py-2 text-sm cursor-pointer bg-white hover:bg-gray-50 min-w-0"
+                >
+                  {projectAdminId ? (() => {
+                    const emp = (employees || []).find((e: any) => String(e.id) === String(projectAdminId));
+                    return emp ? (
+                      <>
+                        <UserAvatar user={emp} size="w-6 h-6" showTooltip={false} />
+                        <span className="flex-1 min-w-0 text-left truncate">{getUserDisplayName(emp)}</span>
+                      </>
+                    ) : (
+                      <span className="flex-1 min-w-0 text-left text-gray-500">Select...</span>
+                    );
+                  })() : (
+                    <span className="flex-1 min-w-0 text-left text-gray-500">Select...</span>
+                  )}
+                  <svg className={`w-4 h-4 text-gray-400 transition-transform flex-shrink-0 ${openDropdownId === 'projectAdmin' ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
+                </div>
+                {openDropdownId === 'projectAdmin' && dropdownPosition && (
+                  <>
+                    <div className="fixed inset-0 z-[60]" onClick={closeDropdown} />
+                    <div
+                      className="fixed z-[70] bg-white border rounded-lg shadow-xl overflow-hidden flex flex-col"
+                      style={{
+                        ...(dropdownPosition.top !== undefined ? { top: `${dropdownPosition.top}px` } : {}),
+                        ...(dropdownPosition.bottom !== undefined ? { bottom: `${dropdownPosition.bottom}px` } : {}),
+                        left: `${dropdownPosition.left}px`,
+                        width: `${dropdownPosition.width}px`,
+                        maxHeight: `${dropdownPosition.maxHeight}px`,
+                      }}
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      {dropdownPosition.bottom !== undefined ? (
+                        <>
+                          <div className="overflow-y-auto flex-1 p-2">
+                            <div onClick={() => { setProjectAdminId(''); closeDropdown(); }} className="flex items-center gap-3 p-2 cursor-pointer hover:bg-gray-50 rounded">
+                              <div className="w-6 h-6 rounded-full bg-gray-200 flex items-center justify-center text-gray-500 text-xs">—</div>
+                              <span className="text-sm">Clear</span>
+                            </div>
+                            {getFilteredEmployees('projectAdmin').map((emp: any) => (
+                              <div key={emp.id} onClick={() => { setProjectAdminId(String(emp.id)); closeDropdown(); }} className={`flex items-center gap-3 p-2 cursor-pointer rounded ${projectAdminId === String(emp.id) ? 'bg-indigo-50' : 'hover:bg-gray-50'}`}>
+                                <UserAvatar user={emp} size="w-6 h-6" showTooltip={false} />
+                                <div className="flex-1 min-w-0">
+                                  <div className="text-sm font-medium truncate">{getUserDisplayName(emp)}</div>
+                                  {emp.email && <div className="text-xs text-gray-600 truncate">{emp.email}</div>}
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                          <div className="p-2 border-t">
+                            <input type="text" value={searchQueries['projectAdmin'] || ''} onChange={(e) => updateSearchQuery('projectAdmin', e.target.value)} placeholder="Search..." className="w-full border rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" onClick={(e) => e.stopPropagation()} autoFocus />
+                          </div>
+                        </>
+                      ) : (
+                        <>
+                          <div className="p-2 border-b">
+                            <input type="text" value={searchQueries['projectAdmin'] || ''} onChange={(e) => updateSearchQuery('projectAdmin', e.target.value)} placeholder="Search..." className="w-full border rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" onClick={(e) => e.stopPropagation()} autoFocus />
+                          </div>
+                          <div className="overflow-y-auto flex-1 p-2">
+                            <div onClick={() => { setProjectAdminId(''); closeDropdown(); }} className="flex items-center gap-3 p-2 cursor-pointer hover:bg-gray-50 rounded">
+                              <div className="w-6 h-6 rounded-full bg-gray-200 flex items-center justify-center text-gray-500 text-xs">—</div>
+                              <span className="text-sm">Clear</span>
+                            </div>
+                            {getFilteredEmployees('projectAdmin').map((emp: any) => (
+                              <div key={emp.id} onClick={() => { setProjectAdminId(String(emp.id)); closeDropdown(); }} className={`flex items-center gap-3 p-2 cursor-pointer rounded ${projectAdminId === String(emp.id) ? 'bg-indigo-50' : 'hover:bg-gray-50'}`}>
+                                <UserAvatar user={emp} size="w-6 h-6" showTooltip={false} />
+                                <div className="flex-1 min-w-0">
+                                  <div className="text-sm font-medium truncate">{getUserDisplayName(emp)}</div>
+                                  {emp.email && <div className="text-xs text-gray-600 truncate">{emp.email}</div>}
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        </>
+                      )}
+                    </div>
+                  </>
+                )}
+              </div>
+            </div>
+
+            <div className="space-y-3 min-w-0">
+              <label className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide block mb-1">Lead Source</label>
+              <div className="relative min-w-0">
+                <div
+                  ref={(el) => { triggerRefs.current['leadSource'] = el; }}
+                  onClick={() => toggleDropdown('leadSource')}
+                  className="flex items-center gap-2 border border-gray-200 rounded-lg px-3 py-2 text-sm cursor-pointer bg-white hover:bg-gray-50 min-w-0"
+                >
+                  <span className="flex-1 min-w-0 text-left truncate">
+                    {leadSource ? (leadSourcesList.find((ls: any) => (ls.value ?? ls.label ?? ls) === leadSource)?.label ?? leadSource) : <span className="text-gray-500">Select...</span>}
+                  </span>
+                  <svg className={`w-4 h-4 text-gray-400 transition-transform flex-shrink-0 ${openDropdownId === 'leadSource' ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
+                </div>
+                {openDropdownId === 'leadSource' && dropdownPosition && (
+                  <>
+                    <div className="fixed inset-0 z-[60]" onClick={closeDropdown} />
+                    <div
+                      className="fixed z-[70] bg-white border rounded-lg shadow-xl overflow-hidden flex flex-col"
+                      style={{
+                        ...(dropdownPosition.top !== undefined ? { top: `${dropdownPosition.top}px` } : {}),
+                        ...(dropdownPosition.bottom !== undefined ? { bottom: `${dropdownPosition.bottom}px` } : {}),
+                        left: `${dropdownPosition.left}px`,
+                        width: `${dropdownPosition.width}px`,
+                        maxHeight: `${dropdownPosition.maxHeight}px`,
+                      }}
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      {dropdownPosition.bottom !== undefined ? (
+                        <>
+                          <div className="overflow-y-auto flex-1 p-2">
+                            <div onClick={() => { setLeadSource(''); closeDropdown(); }} className="p-2 cursor-pointer hover:bg-gray-50 rounded text-sm">Clear</div>
+                            {getFilteredLeadSources('leadSource').map((ls: any) => {
+                              const val = ls.value ?? ls.label ?? ls;
+                              const lbl = ls.label ?? ls.value ?? ls;
+                              return (
+                                <div key={val} onClick={() => { setLeadSource(val); closeDropdown(); }} className={`p-2 cursor-pointer rounded text-sm ${leadSource === val ? 'bg-indigo-50' : 'hover:bg-gray-50'}`}>{lbl}</div>
+                              );
+                            })}
+                          </div>
+                          <div className="p-2 border-t">
+                            <input type="text" value={searchQueries['leadSource'] || ''} onChange={(e) => updateSearchQuery('leadSource', e.target.value)} placeholder="Search..." className="w-full border rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" onClick={(e) => e.stopPropagation()} autoFocus />
+                          </div>
+                        </>
+                      ) : (
+                        <>
+                          <div className="p-2 border-b">
+                            <input type="text" value={searchQueries['leadSource'] || ''} onChange={(e) => updateSearchQuery('leadSource', e.target.value)} placeholder="Search..." className="w-full border rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" onClick={(e) => e.stopPropagation()} autoFocus />
+                          </div>
+                          <div className="overflow-y-auto flex-1 p-2">
+                            <div onClick={() => { setLeadSource(''); closeDropdown(); }} className="p-2 cursor-pointer hover:bg-gray-50 rounded text-sm">Clear</div>
+                            {getFilteredLeadSources('leadSource').map((ls: any) => {
+                              const val = ls.value ?? ls.label ?? ls;
+                              const lbl = ls.label ?? ls.value ?? ls;
+                              return (
+                                <div key={val} onClick={() => { setLeadSource(val); closeDropdown(); }} className={`p-2 cursor-pointer rounded text-sm ${leadSource === val ? 'bg-indigo-50' : 'hover:bg-gray-50'}`}>{lbl}</div>
+                              );
+                            })}
+                          </div>
+                        </>
+                      )}
+                    </div>
+                  </>
+                )}
+              </div>
+            </div>
+
+            {divisionIds.length > 0 && (
+              <div className="md:col-span-2 space-y-2">
+                <label className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide block mb-1">On-site Leads (by division)</label>
+                <div className="space-y-2">
+                  {divisionIds.map((divId: string) => {
+                    const divKey = `div-${divId}`;
+                    const leadId = divisionLeads[divId] || '';
+                    const lead = leadId ? (employees || []).find((e: any) => String(e.id) === String(leadId)) : null;
+                    const filteredEmps = getFilteredEmployees(divKey);
+                    return (
+                      <div key={divId} className="flex items-center gap-2">
+                        <div className="flex items-center gap-1.5 w-36 min-w-0 shrink-0" title={getDivisionLabel(divId)}>
+                          <span className="text-base flex-shrink-0">{getDivisionIcon(getDivisionMainLabel(divId), true)}</span>
+                          <span className="text-xs text-gray-600 truncate">{getDivisionLabel(divId)}</span>
+                        </div>
+                        <div className="relative flex-1 min-w-0">
+                          <div
+                            ref={(el) => { triggerRefs.current[divKey] = el; }}
+                            onClick={() => toggleDropdown(divKey)}
+                            className="flex items-center gap-2 border border-gray-200 rounded-lg px-3 py-2 text-sm cursor-pointer bg-white hover:bg-gray-50"
+                          >
+                            {lead ? (
+                              <>
+                                <UserAvatar user={lead} size="w-6 h-6" showTooltip={false} />
+                                <span className="flex-1 text-left truncate">{getUserDisplayName(lead)}</span>
+                              </>
+                            ) : (
+                              <>
+                                <div className="w-6 h-6 rounded-full bg-gray-200 flex items-center justify-center text-gray-500 text-xs shrink-0">—</div>
+                                <span className="flex-1 text-left text-gray-500 truncate">Select...</span>
+                              </>
+                            )}
+                            <svg className={`w-4 h-4 text-gray-400 transition-transform shrink-0 ${openDropdownId === divKey ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
+                          </div>
+                          {openDropdownId === divKey && dropdownPosition && (
+                            <>
+                              <div className="fixed inset-0 z-[60]" onClick={closeDropdown} />
+                              <div
+                                className="fixed z-[70] bg-white border rounded-lg shadow-xl overflow-hidden flex flex-col"
+                                style={{
+                                  ...(dropdownPosition.top !== undefined ? { top: `${dropdownPosition.top}px` } : {}),
+                                  ...(dropdownPosition.bottom !== undefined ? { bottom: `${dropdownPosition.bottom}px` } : {}),
+                                  left: `${dropdownPosition.left}px`,
+                                  width: `${dropdownPosition.width}px`,
+                                  maxHeight: `${dropdownPosition.maxHeight}px`,
+                                }}
+                                onClick={(e) => e.stopPropagation()}
+                              >
+                                {dropdownPosition.bottom !== undefined ? (
+                                  <>
+                                    <div className="overflow-y-auto flex-1 p-2">
+                                      <div onClick={() => { setDivisionLeads(prev => ({ ...prev, [divId]: '' })); closeDropdown(); }} className="flex items-center gap-3 p-2 cursor-pointer hover:bg-gray-50 rounded">
+                                        <div className="w-6 h-6 rounded-full bg-gray-200 flex items-center justify-center text-gray-500 text-xs">—</div>
+                                        <span className="text-sm">Clear</span>
+                                      </div>
+                                      {filteredEmps.map((emp: any) => (
+                                        <div key={emp.id} onClick={() => { setDivisionLeads(prev => ({ ...prev, [divId]: String(emp.id) })); closeDropdown(); }} className={`flex items-center gap-3 p-2 cursor-pointer rounded ${leadId === String(emp.id) ? 'bg-indigo-50' : 'hover:bg-gray-50'}`}>
+                                          <UserAvatar user={emp} size="w-6 h-6" showTooltip={false} />
+                                          <div className="flex-1 min-w-0">
+                                            <div className="text-sm font-medium truncate">{getUserDisplayName(emp)}</div>
+                                            {emp.email && <div className="text-xs text-gray-600 truncate">{emp.email}</div>}
+                                          </div>
+                                        </div>
+                                      ))}
+                                    </div>
+                                    <div className="p-2 border-t">
+                                      <input type="text" value={searchQueries[divKey] || ''} onChange={(e) => updateSearchQuery(divKey, e.target.value)} placeholder="Search..." className="w-full border rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" onClick={(e) => e.stopPropagation()} autoFocus />
+                                    </div>
+                                  </>
+                                ) : (
+                                  <>
+                                    <div className="p-2 border-b">
+                                      <input type="text" value={searchQueries[divKey] || ''} onChange={(e) => updateSearchQuery(divKey, e.target.value)} placeholder="Search..." className="w-full border rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" onClick={(e) => e.stopPropagation()} autoFocus />
+                                    </div>
+                                    <div className="overflow-y-auto flex-1 p-2">
+                                      <div onClick={() => { setDivisionLeads(prev => ({ ...prev, [divId]: '' })); closeDropdown(); }} className="flex items-center gap-3 p-2 cursor-pointer hover:bg-gray-50 rounded">
+                                        <div className="w-6 h-6 rounded-full bg-gray-200 flex items-center justify-center text-gray-500 text-xs">—</div>
+                                        <span className="text-sm">Clear</span>
+                                      </div>
+                                      {filteredEmps.map((emp: any) => (
+                                        <div key={emp.id} onClick={() => { setDivisionLeads(prev => ({ ...prev, [divId]: String(emp.id) })); closeDropdown(); }} className={`flex items-center gap-3 p-2 cursor-pointer rounded ${leadId === String(emp.id) ? 'bg-indigo-50' : 'hover:bg-gray-50'}`}>
+                                          <UserAvatar user={emp} size="w-6 h-6" showTooltip={false} />
+                                          <div className="flex-1 min-w-0">
+                                            <div className="text-sm font-medium truncate">{getUserDisplayName(emp)}</div>
+                                            {emp.email && <div className="text-xs text-gray-600 truncate">{emp.email}</div>}
+                                          </div>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  </>
+                                )}
+                              </div>
+                            </>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            <div>
+              <label className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide block mb-1">ETA</label>
+              <input type="date" value={dateEta} onChange={e => setDateEta(e.target.value)} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" />
+            </div>
+            <div>
+              <label className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide block mb-1">Start Date</label>
+              <input type="date" value={dateStart} onChange={e => setDateStart(e.target.value)} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" />
+            </div>
+
+            {additionalCosts.length > 0 && (
+              <div className="md:col-span-2">
+                <label className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide block mb-2">Pricing – Approve items for project</label>
+                <div className="border border-gray-200 rounded-lg divide-y divide-gray-100 max-h-48 overflow-y-auto">
+                  {additionalCosts.map((item: any, i: number) => {
+                    const label = item.label ?? item.name ?? '—';
+                    const value = (item.value ?? 0) * (parseFloat(item.quantity) || 1);
+                    const divId = item.division_id;
+                    const approved = i < pricingApprovals.length ? pricingApprovals[i] : true;
+                    return (
+                      <div key={i} className="flex items-center gap-3 px-3 py-2 bg-white hover:bg-gray-50">
+                        <div className="flex-1 min-w-0">
+                          {divId && (
+                            <span className="flex items-center gap-1.5 text-[10px] text-gray-500">
+                              <span className="flex-shrink-0">{getDivisionIcon(getDivisionMainLabel(divId), true)}</span>
+                              {getDivisionLabel(divId)}
+                            </span>
+                          )}
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="text-sm font-medium truncate">{label}</span>
+                            <span className="text-gray-400">–</span>
+                            <span className="text-sm font-semibold text-gray-900">${Number(value).toLocaleString('en-CA', { minimumFractionDigits: 2 })}</span>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-1 shrink-0">
+                          <button
+                            type="button"
+                            onClick={() => setPricingApprovals(prev => { const n = [...prev]; if (i < n.length) n[i] = true; return n; })}
+                            title="Approved"
+                            className={`flex items-center justify-center w-7 h-7 rounded-lg border-2 transition-all ${
+                              approved ? 'bg-green-100 text-green-700 border-green-400 scale-105 shadow-md' : 'bg-white text-gray-300 border-gray-200 hover:border-gray-300 hover:text-gray-400'
+                            }`}
+                          >
+                            <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                              <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                            </svg>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setPricingApprovals(prev => { const n = [...prev]; if (i < n.length) n[i] = false; return n; })}
+                            title="Not Approved"
+                            className={`flex items-center justify-center w-7 h-7 rounded-lg border-2 transition-all ${
+                              !approved ? 'bg-red-100 text-red-700 border-red-400 scale-105 shadow-md' : 'bg-white text-gray-300 border-gray-200 hover:border-gray-300 hover:text-gray-400'
+                            }`}
+                          >
+                            <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                              <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
+                            </svg>
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+        <div className="flex-shrink-0 px-4 py-4 border-t border-gray-200 bg-white flex items-center justify-between gap-3 rounded-b-xl">
+          <div className="text-xs text-gray-500">Convert opportunity to active project</div>
+          <div className="flex items-center gap-2">
+            <button type="button" onClick={onClose} disabled={submitting} className="px-3 py-1.5 rounded-lg text-sm font-medium text-gray-700 border border-gray-200 hover:bg-gray-50 disabled:opacity-50">Cancel</button>
+            <button type="button" onClick={handleSubmit} disabled={submitting} className="px-3 py-1.5 rounded-lg text-sm font-medium bg-brand-red text-white hover:bg-[#aa1212] disabled:opacity-50 disabled:cursor-not-allowed">
+              {submitting ? 'Converting...' : 'Convert'}
+            </button>
+          </div>
         </div>
       </div>
     </div>
@@ -4640,6 +5431,8 @@ function ProjectProposalTab({ projectId, clientId, siteId, proposals, statusLabe
                 : undefined
             }
             onPricingItemsChange={onPricingItemsChange}
+            isBidding={isBidding}
+            projectStatusLabel={statusLabel}
             onSave={async ()=>{
               // Always refetch proposals list after save to get the updated/created proposal
               await refetchProposals();
@@ -7403,13 +8196,13 @@ function EditStatusModal({ projectId, currentStatus, currentStatusLabel, setting
   const [saving, setSaving] = useState(false);
   const allProjectStatuses = (settings?.project_statuses || []) as any[];
   
-  // For opportunities, only show: Prospecting, Sent to Customer, Refused
+  // For opportunities, only show: Prospecting, Sent to Customer, Refused, Conflict, Schedule Conflict
   // For projects, show all statuses except "Prospecting"
   const projectStatuses = useMemo(() => {
     if (isBidding) {
-      // Filter to only show the 3 allowed statuses for opportunities
+      // Filter to only show the allowed statuses for opportunities (Conflict = same as in projects)
       // Use case-insensitive comparison and trim to handle variations
-      const allowedLabels = ['Prospecting', 'Sent to Customer', 'Refused'].map(l => l.toLowerCase().trim());
+      const allowedLabels = ['Prospecting', 'Sent to Customer', 'Refused', 'Conflict', 'Schedule Conflict'].map(l => l.toLowerCase().trim());
       const filtered = allProjectStatuses.filter((status: any) => {
         const statusLabel = String(status.label || '').toLowerCase().trim();
         return allowedLabels.includes(statusLabel);
@@ -7463,7 +8256,7 @@ function EditStatusModal({ projectId, currentStatus, currentStatusLabel, setting
           <label className="text-sm font-medium text-gray-700 mb-2 block">Status</label>
           {projectStatuses.length === 0 ? (
             <div className="text-sm text-gray-500 mb-4">
-              No statuses available. Please ensure the following statuses exist in settings: {isBidding ? 'Prospecting, Sent to Customer, Refused' : 'All statuses except Prospecting'}
+              No statuses available. Please ensure the following statuses exist in settings: {isBidding ? 'Prospecting, Sent to Customer, Refused, Conflict, Schedule Conflict' : 'All statuses except Prospecting'}
             </div>
           ) : (
             <select
@@ -8319,9 +9112,10 @@ function ProjectDivisionsHeroSection({ projectId, proj, hasEditPermission, liveP
       return result;
     }
     
-    // Group by division_id and sum values
+    // Group by division_id and sum values (only approved items count)
     const divisionTotals: { [key: string]: number } = {};
     pricingItems.forEach((item: any) => {
+      if (item.approved === false) return;
       if (item.division_id) {
         const divId = String(item.division_id);
         const value = (item.value || 0) * (parseInt(item.quantity || '1', 10) || 1);
@@ -9259,22 +10053,23 @@ function ProjectEtaEdit({ projectId, proj, settings }:{ projectId:string, proj:a
 // Helper function to calculate Final Total (with GST) from proposal data
 function calculateProposalTotal(proposalData: any): number {
   if (!proposalData) return 0;
-  
+
   const data = proposalData?.data || proposalData || {};
-  const additionalCosts = data.additional_costs || [];
-  
+  const rawCosts = data.additional_costs || [];
+  const additionalCosts = rawCosts.filter((item: any) => item && item.approved !== false);
+
   if (additionalCosts.length === 0) return 0;
-  
+
   const pstRate = Number(data.pst_rate) || 7.0;
   const gstRate = Number(data.gst_rate) || 5.0;
-  
+
   // Calculate Total Direct Costs
   const totalDirectCosts = additionalCosts.reduce((sum: number, item: any) => {
     const value = Number(item.value || 0);
     const quantity = Number(item.quantity || 1);
     return sum + (value * quantity);
   }, 0);
-  
+
   // Calculate PST (only on items with pst=true)
   const totalForPst = additionalCosts
     .filter((item: any) => item.pst === true)
@@ -9283,12 +10078,12 @@ function calculateProposalTotal(proposalData: any): number {
       const quantity = Number(item.quantity || 1);
       return sum + (value * quantity);
     }, 0);
-  
+
   const pst = totalForPst * (pstRate / 100);
-  
+
   // Calculate Subtotal (Total Direct Costs + PST)
   const subtotal = totalDirectCosts + pst;
-  
+
   // Calculate GST (only on items with gst=true)
   const totalForGst = additionalCosts
     .filter((item: any) => item.gst === true)
@@ -9308,8 +10103,9 @@ function calculateProposalTotal(proposalData: any): number {
 function calculateProposalTotalArea(proposalData: any): number {
   if (!proposalData) return 0;
   const data = proposalData?.data || proposalData || {};
-  const additionalCosts = data.additional_costs || [];
-  if (!Array.isArray(additionalCosts)) return 0;
+  const rawCosts = data.additional_costs || [];
+  if (!Array.isArray(rawCosts)) return 0;
+  const additionalCosts = rawCosts.filter((item: any) => item && item.approved !== false);
   const SQFT_PER_SQS = 100;
   const SQFT_PER_M2 = 10.7639;
   return additionalCosts.reduce((sum: number, item: any) => {

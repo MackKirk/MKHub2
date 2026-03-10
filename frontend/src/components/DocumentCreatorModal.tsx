@@ -7,6 +7,8 @@ type DocumentCreatorModalProps = {
   onClose: () => void;
   /** Called when modal is closed (e.g. to refresh project documents list) */
   onAfterClose?: () => void;
+  /** When true, document is opened in read-only mode (no editing, no add page). */
+  readOnly?: boolean;
 };
 
 export function DocumentCreatorModal({
@@ -15,6 +17,7 @@ export function DocumentCreatorModal({
   projectId,
   onClose,
   onAfterClose,
+  readOnly = false,
 }: DocumentCreatorModalProps) {
   const handleClose = () => {
     onAfterClose?.();
@@ -31,6 +34,7 @@ export function DocumentCreatorModal({
             documentId={documentId}
             projectId={projectId}
             onClose={handleClose}
+            readOnly={readOnly}
           />
         ) : (
           <div className="flex items-center justify-center p-8 text-gray-500">

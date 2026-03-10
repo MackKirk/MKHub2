@@ -589,6 +589,8 @@ type DocumentEditorDocumentProps = {
   documentId: string;
   projectId?: string | null;
   onClose?: () => void;
+  /** When true, document is view-only: no editing, no add page, no save. */
+  readOnly?: boolean;
 };
 
 type DocumentEditorTemplateProps = {
@@ -617,6 +619,7 @@ export default function DocumentEditor(props: DocumentEditorProps) {
   const projectId = !isTemplate ? props.projectId : undefined;
   const onClose = props.onClose;
   const templateProps = isTemplate ? props : null;
+  const readOnly = !isTemplate && !!(props as DocumentEditorDocumentProps).readOnly;
 
   const navigate = useNavigate();
   const queryClient = useQueryClient();
@@ -1274,7 +1277,7 @@ export default function DocumentEditor(props: DocumentEditorProps) {
   }, [id, title, pages, projectId, queryClient]);
 
   useEffect(() => {
-    if (!id) return;
+    if (!id || readOnly) return;
     const pagesStr = JSON.stringify(pages);
     if (
       lastSavedRef.current &&
@@ -1284,7 +1287,7 @@ export default function DocumentEditor(props: DocumentEditorProps) {
       return;
     const t = setTimeout(saveDocument, 1500);
     return () => clearTimeout(t);
-  }, [id, title, pages, saveDocument]);
+  }, [id, title, pages, saveDocument, readOnly]);
 
   const handleExportPdf = useCallback(async () => {
     if (!id) return;
@@ -1364,11 +1367,11 @@ export default function DocumentEditor(props: DocumentEditorProps) {
               </button>
             )}
             <h2 className="text-base font-semibold text-gray-800 truncate max-w-[180px]">
-              {isTemplate && templateProps ? `Page ${templateProps.pageIndex + 1} layout` : onClose ? 'Edit document' : 'Document'}
+              {isTemplate && templateProps ? `Page ${templateProps.pageIndex + 1} layout` : readOnly ? 'View document' : onClose ? 'Edit document' : 'Document'}
             </h2>
           </div>
           <div className="flex items-center gap-1.5">
-            {!isTemplate && (
+            {!isTemplate && !readOnly && (
               <input
                 type="text"
                 value={title}
@@ -1377,7 +1380,8 @@ export default function DocumentEditor(props: DocumentEditorProps) {
                 placeholder="Document title"
               />
             )}
-            <div className="relative" ref={bgPickerRef}>
+            {!isTemplate && readOnly && <span className="text-sm text-gray-700 truncate max-w-[180px]" title={title}>{title || 'Untitled document'}</span>}
+            {!readOnly && <div className="relative" ref={bgPickerRef}>
               <button
                 type="button"
                 onClick={() => setBgPickerOpen((v) => !v)}
@@ -1431,8 +1435,10 @@ export default function DocumentEditor(props: DocumentEditorProps) {
                   </div>
                 </div>
               )}
-            </div>
+            </div>}
           </div>
+          {!readOnly && (
+          <>
           <div className="h-6 w-px bg-gray-300 mx-1" aria-hidden />
           <div className="flex items-center gap-0.5">
             <ToolbarButton icon={<TextIcon className="w-4 h-4" />} label="Text" onClick={handleAddText} />
@@ -1452,6 +1458,8 @@ export default function DocumentEditor(props: DocumentEditorProps) {
           </div>
           <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={handleAddImage} />
           <div className="h-6 w-px bg-gray-300 mx-1" aria-hidden />
+          </>
+          )}
           <div className="flex items-center gap-1.5 px-1">
             <span className="text-xs text-gray-500">Zoom</span>
             <select
@@ -1492,7 +1500,7 @@ export default function DocumentEditor(props: DocumentEditorProps) {
               ))}
             </div>
           )}
-          {!isTemplate && isSaving && <span className="text-xs text-gray-500 px-2">Saving...</span>}
+          {!isTemplate && !readOnly && isSaving && <span className="text-xs text-gray-500 px-2">Saving...</span>}
           {isTemplate && templateProps && (
             <>
               <button
@@ -1514,6 +1522,7 @@ export default function DocumentEditor(props: DocumentEditorProps) {
           )}
         </div>
 
+        {!readOnly && (
         <SelectedElementRibbon
           selectedElementIds={selectedElementIds}
           elements={elements}
@@ -1524,6 +1533,7 @@ export default function DocumentEditor(props: DocumentEditorProps) {
           onReplaceImage={handleReplaceImage}
           onAlignSelected={handleAlignSelected}
         />
+        )}
       </div>
       {pdfPreview && (
         <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4" role="dialog" aria-modal="true">
@@ -1577,15 +1587,16 @@ export default function DocumentEditor(props: DocumentEditorProps) {
           templates={templates}
           currentPageIndex={currentPageIndex}
           onPageSelect={setCurrentPageIndex}
-          onAddPage={isTemplate ? () => {} : () => setShowAddPageModal(true)}
-          onReorderPages={isTemplate ? undefined : handleReorderPages}
-          onDeletePage={isTemplate ? undefined : handleDeletePage}
+          onAddPage={readOnly ? undefined : isTemplate ? () => {} : () => setShowAddPageModal(true)}
+          onReorderPages={readOnly ? undefined : isTemplate ? undefined : handleReorderPages}
+          onDeletePage={readOnly ? undefined : isTemplate ? undefined : handleDeletePage}
           onDuplicatePage={
-            isTemplate
-              ? templateProps?.onDuplicatePage
-                ? () => templateProps.onDuplicatePage?.(pages[0]?.margins ?? {}, pages[0]?.elements ?? [])
-                : undefined
-              : handleDuplicatePage
+            readOnly ? undefined
+              : isTemplate
+                ? templateProps?.onDuplicatePage
+                  ? () => templateProps.onDuplicatePage?.(pages[0]?.margins ?? {}, pages[0]?.elements ?? [])
+                  : undefined
+                : handleDuplicatePage
           }
         />
         <DocumentPreview
@@ -1596,7 +1607,7 @@ export default function DocumentEditor(props: DocumentEditorProps) {
           lockBlockElements={!isTemplate}
           showElementOptionsPopover={false}
           onCanvasWidthPxChange={setCanvasWidthPxForExport}
-          onBeginUserAction={pushHistory}
+          onBeginUserAction={readOnly ? undefined : pushHistory}
           zoom={zoom}
           onElementClick={(elementId, e) => {
             if (e?.ctrlKey || e?.metaKey) {
@@ -1609,10 +1620,11 @@ export default function DocumentEditor(props: DocumentEditorProps) {
           }}
           onCanvasClick={() => setSelectedElementIds([])}
           selectedElementIds={selectedElementIds}
-          onUpdateElement={handleUpdateElement}
-          onRemoveElement={handleRemoveElement}
-          onReplaceImage={handleReplaceImage}
+          onUpdateElement={readOnly ? undefined : handleUpdateElement}
+          onRemoveElement={readOnly ? undefined : handleRemoveElement}
+          onReplaceImage={readOnly ? undefined : handleReplaceImage}
         />
+        {!readOnly && (
         <div className="w-56 flex-shrink-0 border-l border-gray-200 bg-gray-50/80 flex flex-col min-h-0">
           <div className="px-3 py-2 border-b border-gray-200 text-sm font-semibold text-gray-700">
             Layers
@@ -1737,8 +1749,9 @@ export default function DocumentEditor(props: DocumentEditorProps) {
             })}
           </div>
         </div>
+        )}
       </div>
-      {!isTemplate && (
+      {!isTemplate && !readOnly && (
       <AddPageModal
         open={showAddPageModal}
         templates={templates}

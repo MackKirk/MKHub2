@@ -670,6 +670,7 @@ const IMPLEMENTED_PERMISSIONS = new Set([
   'business:projects:workload:read', 'business:projects:workload:write',
   'business:projects:timesheet:read', 'business:projects:timesheet:write',
   'business:projects:files:read', 'business:projects:files:write',
+  'business:projects:documents:read', 'business:projects:documents:write',
   'business:projects:proposal:read', 'business:projects:proposal:write',
   'business:projects:estimate:read', 'business:projects:estimate:write',
   'business:projects:orders:read', 'business:projects:orders:write',
@@ -1011,8 +1012,8 @@ function PermissionTemplatesSection() {
                       if (all.length === 0) return null;
                       const mainView = all.find((p) => p.key === 'business:projects:read');
                       const mainEdit = all.find((p) => p.key === 'business:projects:write');
-                      const subView = all.filter((p) => p.key.includes(':read') && p.key !== 'business:projects:read' && (p.key.includes(':reports:') || p.key.includes(':workload:') || p.key.includes(':timesheet:') || p.key.includes(':files:') || p.key.includes(':proposal:') || p.key.includes(':estimate:') || p.key.includes(':orders:')));
-                      const subEdit = all.filter((p) => p.key.includes(':write') && p.key !== 'business:projects:write' && (p.key.includes(':reports:') || p.key.includes(':workload:') || p.key.includes(':timesheet:') || p.key.includes(':files:') || p.key.includes(':proposal:') || p.key.includes(':estimate:') || p.key.includes(':orders:')));
+                      const subView = all.filter((p) => p.key.includes(':read') && p.key !== 'business:projects:read' && (p.key.includes(':reports:') || p.key.includes(':workload:') || p.key.includes(':timesheet:') || p.key.includes(':files:') || p.key.includes(':documents:') || p.key.includes(':proposal:') || p.key.includes(':estimate:') || p.key.includes(':orders:')));
+                      const subEdit = all.filter((p) => p.key.includes(':write') && p.key !== 'business:projects:write' && (p.key.includes(':reports:') || p.key.includes(':workload:') || p.key.includes(':timesheet:') || p.key.includes(':files:') || p.key.includes(':documents:') || p.key.includes(':proposal:') || p.key.includes(':estimate:') || p.key.includes(':orders:')));
                       return (
                         <div className="border rounded-lg p-2.5 bg-gray-50">
                           <div className="text-xs font-semibold text-gray-700 mb-2">Projects & Opportunities</div>

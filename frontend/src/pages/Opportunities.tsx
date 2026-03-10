@@ -474,7 +474,7 @@ function FilterRuleRow({
     if (textSelectFields.includes(rule.field)) {
       if (rule.field === 'status') {
         const statusList = projectStatuses
-          .filter((status: any) => ['Prospecting', 'Sent to Customer', 'Refused'].includes(status.label))
+          .filter((status: any) => ['Prospecting', 'Sent to Customer', 'Refused', 'Schedule Conflict'].includes(status.label))
           .sort((a: any, b: any) => (a.label || '').localeCompare(b.label || '', undefined, { sensitivity: 'base' }));
         return (
           <select

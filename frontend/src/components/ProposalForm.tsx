@@ -21,6 +21,7 @@ export type PricingItem = {
   division_id?: string;
   area_value?: number;
   area_unit?: AreaUnit;
+  approved?: boolean;
 };
 
 // Area conversion: internal standard is sqft. 1 SQS = 100 sqft; 1 m² ≈ 10.7639 sqft
@@ -136,7 +137,7 @@ function AreaPopover({ value, unit, onSave, onClose }: { value?: number; unit: A
   );
 }
 
-export default function ProposalForm({ mode, clientId: clientIdProp, siteId: siteIdProp, projectId: projectIdProp, initial, disabled, onSave, showRestrictionWarning, restrictionMessage, onPricingItemsChange, showOnlyPricing, saveRef }: { mode:'new'|'edit', clientId?:string, siteId?:string, projectId?:string, initial?: any, disabled?: boolean, onSave?: ()=>void, showRestrictionWarning?: boolean, restrictionMessage?: string, onPricingItemsChange?: (items: any[])=>void, showOnlyPricing?: boolean, saveRef?: MutableRefObject<(() => Promise<void>) | undefined> }){
+export default function ProposalForm({ mode, clientId: clientIdProp, siteId: siteIdProp, projectId: projectIdProp, initial, disabled, onSave, showRestrictionWarning, restrictionMessage, onPricingItemsChange, showOnlyPricing, saveRef, isBidding, projectStatusLabel }: { mode:'new'|'edit', clientId?:string, siteId?:string, projectId?:string, initial?: any, disabled?: boolean, onSave?: ()=>void, showRestrictionWarning?: boolean, restrictionMessage?: string, onPricingItemsChange?: (items: any[])=>void, showOnlyPricing?: boolean, saveRef?: MutableRefObject<(() => Promise<void>) | undefined>, isBidding?: boolean, projectStatusLabel?: string }){
   const nav = useNavigate();
   const queryClient = useQueryClient();
   const confirm = useConfirm();
@@ -345,6 +346,7 @@ By signing the accompanying proposal, the Owner agrees to these Terms and Condit
   const lastAutoSaveRef = useRef<number>(0);
   const proposalIdRef = useRef<string | undefined>(mode === 'edit' ? initial?.id : undefined);
   const handleSaveRef = useRef<() => Promise<void>>();
+  const saveTriggeredByApprovalChangeRef = useRef(false);
 
   // --- Helpers declared early so effects can safely reference them
   const sanitizeSections = (arr:any[])=> (arr||[]).map((sec:any)=>{
@@ -385,35 +387,52 @@ By signing the accompanying proposal, the Owner agrees to these Terms and Condit
     return cleaned;
   };
 
+  // Group not approved items together (projects in progress only): approved first, then not approved
+  const pricingItemsForDisplay = useMemo(() => {
+    const withIndex = pricingItems.map((c, i) => ({ c, i }));
+    if (isBidding === false) {
+      const approved = withIndex.filter(x => x.c.approved !== false);
+      const notApproved = withIndex.filter(x => x.c.approved === false);
+      return [...approved, ...notApproved];
+    }
+    return withIndex;
+  }, [pricingItems, isBidding]);
+
+  // For projects: only approved items count toward totals; for opportunities: all items
+  const itemsForTotals = useMemo(() => {
+    if (isBidding !== false) return pricingItems;
+    return pricingItems.filter(c => c.approved !== false);
+  }, [pricingItems, isBidding]);
+
   const totalNum = useMemo(()=>{ 
-    return pricingItems.reduce((a,c)=> {
+    return itemsForTotals.reduce((a,c)=> {
       const price = Number(parseAccounting(c.price)||'0');
       const qty = Number(c.quantity || '1');
       return a + (price * qty);
     }, 0); 
-  }, [pricingItems]);
+  }, [itemsForTotals]);
 
   // Calculate PST only on items marked for PST
   const totalForPst = useMemo(() => {
-    return pricingItems
+    return itemsForTotals
       .filter(c => c.pst === true)
       .reduce((a, c) => {
         const price = Number(parseAccounting(c.price)||'0');
         const qty = Number(c.quantity || '1');
         return a + (price * qty);
       }, 0);
-  }, [pricingItems]);
+  }, [itemsForTotals]);
 
   // Calculate GST only on items marked for GST
   const totalForGst = useMemo(() => {
-    return pricingItems
+    return itemsForTotals
       .filter(c => c.gst === true)
       .reduce((a, c) => {
         const price = Number(parseAccounting(c.price)||'0');
         const qty = Number(c.quantity || '1');
         return a + (price * qty);
       }, 0);
-  }, [pricingItems]);
+  }, [itemsForTotals]);
   
   // Update React Query cache with current pricing items for real-time percentage calculation
   useEffect(() => {
@@ -432,6 +451,7 @@ By signing the accompanying proposal, the Owner agrees to these Terms and Condit
         pst: c.pst === true,
         gst: c.gst === true,
         division_id: c.division_id || null,
+        approved: c.approved !== false,
         ...(c.area_value != null && c.area_value > 0 && c.area_unit ? { area_value: c.area_value, area_unit: c.area_unit } : {})
       };
     });
@@ -467,11 +487,11 @@ By signing the accompanying proposal, the Owner agrees to these Terms and Condit
 
   // Total area (sum of item areas converted to sqft) and cost per area
   const totalAreaSqft = useMemo(() => {
-    return pricingItems.reduce((sum, c) => {
+    return itemsForTotals.reduce((sum, c) => {
       if (c.area_value == null || c.area_value <= 0 || !c.area_unit) return sum;
       return sum + toSqft(c.area_value, c.area_unit);
     }, 0);
-  }, [pricingItems]);
+  }, [itemsForTotals]);
 
   const costPerArea = useMemo(() => {
     if (totalAreaSqft <= 0) return null;
@@ -559,7 +579,8 @@ By signing the accompanying proposal, the Owner agrees to these Terms and Condit
         gst: c.gst === true || c.gst === 'true' || c.gst === 1,
         division_id: c.division_id ? String(c.division_id) : undefined,
         area_value: c.area_value != null && c.area_value !== '' ? Number(c.area_value) : undefined,
-        area_unit: (c.area_unit === 'sqft' || c.area_unit === 'm2' || c.area_unit === 'sqs') ? c.area_unit : undefined
+        area_unit: (c.area_unit === 'sqft' || c.area_unit === 'm2' || c.area_unit === 'sqs') ? c.area_unit : undefined,
+        approved: c.approved !== false
       });
     });
     setPricingItems(loadedItems);
@@ -953,7 +974,7 @@ By signing the accompanying proposal, the Owner agrees to these Terms and Condit
         show_pst_in_pdf: showPstInPdf,
         show_gst_in_pdf: showGstInPdf,
         additional_costs: pricingItems.map(c=> {
-          const base = { label: c.name, value: Number(parseAccounting(c.price)||'0'), quantity: c.quantity || '1', pst: c.pst === true, gst: c.gst === true, division_id: c.division_id || null };
+          const base = { label: c.name, value: Number(parseAccounting(c.price)||'0'), quantity: c.quantity || '1', pst: c.pst === true, gst: c.gst === true, division_id: c.division_id || null, approved: c.approved !== false };
           if (c.area_value != null && c.area_value > 0 && c.area_unit) {
             return { ...base, area_value: c.area_value, area_unit: c.area_unit };
           }
@@ -984,6 +1005,9 @@ By signing the accompanying proposal, the Owner agrees to these Terms and Condit
       queryClient.invalidateQueries({ queryKey: ['projectProposals', projectId] });
       queryClient.invalidateQueries({ queryKey: ['projectProposals'] });
       queryClient.invalidateQueries({ queryKey: ['proposal', r?.id] });
+      if (projectId) {
+        queryClient.invalidateQueries({ queryKey: ['project', projectId] });
+      }
       
       // Call onSave callback if provided (for inline editing in project context)
       if (onSave) {
@@ -1001,6 +1025,14 @@ By signing the accompanying proposal, the Owner agrees to these Terms and Condit
     }catch(e){ toast.error('Save failed'); }
     finally{ setIsSaving(false); }
   }, [disabled, isSaving, mode, initial?.id, projectId, clientId, siteId, coverTitle, templateStyle, orderNumber, date, createdFor, primary, typeOfProject, otherNotes, projectDescription, additionalNotes, totalNum, showTotalInPdf, showPstInPdf, showGstInPdf, pstRate, gstRate, areaDisplayUnit, terms, pricingItems, optionalServices, sections, coverFoId, page2FoId, nav, queryClient, onSave, computeFingerprint, sanitizeSections, parseAccounting]);
+
+  // When marking item as not approved, trigger immediate save so project_division_ids and overview update
+  useEffect(() => {
+    if (saveTriggeredByApprovalChangeRef.current && projectId && mode === 'edit' && !disabled && !isSaving) {
+      saveTriggeredByApprovalChangeRef.current = false;
+      handleSaveRef.current?.();
+    }
+  }, [pricingItems, projectId, mode, disabled, isSaving]);
 
   // Update ref when handleSave changes (for internal and parent save triggers)
   useEffect(() => {
@@ -1101,7 +1133,7 @@ By signing the accompanying proposal, the Owner agrees to these Terms and Condit
         show_pst_in_pdf: showPstInPdf,
         show_gst_in_pdf: showGstInPdf,
         additional_costs: pricingItems.map(c=> {
-          const base = { label: c.name, value: Number(parseAccounting(c.price)||'0'), quantity: c.quantity || '1', pst: c.pst === true, gst: c.gst === true, division_id: c.division_id || null };
+          const base = { label: c.name, value: Number(parseAccounting(c.price)||'0'), quantity: c.quantity || '1', pst: c.pst === true, gst: c.gst === true, division_id: c.division_id || null, approved: c.approved !== false };
           if (c.area_value != null && c.area_value > 0 && c.area_unit) {
             return { ...base, area_value: c.area_value, area_unit: c.area_unit };
           }
@@ -2022,7 +2054,7 @@ By signing the accompanying proposal, the Owner agrees to these Terms and Condit
             </div>
           )}
           <div className="space-y-2">
-            {pricingItems.map((c, i)=> {
+            {pricingItemsForDisplay.map(({ c, i }) => {
               const priceNum = parseFloat(parseAccounting(c.price || '0').replace(/,/g, '')) || 0;
               const qtyNum = parseFloat(c.quantity || '1') || 1;
               const lineTotal = priceNum * qtyNum;
@@ -2030,8 +2062,13 @@ By signing the accompanying proposal, the Owner agrees to these Terms and Condit
               // Get division info for icon display
               const divisionInfo = getDivisionInfoById(c.division_id, projectDivisions);
               
+              const isNotApproved = isBidding === false && c.approved === false;
+              const rowDisabled = disabled || isNotApproved;
               return (
-                <div key={i} className="flex flex-col sm:flex-row gap-1.5 sm:gap-2 items-stretch sm:items-center w-full min-w-0">
+                <div key={i} className={`relative flex flex-col sm:flex-row gap-1.5 sm:gap-2 items-stretch sm:items-center w-full min-w-0 rounded-lg p-2 -mx-2 ${isNotApproved ? 'bg-amber-50 border border-amber-200' : ''}`}>
+                  {isNotApproved && (
+                    <span className="inline-flex items-center text-[10px] font-semibold px-2 py-1 rounded-md bg-amber-200 text-amber-900 border border-amber-300 flex-shrink-0 w-fit" title="This item was not approved during conversion and is read-only.">Not approved</span>
+                  )}
                   {/* Division Icon */}
                   {divisionInfo && (
                     <div className="relative group/divicon flex-shrink-0">
@@ -2046,15 +2083,15 @@ By signing the accompanying proposal, the Owner agrees to these Terms and Condit
                   )}
                   <div className="flex-1 min-w-0 flex flex-col gap-0.5">
                     <input 
-                      className={`w-full rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-gray-900 focus:ring-1 focus:ring-gray-400 focus:border-gray-400 ${disabled ? 'bg-gray-100 cursor-not-allowed' : ''}`} 
+                      className={`w-full rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-gray-900 focus:ring-1 focus:ring-gray-400 focus:border-gray-400 ${rowDisabled ? 'bg-gray-100 cursor-not-allowed' : ''}`} 
                       placeholder="Name" 
                       value={c.name} 
                       onChange={e=>{ 
                         const v=e.target.value; 
                         setPricingItems(arr=> arr.map((x,j)=> j===i? { ...x, name:v }: x)); 
                       }}
-                      disabled={disabled} 
-                      readOnly={disabled} 
+                      disabled={rowDisabled} 
+                      readOnly={rowDisabled} 
                     />
                     {c.area_value != null && c.area_value > 0 && c.area_unit && (
                       <div className="text-[10px] text-gray-500 truncate">
@@ -2062,7 +2099,7 @@ By signing the accompanying proposal, the Owner agrees to these Terms and Condit
                       </div>
                     )}
                   </div>
-                  {!disabled && (
+                  {!rowDisabled && (
                     <div className="relative flex-shrink-0">
                       <button
                         type="button"
@@ -2087,23 +2124,23 @@ By signing the accompanying proposal, the Owner agrees to these Terms and Condit
                   )}
                   <input 
                     type="text" 
-                    className={`flex-1 min-w-[100px] max-w-[140px] rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-gray-900 focus:ring-1 focus:ring-gray-400 focus:border-gray-400 ${disabled ? 'bg-gray-100 cursor-not-allowed' : ''}`} 
+                    className={`flex-1 min-w-[100px] max-w-[140px] rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-gray-900 focus:ring-1 focus:ring-gray-400 focus:border-gray-400 ${rowDisabled ? 'bg-gray-100 cursor-not-allowed' : ''}`} 
                     placeholder="Price" 
                     value={c.price} 
                     onChange={e=>{ 
                       const v = parseAccounting(e.target.value); 
                       setPricingItems(arr=> arr.map((x,j)=> j===i? { ...x, price:v }: x)); 
                     }} 
-                    onBlur={!disabled ? ()=> setPricingItems(arr=> arr.map((x,j)=> j===i? { ...x, price: formatAccounting(x.price) }: x)) : undefined} 
-                    disabled={disabled} 
-                    readOnly={disabled} 
+                    onBlur={!rowDisabled ? ()=> setPricingItems(arr=> arr.map((x,j)=> j===i? { ...x, price: formatAccounting(x.price) }: x)) : undefined} 
+                    disabled={rowDisabled} 
+                    readOnly={rowDisabled} 
                   />
                   <div className="flex items-center rounded-lg border border-gray-300 overflow-hidden min-w-[80px] max-w-[120px]">
                     <input 
                       type="number" 
                       min="1"
                       step="1"
-                      className={`flex-1 min-w-0 border-0 rounded-none px-2 py-1.5 text-xs text-gray-900 appearance-none [-moz-appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none ${disabled ? 'bg-gray-100 cursor-not-allowed' : ''}`} 
+                      className={`flex-1 min-w-0 border-0 rounded-none px-2 py-1.5 text-xs text-gray-900 appearance-none [-moz-appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none ${rowDisabled ? 'bg-gray-100 cursor-not-allowed' : ''}`} 
                       placeholder="Qty" 
                       value={c.quantity || '1'} 
                       onChange={e=>{ 
@@ -2112,10 +2149,10 @@ By signing the accompanying proposal, the Owner agrees to these Terms and Condit
                         const finalValue = num < 1 ? '1' : String(num);
                         setPricingItems(arr=> arr.map((x,j)=> j===i? { ...x, quantity: finalValue }: x)); 
                       }} 
-                      disabled={disabled} 
-                      readOnly={disabled} 
+                      disabled={rowDisabled} 
+                      readOnly={rowDisabled} 
                     />
-                    {!disabled && (
+                    {!rowDisabled && (
                       <div className="flex flex-col flex-none border-l bg-white w-6">
                         <button
                           type="button"
@@ -2145,38 +2182,66 @@ By signing the accompanying proposal, the Owner agrees to these Terms and Condit
                       </div>
                     )}
                   </div>
-                  <div className={`rounded-lg border border-gray-300 px-2 py-1.5 bg-gray-50 min-w-[100px] max-w-[140px] flex-shrink-0 ${disabled ? 'cursor-not-allowed' : ''}`}>
+                  <div className={`rounded-lg border border-gray-300 px-2 py-1.5 bg-gray-50 min-w-[100px] max-w-[140px] flex-shrink-0 ${rowDisabled ? 'cursor-not-allowed' : ''}`}>
                     <div className="text-xs font-medium text-gray-700 text-right whitespace-nowrap overflow-hidden">
                       ${formatAccounting(lineTotal)}
                     </div>
                   </div>
                   <div className="flex items-center gap-1.5 flex-shrink-0">
-                    <label className={`flex items-center gap-1 text-xs flex-shrink-0 ${disabled ? 'cursor-not-allowed' : 'cursor-pointer'}`}>
+                    <label className={`flex items-center gap-1 text-xs flex-shrink-0 ${rowDisabled ? 'cursor-not-allowed' : 'cursor-pointer'}`}>
                       <input 
                         type="checkbox" 
                         checked={c.pst === true}
                         onChange={e=> setPricingItems(arr=> arr.map((x,j)=> j===i? { ...x, pst: e.target.checked }: x))}
-                        className={disabled ? 'cursor-not-allowed' : 'cursor-pointer'}
-                        disabled={disabled}
+                        className={rowDisabled ? 'cursor-not-allowed' : 'cursor-pointer'}
+                        disabled={rowDisabled}
                       />
                       <span className="text-gray-700 whitespace-nowrap">PST</span>
                     </label>
-                    <label className={`flex items-center gap-1 text-xs flex-shrink-0 ${disabled ? 'cursor-not-allowed' : 'cursor-pointer'}`}>
+                    <label className={`flex items-center gap-1 text-xs flex-shrink-0 ${rowDisabled ? 'cursor-not-allowed' : 'cursor-pointer'}`}>
                       <input 
                         type="checkbox" 
                         checked={c.gst === true}
                         onChange={e=> setPricingItems(arr=> arr.map((x,j)=> j===i? { ...x, gst: e.target.checked }: x))}
-                        className={disabled ? 'cursor-not-allowed' : 'cursor-pointer'}
-                        disabled={disabled}
+                        className={rowDisabled ? 'cursor-not-allowed' : 'cursor-pointer'}
+                        disabled={rowDisabled}
                       />
                       <span className="text-gray-700 whitespace-nowrap">GST</span>
                     </label>
                   </div>
-                  {!disabled && (
+                  {!rowDisabled && (
                     <button 
                       className="p-1 rounded bg-red-100 hover:bg-red-200 flex items-center justify-center transition-colors flex-shrink-0 w-7 h-7" 
-                      onClick={()=> setPricingItems(arr=> arr.filter((_,j)=> j!==i))}
-                      title="Remove"
+                      onClick={async () => {
+                        const isProjectInProgress = isBidding === false && (projectStatusLabel || '').trim().toLowerCase() === 'in progress';
+                        if (isProjectInProgress) {
+                          const result = await confirm({
+                            title: 'Mark as not approved',
+                            message: 'Mark this item as not approved? It will remain in the list for tracking but will not count in totals.',
+                            confirmText: 'Mark as "Not approved"',
+                            cancelText: 'Cancel',
+                          });
+                          if (result === 'confirm') {
+                            setPricingItems(arr => arr.map((x, j) => j === i ? { ...x, approved: false } : x));
+                            saveTriggeredByApprovalChangeRef.current = true;
+                          }
+                        } else {
+                          if (isBidding) {
+                            const deleteResult = await confirm({
+                              title: 'Remove item',
+                              message: 'Are you sure you want to remove this item? This action cannot be undone.',
+                              confirmText: 'Remove',
+                              cancelText: 'Cancel',
+                            });
+                            if (deleteResult === 'confirm') {
+                              setPricingItems(arr => arr.filter((_, j) => j !== i));
+                            }
+                          } else {
+                            setPricingItems(arr => arr.filter((_, j) => j !== i));
+                          }
+                        }
+                      }}
+                      title={isBidding === false && (projectStatusLabel || '').trim().toLowerCase() === 'in progress' ? 'Mark as not approved' : 'Remove'}
                     >
                       <svg className="w-4 h-4 text-red-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />

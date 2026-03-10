@@ -142,40 +142,52 @@ def seed_business_permissions():
                 "sort_index": 13,
             },
             {
+                "key": "business:projects:documents:read",
+                "label": "View Documents",
+                "description": "Allows viewing the Documents tab in project and opportunity details",
+                "sort_index": 14,
+            },
+            {
+                "key": "business:projects:documents:write",
+                "label": "Edit Documents",
+                "description": "Allows editing the Documents tab in project and opportunity details",
+                "sort_index": 15,
+            },
+            {
                 "key": "business:projects:proposal:read",
                 "label": "View Proposal",
                 "description": "Allows viewing the Proposal tab in project details",
-                "sort_index": 14,
+                "sort_index": 16,
             },
             {
                 "key": "business:projects:proposal:write",
                 "label": "Edit Proposal",
                 "description": "Allows editing the Proposal tab in project details",
-                "sort_index": 15,
+                "sort_index": 17,
             },
             {
                 "key": "business:projects:estimate:read",
                 "label": "View Estimate",
                 "description": "Allows viewing the Estimate tab in project details",
-                "sort_index": 16,
+                "sort_index": 18,
             },
             {
                 "key": "business:projects:estimate:write",
                 "label": "Edit Estimate",
                 "description": "Allows editing the Estimate tab in project details",
-                "sort_index": 17,
+                "sort_index": 19,
             },
             {
                 "key": "business:projects:orders:read",
                 "label": "View Orders",
                 "description": "Allows viewing the Orders tab in project details",
-                "sort_index": 18,
+                "sort_index": 20,
             },
             {
                 "key": "business:projects:orders:write",
                 "label": "Edit Orders",
                 "description": "Allows editing the Orders tab in project details",
-                "sort_index": 19,
+                "sort_index": 21,
             },
         ]
         

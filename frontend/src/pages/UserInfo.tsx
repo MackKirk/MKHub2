@@ -53,6 +53,7 @@ const IMPLEMENTED_PERMISSIONS = new Set([
   "business:projects:workload:read", "business:projects:workload:write",
   "business:projects:timesheet:read", "business:projects:timesheet:write",
   "business:projects:files:read", "business:projects:files:write",
+  "business:projects:documents:read", "business:projects:documents:write",
   "business:projects:proposal:read", "business:projects:proposal:write",
   "business:projects:estimate:read", "business:projects:estimate:write",
   "business:projects:orders:read", "business:projects:orders:write",
@@ -458,6 +459,7 @@ const UserPermissions = forwardRef<UserPermissionsRef, { userId: string; onDirty
                            viewKey.includes(':workload:') ? 'View Workload' :
                            viewKey.includes(':timesheet:') ? 'View Timesheet' :
                            viewKey.includes(':files:') ? 'View Files' :
+                           viewKey.includes(':documents:') ? 'View Documents' :
                            viewKey.includes(':proposal:') ? 'View Proposal' :
                            viewKey.includes(':estimate:') ? 'View Estimate' :
                            viewKey.includes(':orders:') ? 'View Orders' : 'corresponding View permission';
@@ -505,6 +507,8 @@ const UserPermissions = forwardRef<UserPermissionsRef, { userId: string; onDirty
           newPerms['business:projects:workload:read'] = false;
           newPerms['business:projects:timesheet:read'] = false;
           newPerms['business:projects:files:read'] = false;
+          newPerms['business:projects:documents:read'] = false;
+          newPerms['business:projects:documents:write'] = false;
           newPerms['business:projects:proposal:read'] = false;
           newPerms['business:projects:estimate:read'] = false;
           newPerms['business:projects:orders:read'] = false;
@@ -515,6 +519,7 @@ const UserPermissions = forwardRef<UserPermissionsRef, { userId: string; onDirty
           newPerms['business:projects:workload:write'] = false;
           newPerms['business:projects:timesheet:write'] = false;
           newPerms['business:projects:files:write'] = false;
+          newPerms['business:projects:documents:write'] = false;
           newPerms['business:projects:proposal:write'] = false;
           newPerms['business:projects:estimate:write'] = false;
           newPerms['business:projects:orders:write'] = false;
@@ -1360,13 +1365,13 @@ const UserPermissions = forwardRef<UserPermissionsRef, { userId: string; onDirty
                             p.key.includes(':read') && 
                             p.key !== 'business:projects:read' &&
                             (p.key.includes(':reports:') || p.key.includes(':workload:') || p.key.includes(':timesheet:') || 
-                             p.key.includes(':files:') || p.key.includes(':proposal:') || p.key.includes(':estimate:') || p.key.includes(':orders:'))
+                             p.key.includes(':files:') || p.key.includes(':documents:') || p.key.includes(':proposal:') || p.key.includes(':estimate:') || p.key.includes(':orders:'))
                           );
                           const subEditPerms = allProjectsPerms.filter((p: any) => 
                             p.key.includes(':write') && 
                             p.key !== 'business:projects:write' &&
                             (p.key.includes(':reports:') || p.key.includes(':workload:') || p.key.includes(':timesheet:') || 
-                             p.key.includes(':files:') || p.key.includes(':proposal:') || p.key.includes(':estimate:') || p.key.includes(':orders:'))
+                             p.key.includes(':files:') || p.key.includes(':documents:') || p.key.includes(':proposal:') || p.key.includes(':estimate:') || p.key.includes(':orders:'))
                           );
                           
                           return (
@@ -1559,13 +1564,13 @@ const UserPermissions = forwardRef<UserPermissionsRef, { userId: string; onDirty
                             p.key.includes(':read') && 
                             p.key !== 'business:projects:read' &&
                             (p.key.includes(':reports:') || p.key.includes(':workload:') || p.key.includes(':timesheet:') || 
-                             p.key.includes(':files:') || p.key.includes(':proposal:') || p.key.includes(':estimate:') || p.key.includes(':orders:'))
+                             p.key.includes(':files:') || p.key.includes(':documents:') || p.key.includes(':proposal:') || p.key.includes(':estimate:') || p.key.includes(':orders:'))
                           );
                           const subEditPerms = allProjectsPerms.filter((p: any) => 
                             p.key.includes(':write') && 
                             p.key !== 'business:projects:write' &&
                             (p.key.includes(':reports:') || p.key.includes(':workload:') || p.key.includes(':timesheet:') || 
-                             p.key.includes(':files:') || p.key.includes(':proposal:') || p.key.includes(':estimate:') || p.key.includes(':orders:'))
+                             p.key.includes(':files:') || p.key.includes(':documents:') || p.key.includes(':proposal:') || p.key.includes(':estimate:') || p.key.includes(':orders:'))
                           );
                           
                           return (

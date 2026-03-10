@@ -1,5 +1,7 @@
-from fastapi import APIRouter, Depends, HTTPException, Query
+import copy
+from fastapi import APIRouter, Depends, HTTPException, Query, Body
 from sqlalchemy.orm import Session, defer
+from sqlalchemy.orm.attributes import flag_modified
 from sqlalchemy.exc import ProgrammingError
 from sqlalchemy import func, extract
 from typing import List, Optional
@@ -11,6 +13,8 @@ from datetime import datetime, timezone, time, timedelta
 from ..auth.security import get_current_user, require_permissions, can_approve_timesheet, has_project_files_category_permission
 from sqlalchemy import or_, and_, cast, String, Date
 
+
+from ..services.project_utils import sanitize_division_onsite_leads
 
 router = APIRouter(prefix="/projects", tags=["projects"])
 
@@ -42,21 +46,24 @@ def calculate_proposal_grand_total(proposal_data: dict) -> float:
     for item in additional_costs:
         if not isinstance(item, dict):
             continue
-        
+        # Only include approved items (default True for backward compatibility)
+        if item.get('approved', True) is not True:
+            continue
+
         value = float(item.get('value', 0) or 0)
         quantity = float(item.get('quantity', 1) or 1)
         line_total = value * quantity
-        
+
         total_direct_costs += line_total
-        
+
         # PST applies to items with pst=true
         if item.get('pst', False):
             pst_total += line_total * (pst_rate / 100)
-        
+
         # GST applies to items with gst=true (on direct costs, independent of PST)
         if item.get('gst', False):
             gst_base_total += line_total
-    
+
     # Calculate subtotal and GST
     subtotal = total_direct_costs + pst_total
     gst = gst_base_total * (gst_rate / 100)
@@ -116,27 +123,30 @@ def calculate_proposal_values_for_division(proposal_data: dict, division_id: Opt
     for item in additional_costs:
         if not isinstance(item, dict):
             continue
-        
+        # Only include approved items (default True for backward compatibility)
+        if item.get('approved', True) is not True:
+            continue
+
         value = float(item.get('value', 0) or 0)
         quantity = float(item.get('quantity', 1) or 1)
         line_total = value * quantity
-        
+
         # Add to total (all items)
         total_direct_costs += line_total
-        
+
         if item.get('pst', False):
             pst_total += line_total * (pst_rate / 100)
-        
+
         if item.get('gst', False):
             gst_base_total += line_total
-        
+
         # Add to division total if this item matches division_id
         if not division_id or str(item.get('division_id', '')) == str(division_id):
             division_direct_costs += line_total
-            
+
             if item.get('pst', False):
                 division_pst_total += line_total * (pst_rate / 100)
-            
+
             if item.get('gst', False):
                 division_gst_base_total += line_total
     
@@ -234,6 +244,30 @@ def create_project(payload: dict, db: Session = Depends(get_db), user=Depends(ge
                 payload["address_province"] = site.site_province
             if not payload.get("address_country") and site.site_country:
                 payload["address_country"] = site.site_country
+    
+    # Validate and normalize related_client_ids (optional; exclude main client_id)
+    if "related_client_ids" in payload:
+        raw_ids = payload.get("related_client_ids")
+        if raw_ids is None:
+            payload["related_client_ids"] = None
+        elif isinstance(raw_ids, list):
+            main_id_str = str(client_id) if client_id else None
+            validated = []
+            for cid in raw_ids:
+                if not cid:
+                    continue
+                try:
+                    cid_uuid = uuid.UUID(str(cid))
+                except ValueError:
+                    raise HTTPException(status_code=400, detail=f"Invalid related_client_id: {cid}")
+                if str(cid_uuid) == main_id_str:
+                    continue  # Exclude main customer
+                if db.query(Client).filter(Client.id == cid_uuid).first() is None:
+                    raise HTTPException(status_code=400, detail=f"Related client not found: {cid}")
+                validated.append(str(cid_uuid))
+            payload["related_client_ids"] = validated if validated else None
+        else:
+            raise HTTPException(status_code=400, detail="related_client_ids must be a list or null")
     
     proj = Project(**payload)
     db.add(proj)
@@ -374,6 +408,21 @@ def get_project(project_id: str, db: Session = Depends(get_db)):
                 raise
     site = db.query(ClientSite).filter(ClientSite.id == getattr(p,'site_id',None)).first() if getattr(p,'site_id',None) else None
     contact = db.query(ClientContact).filter(ClientContact.id == getattr(p,'contact_id',None)).first() if getattr(p,'contact_id',None) else None
+    # Build related_client_ids and related_client_display_names
+    related_ids = getattr(p, 'related_client_ids', None) or []
+    related_display_names = []
+    if isinstance(related_ids, list):
+        for cid in related_ids:
+            try:
+                cid_uuid = uuid.UUID(str(cid))
+            except (ValueError, TypeError):
+                related_display_names.append(None)
+                continue
+            c = db.query(Client).filter(Client.id == cid_uuid).first()
+            name = (getattr(c, 'display_name', None) or getattr(c, 'name', None)) if c else None
+            related_display_names.append(name)
+    else:
+        related_ids = []
     return {
         "id": str(p.id),
         "code": p.code,
@@ -381,6 +430,8 @@ def get_project(project_id: str, db: Session = Depends(get_db)):
         "slug": p.slug,
         "client_id": str(p.client_id) if p.client_id else None,
         "client_display_name": getattr(client,'display_name', None) or getattr(client,'name', None),
+        "related_client_ids": [str(x) for x in related_ids],
+        "related_client_display_names": related_display_names,
         "address": getattr(p, 'address', None),
         "address_city": getattr(p, 'address_city', None),
         "address_province": getattr(p, 'address_province', None),
@@ -405,7 +456,10 @@ def get_project(project_id: str, db: Session = Depends(get_db)):
         "estimator_ids": [str(eid) for eid in (getattr(p, 'estimator_ids', None) or [])] if getattr(p, 'estimator_ids', None) else ([str(getattr(p, 'estimator_id', None))] if getattr(p, 'estimator_id', None) else []),
         "project_admin_id": str(getattr(p, 'project_admin_id', None)) if getattr(p, 'project_admin_id', None) else None,
         "onsite_lead_id": str(getattr(p, 'onsite_lead_id', None)) if getattr(p, 'onsite_lead_id', None) else None,
-        "division_onsite_leads": getattr(p, 'division_onsite_leads', None) or {},
+        "division_onsite_leads": sanitize_division_onsite_leads(
+            getattr(p, 'division_onsite_leads', None) or {},
+            getattr(p, 'project_division_ids', None) or []
+        ),
         "contact_id": getattr(p, 'contact_id', None),
         "contact_name": getattr(contact, 'name', None) if contact else None,
         "contact_email": getattr(contact, 'email', None) if contact else None,
@@ -570,9 +624,42 @@ def update_project(project_id: str, payload: dict, db: Session = Depends(get_db)
         if old_estimator_id:
             payload['estimator_ids'] = [old_estimator_id]
     
+    # Validate related_client_ids if provided
+    if "related_client_ids" in payload:
+        raw_ids = payload.get("related_client_ids")
+        if raw_ids is None:
+            payload["related_client_ids"] = None
+        elif isinstance(raw_ids, list):
+            main_id_str = str(p.client_id) if getattr(p, 'client_id', None) else None
+            validated = []
+            for cid in raw_ids:
+                if not cid:
+                    continue
+                try:
+                    cid_uuid = uuid.UUID(str(cid))
+                except ValueError:
+                    raise HTTPException(status_code=400, detail=f"Invalid related_client_id: {cid}")
+                if str(cid_uuid) == main_id_str:
+                    continue  # Exclude main customer
+                if db.query(Client).filter(Client.id == cid_uuid).first() is None:
+                    raise HTTPException(status_code=400, detail=f"Related client not found: {cid}")
+                validated.append(str(cid_uuid))
+            payload["related_client_ids"] = validated if validated else None
+        else:
+            raise HTTPException(status_code=400, detail="related_client_ids must be a list or null")
+    
     # Update project
     for k, v in payload.items():
         setattr(p, k, v)
+
+    # Enforce invariant: no on-site lead for a division that does not exist in the project
+    dol = getattr(p, "division_onsite_leads", None) or {}
+    if isinstance(dol, dict) and dol:
+        filtered = sanitize_division_onsite_leads(dol, getattr(p, "project_division_ids", None) or [])
+        if filtered != dol:
+            p.division_onsite_leads = filtered
+            flag_modified(p, "division_onsite_leads")
+
     db.commit()
     
     # If project name changed, update the associated folder name
@@ -3136,14 +3223,18 @@ def get_project_audit_logs(
 
 
 @router.post("/{project_id}/convert-to-project")
-def convert_to_project(project_id: str, db: Session = Depends(get_db)):
-    """Convert a bidding to an active project"""
+def convert_to_project(
+    project_id: str,
+    db: Session = Depends(get_db),
+    payload: Optional[dict] = Body(None),
+):
+    """Convert a bidding to an active project. Optional body: project_admin_id, division_onsite_leads, date_eta, date_start, lead_source, pricing_item_approvals (list of bool per additional_costs index)."""
     p = db.query(Project).filter(Project.id == project_id, Project.deleted_at.is_(None)).first()
     if not p:
         raise HTTPException(status_code=404, detail="Not found")
     if not getattr(p, 'is_bidding', False):
         raise HTTPException(status_code=400, detail="This is already a project, not a bidding")
-    
+
     # Set status to "In Progress" when converting to project
     status_list = db.query(SettingList).filter(SettingList.name == "project_statuses").first()
     if status_list:
@@ -3154,7 +3245,98 @@ def convert_to_project(project_id: str, db: Session = Depends(get_db)):
         if in_progress_status:
             p.status_id = in_progress_status.id
             p.status_label = "In Progress"
-    
+
+    # Apply optional project fields from body
+    if payload:
+        if payload.get("project_admin_id") is not None:
+            try:
+                p.project_admin_id = uuid.UUID(str(payload["project_admin_id"])) if payload["project_admin_id"] else None
+            except (ValueError, TypeError):
+                pass
+        if payload.get("division_onsite_leads") is not None and isinstance(payload["division_onsite_leads"], dict):
+            p.division_onsite_leads = payload["division_onsite_leads"]
+        if payload.get("date_eta") is not None:
+            try:
+                s = str(payload["date_eta"]).strip()
+                if s:
+                    if "T" in s or " " in s:
+                        p.date_eta = datetime.fromisoformat(s.replace("Z", "+00:00"))
+                    else:
+                        p.date_eta = datetime.combine(datetime.strptime(s[:10], "%Y-%m-%d").date(), time.min).replace(tzinfo=timezone.utc)
+                else:
+                    p.date_eta = None
+            except Exception:
+                pass
+        if payload.get("date_start") is not None:
+            try:
+                s = str(payload["date_start"]).strip()
+                if s:
+                    if "T" in s or " " in s:
+                        p.date_start = datetime.fromisoformat(s.replace("Z", "+00:00"))
+                    else:
+                        p.date_start = datetime.combine(datetime.strptime(s[:10], "%Y-%m-%d").date(), time.min).replace(tzinfo=timezone.utc)
+                else:
+                    p.date_start = None
+            except Exception:
+                pass
+        if payload.get("lead_source") is not None:
+            p.lead_source = str(payload["lead_source"]) if payload["lead_source"] else None
+
+        # Update proposal additional_costs with approved flags and recalc project_division_ids
+        pricing_item_approvals = payload.get("pricing_item_approvals")
+        if isinstance(pricing_item_approvals, list):
+            proposal = db.query(Proposal).filter(
+                Proposal.project_id == project_id,
+                Proposal.is_change_order == False,
+                Proposal.deleted_at.is_(None),
+            ).order_by(Proposal.created_at.asc()).first()
+            if proposal and proposal.data is not None:
+                raw_data = proposal.data or {}
+                additional_costs = list(raw_data.get("additional_costs") or [])
+                if isinstance(additional_costs, list):
+                    # Build new additional_costs with approved flags (deep copy to ensure clean persist)
+                    updated_costs = []
+                    for i, item in enumerate(additional_costs):
+                        if isinstance(item, dict):
+                            approved = pricing_item_approvals[i] if i < len(pricing_item_approvals) else True
+                            new_item = copy.deepcopy(item)
+                            new_item["approved"] = bool(approved)
+                            updated_costs.append(new_item)
+                        else:
+                            updated_costs.append(copy.deepcopy(item) if item is not None else {})
+                    data = copy.deepcopy(dict(raw_data))
+                    data["additional_costs"] = updated_costs
+                    proposal.data = data
+                    flag_modified(proposal, "data")
+
+                    # Keep only divisions that have at least one approved item
+                    current_division_ids = list(getattr(p, "project_division_ids", None) or [])
+                    approved_division_ids = set()
+                    for item in updated_costs:
+                        if isinstance(item, dict) and item.get("approved", True) is True:
+                            did = item.get("division_id")
+                            if did is not None:
+                                approved_division_ids.add(str(did))
+                    new_division_ids = [did for did in current_division_ids if str(did) in approved_division_ids]
+                    p.project_division_ids = new_division_ids if new_division_ids else current_division_ids
+
+                    # Clear orphaned project_division_percentages for removed divisions
+                    pct = getattr(p, "project_division_percentages", None) or {}
+                    if isinstance(pct, dict) and pct:
+                        kept_ids = set(str(did) for did in (p.project_division_ids or []))
+                        filtered_pct = {k: v for k, v in pct.items() if str(k) in kept_ids}
+                        if filtered_pct != pct:
+                            p.project_division_percentages = filtered_pct
+                            flag_modified(p, "project_division_percentages")
+
+    # Enforce invariant: no on-site lead for a division that does not exist in the project
+    dol = getattr(p, "division_onsite_leads", None) or {}
+    if isinstance(dol, dict) and dol:
+        filtered_dol = sanitize_division_onsite_leads(dol, getattr(p, "project_division_ids", None) or [])
+        if filtered_dol != dol:
+            p.division_onsite_leads = filtered_dol
+            flag_modified(p, "division_onsite_leads")
+
     p.is_bidding = False
     db.commit()
     return {"status": "ok", "id": str(p.id)}
