@@ -2095,7 +2095,7 @@ class FleetInspection(Base):
     inspector_user_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"))
     checklist_results: Mapped[Optional[dict]] = mapped_column(JSON)  # mechanical: {A1: {status, comments}, ...}; body: {areas: [...], quote_amount, quote_file_ids}
     photos: Mapped[Optional[list]] = mapped_column(JSON)  # Array of file_object_ids
-    result: Mapped[str] = mapped_column(String(50), default="pass", index=True)  # pass|fail|conditional
+    result: Mapped[str] = mapped_column(String(50), default="pending", index=True)  # pending|pass|fail|conditional
     notes: Mapped[Optional[str]] = mapped_column(Text)
     odometer_reading: Mapped[Optional[int]] = mapped_column(Integer)  # Odometer reading at time of inspection
     hours_reading: Mapped[Optional[float]] = mapped_column(Float)  # Hours reading at time of inspection

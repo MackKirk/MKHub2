@@ -69,10 +69,18 @@ function FilterChip({ label, value, onRemove }: { label: string; value: string; 
 }
 
 const RESULT_OPTIONS = [
+  { value: 'pending', label: 'Pending' },
   { value: 'pass', label: 'Pass' },
   { value: 'fail', label: 'Fail' },
   { value: 'conditional', label: 'Conditional' },
 ];
+
+const RESULT_LABELS: Record<string, string> = {
+  pending: 'Pending',
+  pass: 'Pass',
+  fail: 'Fail',
+  conditional: 'Conditional',
+};
 
 function InspectionFilterRuleRow({
   rule,
@@ -230,6 +238,7 @@ function InspectionFilterBuilderModal({
 }
 
 const resultColors: Record<string, string> = {
+  pending: 'bg-slate-100 text-slate-800',
   pass: 'bg-green-100 text-green-800',
   fail: 'bg-red-100 text-red-800',
   conditional: 'bg-yellow-100 text-yellow-800',
@@ -494,7 +503,7 @@ export default function Inspections() {
                       </td>
                       <td className="px-3 py-3 align-top">
                         <span className={`inline-flex px-2 py-0.5 rounded text-xs font-medium ${resultColors[inspection.result] || 'bg-gray-100 text-gray-800'}`}>
-                          {inspection.result}
+                          {RESULT_LABELS[inspection.result] ?? inspection.result}
                         </span>
                       </td>
                       <td className="px-3 py-3 align-top">

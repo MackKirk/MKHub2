@@ -7,7 +7,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Body
 from sqlalchemy.orm import Session, joinedload
 
 from ..db import get_db
-from ..auth.security import get_current_user, require_permissions
+from ..auth.security import get_current_user, require_permissions, require_roles
 from ..services.asset_assignment_service import (
     create_assignment_for_fleet_asset,
     return_assignment_for_fleet_asset,
@@ -1177,6 +1177,68 @@ def list_inspection_schedules(
     ]
 
 
+@router.get("/inspection-schedules/calendar", response_model=List[InspectionScheduleCalendarItem])
+def get_inspection_schedules_calendar(
+    start: str = Query(..., description="Start date (YYYY-MM-DD) or datetime (ISO)"),
+    end: str = Query(..., description="End date (YYYY-MM-DD) or datetime (ISO)"),
+    db: Session = Depends(get_db),
+    _=Depends(require_permissions("fleet:access", "fleet:read", "inspections:read")),
+):
+    """List inspection schedules with scheduled_at in [start, end] for calendar view."""
+    def _parse(s: str, default_time: str):
+        s = (s or "").strip()
+        if not s:
+            raise ValueError("Empty")
+        if "T" in s or " " in s:
+            dt = datetime.fromisoformat(s.replace("Z", "+00:00"))
+        else:
+            dt = datetime.fromisoformat(s + default_time)
+        return dt.replace(tzinfo=timezone.utc) if dt.tzinfo is None else dt
+
+    try:
+        start_dt = _parse(start, "T00:00:00")
+        end_dt = _parse(end, "T23:59:59.999999")
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid start or end date/datetime")
+    query = (
+        db.query(InspectionSchedule)
+        .filter(InspectionSchedule.scheduled_at >= start_dt)
+        .filter(InspectionSchedule.scheduled_at <= end_dt)
+    )
+    schedules = (
+        query.options(
+            joinedload(InspectionSchedule.fleet_asset),
+            joinedload(InspectionSchedule.inspections),
+        )
+        .order_by(InspectionSchedule.scheduled_at.asc())
+        .all()
+    )
+    out = []
+    for s in schedules:
+        body_id = None
+        mech_id = None
+        for insp in (s.inspections or []):
+            if getattr(insp, "inspection_type", None) == "body":
+                body_id = insp.id
+            elif getattr(insp, "inspection_type", None) == "mechanical":
+                mech_id = insp.id
+        unit_number = None
+        if s.fleet_asset:
+            unit_number = getattr(s.fleet_asset, "unit_number", None) or getattr(s.fleet_asset, "name", None)
+        out.append(
+            InspectionScheduleCalendarItem(
+                id=s.id,
+                scheduled_at=s.scheduled_at,
+                fleet_asset_name=s.fleet_asset.name if s.fleet_asset else None,
+                unit_number=unit_number,
+                status=s.status,
+                body_inspection_id=body_id,
+                mechanical_inspection_id=mech_id,
+            )
+        )
+    return out
+
+
 @router.get("/inspection-schedules/{schedule_id}", response_model=InspectionScheduleResponse)
 def get_inspection_schedule(
     schedule_id: uuid.UUID,
@@ -1211,6 +1273,21 @@ def update_inspection_schedule(
     return out.model_copy(update={"fleet_asset_name": schedule.fleet_asset.name if schedule.fleet_asset else None})
 
 
+@router.delete("/inspection-schedules/{schedule_id}")
+def delete_inspection_schedule(
+    schedule_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    _=Depends(require_roles("admin")),
+):
+    """Permanently delete an inspection schedule and its linked inspections (admin only)."""
+    schedule = db.query(InspectionSchedule).filter(InspectionSchedule.id == schedule_id).first()
+    if not schedule:
+        raise HTTPException(status_code=404, detail="Inspection schedule not found")
+    db.delete(schedule)
+    db.commit()
+    return {"message": "Inspection schedule deleted"}
+
+
 def _ensure_schedule_inspections(schedule: InspectionSchedule, db: Session, user_id: uuid.UUID):
     """Ensure body and mechanical inspections exist for this schedule; create if missing. Mark schedule in_progress. Returns (body_inspection, mechanical_inspection)."""
     schedule = db.query(InspectionSchedule).options(joinedload(InspectionSchedule.inspections)).filter(InspectionSchedule.id == schedule.id).first()
@@ -1225,7 +1302,7 @@ def _ensure_schedule_inspections(schedule: InspectionSchedule, db: Session, user
             inspection_date=now,
             inspection_type="body",
             inspection_schedule_id=schedule.id,
-            result="pass",
+            result="pending",
             created_by=user_id,
         )
         db.add(body_inspection)
@@ -1236,7 +1313,7 @@ def _ensure_schedule_inspections(schedule: InspectionSchedule, db: Session, user
             inspection_date=now,
             inspection_type="mechanical",
             inspection_schedule_id=schedule.id,
-            result="pass",
+            result="pending",
             created_by=user_id,
         )
         db.add(mechanical_inspection)
@@ -1301,64 +1378,6 @@ def start_inspection_schedule_mechanical(
         raise HTTPException(status_code=400, detail="Schedule already completed or cancelled")
     _, mechanical_inspection = _ensure_schedule_inspections(schedule, db, user.id)
     return InspectionScheduleStartMechanicalResponse(mechanical_inspection_id=mechanical_inspection.id)
-
-
-@router.get("/inspection-schedules/calendar", response_model=List[InspectionScheduleCalendarItem])
-def get_inspection_schedules_calendar(
-    start: str = Query(..., description="Start date (YYYY-MM-DD) or datetime (ISO)"),
-    end: str = Query(..., description="End date (YYYY-MM-DD) or datetime (ISO)"),
-    db: Session = Depends(get_db),
-    _=Depends(require_permissions("fleet:access", "fleet:read", "inspections:read")),
-):
-    """List inspection schedules with scheduled_at in [start, end] for calendar view."""
-    def _parse(s: str, default_time: str):
-        s = (s or "").strip()
-        if not s:
-            raise ValueError("Empty")
-        if "T" in s or " " in s:
-            dt = datetime.fromisoformat(s.replace("Z", "+00:00"))
-        else:
-            dt = datetime.fromisoformat(s + default_time)
-        return dt.replace(tzinfo=timezone.utc) if dt.tzinfo is None else dt
-
-    try:
-        start_dt = _parse(start, "T00:00:00")
-        end_dt = _parse(end, "T23:59:59.999999")
-    except Exception:
-        raise HTTPException(status_code=400, detail="Invalid start or end date/datetime")
-    query = (
-        db.query(InspectionSchedule)
-        .filter(InspectionSchedule.scheduled_at >= start_dt)
-        .filter(InspectionSchedule.scheduled_at <= end_dt)
-    )
-    schedules = (
-        query.options(
-            joinedload(InspectionSchedule.fleet_asset),
-            joinedload(InspectionSchedule.inspections),
-        )
-        .order_by(InspectionSchedule.scheduled_at.asc())
-        .all()
-    )
-    out = []
-    for s in schedules:
-        body_id = None
-        mech_id = None
-        for insp in (s.inspections or []):
-            if getattr(insp, "inspection_type", None) == "body":
-                body_id = insp.id
-            elif getattr(insp, "inspection_type", None) == "mechanical":
-                mech_id = insp.id
-        out.append(
-            InspectionScheduleCalendarItem(
-                id=s.id,
-                scheduled_at=s.scheduled_at,
-                fleet_asset_name=s.fleet_asset.name if s.fleet_asset else None,
-                status=s.status,
-                body_inspection_id=body_id,
-                mechanical_inspection_id=mech_id,
-            )
-        )
-    return out
 
 
 # ---------- INSPECTIONS ----------
@@ -1614,6 +1633,22 @@ def generate_work_order_from_inspection(
     return wo
 
 
+@router.delete("/inspections/{inspection_id}")
+def delete_inspection(
+    inspection_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    _=Depends(require_roles("admin")),
+):
+    """Permanently delete an inspection (admin only). Unlinks any work orders that originated from it."""
+    inspection = db.query(FleetInspection).filter(FleetInspection.id == inspection_id).first()
+    if not inspection:
+        raise HTTPException(status_code=404, detail="Inspection not found")
+    db.query(WorkOrder).filter(WorkOrder.origin_id == inspection_id).update({WorkOrder.origin_id: None})
+    db.delete(inspection)
+    db.commit()
+    return {"message": "Inspection deleted"}
+
+
 # ---------- WORK ORDERS ----------
 def _work_order_order(sort: Optional[str], direction: str):
     """Return SQLAlchemy order_by clause for work orders list."""
@@ -1735,20 +1770,33 @@ def get_work_orders_calendar(
         end_dt = _parse_calendar_param(end, "T23:59:59.999999")
     except Exception:
         raise HTTPException(status_code=400, detail="Invalid start or end date/datetime")
+    # Include WOs that have scheduled_start_at, check_in_at, or created_at in range (so "scheduled" and "in service" show)
     query = (
         db.query(WorkOrder)
         .filter(WorkOrder.entity_type == "fleet")
-        .filter(WorkOrder.scheduled_start_at.isnot(None))
-        .filter(WorkOrder.scheduled_start_at >= start_dt)
-        .filter(WorkOrder.scheduled_start_at <= end_dt)
+        .filter(
+            or_(
+                (WorkOrder.scheduled_start_at.isnot(None)) & (WorkOrder.scheduled_start_at >= start_dt) & (WorkOrder.scheduled_start_at <= end_dt),
+                (WorkOrder.check_in_at.isnot(None)) & (WorkOrder.check_in_at >= start_dt) & (WorkOrder.check_in_at <= end_dt),
+                (WorkOrder.created_at >= start_dt) & (WorkOrder.created_at <= end_dt),
+            )
+        )
     )
-    work_orders = query.order_by(WorkOrder.scheduled_start_at.asc()).all()
+    work_orders = query.order_by(WorkOrder.scheduled_start_at.asc().nulls_last(), WorkOrder.check_in_at.asc().nulls_last(), WorkOrder.created_at.asc()).all()
     out = []
     for wo in work_orders:
         asset_name = None
+        unit_number = None
+        work_order_type = None
         if wo.entity_type == "fleet":
             asset = db.query(FleetAsset).filter(FleetAsset.id == wo.entity_id).first()
-            asset_name = (asset.name or asset.unit_number or asset.license_plate or str(wo.entity_id)) if asset else None
+            if asset:
+                asset_name = asset.name or asset.unit_number or asset.license_plate or str(wo.entity_id)
+                unit_number = getattr(asset, "unit_number", None) or getattr(asset, "name", None)
+        if wo.origin_source == "inspection" and wo.origin_id:
+            insp = db.query(FleetInspection).filter(FleetInspection.id == wo.origin_id).first()
+            if insp and getattr(insp, "inspection_type", None) in ("body", "mechanical"):
+                work_order_type = insp.inspection_type
         out.append(WorkOrderCalendarItem(
             id=wo.id,
             work_order_number=wo.work_order_number,
@@ -1758,6 +1806,11 @@ def get_work_orders_calendar(
             estimated_duration_minutes=wo.estimated_duration_minutes,
             status=wo.status,
             asset_name=asset_name,
+            unit_number=unit_number,
+            work_order_type=work_order_type,
+            check_in_at=wo.check_in_at,
+            check_out_at=wo.check_out_at,
+            created_at=wo.created_at,
         ))
     return out
 
@@ -1870,10 +1923,24 @@ def work_order_check_in(
     db: Session = Depends(get_db),
     _=Depends(require_permissions("work_orders:write"))
 ):
-    """Register vehicle check-in (entrada). Sets check_in_at and optional odometer/hours."""
+    """Register vehicle check-in (entrada). Sets check_in_at, optional scheduled_end_at (expected completion date)/odometer/hours, and status to in_progress."""
     wo = db.query(WorkOrder).filter(WorkOrder.id == work_order_id).first()
     if not wo:
         raise HTTPException(status_code=404, detail="Work order not found")
+    if body.get("estimated_duration_minutes") is not None:
+        wo.estimated_duration_minutes = int(body["estimated_duration_minutes"])
+    scheduled_end_at = body.get("scheduled_end_at")
+    if scheduled_end_at is not None:
+        try:
+            raw = str(scheduled_end_at).strip()
+            if "T" in raw or " " in raw:
+                wo.scheduled_end_at = datetime.fromisoformat(raw.replace("Z", "+00:00"))
+            else:
+                wo.scheduled_end_at = datetime.fromisoformat(raw + "T23:59:59")
+            if wo.scheduled_end_at.tzinfo is None:
+                wo.scheduled_end_at = wo.scheduled_end_at.replace(tzinfo=timezone.utc)
+        except Exception:
+            pass  # keep existing if parse fails
     check_in_at = body.get("check_in_at")
     if check_in_at is not None:
         wo.check_in_at = (
@@ -1884,6 +1951,8 @@ def work_order_check_in(
             wo.check_in_at = wo.check_in_at.replace(tzinfo=timezone.utc)
     else:
         wo.check_in_at = datetime.now(timezone.utc)
+    if wo.status == "open":
+        wo.status = "in_progress"
     if body.get("odometer_reading") is not None:
         wo.odometer_reading = int(body["odometer_reading"])
     if body.get("hours_reading") is not None:
@@ -1908,10 +1977,13 @@ def work_order_check_out(
     db: Session = Depends(get_db),
     _=Depends(require_permissions("work_orders:write"))
 ):
-    """Register vehicle check-out (saída). Sets check_out_at and optional odometer/hours."""
+    """Register vehicle check-out (saída). Sets check_out_at, status to closed, and optional odometer/hours."""
     wo = db.query(WorkOrder).filter(WorkOrder.id == work_order_id).first()
     if not wo:
         raise HTTPException(status_code=404, detail="Work order not found")
+    wo.status = "closed"
+    if not wo.closed_at:
+        wo.closed_at = datetime.now(timezone.utc)
     check_out_at = body.get("check_out_at")
     if check_out_at is not None:
         wo.check_out_at = (
@@ -1962,18 +2034,16 @@ def assign_work_order(
 
 
 @router.delete("/work-orders/{work_order_id}")
-def cancel_work_order(
+def delete_work_order(
     work_order_id: uuid.UUID,
     db: Session = Depends(get_db),
-    _=Depends(require_permissions("work_orders:write"))
+    _=Depends(require_roles("admin")),
 ):
-    """Cancel a work order"""
+    """Permanently delete a work order (admin only)."""
     wo = db.query(WorkOrder).filter(WorkOrder.id == work_order_id).first()
     if not wo:
         raise HTTPException(status_code=404, detail="Work order not found")
-    
-    wo.status = "cancelled"
-    wo.updated_at = datetime.now(timezone.utc)
+    db.delete(wo)
     db.commit()
-    return {"message": "Work order cancelled successfully"}
+    return {"message": "Work order deleted"}
 

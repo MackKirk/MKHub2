@@ -135,6 +135,9 @@ export default function InspectionDetail() {
     enabled: isValidId,
   });
 
+  const { data: me } = useQuery({ queryKey: ['me'], queryFn: () => api<any>('GET', '/auth/me') });
+  const isAdmin = (me?.roles || []).includes('admin');
+
   const inspectionType = inspection?.inspection_type || 'mechanical';
   const { data: checklistTemplate } = useQuery<ChecklistTemplate>({
     queryKey: ['inspectionChecklistTemplate', inspectionType],
@@ -332,10 +335,31 @@ export default function InspectionDetail() {
     },
   });
 
+  const deleteInspectionMutation = useMutation({
+    mutationFn: () => {
+      if (!isValidId) throw new Error('Invalid inspection ID');
+      return api('DELETE', `/fleet/inspections/${id}`);
+    },
+    onSuccess: () => {
+      toast.success('Inspection deleted');
+      queryClient.invalidateQueries({ queryKey: ['inspections'] });
+      queryClient.invalidateQueries({ queryKey: ['inspection-schedules'] });
+      nav('/fleet/inspections');
+    },
+    onError: () => toast.error('Failed to delete inspection'),
+  });
+
   const resultColors: Record<string, string> = {
+    pending: 'bg-slate-100 text-slate-800',
     pass: 'bg-green-100 text-green-800',
     fail: 'bg-red-100 text-red-800',
     conditional: 'bg-yellow-100 text-yellow-800',
+  };
+  const resultLabels: Record<string, string> = {
+    pending: 'Pending',
+    pass: 'Pass',
+    fail: 'Fail',
+    conditional: 'Conditional',
   };
 
   const todayLabel = useMemo(() => {
@@ -389,9 +413,21 @@ export default function InspectionDetail() {
               </div>
             </div>
           </div>
-          <div className="text-right">
-            <div className="text-[10px] font-medium text-gray-500 uppercase tracking-wide">Today</div>
-            <div className="text-xs font-semibold text-gray-700 mt-0.5">{todayLabel}</div>
+          <div className="flex items-center gap-3">
+            {isAdmin && (
+              <button
+                type="button"
+                onClick={() => window.confirm('Delete this inspection permanently?') && deleteInspectionMutation.mutate()}
+                disabled={deleteInspectionMutation.isPending}
+                className="px-3 py-1.5 rounded-lg border border-red-200 bg-red-50 text-red-700 text-xs font-medium hover:bg-red-100 disabled:opacity-50"
+              >
+                {deleteInspectionMutation.isPending ? 'Deleting…' : 'Delete'}
+              </button>
+            )}
+            <div className="text-right">
+              <div className="text-[10px] font-medium text-gray-500 uppercase tracking-wide">Today</div>
+              <div className="text-xs font-semibold text-gray-700 mt-0.5">{todayLabel}</div>
+            </div>
           </div>
         </div>
       </div>
@@ -403,7 +439,7 @@ export default function InspectionDetail() {
               <label className="text-sm text-gray-600">Result</label>
               <div className="mt-1">
                 <span className={`px-2 py-1 rounded text-xs font-medium ${resultColors[inspection.result] || 'bg-gray-100 text-gray-800'}`}>
-                  {inspection.result}
+                  {resultLabels[inspection.result] ?? inspection.result}
                 </span>
               </div>
             </div>
