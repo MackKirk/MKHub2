@@ -670,6 +670,7 @@ const IMPLEMENTED_PERMISSIONS = new Set([
   'business:projects:workload:read', 'business:projects:workload:write',
   'business:projects:timesheet:read', 'business:projects:timesheet:write',
   'business:projects:files:read', 'business:projects:files:write',
+  'business:projects:documents:read', 'business:projects:documents:write',
   'business:projects:proposal:read', 'business:projects:proposal:write',
   'business:projects:estimate:read', 'business:projects:estimate:write',
   'business:projects:orders:read', 'business:projects:orders:write',
