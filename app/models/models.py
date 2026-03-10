@@ -174,6 +174,7 @@ class Project(Base):
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     slug: Mapped[Optional[str]] = mapped_column(String(255), index=True)
     client_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True))
+    related_client_ids: Mapped[Optional[list]] = mapped_column(JSON)  # Array of client UUID strings (related customers)
     site_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True))
     address: Mapped[Optional[str]] = mapped_column(String(500))  # Full address for dispatch
     address_city: Mapped[Optional[str]] = mapped_column(String(100))

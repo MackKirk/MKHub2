@@ -31,6 +31,7 @@ from ..services.permissions import (
     can_modify_shift, can_modify_attendance, can_approve_attendance
 )
 from ..services.task_service import create_task_item, complete_tasks_for_origin
+from ..services.project_utils import sanitize_division_onsite_leads
 
 router = APIRouter(prefix="/dispatch", tags=["dispatch"])
 
@@ -92,11 +93,11 @@ def create_shift(
     # - Admins can create shifts for any worker
     # - Supervisors of the worker can create shifts for that worker
     # - On-site leads of the project can create shifts for any worker
-    # Check if user is on-site lead of the project
+    # Check if user is on-site lead of the project (only for divisions that exist in the project)
     is_onsite_lead = False
-    if project.division_onsite_leads:
-        # Check if user is listed as on-site lead for any division
-        for division_id, lead_id in project.division_onsite_leads.items():
+    dol = sanitize_division_onsite_leads(project.division_onsite_leads or {}, project.project_division_ids or [])
+    if dol:
+        for division_id, lead_id in dol.items():
             if str(lead_id) == str(user.id):
                 is_onsite_lead = True
                 break
@@ -945,13 +946,12 @@ def create_attendance(
             project = db.query(Project).filter(Project.id == shift.project_id).first()
             is_onsite_lead = False
             if project:
-                # Check division_onsite_leads
-                if project.division_onsite_leads:
-                    for division_id, lead_id in project.division_onsite_leads.items():
+                dol = sanitize_division_onsite_leads(project.division_onsite_leads or {}, project.project_division_ids or [])
+                if dol:
+                    for division_id, lead_id in dol.items():
                         if str(lead_id) == str(user.id):
                             is_onsite_lead = True
                             break
-                # Check legacy onsite_lead_id field
                 if not is_onsite_lead and project.onsite_lead_id and str(project.onsite_lead_id) == str(user.id):
                     is_onsite_lead = True
             
@@ -1021,13 +1021,12 @@ def create_attendance(
         # Check if user is on-site lead of the project or supervisor of the worker
         is_onsite_lead = False
         if project:
-            # Check division_onsite_leads
-            if project.division_onsite_leads:
-                for division_id, lead_id in project.division_onsite_leads.items():
+            dol = sanitize_division_onsite_leads(project.division_onsite_leads or {}, project.project_division_ids or [])
+            if dol:
+                for division_id, lead_id in dol.items():
                     if str(lead_id) == str(user.id):
                         is_onsite_lead = True
                         break
-            # Check legacy onsite_lead_id field
             if not is_onsite_lead and project.onsite_lead_id and str(project.onsite_lead_id) == str(user.id):
                 is_onsite_lead = True
         
@@ -1580,13 +1579,12 @@ def create_attendance_supervisor(
         project = db.query(Project).filter(Project.id == shift.project_id).first()
         is_onsite_lead = False
         if project:
-            # Check division_onsite_leads
-            if project.division_onsite_leads:
-                for division_id, lead_id in project.division_onsite_leads.items():
+            dol = sanitize_division_onsite_leads(project.division_onsite_leads or {}, project.project_division_ids or [])
+            if dol:
+                for division_id, lead_id in dol.items():
                     if str(lead_id) == str(user.id):
                         is_onsite_lead = True
                         break
-            # Check legacy onsite_lead_id field
             if not is_onsite_lead and project.onsite_lead_id and str(project.onsite_lead_id) == str(user.id):
                 is_onsite_lead = True
         

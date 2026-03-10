@@ -248,7 +248,8 @@ function resolveEntityValue(entityOrDetails: any): number | null {
 function calculateProposalTotalFromAdditionalCosts(proposalData: any): number {
   if (!proposalData) return 0;
   const data = proposalData?.data || proposalData || {};
-  const additionalCosts = Array.isArray(data.additional_costs) ? data.additional_costs : [];
+  const raw = Array.isArray(data.additional_costs) ? data.additional_costs : [];
+  const additionalCosts = raw.filter((item: any) => item && item.approved !== false);
   if (additionalCosts.length === 0) return 0;
 
   const pstRate = Number(data.pst_rate) || 7.0;

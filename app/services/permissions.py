@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 
 from ..models.models import User, Role, Project
 from ..auth.security import get_current_user
+from .project_utils import sanitize_division_onsite_leads
 
 
 def is_admin(user: User, db: Session) -> bool:
@@ -67,9 +68,9 @@ def can_modify_shift(user: User, shift, db: Session) -> bool:
         from ..models.models import Project
         project = db.query(Project).filter(Project.id == shift.project_id).first()
         if project:
-            # Check division_onsite_leads
-            if project.division_onsite_leads:
-                for division_id, lead_id in project.division_onsite_leads.items():
+            dol = sanitize_division_onsite_leads(project.division_onsite_leads or {}, project.project_division_ids or [])
+            if dol:
+                for division_id, lead_id in dol.items():
                     if str(lead_id) == str(user.id):
                         return True
             # Check legacy onsite_lead_id field
