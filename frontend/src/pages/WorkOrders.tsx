@@ -144,10 +144,11 @@ function FilterChip({ label, value, onRemove }: { label: string; value: string; 
 }
 
 const STATUS_OPTIONS = [
-  { value: 'open', label: 'Open' },
-  { value: 'in_progress', label: 'In Progress' },
-  { value: 'pending_parts', label: 'Pending Parts' },
-  { value: 'closed', label: 'Closed' },
+  { value: 'open', label: 'Pending' },
+  { value: 'in_progress', label: 'In progress' },
+  { value: 'pending_parts', label: 'Awaiting parts' },
+  { value: 'closed', label: 'Finished' },
+  { value: 'not_approved', label: 'Not approved' },
   { value: 'cancelled', label: 'Cancelled' },
 ];
 
@@ -476,11 +477,12 @@ export default function WorkOrders() {
   };
 
   const statusColors: Record<string, string> = {
-    open: 'bg-blue-100 text-blue-800',
-    in_progress: 'bg-yellow-100 text-yellow-800',
+    open: 'bg-slate-100 text-slate-800',
+    in_progress: 'bg-amber-100 text-amber-800',
     pending_parts: 'bg-orange-100 text-orange-800',
     closed: 'bg-green-100 text-green-800',
     cancelled: 'bg-red-100 text-red-800',
+    not_approved: 'bg-rose-100 text-rose-800',
   };
 
   const urgencyColors: Record<string, string> = {
@@ -674,7 +676,7 @@ export default function WorkOrders() {
                         </td>
                         <td className="px-3 py-3 align-top">
                           <span className={`inline-flex px-2 py-0.5 rounded text-xs font-medium ${statusColors[wo.status] || 'bg-gray-100 text-gray-800'}`}>
-                            {wo.status?.replace(/_/g, ' ')}
+                            {STATUS_OPTIONS.find((o) => o.value === wo.status)?.label ?? wo.status?.replace(/_/g, ' ')}
                           </span>
                         </td>
                         <td className="px-3 py-3 text-xs text-gray-600 align-top whitespace-nowrap">

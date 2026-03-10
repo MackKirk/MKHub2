@@ -36,6 +36,7 @@ class EquipmentStatus(str, Enum):
 
 
 class InspectionResult(str, Enum):
+    pending = "pending"
     pass_result = "pass"
     fail = "fail"
     conditional = "conditional"
@@ -56,11 +57,12 @@ class WorkOrderUrgency(str, Enum):
 
 
 class WorkOrderStatus(str, Enum):
-    open = "open"
+    open = "open"           # Pending
     in_progress = "in_progress"
     pending_parts = "pending_parts"
-    closed = "closed"
+    closed = "closed"       # Finished
     cancelled = "cancelled"
+    not_approved = "not_approved"
 
 
 class CheckoutStatus(str, Enum):
@@ -295,6 +297,7 @@ class InspectionScheduleCalendarItem(BaseModel):
     id: uuid.UUID
     scheduled_at: datetime
     fleet_asset_name: Optional[str] = None
+    unit_number: Optional[str] = None
     status: str
     body_inspection_id: Optional[uuid.UUID] = None
     mechanical_inspection_id: Optional[uuid.UUID] = None
@@ -312,7 +315,7 @@ class FleetInspectionBase(BaseModel):
     inspector_user_id: Optional[uuid.UUID] = None
     checklist_results: Optional[Dict[str, Any]] = None  # mechanical: {A1: {status, comments}, ...}; body: {areas: [...], quote_amount, quote_file_ids}
     photos: Optional[List[uuid.UUID]] = None
-    result: InspectionResult = InspectionResult.pass_result
+    result: InspectionResult = InspectionResult.pending
     notes: Optional[str] = None
     odometer_reading: Optional[int] = None
     hours_reading: Optional[float] = None
@@ -439,6 +442,11 @@ class WorkOrderCalendarItem(BaseModel):
     estimated_duration_minutes: Optional[int] = None
     status: str
     asset_name: Optional[str] = None
+    unit_number: Optional[str] = None
+    work_order_type: Optional[str] = None  # "body" | "mechanical" from origin inspection
+    check_in_at: Optional[datetime] = None
+    check_out_at: Optional[datetime] = None
+    created_at: Optional[datetime] = None
 
     class Config:
         from_attributes = True

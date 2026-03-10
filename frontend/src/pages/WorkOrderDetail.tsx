@@ -3,6 +3,7 @@ import { useState, useRef, useEffect, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import toast from 'react-hot-toast';
+import { formatDateLocal } from '@/lib/dateUtils';
 
 type CostItem = {
   id?: string;
@@ -55,6 +56,12 @@ export default function WorkOrderDetail() {
   const searchParams = new URLSearchParams(location.search);
   const initialTab = (searchParams.get('tab') as 'general' | 'costs' | 'files' | 'photos' | null) || 'general';
   const [tab, setTab] = useState<'general' | 'costs' | 'files' | 'photos'>(initialTab);
+  const defaultCompletionDate = useMemo(() => {
+    const d = new Date();
+    d.setDate(d.getDate() + 3);
+    return formatDateLocal(d);
+  }, []);
+  const [startExpectedCompletionDate, setStartExpectedCompletionDate] = useState(defaultCompletionDate);
 
   useEffect(() => {
     const searchParams = new URLSearchParams(location.search);
@@ -71,6 +78,9 @@ export default function WorkOrderDetail() {
     queryFn: () => api<WorkOrder>('GET', `/fleet/work-orders/${id}`),
     enabled: isValidId,
   });
+
+  const { data: me } = useQuery({ queryKey: ['me'], queryFn: () => api<any>('GET', '/auth/me') });
+  const isAdmin = (me?.roles || []).includes('admin');
 
   const updateWorkOrderMutation = useMutation({
     mutationFn: async (data: any) => {
@@ -101,14 +111,14 @@ export default function WorkOrderDetail() {
   });
 
   const checkInMutation = useMutation({
-    mutationFn: async (body: { check_in_at?: string; odometer_reading?: number; hours_reading?: number }) => {
+    mutationFn: async (body: { check_in_at?: string; odometer_reading?: number; hours_reading?: number; estimated_duration_minutes?: number; scheduled_end_at?: string }) => {
       return api('PUT', `/fleet/work-orders/${id}/check-in`, body);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['workOrder', id] });
-      toast.success('Entrada registrada');
+      toast.success('Work order started');
     },
-    onError: () => toast.error('Falha ao registrar entrada'),
+    onError: () => toast.error('Failed to start work order'),
   });
 
   const checkOutMutation = useMutation({
@@ -117,18 +127,40 @@ export default function WorkOrderDetail() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['workOrder', id] });
-      toast.success('Saída registrada');
+      toast.success('Work order finished');
     },
-    onError: () => toast.error('Falha ao registrar saída'),
+    onError: () => toast.error('Failed to finish work order'),
   });
 
+  const deleteWorkOrderMutation = useMutation({
+    mutationFn: () => api('DELETE', `/fleet/work-orders/${id}`),
+    onSuccess: () => {
+      toast.success('Work order deleted');
+      queryClient.invalidateQueries({ queryKey: ['workOrder'] });
+      queryClient.invalidateQueries({ queryKey: ['fleet-work-orders-calendar'] });
+      nav('/fleet/work-orders');
+    },
+    onError: () => toast.error('Failed to delete work order'),
+  });
+
+  const WORK_ORDER_STATUS_OPTIONS: { value: string; label: string }[] = [
+    { value: 'open', label: 'Pending' },
+    { value: 'in_progress', label: 'In progress' },
+    { value: 'pending_parts', label: 'Awaiting parts' },
+    { value: 'closed', label: 'Finished' },
+    { value: 'not_approved', label: 'Not approved' },
+    { value: 'cancelled', label: 'Cancelled' },
+  ];
+
   const statusColors: Record<string, string> = {
-    open: 'bg-blue-100 text-blue-800',
-    in_progress: 'bg-yellow-100 text-yellow-800',
+    open: 'bg-slate-100 text-slate-800',
+    in_progress: 'bg-amber-100 text-amber-800',
     pending_parts: 'bg-orange-100 text-orange-800',
     closed: 'bg-green-100 text-green-800',
     cancelled: 'bg-red-100 text-red-800',
+    not_approved: 'bg-rose-100 text-rose-800',
   };
+
 
   const urgencyColors: Record<string, string> = {
     low: 'bg-blue-100 text-blue-800',
@@ -222,9 +254,21 @@ export default function WorkOrderDetail() {
               <div className="text-xs text-gray-500 mt-0.5 capitalize">{workOrder.entity_type}</div>
             </div>
           </div>
-          <div className="text-right">
-            <div className="text-[10px] font-medium text-gray-500 uppercase tracking-wide">Today</div>
-            <div className="text-xs font-semibold text-gray-700 mt-0.5">{todayLabel}</div>
+          <div className="flex items-center gap-3">
+            {isAdmin && (
+              <button
+                type="button"
+                onClick={() => window.confirm('Delete this work order permanently?') && deleteWorkOrderMutation.mutate()}
+                disabled={deleteWorkOrderMutation.isPending}
+                className="px-3 py-1.5 rounded-lg border border-red-200 bg-red-50 text-red-700 text-xs font-medium hover:bg-red-100 disabled:opacity-50"
+              >
+                {deleteWorkOrderMutation.isPending ? 'Deleting…' : 'Delete'}
+              </button>
+            )}
+            <div className="text-right">
+              <div className="text-[10px] font-medium text-gray-500 uppercase tracking-wide">Today</div>
+              <div className="text-xs font-semibold text-gray-700 mt-0.5">{todayLabel}</div>
+            </div>
           </div>
         </div>
       </div>
@@ -261,9 +305,18 @@ export default function WorkOrderDetail() {
               <div>
                 <label className="text-sm text-gray-600">Status</label>
                 <div className="mt-1">
-                  <span className={`px-2 py-1 rounded text-xs font-medium ${statusColors[workOrder.status] || 'bg-gray-100 text-gray-800'}`}>
-                    {workOrder.status.replace('_', ' ')}
-                  </span>
+                  <select
+                    value={workOrder.status}
+                    onChange={(e) => updateWorkOrderMutation.mutate({ status: e.target.value })}
+                    disabled={updateWorkOrderMutation.isPending}
+                    className={`block w-full max-w-[200px] rounded-lg border border-gray-300 px-3 py-2 text-sm font-medium focus:ring-2 focus:ring-brand-red focus:border-brand-red ${statusColors[workOrder.status] || 'bg-gray-100 text-gray-800'}`}
+                  >
+                    {WORK_ORDER_STATUS_OPTIONS.map((opt) => (
+                      <option key={opt.value} value={opt.value}>
+                        {opt.label}
+                      </option>
+                    ))}
+                  </select>
                 </div>
               </div>
               <div>
@@ -293,6 +346,47 @@ export default function WorkOrderDetail() {
             {workOrder.entity_type === 'fleet' && (
               <div className="border-t border-gray-200 pt-6 mt-6">
                 <h3 className="text-sm font-semibold text-gray-900 mb-3">Service / Shop</h3>
+
+                {/* Start: set expected completion date and start */}
+                {workOrder.status === 'open' && !workOrder.check_in_at && (
+                  <div className="rounded-xl border-2 border-amber-200 bg-amber-50/50 p-4 mb-6">
+                    <div className="text-sm font-medium text-amber-900 mb-3">Expected completion date</div>
+                    <div className="flex flex-wrap items-center gap-4 mb-4">
+                      <input
+                        type="date"
+                        value={startExpectedCompletionDate}
+                        onChange={(e) => setStartExpectedCompletionDate(e.target.value)}
+                        min={formatDateLocal(new Date())}
+                        className="rounded-lg border border-gray-300 px-3 py-2 text-sm font-medium"
+                      />
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => checkInMutation.mutate({
+                        scheduled_end_at: startExpectedCompletionDate ? `${startExpectedCompletionDate}T23:59:59` : undefined,
+                      })}
+                      disabled={checkInMutation.isPending || !startExpectedCompletionDate}
+                      className="px-5 py-2.5 rounded-xl bg-amber-500 text-white font-semibold text-sm shadow-md hover:bg-amber-600 disabled:opacity-50 transition-colors"
+                    >
+                      {checkInMutation.isPending ? 'Starting…' : 'Start'}
+                    </button>
+                  </div>
+                )}
+
+                {/* Finish: when started but not checked out */}
+                {!workOrder.check_out_at && workOrder.check_in_at && ['in_progress', 'pending_parts'].includes(workOrder.status) && (
+                  <div className="rounded-xl border-2 border-green-200 bg-green-50/50 p-4 mb-6">
+                    <button
+                      type="button"
+                      onClick={() => checkOutMutation.mutate({})}
+                      disabled={checkOutMutation.isPending}
+                      className="px-5 py-2.5 rounded-xl bg-green-600 text-white font-semibold text-sm shadow-md hover:bg-green-700 disabled:opacity-50 transition-colors"
+                    >
+                      {checkOutMutation.isPending ? 'Finishing…' : 'Finish'}
+                    </button>
+                  </div>
+                )}
+
                 <div className="grid grid-cols-2 gap-4">
                   <div>
                     <label className="text-sm text-gray-600">Scheduled (start)</label>
@@ -311,7 +405,7 @@ export default function WorkOrderDetail() {
                     </div>
                   </div>
                   <div>
-                    <label className="text-sm text-gray-600">Duração estimada</label>
+                    <label className="text-sm text-gray-600">Expected duration</label>
                     <div className="font-medium mt-1">
                       {workOrder.estimated_duration_minutes != null
                         ? `${Math.floor(workOrder.estimated_duration_minutes / 60)}h ${workOrder.estimated_duration_minutes % 60}min`
@@ -319,40 +413,20 @@ export default function WorkOrderDetail() {
                     </div>
                   </div>
                   <div>
-                    <label className="text-sm text-gray-600">Entrada (check-in)</label>
+                    <label className="text-sm text-gray-600">Check-in</label>
                     <div className="font-medium mt-1">
                       {workOrder.check_in_at
                         ? new Date(workOrder.check_in_at).toLocaleString('en-CA', { dateStyle: 'short', timeStyle: 'short' })
                         : '—'}
                     </div>
-                    {!workOrder.check_in_at && (
-                      <button
-                        type="button"
-                        onClick={() => checkInMutation.mutate({})}
-                        disabled={checkInMutation.isPending}
-                        className="mt-1 text-xs text-brand-red hover:underline disabled:opacity-50"
-                      >
-                        {checkInMutation.isPending ? 'Registrando…' : 'Registrar entrada'}
-                      </button>
-                    )}
                   </div>
                   <div>
-                    <label className="text-sm text-gray-600">Saída (check-out)</label>
+                    <label className="text-sm text-gray-600">Check-out</label>
                     <div className="font-medium mt-1">
                       {workOrder.check_out_at
                         ? new Date(workOrder.check_out_at).toLocaleString('en-CA', { dateStyle: 'short', timeStyle: 'short' })
                         : '—'}
                     </div>
-                    {!workOrder.check_out_at && (
-                      <button
-                        type="button"
-                        onClick={() => checkOutMutation.mutate({})}
-                        disabled={checkOutMutation.isPending}
-                        className="mt-1 text-xs text-brand-red hover:underline disabled:opacity-50"
-                      >
-                        {checkOutMutation.isPending ? 'Registrando…' : 'Registrar saída'}
-                      </button>
-                    )}
                   </div>
                   <div className="col-span-2 flex gap-4">
                     <label className="flex items-center gap-2 text-sm text-gray-700">
@@ -362,7 +436,7 @@ export default function WorkOrderDetail() {
                         onChange={(e) => updateWorkOrderMutation.mutate({ body_repair_required: e.target.checked })}
                         className="rounded border-gray-300"
                       />
-                      Reparo de carroceria
+                      Body repair required
                     </label>
                     <label className="flex items-center gap-2 text-sm text-gray-700">
                       <input
@@ -371,7 +445,7 @@ export default function WorkOrderDetail() {
                         onChange={(e) => updateWorkOrderMutation.mutate({ new_stickers_applied: e.target.checked })}
                         className="rounded border-gray-300"
                       />
-                      Adesivos novos
+                      New stickers applied
                     </label>
                   </div>
                 </div>

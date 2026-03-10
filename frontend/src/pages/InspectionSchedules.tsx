@@ -43,6 +43,9 @@ export default function InspectionSchedules() {
   const queryClient = useQueryClient();
   const [statusFilter, setStatusFilter] = useState<string>('');
 
+  const { data: me } = useQuery({ queryKey: ['me'], queryFn: () => api<any>('GET', '/auth/me') });
+  const isAdmin = (me?.roles || []).includes('admin');
+
   const { data: schedules = [], isLoading } = useQuery({
     queryKey: ['inspection-schedules', statusFilter],
     queryFn: async () => {
@@ -79,6 +82,16 @@ export default function InspectionSchedules() {
     onError: () => {
       toast.error('Failed to open mechanical inspection');
     },
+  });
+
+  const deleteScheduleMutation = useMutation({
+    mutationFn: (scheduleId: string) => api('DELETE', `/fleet/inspection-schedules/${scheduleId}`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['inspection-schedules'] });
+      queryClient.invalidateQueries({ queryKey: ['fleet-inspection-schedules-calendar'] });
+      toast.success('Schedule deleted');
+    },
+    onError: () => toast.error('Failed to delete schedule'),
   });
 
   return (
@@ -151,26 +164,38 @@ export default function InspectionSchedules() {
                       </span>
                     </td>
                     <td className="px-4 py-3 text-right">
-                      {(s.status === 'scheduled' || s.status === 'in_progress') && (
-                        <div className="flex items-center justify-end gap-2">
+                      <div className="flex items-center justify-end gap-2 flex-wrap">
+                        {(s.status === 'scheduled' || s.status === 'in_progress') && (
+                          <>
+                            <button
+                              type="button"
+                              onClick={() => startBodyMutation.mutate(s.id)}
+                              disabled={startBodyMutation.isPending || startMechanicalMutation.isPending}
+                              className="px-3 py-1.5 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 disabled:opacity-50"
+                            >
+                              {startBodyMutation.isPending ? 'Opening...' : 'Body / Exterior'}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => startMechanicalMutation.mutate(s.id)}
+                              disabled={startBodyMutation.isPending || startMechanicalMutation.isPending}
+                              className="px-3 py-1.5 text-sm font-medium text-white bg-gray-700 rounded-lg hover:bg-gray-800 disabled:opacity-50"
+                            >
+                              {startMechanicalMutation.isPending ? 'Opening...' : 'Mechanical'}
+                            </button>
+                          </>
+                        )}
+                        {isAdmin && (
                           <button
                             type="button"
-                            onClick={() => startBodyMutation.mutate(s.id)}
-                            disabled={startBodyMutation.isPending || startMechanicalMutation.isPending}
-                            className="px-3 py-1.5 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 disabled:opacity-50"
+                            onClick={() => window.confirm('Delete this schedule permanently? Linked inspections will also be removed.') && deleteScheduleMutation.mutate(s.id)}
+                            disabled={deleteScheduleMutation.isPending}
+                            className="px-3 py-1.5 text-sm font-medium text-red-700 bg-red-50 border border-red-200 rounded-lg hover:bg-red-100 disabled:opacity-50"
                           >
-                            {startBodyMutation.isPending ? 'Opening...' : 'Body / Exterior'}
+                            {deleteScheduleMutation.isPending ? 'Deleting…' : 'Delete'}
                           </button>
-                          <button
-                            type="button"
-                            onClick={() => startMechanicalMutation.mutate(s.id)}
-                            disabled={startBodyMutation.isPending || startMechanicalMutation.isPending}
-                            className="px-3 py-1.5 text-sm font-medium text-white bg-gray-700 rounded-lg hover:bg-gray-800 disabled:opacity-50"
-                          >
-                            {startMechanicalMutation.isPending ? 'Opening...' : 'Mechanical'}
-                          </button>
-                        </div>
-                      )}
+                        )}
+                      </div>
                     </td>
                   </tr>
                 ))}
