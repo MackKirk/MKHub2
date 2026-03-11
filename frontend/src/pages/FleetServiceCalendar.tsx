@@ -254,13 +254,9 @@ export default function FleetServiceCalendar({ embedView }: FleetServiceCalendar
                       <button
                         key={`sched-${ev.id}`}
                         type="button"
-                        onClick={() => {
-                          const inspectionId = ev.body_inspection_id || ev.mechanical_inspection_id;
-                          if (inspectionId) navigate(`/fleet/inspections/${inspectionId}`);
-                          else navigate('/fleet/calendar?view=list');
-                        }}
+                        onClick={() => navigate(`/fleet/inspection-schedules/${ev.id}`)}
                         className="w-full text-left text-xs px-2 py-1.5 rounded-lg bg-green-50 hover:bg-green-100 border border-green-200/60 truncate block shadow-sm"
-                        title={`Scheduled ${ev.unit_number || ev.fleet_asset_name || ''} ${formatTime(ev.scheduled_at)}`}
+                        title={`Inspection ${ev.unit_number || ev.fleet_asset_name || 'Scheduled'} ${formatTime(ev.scheduled_at)}`}
                       >
                         <span className="font-medium text-green-800 block truncate">{ev.unit_number || ev.fleet_asset_name || 'Scheduled'}</span>
                         <span className="text-green-600 text-[10px]">{formatTime(ev.scheduled_at)}</span>
@@ -288,7 +284,7 @@ export default function FleetServiceCalendar({ embedView }: FleetServiceCalendar
         {!isLoading && woEvents.length === 0 && scheduleEvents.length === 0 && (
           <div className="mt-5 text-center py-5 text-gray-500 border-t border-gray-100">
             <div className="text-sm font-medium mb-1">No appointments this month</div>
-            <div className="text-xs text-gray-400">Use New service or Schedule inspection to add.</div>
+            <div className="text-xs text-gray-400">Use Schedule new inspection to add.</div>
           </div>
         )}
       </div>

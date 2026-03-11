@@ -1006,7 +1006,7 @@ export default function FleetAssetDetail() {
                   setShowScheduleInspectionModal(false);
                   queryClient.invalidateQueries({ queryKey: ['inspection-schedules'] });
                   queryClient.invalidateQueries({ queryKey: ['fleet-inspection-schedules-calendar'] });
-                  nav('/fleet/calendar?view=list');
+                  nav('/fleet/calendar');
                 }}
                 onCancel={() => setShowScheduleInspectionModal(false)}
               />

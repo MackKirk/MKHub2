@@ -19,7 +19,7 @@ const URGENCY_OPTIONS = [
   { value: 'urgent', label: 'Urgent' },
 ];
 
-/** Form to create an inspection schedule (agendamento). Creates only the appointment; use "Iniciar" on the schedule to create the two inspections (body + mechanical). */
+/** Form to create an inspection schedule (agendamento). Creates the schedule and both Body and Mechanical inspections as pending. */
 export function InspectionScheduleForm({
   initialAssetId = '',
   onSuccess,
@@ -63,6 +63,8 @@ export function InspectionScheduleForm({
       toast.success('Inspection scheduled successfully');
       queryClient.invalidateQueries({ queryKey: ['inspection-schedules'] });
       queryClient.invalidateQueries({ queryKey: ['fleet-inspection-schedules-calendar'] });
+      queryClient.invalidateQueries({ queryKey: ['inspections'] });
+      queryClient.invalidateQueries({ queryKey: ['inspections-sidebar'] });
       onSuccess(data);
     },
     onError: () => {
@@ -179,7 +181,7 @@ export default function InspectionNew() {
         <div className="flex items-center justify-between">
           <div>
             <div className="text-sm font-semibold text-gray-900">Schedule inspection</div>
-            <div className="text-xs text-gray-500 mt-0.5">Create an appointment. Start it later to open Body and Mechanical inspections.</div>
+            <div className="text-xs text-gray-500 mt-0.5">Creates the schedule and both Body and Mechanical inspections (pending). Open them from the list to fill the checklist.</div>
           </div>
           <button
             onClick={() => nav(-1)}
@@ -191,7 +193,7 @@ export default function InspectionNew() {
       </div>
       <InspectionScheduleForm
         initialAssetId={assetId}
-        onSuccess={() => nav('/fleet/calendar?view=list')}
+        onSuccess={() => nav('/fleet/calendar')}
         onCancel={() => nav(-1)}
       />
     </div>

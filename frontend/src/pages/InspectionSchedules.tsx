@@ -84,7 +84,7 @@ export default function InspectionSchedules() {
         <div className="flex items-center justify-between flex-wrap gap-3">
           <div>
             <div className="text-sm font-semibold text-gray-900">Inspection schedules</div>
-            <div className="text-xs text-gray-500 mt-0.5">Open Body/Exterior or Mechanical inspection to fill the checklist. If result is Fail, a work order is generated.</div>
+            <div className="text-xs text-gray-500 mt-0.5">Each schedule has Body and Mechanical inspections (created when you add the schedule). Open them to fill the checklist. If result is Fail, a work order is generated.</div>
           </div>
           <div className="flex items-center gap-2">
             <select

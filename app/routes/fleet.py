@@ -1173,7 +1173,7 @@ def create_inspection_schedule(
     user=Depends(get_current_user),
     _=Depends(require_permissions("inspections:write")),
 ):
-    """Create an inspection appointment (agendamento). Use start to create the two inspections (body + mechanical)."""
+    """Create an inspection appointment (agendamento). Creates body and mechanical inspections as pending automatically."""
     schedule = InspectionSchedule(
         fleet_asset_id=payload.fleet_asset_id,
         scheduled_at=payload.scheduled_at,
@@ -1186,9 +1186,45 @@ def create_inspection_schedule(
     db.add(schedule)
     db.commit()
     db.refresh(schedule)
-    out = InspectionScheduleResponse.model_validate(schedule)
-    asset = db.query(FleetAsset).filter(FleetAsset.id == schedule.fleet_asset_id).first()
-    return out.model_copy(update={"fleet_asset_name": asset.name if asset else None})
+
+    scheduled_dt = schedule.scheduled_at
+    if scheduled_dt.tzinfo is None:
+        scheduled_dt = scheduled_dt.replace(tzinfo=timezone.utc)
+
+    body_inspection = FleetInspection(
+        fleet_asset_id=schedule.fleet_asset_id,
+        inspection_date=scheduled_dt,
+        inspection_type="body",
+        inspection_schedule_id=schedule.id,
+        result="pending",
+        created_by=user.id,
+    )
+    mechanical_inspection = FleetInspection(
+        fleet_asset_id=schedule.fleet_asset_id,
+        inspection_date=scheduled_dt,
+        inspection_type="mechanical",
+        inspection_schedule_id=schedule.id,
+        result="pending",
+        created_by=user.id,
+    )
+    db.add(body_inspection)
+    db.add(mechanical_inspection)
+    db.commit()
+
+    schedule = db.query(InspectionSchedule).options(
+        joinedload(InspectionSchedule.fleet_asset),
+        joinedload(InspectionSchedule.inspections),
+    ).filter(InspectionSchedule.id == schedule.id).first()
+    body_insp = next((i for i in (schedule.inspections or []) if i.inspection_type == "body"), None)
+    mech_insp = next((i for i in (schedule.inspections or []) if i.inspection_type == "mechanical"), None)
+    out = InspectionScheduleResponse.model_validate(schedule).model_copy(update={
+        "fleet_asset_name": schedule.fleet_asset.name if schedule.fleet_asset else None,
+        "body_inspection_id": body_insp.id if body_insp else None,
+        "mechanical_inspection_id": mech_insp.id if mech_insp else None,
+        "body_result": body_insp.result if body_insp else None,
+        "mechanical_result": mech_insp.result if mech_insp else None,
+    })
+    return out
 
 
 @router.get("/inspection-schedules", response_model=List[InspectionScheduleResponse])
@@ -1308,11 +1344,22 @@ def get_inspection_schedule(
     _=Depends(require_permissions("inspections:read")),
 ):
     """Get inspection schedule by id."""
-    schedule = db.query(InspectionSchedule).options(joinedload(InspectionSchedule.fleet_asset)).filter(InspectionSchedule.id == schedule_id).first()
+    schedule = db.query(InspectionSchedule).options(
+        joinedload(InspectionSchedule.fleet_asset),
+        joinedload(InspectionSchedule.inspections),
+    ).filter(InspectionSchedule.id == schedule_id).first()
     if not schedule:
         raise HTTPException(status_code=404, detail="Inspection schedule not found")
-    out = InspectionScheduleResponse.model_validate(schedule)
-    return out.model_copy(update={"fleet_asset_name": schedule.fleet_asset.name if schedule.fleet_asset else None})
+    body_insp = next((i for i in (schedule.inspections or []) if i.inspection_type == "body"), None)
+    mech_insp = next((i for i in (schedule.inspections or []) if i.inspection_type == "mechanical"), None)
+    out = InspectionScheduleResponse.model_validate(schedule).model_copy(update={
+        "fleet_asset_name": schedule.fleet_asset.name if schedule.fleet_asset else None,
+        "body_inspection_id": body_insp.id if body_insp else None,
+        "mechanical_inspection_id": mech_insp.id if mech_insp else None,
+        "body_result": body_insp.result if body_insp else None,
+        "mechanical_result": mech_insp.result if mech_insp else None,
+    })
+    return out
 
 
 @router.put("/inspection-schedules/{schedule_id}", response_model=InspectionScheduleResponse)
