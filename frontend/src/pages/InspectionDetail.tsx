@@ -3,11 +3,14 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import toast from 'react-hot-toast';
 import { useMemo, useState, useEffect } from 'react';
+import { INSPECTION_RESULT_LABELS, INSPECTION_RESULT_COLORS } from '@/lib/fleetBadges';
+import FleetDetailHeader from '@/components/FleetDetailHeader';
 
 type Inspection = {
   id: string;
   fleet_asset_id: string;
   fleet_asset_name?: string;
+  inspection_schedule_id?: string;
   inspection_date: string;
   inspection_type?: string; // 'body' | 'mechanical'
   inspector_user_id?: string;
@@ -148,29 +151,34 @@ export default function InspectionDetail() {
   const isBody = inspection?.inspection_type === 'body';
   const isMechanical = inspection?.inspection_type === 'mechanical';
   const hasWorkOrder = !!(inspection as Inspection)?.auto_generated_work_order_id;
-  const canEditBody = isBody && !hasWorkOrder;
-  const canEditMechanical = isMechanical && !hasWorkOrder;
-  const [bodyEditMode, setBodyEditMode] = useState(true);
+  const isResultFinal = inspection?.result && ['pass', 'fail', 'conditional'].includes((inspection.result || '').toLowerCase());
+  const canEditBody = isBody && !hasWorkOrder && !isResultFinal;
+  const canEditMechanical = isMechanical && !hasWorkOrder && !isResultFinal;
+  const [bodyEditMode, setBodyEditMode] = useState(false);
   const [bodyForm, setBodyForm] = useState<BodyFormState | null>(null);
-  const [mechanicalEditMode, setMechanicalEditMode] = useState(true);
+  const [mechanicalEditMode, setMechanicalEditMode] = useState(false);
   const [mechanicalForm, setMechanicalForm] = useState<MechanicalFormState | null>(null);
 
   useEffect(() => {
-    if (isBody && hasWorkOrder) setBodyEditMode(false);
-  }, [isBody, hasWorkOrder]);
+    if (isBody && (hasWorkOrder || isResultFinal)) setBodyEditMode(false);
+    else if (isBody) setBodyEditMode(true);
+  }, [isBody, hasWorkOrder, isResultFinal]);
   useEffect(() => {
-    if (isMechanical && hasWorkOrder) setMechanicalEditMode(false);
-  }, [isMechanical, hasWorkOrder]);
+    if (isMechanical && (hasWorkOrder || isResultFinal)) setMechanicalEditMode(false);
+    else if (isMechanical) setMechanicalEditMode(true);
+  }, [isMechanical, hasWorkOrder, isResultFinal]);
 
   const { data: fleetAsset } = useQuery({
     queryKey: ['fleetAsset', inspection?.fleet_asset_id],
     queryFn: () =>
-      api<{ unit_number?: string; name?: string; odometer_current?: number; hours_current?: number }>(
+      api<{ unit_number?: string; name?: string; odometer_current?: number; hours_current?: number; photos?: string[] }>(
         'GET',
         `/fleet/assets/${inspection?.fleet_asset_id}`
       ),
-    enabled: (isBody || isMechanical) && !!inspection?.fleet_asset_id,
+    enabled: !!inspection?.fleet_asset_id,
   });
+
+  const assetPhotoUrl = fleetAsset?.photos?.[0] ? `/files/${fleetAsset.photos[0]}/thumbnail?w=400` : null;
 
   useEffect(() => {
     if (isBody && inspection && checklistTemplate?.areas) {
@@ -349,18 +357,8 @@ export default function InspectionDetail() {
     onError: () => toast.error('Failed to delete inspection'),
   });
 
-  const resultColors: Record<string, string> = {
-    pending: 'bg-slate-100 text-slate-800',
-    pass: 'bg-green-100 text-green-800',
-    fail: 'bg-red-100 text-red-800',
-    conditional: 'bg-yellow-100 text-yellow-800',
-  };
-  const resultLabels: Record<string, string> = {
-    pending: 'Pending',
-    pass: 'Pass',
-    fail: 'Fail',
-    conditional: 'Conditional',
-  };
+  const resultColors = INSPECTION_RESULT_COLORS;
+  const resultLabels = INSPECTION_RESULT_LABELS;
 
   const todayLabel = useMemo(() => {
     return new Date().toLocaleDateString('en-CA', {
@@ -385,73 +383,104 @@ export default function InspectionDetail() {
 
   return (
     <div className="space-y-4 min-w-0 overflow-x-hidden">
-      {/* Title Bar */}
-      <div className="rounded-xl border bg-white p-4 mb-4">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-3 flex-1">
-            <button
-              onClick={() => nav('/fleet/inspections')}
-              className="p-2 rounded-lg hover:bg-gray-100 transition-colors flex items-center justify-center text-gray-600 hover:text-gray-900"
-              title="Back to Inspections"
-            >
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
-              </svg>
-            </button>
-            <div>
-              <div className="flex items-center gap-2">
-                <span className="text-sm font-semibold text-gray-900">
-                  {inspection.inspection_type === 'body' ? 'Body / Exterior inspection' : inspection.inspection_type === 'mechanical' ? 'Mechanical inspection' : 'Inspection'}
-                </span>
-                <span className={`px-2 py-0.5 rounded text-xs font-medium ${inspection.inspection_type === 'body' ? 'bg-blue-100 text-blue-800' : 'bg-gray-100 text-gray-800'}`}>
-                  {inspection.inspection_type === 'body' ? 'Body' : 'Mechanical'}
-                </span>
-              </div>
-              <div className="text-xs text-gray-500 mt-0.5">
-                {inspection.fleet_asset_name && <span className="text-gray-700">{inspection.fleet_asset_name} · </span>}
-                {new Date(inspection.inspection_date).toLocaleDateString()}
-              </div>
-            </div>
+      <FleetDetailHeader
+        onBack={() => nav('/fleet/inspections')}
+        title={<span className="text-sm font-semibold text-gray-900">Inspection</span>}
+        subtitle={null}
+        actions={isAdmin ? (
+          <button
+            type="button"
+            onClick={() => window.confirm('Delete this inspection permanently?') && deleteInspectionMutation.mutate()}
+            disabled={deleteInspectionMutation.isPending}
+            className="px-3 py-1.5 rounded-lg border border-red-200 bg-red-50 text-red-700 text-xs font-medium hover:bg-red-100 disabled:opacity-50"
+          >
+            {deleteInspectionMutation.isPending ? 'Deleting…' : 'Delete'}
+          </button>
+        ) : undefined}
+        right={
+          <div className="text-right">
+            <div className="text-[10px] font-medium text-gray-500 uppercase tracking-wide">Today</div>
+            <div className="text-xs font-semibold text-gray-700 mt-0.5">{todayLabel}</div>
           </div>
-          <div className="flex items-center gap-3">
-            {isAdmin && (
+        }
+      />
+
+      {/* Hero section - same layout as Work Order: asset photo + key info */}
+      <div className="rounded-xl border bg-white overflow-hidden p-4">
+        <div className="flex gap-4 items-start">
+          <div className="w-48 flex-shrink-0">
+            <div className="w-48 h-36 rounded-xl border border-gray-200 overflow-hidden bg-gray-100">
+              {assetPhotoUrl ? (
+                <img src={assetPhotoUrl} alt={fleetAsset?.name || 'Vehicle'} className="w-full h-full object-cover" />
+              ) : (
+                <div className="w-full h-full flex items-center justify-center text-gray-400">
+                  <svg className="w-12 h-12" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 17a2 2 0 11-4 0 2 2 0 014 0zM19 17a2 2 0 11-4 0 2 2 0 014 0z" />
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M13 16V6a1 1 0 00-1-1H4a1 1 0 00-1 1v10a1 1 0 001 1h1m8-1a1 1 0 01-1 1h-1M4 12a2 2 0 110 4m0-4a2 2 0 100 4m0-4v2m0-4V6m16 4a2 2 0 110 4m0-4a2 2 0 100 4m0-4v2m0-4V6" />
+                  </svg>
+                </div>
+              )}
+            </div>
+            {inspection.fleet_asset_id && (
               <button
                 type="button"
-                onClick={() => window.confirm('Delete this inspection permanently?') && deleteInspectionMutation.mutate()}
-                disabled={deleteInspectionMutation.isPending}
-                className="px-3 py-1.5 rounded-lg border border-red-200 bg-red-50 text-red-700 text-xs font-medium hover:bg-red-100 disabled:opacity-50"
+                onClick={() => nav(`/fleet/assets/${inspection.fleet_asset_id}`)}
+                className="mt-2 text-xs font-medium text-brand-red hover:underline"
               >
-                {deleteInspectionMutation.isPending ? 'Deleting…' : 'Delete'}
+                View asset
               </button>
             )}
-            <div className="text-right">
-              <div className="text-[10px] font-medium text-gray-500 uppercase tracking-wide">Today</div>
-              <div className="text-xs font-semibold text-gray-700 mt-0.5">{todayLabel}</div>
-            </div>
           </div>
-        </div>
-      </div>
-
-      <div className="rounded-xl border border-gray-200 bg-white p-4 space-y-6 min-w-0 overflow-hidden">
-        {!(isBody && bodyEditMode && bodyForm && canEditBody) && !(isMechanical && mechanicalEditMode && mechanicalForm && canEditMechanical) && (
-          <div className="grid grid-cols-2 gap-4">
+          <div className="flex-1 min-w-0 grid grid-cols-2 sm:grid-cols-3 gap-x-6 gap-y-4">
             <div>
-              <label className="text-sm text-gray-600">Result</label>
-              <div className="mt-1">
-                <span className={`px-2 py-1 rounded text-xs font-medium ${resultColors[inspection.result] || 'bg-gray-100 text-gray-800'}`}>
+              <span className="text-[10px] font-medium text-gray-500 uppercase tracking-wide">Type</span>
+              <div className="mt-0.5">
+                <span className={`inline-block px-2 py-0.5 rounded text-xs font-medium ${inspection.inspection_type === 'body' ? 'bg-blue-100 text-blue-800' : 'bg-gray-100 text-gray-800'}`}>
+                  {inspection.inspection_type === 'body' ? 'Body / Exterior' : inspection.inspection_type === 'mechanical' ? 'Mechanical' : inspection.inspection_type || '—'}
+                </span>
+              </div>
+            </div>
+            <div>
+              <span className="text-[10px] font-medium text-gray-500 uppercase tracking-wide">Result</span>
+              <div className="mt-0.5">
+                <span className={`inline-block px-2 py-0.5 rounded text-xs font-medium ${resultColors[inspection.result] || 'bg-gray-100 text-gray-800'}`}>
                   {resultLabels[inspection.result] ?? inspection.result}
                 </span>
               </div>
             </div>
             <div>
-              <label className="text-sm text-gray-600">Inspection Date</label>
-              <div className="font-medium mt-1">
-                {new Date(inspection.inspection_date).toLocaleDateString()}
+              <span className="text-[10px] font-medium text-gray-500 uppercase tracking-wide">Vehicle</span>
+              <div className="text-sm font-semibold text-gray-900 mt-0.5 truncate" title={inspection.fleet_asset_name || inspection.fleet_asset_id}>
+                {inspection.fleet_asset_name || fleetAsset?.unit_number || fleetAsset?.name || inspection.fleet_asset_id || '—'}
               </div>
             </div>
+            <div>
+              <span className="text-[10px] font-medium text-gray-500 uppercase tracking-wide">Date</span>
+              <div className="text-sm font-semibold text-gray-900 mt-0.5">{new Date(inspection.inspection_date).toLocaleDateString()}</div>
+            </div>
+            <div>
+              <span className="text-[10px] font-medium text-gray-500 uppercase tracking-wide">Created</span>
+              <div className="text-sm font-semibold text-gray-900 mt-0.5">{new Date(inspection.created_at).toLocaleDateString()}</div>
+            </div>
+            {inspection.inspection_schedule_id && (
+              <div className="col-span-2 sm:col-span-1">
+                <span className="text-[10px] font-medium text-gray-500 uppercase tracking-wide">Schedule</span>
+                <div className="mt-0.5">
+                  <button
+                    type="button"
+                    onClick={() => nav(`/fleet/inspection-schedules/${inspection.inspection_schedule_id}`)}
+                    className="text-xs font-medium text-brand-red hover:underline"
+                  >
+                    View schedule
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
-        )}
+        </div>
+      </div>
 
+      <div className="rounded-xl border border-gray-200 bg-white p-4 space-y-6 min-w-0 overflow-hidden">
         {/* Body inspection: editable form or read-only view */}
         {inspection.inspection_type === 'body' && (
           <>
@@ -620,7 +649,7 @@ export default function InspectionDetail() {
                     </button>
                     <button
                       type="button"
-                      onClick={() => nav('/fleet/calendar?view=list')}
+                      onClick={() => nav('/fleet/calendar')}
                       className="px-4 py-2 border border-gray-200 rounded-lg text-sm text-gray-700 hover:bg-gray-50"
                     >
                       Back to schedule
@@ -635,6 +664,8 @@ export default function InspectionDetail() {
                   {isBody && (
                     hasWorkOrder ? (
                       <span className="text-xs text-gray-500 bg-gray-100 px-2 py-1 rounded">View only (work order generated)</span>
+                    ) : isResultFinal ? (
+                      <span className="text-xs text-gray-500 bg-gray-100 px-2 py-1 rounded">View only (inspection completed)</span>
                     ) : (
                       <button
                         type="button"
@@ -671,10 +702,13 @@ export default function InspectionDetail() {
                             <div className="flex items-center gap-2">
                               <span className="font-medium text-sm text-gray-800">{area.label}</span>
                               {cond && (
-                                <span className={`px-2 py-0.5 rounded text-xs font-medium ${
-                                  cond === 'ok' ? 'bg-green-100 text-green-800' : cond === 'damage' ? 'bg-red-100 text-red-800' : cond === 'conditional' ? 'bg-amber-100 text-amber-800' : 'bg-gray-100 text-gray-700'
-                                }`}>
-                                  {BODY_CONDITION_OPTIONS.find((o) => o.value === cond)?.label ?? (cond === 'na' ? 'N/A' : cond)}
+                                <span
+                                  className={`shrink-0 w-9 h-9 flex items-center justify-center rounded-xl text-lg font-bold ${
+                                    cond === 'ok' ? 'bg-green-100 text-green-800' : cond === 'damage' ? 'bg-red-100 text-red-800' : cond === 'conditional' ? 'bg-amber-100 text-amber-800' : 'bg-gray-100 text-gray-700'
+                                  }`}
+                                  title={BODY_CONDITION_OPTIONS.find((o) => o.value === cond)?.label ?? (cond === 'na' ? 'N/A' : cond)}
+                                >
+                                  {BODY_CONDITION_OPTIONS.find((o) => o.value === cond)?.icon ?? (cond === 'na' ? '—' : cond)}
                                 </span>
                               )}
                             </div>
@@ -878,7 +912,7 @@ export default function InspectionDetail() {
                     </button>
                     <button
                       type="button"
-                      onClick={() => nav('/fleet/calendar?view=list')}
+                      onClick={() => nav('/fleet/calendar')}
                       className="px-4 py-2 border border-gray-200 rounded-lg text-sm text-gray-700 hover:bg-gray-50"
                     >
                       Back to schedule
@@ -893,6 +927,8 @@ export default function InspectionDetail() {
                   {isMechanical && (
                     hasWorkOrder ? (
                       <span className="text-xs text-gray-500 bg-gray-100 px-2 py-1 rounded">View only (work order generated)</span>
+                    ) : isResultFinal ? (
+                      <span className="text-xs text-gray-500 bg-gray-100 px-2 py-1 rounded">View only (inspection completed)</span>
                     ) : (
                       <button
                         type="button"
@@ -937,10 +973,13 @@ export default function InspectionDetail() {
                                   <div key={item.key} className="flex items-center gap-2 py-2 border-b border-gray-100 last:border-b-0">
                                     <div className="flex-1 text-sm text-gray-700">{item.key}. {item.label}</div>
                                     {cond && (
-                                      <span className={`px-2 py-0.5 rounded text-xs font-medium ${
-                                        cond === 'ok' ? 'bg-green-100 text-green-800' : cond === 'damage' ? 'bg-red-100 text-red-800' : cond === 'conditional' ? 'bg-amber-100 text-amber-800' : 'bg-gray-100 text-gray-700'
-                                      }`}>
-                                        {BODY_CONDITION_OPTIONS.find((o) => o.value === cond)?.label ?? cond}
+                                      <span
+                                        className={`shrink-0 w-9 h-9 flex items-center justify-center rounded-xl text-lg font-bold ${
+                                          cond === 'ok' ? 'bg-green-100 text-green-800' : cond === 'damage' ? 'bg-red-100 text-red-800' : cond === 'conditional' ? 'bg-amber-100 text-amber-800' : 'bg-gray-100 text-gray-700'
+                                        }`}
+                                        title={BODY_CONDITION_OPTIONS.find((o) => o.value === cond)?.label ?? cond}
+                                      >
+                                        {BODY_CONDITION_OPTIONS.find((o) => o.value === cond)?.icon ?? cond}
                                       </span>
                                     )}
                                   </div>

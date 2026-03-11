@@ -506,6 +506,40 @@ def create_app() -> FastAPI:
                         db.commit()
                         print("[startup] Created system_logs table")
 
+                    # Ensure work_order_files table exists (work order file attachments with categories)
+                    rows = db.execute(
+                        text(
+                            """
+                            SELECT 1
+                            FROM information_schema.tables
+                            WHERE table_name = 'work_order_files'
+                            LIMIT 1
+                            """
+                        )
+                    ).fetchall()
+                    if not rows:
+                        from .models.models import WorkOrderFile
+                        Base.metadata.create_all(bind=engine, tables=[WorkOrderFile.__table__])
+                        db.commit()
+                        print("[startup] Created work_order_files table")
+
+                    # Ensure work_order_activity_logs table exists
+                    rows = db.execute(
+                        text(
+                            """
+                            SELECT 1
+                            FROM information_schema.tables
+                            WHERE table_name = 'work_order_activity_logs'
+                            LIMIT 1
+                            """
+                        )
+                    ).fetchall()
+                    if not rows:
+                        from .models.models import WorkOrderActivityLog
+                        Base.metadata.create_all(bind=engine, tables=[WorkOrderActivityLog.__table__])
+                        db.commit()
+                        print("[startup] Created work_order_activity_logs table")
+
                     # Soft delete columns (if missing)
                     for table_name, fk_col in [("projects", "deleted_by_id"), ("clients", "deleted_by_id"), ("proposals", "deleted_by_id"), ("quotes", "deleted_by_id")]:
                         try:

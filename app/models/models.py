@@ -2153,12 +2153,51 @@ class WorkOrder(Base):
 
     # Relationships - Note: entity relationships are handled via queries, not direct relationships
 
+    # Relationships
+    work_order_files = relationship("WorkOrderFile", back_populates="work_order", cascade="all, delete-orphan", order_by="WorkOrderFile.created_at.desc()")
+    activity_logs = relationship("WorkOrderActivityLog", back_populates="work_order", cascade="all, delete-orphan", order_by="WorkOrderActivityLog.created_at.desc()")
+
     # Indexes
     __table_args__ = (
         Index('idx_work_order_entity', 'entity_type', 'entity_id'),
         Index('idx_work_order_status', 'status'),
         Index('idx_work_order_assigned', 'assigned_to_user_id'),
     )
+
+
+class WorkOrderFile(Base):
+    """Files attached to a work order with category (orcamentos, photos, invoices, outros). Same pattern as project files."""
+    __tablename__ = "work_order_files"
+
+    id: Mapped[uuid.UUID] = uuid_pk()
+    work_order_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("work_orders.id", ondelete="CASCADE"), nullable=False, index=True)
+    file_object_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("file_objects.id", ondelete="CASCADE"), nullable=False, index=True)
+    category: Mapped[str] = mapped_column(String(50), nullable=False, index=True)  # orcamentos | photos | invoices | outros
+    original_name: Mapped[Optional[str]] = mapped_column(String(255))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
+    created_by: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"))
+
+    work_order = relationship("WorkOrder", back_populates="work_order_files")
+    file_object = relationship("FileObject", foreign_keys=[file_object_id])
+
+    __table_args__ = (Index("idx_work_order_file_wo_category", "work_order_id", "category"),)
+
+
+class WorkOrderActivityLog(Base):
+    """Log of actions on a work order: file attach/remove, status change, cost add/remove."""
+    __tablename__ = "work_order_activity_logs"
+
+    id: Mapped[uuid.UUID] = uuid_pk()
+    work_order_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("work_orders.id", ondelete="CASCADE"), nullable=False, index=True)
+    action: Mapped[str] = mapped_column(String(50), nullable=False, index=True)  # file_attached | file_removed | status_changed | cost_added | cost_removed
+    details: Mapped[Optional[dict]] = mapped_column(JSON)  # e.g. {"category": "labor", "description": "...", "amount": 100} or {"old_status": "open", "new_status": "in_progress"}
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
+    created_by: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"))
+
+    work_order = relationship("WorkOrder", back_populates="activity_logs")
+    created_by_user = relationship("User", foreign_keys=[created_by])
+
+    __table_args__ = (Index("idx_work_order_activity_wo_created", "work_order_id", "created_at"),)
 
 
 class EquipmentCheckout(Base):

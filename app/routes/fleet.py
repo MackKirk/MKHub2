@@ -21,6 +21,9 @@ from ..models.models import (
     FleetInspection,
     InspectionSchedule,
     WorkOrder,
+    WorkOrderFile,
+    WorkOrderActivityLog,
+    FileObject,
     EquipmentCheckout,
     FleetLog,
     EquipmentLog,
@@ -123,6 +126,21 @@ def create_work_order_from_inspection(
     return wo
 
 
+def _maybe_complete_inspection_schedule(db: Session, schedule_id: uuid.UUID) -> None:
+    """If both body and mechanical inspections for this schedule have a final result (pass/fail/conditional), set schedule status to completed."""
+    schedule = db.query(InspectionSchedule).filter(InspectionSchedule.id == schedule_id).first()
+    if not schedule or schedule.status == "completed":
+        return
+    inspections = db.query(FleetInspection).filter(FleetInspection.inspection_schedule_id == schedule_id).all()
+    if len(inspections) < 2:
+        return
+    final_results = ("pass", "fail", "conditional")
+    body_done = any(i.inspection_type == "body" and (i.result or "").lower() in final_results for i in inspections)
+    mechanical_done = any(i.inspection_type == "mechanical" and (i.result or "").lower() in final_results for i in inspections)
+    if body_done and mechanical_done:
+        schedule.status = "completed"
+
+
 # Helper function to update fleet asset's last service odometer/hours
 def update_fleet_asset_last_service(
     fleet_asset_id: uuid.UUID,
@@ -168,14 +186,12 @@ def get_dashboard(
     total_heavy_machinery = db.query(FleetAsset).filter(FleetAsset.asset_type == "heavy_machinery").count()
     total_other = db.query(FleetAsset).filter(FleetAsset.asset_type == "other").count()
     
-    # Inspections due (within next 30 days or overdue)
+    # Inspections due (no inspection in last 30 days)
     today = datetime.now(timezone.utc)
     thirty_days_ago = today - timedelta(days=30)
-    # Get assets that haven't been inspected in the last 30 days
-    # Get all assets and check which ones need inspection
     all_assets = db.query(FleetAsset).filter(FleetAsset.status != "retired").all()
     assets_needing_inspection = []
-    for asset in all_assets[:20]:  # Limit to first 20 for performance
+    for asset in all_assets[:20]:  # Limit to first 20 for sample list
         last_inspection = db.query(FleetInspection).filter(
             FleetInspection.fleet_asset_id == asset.id
         ).order_by(FleetInspection.inspection_date.desc()).first()
@@ -183,6 +199,16 @@ def get_dashboard(
             assets_needing_inspection.append(asset)
         if len(assets_needing_inspection) >= 10:
             break
+    # Full count: assets with no inspection or last inspection older than 30 days
+    last_dates = db.query(
+        FleetInspection.fleet_asset_id,
+        func.max(FleetInspection.inspection_date).label("last_date"),
+    ).group_by(FleetInspection.fleet_asset_id).all()
+    last_by_asset = {str(row.fleet_asset_id): row.last_date for row in last_dates}
+    inspections_due_total = sum(
+        1 for a in all_assets
+        if last_by_asset.get(str(a.id)) is None or last_by_asset[str(a.id)] < thirty_days_ago
+    )
     inspections_due = [
         {
             "id": str(asset.id),
@@ -218,6 +244,28 @@ def get_dashboard(
         }
         for co in overdue_checkouts
     ]
+
+    # Compliance expiring in next 30 days
+    thirty_days_later = today + timedelta(days=30)
+    compliance_expiring_q = db.query(FleetComplianceRecord).options(
+        joinedload(FleetComplianceRecord.fleet_asset)
+    ).filter(
+        FleetComplianceRecord.expiry_date.isnot(None),
+        FleetComplianceRecord.expiry_date >= today,
+        FleetComplianceRecord.expiry_date <= thirty_days_later,
+    ).order_by(FleetComplianceRecord.expiry_date.asc())
+    compliance_expiring_total = compliance_expiring_q.count()
+    compliance_expiring_records = compliance_expiring_q.limit(10).all()
+    compliance_expiring = [
+        {
+            "id": str(rec.id),
+            "fleet_asset_id": str(rec.fleet_asset_id),
+            "fleet_asset_name": rec.fleet_asset.name if rec.fleet_asset else None,
+            "record_type": rec.record_type,
+            "expiry_date": rec.expiry_date.isoformat() if rec.expiry_date else None,
+        }
+        for rec in compliance_expiring_records
+    ]
     
     return FleetDashboardResponse(
         total_fleet_assets=total_fleet,
@@ -226,12 +274,15 @@ def get_dashboard(
         total_other_assets=total_other,
         assigned_now_count=assigned_now_count,
         inspections_due_count=len(inspections_due),
+        inspections_due_total=inspections_due_total,
         inspections_due=inspections_due,
         open_work_orders_count=open_wos,
         in_progress_work_orders_count=in_progress_wos,
         pending_parts_work_orders_count=pending_parts_wos,
         overdue_equipment_count=len(overdue_equipment),
         overdue_equipment=overdue_equipment,
+        compliance_expiring_count=compliance_expiring_total,
+        compliance_expiring=compliance_expiring,
     )
 
 
@@ -1122,7 +1173,7 @@ def create_inspection_schedule(
     user=Depends(get_current_user),
     _=Depends(require_permissions("inspections:write")),
 ):
-    """Create an inspection appointment (agendamento). Use start to create the two inspections (body + mechanical)."""
+    """Create an inspection appointment (agendamento). Creates body and mechanical inspections as pending automatically."""
     schedule = InspectionSchedule(
         fleet_asset_id=payload.fleet_asset_id,
         scheduled_at=payload.scheduled_at,
@@ -1135,9 +1186,45 @@ def create_inspection_schedule(
     db.add(schedule)
     db.commit()
     db.refresh(schedule)
-    out = InspectionScheduleResponse.model_validate(schedule)
-    asset = db.query(FleetAsset).filter(FleetAsset.id == schedule.fleet_asset_id).first()
-    return out.model_copy(update={"fleet_asset_name": asset.name if asset else None})
+
+    scheduled_dt = schedule.scheduled_at
+    if scheduled_dt.tzinfo is None:
+        scheduled_dt = scheduled_dt.replace(tzinfo=timezone.utc)
+
+    body_inspection = FleetInspection(
+        fleet_asset_id=schedule.fleet_asset_id,
+        inspection_date=scheduled_dt,
+        inspection_type="body",
+        inspection_schedule_id=schedule.id,
+        result="pending",
+        created_by=user.id,
+    )
+    mechanical_inspection = FleetInspection(
+        fleet_asset_id=schedule.fleet_asset_id,
+        inspection_date=scheduled_dt,
+        inspection_type="mechanical",
+        inspection_schedule_id=schedule.id,
+        result="pending",
+        created_by=user.id,
+    )
+    db.add(body_inspection)
+    db.add(mechanical_inspection)
+    db.commit()
+
+    schedule = db.query(InspectionSchedule).options(
+        joinedload(InspectionSchedule.fleet_asset),
+        joinedload(InspectionSchedule.inspections),
+    ).filter(InspectionSchedule.id == schedule.id).first()
+    body_insp = next((i for i in (schedule.inspections or []) if i.inspection_type == "body"), None)
+    mech_insp = next((i for i in (schedule.inspections or []) if i.inspection_type == "mechanical"), None)
+    out = InspectionScheduleResponse.model_validate(schedule).model_copy(update={
+        "fleet_asset_name": schedule.fleet_asset.name if schedule.fleet_asset else None,
+        "body_inspection_id": body_insp.id if body_insp else None,
+        "mechanical_inspection_id": mech_insp.id if mech_insp else None,
+        "body_result": body_insp.result if body_insp else None,
+        "mechanical_result": mech_insp.result if mech_insp else None,
+    })
+    return out
 
 
 @router.get("/inspection-schedules", response_model=List[InspectionScheduleResponse])
@@ -1152,7 +1239,10 @@ def list_inspection_schedules(
     _=Depends(require_permissions("inspections:read")),
 ):
     """List inspection schedules with filters."""
-    query = db.query(InspectionSchedule).options(joinedload(InspectionSchedule.fleet_asset))
+    query = db.query(InspectionSchedule).options(
+        joinedload(InspectionSchedule.fleet_asset),
+        joinedload(InspectionSchedule.inspections),
+    )
     if fleet_asset_id:
         query = query.filter(InspectionSchedule.fleet_asset_id == fleet_asset_id)
     if status:
@@ -1169,12 +1259,20 @@ def list_inspection_schedules(
     else:
         query = query.order_by(InspectionSchedule.scheduled_at.desc() if is_desc else InspectionSchedule.scheduled_at.asc())
     rows = query.limit(500).all()
-    return [
-        InspectionScheduleResponse.model_validate(r).model_copy(update={
-            "fleet_asset_name": r.fleet_asset.name if r.fleet_asset else None,
-        })
-        for r in rows
-    ]
+    out_list = []
+    for r in rows:
+        body_insp = next((i for i in (r.inspections or []) if i.inspection_type == "body"), None)
+        mech_insp = next((i for i in (r.inspections or []) if i.inspection_type == "mechanical"), None)
+        out_list.append(
+            InspectionScheduleResponse.model_validate(r).model_copy(update={
+                "fleet_asset_name": r.fleet_asset.name if r.fleet_asset else None,
+                "body_inspection_id": body_insp.id if body_insp else None,
+                "mechanical_inspection_id": mech_insp.id if mech_insp else None,
+                "body_result": body_insp.result if body_insp else None,
+                "mechanical_result": mech_insp.result if mech_insp else None,
+            })
+        )
+    return out_list
 
 
 @router.get("/inspection-schedules/calendar", response_model=List[InspectionScheduleCalendarItem])
@@ -1246,11 +1344,22 @@ def get_inspection_schedule(
     _=Depends(require_permissions("inspections:read")),
 ):
     """Get inspection schedule by id."""
-    schedule = db.query(InspectionSchedule).options(joinedload(InspectionSchedule.fleet_asset)).filter(InspectionSchedule.id == schedule_id).first()
+    schedule = db.query(InspectionSchedule).options(
+        joinedload(InspectionSchedule.fleet_asset),
+        joinedload(InspectionSchedule.inspections),
+    ).filter(InspectionSchedule.id == schedule_id).first()
     if not schedule:
         raise HTTPException(status_code=404, detail="Inspection schedule not found")
-    out = InspectionScheduleResponse.model_validate(schedule)
-    return out.model_copy(update={"fleet_asset_name": schedule.fleet_asset.name if schedule.fleet_asset else None})
+    body_insp = next((i for i in (schedule.inspections or []) if i.inspection_type == "body"), None)
+    mech_insp = next((i for i in (schedule.inspections or []) if i.inspection_type == "mechanical"), None)
+    out = InspectionScheduleResponse.model_validate(schedule).model_copy(update={
+        "fleet_asset_name": schedule.fleet_asset.name if schedule.fleet_asset else None,
+        "body_inspection_id": body_insp.id if body_insp else None,
+        "mechanical_inspection_id": mech_insp.id if mech_insp else None,
+        "body_result": body_insp.result if body_insp else None,
+        "mechanical_result": mech_insp.result if mech_insp else None,
+    })
+    return out
 
 
 @router.put("/inspection-schedules/{schedule_id}", response_model=InspectionScheduleResponse)
@@ -1602,6 +1711,10 @@ def update_inspection(
         wo = create_work_order_from_inspection(inspection, db, user.id)
         inspection.auto_generated_work_order_id = wo.id
     
+    # If this inspection is part of a schedule and now has a final result, check if schedule can be marked completed
+    if inspection.inspection_schedule_id and inspection.result and inspection.result.lower() in ("pass", "fail", "conditional"):
+        _maybe_complete_inspection_schedule(db, inspection.inspection_schedule_id)
+    
     db.commit()
     db.refresh(inspection)
     return inspection
@@ -1828,6 +1941,39 @@ def get_work_order(
     return wo
 
 
+@router.get("/work-orders/{work_order_id}/activity")
+def get_work_order_activity(
+    work_order_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    _=Depends(require_permissions("work_orders:read"))
+):
+    """Get activity log for a work order (file attach/remove, status changes, cost add/remove)."""
+    wo = db.query(WorkOrder).filter(WorkOrder.id == work_order_id).first()
+    if not wo:
+        raise HTTPException(status_code=404, detail="Work order not found")
+    logs = (
+        db.query(WorkOrderActivityLog)
+        .filter(WorkOrderActivityLog.work_order_id == work_order_id)
+        .order_by(WorkOrderActivityLog.created_at.desc())
+        .all()
+    )
+    out = []
+    for log in logs:
+        entry = {
+            "id": str(log.id),
+            "action": log.action,
+            "details": log.details or {},
+            "created_at": log.created_at.isoformat() if log.created_at else None,
+            "created_by": str(log.created_by) if log.created_by else None,
+        }
+        if log.created_by:
+            entry["created_by_display"] = get_user_display(db, log.created_by)
+        else:
+            entry["created_by_display"] = None
+        out.append(entry)
+    return out
+
+
 @router.post("/work-orders", response_model=WorkOrderResponse)
 def create_work_order(
     work_order: WorkOrderCreate,
@@ -1864,17 +2010,27 @@ def update_work_order(
     work_order_id: uuid.UUID,
     work_order_update: WorkOrderUpdate,
     db: Session = Depends(get_db),
+    user=Depends(get_current_user),
     _=Depends(require_permissions("work_orders:write"))
 ):
     """Update a work order"""
     wo = db.query(WorkOrder).filter(WorkOrder.id == work_order_id).first()
     if not wo:
         raise HTTPException(status_code=404, detail="Work order not found")
-    
+
+    old_status = wo.status
+    old_costs = (wo.costs or {}).copy()
+    if isinstance(old_costs.get("labor"), list):
+        old_costs["labor"] = list(wo.costs.get("labor") or [])
+    if isinstance(old_costs.get("parts"), list):
+        old_costs["parts"] = list(wo.costs.get("parts") or [])
+    if isinstance(old_costs.get("other"), list):
+        old_costs["other"] = list(wo.costs.get("other") or [])
+
     update_data = work_order_update.dict(exclude_unset=True)
     for key, value in update_data.items():
         setattr(wo, key, value)
-    
+
     # Update fleet asset's last service odometer/hours if readings are provided and entity is fleet
     if wo.entity_type == "fleet" and (work_order_update.odometer_reading is not None or work_order_update.hours_reading is not None):
         update_fleet_asset_last_service(
@@ -1883,12 +2039,46 @@ def update_work_order(
             work_order_update.hours_reading,
             db
         )
-    
+
     # If status changed to closed, set closed_at
     if work_order_update.status == WorkOrderStatus.closed and not wo.closed_at:
         wo.closed_at = datetime.now(timezone.utc)
-    
+
     wo.updated_at = datetime.now(timezone.utc)
+
+    # Activity log: status change
+    if "status" in update_data and wo.status != old_status:
+        _log_work_order_activity(
+            db, work_order_id, "status_changed",
+            details={"old_status": old_status, "new_status": wo.status},
+            created_by=user.id,
+        )
+
+    # Activity log: cost add/remove (diff old_costs vs wo.costs)
+    if "costs" in update_data and wo.costs:
+        new_costs = wo.costs
+        for category in ("labor", "parts", "other"):
+            old_list = old_costs.get(category)
+            new_list = new_costs.get(category) if isinstance(new_costs.get(category), list) else []
+            if not isinstance(old_list, list):
+                old_list = []
+            old_by_desc = {(item.get("description"), item.get("amount")): item for item in old_list}
+            new_by_desc = {(item.get("description"), item.get("amount")): item for item in new_list}
+            for k, item in new_by_desc.items():
+                if k not in old_by_desc:
+                    _log_work_order_activity(
+                        db, work_order_id, "cost_added",
+                        details={"category": category, "description": item.get("description"), "amount": item.get("amount")},
+                        created_by=user.id,
+                    )
+            for k, item in old_by_desc.items():
+                if k not in new_by_desc:
+                    _log_work_order_activity(
+                        db, work_order_id, "cost_removed",
+                        details={"category": category, "description": item.get("description"), "amount": item.get("amount")},
+                        created_by=user.id,
+                    )
+
     db.commit()
     db.refresh(wo)
     return wo
@@ -1899,18 +2089,26 @@ def update_work_order_status(
     work_order_id: uuid.UUID,
     status: WorkOrderStatus = Body(...),
     db: Session = Depends(get_db),
+    user=Depends(get_current_user),
     _=Depends(require_permissions("work_orders:write"))
 ):
     """Update work order status"""
     wo = db.query(WorkOrder).filter(WorkOrder.id == work_order_id).first()
     if not wo:
         raise HTTPException(status_code=404, detail="Work order not found")
-    
+
+    old_status = wo.status
     wo.status = status.value
     if status == WorkOrderStatus.closed and not wo.closed_at:
         wo.closed_at = datetime.now(timezone.utc)
     wo.updated_at = datetime.now(timezone.utc)
-    
+
+    _log_work_order_activity(
+        db, work_order_id, "status_changed",
+        details={"old_status": old_status, "new_status": wo.status},
+        created_by=user.id,
+    )
+
     db.commit()
     db.refresh(wo)
     return wo
@@ -1921,6 +2119,7 @@ def work_order_check_in(
     work_order_id: uuid.UUID,
     body: dict = Body(default_factory=dict),
     db: Session = Depends(get_db),
+    user=Depends(get_current_user),
     _=Depends(require_permissions("work_orders:write"))
 ):
     """Register vehicle check-in (entrada). Sets check_in_at, optional scheduled_end_at (expected completion date)/odometer/hours, and status to in_progress."""
@@ -1951,6 +2150,7 @@ def work_order_check_in(
             wo.check_in_at = wo.check_in_at.replace(tzinfo=timezone.utc)
     else:
         wo.check_in_at = datetime.now(timezone.utc)
+    old_status = wo.status
     if wo.status == "open":
         wo.status = "in_progress"
     if body.get("odometer_reading") is not None:
@@ -1965,6 +2165,14 @@ def work_order_check_in(
             db,
         )
     wo.updated_at = datetime.now(timezone.utc)
+
+    if old_status != wo.status:
+        _log_work_order_activity(
+            db, work_order_id, "status_changed",
+            details={"old_status": old_status, "new_status": wo.status},
+            created_by=user.id,
+        )
+
     db.commit()
     db.refresh(wo)
     return wo
@@ -1975,12 +2183,14 @@ def work_order_check_out(
     work_order_id: uuid.UUID,
     body: dict = Body(default_factory=dict),
     db: Session = Depends(get_db),
+    user=Depends(get_current_user),
     _=Depends(require_permissions("work_orders:write"))
 ):
     """Register vehicle check-out (saída). Sets check_out_at, status to closed, and optional odometer/hours."""
     wo = db.query(WorkOrder).filter(WorkOrder.id == work_order_id).first()
     if not wo:
         raise HTTPException(status_code=404, detail="Work order not found")
+    old_status = wo.status
     wo.status = "closed"
     if not wo.closed_at:
         wo.closed_at = datetime.now(timezone.utc)
@@ -2006,6 +2216,14 @@ def work_order_check_out(
             db,
         )
     wo.updated_at = datetime.now(timezone.utc)
+
+    if old_status != wo.status:
+        _log_work_order_activity(
+            db, work_order_id, "status_changed",
+            details={"old_status": old_status, "new_status": wo.status},
+            created_by=user.id,
+        )
+
     db.commit()
     db.refresh(wo)
     return wo
@@ -2046,4 +2264,230 @@ def delete_work_order(
     db.delete(wo)
     db.commit()
     return {"message": "Work order deleted"}
+
+
+# Work order file categories (same idea as project files)
+WORK_ORDER_FILE_CATEGORIES = ("orcamentos", "photos", "invoices", "outros")
+
+
+def _log_work_order_activity(
+    db: Session,
+    work_order_id: uuid.UUID,
+    action: str,
+    details: Optional[dict] = None,
+    created_by: Optional[uuid.UUID] = None,
+) -> None:
+    """Append an activity log entry for a work order."""
+    entry = WorkOrderActivityLog(
+        work_order_id=work_order_id,
+        action=action,
+        details=details,
+        created_by=created_by,
+    )
+    db.add(entry)
+
+
+def _work_order_file_item(worf: WorkOrderFile, fo: FileObject) -> dict:
+    ct = getattr(fo, "content_type", None) or ""
+    name = worf.original_name or fo.key or ""
+    ext = (name.rsplit(".", 1)[-1] if "." in name else "").lower()
+    is_img_ext = ext in {"png", "jpg", "jpeg", "webp", "gif", "bmp", "heic", "heif"}
+    is_image = ct.startswith("image/") or is_img_ext
+    return {
+        "id": str(worf.id),
+        "file_object_id": str(worf.file_object_id),
+        "category": worf.category,
+        "original_name": worf.original_name,
+        "uploaded_at": fo.created_at.isoformat() if fo.created_at else None,
+        "content_type": ct or None,
+        "is_image": is_image,
+        "is_legacy": False,
+    }
+
+
+@router.get("/work-orders/{work_order_id}/files")
+def list_work_order_files(
+    work_order_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    user=Depends(get_current_user),
+    _=Depends(require_permissions("fleet:access")),
+):
+    """List files attached to the work order. Includes WorkOrderFile rows plus legacy documents/photos from the work order."""
+    wo = db.query(WorkOrder).filter(WorkOrder.id == work_order_id).first()
+    if not wo:
+        raise HTTPException(status_code=404, detail="Work order not found")
+    out = []
+    # New table
+    worfs = db.query(WorkOrderFile).filter(WorkOrderFile.work_order_id == work_order_id).order_by(WorkOrderFile.created_at.desc()).all()
+    for worf in worfs:
+        fo = db.query(FileObject).filter(FileObject.id == worf.file_object_id).first()
+        if fo:
+            out.append(_work_order_file_item(worf, fo))
+    # Legacy: work_order.documents (flat list of file_object_ids) and work_order.photos (list or { before, after })
+    legacy_doc_ids = list(wo.documents or [])
+    legacy_photo_ids = []
+    if wo.photos:
+        if isinstance(wo.photos, list):
+            legacy_photo_ids = [str(x) for x in wo.photos]
+        elif isinstance(wo.photos, dict):
+            for v in (wo.photos.get("before") or [], wo.photos.get("after") or []):
+                legacy_photo_ids.extend([str(x) for x in (v if isinstance(v, list) else [])])
+    seen_fids = {item["file_object_id"] for item in out}
+    for fid in legacy_doc_ids:
+        fid_str = str(fid)
+        if fid_str in seen_fids:
+            continue
+        fo = db.query(FileObject).filter(FileObject.id == fid).first()
+        if not fo:
+            continue
+        seen_fids.add(fid_str)
+        ct = getattr(fo, "content_type", None) or ""
+        name = getattr(fo, "key", "") or ""
+        ext = (name.rsplit(".", 1)[-1] if "." in name else "").lower()
+        is_image = (ct or "").startswith("image/") or ext in {"png", "jpg", "jpeg", "webp", "gif", "bmp", "heic", "heif"}
+        out.append({
+            "id": f"legacy-{fid_str}",
+            "file_object_id": fid_str,
+            "category": "outros",
+            "original_name": None,
+            "uploaded_at": fo.created_at.isoformat() if fo.created_at else None,
+            "content_type": ct or None,
+            "is_image": is_image,
+            "is_legacy": True,
+        })
+    for fid in legacy_photo_ids:
+        try:
+            fid_uuid = uuid.UUID(fid)
+        except ValueError:
+            continue
+        if fid in seen_fids:
+            continue
+        fo = db.query(FileObject).filter(FileObject.id == fid_uuid).first()
+        if not fo:
+            continue
+        seen_fids.add(fid)
+        ct = getattr(fo, "content_type", None) or ""
+        out.append({
+            "id": f"legacy-{fid}",
+            "file_object_id": fid,
+            "category": "photos",
+            "original_name": None,
+            "uploaded_at": fo.created_at.isoformat() if fo.created_at else None,
+            "content_type": ct or None,
+            "is_image": True,
+            "is_legacy": True,
+        })
+    return out
+
+
+@router.post("/work-orders/{work_order_id}/files")
+def attach_work_order_file(
+    work_order_id: uuid.UUID,
+    file_object_id: str = Query(..., description="File object ID from upload+confirm"),
+    category: str = Query(..., description="orcamentos | photos | invoices | outros"),
+    original_name: Optional[str] = Query(None),
+    db: Session = Depends(get_db),
+    user=Depends(get_current_user),
+    _=Depends(require_permissions("fleet:access")),
+):
+    if category not in WORK_ORDER_FILE_CATEGORIES:
+        raise HTTPException(status_code=400, detail=f"category must be one of: {WORK_ORDER_FILE_CATEGORIES}")
+    wo = db.query(WorkOrder).filter(WorkOrder.id == work_order_id).first()
+    if not wo:
+        raise HTTPException(status_code=404, detail="Work order not found")
+    try:
+        fo_id = uuid.UUID(file_object_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid file_object_id")
+    fo = db.query(FileObject).filter(FileObject.id == fo_id).first()
+    if not fo:
+        raise HTTPException(status_code=404, detail="File not found")
+    row = WorkOrderFile(work_order_id=work_order_id, file_object_id=fo_id, category=category, original_name=original_name, created_by=user.id)
+    db.add(row)
+    _log_work_order_activity(
+        db, work_order_id, "file_attached",
+        details={"category": category, "original_name": original_name or fo.original_name},
+        created_by=user.id,
+    )
+    db.commit()
+    db.refresh(row)
+    fo = db.query(FileObject).filter(FileObject.id == fo_id).first()
+    return _work_order_file_item(row, fo) if fo else {"id": str(row.id), "file_object_id": file_object_id, "category": category, "original_name": original_name, "is_legacy": False}
+
+
+@router.put("/work-orders/{work_order_id}/files/{file_id}")
+def update_work_order_file(
+    work_order_id: uuid.UUID,
+    file_id: uuid.UUID,
+    category: Optional[str] = Query(None),
+    original_name: Optional[str] = Query(None),
+    db: Session = Depends(get_db),
+    user=Depends(get_current_user),
+    _=Depends(require_permissions("fleet:access")),
+):
+    worf = db.query(WorkOrderFile).filter(WorkOrderFile.id == file_id, WorkOrderFile.work_order_id == work_order_id).first()
+    if not worf:
+        raise HTTPException(status_code=404, detail="File not found")
+    if category is not None and category not in WORK_ORDER_FILE_CATEGORIES:
+        raise HTTPException(status_code=400, detail=f"category must be one of: {WORK_ORDER_FILE_CATEGORIES}")
+    if category is not None:
+        worf.category = category
+    if original_name is not None:
+        worf.original_name = original_name
+    db.commit()
+    db.refresh(worf)
+    fo = db.query(FileObject).filter(FileObject.id == worf.file_object_id).first()
+    return _work_order_file_item(worf, fo) if fo else {"id": str(worf.id), "file_object_id": str(worf.file_object_id), "category": worf.category, "original_name": worf.original_name, "is_legacy": False}
+
+
+@router.delete("/work-orders/{work_order_id}/files/legacy/{file_object_id}")
+def delete_work_order_legacy_file(
+    work_order_id: uuid.UUID,
+    file_object_id: uuid.UUID,
+    category: str = Query(..., description="outros | photos"),
+    db: Session = Depends(get_db),
+    user=Depends(get_current_user),
+    _=Depends(require_permissions("fleet:access")),
+):
+    """Remove a file from legacy work_order.documents or work_order.photos."""
+    wo = db.query(WorkOrder).filter(WorkOrder.id == work_order_id).first()
+    if not wo:
+        raise HTTPException(status_code=404, detail="Work order not found")
+    fid_str = str(file_object_id)
+    if category == "outros" and wo.documents:
+        docs = [str(x) for x in wo.documents]
+        if fid_str in docs:
+            wo.documents = [x for x in wo.documents if str(x) != fid_str]
+            _log_work_order_activity(db, work_order_id, "file_removed", details={"category": "outros", "file_object_id": fid_str}, created_by=user.id)
+            db.commit()
+            return {"message": "File removed"}
+    if category == "photos" and wo.photos:
+        if isinstance(wo.photos, list):
+            wo.photos = [x for x in wo.photos if str(x) != fid_str]
+        else:
+            before = [x for x in (wo.photos.get("before") or []) if str(x) != fid_str]
+            after = [x for x in (wo.photos.get("after") or []) if str(x) != fid_str]
+            wo.photos = {"before": before, "after": after}
+        _log_work_order_activity(db, work_order_id, "file_removed", details={"category": "photos", "file_object_id": fid_str}, created_by=user.id)
+        db.commit()
+        return {"message": "File removed"}
+    raise HTTPException(status_code=404, detail="File not found")
+
+
+@router.delete("/work-orders/{work_order_id}/files/{file_id}")
+def delete_work_order_file(
+    work_order_id: uuid.UUID,
+    file_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    user=Depends(get_current_user),
+    _=Depends(require_permissions("fleet:access")),
+):
+    worf = db.query(WorkOrderFile).filter(WorkOrderFile.id == file_id, WorkOrderFile.work_order_id == work_order_id).first()
+    if worf:
+        details = {"category": worf.category, "original_name": worf.original_name}
+        _log_work_order_activity(db, work_order_id, "file_removed", details=details, created_by=user.id)
+        db.delete(worf)
+        db.commit()
+        return {"message": "File removed"}
+    raise HTTPException(status_code=404, detail="File not found")
 

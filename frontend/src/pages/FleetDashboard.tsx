@@ -12,12 +12,15 @@ type DashboardData = {
   total_other_assets: number;
   assigned_now_count: number;
   inspections_due_count: number;
+  inspections_due_total: number;
   inspections_due: Array<{ id: string; name: string; asset_type: string; last_inspection: string | null }>;
   open_work_orders_count: number;
   in_progress_work_orders_count: number;
   pending_parts_work_orders_count: number;
   overdue_equipment_count: number;
   overdue_equipment: Array<{ id: string; equipment_id: string; equipment_name: string; checked_out_by: string; expected_return_date: string | null }>;
+  compliance_expiring_count: number;
+  compliance_expiring: Array<{ id: string; fleet_asset_id: string; fleet_asset_name: string | null; record_type: string; expiry_date: string | null }>;
 };
 
 type KpiStatus = 'ok' | 'attention' | 'critical' | 'info' | 'coming_soon';
@@ -292,10 +295,12 @@ function FleetMixPanel({
 // --- DueInspectionsPanel ---
 function DueInspectionsPanel({
   items,
+  total,
   onViewAll,
   onOpen,
 }: {
   items: DashboardData['inspections_due'];
+  total?: number;
   onViewAll: () => void;
   onOpen: (id: string) => void;
 }) {
@@ -303,7 +308,9 @@ function DueInspectionsPanel({
   return (
     <div className="rounded-xl border border-gray-200 bg-white p-5 min-w-0">
       <div className="flex items-center justify-between mb-4">
-        <h2 className="text-sm font-semibold text-gray-900">Inspections Due</h2>
+        <h2 className="text-sm font-semibold text-gray-900">
+          Inspections Due{total !== undefined && total > 0 ? ` (${total})` : ''}
+        </h2>
         <button
           type="button"
           onClick={onViewAll}
@@ -337,6 +344,63 @@ function DueInspectionsPanel({
                   e.stopPropagation();
                   onOpen(item.id);
                 }}
+                className="flex-shrink-0 text-xs font-medium text-brand-red hover:underline"
+              >
+                Open
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
+// --- ComplianceExpiringPanel ---
+function ComplianceExpiringPanel({
+  items,
+  total,
+  onViewAll,
+  onOpenAsset,
+}: {
+  items: DashboardData['compliance_expiring'];
+  total: number;
+  onViewAll: () => void;
+  onOpenAsset: (assetId: string) => void;
+}) {
+  const list = items.slice(0, 5);
+  return (
+    <div className="rounded-xl border border-gray-200 bg-white p-5 min-w-0">
+      <div className="flex items-center justify-between mb-4">
+        <h2 className="text-sm font-semibold text-gray-900">
+          Compliance expiring{total > 0 ? ` (${total})` : ''}
+        </h2>
+        <button
+          type="button"
+          onClick={onViewAll}
+          className="text-xs font-medium text-brand-red hover:underline"
+        >
+          View all
+        </button>
+      </div>
+      {list.length === 0 ? (
+        <div className="py-6 flex flex-col items-center justify-center text-center">
+          <p className="text-xs text-gray-500">No compliance expiring in the next 30 days</p>
+        </div>
+      ) : (
+        <ul className="space-y-0">
+          {list.map((item, i) => (
+            <li
+              key={item.id}
+              className={`flex items-center justify-between gap-3 py-3 px-3 rounded-lg hover:bg-gray-50 transition-colors ${i % 2 === 1 ? 'bg-gray-50/50' : ''}`}
+            >
+              <div className="min-w-0 flex-1">
+                <div className="text-xs font-semibold text-gray-900 truncate">{item.fleet_asset_name || 'Asset'}</div>
+                <div className="text-[10px] text-gray-500">{item.record_type} · {item.expiry_date ? new Date(item.expiry_date).toLocaleDateString() : ''}</div>
+              </div>
+              <button
+                type="button"
+                onClick={() => onOpenAsset(item.fleet_asset_id)}
                 className="flex-shrink-0 text-xs font-medium text-brand-red hover:underline"
               >
                 Open
@@ -384,6 +448,119 @@ function WorkOrdersPanel({
           onClick={onViewAll}
           className="text-xs font-medium text-brand-red hover:underline"
         >
+          View all work orders →
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// --- PendingInspectionsCard ---
+function PendingInspectionsCard({
+  title,
+  icon: Icon,
+  items,
+  onViewAll,
+  onOpen,
+  emptyMessage,
+}: {
+  title: string;
+  icon: React.FC;
+  items: Array<{ id: string; fleet_asset_name?: string; inspection_date?: string }>;
+  onViewAll: () => void;
+  onOpen: (id: string) => void;
+  emptyMessage: string;
+}) {
+  const list = items.slice(0, 5);
+  return (
+    <div className="rounded-xl border border-gray-200 bg-white p-5 min-w-0">
+      <div className="flex items-center justify-between mb-4">
+        <div className="flex items-center gap-2">
+          <Icon />
+          <h2 className="text-sm font-semibold text-gray-900">{title}</h2>
+        </div>
+        <span className="text-xs font-semibold text-gray-700 tabular-nums">{items.length}</span>
+      </div>
+      {list.length === 0 ? (
+        <p className="text-xs text-gray-500 py-4">{emptyMessage}</p>
+      ) : (
+        <ul className="space-y-0">
+          {list.map((item, i) => (
+            <li
+              key={item.id}
+              className={`flex items-center justify-between gap-3 py-2.5 px-3 rounded-lg hover:bg-gray-50 transition-colors ${i % 2 === 1 ? 'bg-gray-50/50' : ''}`}
+            >
+              <div className="min-w-0 flex-1">
+                <div className="text-xs font-medium text-gray-900 truncate">{item.fleet_asset_name || item.id}</div>
+                {item.inspection_date && (
+                  <div className="text-[10px] text-gray-500">{new Date(item.inspection_date).toLocaleDateString()}</div>
+                )}
+              </div>
+              <button
+                type="button"
+                onClick={(e) => { e.stopPropagation(); onOpen(item.id); }}
+                className="flex-shrink-0 text-xs font-medium text-brand-red hover:underline"
+              >
+                Open
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+      <div className="mt-3 pt-3 border-t border-gray-100">
+        <button type="button" onClick={onViewAll} className="text-xs font-medium text-brand-red hover:underline">
+          View all →
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// --- OpenWorkOrdersCard ---
+function OpenWorkOrdersCard({
+  items,
+  total,
+  onViewAll,
+  onOpen,
+}: {
+  items: Array<{ id: string; work_order_number?: string; description?: string; status?: string }>;
+  total: number;
+  onViewAll: () => void;
+  onOpen: (id: string) => void;
+}) {
+  const list = items.slice(0, 5);
+  return (
+    <div className="rounded-xl border border-gray-200 bg-white p-5 min-w-0">
+      <div className="flex items-center justify-between mb-4">
+        <h2 className="text-sm font-semibold text-gray-900">Open Work Orders</h2>
+        <span className="text-xs font-semibold text-gray-700 tabular-nums">{total}</span>
+      </div>
+      {list.length === 0 ? (
+        <p className="text-xs text-gray-500 py-4">No open work orders</p>
+      ) : (
+        <ul className="space-y-0">
+          {list.map((item, i) => (
+            <li
+              key={item.id}
+              className={`flex items-center justify-between gap-3 py-2.5 px-3 rounded-lg hover:bg-gray-50 transition-colors ${i % 2 === 1 ? 'bg-gray-50/50' : ''}`}
+            >
+              <div className="min-w-0 flex-1">
+                <div className="text-xs font-medium text-gray-900 truncate">{item.work_order_number || item.id}</div>
+                {item.description && <div className="text-[10px] text-gray-500 truncate">{item.description}</div>}
+              </div>
+              <button
+                type="button"
+                onClick={(e) => { e.stopPropagation(); onOpen(item.id); }}
+                className="flex-shrink-0 text-xs font-medium text-brand-red hover:underline"
+              >
+                Open
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+      <div className="mt-3 pt-3 border-t border-gray-100">
+        <button type="button" onClick={onViewAll} className="text-xs font-medium text-brand-red hover:underline">
           View all work orders →
         </button>
       </div>
@@ -513,6 +690,33 @@ export default function FleetDashboard() {
     queryFn: () => api<DashboardData>('GET', '/fleet/dashboard'),
   });
 
+  const { data: pendingBodyInspections = [] } = useQuery({
+    queryKey: ['inspections', 'body', 'pending'],
+    queryFn: () =>
+      api<Array<{ id: string; fleet_asset_name?: string; inspection_date?: string }>>(
+        'GET',
+        '/fleet/inspections?inspection_type=body&result=pending&sort=inspection_date&dir=desc'
+      ),
+  });
+
+  const { data: pendingMechanicalInspections = [] } = useQuery({
+    queryKey: ['inspections', 'mechanical', 'pending'],
+    queryFn: () =>
+      api<Array<{ id: string; fleet_asset_name?: string; inspection_date?: string }>>(
+        'GET',
+        '/fleet/inspections?inspection_type=mechanical&result=pending&sort=inspection_date&dir=desc'
+      ),
+  });
+
+  const { data: openWorkOrdersData } = useQuery({
+    queryKey: ['work-orders', 'open'],
+    queryFn: () =>
+      api<{ items: Array<{ id: string; work_order_number?: string; description?: string; status?: string }>; total: number }>(
+        'GET',
+        '/fleet/work-orders?status=open&limit=10&page=1'
+      ),
+  });
+
   const todayLabel = useMemo(() => {
     return new Date().toLocaleDateString('en-CA', {
       weekday: 'long',
@@ -600,6 +804,34 @@ export default function FleetDashboard() {
         </div>
       </section>
 
+      {/* Row 1b — Pending inspections & open work orders */}
+      <section>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <PendingInspectionsCard
+            title="Pending Body Inspections"
+            icon={IconFleet}
+            items={pendingBodyInspections}
+            onViewAll={() => nav('/fleet/inspections?type=body')}
+            onOpen={(id) => nav(`/fleet/inspections/${id}`)}
+            emptyMessage="No pending body inspections"
+          />
+          <PendingInspectionsCard
+            title="Pending Mechanical Inspections"
+            icon={IconWrench}
+            items={pendingMechanicalInspections}
+            onViewAll={() => nav('/fleet/inspections?type=mechanical')}
+            onOpen={(id) => nav(`/fleet/inspections/${id}`)}
+            emptyMessage="No pending mechanical inspections"
+          />
+          <OpenWorkOrdersCard
+            items={openWorkOrdersData?.items ?? []}
+            total={openWorkOrdersData?.total ?? stats.open_work_orders_count}
+            onViewAll={() => nav('/fleet/work-orders')}
+            onOpen={(id) => nav(`/fleet/work-orders/${id}`)}
+          />
+        </div>
+      </section>
+
       {/* Row 2 — Compliance & Utilization */}
       <section className="grid grid-cols-1 lg:grid-cols-3 gap-4">
         <div className="lg:col-span-2">
@@ -625,6 +857,7 @@ export default function FleetDashboard() {
         <div className="lg:col-span-2">
           <DueInspectionsPanel
             items={stats.inspections_due}
+            total={stats.inspections_due_total}
             onViewAll={() => nav('/fleet/inspections')}
             onOpen={(id) => nav(buildAssetLink(id))}
           />
@@ -639,6 +872,18 @@ export default function FleetDashboard() {
         </div>
         <div>
           <RevisionsCalendarPanel onViewCalendar={() => nav('/fleet/calendar')} />
+        </div>
+      </section>
+
+      {/* Row 3b — Compliance expiring */}
+      <section className="grid grid-cols-1 lg:grid-cols-4 gap-4">
+        <div className="lg:col-span-2">
+          <ComplianceExpiringPanel
+            items={stats.compliance_expiring}
+            total={stats.compliance_expiring_count}
+            onViewAll={() => nav('/fleet/assets')}
+            onOpenAsset={(assetId) => nav(buildAssetLink(assetId))}
+          />
         </div>
       </section>
 

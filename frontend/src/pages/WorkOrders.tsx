@@ -4,6 +4,9 @@ import { useState, useEffect, useMemo } from 'react';
 import { api } from '@/lib/api';
 import { formatDateLocal } from '@/lib/dateUtils';
 import { WorkOrderNewForm } from './WorkOrderNew';
+import FilterBuilderModal from '@/components/FilterBuilder/FilterBuilderModal';
+import FilterChip from '@/components/FilterBuilder/FilterChip';
+import { FilterRule, FieldConfig } from '@/components/FilterBuilder/types';
 
 type WorkOrder = {
   id: string;
@@ -41,19 +44,12 @@ function buildMetaLine(wo: WorkOrder): string {
   return parts.join(' • ');
 }
 
-// Filter builder: status, urgency, entity_type, category
-type FilterField = 'status' | 'urgency' | 'entity_type' | 'category';
-type FilterOperator = 'is' | 'is_not';
-type FilterRule = { id: string; field: FilterField; operator: FilterOperator; value: string };
-
-function getOperatorsForField(): Array<{ value: FilterOperator; label: string }> {
-  return [
-    { value: 'is', label: 'Is' },
-    { value: 'is_not', label: 'Is not' },
-  ];
-}
-
+// Filter builder: status, urgency, entity_type, category — uses shared FilterBuilder
 const FILTER_PARAM_KEYS = ['status', 'status_not', 'urgency', 'urgency_not', 'entity_type', 'entity_type_not', 'category', 'category_not'];
+
+function ruleValueStr(rule: FilterRule): string {
+  return typeof rule.value === 'string' ? rule.value : (Array.isArray(rule.value) ? rule.value[0] ?? '' : '');
+}
 
 function convertRulesToParams(rules: FilterRule[], existing: URLSearchParams): URLSearchParams {
   const params = new URLSearchParams(existing);
@@ -61,41 +57,30 @@ function convertRulesToParams(rules: FilterRule[], existing: URLSearchParams): U
     FILTER_PARAM_KEYS.forEach((p) => params.delete(p));
     return params;
   }
-  const fieldsSet = new Set(rules.filter((r) => r.value?.trim()).map((r) => r.field));
-  if (fieldsSet.has('status')) {
-    params.delete('status');
-    params.delete('status_not');
-  }
-  if (fieldsSet.has('urgency')) {
-    params.delete('urgency');
-    params.delete('urgency_not');
-  }
-  if (fieldsSet.has('entity_type')) {
-    params.delete('entity_type');
-    params.delete('entity_type_not');
-  }
-  if (fieldsSet.has('category')) {
-    params.delete('category');
-    params.delete('category_not');
-  }
+  const fieldsSet = new Set(rules.filter((r) => ruleValueStr(r)?.trim()).map((r) => r.field));
+  if (fieldsSet.has('status')) { params.delete('status'); params.delete('status_not'); }
+  if (fieldsSet.has('urgency')) { params.delete('urgency'); params.delete('urgency_not'); }
+  if (fieldsSet.has('entity_type')) { params.delete('entity_type'); params.delete('entity_type_not'); }
+  if (fieldsSet.has('category')) { params.delete('category'); params.delete('category_not'); }
   for (const rule of rules) {
-    if (!rule.value?.trim()) continue;
+    const v = ruleValueStr(rule);
+    if (!v?.trim()) continue;
     switch (rule.field) {
       case 'status':
-        if (rule.operator === 'is') params.set('status', rule.value);
-        else params.set('status_not', rule.value);
+        if (rule.operator === 'is') params.set('status', v);
+        else params.set('status_not', v);
         break;
       case 'urgency':
-        if (rule.operator === 'is') params.set('urgency', rule.value);
-        else params.set('urgency_not', rule.value);
+        if (rule.operator === 'is') params.set('urgency', v);
+        else params.set('urgency_not', v);
         break;
       case 'entity_type':
-        if (rule.operator === 'is') params.set('entity_type', rule.value);
-        else params.set('entity_type_not', rule.value);
+        if (rule.operator === 'is') params.set('entity_type', v);
+        else params.set('entity_type_not', v);
         break;
       case 'category':
-        if (rule.operator === 'is') params.set('category', rule.value);
-        else params.set('category_not', rule.value);
+        if (rule.operator === 'is') params.set('category', v);
+        else params.set('category_not', v);
         break;
     }
   }
@@ -122,25 +107,6 @@ function convertParamsToRules(params: URLSearchParams): FilterRule[] {
   if (category) rules.push({ id: `rule-${idCounter++}`, field: 'category', operator: 'is', value: category });
   else if (categoryNot) rules.push({ id: `rule-${idCounter++}`, field: 'category', operator: 'is_not', value: categoryNot });
   return rules;
-}
-
-function FilterChip({ label, value, onRemove }: { label: string; value: string; onRemove: () => void }) {
-  return (
-    <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-white border border-gray-200 text-sm text-gray-800 transition-all duration-200 ease-out">
-      <span className="font-medium text-gray-600">{label}:</span>
-      <span>{value}</span>
-      <button
-        type="button"
-        onClick={onRemove}
-        className="w-5 h-5 rounded-full hover:bg-gray-100 flex items-center justify-center transition-colors duration-150"
-        aria-label={`Remove ${label} filter`}
-      >
-        <svg className="w-4 h-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-        </svg>
-      </button>
-    </div>
-  );
 }
 
 const STATUS_OPTIONS = [
@@ -171,218 +137,29 @@ const CATEGORY_OPTIONS = [
   { value: 'other', label: 'Other' },
 ];
 
-function WorkOrderFilterRuleRow({
-  rule,
-  onUpdate,
-  onDelete,
-}: {
-  rule: FilterRule;
-  onUpdate: (r: FilterRule) => void;
-  onDelete: () => void;
-}) {
-  const operators = getOperatorsForField();
-  const fieldOptions: Array<{ value: FilterField; label: string }> = [
-    { value: 'status', label: 'Status' },
-    { value: 'urgency', label: 'Urgency' },
-    { value: 'entity_type', label: 'Entity Type' },
-    { value: 'category', label: 'Category' },
-  ];
+const WORK_ORDER_FILTER_FIELDS: FieldConfig[] = [
+  { id: 'status', label: 'Status', type: 'select', operators: ['is', 'is_not'], getOptions: () => STATUS_OPTIONS },
+  { id: 'urgency', label: 'Urgency', type: 'select', operators: ['is', 'is_not'], getOptions: () => URGENCY_OPTIONS },
+  { id: 'entity_type', label: 'Entity Type', type: 'select', operators: ['is', 'is_not'], getOptions: () => ENTITY_TYPE_OPTIONS },
+  { id: 'category', label: 'Category', type: 'select', operators: ['is', 'is_not'], getOptions: () => CATEGORY_OPTIONS },
+];
 
-  const handleFieldChange = (newField: FilterField) => {
-    onUpdate({ ...rule, field: newField, operator: 'is', value: '' });
-  };
-
-  const handleOperatorChange = (newOp: FilterOperator) => {
-    onUpdate({ ...rule, operator: newOp });
-  };
-
-  const handleValueChange = (value: string) => {
-    onUpdate({ ...rule, value });
-  };
-
-  const renderValueInput = () => {
-    const selectClass = "w-full border border-gray-200 rounded-md px-3 py-2 text-sm bg-gray-50/50 text-gray-700 focus:outline-none focus:ring-1 focus:ring-gray-300 focus:border-gray-300 focus:bg-white";
-    if (rule.field === 'status') {
-      return (
-        <select className={selectClass} value={rule.value} onChange={(e) => handleValueChange(e.target.value)}>
-          <option value="">Select status...</option>
-          {STATUS_OPTIONS.map((opt) => (
-            <option key={opt.value} value={opt.value}>{opt.label}</option>
-          ))}
-        </select>
-      );
-    }
-    if (rule.field === 'urgency') {
-      return (
-        <select className={selectClass} value={rule.value} onChange={(e) => handleValueChange(e.target.value)}>
-          <option value="">Select urgency...</option>
-          {URGENCY_OPTIONS.map((opt) => (
-            <option key={opt.value} value={opt.value}>{opt.label}</option>
-          ))}
-        </select>
-      );
-    }
-    if (rule.field === 'entity_type') {
-      return (
-        <select className={selectClass} value={rule.value} onChange={(e) => handleValueChange(e.target.value)}>
-          <option value="">Select type...</option>
-          {ENTITY_TYPE_OPTIONS.map((opt) => (
-            <option key={opt.value} value={opt.value}>{opt.label}</option>
-          ))}
-        </select>
-      );
-    }
-    if (rule.field === 'category') {
-      return (
-        <select className={selectClass} value={rule.value} onChange={(e) => handleValueChange(e.target.value)}>
-          <option value="">Select category...</option>
-          {CATEGORY_OPTIONS.map((opt) => (
-            <option key={opt.value} value={opt.value}>{opt.label}</option>
-          ))}
-        </select>
-      );
-    }
-    return null;
-  };
-
-  return (
-    <div className="flex items-center gap-3">
-      <select
-        className="w-40 border border-gray-200 rounded-md px-3 py-2 text-sm bg-gray-50/50 text-gray-700 focus:outline-none focus:ring-1 focus:ring-gray-300 focus:border-gray-300 focus:bg-white"
-        value={rule.field}
-        onChange={(e) => handleFieldChange(e.target.value as FilterField)}
-      >
-        {fieldOptions.map((opt) => (
-          <option key={opt.value} value={opt.value}>{opt.label}</option>
-        ))}
-      </select>
-      <select
-        className="w-36 border border-gray-200 rounded-md px-3 py-2 text-sm bg-gray-50/50 text-gray-700 focus:outline-none focus:ring-1 focus:ring-gray-300 focus:border-gray-300 focus:bg-white"
-        value={rule.operator}
-        onChange={(e) => handleOperatorChange(e.target.value as FilterOperator)}
-      >
-        {operators.map((op) => (
-          <option key={op.value} value={op.value}>{op.label}</option>
-        ))}
-      </select>
-      <div className="flex-1 min-w-0">{renderValueInput()}</div>
-      <button
-        type="button"
-        onClick={onDelete}
-        className="w-8 h-8 flex items-center justify-center text-gray-400 hover:text-gray-600 transition-colors duration-150 shrink-0"
-        aria-label="Delete rule"
-      >
-        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-        </svg>
-      </button>
-    </div>
-  );
+function getWorkOrderFieldLabel(fieldId: string): string {
+  const f = WORK_ORDER_FILTER_FIELDS.find((x) => x.id === fieldId);
+  return f?.label ?? fieldId;
 }
 
-function WorkOrderFilterBuilderModal({
-  isOpen,
-  onClose,
-  onApply,
-  initialRules,
-}: {
-  isOpen: boolean;
-  onClose: () => void;
-  onApply: (rules: FilterRule[]) => void;
-  initialRules: FilterRule[];
-}) {
-  const [rules, setRules] = useState<FilterRule[]>(initialRules);
+const WO_VALUE_LABELS: Record<string, Record<string, string>> = {
+  status: Object.fromEntries(STATUS_OPTIONS.map((o) => [o.value, o.label])),
+  urgency: Object.fromEntries(URGENCY_OPTIONS.map((o) => [o.value, o.label])),
+  entity_type: Object.fromEntries(ENTITY_TYPE_OPTIONS.map((o) => [o.value, o.label])),
+  category: Object.fromEntries(CATEGORY_OPTIONS.map((o) => [o.value, o.label])),
+};
 
-  useEffect(() => {
-    if (isOpen) setRules(initialRules);
-  }, [isOpen, initialRules]);
-
-  useEffect(() => {
-    if (!isOpen) return;
-    const onEsc = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
-    window.addEventListener('keydown', onEsc);
-    return () => window.removeEventListener('keydown', onEsc);
-  }, [isOpen, onClose]);
-
-  const handleAddRule = () => {
-    setRules((prev) => [...prev, { id: `rule-${Date.now()}`, field: 'status', operator: 'is', value: '' }]);
-  };
-
-  const handleUpdateRule = (updated: FilterRule) => {
-    setRules((prev) => prev.map((r) => (r.id === updated.id ? updated : r)));
-  };
-
-  const handleDeleteRule = (id: string) => {
-    setRules((prev) => prev.filter((r) => r.id !== id));
-  };
-
-  const handleApply = () => {
-    onApply(rules);
-    onClose();
-  };
-
-  if (!isOpen) return null;
-
-  return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 transition-opacity duration-200 ease-out"
-      onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
-    >
-      <div
-        className="bg-white rounded-lg shadow-lg w-full max-w-[720px] max-h-[90vh] flex flex-col overflow-hidden"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="px-6 py-4 border-b border-gray-200 flex items-center justify-between">
-          <h2 className="text-lg font-semibold text-gray-900">Filters</h2>
-          <button type="button" onClick={onClose} className="w-8 h-8 flex items-center justify-center text-gray-400 hover:text-gray-600" aria-label="Close">
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-            </svg>
-          </button>
-        </div>
-        <div className="flex-1 overflow-y-auto px-6 py-4">
-          {rules.length === 0 ? (
-            <div className="text-center py-8 text-gray-500 text-sm">No filters applied. Add a filter to get started.</div>
-          ) : (
-            <div className="space-y-3">
-              {rules.map((rule) => (
-                <WorkOrderFilterRuleRow
-                  key={rule.id}
-                  rule={rule}
-                  onUpdate={handleUpdateRule}
-                  onDelete={() => handleDeleteRule(rule.id)}
-                />
-              ))}
-            </div>
-          )}
-          <button
-            type="button"
-            onClick={handleAddRule}
-            className="mt-4 w-full px-4 py-2 text-sm font-medium text-gray-600 hover:text-gray-900 border border-gray-200 rounded-md hover:bg-gray-50 transition-all duration-150"
-          >
-            + Add filter
-          </button>
-        </div>
-        <div className="px-6 py-4 border-t border-gray-200 flex items-center justify-between gap-3">
-          <div>
-            {rules.length > 0 && (
-              <button type="button" onClick={() => setRules([])} className="px-4 py-2 text-sm font-medium text-gray-600 hover:text-gray-900">
-                Clear All
-              </button>
-            )}
-          </div>
-          <div className="flex items-center gap-3">
-            <button type="button" onClick={onClose} className="px-4 py-2 text-sm font-medium text-gray-600 hover:text-gray-900">
-              Cancel
-            </button>
-            <button type="button" onClick={handleApply} className="px-4 py-2 text-sm font-medium text-white bg-brand-red hover:bg-brand-red/90 rounded-md">
-              Apply Filters
-            </button>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
+function getWorkOrderValueLabel(rule: FilterRule): string {
+  const v = ruleValueStr(rule);
+  const map = WO_VALUE_LABELS[rule.field];
+  return (map && map[v]) ?? v ?? '';
 }
 
 export default function WorkOrders() {
@@ -572,36 +349,21 @@ export default function WorkOrders() {
       {/* Filter chips */}
       {hasActiveFilters && (
         <div className="mb-4 flex items-center gap-2 flex-wrap">
-          {currentRules.map((rule) => {
-            const fieldLabels: Record<FilterField, string> = {
-              status: 'Status',
-              urgency: 'Urgency',
-              entity_type: 'Entity Type',
-              category: 'Category',
-            };
-            const fieldLabel = fieldLabels[rule.field];
-            let displayValue = rule.value?.replace(/_/g, ' ') ?? rule.value;
-            if (rule.field === 'status') displayValue = STATUS_OPTIONS.find((o) => o.value === rule.value)?.label ?? displayValue;
-            if (rule.field === 'urgency') displayValue = URGENCY_OPTIONS.find((o) => o.value === rule.value)?.label ?? displayValue;
-            if (rule.field === 'entity_type') displayValue = ENTITY_TYPE_OPTIONS.find((o) => o.value === rule.value)?.label ?? displayValue;
-            if (rule.field === 'category') displayValue = CATEGORY_OPTIONS.find((o) => o.value === rule.value)?.label ?? displayValue;
-            const operatorLabel = rule.operator === 'is_not' ? 'Is not' : '';
-            const label = operatorLabel ? `${fieldLabel} ${operatorLabel}` : fieldLabel;
-            return (
-              <FilterChip
-                key={rule.id}
-                label={label}
-                value={displayValue}
-                onRemove={() => {
-                  const updated = currentRules.filter((r) => r.id !== rule.id);
-                  const params = convertRulesToParams(updated, searchParams);
-                  params.set('page', '1');
-                  setPage(1);
-                  setSearchParams(params, { replace: true });
-                }}
-              />
-            );
-          })}
+          {currentRules.map((rule) => (
+            <FilterChip
+              key={rule.id}
+              rule={rule}
+              onRemove={() => {
+                const updated = currentRules.filter((r) => r.id !== rule.id);
+                const params = convertRulesToParams(updated, searchParams);
+                params.set('page', '1');
+                setPage(1);
+                setSearchParams(params, { replace: true });
+              }}
+              getValueLabel={getWorkOrderValueLabel}
+              getFieldLabel={getWorkOrderFieldLabel}
+            />
+          ))}
         </div>
       )}
 
@@ -736,11 +498,13 @@ export default function WorkOrders() {
         )}
       </div>
 
-      <WorkOrderFilterBuilderModal
+      <FilterBuilderModal
         isOpen={isFilterModalOpen}
         onClose={() => setIsFilterModalOpen(false)}
         onApply={handleApplyFilters}
         initialRules={currentRules}
+        fields={WORK_ORDER_FILTER_FIELDS}
+        getFieldData={() => null}
       />
 
       {/* New Work Order Modal */}

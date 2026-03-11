@@ -7,6 +7,7 @@ import InspectionChecklist from '@/components/InspectionChecklist';
 import AddressAutocomplete from '@/components/AddressAutocomplete';
 import { formatDateLocal } from '@/lib/dateUtils';
 import { useUnsavedChangesGuard } from '@/hooks/useUnsavedChangesGuard';
+import { InspectionScheduleForm } from './InspectionNew';
 
 type FleetAsset = {
   id: string;
@@ -150,6 +151,7 @@ export default function FleetAssetDetail() {
   const initialTab = (searchParams.get('tab') as 'general' | 'inspections' | 'work-orders' | 'logs' | 'compliance' | null) || 'general';
   const [tab, setTab] = useState<'general' | 'inspections' | 'work-orders' | 'logs' | 'compliance'>(initialTab);
   const [showInspectionForm, setShowInspectionForm] = useState(false);
+  const [showScheduleInspectionModal, setShowScheduleInspectionModal] = useState(false);
   const [showWorkOrderForm, setShowWorkOrderForm] = useState(false);
   const [showAssignModal, setShowAssignModal] = useState(false);
   const [showReturnModal, setShowReturnModal] = useState(false);
@@ -748,14 +750,22 @@ export default function FleetAssetDetail() {
 
         {tab === 'inspections' && (
           <div className="space-y-4">
-            <div className="flex justify-between items-center">
+            <div className="flex justify-between items-center flex-wrap gap-2">
               <h3 className="font-semibold text-lg">Inspections</h3>
-              <button
-                onClick={() => setShowInspectionForm(true)}
-                className="px-4 py-2 bg-brand-red text-white rounded-lg hover:bg-red-700 text-sm"
-              >
-                + New Inspection
-              </button>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => setShowScheduleInspectionModal(true)}
+                  className="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 text-sm font-medium"
+                >
+                  Schedule inspection
+                </button>
+                <button
+                  onClick={() => setShowInspectionForm(true)}
+                  className="px-4 py-2 bg-brand-red text-white rounded-lg hover:bg-red-700 text-sm"
+                >
+                  + New Inspection
+                </button>
+              </div>
             </div>
 
             <div className="space-y-2">
@@ -982,6 +992,28 @@ export default function FleetAssetDetail() {
       </div>
 
       {/* New Inspection Modal */}
+      {showScheduleInspectionModal && id && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setShowScheduleInspectionModal(false)}>
+          <div className="bg-white rounded-xl shadow-lg max-w-lg w-full max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+            <div className="p-4 border-b font-semibold flex items-center justify-between">
+              <span>Schedule inspection</span>
+              <button type="button" onClick={() => setShowScheduleInspectionModal(false)} className="p-1 rounded hover:bg-gray-100 text-gray-600">✕</button>
+            </div>
+            <div className="p-4">
+              <InspectionScheduleForm
+                initialAssetId={id}
+                onSuccess={(data) => {
+                  setShowScheduleInspectionModal(false);
+                  queryClient.invalidateQueries({ queryKey: ['inspection-schedules'] });
+                  queryClient.invalidateQueries({ queryKey: ['fleet-inspection-schedules-calendar'] });
+                  nav('/fleet/calendar');
+                }}
+                onCancel={() => setShowScheduleInspectionModal(false)}
+              />
+            </div>
+          </div>
+        </div>
+      )}
       {showInspectionForm && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setShowInspectionForm(false)}>
           <div className="bg-white rounded-xl shadow-lg max-w-lg w-full max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
