@@ -209,10 +209,15 @@ export default function ProjectNew(){
       toast.success(isBidding ? 'Opportunity created' : 'Project created');
       queryClient.removeQueries({ queryKey: ['opportunities'] });
       queryClient.removeQueries({ queryKey: ['projects'] });
+      const newId = String(proj?.id || '');
+      if (newId) {
+        queryClient.invalidateQueries({ queryKey: ['project', newId] });
+        queryClient.invalidateQueries({ queryKey: ['projectRecentActivity', newId] });
+      }
       if (isBidding) {
-        nav(`/opportunities/${encodeURIComponent(String(proj?.id||''))}`);
+        nav(`/opportunities/${encodeURIComponent(newId)}`);
       } else {
-        nav(`/projects/${encodeURIComponent(String(proj?.id||''))}`);
+        nav(`/projects/${encodeURIComponent(newId)}`);
       }
       // Don't reset isSubmitting here - let the component unmount handle it
       return; // Exit early to prevent finally from resetting state

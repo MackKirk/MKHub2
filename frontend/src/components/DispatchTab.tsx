@@ -406,6 +406,7 @@ export default function DispatchTab({ projectId, statusLabel }: { projectId: str
                         queryClient.invalidateQueries({ queryKey: ['timesheetLogsMini'] }),
                         queryClient.invalidateQueries({ queryKey: ['timesheet'] }),
                         queryClient.invalidateQueries({ queryKey: ['dispatch-shifts-all'] }),
+                        queryClient.invalidateQueries({ queryKey: ['projectRecentActivity', projectId] }),
                       ]);
                       
                       // Force refetch of timesheet queries to ensure immediate update
@@ -703,6 +704,7 @@ export default function DispatchTab({ projectId, statusLabel }: { projectId: str
                       // Invalidate attendances queries in TimesheetTab to trigger refetch
                       queryClient.invalidateQueries({ queryKey: ['attendances'] });
                       queryClient.invalidateQueries({ queryKey: ['shifts'] });
+                      queryClient.invalidateQueries({ queryKey: ['projectRecentActivity', projectId] });
                     } catch (e: any) {
                       toast.error(e.message || 'Failed to approve');
                     }
@@ -716,6 +718,7 @@ export default function DispatchTab({ projectId, statusLabel }: { projectId: str
                       // Invalidate attendances queries in TimesheetTab to trigger refetch
                       queryClient.invalidateQueries({ queryKey: ['attendances'] });
                       queryClient.invalidateQueries({ queryKey: ['shifts'] });
+                      queryClient.invalidateQueries({ queryKey: ['projectRecentActivity', projectId] });
                     } catch (e: any) {
                       toast.error(e.message || 'Failed to reject');
                     }
@@ -739,6 +742,7 @@ export default function DispatchTab({ projectId, statusLabel }: { projectId: str
               onClose={() => setCreateShiftModal(false)}
               onSave={async () => {
                 await refetchShifts();
+                queryClient.invalidateQueries({ queryKey: ['projectRecentActivity', projectId] });
                 setCreateShiftModal(false);
               }}
             />
@@ -754,6 +758,7 @@ export default function DispatchTab({ projectId, statusLabel }: { projectId: str
               onClose={() => setEditShiftModal(null)}
               onSave={async () => {
                 await refetchShifts();
+                queryClient.invalidateQueries({ queryKey: ['projectRecentActivity', projectId] });
                 setEditShiftModal(null);
               }}
             />

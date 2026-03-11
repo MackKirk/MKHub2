@@ -196,6 +196,7 @@ export default function OrdersTab({ projectId, project, statusLabel }: { project
       setReviewingOrder(null);
       await refetch();
       queryClient.invalidateQueries({ queryKey: ['projectOrders', projectId] });
+      queryClient.invalidateQueries({ queryKey: ['projectRecentActivity', projectId] });
     } catch (error: any) {
       const errorMsg = error.response?.data?.detail || error.message || 'Failed to send order';
       toast.error(errorMsg);
@@ -217,6 +218,7 @@ export default function OrdersTab({ projectId, project, statusLabel }: { project
       toast.success('Order marked as delivered');
       await refetch();
       queryClient.invalidateQueries({ queryKey: ['projectOrders', projectId] });
+      queryClient.invalidateQueries({ queryKey: ['projectRecentActivity', projectId] });
     } catch (error: any) {
       const errorMsg = error.response?.data?.detail || error.message || 'Failed to update order';
       toast.error(errorMsg);
@@ -306,6 +308,7 @@ export default function OrdersTab({ projectId, project, statusLabel }: { project
       await api('DELETE', `/orders/projects/${projectId}/all`);
       toast.success('All orders cleared');
       queryClient.invalidateQueries({ queryKey: ['projectOrders', projectId] });
+      queryClient.invalidateQueries({ queryKey: ['projectRecentActivity', projectId] });
       await refetch();
     } catch (error: any) {
       const errorMsg = error.response?.data?.detail || error.message || 'Failed to clear orders';
@@ -339,6 +342,7 @@ export default function OrdersTab({ projectId, project, statusLabel }: { project
                     toast.success(`Generated ${response.orders_created || 0} orders successfully`);
                     // Invalidate orders query so they appear immediately
                     queryClient.invalidateQueries({ queryKey: ['projectOrders', projectId] });
+                    queryClient.invalidateQueries({ queryKey: ['projectRecentActivity', projectId] });
                     await refetch();
                   } catch (error: any) {
                     const errorMsg = error.response?.data?.detail || error.message || 'Failed to generate orders';
@@ -870,6 +874,7 @@ function AddExtraOrderWizard({
       await api('POST', `/orders/projects/${projectId}/extra`, payload);
       toast.success('Order created successfully');
       queryClient.invalidateQueries({ queryKey: ['projectOrders', projectId] });
+      queryClient.invalidateQueries({ queryKey: ['projectRecentActivity', projectId] });
       onSuccess();
     } catch (error: any) {
       const errorMsg = error.response?.data?.detail || error.message || 'Failed to create order';

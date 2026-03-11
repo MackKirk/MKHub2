@@ -272,6 +272,39 @@ def create_project(payload: dict, db: Session = Depends(get_db), user=Depends(ge
     proj = Project(**payload)
     db.add(proj)
     db.commit()
+    db.refresh(proj)
+
+    # Create audit log for project/opportunity creation (immediately after commit, before any other logic)
+    try:
+        from ..services.audit import create_audit_log
+        print(f"[AUDIT-DEBUG] Creating audit log for project {proj.id} (is_bidding={getattr(proj, 'is_bidding', False)})")
+        audit_entry = create_audit_log(
+            db=db,
+            entity_type="project",
+            entity_id=str(proj.id),
+            action="CREATE",
+            actor_id=str(user.id) if user else None,
+            actor_role="user",
+            source="api",
+            changes_json={
+                "name": proj.name,
+                "code": proj.code,
+                "client_id": str(proj.client_id) if proj.client_id else None,
+                "is_bidding": getattr(proj, 'is_bidding', False),
+                "status_label": getattr(proj, 'status_label', None),
+            },
+            context={
+                "project_id": str(proj.id),
+                "client_name": getattr(client, 'display_name', None) or getattr(client, 'legal_name', None) if client else None,
+                "is_bidding": getattr(proj, 'is_bidding', False),
+            }
+        )
+        print(f"[AUDIT-DEBUG] Audit log created OK: id={audit_entry.id}, entity_id={audit_entry.entity_id}, entity_type={audit_entry.entity_type}")
+    except Exception as e:
+        import traceback
+        print(f"[AUDIT-DEBUG] FAILED to create audit log: {e}")
+        traceback.print_exc()
+
     # Auto-create a folder for this project under the site's folder if available, else under client root
     try:
         name = (proj.name or str(proj.id) or "project").strip()
@@ -307,33 +340,7 @@ def create_project(payload: dict, db: Session = Depends(get_db), user=Depends(ge
                     pass
     except Exception:
         db.rollback()
-    
-    # Create audit log for project creation
-    try:
-        from ..services.audit import create_audit_log
-        create_audit_log(
-            db=db,
-            entity_type="project",
-            entity_id=str(proj.id),
-            action="CREATE",
-            actor_id=str(user.id) if user else None,
-            actor_role="user",
-            source="api",
-            changes_json={
-                "name": proj.name,
-                "code": proj.code,
-                "client_id": str(proj.client_id) if proj.client_id else None,
-                "is_bidding": getattr(proj, 'is_bidding', False),
-                "status_label": getattr(proj, 'status_label', None),
-            },
-            context={
-                "project_id": str(proj.id),
-                "client_name": client.company_name if client else None,
-            }
-        )
-    except Exception:
-        pass  # Don't fail project creation if audit log fails
-    
+
     return {"id": str(proj.id)}
 
 
@@ -488,21 +495,26 @@ def update_project(project_id: str, payload: dict, db: Session = Depends(get_db)
     if not p:
         raise HTTPException(status_code=404, detail="Not found")
     
-    # Capture before state for audit log
+    # Capture before state for audit log (hero and key project fields)
     before_state = {
         "name": getattr(p, 'name', None),
         "status_label": getattr(p, 'status_label', None),
         "estimator_id": str(getattr(p, 'estimator_id', None)) if getattr(p, 'estimator_id', None) else None,
+        "estimator_ids": [str(e) for e in (getattr(p, 'estimator_ids', None) or [])] if getattr(p, 'estimator_ids', None) else None,
         "project_admin_id": str(getattr(p, 'project_admin_id', None)) if getattr(p, 'project_admin_id', None) else None,
         "onsite_lead_id": str(getattr(p, 'onsite_lead_id', None)) if getattr(p, 'onsite_lead_id', None) else None,
+        "contact_id": str(getattr(p, 'contact_id', None)) if getattr(p, 'contact_id', None) else None,
+        "site_id": str(getattr(p, 'site_id', None)) if getattr(p, 'site_id', None) else None,
         "division_ids": getattr(p, 'division_ids', None),
         "project_division_ids": getattr(p, 'project_division_ids', None),
         "progress": getattr(p, 'progress', None),
         "date_start": str(getattr(p, 'date_start', None)) if getattr(p, 'date_start', None) else None,
         "date_end": str(getattr(p, 'date_end', None)) if getattr(p, 'date_end', None) else None,
+        "date_eta": str(getattr(p, 'date_eta', None)) if getattr(p, 'date_eta', None) else None,
         "address": getattr(p, 'address', None),
         "lat": str(getattr(p, 'lat', None)) if getattr(p, 'lat', None) else None,
         "lng": str(getattr(p, 'lng', None)) if getattr(p, 'lng', None) else None,
+        "lead_source": getattr(p, 'lead_source', None),
     }
     
     # Do not allow changing auto-generated code
@@ -728,16 +740,21 @@ def update_project(project_id: str, payload: dict, db: Session = Depends(get_db)
             "name": getattr(p, 'name', None),
             "status_label": getattr(p, 'status_label', None),
             "estimator_id": str(getattr(p, 'estimator_id', None)) if getattr(p, 'estimator_id', None) else None,
+            "estimator_ids": [str(e) for e in (getattr(p, 'estimator_ids', None) or [])] if getattr(p, 'estimator_ids', None) else None,
             "project_admin_id": str(getattr(p, 'project_admin_id', None)) if getattr(p, 'project_admin_id', None) else None,
             "onsite_lead_id": str(getattr(p, 'onsite_lead_id', None)) if getattr(p, 'onsite_lead_id', None) else None,
+            "contact_id": str(getattr(p, 'contact_id', None)) if getattr(p, 'contact_id', None) else None,
+            "site_id": str(getattr(p, 'site_id', None)) if getattr(p, 'site_id', None) else None,
             "division_ids": getattr(p, 'division_ids', None),
             "project_division_ids": getattr(p, 'project_division_ids', None),
             "progress": getattr(p, 'progress', None),
             "date_start": str(getattr(p, 'date_start', None)) if getattr(p, 'date_start', None) else None,
             "date_end": str(getattr(p, 'date_end', None)) if getattr(p, 'date_end', None) else None,
+            "date_eta": str(getattr(p, 'date_eta', None)) if getattr(p, 'date_eta', None) else None,
             "address": getattr(p, 'address', None),
             "lat": str(getattr(p, 'lat', None)) if getattr(p, 'lat', None) else None,
             "lng": str(getattr(p, 'lng', None)) if getattr(p, 'lng', None) else None,
+            "lead_source": getattr(p, 'lead_source', None),
         }
         changes = compute_diff(before_state, after_state)
         if changes:  # Only log if there were actual changes
@@ -904,6 +921,30 @@ def create_project_folder(
     db.add(folder)
     db.commit()
     db.refresh(folder)
+
+    try:
+        from ..services.audit import create_audit_log
+        create_audit_log(
+            db=db,
+            entity_type="project_folder",
+            entity_id=str(folder.id),
+            action="CREATE",
+            actor_id=str(user.id) if user else None,
+            actor_role="user",
+            source="api",
+            changes_json={
+                "name": folder.name,
+                "category": folder.category,
+                "parent_id": str(folder.parent_id) if folder.parent_id else None,
+            },
+            context={
+                "project_id": project_id,
+                "folder_name": folder.name,
+            }
+        )
+    except Exception:
+        pass
+
     return {"id": str(folder.id), "name": folder.name, "category": folder.category, "parent_id": str(folder.parent_id) if folder.parent_id else None}
 
 
@@ -929,6 +970,11 @@ def update_project_folder(
         raise HTTPException(status_code=404, detail="Folder not found")
     if not has_project_files_category_permission(user, folder.category, action="write"):
         raise HTTPException(status_code=403, detail="Forbidden")
+    before_state = {
+        "name": folder.name,
+        "category": folder.category,
+        "parent_id": str(folder.parent_id) if folder.parent_id else None,
+    }
     if "name" in payload:
         name = (payload.get("name") or "").strip()
         if not name:
@@ -981,6 +1027,33 @@ def update_project_folder(
                     update_folder_and_descendants(child.id)
             update_folder_and_descendants(folder.id)
     db.commit()
+
+    try:
+        from ..services.audit import create_audit_log, compute_diff
+        after_state = {
+            "name": folder.name,
+            "category": folder.category,
+            "parent_id": str(folder.parent_id) if folder.parent_id else None,
+        }
+        diff = compute_diff(before_state, after_state)
+        if diff:
+            create_audit_log(
+                db=db,
+                entity_type="project_folder",
+                entity_id=str(folder.id),
+                action="UPDATE",
+                actor_id=str(user.id) if user else None,
+                actor_role="user",
+                source="api",
+                changes_json={"before": before_state, "after": after_state},
+                context={
+                    "project_id": project_id,
+                    "folder_name": folder.name,
+                }
+            )
+    except Exception:
+        pass
+
     return {"status": "ok"}
 
 
@@ -1016,8 +1089,33 @@ def delete_project_folder(
     ).count()
     if file_count > 0:
         raise HTTPException(status_code=400, detail="Folder is not empty; move or delete files first")
+    folder_info = {
+        "name": folder.name,
+        "category": folder.category,
+        "parent_id": str(folder.parent_id) if folder.parent_id else None,
+    }
     db.delete(folder)
     db.commit()
+
+    try:
+        from ..services.audit import create_audit_log
+        create_audit_log(
+            db=db,
+            entity_type="project_folder",
+            entity_id=folder_id,
+            action="DELETE",
+            actor_id=str(user.id) if user else None,
+            actor_role="user",
+            source="api",
+            changes_json={"deleted_folder": folder_info},
+            context={
+                "project_id": project_id,
+                "folder_name": folder_info.get("name"),
+            }
+        )
+    except Exception:
+        pass
+
     return {"status": "ok"}
 
 
@@ -3227,6 +3325,7 @@ def convert_to_project(
     project_id: str,
     db: Session = Depends(get_db),
     payload: Optional[dict] = Body(None),
+    user=Depends(get_current_user),
 ):
     """Convert a bidding to an active project. Optional body: project_admin_id, division_onsite_leads, date_eta, date_start, lead_source, pricing_item_approvals (list of bool per additional_costs index)."""
     p = db.query(Project).filter(Project.id == project_id, Project.deleted_at.is_(None)).first()
@@ -3234,6 +3333,21 @@ def convert_to_project(
         raise HTTPException(status_code=404, detail="Not found")
     if not getattr(p, 'is_bidding', False):
         raise HTTPException(status_code=400, detail="This is already a project, not a bidding")
+
+    # Capture before state for audit log
+    before_state = {
+        "status_label": getattr(p, 'status_label', None),
+        "status_id": str(getattr(p, 'status_id', None)) if getattr(p, 'status_id', None) else None,
+        "project_admin_id": str(getattr(p, 'project_admin_id', None)) if getattr(p, 'project_admin_id', None) else None,
+        "division_onsite_leads": dict(getattr(p, 'division_onsite_leads', None) or {}),
+        "date_eta": str(getattr(p, 'date_eta', None))[:10] if getattr(p, 'date_eta', None) else None,
+        "date_start": str(getattr(p, 'date_start', None))[:10] if getattr(p, 'date_start', None) else None,
+        "lead_source": getattr(p, 'lead_source', None),
+        "project_division_ids": list(getattr(p, 'project_division_ids', None) or []),
+        "is_bidding": getattr(p, 'is_bidding', True),
+    }
+    proposal_updated = False
+    proposal_id_for_audit = None
 
     # Set status to "In Progress" when converting to project
     status_list = db.query(SettingList).filter(SettingList.name == "project_statuses").first()
@@ -3308,6 +3422,8 @@ def convert_to_project(
                     data["additional_costs"] = updated_costs
                     proposal.data = data
                     flag_modified(proposal, "data")
+                    proposal_updated = True
+                    proposal_id_for_audit = str(proposal.id)
 
                     # Keep only divisions that have at least one approved item
                     current_division_ids = list(getattr(p, "project_division_ids", None) or [])
@@ -3339,6 +3455,56 @@ def convert_to_project(
 
     p.is_bidding = False
     db.commit()
+
+    # Create audit logs for Recent Activity
+    try:
+        from ..services.audit import create_audit_log, compute_diff
+        after_state = {
+            "status_label": getattr(p, 'status_label', None),
+            "status_id": str(getattr(p, 'status_id', None)) if getattr(p, 'status_id', None) else None,
+            "project_admin_id": str(getattr(p, 'project_admin_id', None)) if getattr(p, 'project_admin_id', None) else None,
+            "division_onsite_leads": dict(getattr(p, 'division_onsite_leads', None) or {}),
+            "date_eta": str(getattr(p, 'date_eta', None))[:10] if getattr(p, 'date_eta', None) else None,
+            "date_start": str(getattr(p, 'date_start', None))[:10] if getattr(p, 'date_start', None) else None,
+            "lead_source": getattr(p, 'lead_source', None),
+            "project_division_ids": list(getattr(p, 'project_division_ids', None) or []),
+            "is_bidding": getattr(p, 'is_bidding', False),
+        }
+        changes = compute_diff(before_state, after_state)
+        if changes:
+            create_audit_log(
+                db=db,
+                entity_type="project",
+                entity_id=str(p.id),
+                action="UPDATE",
+                actor_id=str(user.id) if user else None,
+                actor_role="user",
+                source="api",
+                changes_json={"before": before_state, "after": after_state},
+                context={
+                    "project_id": str(p.id),
+                    "changed_fields": list(changes.keys()),
+                    "conversion": True,
+                }
+            )
+        if proposal_updated and proposal_id_for_audit:
+            create_audit_log(
+                db=db,
+                entity_type="proposal",
+                entity_id=proposal_id_for_audit,
+                action="UPDATE",
+                actor_id=str(user.id) if user else None,
+                actor_role="user",
+                source="api",
+                changes_json={"additional_costs_approved": True},
+                context={
+                    "project_id": str(p.id),
+                    "source": "conversion",
+                }
+            )
+    except Exception:
+        pass  # Don't fail conversion if audit log fails
+
     return {"status": "ok", "id": str(p.id)}
 
 

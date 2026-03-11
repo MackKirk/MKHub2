@@ -62,6 +62,7 @@ export default function ProjectDocumentsTab({ projectId, isBidding, canEditDocum
       }
       const created = await api<UserDocument>('POST', '/document-creator/documents', payload);
       queryClient.invalidateQueries({ queryKey: ['document-creator-documents', projectId] });
+      queryClient.invalidateQueries({ queryKey: ['projectRecentActivity', projectId] });
       setModalDocumentId(created.id);
       setShowModal(true);
     } catch (e: any) {
@@ -111,6 +112,7 @@ export default function ProjectDocumentsTab({ projectId, isBidding, canEditDocum
     try {
       await api('DELETE', `/document-creator/documents/${doc.id}`);
       queryClient.invalidateQueries({ queryKey: ['document-creator-documents', projectId] });
+      queryClient.invalidateQueries({ queryKey: ['projectRecentActivity', projectId] });
       toast.success('Document deleted.');
       if (modalDocumentId === doc.id) {
         setShowModal(false);
@@ -216,7 +218,10 @@ export default function ProjectDocumentsTab({ projectId, isBidding, canEditDocum
         documentId={modalDocumentId}
         projectId={projectId}
         onClose={handleCloseModal}
-        onAfterClose={() => queryClient.invalidateQueries({ queryKey: ['document-creator-documents', projectId] })}
+        onAfterClose={() => {
+          queryClient.invalidateQueries({ queryKey: ['document-creator-documents', projectId] });
+          queryClient.invalidateQueries({ queryKey: ['projectRecentActivity', projectId] });
+        }}
         readOnly={!canEditDocuments}
       />
     </div>
