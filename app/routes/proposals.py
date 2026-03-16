@@ -504,8 +504,11 @@ def next_code(client_id: str, db: Session = Depends(get_db)):
 def save_proposal(payload: dict = Body(...), db: Session = Depends(get_db), user=Depends(get_current_user)):
     """Create or update a proposal. payload is stored as-is in p.data (JSON).
     additional_costs items may include optional area_value (number) and area_unit ('sqft'|'m2'|'sqs').
-    Top-level area_display_unit may be set for display preference."""
+    Top-level area_display_unit may be set for display preference.
+    _source (pricing|proposal) is used for audit log context and is not stored."""
     import copy as _copy
+
+    source = payload.pop("_source", None)
 
     def _normalize_data(data: dict) -> dict:
         """Ensure additional_costs items are full dicts so no keys (e.g. area_value, area_unit) are lost."""
@@ -531,6 +534,11 @@ def save_proposal(payload: dict = Body(...), db: Session = Depends(get_db), user
         if p.is_change_order and p.approved_report_id:
             raise HTTPException(status_code=400, detail='Cannot edit approved Change Order')
         
+        import copy as _cp
+        old_data = _cp.deepcopy(p.data or {})
+        old_title = p.title
+        old_order_number = p.order_number
+
         # Allow updating scope relations
         p.project_id = payload.get('project_id') or p.project_id
         p.client_id = payload.get('client_id') or p.client_id
@@ -689,25 +697,79 @@ def save_proposal(payload: dict = Body(...), db: Session = Depends(get_db), user
     
     # Create audit log for proposal save
     try:
-        from ..services.audit import create_audit_log
-        create_audit_log(
-            db=db,
-            entity_type="proposal",
-            entity_id=str(p.id),
-            action="CREATE" if is_new else "UPDATE",
-            actor_id=str(user.id) if user else None,
-            actor_role="user",
-            source="api",
-            changes_json={
+        from ..services.audit import create_audit_log, compute_proposal_diff
+        audit_context = {
+            "project_id": str(p.project_id) if p.project_id else None,
+            "client_id": str(p.client_id) if p.client_id else None,
+            "source": source,
+        }
+
+        if is_new:
+            new_data = p.data or {}
+            create_changes: dict = {
                 "title": title,
                 "order_number": p.order_number,
-                "is_new": is_new,
-            },
-            context={
-                "project_id": str(p.project_id) if p.project_id else None,
-                "client_id": str(p.client_id) if p.client_id else None,
+                "total": new_data.get("total"),
+                "template_style": new_data.get("template_style"),
+                "date": new_data.get("date"),
+                "proposal_created_for": new_data.get("proposal_created_for"),
+                "type_of_project": new_data.get("type_of_project"),
             }
-        )
+            items = new_data.get("additional_costs") or []
+            if items:
+                create_changes["pricing_items_count"] = len(items)
+                for it in items:
+                    if not isinstance(it, dict):
+                        continue
+                    label = it.get("label", "Item")
+                    v = it.get("value", 0)
+                    try:
+                        vs = f"${float(v):,.2f}"
+                    except (ValueError, TypeError):
+                        vs = str(v)
+                    q = it.get("quantity", "1")
+                    summary = vs
+                    if str(q) != "1":
+                        summary += f" × {q}"
+                    if it.get("approved") is False:
+                        summary += " (Not approved)"
+                    create_changes[f"pricing__{label}"] = summary
+            services = new_data.get("optional_services") or []
+            for s in services:
+                if isinstance(s, dict):
+                    name = s.get("service", "Service")
+                    price = s.get("price", 0)
+                    try:
+                        create_changes[f"service__{name}"] = f"${float(price):,.2f}"
+                    except (ValueError, TypeError):
+                        create_changes[f"service__{name}"] = str(price)
+            secs = new_data.get("sections") or []
+            for s in secs:
+                if isinstance(s, dict):
+                    sec_title = s.get("title", "Section")
+                    create_changes[f"section__{sec_title}"] = s.get("type", "text")
+            create_audit_log(
+                db=db, entity_type="proposal", entity_id=str(p.id),
+                action="CREATE", actor_id=str(user.id) if user else None,
+                actor_role="user", source="api",
+                changes_json=create_changes, context=audit_context,
+            )
+        else:
+            new_data = p.data or {}
+            diff = compute_proposal_diff(old_data, new_data, source)
+            if old_title != title:
+                diff.setdefault('before', {})['title'] = old_title
+                diff.setdefault('after', {})['title'] = title
+            if str(old_order_number) != str(p.order_number):
+                diff.setdefault('before', {})['order_number'] = old_order_number
+                diff.setdefault('after', {})['order_number'] = p.order_number
+            if diff:
+                create_audit_log(
+                    db=db, entity_type="proposal", entity_id=str(p.id),
+                    action="UPDATE", actor_id=str(user.id) if user else None,
+                    actor_role="user", source="api",
+                    changes_json=diff, context=audit_context,
+                )
     except Exception:
         pass
     
@@ -854,7 +916,32 @@ def submit_proposal_for_approval(proposal_id: str, db: Session = Depends(get_db)
     p.approval_status = 'pending'
     p.approved_report_id = report.id
     db.commit()
-    
+
+    try:
+        from ..services.audit import create_audit_log
+        create_audit_log(
+            db=db,
+            entity_type="report",
+            entity_id=str(report.id),
+            action="CREATE",
+            actor_id=str(user.id) if user else None,
+            actor_role="user",
+            source="api",
+            changes_json={
+                "title": report.title,
+                "category_id": report.category_id,
+                "financial_type": report.financial_type,
+                "approval_status": report.approval_status,
+            },
+            context={
+                "project_id": str(p.project_id),
+                "report_title": report.title,
+                "change_order_number": p.change_order_number,
+            }
+        )
+    except Exception:
+        pass
+
     return {"status": "ok", "report_id": str(report.id)}
 
 

@@ -332,7 +332,6 @@ By signing the accompanying proposal, the Owner agrees to these Terms and Condit
   const [contactNameError, setContactNameError] = useState(false);
   const [contactPhotoBlob, setContactPhotoBlob] = useState<Blob|null>(null);
   const [pickerForContact, setPickerForContact] = useState<string|null>(null);
-  const [footerVisible, setFooterVisible] = useState<boolean>(false);
   const [sectionsExpanded, setSectionsExpanded] = useState<Record<string, boolean>>({
     generalInfo: true,
     sections: false,
@@ -922,6 +921,10 @@ By signing the accompanying proposal, the Owner agrees to these Terms and Condit
     if (disabled || isSaving) {
       return;
     }
+    if (autoSaveTimeoutRef.current) {
+      clearTimeout(autoSaveTimeoutRef.current);
+      autoSaveTimeoutRef.current = null;
+    }
     try{
       setIsSaving(true);
       
@@ -987,6 +990,7 @@ By signing the accompanying proposal, the Owner agrees to these Terms and Condit
         sections: sanitizeSections(sections),
         cover_file_object_id: coverFoId||null,
         page2_file_object_id: page2FoId||null,
+        _source: showOnlyPricing ? 'pricing' : 'proposal',
       };
       console.log('Saving proposal with payload:', { id: proposalId, project_id: projectId, client_id: clientId });
       const r:any = await api('POST','/proposals', payload);
@@ -1102,6 +1106,10 @@ By signing the accompanying proposal, the Owner agrees to these Terms and Condit
     // Don't auto-save if already saving or if no clientId
     if (isAutoSavingRef.current || !clientId) return;
     
+    // Don't auto-save if nothing changed
+    const fp = computeFingerprint();
+    if (fp === lastSavedHash) return;
+    
     // Don't auto-save if less than 3 seconds since last save
     const now = Date.now();
     if (now - lastAutoSaveRef.current < 3000) return;
@@ -1146,6 +1154,7 @@ By signing the accompanying proposal, the Owner agrees to these Terms and Condit
         sections: sanitizeSections(sections),
         cover_file_object_id: coverFoId||null,
         page2_file_object_id: page2FoId||null,
+        _source: showOnlyPricing ? 'pricing' : 'proposal',
       };
       const r:any = await api('POST','/proposals', payload);
       
@@ -1172,7 +1181,7 @@ By signing the accompanying proposal, the Owner agrees to these Terms and Condit
     } finally {
       isAutoSavingRef.current = false;
     }
-    }, [clientId, projectId, siteId, coverTitle, templateStyle, orderNumber, date, createdFor, primary, typeOfProject, otherNotes, projectDescription, additionalNotes, pricingItems, optionalServices, showTotalInPdf, showPstInPdf, showGstInPdf, pstRate, gstRate, areaDisplayUnit, totalNum, terms, sections, coverFoId, page2FoId, mode, initial, queryClient, sanitizeSections, computeFingerprint, parseAccounting]);
+    }, [clientId, projectId, siteId, coverTitle, templateStyle, orderNumber, date, createdFor, primary, typeOfProject, otherNotes, projectDescription, additionalNotes, pricingItems, optionalServices, showTotalInPdf, showPstInPdf, showGstInPdf, pstRate, gstRate, areaDisplayUnit, totalNum, terms, sections, coverFoId, page2FoId, mode, initial, queryClient, sanitizeSections, computeFingerprint, parseAccounting, showOnlyPricing, lastSavedHash]);
 
   // Auto-save on changes (debounced)
   useEffect(() => {
@@ -1187,7 +1196,7 @@ By signing the accompanying proposal, the Owner agrees to these Terms and Condit
     // Set new timeout for auto-save (2 seconds after last change)
     autoSaveTimeoutRef.current = setTimeout(() => {
       autoSave();
-    }, 2000);
+    }, 10000);
 
     return () => {
       if (autoSaveTimeoutRef.current) {
@@ -1196,16 +1205,16 @@ By signing the accompanying proposal, the Owner agrees to these Terms and Condit
     };
     }, [isReady, clientId, coverTitle, templateStyle, orderNumber, date, createdFor, primary, typeOfProject, otherNotes, projectDescription, additionalNotes, pricingItems, optionalServices, showTotalInPdf, showPstInPdf, showGstInPdf, terms, sections, coverFoId, page2FoId, autoSave]);
 
-  // Periodic auto-save (every 30 seconds)
+  // Periodic auto-save (every 30 seconds) - disabled for Pricing tab (showOnlyPricing)
   useEffect(() => {
-    if (!isReady || !clientId) return;
+    if (!isReady || !clientId || showOnlyPricing) return;
 
     const interval = setInterval(() => {
       autoSave();
     }, 30000); // 30 seconds
 
     return () => clearInterval(interval);
-  }, [isReady, clientId, autoSave]);
+  }, [isReady, clientId, showOnlyPricing, autoSave]);
 
   const handleGenerate = async()=>{
     try{
@@ -2524,33 +2533,10 @@ By signing the accompanying proposal, the Owner agrees to these Terms and Condit
         <div className="h-12" />
       </div>
       
-      {/* Footer hover trigger area - always visible at bottom */}
-      <div 
-        className="fixed left-60 right-0 bottom-0 z-40 h-3 cursor-pointer transition-all duration-300"
-        onMouseEnter={() => setFooterVisible(true)}
-        onMouseLeave={() => setFooterVisible(false)}
-      >
-        {/* Arrow indicator when footer is hidden */}
-        {!footerVisible && (
-          <div className="absolute bottom-0 left-1/2 -translate-x-1/2 flex items-center justify-center gap-1 px-3 py-1 bg-white/90 backdrop-blur-sm border-t border-x rounded-t-lg shadow-sm text-xs text-gray-600 font-medium">
-            <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" />
-            </svg>
-            Actions
-          </div>
-        )}
-      </div>
-      
-      {/* Fixed footer bar */}
-      <div 
-        className={`fixed left-60 right-0 bottom-0 z-40 transition-transform duration-300 ease-out ${
-          footerVisible ? 'translate-y-0' : 'translate-y-full'
-        }`}
-        onMouseEnter={() => setFooterVisible(true)}
-        onMouseLeave={() => setFooterVisible(false)}
-      >
-        <div className="px-4">
-          <div className="mx-auto max-w-[1400px] rounded-t-xl border bg-white/95 backdrop-blur p-2.5 flex items-center justify-between shadow-[0_-6px_16px_rgba(0,0,0,0.08)]">
+      {/* Fixed footer bar - always visible, centered and compact */}
+      <div className="fixed left-60 right-0 bottom-0 z-40 translate-y-0 flex justify-center">
+        <div className="mx-auto max-w-[900px] w-full px-4">
+          <div className="rounded-t-xl border bg-white/95 backdrop-blur p-2.5 flex items-center justify-between shadow-[0_-6px_16px_rgba(0,0,0,0.08)]">
             {/* Left: Status indicator */}
             {hasUnsavedChanges ? (
               <div className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-full px-2.5 py-1 font-medium">

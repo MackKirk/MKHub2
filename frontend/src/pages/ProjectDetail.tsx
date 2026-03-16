@@ -135,6 +135,338 @@ function formatHoursMinutes(totalMinutes: number): string {
   return `${hours}h${minutes}min`;
 }
 
+// Field-to-label mapping for project hero/detail updates (Recent Activity)
+const PROJECT_UPDATE_LABELS: Record<string, string> = {
+  status_label: 'Status',
+  status_id: 'Status',
+  estimator_id: 'Estimator',
+  estimator_ids: 'Estimator(s)',
+  project_admin_id: 'Project admin',
+  onsite_lead_id: 'On-site lead',
+  division_onsite_leads: 'On-site leads',
+  contact_id: 'Contact',
+  site_id: 'Site',
+  project_division_ids: 'Divisions',
+  division_ids: 'Divisions',
+  name: 'Name',
+  address: 'Address',
+  date_start: 'Start date',
+  date_end: 'End date',
+  date_eta: 'ETA',
+  progress: 'Progress',
+  lat: 'Location',
+  lng: 'Location',
+  lead_source: 'Lead source',
+  is_bidding: 'Is bidding',
+  client_id: 'Client',
+  code: 'Code',
+};
+
+const REPORT_FIELD_LABELS: Record<string, string> = {
+  title: 'Title',
+  category_id: 'Category',
+  division_id: 'Division',
+  description: 'Description',
+  financial_type: 'Financial type',
+  financial_value: 'Financial value',
+  approval_status: 'Approval status',
+  approved_by: 'Approved by',
+  created_by: 'Created by',
+  items_added: 'Items added',
+  total_value: 'Total value',
+  deleted_report: 'Deleted report',
+};
+
+const FILE_FIELD_LABELS: Record<string, string> = {
+  file_name: 'File name',
+  original_name: 'File name',
+  name: 'Folder name',
+  category: 'Category',
+  folder_id: 'Folder',
+  parent_id: 'Parent folder',
+  content_type: 'File type',
+  uploaded_by: 'Uploaded by',
+};
+
+const TIMESHEET_FIELD_LABELS: Record<string, string> = {
+  minutes: 'Duration',
+  work_date: 'Work date',
+  start_time: 'Start time',
+  end_time: 'End time',
+  clock_in_time: 'Clock in',
+  clock_out_time: 'Clock out',
+  hours_worked: 'Hours worked',
+  break_minutes: 'Break',
+  notes: 'Notes',
+  source: 'Source',
+  is_approved: 'Approved',
+  status: 'Status',
+};
+
+const SHIFT_FIELD_LABELS: Record<string, string> = {
+  worker_id: 'Worker',
+  project_id: 'Project',
+  date: 'Date',
+  start_time: 'Start time',
+  end_time: 'End time',
+  status: 'Status',
+  job_name: 'Job type',
+  geofences: 'Geofences',
+};
+
+const PROPOSAL_FIELD_LABELS: Record<string, string> = {
+  title: 'Title',
+  cover_title: 'Cover title',
+  order_number: 'Order number',
+  project_name: 'Project',
+  client_name: 'Client',
+  client_id: 'Client',
+  total: 'Total',
+  template_style: 'Template',
+  is_new: 'New',
+  soft_delete: 'Soft delete',
+  restored: 'Restored',
+  source: 'Source',
+  proposal_created_for: 'Created for',
+  date: 'Date',
+  primary_contact_name: 'Primary contact',
+  primary_contact_phone: 'Contact phone',
+  primary_contact_email: 'Contact email',
+  type_of_project: 'Project type',
+  other_notes: 'Notes',
+  project_description: 'Project description',
+  additional_project_notes: 'Additional notes',
+  terms_text: 'Terms',
+  show_total_in_pdf: 'Show total in PDF',
+  show_pst_in_pdf: 'Show PST in PDF',
+  show_gst_in_pdf: 'Show GST in PDF',
+  pst_rate: 'PST rate',
+  gst_rate: 'GST rate',
+  area_display_unit: 'Area unit',
+  pricing_items_count: 'Pricing items',
+};
+
+const ENTITY_FIELD_LABELS: Record<string, Record<string, string>> = {
+  project: PROJECT_UPDATE_LABELS,
+  report: REPORT_FIELD_LABELS,
+  project_file: FILE_FIELD_LABELS,
+  project_folder: FILE_FIELD_LABELS,
+  timesheet_entry: TIMESHEET_FIELD_LABELS,
+  attendance: TIMESHEET_FIELD_LABELS,
+  shift: SHIFT_FIELD_LABELS,
+  proposal: PROPOSAL_FIELD_LABELS,
+  proposal_draft: PROPOSAL_FIELD_LABELS,
+};
+
+// Helper to get display value for a field (from resolved_values, or after, or fallback)
+function getDisplayValue(
+  field: string,
+  resolvedValues: Record<string, string> | undefined,
+  after: Record<string, any>,
+  before: Record<string, any>
+): string {
+  const resolved = resolvedValues?.[field];
+  if (resolved !== undefined && resolved !== null && String(resolved).trim()) return String(resolved);
+  const val = after[field];
+  if (val === null || val === undefined) return '—';
+  if (field === 'progress') return `${val}%`;
+  if (field === 'estimator_ids' && Array.isArray(val)) return val.length > 0 ? `${val.length} selected` : '—';
+  if (typeof val === 'string' && val.length > 50) return val.slice(0, 47) + '...';
+  return String(val);
+}
+
+// Helper to build human-readable label from audit log for Recent Activity
+function buildRecentActivityLabel(log: { action?: string; entity_type?: string; changes?: any; context?: any; resolved_values?: Record<string, string> }, isOpportunity?: boolean): string {
+  const action = (log.action || '').toUpperCase();
+  const entityType = (log.entity_type || '').toLowerCase();
+  const changes = log.changes || {};
+  const after = changes.after || {};
+  const before = changes.before || {};
+  const context = log.context || {};
+  const resolvedValues = log.resolved_values || {};
+  const changedFields: string[] = Array.isArray(context.changed_fields) ? context.changed_fields : [];
+
+    if (entityType === 'project') {
+    if (action === 'CREATE') return isOpportunity ? 'Opportunity created' : 'Project created';
+    if (action === 'DELETE') return isOpportunity ? 'Opportunity deleted' : 'Project deleted';
+    if (action === 'RESTORE') return isOpportunity ? 'Opportunity restored' : 'Project restored';
+    if (action === 'UPDATE') {
+      if (context.conversion) {
+        // Show conversion with each updated field and its value: "Field to "value"" (one line per logical field, prefer name over ID)
+        const heroFields = ['status_label', 'status_id', 'estimator_id', 'estimator_ids', 'project_admin_id', 'onsite_lead_id', 'division_onsite_leads', 'contact_id', 'site_id', 'project_division_ids', 'division_ids', 'name', 'address', 'date_start', 'date_end', 'date_eta', 'progress', 'lead_source', 'lat', 'lng'];
+        const relevantChanged = changedFields.filter((f: string) => heroFields.includes(f) && f !== 'is_bidding');
+        const uuidLike = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+        const byLabel: Record<string, { value: string; isId: boolean }> = {};
+        for (const f of relevantChanged) {
+          const label = PROJECT_UPDATE_LABELS[f] || f;
+          const displayVal = getDisplayValue(f, resolvedValues, after, before);
+          const valueStr = (displayVal != null && displayVal !== '—') ? String(displayVal).trim() : '';
+          const isId = uuidLike.test(valueStr);
+          if (!byLabel[label] || (byLabel[label].isId && !isId)) {
+            byLabel[label] = { value: valueStr, isId };
+          }
+        }
+        const parts = Object.entries(byLabel).map(([label, { value }]) => `${label} to "${value}"`);
+        if (parts.length > 0) {
+          return `Opportunity converted to project · Fields updated: ${parts.join(', ')}`;
+        }
+        return 'Opportunity converted to project';
+      }
+      const heroFields = ['status_label', 'status_id', 'estimator_id', 'estimator_ids', 'project_admin_id', 'onsite_lead_id', 'division_onsite_leads', 'contact_id', 'site_id', 'project_division_ids', 'division_ids', 'name', 'address', 'date_start', 'date_end', 'date_eta', 'progress', 'lead_source', 'lat', 'lng'];
+      const relevantChanged = changedFields.filter((f: string) => heroFields.includes(f));
+      if (relevantChanged.length === 0) {
+        // Fallback below
+      } else {
+        // Group estimator_id + estimator_ids as single "Estimator" (backend updates both together)
+        const estimatorFields = ['estimator_id', 'estimator_ids'];
+        const isOnlyEstimator = relevantChanged.every((f: string) => estimatorFields.includes(f));
+        const displayField = isOnlyEstimator
+          ? (relevantChanged.includes('estimator_ids') ? 'estimator_ids' : 'estimator_id')
+          : relevantChanged[0];
+        const label = isOnlyEstimator ? 'Estimator' : (PROJECT_UPDATE_LABELS[displayField] || displayField);
+        const displayVal = getDisplayValue(displayField, resolvedValues, after, before);
+        if (displayVal && displayVal !== '—' && displayVal.trim()) {
+          return `${label} updated to "${displayVal}"`;
+        }
+        return `${label} updated`;
+      }
+      // Fallback: check before/after
+      const fallbacks: Array<[string, string]> = [
+        ['status_label', 'Status'],
+        ['estimator_id', 'Estimator'],
+        ['project_admin_id', 'Project admin'],
+        ['contact_id', 'Contact'],
+        ['site_id', 'Site'],
+        ['name', 'Name'],
+      ];
+      for (const [f, lbl] of fallbacks) {
+        if (after[f] !== before[f]) {
+          const displayVal = getDisplayValue(f, resolvedValues, after, before);
+          if (displayVal && displayVal !== '—' && displayVal.trim()) {
+            return `${lbl} updated to "${displayVal}"`;
+          }
+          return `${lbl} updated`;
+        }
+      }
+      return 'Details updated';
+    }
+  }
+  if (entityType === 'report') {
+    if (action === 'CREATE') return changes.title ? `Report added: "${changes.title}"` : 'Report/note added';
+    if (action === 'APPROVE') return 'Report approved';
+    if (action === 'UPDATE') return changes.title ? `Report updated to "${changes.title}"` : 'Report updated';
+    if (action === 'DELETE') return changes.title ? `Report "${changes.title}" removed` : 'Report removed';
+  }
+  if (entityType === 'project_file') {
+    const fileName = changes.file_name || context.file_name || changes.deleted_file?.file_name || (changes.after || {}).original_name || '';
+    if (action === 'CREATE' || action === 'UPLOAD') return fileName ? `File uploaded: "${fileName}"` : 'File uploaded';
+    if (action === 'DELETE') return fileName ? `File "${fileName}" removed` : 'File removed';
+    if (action === 'UPDATE') return fileName ? `File "${fileName}" updated` : 'File updated';
+  }
+  if (entityType === 'project_folder') {
+    const folderName = changes.name || context.folder_name || changes.deleted_folder?.name || (changes.after || {}).name || '';
+    if (action === 'CREATE') return folderName ? `Folder created: "${folderName}"` : 'Folder created';
+    if (action === 'DELETE') return folderName ? `Folder "${folderName}" deleted` : 'Folder deleted';
+    if (action === 'UPDATE') return folderName ? `Folder "${folderName}" updated` : 'Folder updated';
+  }
+  if (entityType === 'proposal' || entityType === 'proposal_draft') {
+    const source = (log.context || {}).source;
+    if (source === 'conversion') return 'Pricing item approvals set';
+    const isDraft = entityType === 'proposal_draft';
+    const label = isDraft ? 'Draft' : source === 'pricing' ? 'Pricing' : 'Proposal';
+    const title = changes.title || changes.cover_title || (changes.after || {}).cover_title || context.proposal_title || '';
+    const titlePart = title ? `: "${title}"` : '';
+
+    if (action === 'UPDATE') return `${label} updated`;
+    if (action === 'CREATE') return `${label} created${titlePart}`;
+    if (action === 'DELETE') return `${label} deleted${titlePart}`;
+    if (action === 'RESTORE') return `${label} restored${titlePart}`;
+    if (action === 'GENERATE_PDF') return `PDF generated${titlePart}`;
+  }
+  if (entityType === 'estimate' || entityType === 'estimate_item') {
+    if (action === 'CREATE') return 'Estimate created';
+    if (action === 'UPDATE') return 'Estimate updated';
+  }
+  if (entityType === 'order' || entityType === 'order_item') {
+    if (action === 'CREATE') return changes.order_number ? `Order #${changes.order_number} created` : 'Order created';
+    if (action === 'UPDATE') return changes.order_number ? `Order #${changes.order_number} updated` : 'Order updated';
+  }
+  if (entityType === 'shift') {
+    const workerName = context.affected_user_name || (log as any).affected_user_name || '';
+    const shiftDate = (changes.after || changes.before || {}).date || context.date || '';
+    const datePart = shiftDate ? ` on ${String(shiftDate).slice(0, 10)}` : '';
+    const workerPart = workerName ? ` for ${workerName}` : '';
+    if (action === 'CREATE') return `Shift scheduled${workerPart}${datePart}`;
+    if (action === 'DELETE') return `Shift cancelled${workerPart}${datePart}`;
+    if (action === 'UPDATE') return `Shift updated${workerPart}${datePart}`;
+    return `Workload updated${workerPart}`;
+  }
+  if (entityType === 'attendance' || entityType === 'timesheet_entry') {
+    const userName = context.affected_user_name || (log as any).affected_user_name || '';
+    const workDate = changes.work_date || context.work_date || (changes.after || {}).work_date || '';
+    const datePart = workDate ? ` on ${String(workDate).slice(0, 10)}` : '';
+    const userPart = userName ? ` for ${userName}` : '';
+    if (action === 'CREATE') return `Time entry added${userPart}${datePart}`;
+    if (action === 'DELETE') return `Time entry deleted${userPart}${datePart}`;
+    if (action === 'APPROVE') return `Time entry approved${userPart}${datePart}`;
+    if (action === 'UNAPPROVE') return `Time entry unapproved${userPart}${datePart}`;
+    if (action === 'RESET') return `Attendance reset${userPart}`;
+    if (action === 'UPDATE') return `Time entry updated${userPart}${datePart}`;
+    return `Timesheet updated${userPart}`;
+  }
+
+  return `${(log.action || 'Unknown').replace(/_/g, ' ')} on ${entityType || 'item'}`;
+}
+
+// Recent Activity card for project/opportunity - uses audit logs API
+function ProjectRecentActivity({ projectId, isOpportunity }: { projectId: string; isOpportunity?: boolean }) {
+  const { data: logs = [], isFetching } = useQuery({
+    queryKey: ['projectRecentActivity', projectId],
+    queryFn: () => api<any[]>('GET', `/projects/${encodeURIComponent(projectId)}/audit-logs?limit=15&offset=0`),
+  });
+
+  const formatTimestamp = (ts: string) => {
+    if (!ts) return '';
+    try {
+      return new Date(ts).toLocaleString('en-US', {
+        month: 'short',
+        day: 'numeric',
+        year: 'numeric',
+        hour: 'numeric',
+        minute: '2-digit',
+        hour12: true,
+      });
+    } catch {
+      return ts;
+    }
+  };
+
+  return (
+    <div className="rounded-xl border border-gray-200/90 bg-white shadow-md overflow-hidden transition-shadow duration-200 hover:shadow-lg hover:border-gray-300/80 flex flex-col min-h-0">
+      <div className="p-3 flex flex-col flex-1 min-h-0">
+        <div className="text-[10px] font-bold text-gray-500 uppercase tracking-wide mb-2 flex-shrink-0">Recent Activity</div>
+        <div className="h-[200px] overflow-y-auto flex-shrink-0 space-y-1.5 pr-1">
+          {isFetching ? (
+            <div className="text-xs text-gray-400 py-4">Loading...</div>
+          ) : logs.length > 0 ? (
+            logs.map((log: any, idx: number) => (
+              <div key={`${log.id}-${idx}`} className="text-xs text-gray-700 py-1.5 border-b border-gray-100 last:border-0">
+                <div className="font-medium">{buildRecentActivityLabel(log, isOpportunity)}</div>
+                <div className="text-[11px] text-gray-500">
+                  {formatTimestamp(log.timestamp)}
+                  {log.actor_name ? ` · by ${log.actor_name}` : ''}
+                </div>
+              </div>
+            ))
+          ) : (
+            <div className="text-xs text-gray-400 py-4">No recent activity</div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // Helper function to get user initials
 function getUserInitials(user: any): string {
   const firstName = user?.first_name || user?.name || user?.username || '';
@@ -498,7 +830,7 @@ export default function ProjectDetail(){
   }, [settings]);
   const [overlayResolved, setOverlayResolved] = useState<string>('');
   const [showAuditLogModal, setShowAuditLogModal] = useState(false);
-  const [auditLogSection, setAuditLogSection] = useState<'general' | 'timesheet' | 'reports' | 'workload' | 'files' | 'proposal' | 'estimate' | 'orders'>('general');
+  const [auditLogSection, setAuditLogSection] = useState<'general' | 'timesheet' | 'reports' | 'workload' | 'files' | 'proposal' | 'pricing' | 'estimate' | 'orders'>('general');
   const [editStatusModal, setEditStatusModal] = useState(false);
   const [editProgressModal, setEditProgressModal] = useState(false);
   const [editProjectNameModal, setEditProjectNameModal] = useState(false);
@@ -541,10 +873,16 @@ export default function ProjectDetail(){
     });
   }, [baseAvailableTabs, hasTabPermission, me]);
 
+  // Invalidate Recent Activity when project data changes (so card updates without waiting for refetch interval)
+  const invalidateRecentActivity = useCallback(() => {
+    queryClient.invalidateQueries({ queryKey: ['projectRecentActivity', String(id ?? '')] });
+  }, [id, queryClient]);
+
   // Invalidate queries for a tab so that when we switch to it we see fresh data (e.g. after save elsewhere)
   const invalidateQueriesForTab = useCallback((tabName: typeof availableTabs[number] | 'estimate' | null) => {
     if (!tabName || tabName === 'overview') return;
     const projectId = String(id ?? '');
+    queryClient.invalidateQueries({ queryKey: ['projectRecentActivity', projectId] });
     switch (tabName) {
       case 'files':
         queryClient.invalidateQueries({ queryKey: ['projectFiles', projectId] });
@@ -1595,6 +1933,13 @@ export default function ProjectDetail(){
         );
       })()}
 
+      {/* Recent Activity */}
+      {!tab && (
+        <div className="mt-6">
+          <ProjectRecentActivity projectId={String(id||'')} isOpportunity={!!proj?.is_bidding} />
+        </div>
+      )}
+
       {/* Danger Zone */}
       {!tab && hasAdministratorAccess && (
         <div className="mt-6 rounded-xl border border-red-200 bg-red-50 p-4">
@@ -1674,7 +2019,7 @@ export default function ProjectDetail(){
               )}
 
               {tab==='reports' && (
-                <ReportsTabEnhanced projectId={String(id)} items={reports||[]} onRefresh={refetchReports} />
+                <ReportsTabEnhanced projectId={String(id)} items={reports||[]} onRefresh={async () => { await refetchReports(); invalidateRecentActivity(); }} />
               )}
 
               {tab==='dispatch' && (
@@ -1686,7 +2031,7 @@ export default function ProjectDetail(){
               )}
 
               {tab==='files' && (
-                <ProjectFilesTabEnhanced projectId={String(id)} files={files||[]} onRefresh={refetchFiles} />
+                <ProjectFilesTabEnhanced projectId={String(id)} files={files||[]} onRefresh={async () => { await refetchFiles(); invalidateRecentActivity(); }} />
               )}
 
               {tab==='documents' && (
@@ -1732,6 +2077,7 @@ export default function ProjectDetail(){
                 // Note: updatedDivisions is not used anymore since divisions come from project_division_ids
               });
               await queryClient.invalidateQueries({ queryKey: ['project', id] });
+              invalidateRecentActivity();
               toast.success('On-site leads updated');
             } catch (e: any) {
               toast.error('Failed to update on-site leads');
@@ -1749,6 +2095,7 @@ export default function ProjectDetail(){
             await api('POST', `/projects/${id}/files?file_object_id=${encodeURIComponent(conf.id)}&category=project-cover-derived&original_name=project-cover.jpg`);
             toast.success('Cover updated');
             await refetchFiles();
+            invalidateRecentActivity();
             setPickerOpen(false);
           }catch(e){ toast.error('Failed to update cover'); setPickerOpen(false); }
         }} />
@@ -1772,7 +2119,7 @@ export default function ProjectDetail(){
               {/* Left side - Section buttons */}
               <div className="w-48 border-r bg-gray-50 p-4">
                 <div className="space-y-2">
-                  {(['general', 'timesheet', 'reports', 'workload', 'files', 'proposal', 'estimate', 'orders'] as const).map((section) => (
+                  {(['general', 'timesheet', 'reports', 'workload', 'files', 'proposal', 'pricing'] as const).map((section) => (
                     <button
                       key={section}
                       onClick={() => setAuditLogSection(section as any)}
@@ -1808,11 +2155,8 @@ export default function ProjectDetail(){
                 {auditLogSection === 'proposal' && (
                   <ProposalAuditSection projectId={String(id)} />
                 )}
-                {auditLogSection === 'estimate' && (
-                  <EstimateAuditSection projectId={String(id)} />
-                )}
-                {auditLogSection === 'orders' && (
-                  <OrdersAuditSection projectId={String(id)} />
+                {auditLogSection === 'pricing' && (
+                  <PricingAuditSection projectId={String(id)} />
                 )}
               </div>
             </div>
@@ -1831,6 +2175,7 @@ export default function ProjectDetail(){
           onClose={() => setEditStatusModal(false)}
           onSave={async () => {
             await queryClient.invalidateQueries({ queryKey: ['project', id] });
+            invalidateRecentActivity();
             setEditStatusModal(false);
           }}
         />
@@ -1844,6 +2189,7 @@ export default function ProjectDetail(){
           onClose={() => setEditProgressModal(false)}
           onSave={async () => {
             await queryClient.invalidateQueries({ queryKey: ['project', id] });
+            invalidateRecentActivity();
             setEditProgressModal(false);
           }}
         />
@@ -1857,6 +2203,7 @@ export default function ProjectDetail(){
           onClose={() => setEditProjectNameModal(false)}
           onSave={async () => {
             await queryClient.invalidateQueries({ queryKey: ['project', id] });
+            invalidateRecentActivity();
             setEditProjectNameModal(false);
           }}
         />
@@ -1870,6 +2217,7 @@ export default function ProjectDetail(){
           onClose={() => setEditSiteModal(false)}
           onSave={async () => {
             await queryClient.invalidateQueries({ queryKey: ['project', id] });
+            invalidateRecentActivity();
             setEditSiteModal(false);
           }}
         />
@@ -1884,6 +2232,7 @@ export default function ProjectDetail(){
           onClose={() => setEditEstimatorModal(false)}
           onSave={async () => {
             await queryClient.invalidateQueries({ queryKey: ['project', id] });
+            invalidateRecentActivity();
             setEditEstimatorModal(false);
           }}
         />
@@ -1898,6 +2247,7 @@ export default function ProjectDetail(){
           onClose={() => setEditProjectAdminModal(false)}
           onSave={async () => {
             await queryClient.invalidateQueries({ queryKey: ['project', id] });
+            invalidateRecentActivity();
             setEditProjectAdminModal(false);
           }}
         />
@@ -1911,6 +2261,7 @@ export default function ProjectDetail(){
           onClose={() => setEditStartDateModal(false)}
           onSave={async () => {
             await queryClient.invalidateQueries({ queryKey: ['project', id] });
+            invalidateRecentActivity();
             setEditStartDateModal(false);
           }}
         />
@@ -1924,6 +2275,7 @@ export default function ProjectDetail(){
           onClose={() => setEditEtaModal(false)}
           onSave={async () => {
             await queryClient.invalidateQueries({ queryKey: ['project', id] });
+            invalidateRecentActivity();
             setEditEtaModal(false);
           }}
         />
@@ -1937,6 +2289,7 @@ export default function ProjectDetail(){
           onClose={() => setEditLeadSourceModal(false)}
           onSave={async () => {
             await queryClient.invalidateQueries({ queryKey: ['project', id] });
+            invalidateRecentActivity();
             setEditLeadSourceModal(false);
           }}
         />
@@ -1951,6 +2304,7 @@ export default function ProjectDetail(){
           onClose={() => setEditRelatedCustomersModal(false)}
           onSave={async () => {
             await queryClient.invalidateQueries({ queryKey: ['project', id] });
+            invalidateRecentActivity();
             setEditRelatedCustomersModal(false);
           }}
         />
@@ -1970,6 +2324,7 @@ export default function ProjectDetail(){
             queryClient.removeQueries({ queryKey: ['proposal'] });
             await Promise.all([
               queryClient.invalidateQueries({ queryKey: ['project', id] }),
+              queryClient.invalidateQueries({ queryKey: ['projectRecentActivity', id] }),
               queryClient.invalidateQueries({ queryKey: ['clientProjects'] }),
               queryClient.invalidateQueries({ queryKey: ['clientOpportunities'] }),
               queryClient.invalidateQueries({ queryKey: ['projectProposals', id] }),
@@ -5469,6 +5824,7 @@ function ProjectProposalTab({ projectId, clientId, siteId, proposals, statusLabe
               queryClient.refetchQueries({ queryKey: ['projectProposals', projectId] });
               // Invalidate project query to refresh division percentages in ProjectDivisionsHeroSection
               queryClient.invalidateQueries({ queryKey: ['project', projectId] });
+              queryClient.invalidateQueries({ queryKey: ['projectRecentActivity', projectId] });
             }}
           />
         )}
@@ -6314,6 +6670,7 @@ function TimesheetTab({ projectId, statusLabel }:{ projectId:string; statusLabel
       queryClient.invalidateQueries({ queryKey: ['timesheetLogsMini', projectId] });
       queryClient.invalidateQueries({ queryKey: ['attendances'] });
       queryClient.invalidateQueries({ queryKey: ['shifts'] });
+      queryClient.invalidateQueries({ queryKey: ['projectRecentActivity', projectId] });
     } catch (error: any) {
       console.error('Error submitting attendance:', error);
       // Extract error message from the error object
@@ -6623,6 +6980,7 @@ function TimesheetTab({ projectId, statusLabel }:{ projectId:string; statusLabel
                         await refetchAttendances();
                         await refetchShifts();
                         queryClient.invalidateQueries({ queryKey: ['timesheetLogs', projectId] });
+                        queryClient.invalidateQueries({ queryKey: ['projectRecentActivity', projectId] });
                         toast.success('Time entry deleted');
                       } catch (err: any) {
                         const msg = String(err?.message || '');
@@ -6752,6 +7110,7 @@ function TimesheetTab({ projectId, statusLabel }:{ projectId:string; statusLabel
                     await refetchAttendances();
                     await refetchShifts();
                     queryClient.invalidateQueries({ queryKey: ['timesheetLogs', projectId] });
+                    queryClient.invalidateQueries({ queryKey: ['projectRecentActivity', projectId] });
                     toast.success('Time entry updated');
                     
                     setEditingEntry(null);
@@ -7131,7 +7490,9 @@ function AuditLogEntry({ log }: { log: any }) {
   const changes = log.changes || {};
   const before = changes.before || {};
   const after = changes.after || {};
-  
+  const resolved = log.resolved_values || {};
+  const resolvedBefore = log.resolved_values_before || {};
+
   const getActionColor = (action: string) => {
     switch (action?.toUpperCase()) {
       case 'CREATE': return 'bg-green-100 text-green-800';
@@ -7144,14 +7505,43 @@ function AuditLogEntry({ log }: { log: any }) {
       default: return 'bg-gray-100 text-gray-800';
     }
   };
-  
+
   const formatValue = (val: any): string => {
     if (val === null || val === undefined) return '-';
     if (typeof val === 'boolean') return val ? 'Yes' : 'No';
     if (typeof val === 'object') return JSON.stringify(val);
     return String(val);
   };
-  
+
+  const isProposalEntity = log.entity_type === 'proposal' || log.entity_type === 'proposal_draft';
+  const entityLabels = ENTITY_FIELD_LABELS[log.entity_type] || {};
+  const fieldLabel = (key: string) => {
+    if (key.startsWith('pricing__')) {
+      const rest = key.substring('pricing__'.length);
+      const parts = rest.split('__');
+      const label = parts[0].replace(/_/g, ' ');
+      if (parts.length > 1) {
+        const sub = parts[1] === 'label' ? 'Name' : parts[1] === 'value' ? 'Value' : parts[1] === 'quantity' ? 'Qty' : parts[1] === 'approved' ? 'Approved' : parts[1] === 'pst' ? 'PST' : parts[1] === 'gst' ? 'GST' : parts[1] === 'area_value' ? 'Area' : parts[1] === 'area_unit' ? 'Area unit' : parts[1].replace(/_/g, ' ');
+        return `${label} — ${sub}`;
+      }
+      return label;
+    }
+    if (key.startsWith('service__')) return `Service: ${key.substring('service__'.length)}`;
+    if (key.startsWith('section__')) {
+      const rest = key.substring('section__'.length);
+      const parts = rest.split('__');
+      if (parts.length > 1) {
+        const sub = parts[1] === 'title' ? 'Title' : parts[1] === 'content' ? 'Content' : parts[1] === 'images' ? 'Images' : parts[1];
+        return `Section "${parts[0]}" — ${sub}`;
+      }
+      return `Section: ${parts[0]}`;
+    }
+    return entityLabels[key] || PROJECT_UPDATE_LABELS[key] || key.replace(/_/g, ' ');
+  };
+  const displayBefore = (key: string) => (resolvedBefore[key] != null && resolvedBefore[key] !== '') ? String(resolvedBefore[key]) : formatValue(before[key]);
+  const displayAfter = (key: string) => (resolved[key] != null && resolved[key] !== '') ? String(resolved[key]) : formatValue(after[key]);
+  const allKeys = [...new Set([...Object.keys(before), ...Object.keys(after)])];
+
   return (
     <div className="px-4 py-3 text-sm hover:bg-gray-50 transition-colors">
       <div className="flex items-start gap-3">
@@ -7202,8 +7592,12 @@ function AuditLogEntry({ log }: { log: any }) {
           <div className="text-sm text-gray-700 mb-1">
             {changes.title && <span className="font-medium">{changes.title}</span>}
             {changes.file_name && <span className="font-medium">{changes.file_name}</span>}
-            {changes.order_number && <span className="font-medium">Order #{changes.order_number}</span>}
+            {changes.order_number && !changes.title && <span className="font-medium">Order #{changes.order_number}</span>}
             {changes.message && <span>{changes.message}</span>}
+            {/* Quick summary for proposal/pricing changes */}
+            {isProposalEntity && allKeys.length > 0 && (
+              <span className="text-gray-500 text-xs ml-1">({allKeys.length} field{allKeys.length > 1 ? 's' : ''} updated)</span>
+            )}
           </div>
           
           {/* Expandable details */}
@@ -7218,46 +7612,77 @@ function AuditLogEntry({ log }: { log: any }) {
           
           {expanded && (
             <div className="mt-2 p-3 bg-gray-50 rounded border text-xs">
-              {Object.keys(before).length > 0 && Object.keys(after).length > 0 ? (
+              {allKeys.length > 0 ? (
                 <div className="grid grid-cols-2 gap-4">
                   <div>
                     <div className="font-medium text-gray-500 mb-2">Before</div>
-                    {Object.entries(before).map(([key, val]) => (
-                      <div key={key} className="flex justify-between py-0.5">
-                        <span className="text-gray-500">{key}:</span>
-                        <span className="text-gray-700">{formatValue(val)}</span>
+                    {allKeys.map((key) => (
+                      <div key={key} className="flex justify-between py-0.5 gap-2">
+                        <span className="text-gray-500 shrink-0">{fieldLabel(key)}:</span>
+                        <span className="text-gray-700 text-right break-words">{displayBefore(key)}</span>
                       </div>
                     ))}
                   </div>
                   <div>
                     <div className="font-medium text-gray-500 mb-2">After</div>
-                    {Object.entries(after).map(([key, val]) => (
-                      <div key={key} className="flex justify-between py-0.5">
-                        <span className="text-gray-500">{key}:</span>
-                        <span className="text-gray-700">{formatValue(val)}</span>
+                    {allKeys.map((key) => (
+                      <div key={key} className="flex justify-between py-0.5 gap-2">
+                        <span className="text-gray-500 shrink-0">{fieldLabel(key)}:</span>
+                        <span className="text-gray-700 text-right break-words">{displayAfter(key)}</span>
                       </div>
                     ))}
                   </div>
                 </div>
               ) : (
                 <div>
-                  {Object.entries(changes).filter(([k]) => k !== 'before' && k !== 'after').map(([key, val]) => (
-                    <div key={key} className="flex justify-between py-0.5">
-                      <span className="text-gray-500">{key}:</span>
-                      <span className="text-gray-700">{formatValue(val)}</span>
-                    </div>
-                  ))}
+                  {(() => {
+                    const flat: Record<string, any> = {};
+                    for (const [k, v] of Object.entries(changes)) {
+                      if (k === 'before' || k === 'after') continue;
+                      if (typeof v === 'object' && v !== null && !Array.isArray(v) && (k === 'deleted_report' || k === 'deleted_proposal' || k === 'deleted_draft')) {
+                        Object.assign(flat, v);
+                      } else {
+                        flat[k] = v;
+                      }
+                    }
+                    return Object.entries(flat).map(([key, val]) => {
+                      const display = (resolved[key] != null && resolved[key] !== '') ? String(resolved[key]) : formatValue(val);
+                      return (
+                        <div key={key} className="flex justify-between py-0.5 gap-2">
+                          <span className="text-gray-500 shrink-0">{fieldLabel(key)}:</span>
+                          <span className="text-gray-700 text-right break-words">{display}</span>
+                        </div>
+                      );
+                    });
+                  })()}
                 </div>
               )}
+
               {log.context && Object.keys(log.context).length > 0 && (
                 <div className="mt-2 pt-2 border-t">
                   <div className="font-medium text-gray-500 mb-1">Context</div>
-                  {Object.entries(log.context).filter(([_, v]) => v != null).map(([key, val]) => (
-                    <div key={key} className="flex justify-between py-0.5">
-                      <span className="text-gray-500">{key}:</span>
-                      <span className="text-gray-700">{formatValue(val)}</span>
-                    </div>
-                  ))}
+                  {Object.entries(log.context).filter(([_, v]) => v != null).map(([key, val]) => {
+                    if (key === 'project_name' || key === 'client_name' || key === 'affected_user_name' || key === 'worker_name' || key === 'approved_by_name') return null;
+                    const ctxLabel = key === 'project_id' && log.context?.project_name != null ? 'Project'
+                      : key === 'client_id' && log.context?.client_name != null ? 'Client'
+                      : key === 'changed_fields' ? 'Changed fields'
+                      : key === 'conversion' ? 'Conversion'
+                      : key === 'source' ? 'Source'
+                      : key.replace(/_/g, ' ');
+                    let ctxVal: string;
+                    if (key === 'project_id' && log.context?.project_name != null) ctxVal = log.context.project_name;
+                    else if (key === 'client_id' && log.context?.client_name != null) ctxVal = log.context.client_name;
+                    else if (key === 'changed_fields' && Array.isArray(val)) ctxVal = (val as string[]).map((f: string) => PROJECT_UPDATE_LABELS[f] || f).join(', ');
+                    else if (key === 'conversion') ctxVal = val ? 'Yes' : 'No';
+                    else if (key === 'source') ctxVal = String(val).replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+                    else ctxVal = typeof val === 'object' ? JSON.stringify(val) : String(val);
+                    return (
+                      <div key={key} className="flex justify-between py-0.5">
+                        <span className="text-gray-500">{ctxLabel}:</span>
+                        <span className="text-gray-700 text-right break-words">{ctxVal}</span>
+                      </div>
+                    );
+                  })}
                 </div>
               )}
             </div>
@@ -7362,6 +7787,10 @@ function FilesAuditSection({ projectId }: { projectId: string }) {
 
 function ProposalAuditSection({ projectId }: { projectId: string }) {
   return <GenericAuditSection projectId={projectId} section="proposal" title="Proposal Activity Log" />;
+}
+
+function PricingAuditSection({ projectId }: { projectId: string }) {
+  return <GenericAuditSection projectId={projectId} section="pricing" title="Pricing Activity Log" />;
 }
 
 function EstimateAuditSection({ projectId }: { projectId: string }) {
@@ -9224,6 +9653,7 @@ function ProjectDivisionsHeroSection({ projectId, proj, hasEditPermission, liveP
           onClose={() => setShowEditModal(false)}
           onSave={async () => {
             await queryClient.invalidateQueries({ queryKey: ['project', projectId] });
+            queryClient.invalidateQueries({ queryKey: ['projectRecentActivity', projectId] });
             setShowEditModal(false);
           }}
         />
@@ -9472,6 +9902,7 @@ function ProjectGeneralInfoCard({ projectId, proj, files, hasEditPermission }:{ 
       await api('PATCH', `/projects/${projectId}`, payload);
       toast.success('Saved');
       queryClient.invalidateQueries({ queryKey: ['project', projectId] });
+      queryClient.invalidateQueries({ queryKey: ['projectRecentActivity', projectId] });
       setEditingDivisions(false);
       setEditingName(false);
       setEditingEta(false);
@@ -9558,6 +9989,7 @@ function ProjectGeneralInfoCard({ projectId, proj, files, hasEditPermission }:{ 
       
       toast.success('Image updated');
       queryClient.invalidateQueries({ queryKey: ['project', projectId] });
+      queryClient.invalidateQueries({ queryKey: ['projectRecentActivity', projectId] });
       setPickerOpen(false);
     } catch (e) {
       toast.error('Failed to update image');
@@ -10041,6 +10473,7 @@ function ProjectEtaEdit({ projectId, proj, settings }:{ projectId:string, proj:a
         try{
           await api('PATCH', `/projects/${projectId}`, { date_eta: eta||null });
           queryClient.invalidateQueries({ queryKey:['project', projectId] });
+          queryClient.invalidateQueries({ queryKey: ['projectRecentActivity', projectId] });
           toast.success('ETA updated');
           setIsEditing(false);
         }catch(_e){ toast.error('Failed to update'); }

@@ -415,6 +415,7 @@ const EstimateBuilder = forwardRef<EstimateBuilderRef, { projectId: string, esti
       // Invalidate cache to ensure fresh data on remount
       queryClient.invalidateQueries({ queryKey: ['estimate', estimateIdToUse] });
       queryClient.invalidateQueries({ queryKey: ['projectEstimates', projectId] });
+      queryClient.invalidateQueries({ queryKey: ['projectRecentActivity', projectId] });
       
       if (!silent) {
         toast.success('Changes saved');
