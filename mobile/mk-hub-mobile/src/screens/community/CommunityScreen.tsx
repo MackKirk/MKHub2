@@ -14,11 +14,12 @@ import {
   View,
   ViewStyle
 } from "react-native";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { colors } from "../../theme/colors";
+import { typography } from "../../theme/typography";
 import { spacing } from "../../theme/spacing";
 import { MKButton } from "../../components/MKButton";
 import { MKCard } from "../../components/MKCard";
+import { ScreenLayout } from "../../components/ScreenLayout";
 import {
   getCommunityPosts,
   markPostViewed,
@@ -32,7 +33,6 @@ import type { CommunityPost, CommunityComment } from "../../types/community";
 type Filter = "all" | "unread" | "required" | "announcements";
 
 export const CommunityScreen: React.FC = () => {
-  const insets = useSafeAreaInsets();
   const [posts, setPosts] = useState<CommunityPost[]>([]);
   const [loading, setLoading] = useState(false);
   const [filter, setFilter] = useState<Filter>("all");
@@ -231,27 +231,24 @@ export const CommunityScreen: React.FC = () => {
   };
 
   return (
-    <View style={[styles.container, { paddingBottom: insets.bottom }]}>
-      <View style={styles.header}>
-        <Text style={styles.title}>Community</Text>
-        <View style={styles.filterRow}>
-          {(["all", "unread", "required", "announcements"] as Filter[]).map((f) => (
-            <TouchableOpacity
-              key={f}
-              style={[styles.filterChip, filter === f && styles.filterChipActive]}
-              onPress={() => setFilter(f)}
+    <ScreenLayout title="Community" scroll={false}>
+      <View style={styles.filterRow}>
+        {(["all", "unread", "required", "announcements"] as Filter[]).map((f) => (
+          <TouchableOpacity
+            key={f}
+            style={[styles.filterChip, filter === f && styles.filterChipActive]}
+            onPress={() => setFilter(f)}
+          >
+            <Text
+              style={[
+                styles.filterText,
+                filter === f && styles.filterTextActive
+              ]}
             >
-              <Text
-                style={[
-                  styles.filterText,
-                  filter === f && styles.filterTextActive
-                ]}
-              >
-                {f.charAt(0).toUpperCase() + f.slice(1)}
-              </Text>
-            </TouchableOpacity>
-          ))}
-        </View>
+              {f.charAt(0).toUpperCase() + f.slice(1)}
+            </Text>
+          </TouchableOpacity>
+        ))}
       </View>
 
       {loading && posts.length === 0 ? (
@@ -277,7 +274,7 @@ export const CommunityScreen: React.FC = () => {
         />
       )}
 
-      {/* Post Detail Modal */}
+      {/* Post Detail Modal - stays inside ScreenLayout */}
       <Modal
         visible={selectedPost !== null}
         animationType="slide"
@@ -402,34 +399,16 @@ export const CommunityScreen: React.FC = () => {
           </View>
         )}
       </Modal>
-    </View>
+    </ScreenLayout>
   );
 };
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: colors.background
-  },
-  header: {
-    paddingHorizontal: spacing.lg,
-    paddingTop: spacing.xl,
-    paddingBottom: spacing.md,
-    backgroundColor: colors.card,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border
-  },
-  title: {
-    fontSize: 28,
-    fontWeight: "800",
-    color: colors.textPrimary,
-    marginBottom: spacing.md,
-    letterSpacing: 0.5
-  },
   filterRow: {
     flexDirection: "row",
     flexWrap: "wrap",
-    gap: spacing.sm
+    gap: spacing.sm,
+    marginBottom: spacing.lg
   },
   filterChip: {
     paddingHorizontal: spacing.md,

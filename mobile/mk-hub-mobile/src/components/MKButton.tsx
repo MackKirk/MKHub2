@@ -11,6 +11,8 @@ import {
 import { LinearGradient } from "expo-linear-gradient";
 import { colors } from "../theme/colors";
 import { spacing } from "../theme/spacing";
+import { radius, shadows } from "../theme/radius";
+import { typography } from "../theme/typography";
 
 interface MKButtonProps {
   title: string;
@@ -52,7 +54,7 @@ export const MKButton: React.FC<MKButtonProps> = ({
   if (variant === "primary") {
     return (
       <TouchableOpacity
-        style={[styles.button, style]}
+        style={[styles.button, styles.buttonPrimaryShadow, style]}
         activeOpacity={0.8}
         onPress={onPress}
         disabled={isDisabled}
@@ -87,15 +89,16 @@ export const MKButton: React.FC<MKButtonProps> = ({
 
 const styles = StyleSheet.create({
   button: {
-    borderRadius: 8,
+    borderRadius: radius.xl,
     paddingVertical: spacing.lg,
     paddingHorizontal: spacing.xl,
     alignItems: "center",
     justifyContent: "center",
     minHeight: 48
   },
+  buttonPrimaryShadow: shadows.buttonPrimary,
   gradient: {
-    borderRadius: 8,
+    borderRadius: radius.xl,
     paddingVertical: spacing.lg,
     paddingHorizontal: spacing.xl,
     alignItems: "center",
@@ -114,15 +117,11 @@ const styles = StyleSheet.create({
   },
   text: {
     color: "#ffffff",
-    fontSize: 17,
-    fontWeight: "700",
-    letterSpacing: 0.5
+    ...typography.button
   },
   textSecondary: {
     color: colors.primary,
-    fontSize: 15,
-    fontWeight: "700",
-    letterSpacing: 0.3
+    ...typography.buttonSmall
   }
 });
 

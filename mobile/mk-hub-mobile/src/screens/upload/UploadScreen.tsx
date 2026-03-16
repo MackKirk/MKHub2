@@ -11,12 +11,13 @@ import {
   TouchableOpacity,
   View
 } from "react-native";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
 import * as ImagePicker from "expo-image-picker";
 import { colors } from "../../theme/colors";
 import { spacing } from "../../theme/spacing";
 import { MKButton } from "../../components/MKButton";
 import { MKCard } from "../../components/MKCard";
+import { ScreenLayout } from "../../components/ScreenLayout";
+import { typography } from "../../theme/typography";
 import { searchProjects, uploadProjectFile } from "../../services/projects";
 import { toApiError } from "../../services/api";
 import type { ProjectListItem } from "../../types/projects";
@@ -41,7 +42,6 @@ interface SelectedMedia {
 type Step = "project" | "category" | "capture";
 
 export const UploadScreen: React.FC = () => {
-  const insets = useSafeAreaInsets();
   const [step, setStep] = useState<Step>("project");
   const [projectQuery, setProjectQuery] = useState("");
   const [projectResults, setProjectResults] = useState<ProjectListItem[]>([]);
@@ -466,47 +466,31 @@ export const UploadScreen: React.FC = () => {
   };
 
   return (
-    <View style={[styles.container, { paddingBottom: insets.bottom }]}>
+    <ScreenLayout title="Upload" scroll={false}>
       <ScrollView
         style={styles.scrollView}
         contentContainerStyle={styles.content}
         showsVerticalScrollIndicator={false}
       >
-        <Text style={styles.title}>Upload to Project</Text>
         {renderStep()}
       </ScrollView>
-    </View>
+    </ScreenLayout>
   );
 };
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: colors.background
-  },
   scrollView: {
     flex: 1
   },
   content: {
-    paddingHorizontal: spacing.lg,
-    paddingTop: spacing.xl,
     paddingBottom: spacing.xxl
   },
-  title: {
-    fontSize: 28,
-    fontWeight: "800",
-    color: colors.textPrimary,
-    marginBottom: spacing.xl,
-    letterSpacing: 0.5
-  },
   stepTitle: {
-    fontSize: 20,
-    fontWeight: "700",
-    color: colors.textPrimary,
+    ...typography.titleSmall,
     marginBottom: spacing.xs
   },
   stepSubtitle: {
-    fontSize: 14,
+    ...typography.bodySmall,
     color: colors.textMuted,
     marginBottom: spacing.lg
   },

@@ -6,6 +6,8 @@ import { useAuth } from "../../hooks/useAuth";
 import { MKCard } from "../../components/MKCard";
 import { colors } from "../../theme/colors";
 import { spacing } from "../../theme/spacing";
+import { typography } from "../../theme/typography";
+import { radius } from "../../theme/radius";
 import type { HomeStackParamList } from "../../navigation/tabs/AppTabs";
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import type { CompositeNavigationProp } from "@react-navigation/native";
@@ -50,12 +52,7 @@ export const HomeScreen: React.FC = () => {
       title: "Schedule",
       subtitle: "View your shifts",
       gradient: [colors.primary, colors.primaryDark],
-      onPress: () => {
-        const parent = navigation.getParent();
-        if (parent) {
-          (parent as any).navigate("Clock");
-        }
-      }
+      onPress: () => navigation.navigate("Schedule")
     },
     {
       icon: "📸",
@@ -134,7 +131,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.background
   },
   content: {
-    paddingHorizontal: spacing.lg,
+    paddingHorizontal: spacing.xl,
     paddingTop: spacing.xl,
     paddingBottom: spacing.xxl
   },
@@ -142,20 +139,19 @@ const styles = StyleSheet.create({
     marginBottom: spacing.xl
   },
   greeting: {
-    fontSize: 24,
-    fontWeight: "600",
+    ...typography.title,
     color: colors.textMuted,
     marginBottom: spacing.xs
   },
   name: {
-    fontSize: 32,
-    fontWeight: "800",
+    ...typography.title,
+    fontSize: 28,
+    lineHeight: 36,
     color: colors.primary,
-    marginBottom: spacing.sm,
-    letterSpacing: 0.5
+    marginBottom: spacing.sm
   },
   subtitle: {
-    fontSize: 15,
+    ...typography.body,
     color: colors.textMuted,
     marginTop: spacing.xs
   },
@@ -172,7 +168,7 @@ const styles = StyleSheet.create({
   },
   cardGradient: {
     padding: spacing.lg,
-    borderRadius: 16,
+    borderRadius: radius.card,
     alignItems: "center",
     minHeight: 140,
     justifyContent: "center"
@@ -182,14 +178,13 @@ const styles = StyleSheet.create({
     marginBottom: spacing.md
   },
   cardTitle: {
-    fontSize: 16,
-    fontWeight: "700",
+    ...typography.subtitle,
     color: "#ffffff",
     marginBottom: spacing.xs,
     textAlign: "center"
   },
   cardSubtitle: {
-    fontSize: 13,
+    ...typography.bodySmall,
     color: "#ffffff",
     opacity: 0.9,
     textAlign: "center"

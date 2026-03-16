@@ -5,11 +5,10 @@ Minimal field-focused mobile app for MK Hub, built with Expo (React Native + Typ
 ### Features
 
 - Login with existing MK Hub credentials (`POST /auth/login`)
-- Home screen with 4 quick actions:
-  - Clock In / Out
-  - Schedule
-  - Upload to Project
-  - My Tasks
+- Home screen with quick actions: Clock, Schedule, Upload, Tasks, Business
+- Community: posts, filters, comments, likes
+- Business: project list, proposals, upload, reports, workload, estimates, orders
+- Create Report: minimal form (title + description) from project proposals screen
 - Clock In / Out using existing dispatch and attendance APIs
 - Weekly schedule view based on shifts
 - Upload photos/videos to a project using `/files/upload-proxy` and `/projects/{id}/files`
@@ -33,7 +32,7 @@ Minimal field-focused mobile app for MK Hub, built with Expo (React Native + Typ
 
   - `extra.apiBaseUrl = process.env.EXPO_PUBLIC_API_BASE_URL ?? "https://mkhub.example.com"`
 
-- **TODO (environment-specific):** Set `EXPO_PUBLIC_API_BASE_URL` (or adjust `app.config.ts`) to point at the real MK Hub backend, including any path prefix such as `/api` if used in deployment.
+- **Required for production:** Set `EXPO_PUBLIC_API_BASE_URL` to your MK Hub backend URL (e.g. `https://your-mkhub-domain.com`). Include any path prefix such as `/api` if your deployment uses one. The default in `app.config.ts` is a placeholder and will not work against a real backend.
 
 ### Important Backend Endpoints Used
 

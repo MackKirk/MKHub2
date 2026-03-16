@@ -1,9 +1,12 @@
 import React, { useEffect, useState } from "react";
 import {
   ActivityIndicator,
+  Alert,
+  Modal,
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   TouchableOpacity,
   View
 } from "react-native";
@@ -13,7 +16,9 @@ import { spacing } from "../../theme/spacing";
 import { MKButton } from "../../components/MKButton";
 import { MKCard } from "../../components/MKCard";
 import { getProjectProposals } from "../../services/proposals";
+import { createProjectReport } from "../../services/reports";
 import { toApiError } from "../../services/api";
+import { typography } from "../../theme/typography";
 import type { ProjectListItem } from "../../types/projects";
 import type { Proposal } from "../../services/proposals";
 
@@ -29,6 +34,10 @@ export const ProjectProposalsScreen: React.FC<ProjectProposalsScreenProps> = ({
   const insets = useSafeAreaInsets();
   const [proposals, setProposals] = useState<Proposal[]>([]);
   const [loading, setLoading] = useState(true);
+  const [reportModalVisible, setReportModalVisible] = useState(false);
+  const [reportTitle, setReportTitle] = useState("");
+  const [reportDescription, setReportDescription] = useState("");
+  const [submittingReport, setSubmittingReport] = useState(false);
 
   useEffect(() => {
     loadProposals();
@@ -42,15 +51,42 @@ export const ProjectProposalsScreen: React.FC<ProjectProposalsScreenProps> = ({
     } catch (err) {
       console.error("[ProjectProposals] Error:", err);
       const apiError = toApiError(err);
-      // Silently fail
+      Alert.alert("Error", apiError.message);
     } finally {
       setLoading(false);
     }
   };
 
-  const handleCreateReport = () => {
-    // TODO: Navigate to report creation wizard
-    console.log("Create report for project:", project.id);
+  const openCreateReport = () => {
+    setReportTitle("");
+    setReportDescription("");
+    setReportModalVisible(true);
+  };
+
+  const closeReportModal = () => {
+    setReportModalVisible(false);
+  };
+
+  const handleSubmitReport = async () => {
+    const title = reportTitle.trim();
+    if (!title) {
+      Alert.alert("Title required", "Please enter a report title.");
+      return;
+    }
+    try {
+      setSubmittingReport(true);
+      await createProjectReport(project.id, {
+        title,
+        description: reportDescription.trim()
+      });
+      Alert.alert("Success", "Report created successfully.");
+      closeReportModal();
+    } catch (err) {
+      const apiError = toApiError(err);
+      Alert.alert("Could not create report", apiError.message);
+    } finally {
+      setSubmittingReport(false);
+    }
   };
 
   return (
@@ -65,11 +101,55 @@ export const ProjectProposalsScreen: React.FC<ProjectProposalsScreenProps> = ({
 
       <View style={styles.actionsBar}>
         <MKButton
-          title="📋 Create Report"
-          onPress={handleCreateReport}
+          title="Create Report"
+          onPress={openCreateReport}
           style={styles.createButton}
         />
       </View>
+
+      <Modal
+        visible={reportModalVisible}
+        animationType="slide"
+        presentationStyle="pageSheet"
+        onRequestClose={closeReportModal}
+      >
+        <View style={styles.modalContainer}>
+          <View style={styles.modalHeader}>
+            <Text style={styles.modalTitle}>New Report</Text>
+            <TouchableOpacity onPress={closeReportModal} style={styles.modalClose}>
+              <Text style={styles.modalCloseText}>Cancel</Text>
+            </TouchableOpacity>
+          </View>
+          <ScrollView style={styles.modalContent} keyboardShouldPersistTaps="handled">
+            <Text style={styles.modalLabel}>Title *</Text>
+            <TextInput
+              style={styles.modalInput}
+              value={reportTitle}
+              onChangeText={setReportTitle}
+              placeholder="Report title"
+              placeholderTextColor={colors.textMuted}
+              autoCapitalize="words"
+            />
+            <Text style={styles.modalLabel}>Description</Text>
+            <TextInput
+              style={[styles.modalInput, styles.modalInputMultiline]}
+              value={reportDescription}
+              onChangeText={setReportDescription}
+              placeholder="Optional description"
+              placeholderTextColor={colors.textMuted}
+              multiline
+              numberOfLines={3}
+            />
+            <MKButton
+              title="Create Report"
+              onPress={handleSubmitReport}
+              loading={submittingReport}
+              disabled={submittingReport}
+              style={styles.modalSubmit}
+            />
+          </ScrollView>
+        </View>
+      </Modal>
 
       {loading ? (
         <View style={styles.centerContainer}>
@@ -176,6 +256,55 @@ const styles = StyleSheet.create({
   emptyText: {
     fontSize: 16,
     color: colors.textMuted
+  },
+  modalContainer: {
+    flex: 1,
+    backgroundColor: colors.background,
+    paddingTop: spacing.xl
+  },
+  modalHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    paddingHorizontal: spacing.xl,
+    marginBottom: spacing.lg
+  },
+  modalTitle: {
+    ...typography.titleSmall
+  },
+  modalClose: {
+    padding: spacing.sm
+  },
+  modalCloseText: {
+    ...typography.body,
+    color: colors.primary
+  },
+  modalContent: {
+    flex: 1,
+    paddingHorizontal: spacing.xl
+  },
+  modalLabel: {
+    ...typography.caption,
+    marginBottom: spacing.xs,
+    textTransform: "uppercase"
+  },
+  modalInput: {
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 14,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    ...typography.body,
+    marginBottom: spacing.lg,
+    backgroundColor: colors.card
+  },
+  modalInputMultiline: {
+    minHeight: 80,
+    textAlignVertical: "top"
+  },
+  modalSubmit: {
+    marginTop: spacing.sm,
+    marginBottom: spacing.xxl
   }
 });
 

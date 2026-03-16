@@ -1,8 +1,7 @@
 import axios from "axios";
 import Constants from "expo-constants";
 
-// Base URL is configured via Expo extra config.
-// TODO: Set EXPO_PUBLIC_API_BASE_URL (or extra.apiBaseUrl) to the real MK Hub backend URL.
+// Base URL from Expo extra (set EXPO_PUBLIC_API_BASE_URL; see README).
 const API_BASE_URL: string =
   (Constants.expoConfig?.extra as { apiBaseUrl?: string } | undefined)
     ?.apiBaseUrl ?? "https://mkhub.example.com";

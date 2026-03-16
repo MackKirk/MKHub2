@@ -1,15 +1,19 @@
 import React from "react";
-import { Text } from "react-native";
 import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { Ionicons } from "@expo/vector-icons";
 import { HomeScreen } from "../../screens/home/HomeScreen";
 import { ClockScreen } from "../../screens/clock/ClockScreen";
 import { UploadScreen } from "../../screens/upload/UploadScreen";
 import { TasksScreen } from "../../screens/tasks/TasksScreen";
 import { CommunityScreen } from "../../screens/community/CommunityScreen";
 import { BusinessScreen } from "../../screens/business/BusinessScreen";
+import { ProjectDetailScreen } from "../../screens/business/ProjectDetailScreen";
+import { ScheduleScreen } from "../../screens/schedule/ScheduleScreen";
 import { colors } from "../../theme/colors";
+import { typography } from "../../theme/typography";
+import type { ProjectListItem } from "../../types/projects";
 
 export type AppTabParamList = {
   Home: undefined;
@@ -23,6 +27,8 @@ export type AppTabParamList = {
 export type HomeStackParamList = {
   HomeMain: undefined;
   Business: undefined;
+  Schedule: undefined;
+  ProjectDetail: { project: ProjectListItem };
 };
 
 const HomeStack = createNativeStackNavigator<HomeStackParamList>();
@@ -32,6 +38,8 @@ const HomeStackNavigator = () => {
     <HomeStack.Navigator screenOptions={{ headerShown: false }}>
       <HomeStack.Screen name="HomeMain" component={HomeScreen} />
       <HomeStack.Screen name="Business" component={BusinessScreen} />
+      <HomeStack.Screen name="Schedule" component={ScheduleScreen} />
+      <HomeStack.Screen name="ProjectDetail" component={ProjectDetailScreen} />
     </HomeStack.Navigator>
   );
 };
@@ -57,7 +65,7 @@ export const AppTabs: React.FC = () => {
         },
         tabBarLabelStyle: {
           fontSize: 12,
-          fontWeight: "600"
+          fontFamily: typography.buttonSmall.fontFamily
         }
       }}
     >
@@ -66,8 +74,8 @@ export const AppTabs: React.FC = () => {
         component={HomeStackNavigator}
         options={{
           tabBarLabel: "Home",
-          tabBarIcon: ({ color, focused }) => (
-            <Text style={{ fontSize: 24 }}>{focused ? "🏠" : "🏡"}</Text>
+          tabBarIcon: ({ color, size }) => (
+            <Ionicons name="home" size={size ?? 24} color={color} />
           )
         }}
       />
@@ -76,8 +84,8 @@ export const AppTabs: React.FC = () => {
         component={ClockScreen}
         options={{
           tabBarLabel: "Clock",
-          tabBarIcon: ({ color, focused }) => (
-            <Text style={{ fontSize: 24 }}>{focused ? "⏰" : "🕐"}</Text>
+          tabBarIcon: ({ color, size }) => (
+            <Ionicons name="time" size={size ?? 24} color={color} />
           )
         }}
       />
@@ -86,8 +94,8 @@ export const AppTabs: React.FC = () => {
         component={UploadScreen}
         options={{
           tabBarLabel: "Upload",
-          tabBarIcon: ({ color, focused }) => (
-            <Text style={{ fontSize: 24 }}>{focused ? "📸" : "📷"}</Text>
+          tabBarIcon: ({ color, size }) => (
+            <Ionicons name="camera" size={size ?? 24} color={color} />
           )
         }}
       />
@@ -96,8 +104,8 @@ export const AppTabs: React.FC = () => {
         component={TasksScreen}
         options={{
           tabBarLabel: "Tasks",
-          tabBarIcon: ({ color, focused }) => (
-            <Text style={{ fontSize: 24 }}>{focused ? "✅" : "📋"}</Text>
+          tabBarIcon: ({ color, size }) => (
+            <Ionicons name="checkmark-done" size={size ?? 24} color={color} />
           )
         }}
       />
@@ -106,8 +114,8 @@ export const AppTabs: React.FC = () => {
         component={CommunityScreen}
         options={{
           tabBarLabel: "Community",
-          tabBarIcon: ({ color, focused }) => (
-            <Text style={{ fontSize: 24 }}>{focused ? "💬" : "📢"}</Text>
+          tabBarIcon: ({ color, size }) => (
+            <Ionicons name="people" size={size ?? 24} color={color} />
           )
         }}
       />

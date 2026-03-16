@@ -15,11 +15,12 @@ const defineConfig = (): ExpoConfig => ({
     bundler: "metro"
   },
   plugins: [
+    "expo-font",
     // Required for expo-secure-store native module with SDK 54
     "expo-secure-store"
   ],
   extra: {
-    // TODO: Configure real API base URL via EXPO_PUBLIC_API_BASE_URL or similar env variable.
+    // Set EXPO_PUBLIC_API_BASE_URL to your MK Hub backend URL (see README).
     apiBaseUrl: process.env.EXPO_PUBLIC_API_BASE_URL ?? "https://mkhub.example.com"
   }
 });

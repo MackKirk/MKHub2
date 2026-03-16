@@ -1,5 +1,10 @@
 import { api } from "./api";
-import type { ProjectListItem } from "../types/projects";
+import type {
+  ProjectDetail,
+  ProjectFileCategory,
+  ProjectFileItem,
+  ProjectListItem
+} from "../types/projects";
 
 // Projects and file upload integration:
 // - GET /projects?q=...
@@ -12,6 +17,25 @@ export const searchProjects = async (
   const response = await api.get<ProjectListItem[]>("/projects", {
     params: query ? { q: query } : undefined
   });
+  return response.data;
+};
+
+export const getProjectDetail = async (
+  projectId: string
+): Promise<ProjectDetail> => {
+  const response = await api.get<ProjectDetail>(`/projects/${projectId}`);
+  return response.data;
+};
+
+export const getProjectFiles = async (
+  projectId: string
+): Promise<ProjectFileItem[]> => {
+  const response = await api.get<ProjectFileItem[]>(`/projects/${projectId}/files`);
+  return response.data;
+};
+
+export const getProjectFileCategories = async (): Promise<ProjectFileCategory[]> => {
+  const response = await api.get<ProjectFileCategory[]>("/clients/file-categories");
   return response.data;
 };
 

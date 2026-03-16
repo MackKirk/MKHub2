@@ -13,6 +13,8 @@ import { colors } from "../../theme/colors";
 import { spacing } from "../../theme/spacing";
 import { MKCard } from "../../components/MKCard";
 import { MKButton } from "../../components/MKButton";
+import { ScreenLayout } from "../../components/ScreenLayout";
+import { typography } from "../../theme/typography";
 import { getMyTasks, startTask, concludeTask } from "../../services/tasks";
 import { toApiError } from "../../services/api";
 import type { TaskGroupedResponse, TaskItem } from "../../types/tasks";
@@ -135,43 +137,36 @@ export const TasksScreen: React.FC = () => {
   };
 
   return (
-    <View style={styles.container}>
-      <View style={styles.container}>
-        <View style={styles.header}>
-          <Text style={styles.title}>My Tasks</Text>
-          <Text style={styles.subtitle}>Tasks assigned to you</Text>
+    <ScreenLayout title="Tasks" scroll={false}>
+      {loading && sections.length === 0 ? (
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color={colors.primary} />
+          <Text style={styles.loadingText}>Loading tasks...</Text>
         </View>
-
-        {loading && sections.length === 0 ? (
-          <View style={styles.loadingContainer}>
-            <ActivityIndicator size="large" color={colors.primary} />
-            <Text style={styles.loadingText}>Loading tasks...</Text>
-          </View>
-        ) : (
-          <FlatList
-            data={sections.flatMap((s) =>
-              s.data.map((task) => ({ section: s.key, task }))
-            )}
-            keyExtractor={(row) => row.task.id}
-            refreshing={loading}
-            onRefresh={loadTasks}
-            renderItem={({ item }) => renderTask({ item: item.task })}
-            contentContainerStyle={styles.listContent}
-            ListEmptyComponent={
-              !loading ? (
-                <View style={styles.emptyContainer}>
-                  <Text style={styles.emptyIcon}>✅</Text>
-                  <Text style={styles.empty}>No tasks assigned.</Text>
-                  <Text style={styles.emptySubtext}>
-                    All caught up! Check back later for new tasks.
-                  </Text>
-                </View>
-              ) : null
-            }
-          />
-        )}
-      </View>
-    </View>
+      ) : (
+        <FlatList
+          data={sections.flatMap((s) =>
+            s.data.map((task) => ({ section: s.key, task }))
+          )}
+          keyExtractor={(row) => row.task.id}
+          refreshing={loading}
+          onRefresh={loadTasks}
+          renderItem={({ item }) => renderTask({ item: item.task })}
+          contentContainerStyle={styles.listContent}
+          ListEmptyComponent={
+            !loading ? (
+              <View style={styles.emptyContainer}>
+                <Text style={styles.emptyIcon}>✅</Text>
+                <Text style={styles.empty}>No tasks assigned.</Text>
+                <Text style={styles.emptySubtext}>
+                  All caught up! Check back later for new tasks.
+                </Text>
+              </View>
+            ) : null
+          }
+        />
+      )}
+    </ScreenLayout>
   );
 };
 
@@ -202,26 +197,6 @@ const applyTaskUpdate = (sections: Section[], updated: TaskItem): TaskGroupedRes
 };
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: colors.background,
-    paddingHorizontal: spacing.lg,
-    paddingTop: spacing.xl
-  },
-  header: {
-    marginBottom: spacing.lg
-  },
-  title: {
-    fontSize: 28,
-    fontWeight: "800",
-    color: colors.textPrimary,
-    marginBottom: spacing.xs,
-    letterSpacing: 0.5
-  },
-  subtitle: {
-    fontSize: 15,
-    color: colors.textMuted
-  },
   loadingContainer: {
     flex: 1,
     justifyContent: "center",
@@ -229,8 +204,8 @@ const styles = StyleSheet.create({
   },
   loadingText: {
     marginTop: spacing.md,
-    color: colors.textMuted,
-    fontSize: 14
+    ...typography.bodySmall,
+    color: colors.textMuted
   },
   listContent: {
     paddingBottom: spacing.xxl
@@ -246,9 +221,7 @@ const styles = StyleSheet.create({
   },
   taskTitle: {
     flex: 1,
-    fontSize: 17,
-    fontWeight: "700",
-    color: colors.textPrimary,
+    ...typography.subtitle,
     marginRight: spacing.sm
   },
   statusBadge: {
@@ -273,7 +246,7 @@ const styles = StyleSheet.create({
     marginRight: spacing.xs
   },
   taskMeta: {
-    fontSize: 14,
+    ...typography.bodySmall,
     color: colors.textMuted
   },
   taskAction: {
@@ -292,14 +265,12 @@ const styles = StyleSheet.create({
     marginBottom: spacing.md
   },
   empty: {
-    fontSize: 18,
-    fontWeight: "600",
-    color: colors.textPrimary,
+    ...typography.subtitle,
     marginBottom: spacing.xs,
     textAlign: "center"
   },
   emptySubtext: {
-    fontSize: 14,
+    ...typography.bodySmall,
     color: colors.textMuted,
     textAlign: "center"
   }

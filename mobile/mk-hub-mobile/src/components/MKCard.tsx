@@ -2,6 +2,7 @@ import React from "react";
 import { StyleSheet, TouchableOpacity, View, ViewStyle } from "react-native";
 import { colors } from "../theme/colors";
 import { spacing } from "../theme/spacing";
+import { radius, shadows } from "../theme/radius";
 
 interface MKCardProps {
   children: React.ReactNode;
@@ -48,18 +49,10 @@ export const MKCard: React.FC<MKCardProps> = ({
 const styles = StyleSheet.create({
   card: {
     backgroundColor: colors.card,
-    borderRadius: 16,
+    borderRadius: radius.card,
     padding: spacing.lg,
-    shadowColor: "#000",
-    shadowOpacity: 0.08,
-    shadowRadius: 12,
-    shadowOffset: { width: 0, height: 2 },
-    elevation: 4
+    ...shadows.card
   },
-  elevated: {
-    shadowOpacity: 0.12,
-    shadowRadius: 16,
-    elevation: 6
-  }
+  elevated: shadows.cardElevated
 });
 

@@ -13,7 +13,9 @@ import { colors } from "../../theme/colors";
 import { spacing } from "../../theme/spacing";
 import { MKButton } from "../../components/MKButton";
 import { MKCard } from "../../components/MKCard";
+import { ScreenLayout } from "../../components/ScreenLayout";
 import { useAuth } from "../../hooks/useAuth";
+import { typography } from "../../theme/typography";
 import { getTodayShiftAndAttendance, postAttendance } from "../../services/shifts";
 import { toApiError } from "../../services/api";
 import type { TodayShiftInfo } from "../../types/shifts";
@@ -114,30 +116,25 @@ export const ClockScreen: React.FC = () => {
 
   if (loading && !shiftInfo) {
     return (
-      <View style={styles.container}>
+      <ScreenLayout title="Clock" scroll={false}>
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color={colors.primary} />
           <Text style={styles.loadingText}>Loading shift information...</Text>
         </View>
-      </View>
+      </ScreenLayout>
     );
   }
 
   return (
-    <View style={styles.container}>
+    <ScreenLayout title="Clock" scroll={false}>
       <ScrollView
-        style={styles.container}
+        style={styles.scroll}
         contentContainerStyle={styles.content}
         refreshControl={
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
         }
         showsVerticalScrollIndicator={false}
       >
-        <View style={styles.header}>
-          <Text style={styles.title}>Clock In / Out</Text>
-          <Text style={styles.subtitle}>One-touch attendance tracking</Text>
-        </View>
-
         {shiftInfo ? (
           <MKCard style={styles.shiftCard}>
             <View style={styles.shiftHeader}>
@@ -202,18 +199,13 @@ export const ClockScreen: React.FC = () => {
           />
         </View>
       </ScrollView>
-    </View>
+    </ScreenLayout>
   );
 };
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: colors.background
-  },
+  scroll: { flex: 1 },
   content: {
-    paddingHorizontal: spacing.lg,
-    paddingTop: spacing.xl,
     paddingBottom: spacing.xxl
   },
   loadingContainer: {
@@ -223,21 +215,7 @@ const styles = StyleSheet.create({
   },
   loadingText: {
     marginTop: spacing.md,
-    color: colors.textMuted,
-    fontSize: 14
-  },
-  header: {
-    marginBottom: spacing.xl
-  },
-  title: {
-    fontSize: 28,
-    fontWeight: "800",
-    color: colors.textPrimary,
-    marginBottom: spacing.xs,
-    letterSpacing: 0.5
-  },
-  subtitle: {
-    fontSize: 15,
+    ...typography.bodySmall,
     color: colors.textMuted
   },
   shiftCard: {
@@ -256,15 +234,12 @@ const styles = StyleSheet.create({
     flex: 1
   },
   shiftDate: {
-    fontSize: 18,
-    fontWeight: "700",
-    color: colors.textPrimary,
+    ...typography.subtitle,
     marginBottom: spacing.xs
   },
   shiftTime: {
-    fontSize: 15,
-    color: colors.textMuted,
-    fontWeight: "500"
+    ...typography.bodySmall,
+    color: colors.textMuted
   },
   divider: {
     height: 1,
@@ -275,17 +250,13 @@ const styles = StyleSheet.create({
     marginBottom: spacing.md
   },
   infoLabel: {
-    fontSize: 12,
-    color: colors.textMuted,
+    ...typography.caption,
     marginBottom: spacing.xs,
-    fontWeight: "600",
-    textTransform: "uppercase",
-    letterSpacing: 0.5
+    textTransform: "uppercase"
   },
   infoValue: {
-    fontSize: 16,
-    color: colors.textPrimary,
-    fontWeight: "500"
+    ...typography.body,
+    color: colors.textPrimary
   },
   statusContainer: {
     marginTop: spacing.md
@@ -293,13 +264,12 @@ const styles = StyleSheet.create({
   statusBadge: {
     paddingVertical: spacing.sm,
     paddingHorizontal: spacing.md,
-    borderRadius: 8,
+    borderRadius: 14,
     alignItems: "center"
   },
   statusText: {
     color: "#ffffff",
-    fontSize: 14,
-    fontWeight: "600"
+    ...typography.bodySmall
   },
   noShiftCard: {
     alignItems: "center",
@@ -311,14 +281,12 @@ const styles = StyleSheet.create({
     marginBottom: spacing.md
   },
   noShiftText: {
-    fontSize: 18,
-    fontWeight: "600",
-    color: colors.textPrimary,
+    ...typography.subtitle,
     marginBottom: spacing.xs,
     textAlign: "center"
   },
   noShiftSubtext: {
-    fontSize: 14,
+    ...typography.bodySmall,
     color: colors.textMuted,
     textAlign: "center"
   },

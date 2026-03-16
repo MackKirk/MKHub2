@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   ScrollView,
@@ -8,43 +8,28 @@ import {
   TouchableOpacity,
   View
 } from "react-native";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { Ionicons } from "@expo/vector-icons";
 import { useNavigation } from "@react-navigation/native";
+import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import { colors } from "../../theme/colors";
 import { spacing } from "../../theme/spacing";
+import { typography } from "../../theme/typography";
+import { radius } from "../../theme/radius";
 import { MKCard } from "../../components/MKCard";
+import { ScreenLayout } from "../../components/ScreenLayout";
 import { searchProjects } from "../../services/projects";
 import { toApiError } from "../../services/api";
 import type { ProjectListItem } from "../../types/projects";
-import { ProjectActionsScreen } from "../opportunities/ProjectActionsScreen";
-import { ProjectUploadScreen } from "../opportunities/ProjectUploadScreen";
-import { ProjectReportsScreen } from "../opportunities/ProjectReportsScreen";
-import { ProjectWorkloadScreen } from "../opportunities/ProjectWorkloadScreen";
-import { ProjectProposalViewScreen } from "../opportunities/ProjectProposalViewScreen";
-import { ProjectEstimateScreen } from "../opportunities/ProjectEstimateScreen";
-import { ProjectOrdersScreen } from "../opportunities/ProjectOrdersScreen";
-
-type Screen =
-  | "list"
-  | "actions"
-  | "upload"
-  | "proposals"
-  | "workload"
-  | "proposal"
-  | "estimate"
-  | "orders";
+import type { HomeStackParamList } from "../../navigation/tabs/AppTabs";
 
 type ProjectType = "all" | "opportunity" | "project";
 type ProjectStatus = "all" | string;
+type BusinessNavProp = NativeStackNavigationProp<HomeStackParamList, "Business">;
 
 export const BusinessScreen: React.FC = () => {
-  const insets = useSafeAreaInsets();
-  const navigation = useNavigation();
-  const [currentScreen, setCurrentScreen] = useState<Screen>("list");
-  const [selectedProject, setSelectedProject] = useState<ProjectListItem | null>(null);
+  const navigation = useNavigation<BusinessNavProp>();
   const [query, setQuery] = useState("");
   const [projects, setProjects] = useState<ProjectListItem[]>([]);
-  const [filteredProjects, setFilteredProjects] = useState<ProjectListItem[]>([]);
   const [projectType, setProjectType] = useState<ProjectType>("all");
   const [statusFilter, setStatusFilter] = useState<ProjectStatus>("all");
   const [loading, setLoading] = useState(false);
@@ -55,57 +40,28 @@ export const BusinessScreen: React.FC = () => {
       setLoading(true);
       const results = await searchProjects(searchQuery || "");
       setProjects(results);
-      applyFilters(results, projectType, statusFilter);
     } catch (err) {
       console.error("[BusinessScreen] Error loading projects:", err);
       const apiError = toApiError(err);
-      // Silently fail
+      console.warn(apiError.message);
     } finally {
       setLoading(false);
     }
-  }, [projectType, statusFilter]);
-
-  const applyFilters = (
-    projectList: ProjectListItem[],
-    type: ProjectType,
-    status: ProjectStatus
-  ) => {
-    let filtered = [...projectList];
-
-    // Filter by type (opportunity vs project)
-    if (type === "opportunity") {
-      filtered = filtered.filter((p) => p.is_bidding === true);
-    } else if (type === "project") {
-      filtered = filtered.filter((p) => p.is_bidding === false || !p.is_bidding);
-    }
-
-    // Filter by status
-    if (status !== "all") {
-      filtered = filtered.filter((p) => p.status_label === status);
-    }
-
-    setFilteredProjects(filtered);
-  };
+  }, []);
 
   useEffect(() => {
     loadProjects();
   }, [loadProjects]);
 
   useEffect(() => {
-    applyFilters(projects, projectType, statusFilter);
-  }, [projectType, statusFilter, projects]);
-
-  useEffect(() => {
     if (searchTimeoutRef.current) {
       clearTimeout(searchTimeoutRef.current);
     }
-    if (query.trim()) {
-      searchTimeoutRef.current = setTimeout(() => {
-        loadProjects(query.trim());
-      }, 500);
-    } else {
-      loadProjects();
-    }
+
+    searchTimeoutRef.current = setTimeout(() => {
+      loadProjects(query.trim());
+    }, 400);
+
     return () => {
       if (searchTimeoutRef.current) {
         clearTimeout(searchTimeoutRef.current);
@@ -113,83 +69,39 @@ export const BusinessScreen: React.FC = () => {
     };
   }, [query, loadProjects]);
 
+  const filteredProjects = useMemo(() => {
+    return projects.filter((project) => {
+      if (projectType === "opportunity" && !project.is_bidding) {
+        return false;
+      }
+      if (projectType === "project" && project.is_bidding) {
+        return false;
+      }
+      if (statusFilter !== "all" && project.status_label !== statusFilter) {
+        return false;
+      }
+      return true;
+    });
+  }, [projects, projectType, statusFilter]);
+
+  const uniqueStatuses = useMemo(
+    () => Array.from(new Set(projects.map((p) => p.status_label).filter(Boolean))).sort(),
+    [projects]
+  );
+
   const handleSelectProject = (project: ProjectListItem) => {
-    setSelectedProject(project);
-    setCurrentScreen("actions");
+    navigation.navigate("ProjectDetail", { project });
   };
-
-  const handleBack = () => {
-    if (currentScreen === "actions") {
-      setCurrentScreen("list");
-      setSelectedProject(null);
-    } else {
-      setCurrentScreen("actions");
-    }
-  };
-
-  // Get unique statuses from projects
-  const uniqueStatuses = Array.from(
-    new Set(projects.map((p) => p.status_label).filter(Boolean))
-  ).sort();
-
-  if (currentScreen !== "list" && selectedProject) {
-    switch (currentScreen) {
-      case "actions":
-        return (
-          <ProjectActionsScreen
-            project={selectedProject}
-            onBack={handleBack}
-            onUploadImages={() => setCurrentScreen("upload")}
-            onViewProposals={() => setCurrentScreen("proposals")}
-            onViewWorkload={() => setCurrentScreen("workload")}
-            onViewProposal={() => setCurrentScreen("proposal")}
-            onViewEstimate={() => setCurrentScreen("estimate")}
-            onViewOrders={() => setCurrentScreen("orders")}
-          />
-        );
-      case "upload":
-        return (
-          <ProjectUploadScreen project={selectedProject} onBack={handleBack} />
-        );
-      case "proposals":
-        return (
-          <ProjectReportsScreen project={selectedProject} onBack={handleBack} />
-        );
-      case "workload":
-        return (
-          <ProjectWorkloadScreen project={selectedProject} onBack={handleBack} />
-        );
-      case "proposal":
-        return (
-          <ProjectProposalViewScreen project={selectedProject} onBack={handleBack} />
-        );
-      case "estimate":
-        return (
-          <ProjectEstimateScreen project={selectedProject} onBack={handleBack} />
-        );
-      case "orders":
-        return (
-          <ProjectOrdersScreen project={selectedProject} onBack={handleBack} />
-        );
-      default:
-        break;
-    }
-  }
 
   return (
-    <View style={[styles.container, { paddingTop: insets.top }]}>
-      <View style={styles.header}>
-        <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
-          <Text style={styles.backButtonText}>← Back</Text>
-        </TouchableOpacity>
-        <Text style={styles.title}>Business</Text>
-        <Text style={styles.subtitle}>Manage projects and opportunities</Text>
-      </View>
+    <ScreenLayout title="Business" scroll={false}>
+      <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
+        <Text style={styles.backButtonText}>← Back</Text>
+      </TouchableOpacity>
 
-      {/* Quick Filters */}
       <View style={styles.filtersContainer}>
         <View style={styles.filterRow}>
-          <Text style={styles.filterLabel}>Type:</Text>
+          <Text style={styles.filterLabel}>Type</Text>
           <View style={styles.filterButtons}>
             {(["all", "opportunity", "project"] as ProjectType[]).map((type) => (
               <TouchableOpacity
@@ -218,11 +130,10 @@ export const BusinessScreen: React.FC = () => {
         </View>
 
         <View style={styles.filterRow}>
-          <Text style={styles.filterLabel}>Status:</Text>
+          <Text style={styles.filterLabel}>Status</Text>
           <ScrollView
             horizontal
             showsHorizontalScrollIndicator={false}
-            style={styles.statusScroll}
             contentContainerStyle={styles.statusScrollContent}
           >
             <TouchableOpacity
@@ -264,40 +175,35 @@ export const BusinessScreen: React.FC = () => {
         </View>
       </View>
 
-      {/* Search */}
       <View style={styles.searchContainer}>
         <View style={styles.searchInputContainer}>
-          <Text style={styles.searchIcon}>🔍</Text>
+          <Ionicons name="search" size={18} color={colors.textMuted} style={styles.searchIcon} />
           <TextInput
             style={styles.searchInput}
             value={query}
             onChangeText={setQuery}
-            placeholder="Search by name or code..."
+            placeholder="Search by name or code"
             placeholderTextColor={colors.textMuted}
             autoCapitalize="none"
           />
-          {query.length > 0 && (
+          {query.length > 0 ? (
             <TouchableOpacity
               style={styles.clearButton}
               onPress={() => setQuery("")}
             >
-              <Text style={styles.clearButtonText}>✕</Text>
+              <Ionicons name="close" size={16} color={colors.textMuted} />
             </TouchableOpacity>
-          )}
+          ) : null}
         </View>
       </View>
 
-      {/* Projects List */}
       {loading && filteredProjects.length === 0 ? (
         <View style={styles.centerContainer}>
           <ActivityIndicator size="large" color={colors.primary} />
           <Text style={styles.loadingText}>Loading projects...</Text>
         </View>
       ) : (
-        <ScrollView
-          style={styles.scrollView}
-          contentContainerStyle={styles.scrollContent}
-        >
+        <ScrollView style={styles.scrollView} contentContainerStyle={styles.scrollContent}>
           {filteredProjects.map((project) => (
             <MKCard
               key={project.id}
@@ -305,87 +211,69 @@ export const BusinessScreen: React.FC = () => {
               onPress={() => handleSelectProject(project)}
               elevated={true}
             >
-              <View style={styles.projectCardContent}>
-                <View style={styles.projectHeader}>
+              <View style={styles.projectHeader}>
+                <View style={styles.projectHeaderMain}>
                   <Text style={styles.projectName}>{project.name}</Text>
-                  {project.code && (
+                  {project.code ? (
                     <Text style={styles.projectCode}>{project.code}</Text>
-                  )}
+                  ) : null}
                 </View>
-                <View style={styles.projectMeta}>
-                  {project.status_label && (
-                    <Text style={styles.projectStatus}>
-                      {project.status_label}
-                    </Text>
-                  )}
-                  {(project.is_bidding === true || project.is_bidding === false) && (
-                    <Text style={styles.projectType}>
-                      {project.is_bidding ? "Opportunity" : "Project"}
-                    </Text>
-                  )}
-                </View>
-                {project.client_display_name && (
-                  <Text style={styles.projectClient}>
-                    Client: {project.client_display_name}
-                  </Text>
-                )}
+                <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
               </View>
+
+              <View style={styles.projectMeta}>
+                {project.status_label ? (
+                  <View style={styles.statusBadge}>
+                    <Text style={styles.statusBadgeText}>{project.status_label}</Text>
+                  </View>
+                ) : null}
+                <Text style={styles.projectType}>
+                  {project.is_bidding ? "Opportunity" : "Project"}
+                </Text>
+              </View>
+
+              {project.client_display_name ? (
+                <Text style={styles.projectClient}>
+                  Client: {project.client_display_name}
+                </Text>
+              ) : null}
             </MKCard>
           ))}
-          {!loading && filteredProjects.length === 0 && (
+
+          {!loading && filteredProjects.length === 0 ? (
             <View style={styles.emptyContainer}>
               <Text style={styles.emptyText}>No projects found</Text>
             </View>
-          )}
+          ) : null}
         </ScrollView>
       )}
-    </View>
+    </ScreenLayout>
   );
 };
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: colors.background
-  },
-  header: {
-    padding: spacing.lg,
-    backgroundColor: colors.card,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border
-  },
   backButton: {
-    marginBottom: spacing.sm
+    marginBottom: spacing.md
   },
   backButtonText: {
-    fontSize: 16,
-    color: colors.primary,
-    fontWeight: "600"
-  },
-  title: {
-    fontSize: 24,
-    fontWeight: "700",
-    color: colors.textPrimary,
-    marginBottom: spacing.xs
-  },
-  subtitle: {
-    fontSize: 14,
-    color: colors.textMuted
+    ...typography.body,
+    color: colors.primary
   },
   filtersContainer: {
     padding: spacing.md,
     backgroundColor: colors.card,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radius.card,
+    marginBottom: spacing.md
   },
   filterRow: {
     marginBottom: spacing.md
   },
   filterLabel: {
-    fontSize: 14,
-    fontWeight: "600",
-    color: colors.textPrimary,
-    marginBottom: spacing.sm
+    ...typography.caption,
+    marginBottom: spacing.sm,
+    textTransform: "uppercase"
   },
   filterButtons: {
     flexDirection: "row",
@@ -394,7 +282,7 @@ const styles = StyleSheet.create({
   filterButton: {
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.sm,
-    borderRadius: 8,
+    borderRadius: radius.xl,
     borderWidth: 1,
     borderColor: colors.border,
     backgroundColor: colors.background
@@ -404,125 +292,110 @@ const styles = StyleSheet.create({
     borderColor: colors.primary
   },
   filterButtonText: {
-    fontSize: 14,
-    color: colors.textPrimary,
-    fontWeight: "600"
+    ...typography.bodySmall
   },
   filterButtonTextActive: {
-    color: "white"
-  },
-  statusScroll: {
-    maxHeight: 40
+    color: colors.card
   },
   statusScrollContent: {
-    gap: spacing.sm
+    gap: spacing.sm,
+    paddingRight: spacing.sm
   },
   statusButton: {
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.sm,
-    borderRadius: 8,
+    borderRadius: radius.xl,
     borderWidth: 1,
     borderColor: colors.border,
-    backgroundColor: colors.background,
-    marginRight: spacing.sm
+    backgroundColor: colors.background
   },
   statusButtonActive: {
     backgroundColor: colors.primary,
     borderColor: colors.primary
   },
   statusButtonText: {
-    fontSize: 12,
-    color: colors.textPrimary,
-    fontWeight: "600"
+    ...typography.bodySmall
   },
   statusButtonTextActive: {
-    color: "white"
+    color: colors.card
   },
   searchContainer: {
-    padding: spacing.md,
-    backgroundColor: colors.card,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border
+    marginBottom: spacing.md
   },
   searchInputContainer: {
     flexDirection: "row",
     alignItems: "center",
     borderWidth: 1,
     borderColor: colors.border,
-    borderRadius: 8,
+    borderRadius: radius.card,
     backgroundColor: colors.card,
     paddingHorizontal: spacing.md
   },
   searchIcon: {
-    fontSize: 18,
     marginRight: spacing.sm
   },
   searchInput: {
     flex: 1,
-    paddingVertical: spacing.sm,
-    fontSize: 15,
-    color: colors.textPrimary
+    paddingVertical: spacing.md,
+    ...typography.body
   },
   clearButton: {
     width: 24,
     height: 24,
     alignItems: "center",
-    justifyContent: "center",
-    marginLeft: spacing.xs
-  },
-  clearButtonText: {
-    fontSize: 16,
-    color: colors.textMuted,
-    fontWeight: "700"
+    justifyContent: "center"
   },
   scrollView: {
     flex: 1
   },
   scrollContent: {
-    padding: spacing.md,
-    gap: spacing.md
+    paddingBottom: spacing.xxl
   },
   projectCard: {
-    marginBottom: spacing.sm
-  },
-  projectCardContent: {
-    padding: spacing.md
+    marginBottom: spacing.md
   },
   projectHeader: {
-    marginBottom: spacing.xs
+    flexDirection: "row",
+    alignItems: "flex-start",
+    justifyContent: "space-between",
+    marginBottom: spacing.sm
+  },
+  projectHeaderMain: {
+    flex: 1,
+    marginRight: spacing.sm
   },
   projectName: {
-    fontSize: 18,
-    fontWeight: "600",
-    color: colors.textPrimary,
+    ...typography.subtitle,
     marginBottom: spacing.xs
   },
   projectCode: {
-    fontSize: 14,
-    color: colors.textMuted
+    ...typography.caption
   },
   projectMeta: {
     flexDirection: "row",
-    gap: spacing.md,
-    marginTop: spacing.xs
+    alignItems: "center",
+    gap: spacing.sm,
+    marginBottom: spacing.xs
   },
-  projectStatus: {
-    fontSize: 12,
-    color: colors.textMuted,
+  statusBadge: {
     paddingHorizontal: spacing.sm,
     paddingVertical: spacing.xs,
+    borderRadius: radius.xl,
     backgroundColor: colors.background,
-    borderRadius: 4
+    borderWidth: 1,
+    borderColor: colors.border
+  },
+  statusBadgeText: {
+    ...typography.caption,
+    color: colors.textPrimary
   },
   projectType: {
-    fontSize: 12,
-    color: colors.primary,
-    fontWeight: "600"
+    ...typography.bodySmall,
+    color: colors.primary
   },
   projectClient: {
-    fontSize: 14,
-    color: colors.textMuted,
-    marginTop: spacing.xs
+    ...typography.bodySmall,
+    color: colors.textMuted
   },
   centerContainer: {
     flex: 1,
@@ -531,15 +404,15 @@ const styles = StyleSheet.create({
   },
   loadingText: {
     marginTop: spacing.md,
-    fontSize: 14,
+    ...typography.bodySmall,
     color: colors.textMuted
   },
   emptyContainer: {
-    padding: spacing.xl,
+    paddingVertical: spacing.xxl,
     alignItems: "center"
   },
   emptyText: {
-    fontSize: 16,
+    ...typography.body,
     color: colors.textMuted
   }
 });

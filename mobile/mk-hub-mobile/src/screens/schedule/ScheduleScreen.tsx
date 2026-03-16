@@ -1,7 +1,9 @@
 import React, { useEffect, useState } from "react";
 import { FlatList, StyleSheet, Text, View } from "react-native";
+import { ScreenLayout } from "../../components/ScreenLayout";
 import { colors } from "../../theme/colors";
 import { spacing } from "../../theme/spacing";
+import { typography } from "../../theme/typography";
 import { getShifts } from "../../services/shifts";
 import type { ShiftSummary } from "../../types/shifts";
 import { toApiError } from "../../services/api";
@@ -41,8 +43,7 @@ export const ScheduleScreen: React.FC = () => {
   }, []);
 
   return (
-    <View style={styles.container}>
-      <Text style={styles.title}>My Schedule</Text>
+    <ScreenLayout title="Schedule" scroll={false}>
       <FlatList
         data={rows}
         keyExtractor={(item) => item.id}
@@ -70,7 +71,7 @@ export const ScheduleScreen: React.FC = () => {
           ) : null
         }
       />
-    </View>
+    </ScreenLayout>
   );
 };
 
@@ -102,18 +103,6 @@ const mapRows = (shifts: ShiftSummary[]): Row[] => {
 };
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: colors.background,
-    paddingHorizontal: spacing.lg,
-    paddingTop: spacing.xl
-  },
-  title: {
-    fontSize: 20,
-    fontWeight: "700",
-    color: colors.primary,
-    marginBottom: spacing.lg
-  },
   row: {
     flexDirection: "row",
     paddingVertical: spacing.md,
@@ -124,28 +113,28 @@ const styles = StyleSheet.create({
     width: 70
   },
   weekday: {
-    fontSize: 13,
+    ...typography.caption,
     color: colors.textMuted
   },
   date: {
-    fontSize: 14,
-    color: colors.textPrimary,
-    fontWeight: "500"
+    ...typography.bodySmall,
+    color: colors.textPrimary
   },
   infoCol: {
     flex: 1
   },
   time: {
-    fontSize: 15,
+    ...typography.body,
     color: colors.textPrimary
   },
   project: {
-    fontSize: 13,
+    ...typography.bodySmall,
     color: colors.textMuted
   },
   empty: {
     marginTop: spacing.xl,
     textAlign: "center",
+    ...typography.bodySmall,
     color: colors.textMuted
   }
 });
