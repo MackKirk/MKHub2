@@ -34,6 +34,8 @@ type DocumentPreviewProps = {
   onRemoveElement?: (elementId: string) => void;
   /** For image elements: replace or set image (upload handled by parent) */
   onReplaceImage?: (elementId: string, file: File) => Promise<void>;
+  /** When provided, "Add image" / "Replace image" in popover opens image picker instead of file input. */
+  onReplaceImageClick?: (elementId: string) => void;
 };
 
 const A4_ASPECT = 210 / 297;
@@ -372,6 +374,7 @@ export default function DocumentPreview({
   onUpdateElement,
   onRemoveElement,
   onReplaceImage,
+  onReplaceImageClick,
 }: DocumentPreviewProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLDivElement>(null);
@@ -666,6 +669,7 @@ export default function DocumentPreview({
           }}
           onClose={() => onCanvasClick?.()}
           onReplaceImage={onReplaceImage}
+          onReplaceImageClick={onReplaceImageClick}
         />
       )}
       <div

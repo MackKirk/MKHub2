@@ -5,12 +5,16 @@ import toast from 'react-hot-toast';
 import { useConfirm } from '@/components/ConfirmProvider';
 import { DocumentCreatorModal } from '@/components/DocumentCreatorModal';
 import { ChooseDocumentTypeModal } from '@/components/ChooseDocumentTypeModal';
+import { DocumentPagePreviewThumbnails } from '@/components/DocumentPagePreviewThumbnails';
+import type { DocumentPage } from '@/types/documentCreator';
+
+type Template = { id: string; name?: string; background_file_id?: string };
 
 type UserDocument = {
   id: string;
   title: string;
   project_id?: string | null;
-  pages?: unknown[];
+  pages?: DocumentPage[] | unknown[];
   created_at?: string;
   updated_at?: string | null;
 };
@@ -44,6 +48,11 @@ export default function ProjectDocumentsTab({ projectId, isBidding, canEditDocum
     queryKey: ['document-creator-documents', projectId],
     queryFn: () =>
       api<UserDocument[]>('GET', `/document-creator/documents?project_id=${encodeURIComponent(projectId)}`),
+  });
+
+  const { data: templates = [] } = useQuery({
+    queryKey: ['document-creator-templates'],
+    queryFn: () => api<Template[]>('GET', '/document-creator/templates'),
   });
 
   const handleCreateNew = async (documentTypeId: string | null) => {
@@ -169,12 +178,23 @@ export default function ProjectDocumentsTab({ projectId, isBidding, canEditDocum
           {documents.map((doc) => (
             <li
               key={doc.id}
-              className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-gray-200 bg-white p-3 hover:border-gray-300"
+              className="flex flex-wrap items-center gap-3 rounded-lg border border-gray-200 bg-white p-3 hover:border-gray-300"
             >
-              <div className="min-w-0 flex-1">
-                <div className="font-medium text-gray-900 truncate">{doc.title || 'Untitled document'}</div>
-                <div className="text-xs text-gray-500">Updated {formatDate(doc.updated_at ?? doc.created_at)}</div>
-              </div>
+              <button
+                type="button"
+                onClick={() => handleEdit(doc)}
+                className="flex items-center gap-3 min-w-0 flex-1 text-left rounded focus:outline-none focus:ring-2 focus:ring-brand-red/40 focus:ring-offset-1"
+              >
+                <DocumentPagePreviewThumbnails
+                  pages={Array.isArray(doc.pages) ? doc.pages : []}
+                  templates={templates}
+                  maxPages={4}
+                />
+                <div className="min-w-0 flex-1">
+                  <div className="font-medium text-gray-900 truncate">{doc.title || 'Untitled document'}</div>
+                  <div className="text-xs text-gray-500">Updated {formatDate(doc.updated_at ?? doc.created_at)}</div>
+                </div>
+              </button>
               <div className="flex items-center gap-2 flex-shrink-0">
                 <button
                   type="button"
