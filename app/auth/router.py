@@ -1498,12 +1498,15 @@ def delete_education(user_id: str, eid: str, db: Session = Depends(get_db), user
 
 @router.get("/users/{user_id}/documents")
 def list_documents(user_id: str, folder_id: Optional[str] = None, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
-    # Allow self to view or require permissions
-    if str(user.id) != str(user_id):
+    try:
+        uid = uuid.UUID(user_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid user id")
+    if user.id != uid:
         if not (_has_permission(user, "users:read") or _has_permission(user, "hr:users:read") or _has_permission(user, "hr:users:view:general")):
             raise HTTPException(status_code=403, detail="Forbidden")
     from ..models.models import EmployeeDocument
-    q = db.query(EmployeeDocument).filter(EmployeeDocument.user_id == user_id)
+    q = db.query(EmployeeDocument).filter(EmployeeDocument.user_id == uid)
     if folder_id:
         # Backward-compatible: store folder relation in doc_type as tag 'folder:<id>'
         tag = f"folder:{folder_id}"

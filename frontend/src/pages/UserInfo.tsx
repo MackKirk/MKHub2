@@ -7414,10 +7414,18 @@ function UserDocuments({ userId, canEdit }:{ userId:string, canEdit:boolean }){
   const confirm = useConfirm();
   const { data:folders, refetch: refetchFolders } = useQuery({ queryKey:['user-folders', userId], queryFn: ()=> api<any[]>('GET', `/auth/users/${encodeURIComponent(userId)}/folders`) });
   const [activeFolderId, setActiveFolderId] = useState<string>('all');
-  const { data:docs, refetch } = useQuery({ queryKey:['user-docs', userId, activeFolderId], queryFn: ()=> {
-    const qs = activeFolderId!=='all'? (`?folder_id=${encodeURIComponent(activeFolderId)}`): '';
-    return api<any[]>('GET', `/auth/users/${encodeURIComponent(userId)}/documents${qs}`);
-  }});
+  const { data: allDocsRaw, refetch, isLoading: docsLoading, isError: docsError } = useQuery({
+    queryKey:['user-docs', userId],
+    queryFn: async ()=>{
+      const res = await api<any>('GET', `/auth/users/${encodeURIComponent(userId)}/documents`);
+      return res;
+    },
+  });
+  const allDocs = useMemo(()=> {
+    if (Array.isArray(allDocsRaw)) return allDocsRaw;
+    if (allDocsRaw && typeof allDocsRaw === 'object' && Array.isArray((allDocsRaw as any).data)) return (allDocsRaw as any).data;
+    return [];
+  }, [allDocsRaw]);
   const [showUpload, setShowUpload] = useState(false);
   const [fileObj, setFileObj] = useState<File|null>(null);
   const [title, setTitle] = useState<string>('');
@@ -7425,14 +7433,28 @@ function UserDocuments({ userId, canEdit }:{ userId:string, canEdit:boolean }){
   const [newFolderName, setNewFolderName] = useState('');
   const [newFolderParentId, setNewFolderParentId] = useState<string| null>(null);
   const [isDragging, setIsDragging] = useState(false);
+  const [draggedFileId, setDraggedFileId] = useState<string|null>(null);
   const [renameFolder, setRenameFolder] = useState<{id:string, name:string}|null>(null);
   const [moveDoc, setMoveDoc] = useState<{id:string}|null>(null);
   const [renameDoc, setRenameDoc] = useState<{id:string, title:string}|null>(null);
-  const [inlineRenameFolderId, setInlineRenameFolderId] = useState<string| null>(null);
-  const [inlineRenameFolderName, setInlineRenameFolderName] = useState<string>('');
-  const [selectMode, setSelectMode] = useState<boolean>(false);
-  const [selectedDocIds, setSelectedDocIds] = useState<Set<string>>(new Set());
+  const [fileSearchQuery, setFileSearchQuery] = useState('');
+  const [sortBy, setSortBy] = useState<'uploaded_at'|'name'|'type'>('uploaded_at');
+  const [sortOrder, setSortOrder] = useState<'asc'|'desc'>('desc');
   const [preview, setPreview] = useState<{ url:string, title:string, ext:string }|null>(null);
+  const [uploadTargetFolderId, setUploadTargetFolderId] = useState<string>('');
+  const defaultFoldersCreatedRef = useRef(false);
+
+  useEffect(() => {
+    if (!canEdit || !folders || folders.length > 0 || defaultFoldersCreatedRef.current) return;
+    defaultFoldersCreatedRef.current = true;
+    const names = ['HR Documents', 'Contracts', 'Training', 'Other'];
+    (async () => {
+      for (const name of names) {
+        try { await api('POST', `/auth/users/${encodeURIComponent(userId)}/folders`, { name }); } catch (_) { /* ignore */ }
+      }
+      refetchFolders();
+    })();
+  }, [userId, canEdit, folders, refetchFolders]);
 
   const closeNewFolderModal = () => {
     setShowNewFolder(false);
@@ -7472,13 +7494,14 @@ function UserDocuments({ userId, canEdit }:{ userId:string, canEdit:boolean }){
   const upload = async()=>{
     try{
       if(!fileObj){ toast.error('Select a file'); return; }
-      if(activeFolderId==='all'){ toast.error('Select a folder first'); return; }
       const name = fileObj.name; const type = fileObj.type || 'application/octet-stream';
       const up = await api('POST','/files/upload',{ original_name: name, content_type: type, employee_id: userId, project_id: null, client_id: null, category_id: userId });
       await fetch(up.upload_url, { method:'PUT', headers:{ 'Content-Type': type, 'x-ms-blob-type':'BlockBlob' }, body: fileObj });
       const conf = await api('POST','/files/confirm',{ key: up.key, size_bytes: fileObj.size, checksum_sha256: 'na', content_type: type });
-      await api('POST', `/auth/users/${encodeURIComponent(userId)}/documents`, { folder_id: activeFolderId, title: title || name, file_id: conf.id });
-      toast.success('Uploaded'); setShowUpload(false); setFileObj(null); setTitle(''); await refetch();
+      const payload: any = { title: title || name, file_id: conf.id };
+      if(uploadTargetFolderId) payload.folder_id = uploadTargetFolderId;
+      await api('POST', `/auth/users/${encodeURIComponent(userId)}/documents`, payload);
+      toast.success('Uploaded'); setShowUpload(false); setFileObj(null); setTitle(''); setUploadTargetFolderId(''); await refetch();
     }catch(_e){ toast.error('Upload failed'); }
   };
 
@@ -7523,7 +7546,7 @@ function UserDocuments({ userId, canEdit }:{ userId:string, canEdit:boolean }){
 
   const doMoveDoc = async()=>{
     try{
-      if(!moveDoc) return; if(activeFolderId==='all'){ toast.error('Open a folder to move into another'); return; }
+      if(!moveDoc) return;
       const target = (document.getElementById('move-target') as HTMLSelectElement)?.value || '';
       if(!target){ toast.error('Select destination folder'); return; }
       await api('PUT', `/auth/users/${encodeURIComponent(userId)}/documents/${encodeURIComponent(moveDoc.id)}`, { folder_id: target });
@@ -7539,199 +7562,261 @@ function UserDocuments({ userId, canEdit }:{ userId:string, canEdit:boolean }){
     }catch(_e){ toast.error('Failed to rename'); }
   };
 
+  const docs = allDocs;
+  const currentDocs = useMemo(()=>
+    activeFolderId==='all' ? docs : docs.filter((d:any)=> d.folder_id === activeFolderId),
+  [docs, activeFolderId]);
   const topFolders = useMemo(()=> (folders||[]).filter((f:any)=> !f.parent_id), [folders]);
+  const folderDocCount = useCallback((folderId: string)=> docs.filter((d:any)=> d.folder_id === folderId).length, [docs]);
   const childFolders = useMemo(()=> (folders||[]).filter((f:any)=> f.parent_id===activeFolderId), [folders, activeFolderId]);
-  const breadcrumb = useMemo(()=>{
-    if(activeFolderId==='all') return [] as any[];
+  const currentParentFolderId = useMemo(()=>{
+    if(activeFolderId==='all') return null;
+    const f = (folders||[]).find((x:any)=> x.id===activeFolderId);
+    return f?.parent_id ?? null;
+  }, [folders, activeFolderId]);
+  const locationBreadcrumb = useMemo(()=>{
+    if(activeFolderId==='all') return [] as { id: string|null; name: string }[];
     const map = new Map<string, any>(); (folders||[]).forEach((f:any)=> map.set(f.id, f));
-    const path: any[] = []; let cur = map.get(activeFolderId);
-    while(cur){ path.unshift(cur); cur = cur.parent_id? map.get(cur.parent_id): null; }
+    const path: { id: string|null; name: string }[] = [{ id: null, name: 'Root' }];
+    let cur: any = map.get(activeFolderId);
+    const chain: any[] = [];
+    while(cur){ chain.unshift(cur); cur = cur.parent_id ? map.get(cur.parent_id) : null; }
+    chain.forEach((f: any)=> path.push({ id: f.id, name: f.name }));
     return path;
   }, [folders, activeFolderId]);
+  const getDocTypeLabel = (d: any): string => {
+    const name = String(d?.title || '');
+    const ext = (name.includes('.') ? name.split('.').pop() : '').toLowerCase();
+    if(['pdf'].includes(ext)) return 'PDF';
+    if(['xlsx','xls','csv'].includes(ext)) return 'Excel';
+    if(['doc','docx'].includes(ext)) return 'Word';
+    if(['ppt','pptx'].includes(ext)) return 'PowerPoint';
+    return ext ? ext.toUpperCase() : 'File';
+  };
+  const handleSort = (col: 'uploaded_at'|'name'|'type')=>{
+    if(sortBy===col) setSortOrder(o=> o==='asc' ? 'desc' : 'asc');
+    else { setSortBy(col); setSortOrder('asc'); }
+  };
+  const currentFiles = useMemo(()=>{
+    const q = fileSearchQuery.trim().toLowerCase();
+    let list = q ? currentDocs.filter((d:any)=> (d.title||'').toLowerCase().includes(q)) : currentDocs;
+    const sorted = [...list].sort((a:any,b:any)=>{
+      let av: any, bv: any;
+      if(sortBy==='uploaded_at'){ av = a.created_at||''; bv = b.created_at||''; }
+      else if(sortBy==='name'){ av = (a.title||'').toLowerCase(); bv = (b.title||'').toLowerCase(); }
+      else { av = getDocTypeLabel(a).toLowerCase(); bv = getDocTypeLabel(b).toLowerCase(); }
+      if(av<bv) return sortOrder==='asc' ? -1 : 1;
+      if(av>bv) return sortOrder==='asc' ? 1 : -1;
+      return 0;
+    });
+    return sorted;
+  }, [currentDocs, fileSearchQuery, sortBy, sortOrder]);
 
   return (
-    <div>
-      {activeFolderId==='all' ? (
-        <>
-          <div className="mb-3 flex items-center gap-2">
-            <div className="text-sm font-semibold text-gray-900">Folders</div>
-            {canEdit && <button onClick={()=> { setNewFolderParentId(null); setShowNewFolder(true); }} className="ml-auto px-3 py-1.5 rounded-lg text-sm font-medium text-gray-700 border border-gray-200 hover:bg-gray-50">New folder</button>}
+    <div className="space-y-4">
+      <div className="rounded-xl border bg-white p-4">
+        <div className="flex items-center gap-2 mb-4">
+          <div className="w-8 h-8 rounded bg-blue-100 flex items-center justify-center">
+            <svg className="w-5 h-5 text-blue-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
+            </svg>
           </div>
-          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-8 gap-2">
-            {topFolders.map((f:any)=> (
-              <div key={f.id}
-                   className="relative rounded-lg border p-3 h-28 bg-white hover:bg-gray-50 select-none group flex flex-col items-center justify-center"
-                   onClick={(e)=>{
-                     // avoid triggering when clicking action buttons
-                     const target = e.target as HTMLElement; if(target.closest('.folder-actions')) return; setActiveFolderId(f.id);
-                   }}
-                   onDragOver={(e)=>{ e.preventDefault(); }}
-                   onDrop={async(e)=>{ e.preventDefault();
-                     const movedDocId = e.dataTransfer.getData('application/x-mkhub-doc');
-                     if(movedDocId){
-                       try{ await api('PUT', `/auth/users/${encodeURIComponent(userId)}/documents/${encodeURIComponent(movedDocId)}`, { folder_id: f.id }); toast.success('Moved'); if(activeFolderId===f.id){ await refetch(); } else { setActiveFolderId(f.id); } }
-                       catch(_e){ toast.error('Failed to move'); }
-                       return;
-                     }
-                     if(e.dataTransfer.files?.length){ const arr=Array.from(e.dataTransfer.files); for(const file of arr){ await uploadToFolder(f.id, file); } toast.success('Uploaded'); }
-                   }}>
-                 <div className="text-4xl">📁</div>
-                 <div className="mt-1 text-sm font-medium truncate text-center w-full text-gray-900" title={f.name}>
-                  {inlineRenameFolderId===f.id ? (
-                    <input autoFocus className="border border-gray-200 rounded-lg px-2 py-1 w-full text-sm focus:outline-none focus:ring-1 focus:ring-gray-300 focus:border-gray-300"
-                           value={inlineRenameFolderName}
-                           onChange={e=> setInlineRenameFolderName(e.target.value)}
-                           onBlur={async()=>{ if(inlineRenameFolderName.trim()){ await api('PUT', `/auth/users/${encodeURIComponent(userId)}/folders/${encodeURIComponent(f.id)}`, { name: inlineRenameFolderName.trim() }); await refetchFolders(); } setInlineRenameFolderId(null); }}
-                           onKeyDown={async(e)=>{ if(e.key==='Enter'){ (e.target as HTMLInputElement).blur(); } if(e.key==='Escape'){ setInlineRenameFolderId(null); } }}
+          <h2 className="text-sm font-semibold text-gray-900">Files</h2>
+        </div>
+        <div className="rounded-xl border bg-white overflow-hidden">
+          <div className="flex min-h-[400px]" style={{ height: 'calc(100vh - 380px)' }}>
+            {/* Left Sidebar */}
+            <div className="w-64 border-r bg-gray-50 flex flex-col flex-shrink-0">
+              <div className="p-3 border-b">
+                <div className="text-xs font-semibold text-gray-700">File Categories</div>
+              </div>
+              <div className="flex-1 overflow-y-auto">
+                <button
+                  type="button"
+                  onClick={()=> setActiveFolderId('all')}
+                  className={`w-full text-left px-3 py-2 border-b hover:bg-white transition-colors ${activeFolderId==='all' ? 'bg-white border-l-4 border-l-brand-red font-semibold' : 'text-gray-700'}`}
+                >
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs">📁</span>
+                    <span className="text-xs">All Files</span>
+                    <span className="ml-auto text-[10px] text-gray-500">({docs.length})</span>
+                  </div>
+                </button>
+                {topFolders.map((f: any)=> (
+                  <button
+                    key={f.id}
+                    type="button"
+                    onClick={()=> setActiveFolderId(f.id)}
+                    className={`w-full text-left px-3 py-2 border-b hover:bg-white transition-colors ${activeFolderId===f.id ? 'bg-white border-l-4 border-l-brand-red font-semibold' : 'text-gray-700'}`}
+                  >
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs">📁</span>
+                      <span className="text-xs truncate">{f.name}</span>
+                      <span className="ml-auto text-[10px] text-gray-500">({folderDocCount(f.id)})</span>
+                    </div>
+                  </button>
+                ))}
+              </div>
+            </div>
+            {/* Right content */}
+            <div
+              className={`flex-1 overflow-y-auto p-4 ${isDragging && canEdit ? 'bg-blue-50 border-2 border-dashed border-blue-400' : ''}`}
+              onDragOver={canEdit ? (e)=>{ e.preventDefault(); e.stopPropagation(); setIsDragging(true); } : undefined}
+              onDragLeave={canEdit ? (e)=>{ e.preventDefault(); setIsDragging(false); } : undefined}
+              onDrop={canEdit ? async (e)=>{
+                e.preventDefault(); setIsDragging(false);
+                if(e.dataTransfer.files?.length){
+                  if(activeFolderId==='all'){
+                    for(const file of Array.from(e.dataTransfer.files)){
+                      const name = file.name; const type = file.type || 'application/octet-stream';
+                      const up = await api('POST','/files/upload',{ original_name: name, content_type: type, employee_id: userId, project_id: null, client_id: null, category_id: userId });
+                      await fetch(up.upload_url, { method:'PUT', headers:{ 'Content-Type': type, 'x-ms-blob-type':'BlockBlob' }, body: file });
+                      const conf = await api('POST','/files/confirm',{ key: up.key, size_bytes: file.size, checksum_sha256: 'na', content_type: type });
+                      await api('POST', `/auth/users/${encodeURIComponent(userId)}/documents`, { title: name, file_id: conf.id });
+                    }
+                  } else {
+                    for(const file of Array.from(e.dataTransfer.files)) await uploadToFolder(activeFolderId, file as File);
+                  }
+                  toast.success('Uploaded'); await refetch();
+                }
+                if(draggedFileId && activeFolderId!=='all'){
+                  try{ await api('PUT', `/auth/users/${encodeURIComponent(userId)}/documents/${encodeURIComponent(draggedFileId)}`, { folder_id: activeFolderId }); toast.success('Moved'); await refetch(); } catch(_){ toast.error('Failed to move'); }
+                  setDraggedFileId(null);
+                }
+              } : undefined}
+            >
+              <div className="mb-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                <div className="flex items-center gap-3 flex-1 min-w-0">
+                  <div className="relative flex-1 max-w-sm">
+                    <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none">
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
+                    </span>
+                    <input
+                      type="text"
+                      value={fileSearchQuery}
+                      onChange={e=> setFileSearchQuery(e.target.value)}
+                      placeholder="Search by file name..."
+                      className="w-full pl-8 pr-3 py-1.5 text-xs border border-gray-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-brand-red focus:border-brand-red"
                     />
-                  ) : f.name}
+                  </div>
+                  <div className="text-xs font-semibold text-gray-700 whitespace-nowrap">
+                    {activeFolderId==='all' ? 'All Files' : (folders||[]).find((x:any)=> x.id===activeFolderId)?.name || 'Files'}
+                    <span className="ml-1 text-gray-500">({currentFiles.length})</span>
+                  </div>
                 </div>
                 {canEdit && (
-                  <div className="folder-actions absolute right-2 top-2 opacity-0 group-hover:opacity-100 transition-opacity flex gap-1">
-                    <button type="button" title="Rename" className="p-1 rounded-lg hover:bg-gray-100 text-sm" onClick={()=> { setInlineRenameFolderId(f.id); setInlineRenameFolderName(f.name); }}>✏️</button>
-                    <button type="button" title="Delete" className="p-1 rounded-lg hover:bg-gray-100 text-red-600 text-sm" onClick={()=> removeFolder(f.id)}>🗑️</button>
+                  <div className="flex items-center gap-2 flex-shrink-0">
+                    <button type="button" onClick={()=> { setNewFolderParentId(activeFolderId==='all' ? null : activeFolderId); setShowNewFolder(true); }} className="px-2 py-1.5 rounded border border-gray-300 bg-white text-gray-700 text-xs font-medium hover:bg-gray-50 flex items-center gap-1">
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 13h6m-3-3v6m-10 1V7a2 2 0 012-2h6l2 2h6a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2z" /></svg>
+                      Add folder
+                    </button>
+                    <button type="button" onClick={()=> { setShowUpload(true); setUploadTargetFolderId(activeFolderId==='all' ? '' : activeFolderId); }} className="px-2 py-1.5 rounded bg-brand-red text-white text-xs font-medium">+ Upload File</button>
                   </div>
                 )}
               </div>
-            ))}
-            {!topFolders.length && <div className="text-sm text-gray-500">No folders yet</div>}
-          </div>
-        </>
-      ) : (
-        <>
-          <div className="mb-3 flex items-center gap-2">
-            <button type="button" title="Home" onClick={()=> setActiveFolderId('all')} className="px-3 py-1.5 rounded-lg text-sm font-medium text-gray-700 border border-gray-200 hover:bg-gray-50">🏠</button>
-            <button
-              type="button"
-              title="Up one level"
-              onClick={()=>{
-                if (breadcrumb.length>1){ setActiveFolderId(breadcrumb[breadcrumb.length-2].id); } else { setActiveFolderId('all'); }
-              }}
-              className="px-3 py-1.5 rounded-lg text-sm font-medium text-gray-700 border border-gray-200 hover:bg-gray-50"
-            >⬆️</button>
-            <div className="text-sm font-semibold text-gray-900 flex gap-2 items-center min-w-0">
-              {breadcrumb.map((f:any, idx:number)=> (
-                <span key={f.id} className="flex items-center gap-2 min-w-0">
-                  {idx>0 && <span className="opacity-60 text-gray-500">/</span>}
-                  <button type="button" className="underline text-left truncate hover:text-brand-red" onClick={()=> setActiveFolderId(f.id)}>{f.name}</button>
-                </span>
-              ))}
-            </div>
-            {canEdit && <>
-              <button type="button" onClick={()=> { setNewFolderParentId(activeFolderId); setShowNewFolder(true); }} className="ml-auto px-3 py-1.5 rounded-lg text-sm font-medium text-gray-700 border border-gray-200 hover:bg-gray-50">New subfolder</button>
-              <button type="button" onClick={()=> setShowUpload(true)} className="px-3 py-1.5 rounded-lg text-sm font-medium text-white bg-brand-red hover:bg-[#aa1212]">Add file</button>
-            </>}
-          </div>
-          <div
-            className={`rounded-lg border ${isDragging? 'ring-2 ring-brand-red':''}`}
-            onDragEnter={(e)=>{ e.preventDefault(); setIsDragging(true); }}
-            onDragOver={(e)=>{ e.preventDefault(); setIsDragging(true); }}
-            onDragLeave={(e)=>{ e.preventDefault(); setIsDragging(false); }}
-            onDrop={async(e)=>{ e.preventDefault(); setIsDragging(false); const files = Array.from(e.dataTransfer.files||[]); if(!files.length) return; for(const file of files){ await uploadToFolder(activeFolderId, file as File); } toast.success('Uploaded'); await refetch(); }}
-          >
-            <div className="p-4">
-              {childFolders.length>0 && (
-                <div className="mb-3">
-                  <div className="text-[10px] font-medium text-gray-500 uppercase tracking-wide mb-1">Subfolders</div>
-                  <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-8 gap-2">
-                    {childFolders.map((f:any)=> (
-                      <div key={f.id}
-                           className="relative rounded-lg border p-3 h-28 bg-white hover:bg-gray-50 select-none group flex flex-col items-center justify-center"
-                           onClick={(e)=>{ const t=e.target as HTMLElement; if(t.closest('.folder-actions')) return; setActiveFolderId(f.id); }}
-                           onDragOver={(e)=>{ e.preventDefault(); }}
-                           onDrop={async(e)=>{ e.preventDefault();
-                             const movedDocId = e.dataTransfer.getData('application/x-mkhub-doc');
-                             if(movedDocId){
-                               try{ await api('PUT', `/auth/users/${encodeURIComponent(userId)}/documents/${encodeURIComponent(movedDocId)}`, { folder_id: f.id }); toast.success('Moved'); if(activeFolderId===f.id){ await refetch(); } else { setActiveFolderId(f.id); } }
-                               catch(_e){ toast.error('Failed to move'); }
-                               return;
-                             }
-                             if(e.dataTransfer.files?.length){ const arr=Array.from(e.dataTransfer.files); for(const file of arr){ await uploadToFolder(f.id, file); } toast.success('Uploaded'); }
-                           }}>
-                        <div className="text-4xl">📁</div>
-                        <div className="mt-1 text-sm font-medium truncate text-center w-full text-gray-900" title={f.name}>
-                          {inlineRenameFolderId===f.id ? (
-                            <input autoFocus className="border border-gray-200 rounded-lg px-2 py-1 w-full text-sm focus:outline-none focus:ring-1 focus:ring-gray-300 focus:border-gray-300"
-                                   value={inlineRenameFolderName}
-                                   onChange={e=> setInlineRenameFolderName(e.target.value)}
-                                   onBlur={async()=>{ if(inlineRenameFolderName.trim()){ await api('PUT', `/auth/users/${encodeURIComponent(userId)}/folders/${encodeURIComponent(f.id)}`, { name: inlineRenameFolderName.trim() }); await refetchFolders(); } setInlineRenameFolderId(null); }}
-                                   onKeyDown={async(e)=>{ if(e.key==='Enter'){ (e.target as HTMLInputElement).blur(); } if(e.key==='Escape'){ setInlineRenameFolderId(null); } }}
-                            />
-                          ) : f.name}
-                        </div>
-                        {canEdit && (
-                          <div className="folder-actions absolute right-2 top-2 opacity-0 group-hover:opacity-100 transition-opacity flex gap-1">
-                            <button type="button" title="Rename" className="p-1 rounded-lg hover:bg-gray-100 text-sm" onClick={()=> { setInlineRenameFolderId(f.id); setInlineRenameFolderName(f.name); }}>✏️</button>
-                            <button type="button" title="Delete" className="p-1 rounded-lg hover:bg-gray-100 text-red-600 text-sm" onClick={()=> removeFolder(f.id)}>🗑️</button>
-                          </div>
-                        )}
-                      </div>
-                    ))}
-                  </div>
+              {activeFolderId!=='all' && locationBreadcrumb.length>0 && (
+                <div className="mb-3 flex flex-wrap items-center gap-1">
+                  <span className="text-xs text-gray-500">Location:</span>
+                  {locationBreadcrumb.map((item, idx)=> (
+                    <span key={item.id ?? 'root'} className="inline-flex items-center gap-1">
+                      {idx>0 && <span className="text-gray-400 text-xs">/</span>}
+                      <button type="button" onClick={()=> setActiveFolderId(item.id === null ? 'all' : item.id)} className={`px-2 py-1 rounded text-xs font-medium truncate max-w-[140px] ${item.id===activeFolderId ? 'bg-brand-red text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}>{item.name}</button>
+                    </span>
+                  ))}
                 </div>
               )}
-              <div className="mb-3 flex items-center gap-2">
-                <div className="text-xs text-gray-500">Drag & drop files anywhere below to upload into this folder</div>
-                {canEdit && <button type="button" className="ml-auto text-sm font-medium px-3 py-1.5 rounded-lg border border-gray-200 hover:bg-gray-50 text-gray-700" onClick={()=> { setSelectMode(s=> !s); if(selectMode) setSelectedDocIds(new Set()); }}>{selectMode ? 'Done' : 'Select'}</button>}
-              </div>
-              {selectMode && selectedDocIds.size>0 && (
-                <div className="mb-3 flex items-center gap-2">
-                  <div className="text-sm font-medium text-gray-700">{selectedDocIds.size} selected</div>
-                  <select id="bulk-move-target" className="border border-gray-200 rounded-lg px-3 py-1.5 text-sm">
-                    <option value="" disabled selected>Select destination</option>
-                    {sortByLabel(folders||[], (f:any)=> (f.name||'').toString()).map((f:any)=> <option key={f.id} value={f.id}>{f.name}</option>)}
-                  </select>
-                  <button type="button" className="px-3 py-1.5 rounded-lg text-sm font-medium text-white bg-brand-red hover:bg-[#aa1212]" onClick={async()=>{
-                    const sel = (document.getElementById('bulk-move-target') as HTMLSelectElement);
-                    const dest = sel?.value || '';
-                    if(!dest){ toast.error('Select destination folder'); return; }
-                    try{
-                      for(const id of Array.from(selectedDocIds)){ await api('PUT', `/auth/users/${encodeURIComponent(userId)}/documents/${encodeURIComponent(id)}`, { folder_id: dest }); }
-                      toast.success('Moved'); setSelectedDocIds(new Set()); await refetch();
-                    }catch(_e){ toast.error('Failed'); }
-                  }}>Move</button>
-                  <button type="button" className="px-3 py-1.5 rounded-lg text-sm font-medium text-gray-700 border border-gray-200 hover:bg-gray-50" onClick={()=> setSelectedDocIds(new Set())}>Clear</button>
+              {docsLoading && (
+                <div className="rounded-lg border bg-white p-6 text-center text-sm text-gray-500">Loading documents…</div>
+              )}
+              {docsError && (
+                <div className="rounded-lg border bg-white p-6 text-center">
+                  <p className="text-sm text-gray-600 mb-2">Failed to load documents.</p>
+                  <button type="button" onClick={()=> refetch()} className="px-3 py-1.5 rounded bg-brand-red text-white text-sm">Retry</button>
                 </div>
               )}
+              {!docsLoading && !docsError && (
               <div className="rounded-lg border overflow-hidden bg-white">
-                {(docs||[]).map((d:any)=> (
-                  <div key={d.id} className={`flex items-center gap-3 px-3 py-2 hover:bg-gray-50 ${selectMode && selectedDocIds.has(d.id)? 'bg-red-50':''}`} draggable={canEdit}
-                       onDragStart={(e)=>{ try{ e.dataTransfer.setData('application/x-mkhub-doc', d.id); e.dataTransfer.effectAllowed='move'; }catch(_){} }}>
-                    {selectMode && (
-                      <input type="checkbox" className="mr-1" checked={selectedDocIds.has(d.id)} onChange={(e)=>{
-                        setSelectedDocIds(prev=>{ const next = new Set(prev); if(e.target.checked) next.add(d.id); else next.delete(d.id); return next; });
-                      }} />
-                    )}
-                    {(()=>{ const ext=fileExt(d.title).toUpperCase(); const s=extStyle(ext);
-                      return (
-                        <div className={`w-10 h-12 rounded-lg ${s.bg} ${s.txt} flex items-center justify-center text-[10px] font-extrabold select-none`}>{ext||'FILE'}</div>
-                      ); })()}
-                    <div className="flex-1 min-w-0" onClick={async()=>{
-                        try{
-                        const r:any = await api('GET', `/files/${encodeURIComponent(d.file_id)}/download`);
+                <div className="overflow-x-auto">
+                  <table className="w-full">
+                    <thead className="bg-gray-50 border-b">
+                      <tr>
+                        <th className="px-3 py-2 text-left text-[10px] font-semibold text-gray-700 w-12"></th>
+                        <th className="px-3 py-2 text-left text-[10px] font-semibold text-gray-700 cursor-pointer hover:bg-gray-100 select-none" onClick={()=> handleSort('name')}>
+                          <div className="flex items-center gap-1">Name {sortBy==='name' && <span className="text-xs">{sortOrder==='asc' ? '↑' : '↓'}</span>}</div>
+                        </th>
+                        <th className="px-3 py-2 text-left text-[10px] font-semibold text-gray-700 cursor-pointer hover:bg-gray-100 select-none" onClick={()=> handleSort('type')}>
+                          <div className="flex items-center gap-1">Type {sortBy==='type' && <span className="text-xs">{sortOrder==='asc' ? '↑' : '↓'}</span>}</div>
+                        </th>
+                        <th className="px-3 py-2 text-left text-[10px] font-semibold text-gray-700 cursor-pointer hover:bg-gray-100 select-none" onClick={()=> handleSort('uploaded_at')}>
+                          <div className="flex items-center gap-1">Upload Date {sortBy==='uploaded_at' && <span className="text-xs">{sortOrder==='asc' ? '↑' : '↓'}</span>}</div>
+                        </th>
+                        <th className="px-3 py-2 text-left text-[10px] font-semibold text-gray-700 w-24">Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y">
+                      {activeFolderId!=='all' && (
+                        <tr className="hover:bg-gray-50 cursor-pointer bg-gray-50/50" onClick={()=> setActiveFolderId(currentParentFolderId ?? 'all')}>
+                          <td className="px-3 py-2"><div className="w-8 h-10 rounded-lg bg-amber-100 text-amber-700 flex items-center justify-center"><svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6" /></svg></div></td>
+                          <td className="px-3 py-2"><div className="text-xs font-semibold text-gray-600">..</div></td>
+                          <td className="px-3 py-2 text-xs text-gray-500">—</td>
+                          <td className="px-3 py-2 text-xs text-gray-500">—</td>
+                          <td className="px-3 py-2"></td>
+                        </tr>
+                      )}
+                      {activeFolderId!=='all' && childFolders.map((f: any)=> (
+                        <tr key={f.id} className="hover:bg-gray-50 cursor-pointer" onClick={()=> setActiveFolderId(f.id)}>
+                          <td className="px-3 py-2"><div className="w-8 h-10 rounded-lg bg-amber-100 text-amber-700 flex items-center justify-center"><svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" /></svg></div></td>
+                          <td className="px-3 py-2"><div className="text-xs font-semibold truncate max-w-xs">{f.name}</div></td>
+                          <td className="px-3 py-2 text-xs text-gray-600">Folder</td>
+                          <td className="px-3 py-2 text-xs text-gray-500">—</td>
+                          <td className="px-3 py-2" onClick={e=> e.stopPropagation()}>{canEdit && <button type="button" onClick={()=> removeFolder(f.id)} className="p-1 rounded hover:bg-red-50 text-red-600 text-xs" title="Delete folder">🗑️</button>}</td>
+                        </tr>
+                      ))}
+                      {currentFiles.map((d: any)=>{
                         const ext = fileExt(d.title);
-                        setPreview({ url: r.download_url||'', title: d.title||'Preview', ext });
-                      }catch(_e){ toast.error('Preview not available'); }
-                    }}>
-                      <div className="text-sm font-medium text-gray-900 truncate cursor-pointer hover:underline">{d.title||'Document'}</div>
-                      <div className="text-xs text-gray-500 truncate">Uploaded {String(d.created_at||'').slice(0,10)}</div>
-                    </div>
-                    <div className="ml-auto flex items-center gap-1">
-                      <a title="Download" className="p-2 rounded-lg hover:bg-gray-100 text-sm" href={`/files/${d.file_id}/download`} target="_blank" rel="noopener noreferrer">⬇️</a>
-                      {canEdit && <>
-                        <button type="button" title="Rename" onClick={()=> setRenameDoc({ id: d.id, title: d.title||'' })} className="p-2 rounded-lg hover:bg-gray-100 text-sm">✏️</button>
-                        <button type="button" title="Move" onClick={()=> setMoveDoc({ id: d.id })} className="p-2 rounded-lg hover:bg-gray-100 text-sm">📁</button>
-                        <button type="button" title="Delete" onClick={()=>del(d.id, d.title)} className="p-2 rounded-lg hover:bg-gray-100 text-red-600 text-sm">🗑️</button>
-                      </>}
-                    </div>
-                  </div>
-                ))}
-                {!(docs||[]).length && <div className="px-3 py-3 text-sm text-gray-500">No documents in this folder</div>}
+                        const s = extStyle(ext);
+                        const name = d.title || 'Document';
+                        return (
+                          <tr
+                            key={d.id}
+                            draggable={canEdit}
+                            onDragStart={()=> canEdit && setDraggedFileId(d.id)}
+                            onDragEnd={()=> setDraggedFileId(null)}
+                            className={`hover:bg-gray-50 ${canEdit ? 'cursor-move' : ''}`}
+                          >
+                            <td className="px-3 py-2">
+                              <div className={`w-8 h-10 rounded-lg ${s.bg} ${s.txt} flex items-center justify-center text-[10px] font-extrabold select-none cursor-pointer`} onClick={async()=>{ if(!d.file_id) return; try{ const r: any = await api('GET', `/files/${encodeURIComponent(d.file_id)}/download`); setPreview({ url: r.download_url||'', title: name, ext }); }catch(_e){ toast.error('Preview not available'); }}}>{ext?.toUpperCase()||'FILE'}</div>
+                            </td>
+                            <td className="px-3 py-2" onClick={async()=>{ if(!d.file_id) return; try{ const r: any = await api('GET', `/files/${encodeURIComponent(d.file_id)}/download`); setPreview({ url: r.download_url||'', title: name, ext }); }catch(_e){ toast.error('Preview not available'); }}}>
+                              <div className="text-xs font-semibold truncate max-w-xs cursor-pointer">{name}</div>
+                            </td>
+                            <td className="px-3 py-2 text-xs text-gray-600">{getDocTypeLabel(d)}</td>
+                            <td className="px-3 py-2 text-xs text-gray-600">{d.created_at ? String(d.created_at).slice(0,10) : '—'}</td>
+                            <td className="px-3 py-2">
+                              <div className="flex items-center gap-0.5">
+                                {d.file_id && <a title="Download" href={`/files/${d.file_id}/download`} target="_blank" rel="noopener noreferrer" className="p-1 rounded hover:bg-gray-100 text-xs">⬇️</a>}
+                                {canEdit && <>
+                                  <button type="button" title="Rename" onClick={()=> setRenameDoc({ id: d.id, title: d.title||'' })} className="p-1 rounded hover:bg-gray-100 text-xs">✏️</button>
+                                  <button type="button" title="Move" onClick={()=> setMoveDoc({ id: d.id })} className="p-1 rounded hover:bg-gray-100 text-xs">📁</button>
+                                  <button type="button" title="Delete" onClick={()=> del(d.id, d.title)} className="p-1 rounded hover:bg-red-50 text-red-600 text-xs">🗑️</button>
+                                </>}
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+                {currentFiles.length===0 && (activeFolderId==='all' ? docs.length===0 : currentDocs.length===0) && (
+                  <div className="p-4 text-sm text-gray-500 text-center">No documents</div>
+                )}
               </div>
+              )}
             </div>
           </div>
-        </>
-      )}
+        </div>
+      </div>
 
       {showUpload && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
@@ -7740,8 +7825,8 @@ function UserDocuments({ userId, canEdit }:{ userId:string, canEdit:boolean }){
             <div className="space-y-3">
               <div>
                 <div className="text-xs text-gray-600">Folder</div>
-                <select className="border rounded px-3 py-2 w-full" value={activeFolderId==='all'? '': activeFolderId} onChange={e=> setActiveFolderId(e.target.value||'all')}>
-                  <option value="">Select a folder</option>
+                <select className="border rounded px-3 py-2 w-full" value={uploadTargetFolderId} onChange={e=> setUploadTargetFolderId(e.target.value)}>
+                  <option value="">All Files (uncategorized)</option>
                   {sortByLabel(folders||[], (f:any)=> (f.name||'').toString()).map((f:any)=> <option key={f.id} value={f.id}>{f.name}</option>)}
                 </select>
               </div>
