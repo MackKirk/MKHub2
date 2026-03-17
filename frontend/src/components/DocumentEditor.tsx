@@ -6,6 +6,7 @@ import toast from 'react-hot-toast';
 import DocumentPreview from '@/components/DocumentPreview';
 import DocumentPagesStrip from '@/components/DocumentPagesStrip';
 import { AddPageModal } from '@/components/AddPageModal';
+import ImagePicker from '@/components/ImagePicker';
 import type { DocumentPage, DocElement, PageMargins } from '@/types/documentCreator';
 import { DOCUMENT_EDITOR_FONTS, TEXT_STYLE_PRESETS, createTextElement, createImageElement, createImagePlaceholder, createBlockElement } from '@/types/documentCreator';
 
@@ -186,6 +187,7 @@ function SelectedElementRibbon({
   onRemove,
   onDeselect,
   onReplaceImage,
+  onReplaceImageClick,
   onAlignSelected,
 }: {
   selectedElementIds: string[];
@@ -195,6 +197,8 @@ function SelectedElementRibbon({
   onRemove: (id: string) => void;
   onDeselect: () => void;
   onReplaceImage?: (elementId: string, file: File) => Promise<void>;
+  /** When provided (e.g. when projectId), "Add image" / "Replace image" opens the image picker instead of file input. */
+  onReplaceImageClick?: (elementId: string) => void;
   onAlignSelected?: (alignment: AlignKind) => void;
 }) {
   const id = element?.id ?? '';
@@ -372,21 +376,28 @@ function SelectedElementRibbon({
           </div>
         )}
 
-        {element && isImage && (
+        {element && isImage && (onReplaceImage || onReplaceImageClick) && (
           <>
-            {onReplaceImage && (
-              <div className="flex items-center gap-1.5 flex-shrink-0">
+            <div className="flex items-center gap-1.5 flex-shrink-0">
+              {!onReplaceImageClick && (
                 <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={handleSelectFile} />
-                <button
-                  type="button"
-                  onClick={() => !isLocked && fileInputRef.current?.click()}
-                  disabled={isLocked}
-                  className={`px-2.5 py-1.5 rounded border text-sm ${isLocked ? 'border-gray-200 text-gray-400 cursor-not-allowed' : 'border-gray-300 text-gray-700 hover:bg-gray-50'}`}
-                >
-                  {hasImage ? 'Replace image' : 'Add image'}
-                </button>
-              </div>
-            )}
+              )}
+              <button
+                type="button"
+                onClick={() => {
+                  if (isLocked) return;
+                  if (onReplaceImageClick) {
+                    onReplaceImageClick(id);
+                  } else {
+                    fileInputRef.current?.click();
+                  }
+                }}
+                disabled={isLocked}
+                className={`px-2.5 py-1.5 rounded border text-sm ${isLocked ? 'border-gray-200 text-gray-400 cursor-not-allowed' : 'border-gray-300 text-gray-700 hover:bg-gray-50'}`}
+              >
+                {hasImage ? 'Replace image' : 'Add image'}
+              </button>
+            </div>
 
             {hasImage && !isLocked && (
               <>
@@ -637,6 +648,9 @@ export default function DocumentEditor(props: DocumentEditorProps) {
   const [isExportingPdf, setIsExportingPdf] = useState(false);
   const [pdfPreview, setPdfPreview] = useState<{ url: string; filename: string } | null>(null);
   const [bgPickerOpen, setBgPickerOpen] = useState(false);
+  const [imagePickerOpen, setImagePickerOpen] = useState(false);
+  /** When set, ImagePicker is in "replace" mode for this element; when null, in "add" mode. */
+  const [imagePickerReplaceElementId, setImagePickerReplaceElementId] = useState<string | null>(null);
   const [canvasWidthPxForExport, setCanvasWidthPxForExport] = useState<number>(910);
   const [zoom, setZoom] = useState<number>(1);
   const [dragLayerIndex, setDragLayerIndex] = useState<number | null>(null);
@@ -930,6 +944,18 @@ export default function DocumentEditor(props: DocumentEditorProps) {
   const currentTemplate = templates.find((t) => t.id === currentTemplateId);
   const elements = currentPage?.elements ?? [];
   const selectedElement = selectedElementIds.length === 1 ? elements.find((e) => e.id === selectedElementIds[0]) : null;
+
+  /** A4 aspect: height = width * (297/210). Used to compute image area size in px for ImagePicker. */
+  const A4_HEIGHT_RATIO = 297 / 210;
+  const contentHeightPx = canvasWidthPxForExport * A4_HEIGHT_RATIO;
+  const imagePickerTargetSize = (() => {
+    const replaceEl = imagePickerReplaceElementId ? elements.find((e) => e.id === imagePickerReplaceElementId) : null;
+    const wPct = replaceEl?.width_pct ?? 40;
+    const hPct = replaceEl?.height_pct ?? 25;
+    const w = Math.round((wPct / 100) * canvasWidthPxForExport);
+    const h = Math.round((hPct / 100) * contentHeightPx);
+    return { width: Math.max(100, w), height: Math.max(100, h) };
+  })();
   const backgroundFileId = currentTemplate?.background_file_id;
   const backgroundUrl = backgroundFileId ? `/files/${backgroundFileId}/thumbnail?w=800` : null;
   const defaultMargins: PageMargins = { left_pct: 0, right_pct: 0, top_pct: 0, bottom_pct: 0 };
@@ -1442,7 +1468,17 @@ export default function DocumentEditor(props: DocumentEditorProps) {
           <div className="h-6 w-px bg-gray-300 mx-1" aria-hidden />
           <div className="flex items-center gap-0.5">
             <ToolbarButton icon={<TextIcon className="w-4 h-4" />} label="Text" onClick={handleAddText} />
-            <ToolbarButton icon={<ImageIcon className="w-4 h-4" />} label="Image" onClick={() => fileInputRef.current?.click()} />
+            <ToolbarButton
+              icon={<ImageIcon className="w-4 h-4" />}
+              label="Image"
+              onClick={() => {
+                if (projectId) {
+                  setImagePickerOpen(true);
+                } else {
+                  fileInputRef.current?.click();
+                }
+              }}
+            />
             <ToolbarButton icon={<ImageAreaIcon className="w-4 h-4" />} label="Image area" onClick={handleAddImagePlaceholder} />
             {isTemplate && (
               <ToolbarButton
@@ -1531,6 +1567,7 @@ export default function DocumentEditor(props: DocumentEditorProps) {
           onRemove={handleRemoveElement}
           onDeselect={() => setSelectedElementIds([])}
           onReplaceImage={handleReplaceImage}
+          onReplaceImageClick={projectId ? (elementId) => { setImagePickerReplaceElementId(elementId); setImagePickerOpen(true); } : undefined}
           onAlignSelected={handleAlignSelected}
         />
         )}
@@ -1623,6 +1660,7 @@ export default function DocumentEditor(props: DocumentEditorProps) {
           onUpdateElement={readOnly ? undefined : handleUpdateElement}
           onRemoveElement={readOnly ? undefined : handleRemoveElement}
           onReplaceImage={readOnly ? undefined : handleReplaceImage}
+          onReplaceImageClick={readOnly ? undefined : (projectId ? (elementId) => { setImagePickerReplaceElementId(elementId); setImagePickerOpen(true); } : undefined)}
         />
         {!readOnly && (
         <div className="w-56 flex-shrink-0 border-l border-gray-200 bg-gray-50/80 flex flex-col min-h-0">
@@ -1759,6 +1797,58 @@ export default function DocumentEditor(props: DocumentEditorProps) {
         onAddPage={handleAddPageWithTemplate}
         onAddPages={handleAddPages}
       />
+      )}
+      {!isTemplate && projectId && imagePickerOpen && (
+        <ImagePicker
+          isOpen={true}
+          onClose={() => {
+            setImagePickerOpen(false);
+            setImagePickerReplaceElementId(null);
+          }}
+          projectId={projectId}
+          targetWidth={imagePickerTargetSize.width}
+          targetHeight={imagePickerTargetSize.height}
+          allowEdit={true}
+          exportScale={2}
+          onConfirm={async (blob) => {
+            try {
+              const name = `doc-img-${Date.now()}.jpg`;
+              const up: any = await api('POST', '/files/upload', {
+                original_name: name,
+                content_type: 'image/jpeg',
+                client_id: null,
+                project_id: null,
+                employee_id: null,
+                category_id: 'document-creator',
+              });
+              const res = await fetch(up.upload_url, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'image/jpeg', 'x-ms-blob-type': 'BlockBlob' },
+                body: blob,
+              });
+              if (!res.ok) throw new Error('Upload failed');
+              const conf: any = await api('POST', '/files/confirm', {
+                key: up.key,
+                size_bytes: blob.size,
+                checksum_sha256: 'na',
+                content_type: 'image/jpeg',
+              });
+              const replaceId = imagePickerReplaceElementId;
+              if (replaceId) {
+                pushHistory();
+                handleUpdateElement(replaceId, (el) => ({ ...el, content: conf.id }));
+                toast.success('Image updated.');
+              } else {
+                handleAddElement(createImageElement(conf.id));
+                toast.success('Image added.');
+              }
+              setImagePickerOpen(false);
+              setImagePickerReplaceElementId(null);
+            } catch (err) {
+              toast.error('Failed to upload image.');
+            }
+          }}
+        />
       )}
     </div>
   );

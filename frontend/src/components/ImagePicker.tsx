@@ -3,7 +3,7 @@ import { api } from '@/lib/api';
 import toast from 'react-hot-toast';
 import ImageEditor from '@/components/ImageEditor';
 
-type ClientFile = { id:string, file_object_id:string, is_image?:boolean, content_type?:string, category?:string };
+type LibraryFile = { id:string, file_object_id:string, is_image?:boolean, content_type?:string, category?:string };
 
 export default function ImagePicker({
   isOpen,
@@ -13,6 +13,7 @@ export default function ImagePicker({
   targetHeight,
   allowEdit = true,
   clientId,
+  projectId,
   exportScale = 2,
   fileObjectId,
   editorScaleFactor = 2.5,
@@ -25,17 +26,21 @@ export default function ImagePicker({
   targetHeight:number,
   allowEdit?:boolean,
   clientId?:string,
+  projectId?:string,
   exportScale?: number,
   fileObjectId?:string,
   editorScaleFactor?: number,
   hideEditButton?: boolean
 }){
+  const hasLibrary = !!(clientId || projectId);
   const [tab, setTab] = useState<'upload'|'library'>('upload');
-  const [files, setFiles] = useState<ClientFile[]>([]);
+  const [filesOriginals, setFilesOriginals] = useState<LibraryFile[]>([]);
+  const [filesDerived, setFilesDerived] = useState<LibraryFile[]>([]);
   const [isLoadingLibrary, setIsLoadingLibrary] = useState<boolean>(false);
   const [libraryLoaded, setLibraryLoaded] = useState<boolean>(false);
-  const [libraryPage, setLibraryPage] = useState<number>(0);
-  const [libraryHasMore, setLibraryHasMore] = useState<boolean>(true);
+  const [displayPageOriginals, setDisplayPageOriginals] = useState<number>(0);
+  const [displayPageDerived, setDisplayPageDerived] = useState<number>(0);
+  const IMAGES_PER_PAGE = 9;
   const [img, setImg] = useState<HTMLImageElement|null>(null);
   const [originalFileObjectId, setOriginalFileObjectId] = useState<string|undefined>(undefined);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -58,7 +63,7 @@ export default function ImagePicker({
   useEffect(()=>{
     if(!isOpen){
       setImg(null); setZoom(1); setTx(0); setTy(0); setOriginalFileObjectId(undefined); setTab('upload');
-      // Revoke any blob URLs when closing
+      setLibraryLoaded(false); setFilesOriginals([]); setFilesDerived([]); setDisplayPageOriginals(0); setDisplayPageDerived(0);
       if (blobUrlRef.current) {
         URL.revokeObjectURL(blobUrlRef.current);
         blobUrlRef.current = null;
@@ -174,33 +179,40 @@ export default function ImagePicker({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen, onClose]); // loadFromFile is stable, no need to include
 
-  // On-demand gallery loader with pagination
-  const PAGE_SIZE = 60;
-  const loadLibrary = async (reset:boolean)=>{
-    if (!clientId) return;
-    try{
+  // Load all images, split into originals vs edited/derived, then show 9 per page per section
+  const FETCH_LIMIT = 500;
+  const loadLibrary = async (reset: boolean) => {
+    if (!clientId && !projectId) return;
+    try {
       setIsLoadingLibrary(true);
-      const page = reset ? 0 : libraryPage;
-      const list = await api<ClientFile[]>('GET', `/clients/${clientId}/files?limit=${PAGE_SIZE}&offset=${page*PAGE_SIZE}`);
-      const imgs = (list||[]).filter(f=> {
-        const isImg = (f.is_image===true) || String(f.content_type||'').startsWith('image/');
-        const isDerived = String(f.category||'').toLowerCase().includes('derived');
-        return isImg && !isDerived;
+      let list: LibraryFile[] = [];
+      if (projectId) {
+        list = await api<LibraryFile[]>('GET', `/projects/${encodeURIComponent(projectId)}/files`);
+      } else if (clientId) {
+        list = await api<LibraryFile[]>('GET', `/clients/${clientId}/files?limit=${FETCH_LIMIT}&offset=0`);
+      }
+      const imgs = (list || []).filter((f) => {
+        const isImg = (f.is_image === true) || String(f.content_type || '').startsWith('image/');
+        return isImg;
       });
-      setFiles(reset ? imgs : [...files, ...imgs]);
+      const isDerived = (f: LibraryFile) => String(f.category || '').toLowerCase().includes('derived');
+      setFilesOriginals(imgs.filter((f) => !isDerived(f)));
+      setFilesDerived(imgs.filter(isDerived));
       setLibraryLoaded(true);
-      setLibraryHasMore((list||[]).length === PAGE_SIZE);
-      setLibraryPage(page + 1);
-    }catch(err){ /* ignore */ }
-    finally{ setIsLoadingLibrary(false); }
+      if (reset) {
+        setDisplayPageOriginals(0);
+        setDisplayPageDerived(0);
+      }
+    } catch (err) { /* ignore */ }
+    finally { setIsLoadingLibrary(false); }
   };
 
   useEffect(()=>{
-    // If user switches to library tab, lazy-load first page
-    if (tab === 'library' && isOpen && clientId && !libraryLoaded && !isLoadingLibrary){
+    // If user switches to library tab, lazy-load
+    if (tab === 'library' && isOpen && hasLibrary && !libraryLoaded && !isLoadingLibrary){
       loadLibrary(true);
     }
-  }, [tab, isOpen, clientId]);
+  }, [tab, isOpen, clientId, projectId]);
 
   const cw = 360;
   const ch = useMemo(()=> Math.round(cw * (targetHeight/targetWidth)), [targetWidth, targetHeight]);
@@ -380,15 +392,7 @@ export default function ImagePicker({
       // Attach to client library
       try{
         await api('POST', `/clients/${encodeURIComponent(String(clientId))}/files?file_object_id=${encodeURIComponent(fileObjectId)}&category=${encodeURIComponent('proposal-upload')}&original_name=${encodeURIComponent(file.name||'upload')}`);
-        // Refresh library list silently
-        try{
-          const list = await api<ClientFile[]>('GET', `/clients/${clientId}/files`);
-          setFiles((list||[]).filter(f=> {
-            const isImg = (f.is_image===true) || String(f.content_type||'').startsWith('image/');
-            const isDerived = String(f.category||'').toLowerCase().includes('derived');
-            return isImg && !isDerived;
-          }));
-        }catch(_e){}
+        try { loadLibrary(false); } catch (_e) {}
       }catch(_e){}
 
       const image = new Image();
@@ -586,15 +590,14 @@ export default function ImagePicker({
     
     setIsSavingFromEditor(true);
     try {
-      if (!clientId) {
-        toast.error('Client ID required');
+      if (!clientId && !projectId) {
+        toast.error('Client or project context required');
         return;
       }
 
       // Convert PNG blob to JPG if needed (ImageEditor saves as PNG)
       let imageBlob = blob;
       if (blob.type === 'image/png') {
-        // Convert PNG to JPG
         const image = new Image();
         const imageUrl = URL.createObjectURL(blob);
         await new Promise<void>((resolve, reject) => {
@@ -628,13 +631,10 @@ export default function ImagePicker({
         });
       }
 
-      // Create a new image from the blob
       const imageUrl = URL.createObjectURL(imageBlob);
       const image = new Image();
-      
       await new Promise<void>((resolve, reject) => {
         image.onload = () => {
-          // Revoke previous blob URL if exists
           if (blobUrlRef.current) {
             URL.revokeObjectURL(blobUrlRef.current);
           }
@@ -649,40 +649,35 @@ export default function ImagePicker({
         image.src = imageUrl;
       });
 
-      // Upload as copy (maintaining original)
       const uniqueName = `edited_${Date.now()}_${Math.random().toString(36).slice(2)}.jpg`;
       const formData = new FormData();
       formData.append('file', imageBlob, uniqueName);
       formData.append('original_name', uniqueName);
       formData.append('content_type', 'image/jpeg');
-      formData.append('project_id', '');
-      formData.append('client_id', clientId);
+      formData.append('project_id', projectId || '');
+      formData.append('client_id', clientId || '');
       formData.append('employee_id', '');
-      formData.append('category_id', 'proposal-upload');
-      
+      formData.append('category_id', projectId ? 'document-creator' : 'proposal-upload');
+
       const conf: any = await api('POST', '/files/upload-proxy', formData);
       const fileObjectId = conf.id;
-      
-      // Associate the edited image with the client library (save as copy)
-      try {
-        await api('POST', `/clients/${encodeURIComponent(String(clientId))}/files?file_object_id=${encodeURIComponent(fileObjectId)}&category=${encodeURIComponent('proposal-upload')}&original_name=${encodeURIComponent(uniqueName)}`);
-        
-        // Refresh library list silently to include the new edited image
+
+      if (clientId) {
         try {
-          const list = await api<ClientFile[]>('GET', `/clients/${clientId}/files`);
-          setFiles((list||[]).filter(f=> {
-            const isImg = (f.is_image===true) || String(f.content_type||'').startsWith('image/');
-            const isDerived = String(f.category||'').toLowerCase().includes('derived');
-            return isImg && !isDerived;
-          }));
+          await api('POST', `/clients/${encodeURIComponent(String(clientId))}/files?file_object_id=${encodeURIComponent(fileObjectId)}&category=${encodeURIComponent('proposal-upload')}&original_name=${encodeURIComponent(uniqueName)}`);
+          try {
+            loadLibrary(false);
+          } catch (_e) {}
+        } catch (attachError) {
+          console.error('Failed to attach edited image to client library:', attachError);
+        }
+      } else if (projectId) {
+        try {
+          loadLibrary(true);
         } catch (_e) {}
-      } catch (attachError) {
-        console.error('Failed to attach edited image to client library:', attachError);
-        // Continue anyway - the file is uploaded, just not in library
       }
-      
+
       setOriginalFileObjectId(fileObjectId);
-      
       toast.success('Image edited and saved');
       setShowImageEditor(false);
     } catch (e: any) {
@@ -769,12 +764,18 @@ export default function ImagePicker({
             </button>
           </div>
         </div>
+<<<<<<< HEAD
         <div className="grid grid-cols-3 gap-0 flex-1 min-h-0 overflow-hidden">
           <div className="border-r border-gray-200 bg-gray-50/50 overflow-y-auto min-h-0">
             {clientId && (
+=======
+        <div className="grid grid-cols-3 gap-0">
+          <div className="border-r">
+            {hasLibrary && (
+>>>>>>> 3bcc16856730f0ff035a3fa8bf28c4a8b4a182f9
               <div className="p-3">
                 <div className="mb-2 flex items-center justify-between">
-                  <div className="text-sm font-semibold">Library</div>
+                  <div className="text-sm font-semibold">{projectId ? 'Project gallery' : 'Library'}</div>
                   <div className="flex items-center gap-2">
                     <button type="button" disabled={isLoadingLibrary} onClick={()=>loadLibrary(true)} className="text-xs px-2 py-1 rounded bg-gray-100 disabled:opacity-50">Reload</button>
                   </div>
@@ -785,24 +786,61 @@ export default function ImagePicker({
                   </div>
                 )}
                 {libraryLoaded && (
-                  <>
-                    <div className="grid grid-cols-3 gap-2 max-h-[320px] overflow-auto">
-                      {files.map(f=> (
-                        <button type="button" key={f.id} className="border rounded overflow-hidden" onClick={()=>loadFromFileObject(f.file_object_id)}>
-                          <img className="w-full h-20 object-cover" src={`/files/${f.file_object_id}/thumbnail?w=160`} loading="lazy" />
-                        </button>
-                      ))}
-                    </div>
-                    <div className="mt-3 text-center">
-                      {libraryHasMore ? (
-                        <button type="button" disabled={isLoadingLibrary} onClick={()=>loadLibrary(false)} className="px-3 py-1.5 rounded bg-gray-100 disabled:opacity-50">
-                          {isLoadingLibrary ? 'Loading...' : 'Load more'}
-                        </button>
-                      ) : (
-                        <div className="text-xs text-gray-400">No more images</div>
+                  <div className="space-y-4 max-h-[380px] overflow-auto">
+                    {/* Originais */}
+                    <div>
+                      <div className="flex items-center justify-between mb-1.5">
+                        <span className="text-xs font-semibold text-gray-700 uppercase tracking-wide">Imagens originais</span>
+                        {filesOriginals.length > IMAGES_PER_PAGE && (
+                          <span className="text-[10px] text-gray-500">
+                            {displayPageOriginals * IMAGES_PER_PAGE + 1}-{Math.min((displayPageOriginals + 1) * IMAGES_PER_PAGE, filesOriginals.length)} de {filesOriginals.length}
+                          </span>
+                        )}
+                      </div>
+                      <div className="grid grid-cols-3 gap-2">
+                        {filesOriginals.slice(displayPageOriginals * IMAGES_PER_PAGE, (displayPageOriginals + 1) * IMAGES_PER_PAGE).map((f) => (
+                          <button type="button" key={f.id} className="border rounded overflow-hidden hover:ring-2 hover:ring-brand-red/50" onClick={() => loadFromFileObject(f.file_object_id)}>
+                            <img className="w-full h-20 object-cover" src={`/files/${f.file_object_id}/thumbnail?w=160`} loading="lazy" alt="" />
+                          </button>
+                        ))}
+                      </div>
+                      {filesOriginals.length > IMAGES_PER_PAGE && (
+                        <div className="flex items-center justify-center gap-1 mt-2">
+                          <button type="button" disabled={displayPageOriginals === 0} onClick={() => setDisplayPageOriginals((p) => p - 1)} className="px-2 py-1 rounded bg-gray-100 disabled:opacity-40 text-xs">Anterior</button>
+                          <span className="text-xs text-gray-500 px-1">{displayPageOriginals + 1} / {Math.ceil(filesOriginals.length / IMAGES_PER_PAGE)}</span>
+                          <button type="button" disabled={(displayPageOriginals + 1) * IMAGES_PER_PAGE >= filesOriginals.length} onClick={() => setDisplayPageOriginals((p) => p + 1)} className="px-2 py-1 rounded bg-gray-100 disabled:opacity-40 text-xs">Próxima</button>
+                        </div>
                       )}
+                      {filesOriginals.length === 0 && <p className="text-xs text-gray-400 py-2">Nenhuma imagem original</p>}
                     </div>
-                  </>
+
+                    {/* Editadas / derivadas */}
+                    <div>
+                      <div className="flex items-center justify-between mb-1.5">
+                        <span className="text-xs font-semibold text-gray-700 uppercase tracking-wide">Imagens editadas</span>
+                        {filesDerived.length > IMAGES_PER_PAGE && (
+                          <span className="text-[10px] text-gray-500">
+                            {displayPageDerived * IMAGES_PER_PAGE + 1}-{Math.min((displayPageDerived + 1) * IMAGES_PER_PAGE, filesDerived.length)} de {filesDerived.length}
+                          </span>
+                        )}
+                      </div>
+                      <div className="grid grid-cols-3 gap-2">
+                        {filesDerived.slice(displayPageDerived * IMAGES_PER_PAGE, (displayPageDerived + 1) * IMAGES_PER_PAGE).map((f) => (
+                          <button type="button" key={f.id} className="border rounded overflow-hidden hover:ring-2 hover:ring-brand-red/50" onClick={() => loadFromFileObject(f.file_object_id)}>
+                            <img className="w-full h-20 object-cover" src={`/files/${f.file_object_id}/thumbnail?w=160`} loading="lazy" alt="" />
+                          </button>
+                        ))}
+                      </div>
+                      {filesDerived.length > IMAGES_PER_PAGE && (
+                        <div className="flex items-center justify-center gap-1 mt-2">
+                          <button type="button" disabled={displayPageDerived === 0} onClick={() => setDisplayPageDerived((p) => p - 1)} className="px-2 py-1 rounded bg-gray-100 disabled:opacity-40 text-xs">Anterior</button>
+                          <span className="text-xs text-gray-500 px-1">{displayPageDerived + 1} / {Math.ceil(filesDerived.length / IMAGES_PER_PAGE)}</span>
+                          <button type="button" disabled={(displayPageDerived + 1) * IMAGES_PER_PAGE >= filesDerived.length} onClick={() => setDisplayPageDerived((p) => p + 1)} className="px-2 py-1 rounded bg-gray-100 disabled:opacity-40 text-xs">Próxima</button>
+                        </div>
+                      )}
+                      {filesDerived.length === 0 && <p className="text-xs text-gray-400 py-2">Nenhuma imagem editada</p>}
+                    </div>
+                  </div>
                 )}
               </div>
             )}

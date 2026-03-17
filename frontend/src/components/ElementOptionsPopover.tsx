@@ -8,6 +8,8 @@ type ElementOptionsPopoverProps = {
   onRemove: (id: string) => void;
   onClose: () => void;
   onReplaceImage?: (elementId: string, file: File) => Promise<void>;
+  /** When provided, "Add image" / "Replace image" opens the image picker instead of file input. */
+  onReplaceImageClick?: (elementId: string) => void;
 };
 
 function typeLabel(el: DocElement): string {
@@ -91,6 +93,7 @@ export function ElementOptionsPopover({
   onRemove,
   onClose,
   onReplaceImage,
+  onReplaceImageClick,
 }: ElementOptionsPopoverProps) {
   const id = element.id;
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -127,18 +130,20 @@ export function ElementOptionsPopover({
         </div>
       </div>
 
-      {element.type === 'image' && onReplaceImage && (
+      {element.type === 'image' && (onReplaceImage || onReplaceImageClick) && (
         <div className="space-y-3">
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept="image/*"
-            className="hidden"
-            onChange={handleImageSelect}
-          />
+          {!onReplaceImageClick && (
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/*"
+              className="hidden"
+              onChange={handleImageSelect}
+            />
+          )}
           <button
             type="button"
-            onClick={() => fileInputRef.current?.click()}
+            onClick={() => onReplaceImageClick ? onReplaceImageClick(id) : fileInputRef.current?.click()}
             className="w-full px-2 py-1.5 rounded border border-gray-300 text-sm bg-gray-50 hover:bg-gray-100"
           >
             {element.content ? 'Replace image' : 'Add image'}
