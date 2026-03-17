@@ -41,6 +41,23 @@ export default function EditShiftModal({
     }
   }, [shift]);
 
+  // Escape to close
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [onClose]);
+
+  // Prevent body scroll when modal is open
+  useEffect(() => {
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.body.style.overflow = '';
+    };
+  }, []);
+
   const handleSave = async () => {
     if (!shift || !shift.id) {
       setError('Shift data is missing');
@@ -81,104 +98,139 @@ export default function EditShiftModal({
   // Find the worker name for display
   const worker = employees.find((emp: any) => emp.id === workerId);
 
+  const labelClass = 'text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1';
+  const inputBase = 'w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-gray-300 focus:border-gray-300';
+  const inputDisabled = 'bg-gray-100 text-gray-600 cursor-not-allowed border-gray-200';
+
   return (
-    <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4">
-      <div className="bg-white rounded-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
-        <div className="sticky top-0 bg-white border-b p-4 flex items-center justify-between">
-          <h2 className="text-xl font-semibold">Edit Shift</h2>
-          <button onClick={onClose} className="text-2xl font-bold text-gray-400 hover:text-gray-600">
-            ×
-          </button>
-        </div>
-        <div className="p-6 space-y-4">
-          {error && <div className="p-3 bg-red-100 text-red-700 rounded text-sm">{error}</div>}
-
-          {/* Worker - Locked */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Worker</label>
-            <input
-              type="text"
-              value={worker?.name || worker?.username || workerId || 'Unknown'}
-              disabled
-              className="w-full border rounded px-3 py-2 bg-gray-100 text-gray-600 cursor-not-allowed"
-              title="Worker cannot be changed. To change the worker, delete this shift and create a new one."
-            />
-            <p className="text-xs text-gray-500 mt-1">
-              Worker cannot be changed. To change the worker, delete this shift and create a new one.
-            </p>
-          </div>
-
-          {/* Date - Locked */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Date</label>
-            <input
-              type="date"
-              value={date}
-              onChange={(e) => setDate(e.target.value)}
-              disabled
-              className="w-full border rounded px-3 py-2 bg-gray-100 text-gray-600 cursor-not-allowed"
-              title="Date cannot be changed. To change the date, delete this shift and create a new one."
-            />
-            <p className="text-xs text-gray-500 mt-1">
-              Date cannot be changed. To change the date, delete this shift and create a new one.
-            </p>
-          </div>
-
-          {/* Start Time and End Time - Editable */}
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Start Time</label>
-              <input
-                type="time"
-                value={startTime}
-                onChange={(e) => setStartTime(e.target.value)}
-                step="900"
-                disabled={!canEdit}
-                className={`w-full border rounded px-3 py-2 ${!canEdit ? 'bg-gray-100 cursor-not-allowed' : ''}`}
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">End Time</label>
-              <input
-                type="time"
-                value={endTime}
-                onChange={(e) => setEndTime(e.target.value)}
-                step="900"
-                disabled={!canEdit}
-                className={`w-full border rounded px-3 py-2 ${!canEdit ? 'bg-gray-100 cursor-not-allowed' : ''}`}
-              />
-            </div>
-          </div>
-
-          {/* Job Type - Editable */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Job Type <span className="text-gray-400 text-xs">(optional)</span>
-            </label>
-            <select
-              value={jobType}
-              onChange={(e) => setJobType(e.target.value)}
-              disabled={!canEdit}
-              className={`w-full border rounded px-3 py-2 ${!canEdit ? 'bg-gray-100 cursor-not-allowed' : ''}`}
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 overflow-y-auto"
+      onClick={onClose}
+    >
+      <div
+        className="max-w-2xl w-full max-h-[90vh] flex flex-col rounded-xl border border-gray-200 bg-gray-100 shadow-xl overflow-hidden"
+        onClick={(e) => e.stopPropagation()}
+      >
+        {/* Title bar - same style as EventModal / NewSupplierModal */}
+        <div className="flex-shrink-0 rounded-t-xl border-b border-gray-200 bg-white p-4">
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={onClose}
+              className="p-1 rounded-lg hover:bg-gray-100 text-gray-600"
+              title="Close"
             >
-              <option value="">No job type selected</option>
-              {JOB_TYPES.map((job) => (
-                <option key={job.id} value={job.name}>
-                  {job.name}
-                </option>
-              ))}
-            </select>
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+              </svg>
+            </button>
+            <div>
+              <h2 className="text-sm font-semibold text-gray-900">Edit Shift</h2>
+              <p className="text-xs text-gray-500 mt-0.5">Update shift time and job type</p>
+            </div>
           </div>
         </div>
-        <div className="sticky bottom-0 bg-white border-t p-4 flex justify-end gap-2">
-          <button onClick={onClose} className="px-4 py-2 rounded border bg-gray-100 hover:bg-gray-200">
+
+        <div className="flex-1 overflow-y-auto p-4">
+          <div className="rounded-xl border border-gray-200 bg-white p-4 space-y-4">
+            {error && (
+              <div className="p-3 bg-red-100 text-red-700 rounded-lg text-sm">{error}</div>
+            )}
+
+            {/* Worker - Locked */}
+            <div>
+              <label className={labelClass}>Worker</label>
+              <input
+                type="text"
+                value={worker?.name || worker?.username || workerId || 'Unknown'}
+                disabled
+                className={`${inputBase} ${inputDisabled}`}
+                title="Worker cannot be changed. To change the worker, delete this shift and create a new one."
+              />
+              <p className="text-xs text-gray-500 mt-1">
+                Worker cannot be changed. To change the worker, delete this shift and create a new one.
+              </p>
+            </div>
+
+            {/* Date - Locked */}
+            <div>
+              <label className={labelClass}>Date</label>
+              <input
+                type="date"
+                value={date}
+                onChange={(e) => setDate(e.target.value)}
+                disabled
+                className={`${inputBase} ${inputDisabled}`}
+                title="Date cannot be changed. To change the date, delete this shift and create a new one."
+              />
+              <p className="text-xs text-gray-500 mt-1">
+                Date cannot be changed. To change the date, delete this shift and create a new one.
+              </p>
+            </div>
+
+            {/* Start Time and End Time - Editable */}
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className={labelClass}>Start Time</label>
+                <input
+                  type="time"
+                  value={startTime}
+                  onChange={(e) => setStartTime(e.target.value)}
+                  step="900"
+                  disabled={!canEdit}
+                  className={`${inputBase} ${!canEdit ? inputDisabled : ''}`}
+                />
+              </div>
+              <div>
+                <label className={labelClass}>End Time</label>
+                <input
+                  type="time"
+                  value={endTime}
+                  onChange={(e) => setEndTime(e.target.value)}
+                  step="900"
+                  disabled={!canEdit}
+                  className={`${inputBase} ${!canEdit ? inputDisabled : ''}`}
+                />
+              </div>
+            </div>
+
+            {/* Job Type - Editable */}
+            <div>
+              <label className={labelClass}>
+                Job Type <span className="text-gray-400 text-xs font-normal normal-case">(optional)</span>
+              </label>
+              <select
+                value={jobType}
+                onChange={(e) => setJobType(e.target.value)}
+                disabled={!canEdit}
+                className={`${inputBase} ${!canEdit ? inputDisabled : ''}`}
+              >
+                <option value="">No job type selected</option>
+                {JOB_TYPES.map((job) => (
+                  <option key={job.id} value={job.name}>
+                    {job.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+        </div>
+
+        {/* Footer - same style as EventModal / NewSupplierModal */}
+        <div className="flex-shrink-0 px-4 py-4 border-t border-gray-200 bg-white flex items-center justify-end gap-3 rounded-b-xl">
+          <button
+            type="button"
+            onClick={onClose}
+            className="px-3 py-1.5 rounded-lg text-sm font-medium text-gray-700 border border-gray-200 hover:bg-gray-50"
+          >
             Cancel
           </button>
           {canEdit && (
             <button
+              type="button"
               onClick={handleSave}
               disabled={saving}
-              className="px-4 py-2 rounded bg-brand-red text-white hover:bg-red-700 disabled:opacity-50"
+              className="px-4 py-2 rounded-lg text-sm font-semibold text-white bg-brand-red hover:bg-[#aa1212] disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {saving ? 'Saving...' : 'Save Changes'}
             </button>

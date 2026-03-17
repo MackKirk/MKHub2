@@ -823,6 +823,26 @@ export default function ProjectDetail(){
     // 4) Default blueprint
     return '/ui/assets/placeholders/project.png';
   }, [files, proj, proposals]);
+  // File object ID of current hero image (for ImagePicker to show it when opening)
+  const heroCoverFileObjectId = useMemo(() => {
+    const arr = (files || []) as ProjectFile[];
+    const legacyPreferredCategories = new Set([
+      'project-cover-derived', 'project-cover', 'cover', 'hero-cover',
+      'opportunity-cover-derived', 'opportunity-cover',
+    ]);
+    const legacy = arr.find(f => legacyPreferredCategories.has(String(f.category || '')) && (f.is_image === true || String(f.content_type || '').startsWith('image/')));
+    if (legacy?.file_object_id) return legacy.file_object_id;
+    if ((proj as any)?.image_manually_set && (proj as any)?.image_file_object_id) return (proj as any).image_file_object_id;
+    if ((proj as any)?.image_file_object_id) return (proj as any).image_file_object_id;
+    const latest = (proposals || []).slice().sort((a, b) => {
+      const ad = a.created_at ? new Date(a.created_at).getTime() : 0;
+      const bd = b.created_at ? new Date(b.created_at).getTime() : 0;
+      return bd - ad;
+    })[0];
+    const proposalCoverFo = latest?.data?.cover_file_object_id;
+    if (proposalCoverFo) return proposalCoverFo;
+    return undefined;
+  }, [files, proj, proposals]);
   const overlayUrl = useMemo(()=>{
     const branding = (settings?.branding||[]) as any[];
     const row = branding.find((i:any)=> ['project_hero_overlay_url','hero_overlay_url','project hero overlay','hero overlay'].includes(String(i.label||'').toLowerCase()));
@@ -1933,6 +1953,18 @@ export default function ProjectDetail(){
         );
       })()}
 
+      {/* Description card - only when description exists */}
+      {!tab && proj?.description?.trim() && (
+        <div className="mt-6">
+          <div className="rounded-xl border border-gray-200/90 bg-white shadow-md overflow-hidden transition-shadow duration-200 hover:shadow-lg hover:border-gray-300/80">
+            <div className="p-3">
+              <div className="text-[10px] font-bold text-gray-500 uppercase tracking-wide mb-2">Description</div>
+              <p className="text-sm text-gray-700 leading-snug whitespace-pre-wrap">{proj.description.trim()}</p>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Recent Activity */}
       {!tab && (
         <div className="mt-6">
@@ -2087,7 +2119,7 @@ export default function ProjectDetail(){
       )}
 
       {pickerOpen && (
-        <ImagePicker isOpen={true} onClose={()=>setPickerOpen(false)} clientId={String(proj?.client_id||'')} targetWidth={800} targetHeight={800} allowEdit={true} onConfirm={async(blob)=>{
+        <ImagePicker isOpen={true} onClose={()=>setPickerOpen(false)} clientId={String(proj?.client_id||'')} targetWidth={800} targetHeight={800} allowEdit={true} fileObjectId={heroCoverFileObjectId} onConfirm={async(blob)=>{
           try{
             const up:any = await api('POST','/files/upload',{ project_id:id, client_id:proj?.client_id||null, employee_id:null, category_id:'project-cover-derived', original_name:'project-cover.jpg', content_type:'image/jpeg' });
             await fetch(up.upload_url, { method:'PUT', headers:{ 'Content-Type':'image/jpeg', 'x-ms-blob-type':'BlockBlob' }, body: blob });
@@ -4077,33 +4109,51 @@ function CreateReportModal({ projectId, reportCategories, onClose, onSuccess }: 
   };
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4">
-      <div className="bg-white rounded-xl max-w-2xl w-full max-h-[90vh] overflow-hidden flex flex-col">
-        <div className="bg-gradient-to-br from-[#7f1010] to-[#a31414] p-6 flex items-center justify-between flex-shrink-0">
-          <h2 className="text-xl font-semibold text-white">Create Note</h2>
-          <button
-            onClick={onClose}
-            className="text-2xl font-bold text-white hover:text-gray-200 w-8 h-8 flex items-center justify-center rounded hover:bg-white/20"
-          >
-            ×
-          </button>
-        </div>
-        <div className="p-6 overflow-y-auto flex-1">
-          <div className="space-y-4">
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+      onClick={onClose}
+    >
+      <div
+        className="max-w-2xl w-full max-h-[90vh] flex flex-col rounded-xl border border-gray-200 bg-gray-100 shadow-xl overflow-hidden"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex-shrink-0 rounded-t-xl border-b border-gray-200 bg-white p-4">
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={onClose}
+              className="p-1 rounded-lg hover:bg-gray-100 text-gray-600"
+            >
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+              </svg>
+            </button>
             <div>
-              <label className="text-xs text-gray-600 block mb-1">Title *</label>
+              <h2 className="text-sm font-semibold text-gray-900">New Note</h2>
+              <p className="text-xs text-gray-500 mt-0.5">Add a note or report to this project</p>
+            </div>
+          </div>
+        </div>
+        <div className="flex-1 overflow-y-auto p-4">
+          <form
+            id="create-note-form-project"
+            onSubmit={(e) => { e.preventDefault(); handleCreate(); }}
+            className="rounded-xl border border-gray-200 bg-white p-4 space-y-4"
+          >
+            <div>
+              <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">Title *</label>
               <input
                 type="text"
-                className="w-full border rounded px-3 py-2 text-sm"
+                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm placeholder:text-gray-400 focus:outline-none focus:ring-1 focus:ring-gray-300 focus:border-gray-300"
                 placeholder="Enter note title..."
                 value={title}
                 onChange={e => setTitle(e.target.value)}
               />
             </div>
             <div>
-              <label className="text-xs text-gray-600 block mb-1">Category</label>
+              <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">Category</label>
               <select
-                className="w-full border rounded px-3 py-2 text-sm"
+                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm placeholder:text-gray-400 focus:outline-none focus:ring-1 focus:ring-gray-300 focus:border-gray-300"
                 value={category}
                 onChange={e => setCategory(e.target.value)}
               >
@@ -4140,12 +4190,12 @@ function CreateReportModal({ projectId, reportCategories, onClose, onSuccess }: 
             </div>
             {category === 'additional-income' || category === 'additional-expense' ? (
               <div>
-                <label className="text-xs text-gray-600 block mb-1">Value *</label>
+                <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">Value *</label>
                 <input
                   type="number"
                   step="0.01"
                   min="0"
-                  className="w-full border rounded px-3 py-2 text-sm"
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm placeholder:text-gray-400 focus:outline-none focus:ring-1 focus:ring-gray-300 focus:border-gray-300"
                   placeholder="Enter amount..."
                   value={financialValue}
                   onChange={e => setFinancialValue(e.target.value ? parseFloat(e.target.value) : 0)}
@@ -4153,9 +4203,9 @@ function CreateReportModal({ projectId, reportCategories, onClose, onSuccess }: 
               </div>
             ) : null}
             <div>
-              <label className="text-xs text-gray-600 block mb-1">Description *</label>
+              <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">Description *</label>
               <textarea
-                className="w-full border rounded px-3 py-2 text-sm"
+                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm placeholder:text-gray-400 focus:outline-none focus:ring-1 focus:ring-gray-300 focus:border-gray-300"
                 rows={6}
                 placeholder="Describe what happened, how the day went, or any events on site..."
                 value={desc}
@@ -4164,9 +4214,9 @@ function CreateReportModal({ projectId, reportCategories, onClose, onSuccess }: 
             </div>
             {category === 'estimate-changes' && (
               <div>
-                <label className="text-xs text-gray-600 block mb-1">Description *</label>
+                <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">Additional notes (change order)</label>
                 <textarea
-                  className="w-full border rounded px-3 py-2 text-sm"
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm placeholder:text-gray-400 focus:outline-none focus:ring-1 focus:ring-gray-300 focus:border-gray-300"
                   rows={4}
                   placeholder="Additional notes about this change order..."
                   value={desc}
@@ -4175,20 +4225,22 @@ function CreateReportModal({ projectId, reportCategories, onClose, onSuccess }: 
               </div>
             )}
             <ReportAttachmentAreaMultiple files={files} setFiles={setFiles} accept="image/*,.pdf,.doc,.docx" label="Attachments (optional – multiple allowed)" />
-          </div>
+          </form>
         </div>
-        <div className="p-4 border-t bg-gray-50 flex justify-end gap-2 flex-shrink-0">
+        <div className="flex-shrink-0 px-4 py-4 border-t border-gray-200 bg-white flex items-center justify-end gap-3 rounded-b-xl">
           <button
+            type="button"
             onClick={onClose}
             disabled={uploading}
-            className="px-4 py-2 rounded border bg-white hover:bg-gray-50 text-gray-700 text-sm font-medium disabled:opacity-50"
+            className="px-3 py-1.5 rounded-lg text-sm font-medium text-gray-700 border border-gray-200 hover:bg-gray-50 disabled:opacity-50"
           >
             Cancel
           </button>
           <button
-            onClick={handleCreate}
+            type="submit"
+            form="create-note-form-project"
             disabled={uploading}
-            className="px-4 py-2 rounded bg-brand-red hover:bg-red-700 text-white text-sm font-medium disabled:opacity-50"
+            className="px-4 py-2 rounded-lg text-sm font-semibold text-white bg-brand-red hover:bg-[#aa1212] disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {uploading ? 'Creating...' : 'Create Note'}
           </button>
@@ -6234,6 +6286,35 @@ function TimesheetTab({ projectId, statusLabel }:{ projectId:string; statusLabel
   const [breakHours, setBreakHours] = useState<string>('0');
   const [breakMinutes, setBreakMinutes] = useState<string>('0');
 
+  const closeClockModal = () => {
+    setShowClockModal(false);
+    setSelectedShift(null);
+    setClockType(null);
+    setSelectedTime('');
+    setSelectedHour12('');
+    setSelectedMinute('');
+    setReasonText('');
+  };
+
+  // Escape to close clock modal
+  useEffect(() => {
+    if (!showClockModal) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') closeClockModal();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [showClockModal]);
+
+  // Prevent body scroll when clock modal is open
+  useEffect(() => {
+    if (!showClockModal) return;
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.body.style.overflow = '';
+    };
+  }, [showClockModal]);
+
   // Haversine distance calculation (same as backend)
   const haversineDistance = (lat1: number, lon1: number, lat2: number, lon2: number): number => {
     const R = 6371000; // Earth radius in meters
@@ -6656,7 +6737,7 @@ function TimesheetTab({ projectId, statusLabel }:{ projectId:string; statusLabel
       setBreakMinutes('0');
       setGpsLocation(null);
       setGpsError('');
-      setShowClockModal(false);
+      closeClockModal();
 
       // Refetch both shifts and attendances immediately
       await Promise.all([
@@ -6748,22 +6829,22 @@ function TimesheetTab({ projectId, statusLabel }:{ projectId:string; statusLabel
     <div className="space-y-4">
       {/* Editing Restricted Warning */}
       {isEditingRestricted && statusLabel && (
-        <div className="mb-4 p-4 bg-yellow-50 border border-yellow-200 rounded text-sm text-yellow-800">
+        <div className="mb-3 p-3 bg-yellow-50 border border-yellow-200 rounded text-xs text-yellow-800">
           <strong>Editing Restricted:</strong> This project has status "{statusLabel}" which does not allow editing timesheet.
         </div>
       )}
       
-      <div className="grid md:grid-cols-3 gap-4">
-        <div className="rounded-xl border bg-white p-4">
-        <h4 className="font-semibold mb-2">Add Time Entry</h4>
-        <div className="grid gap-2 text-sm">
-          <div><label className="text-xs text-gray-600">Date</label><input type="date" className="w-full border rounded px-3 py-2" value={workDate} onChange={e=>setWorkDate(e.target.value)} /></div>
+      <div className="grid md:grid-cols-3 gap-3">
+        <div className="rounded-xl border bg-white p-3">
+        <h4 className="text-sm font-semibold mb-1.5">Add Time Entry</h4>
+        <div className="grid gap-1.5 text-xs">
+          <div><label className="text-[10px] text-gray-600 uppercase tracking-wide block mb-0.5">Date</label><input type="date" className="w-full border rounded px-2.5 py-1.5 text-xs" value={workDate} onChange={e=>setWorkDate(e.target.value)} /></div>
           
           {/* Clock In/Out for Shifts */}
           {shifts && shifts.length > 0 ? (
             <div>
-              <label className="text-xs text-gray-600 mb-2 block font-medium">Clock In/Out</label>
-              <div className="space-y-2 max-h-64 overflow-y-auto" style={{ scrollbarWidth: 'thin' }}>
+              <label className="text-[10px] text-gray-600 uppercase tracking-wide mb-1.5 block font-medium">Clock In/Out</label>
+              <div className="space-y-1.5 max-h-64 overflow-y-auto" style={{ scrollbarWidth: 'thin' }}>
                 {shifts.map((shift: any) => {
                   const directClockIn = getAttendanceForShift(shift.id, 'in');
                   const directClockOut = getAttendanceForShift(shift.id, 'out');
@@ -6786,8 +6867,8 @@ function TimesheetTab({ projectId, statusLabel }:{ projectId:string; statusLabel
                   const worker = employees?.find((e: any) => e.id === shift.worker_id);
 
                   return (
-                    <div key={shift.id} className="p-2 border rounded bg-gray-50 text-xs">
-                      <div className="font-medium mb-1.5 text-gray-900">
+                    <div key={shift.id} className="p-1.5 border rounded bg-gray-50 text-[10px]">
+                      <div className="font-medium mb-1 text-gray-900">
                         {formatTime12h(shift.start_time)} - {formatTime12h(shift.end_time)}
                         {shift.job_name && <span className="ml-1 text-gray-500 font-normal">({shift.job_name})</span>}
                         {worker && <span className="ml-1 text-gray-600 font-normal">- {worker.name || worker.username}</span>}
@@ -6829,11 +6910,11 @@ function TimesheetTab({ projectId, statusLabel }:{ projectId:string; statusLabel
                         </div>
                       </div>
                       {canProjectClockActions && (
-                        <div className="flex gap-1.5">
+                        <div className="flex gap-1">
                           <button
                             onClick={() => handleClockInOut(shift, 'in')}
                             disabled={!canClockIn || submitting}
-                            className={`flex-1 px-2 py-1 rounded text-xs font-medium transition-colors ${
+                            className={`flex-1 px-1.5 py-0.5 rounded text-[10px] font-medium transition-colors ${
                               canClockIn
                                 ? 'bg-green-600 hover:bg-green-700 text-white'
                                 : 'bg-gray-200 text-gray-400 cursor-not-allowed'
@@ -6844,7 +6925,7 @@ function TimesheetTab({ projectId, statusLabel }:{ projectId:string; statusLabel
                           <button
                             onClick={() => handleClockInOut(shift, 'out')}
                             disabled={!canClockOut || submitting}
-                            className={`flex-1 px-2 py-1 rounded text-xs font-medium transition-colors ${
+                            className={`flex-1 px-1.5 py-0.5 rounded text-[10px] font-medium transition-colors ${
                               canClockOut
                                 ? 'bg-red-600 hover:bg-red-700 text-white'
                                 : 'bg-gray-200 text-gray-400 cursor-not-allowed'
@@ -6860,7 +6941,7 @@ function TimesheetTab({ projectId, statusLabel }:{ projectId:string; statusLabel
               </div>
             </div>
           ) : (
-            <div className="text-xs text-gray-500 text-center py-4 bg-gray-50 rounded">
+            <div className="text-[10px] text-gray-500 text-center py-3 bg-gray-50 rounded">
               No shifts scheduled for this date
             </div>
           )}
@@ -6868,17 +6949,17 @@ function TimesheetTab({ projectId, statusLabel }:{ projectId:string; statusLabel
         </div>
         
         <div className="md:col-span-2 rounded-xl border bg-white">
-        <div className="p-3 flex items-center justify-between gap-3">
-          <div className="flex items-center gap-2"><label className="text-xs text-gray-600">Month</label><input type="month" className="border rounded px-2 py-1" value={month} onChange={e=>{ setMonth(e.target.value); }} /></div>
-          <div className="flex items-center gap-2"><label className="text-xs text-gray-600">Employee</label><select className="border rounded px-2 py-1 text-sm" value={userFilter} onChange={e=>setUserFilter(e.target.value)}><option value="">All</option>{sortByLabel(employees||[], (emp:any)=> (emp.name||emp.username||'').toString()).map((emp:any)=> <option key={emp.id} value={emp.id}>{emp.name||emp.username}</option>)}</select></div>
-          <div className="flex items-center gap-3">
-            <div className="text-sm text-gray-700">Total: {formatHoursMinutes(hoursTotalMinutes)} <span className="text-xs text-gray-500">(after break)</span></div>
-            <button onClick={csvExport} className="px-2 py-1 rounded bg-gray-100 text-sm">Export CSV</button>
+        <div className="p-2.5 flex items-center justify-between gap-2 flex-wrap">
+          <div className="flex items-center gap-1.5"><label className="text-[10px] text-gray-600 uppercase tracking-wide">Month</label><input type="month" className="border rounded px-2 py-1 text-xs" value={month} onChange={e=>{ setMonth(e.target.value); }} /></div>
+          <div className="flex items-center gap-1.5"><label className="text-[10px] text-gray-600 uppercase tracking-wide">Employee</label><select className="border rounded px-2 py-1 text-xs" value={userFilter} onChange={e=>setUserFilter(e.target.value)}><option value="">All</option>{sortByLabel(employees||[], (emp:any)=> (emp.name||emp.username||'').toString()).map((emp:any)=> <option key={emp.id} value={emp.id}>{emp.name||emp.username}</option>)}</select></div>
+          <div className="flex items-center gap-2">
+            <div className="text-xs text-gray-700">Total: {formatHoursMinutes(hoursTotalMinutes)} <span className="text-[10px] text-gray-500">(after break)</span></div>
+            <button onClick={csvExport} className="px-2 py-1 rounded text-xs font-medium bg-gray-100 hover:bg-gray-200">Export CSV</button>
           </div>
         </div>
         <div className="border-t">
           {/* Header row */}
-          <div className="px-3 py-2 text-xs font-medium text-gray-600 border-b bg-gray-50 flex items-center gap-3">
+          <div className="px-2.5 py-1.5 text-[10px] font-medium text-gray-600 border-b bg-gray-50 flex items-center gap-2">
             <div className="w-6"></div>
             <div className="w-24">Employee</div>
             <div className="w-12">Date</div>
@@ -6919,22 +7000,22 @@ function TimesheetTab({ projectId, statusLabel }:{ projectId:string; statusLabel
             }
             
             return (
-            <div key={e.id} className="px-3 py-2 text-sm flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                {e.user_avatar_file_id? <img src={`/files/${e.user_avatar_file_id}/thumbnail?w=64`} className="w-6 h-6 rounded-full"/> : <span className="w-6 h-6 rounded-full bg-gray-200 inline-block"/>}
+            <div key={e.id} className="px-2.5 py-1.5 text-xs flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                {e.user_avatar_file_id? <img src={`/files/${e.user_avatar_file_id}/thumbnail?w=64`} className="w-5 h-5 rounded-full flex-shrink-0"/> : <span className="w-5 h-5 rounded-full bg-gray-200 inline-block flex-shrink-0"/>}
                 <div className="w-24 text-gray-700 truncate">{e.user_name||''}</div>
                 <div className="w-12 text-gray-600">{String(e.work_date).slice(5,10)}</div>
                 <div className="w-20 text-gray-600">{timeDisplay}</div>
                 <div className="w-20 font-medium">{formatHoursMinutes(hoursAfterBreak)}</div>
                 <div className="w-16 font-medium">{breakMin > 0 ? `${breakMin}m` : '--'}</div>
-                <div className="flex-1 text-gray-600 truncate">{e.notes||''}</div>
+                <div className="flex-1 text-gray-600 truncate min-w-0">{e.notes||''}</div>
                 {(futIcon||offIcon) && <span title={future? 'Future time': 'Logged after day end'}>{futIcon}{offIcon}</span>}
                 {e.shift_deleted && (
                   <span 
                     className="text-yellow-600 ml-1" 
                     title={e.shift_deleted_by ? `The shift related to this attendance was deleted by ${e.shift_deleted_by}${e.shift_deleted_at ? ` on ${new Date(e.shift_deleted_at).toLocaleDateString()}` : ''}` : 'The shift related to this attendance was deleted'}
                   >
-                    <svg className="w-4 h-4 inline-block" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <svg className="w-3 h-3 inline-block" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
                     </svg>
                   </span>
@@ -6947,7 +7028,7 @@ function TimesheetTab({ projectId, statusLabel }:{ projectId:string; statusLabel
                 const canModify = isEditingRestricted ? false : (isAttendanceRow ? (canEditAttendance && hasAttendanceId) : canEditTimesheet);
                 if (!canModify) return null;
                 return (
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-1.5">
                   <button 
                     onClick={() => {
                       setEditingEntry(e);
@@ -6959,7 +7040,7 @@ function TimesheetTab({ projectId, statusLabel }:{ projectId:string; statusLabel
                       setEditEndTime(endTime);
                       setEditBreakMinutes(breakMin);
                     }} 
-                    className="px-2 py-1 rounded bg-gray-100"
+                    className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-gray-100 hover:bg-gray-200"
                   >
                     Edit
                   </button>
@@ -6991,7 +7072,7 @@ function TimesheetTab({ projectId, statusLabel }:{ projectId:string; statusLabel
                         }
                       }
                     }} 
-                    className="px-2 py-1 rounded bg-gray-100"
+                    className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-gray-100 hover:bg-gray-200"
                   >
                     Delete
                   </button>
@@ -7000,7 +7081,7 @@ function TimesheetTab({ projectId, statusLabel }:{ projectId:string; statusLabel
               })()}
             </div>
           );
-          }) : <div className="p-3 text-sm text-gray-600">No time entries</div>}
+          }) : <div className="p-2.5 text-xs text-gray-600">No time entries</div>}
         </div>
         </div>
       </div>
@@ -7130,345 +7211,339 @@ function TimesheetTab({ projectId, statusLabel }:{ projectId:string; statusLabel
         </div>
       )}
 
-      {/* Clock In/Out Modal */}
+      {/* Clock In/Out Modal - standardized with EventModal / EditShiftModal */}
       {showClockModal && selectedShift && clockType && (
-        <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4">
-          <div className="bg-white rounded-xl max-w-md w-full p-6 space-y-4">
-            <h3 className="text-lg font-semibold">
-              Clock {clockType === 'in' ? 'In' : 'Out'}
-            </h3>
-
-            {/* Time selector (12h format with AM/PM) */}
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Time *</label>
-              <div className="flex gap-2 items-center">
-                <select
-                  value={selectedHour12}
-                  onChange={(e) => {
-                    const hour12 = e.target.value;
-                    setSelectedHour12(hour12);
-                    updateTimeFrom12h(hour12, selectedMinute, selectedAmPm);
-                  }}
-                  className="flex-1 border rounded px-3 py-2"
-                  required
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 overflow-y-auto"
+          onClick={closeClockModal}
+        >
+          <div
+            className="max-w-md w-full max-h-[90vh] flex flex-col rounded-xl border border-gray-200 bg-gray-100 shadow-xl overflow-hidden"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Title bar */}
+            <div className="flex-shrink-0 rounded-t-xl border-b border-gray-200 bg-white p-4">
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={closeClockModal}
+                  className="p-1 rounded-lg hover:bg-gray-100 text-gray-600"
+                  title="Close"
                 >
-                  <option value="">Hour</option>
-                  {Array.from({ length: 12 }, (_, i) => (
-                    <option key={i + 1} value={String(i + 1)}>
-                      {i + 1}
-                    </option>
-                  ))}
-                </select>
-                <span className="text-gray-500 font-medium">:</span>
-                <select
-                  value={selectedMinute}
-                  onChange={(e) => {
-                    const minute = e.target.value;
-                    setSelectedMinute(minute);
-                    updateTimeFrom12h(selectedHour12, minute, selectedAmPm);
-                  }}
-                  className="flex-1 border rounded px-3 py-2"
-                  required
-                >
-                  <option value="">Min</option>
-                  {Array.from({ length: 12 }, (_, i) => {
-                    const m = i * 5;
-                    return (
-                      <option key={m} value={String(m).padStart(2, '0')}>
-                        {String(m).padStart(2, '0')}
-                      </option>
-                    );
-                  })}
-                </select>
-                <select
-                  value={selectedAmPm}
-                  onChange={(e) => {
-                    const amPm = e.target.value as 'AM' | 'PM';
-                    setSelectedAmPm(amPm);
-                    updateTimeFrom12h(selectedHour12, selectedMinute, amPm);
-                  }}
-                  className="flex-1 border rounded px-3 py-2"
-                  required
-                >
-                  <option value="AM">AM</option>
-                  <option value="PM">PM</option>
-                </select>
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                  </svg>
+                </button>
+                <div>
+                  <h2 className="text-sm font-semibold text-gray-900">
+                    Clock {clockType === 'in' ? 'In' : 'Out'}
+                  </h2>
+                  <p className="text-xs text-gray-500 mt-0.5">
+                    {clockType === 'in' ? 'Record start time for this shift' : 'Record end time and optional break'}
+                  </p>
+                </div>
               </div>
             </div>
 
-            {/* Manual Break Time (only for Clock Out) */}
-            {clockType === 'out' && (
-              <div>
-                <label className="flex items-center gap-2 mb-2">
-                  <input
-                    type="checkbox"
-                    checked={insertBreakTime}
-                    onChange={(e) => setInsertBreakTime(e.target.checked)}
-                    className="w-4 h-4 rounded border-gray-300 text-brand-red focus:ring-brand-red"
-                  />
-                  <span className="text-sm font-medium text-gray-700">Insert Break Time</span>
-                </label>
-                {insertBreakTime && (
-                  <div className="ml-6 space-y-2">
-                    <div className="flex gap-2 items-center">
-                      <label className="text-xs text-gray-600 w-12">Hours:</label>
-                      <select
-                        value={breakHours}
-                        onChange={(e) => setBreakHours(e.target.value)}
-                        className="flex-1 border rounded px-3 py-2"
-                      >
-                        {Array.from({ length: 3 }, (_, i) => (
-                          <option key={i} value={String(i)}>
-                            {i}
+            <div className="flex-1 overflow-y-auto p-4">
+              <div className="rounded-xl border border-gray-200 bg-white p-4 space-y-4">
+                {/* Time selector (12h format with AM/PM) */}
+                <div>
+                  <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">Time *</label>
+                  <div className="flex gap-2 items-center">
+                    <select
+                      value={selectedHour12}
+                      onChange={(e) => {
+                        const hour12 = e.target.value;
+                        setSelectedHour12(hour12);
+                        updateTimeFrom12h(hour12, selectedMinute, selectedAmPm);
+                      }}
+                      className="flex-1 border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-gray-300 focus:border-gray-300"
+                      required
+                    >
+                      <option value="">Hour</option>
+                      {Array.from({ length: 12 }, (_, i) => (
+                        <option key={i + 1} value={String(i + 1)}>
+                          {i + 1}
+                        </option>
+                      ))}
+                    </select>
+                    <span className="text-gray-500 font-medium">:</span>
+                    <select
+                      value={selectedMinute}
+                      onChange={(e) => {
+                        const minute = e.target.value;
+                        setSelectedMinute(minute);
+                        updateTimeFrom12h(selectedHour12, minute, selectedAmPm);
+                      }}
+                      className="flex-1 border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-gray-300 focus:border-gray-300"
+                      required
+                    >
+                      <option value="">Min</option>
+                      {Array.from({ length: 12 }, (_, i) => {
+                        const m = i * 5;
+                        return (
+                          <option key={m} value={String(m).padStart(2, '0')}>
+                            {String(m).padStart(2, '0')}
                           </option>
-                        ))}
-                      </select>
-                      <label className="text-xs text-gray-600 w-12 ml-2">Minutes:</label>
-                      <select
-                        value={breakMinutes}
-                        onChange={(e) => setBreakMinutes(e.target.value)}
-                        className="flex-1 border rounded px-3 py-2"
-                      >
-                        {Array.from({ length: 12 }, (_, i) => {
-                          const m = i * 5;
-                          return (
-                            <option key={m} value={String(m).padStart(2, '0')}>
-                              {String(m).padStart(2, '0')}
-                            </option>
-                          );
-                        })}
-                      </select>
-                    </div>
+                        );
+                      })}
+                    </select>
+                    <select
+                      value={selectedAmPm}
+                      onChange={(e) => {
+                        const amPm = e.target.value as 'AM' | 'PM';
+                        setSelectedAmPm(amPm);
+                        updateTimeFrom12h(selectedHour12, selectedMinute, amPm);
+                      }}
+                      className="flex-1 border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-gray-300 focus:border-gray-300"
+                      required
+                    >
+                      <option value="AM">AM</option>
+                      <option value="PM">PM</option>
+                    </select>
                   </div>
-                )}
-              </div>
-            )}
+                </div>
 
-            {/* GPS Status */}
-            <div>
-              {gpsLocation ? (
-                <>
-                  <div className="p-3 bg-green-50 border border-green-200 rounded text-sm">
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <div className="text-green-800">✓ Location captured</div>
-                        <div className="text-xs text-green-600 mt-1">
-                          Accuracy: {Math.round(gpsLocation.accuracy)}m
+                {/* Manual Break Time (only for Clock Out) */}
+                {clockType === 'out' && (
+                  <div>
+                    <label className="flex items-center gap-2 mb-2">
+                      <input
+                        type="checkbox"
+                        checked={insertBreakTime}
+                        onChange={(e) => setInsertBreakTime(e.target.checked)}
+                        className="w-4 h-4 rounded border-gray-300 text-brand-red focus:ring-brand-red"
+                      />
+                      <span className="text-sm font-medium text-gray-700">Insert Break Time</span>
+                    </label>
+                    {insertBreakTime && (
+                      <div className="ml-6 space-y-2">
+                        <div className="flex gap-2 items-center">
+                          <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide w-12">Hours:</label>
+                          <select
+                            value={breakHours}
+                            onChange={(e) => setBreakHours(e.target.value)}
+                            className="flex-1 border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-gray-300 focus:border-gray-300"
+                          >
+                            {Array.from({ length: 3 }, (_, i) => (
+                              <option key={i} value={String(i)}>
+                                {i}
+                              </option>
+                            ))}
+                          </select>
+                          <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide w-12 ml-2">Minutes:</label>
+                          <select
+                            value={breakMinutes}
+                            onChange={(e) => setBreakMinutes(e.target.value)}
+                            className="flex-1 border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-gray-300 focus:border-gray-300"
+                          >
+                            {Array.from({ length: 12 }, (_, i) => {
+                              const m = i * 5;
+                              return (
+                                <option key={m} value={String(m).padStart(2, '0')}>
+                                  {String(m).padStart(2, '0')}
+                                </option>
+                              );
+                            })}
+                          </select>
                         </div>
                       </div>
-                      <button
-                        type="button"
-                        onClick={() => getCurrentLocation(selectedShift)}
-                        disabled={gpsLoading}
-                        className="text-xs px-2 py-1 rounded border hover:bg-gray-50 bg-white"
-                      >
-                        {gpsLoading ? 'Getting location...' : 'Try GPS again'}
-                      </button>
-                    </div>
+                    )}
                   </div>
-                  {selectedShift?.geofences && selectedShift.geofences.length > 0 ? (
-                    geofenceStatus && (
-                      <div className={`p-3 border rounded text-sm mt-2 ${
-                        geofenceStatus.inside
-                          ? 'bg-green-50 border-green-200 text-green-800'
-                          : 'bg-orange-50 border-orange-200 text-orange-800'
-                      }`}>
-                        {geofenceStatus.inside ? (
+                )}
+
+                {/* GPS Status */}
+                <div>
+                  {gpsLocation ? (
+                    <>
+                      <div className="p-3 bg-green-50 border border-green-200 rounded-lg text-sm">
+                        <div className="flex items-center justify-between">
                           <div>
-                            <div className="font-medium">✓ Great! You are at the right site to clock-in/out</div>
-                            {geofenceStatus.distance !== undefined && (
-                              <div className="text-xs mt-1 opacity-75">
-                                Distance from site: {geofenceStatus.distance}m (within {geofenceStatus.radius}m radius)
-                              </div>
-                            )}
+                            <div className="text-green-800">✓ Location captured</div>
+                            <div className="text-xs text-green-600 mt-1">
+                              Accuracy: {Math.round(gpsLocation.accuracy)}m
+                            </div>
                           </div>
-                        ) : (
-                          <div>
-                            <div className="font-medium">ℹ You are not at the correct site</div>
-                            {geofenceStatus.distance !== undefined && (
-                              <div className="text-xs mt-1 opacity-75">
-                                Distance from site: {geofenceStatus.distance}m (within {geofenceStatus.radius}m radius). Location is captured but not mandatory.
-                              </div>
-                            )}
-                          </div>
-                        )}
+                          <button
+                            type="button"
+                            onClick={() => getCurrentLocation(selectedShift)}
+                            disabled={gpsLoading}
+                            className="text-xs px-2 py-1 rounded-lg border border-gray-200 hover:bg-gray-50 bg-white text-sm font-medium text-gray-700"
+                          >
+                            {gpsLoading ? 'Getting location...' : 'Try GPS again'}
+                          </button>
+                        </div>
                       </div>
-                    )
+                      {selectedShift?.geofences && selectedShift.geofences.length > 0 ? (
+                        geofenceStatus && (
+                          <div className={`p-3 border rounded-lg text-sm mt-2 ${
+                            geofenceStatus.inside
+                              ? 'bg-green-50 border-green-200 text-green-800'
+                              : 'bg-orange-50 border-orange-200 text-orange-800'
+                          }`}>
+                            {geofenceStatus.inside ? (
+                              <div>
+                                <div className="font-medium">✓ Great! You are at the right site to clock-in/out</div>
+                                {geofenceStatus.distance !== undefined && (
+                                  <div className="text-xs mt-1 opacity-75">
+                                    Distance from site: {geofenceStatus.distance}m (within {geofenceStatus.radius}m radius)
+                                  </div>
+                                )}
+                              </div>
+                            ) : (
+                              <div>
+                                <div className="font-medium">ℹ You are not at the correct site</div>
+                                {geofenceStatus.distance !== undefined && (
+                                  <div className="text-xs mt-1 opacity-75">
+                                    Distance from site: {geofenceStatus.distance}m (within {geofenceStatus.radius}m radius). Location is captured but not mandatory.
+                                  </div>
+                                )}
+                              </div>
+                            )}
+                          </div>
+                        )
+                      ) : (
+                        <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg text-sm text-blue-800 mt-2">
+                          <div className="font-medium">ℹ Location captured (not mandatory)</div>
+                          <div className="text-xs mt-1 opacity-75">
+                            No geofence is defined for this shift. Your location has been captured but is not mandatory for clock-in/out.
+                          </div>
+                        </div>
+                      )}
+                    </>
+                  ) : gpsLoading ? (
+                    <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg text-sm text-blue-800">
+                      <div className="flex items-center gap-2">
+                        <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-800"></div>
+                        <span>Getting location...</span>
+                      </div>
+                    </div>
+                  ) : gpsError ? (
+                    <div className="p-3 bg-yellow-50 border border-yellow-200 rounded-lg text-sm text-yellow-800">
+                      {gpsError}
+                    </div>
                   ) : (
-                    <div className="p-3 bg-blue-50 border border-blue-200 rounded text-sm text-blue-800 mt-2">
-                      <div className="font-medium">ℹ Location captured (not mandatory)</div>
-                      <div className="text-xs mt-1 opacity-75">
-                        No geofence is defined for this shift. Your location has been captured but is not mandatory for clock-in/out.
-                      </div>
+                    <div className="p-3 bg-gray-50 border border-gray-200 rounded-lg text-sm text-gray-600">
+                      No location data
                     </div>
                   )}
-                </>
-              ) : gpsLoading ? (
-                <div className="p-3 bg-blue-50 border border-blue-200 rounded text-sm text-blue-800">
-                  <div className="flex items-center gap-2">
-                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-800"></div>
-                    <span>Getting location...</span>
-                  </div>
                 </div>
-              ) : gpsError ? (
-                <div className="p-3 bg-yellow-50 border border-yellow-200 rounded text-sm text-yellow-800">
-                  {gpsError}
-                </div>
-              ) : (
-                <div className="p-3 bg-gray-50 border border-gray-200 rounded text-sm text-gray-600">
-                  No location data
-                </div>
-              )}
-            </div>
 
-            {/* Reason text */}
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Reason {
-                  (() => {
-                    // Check if supervisor or on-site lead is doing for another worker
-                    const isWorkerOwner = currentUser && selectedShift?.worker_id && String(currentUser.id) === String(selectedShift.worker_id);
-                    const isSupervisorDoingForOther = isSupervisorOrAdmin && selectedShift && !isWorkerOwner;
-                    const isOnSiteLeadDoingForOther = isOnSiteLead && selectedShift && !isWorkerOwner;
-                    
-                    // Require reason if: supervisor or on-site lead doing for other worker
-                    const requiresReason = isSupervisorDoingForOther || isOnSiteLeadDoingForOther;
-                    return requiresReason && <span className="text-red-500">*</span>;
-                  })()
-                }
-              </label>
-              <textarea
-                value={reasonText}
-                onChange={(e) => setReasonText(e.target.value)}
-                placeholder="Describe the reason for this attendance entry..."
-                className="w-full border rounded px-3 py-2 h-24"
-                minLength={15}
-              />
-              <p className="text-xs text-gray-500 mt-1">
-                {(() => {
-                  // Check if supervisor or on-site lead is doing for another worker
-                  const isWorkerOwner = currentUser && selectedShift?.worker_id && String(currentUser.id) === String(selectedShift.worker_id);
-                  const isSupervisorDoingForOther = isSupervisorOrAdmin && selectedShift && !isWorkerOwner;
-                  const isOnSiteLeadDoingForOther = isOnSiteLead && selectedShift && !isWorkerOwner;
-                  const isDoingForOther = isSupervisorDoingForOther || isOnSiteLeadDoingForOther;
-                  
-                  if (isDoingForOther) {
-                    return (
-                      <span className="text-red-600 font-medium">
-                        Required (minimum 15 characters): You must provide a reason when clocking in/out for another user.
-                      </span>
-                    );
-                  }
-                  
-                  // Check if clock-in/out is on a different day than TODAY or in the future
-                  let isDifferentDayFromToday = false;
-                  let isFutureTime = false;
-                  if (selectedShift && selectedTime && selectedHour12 && selectedMinute) {
-                    try {
-                      const shiftDate = selectedShift.date; // YYYY-MM-DD
-                      const hour24 = selectedAmPm === 'PM' && parseInt(selectedHour12) !== 12 
-                        ? parseInt(selectedHour12) + 12 
-                        : selectedAmPm === 'AM' && parseInt(selectedHour12) === 12 
-                        ? 0 
-                        : parseInt(selectedHour12);
-                      
-                      // Create date using local timezone explicitly to avoid timezone issues
-                      const [year, month, day] = shiftDate.split('-').map(Number);
-                      const selectedDateTime = new Date(year, month - 1, day, hour24, parseInt(selectedMinute), 0);
-                      
-                      const now = new Date();
-                      const todayStr = formatDateLocal(now);
-                      const selectedDateStr = formatDateLocal(selectedDateTime);
-                      
-                      // Check if selected date is different from TODAY
-                      isDifferentDayFromToday = selectedDateStr !== todayStr;
-                      
-                      // Check if time is in the future (with 1 minute buffer for timezone differences)
-                      const bufferMs = 60 * 1000; // 1 minute buffer
-                      isFutureTime = selectedDateTime.getTime() > (now.getTime() + bufferMs);
-                    } catch (e) {
-                      // Ignore errors in calculation
+                {/* Reason text */}
+                <div>
+                  <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">
+                    Reason {
+                      (() => {
+                        const isWorkerOwner = currentUser && selectedShift?.worker_id && String(currentUser.id) === String(selectedShift.worker_id);
+                        const isSupervisorDoingForOther = isSupervisorOrAdmin && selectedShift && !isWorkerOwner;
+                        const isOnSiteLeadDoingForOther = isOnSiteLead && selectedShift && !isWorkerOwner;
+                        const requiresReason = isSupervisorDoingForOther || isOnSiteLeadDoingForOther;
+                        return requiresReason && <span className="text-red-500">*</span>;
+                      })()
                     }
-                  }
-                  
-                  // Reason is required ONLY when supervisor clocks in/out for another worker
-                  // Location is captured but not mandatory
-                  // Show warning if different day from today OR future time
-                  if (isFutureTime) {
-                    return (
-                      <span className="text-red-600 font-medium">
-                        ⚠ Clock-in/out cannot be in the future. Please select a valid time.
-                      </span>
-                    );
-                  }
-                  
-                  if (isDifferentDayFromToday) {
-                    return (
-                      <span className="text-orange-600 font-medium">
-                        ℹ Clock-in/out on a different day than today will require supervisor approval. Reason is optional.
-                      </span>
-                    );
-                  }
-                  
-                  // Location is captured but not mandatory
-                  if (!gpsLocation || gpsError) {
-                    return (
-                      <span className="text-gray-600">
-                        Optional: Location is captured but not mandatory. Reason is optional.
-                      </span>
-                    );
-                  }
-                  
-                  // Reason is optional for workers doing their own clock-in/out
-                  // isWorkerOwner is already defined above in the same scope
-                  if (isWorkerOwner) {
-                    return 'Optional: Reason is not required for your own clock-in/out on the same day as the shift.';
-                  }
-                  return 'Optional: Reason is not required for your own clock-in/out on the same day as the shift.';
-                })()}
-              </p>
+                  </label>
+                  <textarea
+                    value={reasonText}
+                    onChange={(e) => setReasonText(e.target.value)}
+                    placeholder="Describe the reason for this attendance entry..."
+                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm h-24 focus:outline-none focus:ring-1 focus:ring-gray-300 focus:border-gray-300"
+                    minLength={15}
+                  />
+                  <p className="text-xs text-gray-500 mt-1">
+                    {(() => {
+                      const isWorkerOwner = currentUser && selectedShift?.worker_id && String(currentUser.id) === String(selectedShift.worker_id);
+                      const isSupervisorDoingForOther = isSupervisorOrAdmin && selectedShift && !isWorkerOwner;
+                      const isOnSiteLeadDoingForOther = isOnSiteLead && selectedShift && !isWorkerOwner;
+                      const isDoingForOther = isSupervisorDoingForOther || isOnSiteLeadDoingForOther;
+
+                      if (isDoingForOther) {
+                        return (
+                          <span className="text-red-600 font-medium">
+                            Required (minimum 15 characters): You must provide a reason when clocking in/out for another user.
+                          </span>
+                        );
+                      }
+
+                      let isDifferentDayFromToday = false;
+                      let isFutureTime = false;
+                      if (selectedShift && selectedTime && selectedHour12 && selectedMinute) {
+                        try {
+                          const shiftDate = selectedShift.date;
+                          const hour24 = selectedAmPm === 'PM' && parseInt(selectedHour12) !== 12
+                            ? parseInt(selectedHour12) + 12
+                            : selectedAmPm === 'AM' && parseInt(selectedHour12) === 12
+                            ? 0
+                            : parseInt(selectedHour12);
+                          const [year, month, day] = shiftDate.split('-').map(Number);
+                          const selectedDateTime = new Date(year, month - 1, day, hour24, parseInt(selectedMinute), 0);
+                          const now = new Date();
+                          const todayStr = formatDateLocal(now);
+                          const selectedDateStr = formatDateLocal(selectedDateTime);
+                          isDifferentDayFromToday = selectedDateStr !== todayStr;
+                          const bufferMs = 60 * 1000;
+                          isFutureTime = selectedDateTime.getTime() > (now.getTime() + bufferMs);
+                        } catch (e) {}
+                      }
+
+                      if (isFutureTime) {
+                        return (
+                          <span className="text-red-600 font-medium">
+                            ⚠ Clock-in/out cannot be in the future. Please select a valid time.
+                          </span>
+                        );
+                      }
+                      if (isDifferentDayFromToday) {
+                        return (
+                          <span className="text-orange-600 font-medium">
+                            ℹ Clock-in/out on a different day than today will require supervisor approval. Reason is optional.
+                          </span>
+                        );
+                      }
+                      if (!gpsLocation || gpsError) {
+                        return (
+                          <span className="text-gray-600">
+                            Optional: Location is captured but not mandatory. Reason is optional.
+                          </span>
+                        );
+                      }
+                      return 'Optional: Reason is not required for your own clock-in/out on the same day as the shift.';
+                    })()}
+                  </p>
+                </div>
+
+                {/* Privacy notice */}
+                <p className="text-xs text-gray-500 mt-2">
+                  <strong>Privacy Notice:</strong> Your location is used only for attendance validation at the time of clock-in/out.
+                </p>
+              </div>
             </div>
 
-            {/* Privacy notice */}
-            <p className="text-xs text-gray-500 mt-2">
-              <strong>Privacy Notice:</strong> Your location is used only for attendance validation at the time of clock-in/out.
-            </p>
-
-            {/* Actions */}
-            <div className="flex justify-end gap-2 pt-4 border-t">
+            {/* Footer */}
+            <div className="flex-shrink-0 px-4 py-4 border-t border-gray-200 bg-white flex items-center justify-end gap-3 rounded-b-xl">
               <button
-                onClick={() => {
-                  setShowClockModal(false);
-                  setSelectedShift(null);
-                  setClockType(null);
-                  setSelectedTime('');
-                  setSelectedHour12('');
-                  setSelectedMinute('');
-                  setReasonText('');
-                }}
-                className="px-4 py-2 rounded border bg-gray-100 hover:bg-gray-200"
+                type="button"
+                onClick={closeClockModal}
                 disabled={submitting}
+                className="px-3 py-1.5 rounded-lg text-sm font-medium text-gray-700 border border-gray-200 hover:bg-gray-50 disabled:opacity-50"
               >
                 Cancel
               </button>
               <button
+                type="button"
                 onClick={submitAttendance}
                 disabled={(() => {
                   if (submitting || !selectedTime || !selectedHour12 || !selectedMinute) return true;
-                  
-                  // Check if reason is required
                   const isWorkerOwner = currentUser && selectedShift?.worker_id && String(currentUser.id) === String(selectedShift.worker_id);
                   const isSupervisorDoingForOther = isSupervisorOrAdmin && selectedShift && !isWorkerOwner;
                   const isOnSiteLeadDoingForOther = isOnSiteLead && selectedShift && !isWorkerOwner;
                   const isReasonRequired = isSupervisorDoingForOther || isOnSiteLeadDoingForOther;
-                  
                   if (isReasonRequired && (!reasonText.trim() || reasonText.trim().length < 15)) {
                     return true;
                   }
-                  
                   return false;
                 })()}
-                className="px-4 py-2 rounded bg-brand-red text-white hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                className="px-4 py-2 rounded-lg text-sm font-semibold text-white bg-brand-red hover:bg-[#aa1212] disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {submitting ? 'Submitting...' : 'Submit'}
               </button>

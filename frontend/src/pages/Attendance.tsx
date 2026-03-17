@@ -283,6 +283,7 @@ export default function Attendance() {
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [selectedEvents, setSelectedEvents] = useState<Set<string>>(new Set());
   const [deletingSelected, setDeletingSelected] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   
   // Manual break time
   const [insertBreakTime, setInsertBreakTime] = useState<boolean>(false);
@@ -661,6 +662,7 @@ export default function Attendance() {
       toast.error(editingEvent ? 'Please select a worker' : 'Please select at least one worker');
       return;
     }
+    setIsSubmitting(true);
 
     // Validation rules differ for new vs edit and for entry mode
     if (editingEvent) {
@@ -893,6 +895,8 @@ export default function Attendance() {
       resetForm();
     } catch (err: any) {
       toast.error(err?.message || 'Failed to save attendance event');
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -933,15 +937,6 @@ export default function Attendance() {
               <p className="text-xs text-gray-600 mt-0.5">Manage all clock-in/out records</p>
             </div>
           </div>
-          {canEditAttendance && (
-            <button
-              onClick={() => handleOpenModal()}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-lg bg-brand-red text-white font-medium transition-colors hover:bg-[#aa1212]"
-            >
-              <span className="text-sm leading-none">+</span>
-              New Attendance
-            </button>
-          )}
         </div>
       </div>
 
@@ -1044,6 +1039,20 @@ export default function Attendance() {
             </tr>
           </thead>
           <tbody>
+            {canEditAttendance && (
+              <tr>
+                <td colSpan={colCount} className="p-0 align-top">
+                  <button
+                    type="button"
+                    onClick={() => handleOpenModal()}
+                    className="w-full border-2 border-dashed border-gray-300 rounded-t-xl p-2.5 hover:border-brand-red hover:bg-gray-50 flex items-center justify-center gap-2 min-h-[52px] text-gray-600 hover:text-brand-red transition-colors"
+                  >
+                    <span className="text-lg font-medium">+</span>
+                    <span className="text-sm font-medium">New Attendance</span>
+                  </button>
+                </td>
+              </tr>
+            )}
             {isLoading ? (
               <tr>
                 <td colSpan={colCount} className="p-4">
@@ -1154,31 +1163,58 @@ export default function Attendance() {
 
       {/* Modal */}
       {showModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg p-4 max-w-lg w-full mx-4 max-h-[90vh] overflow-y-auto">
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="text-lg font-bold">
-                {editingEvent ? 'Edit Attendance Event' : 'New Attendance Event'}
-              </h2>
-              <button
-                onClick={() => {
-                  setShowModal(false);
-                  resetForm();
-                }}
-                className="text-xl font-bold text-gray-400 hover:text-gray-600 w-6 h-6 flex items-center justify-center"
-              >
-                ×
-              </button>
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
+          onClick={() => {
+            setShowModal(false);
+            resetForm();
+          }}
+        >
+          <div
+            className="w-[900px] max-w-[95vw] max-h-[90vh] flex flex-col rounded-xl border border-gray-200 bg-gray-100 shadow-xl overflow-hidden"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex-shrink-0 rounded-t-xl border-b border-gray-200 bg-white p-4">
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowModal(false);
+                    resetForm();
+                  }}
+                  className="p-1 rounded-lg hover:bg-gray-100 text-gray-600"
+                >
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                  </svg>
+                </button>
+                <div>
+                  <h2 className="text-sm font-semibold text-gray-900">
+                    {editingEvent ? 'Edit Attendance Event' : 'New Attendance'}
+                  </h2>
+                  <p className="text-xs text-gray-500 mt-0.5">
+                    {editingEvent ? 'Update clock-in/out and status' : 'Add manual clock-in/out or hours worked'}
+                  </p>
+                </div>
+              </div>
             </div>
-            <div className="space-y-3">
+            <div className="flex-1 overflow-y-auto p-4">
+              <form
+                id="attendance-form"
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  handleSubmit();
+                }}
+                className="rounded-xl border border-gray-200 bg-white p-4 space-y-3"
+              >
               {editingEvent ? (
                 // When editing, show simple select (single worker)
                 <div>
-                  <label className="block text-xs font-medium text-gray-600 mb-1.5">Worker *</label>
+                  <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">Worker *</label>
                   <select
                     value={formData.worker_id}
                     onChange={(e) => setFormData({ ...formData, worker_id: e.target.value })}
-                    className="w-full rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-gray-900 focus:ring-1 focus:ring-gray-400 focus:border-gray-400"
+                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm placeholder:text-gray-400 focus:outline-none focus:ring-1 focus:ring-gray-300 focus:border-gray-300"
                     required
                   >
                     <option value="">Select a worker...</option>
@@ -1192,14 +1228,14 @@ export default function Attendance() {
               ) : (
                 // When creating, show multi-select with search
                 <div>
-                  <label className="block text-xs font-medium text-gray-600 mb-1.5">
+                  <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">
                     Workers * {(Array.isArray(selectedWorkers) ? selectedWorkers.length : 0) > 0 && `(${Array.isArray(selectedWorkers) ? selectedWorkers.length : 0} selected)`}
                   </label>
                   <div className="relative" ref={workerDropdownRef}>
                     <button
                       type="button"
                       onClick={() => setWorkerDropdownOpen(!workerDropdownOpen)}
-                      className="w-full border rounded-lg border-gray-300 bg-white px-2.5 py-1.5 text-xs text-left flex items-center justify-between"
+                      className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm text-left flex items-center justify-between bg-white focus:outline-none focus:ring-1 focus:ring-gray-300 focus:border-gray-300"
                     >
                       <span className="text-xs text-gray-600">
                         {(Array.isArray(selectedWorkers) ? selectedWorkers.length : 0) === 0
@@ -1219,7 +1255,7 @@ export default function Attendance() {
                             placeholder="Search workers..."
                             value={workerSearch}
                             onChange={(e) => setWorkerSearch(e.target.value)}
-                            className="w-full border rounded-lg border-gray-300 bg-white px-2.5 py-1.5 text-xs text-gray-900"
+                            className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm placeholder:text-gray-400 focus:outline-none focus:ring-1 focus:ring-gray-300 focus:border-gray-300"
                             onMouseDown={(e) => e.stopPropagation()}
                           />
                           <div className="flex items-center gap-2">
@@ -1306,11 +1342,11 @@ export default function Attendance() {
               )}
               {/* Job field - always show */}
               <div>
-                <label className="block text-xs font-medium text-gray-600 mb-1.5">Job *</label>
+                <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">Job *</label>
                 <select
                   value={formData.job_type}
                   onChange={(e) => setFormData({ ...formData, job_type: e.target.value })}
-                  className="w-full rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-gray-900 focus:ring-1 focus:ring-gray-400 focus:border-gray-400"
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm placeholder:text-gray-400 focus:outline-none focus:ring-1 focus:ring-gray-300 focus:border-gray-300"
                   required
                 >
                   {jobOptions.map((job) => (
@@ -1321,10 +1357,10 @@ export default function Attendance() {
                 </select>
               </div>
               <div>
-                <label className="block text-xs font-medium text-gray-600 mb-1.5">
+                <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">
                   Entry Type
                 </label>
-                <div className="inline-flex rounded-lg border border-gray-300 bg-gray-50 overflow-hidden text-xs">
+                <div className="inline-flex rounded-lg border border-gray-200 bg-gray-50 overflow-hidden text-sm">
                   <button
                     type="button"
                     onClick={() => {
@@ -1390,7 +1426,7 @@ export default function Attendance() {
                 </p>
               </div>
               <div>
-                <label className="block text-xs font-medium text-gray-600 mb-1.5">
+                <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">
                   {formData.entry_mode === 'time'
                     ? 'Clock In Time * (Local)'
                     : 'Work Date *'}
@@ -1402,7 +1438,7 @@ export default function Attendance() {
                     onChange={(e) =>
                       setFormData({ ...formData, clock_in_time: e.target.value })
                     }
-                    className="w-full rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-gray-900 focus:ring-1 focus:ring-gray-400 focus:border-gray-400"
+                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm placeholder:text-gray-400 focus:outline-none focus:ring-1 focus:ring-gray-300 focus:border-gray-300"
                     required
                   />
                 ) : (
@@ -1416,7 +1452,7 @@ export default function Attendance() {
                         clock_in_time: date ? `${date}T00:00` : '',
                       }));
                     }}
-                    className="w-full rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-gray-900 focus:ring-1 focus:ring-gray-400 focus:border-gray-400"
+                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm placeholder:text-gray-400 focus:outline-none focus:ring-1 focus:ring-gray-300 focus:border-gray-300"
                     required
                   />
                 )}
@@ -1424,7 +1460,7 @@ export default function Attendance() {
               {formData.entry_mode === 'time' && (
                 <>
                   <div>
-                    <label className="block text-xs font-medium text-gray-600 mb-1.5">
+                    <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">
                       {editingEvent
                         ? 'Clock Out Time (Local) - Optional'
                         : 'Clock Out Time * (Local)'}
@@ -1435,7 +1471,7 @@ export default function Attendance() {
                       onChange={(e) =>
                         setFormData({ ...formData, clock_out_time: e.target.value })
                       }
-                      className="w-full rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-gray-900 focus:ring-1 focus:ring-gray-400 focus:border-gray-400"
+                      className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm placeholder:text-gray-400 focus:outline-none focus:ring-1 focus:ring-gray-300 focus:border-gray-300"
                       required={!editingEvent}
                     />
                   </div>
@@ -1448,16 +1484,16 @@ export default function Attendance() {
                         onChange={(e) => setInsertBreakTime(e.target.checked)}
                         className="w-3.5 h-3.5 rounded border-gray-300 text-brand-red focus:ring-brand-red"
                       />
-                      <span className="text-xs font-medium text-gray-700">Insert Break Time</span>
+                      <span className="text-[10px] font-medium text-gray-500 uppercase tracking-wide">Insert Break Time</span>
                     </label>
                     {insertBreakTime && (
                       <div className="ml-4 space-y-1.5">
                         <div className="flex gap-2 items-center">
-                          <label className="text-[10px] text-gray-600 w-12">Hours:</label>
+                          <label className="text-[10px] text-gray-500 w-12">Hours:</label>
                           <select
                             value={breakHours}
                             onChange={(e) => setBreakHours(e.target.value)}
-                            className="flex-1 border rounded-lg border-gray-300 bg-white px-2.5 py-1.5 text-xs text-gray-900"
+                            className="flex-1 border border-gray-200 rounded-lg px-3 py-2 text-sm"
                           >
                             {Array.from({ length: 3 }, (_, i) => (
                               <option key={i} value={String(i)}>
@@ -1465,11 +1501,11 @@ export default function Attendance() {
                               </option>
                             ))}
                           </select>
-                          <label className="text-[10px] text-gray-600 w-12 ml-2">Minutes:</label>
+                          <label className="text-[10px] text-gray-500 w-12 ml-2">Minutes:</label>
                           <select
                             value={breakMinutes}
                             onChange={(e) => setBreakMinutes(e.target.value)}
-                            className="flex-1 border rounded-lg border-gray-300 bg-white px-2.5 py-1.5 text-xs text-gray-900"
+                            className="flex-1 border border-gray-200 rounded-lg px-3 py-2 text-sm"
                           >
                             {Array.from({ length: 12 }, (_, i) => {
                               const m = i * 5;
@@ -1489,7 +1525,7 @@ export default function Attendance() {
               {formData.entry_mode === 'hours' && (
                 <>
                   <div>
-                    <label className="block text-xs font-medium text-gray-600 mb-1.5">
+                    <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">
                       Hours Worked *
                     </label>
                     <input
@@ -1500,30 +1536,30 @@ export default function Attendance() {
                       onChange={(e) =>
                         setFormData({ ...formData, hours_worked: e.target.value })
                       }
-                      className="w-full rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-gray-900 focus:ring-1 focus:ring-gray-400 focus:border-gray-400"
+                      className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm placeholder:text-gray-400 focus:outline-none focus:ring-1 focus:ring-gray-300 focus:border-gray-300"
                       placeholder="e.g. 8"
                       required
                     />
                   </div>
                   {/* Manual Break Time (for hours worked mode) */}
                   <div>
-                    <label className="flex items-center gap-2 mb-1.5">
+                    <label className="flex items-center gap-2 mb-1">
                       <input
                         type="checkbox"
                         checked={insertBreakTime}
                         onChange={(e) => setInsertBreakTime(e.target.checked)}
-                        className="w-3.5 h-3.5 rounded border-gray-300 text-brand-red focus:ring-brand-red"
+                        className="w-3.5 h-3.5 rounded border-gray-200 text-brand-red focus:ring-brand-red"
                       />
-                      <span className="text-xs font-medium text-gray-700">Insert Break Time</span>
+                      <span className="text-[10px] font-medium text-gray-500 uppercase tracking-wide">Insert Break Time</span>
                     </label>
                     {insertBreakTime && (
                       <div className="ml-4 space-y-1.5">
                         <div className="flex gap-2 items-center">
-                          <label className="text-[10px] text-gray-600 w-12">Hours:</label>
+                          <label className="text-[10px] text-gray-500 w-12">Hours:</label>
                           <select
                             value={breakHours}
                             onChange={(e) => setBreakHours(e.target.value)}
-                            className="flex-1 border rounded-lg border-gray-300 bg-white px-2.5 py-1.5 text-xs text-gray-900"
+                            className="flex-1 border border-gray-200 rounded-lg px-3 py-2 text-sm"
                           >
                             {Array.from({ length: 3 }, (_, i) => (
                               <option key={i} value={String(i)}>
@@ -1531,11 +1567,11 @@ export default function Attendance() {
                               </option>
                             ))}
                           </select>
-                          <label className="text-[10px] text-gray-600 w-12 ml-2">Minutes:</label>
+                          <label className="text-[10px] text-gray-500 w-12 ml-2">Minutes:</label>
                           <select
                             value={breakMinutes}
                             onChange={(e) => setBreakMinutes(e.target.value)}
-                            className="flex-1 border rounded-lg border-gray-300 bg-white px-2.5 py-1.5 text-xs text-gray-900"
+                            className="flex-1 border border-gray-200 rounded-lg px-3 py-2 text-sm"
                           >
                             {Array.from({ length: 12 }, (_, i) => {
                               const m = i * 5;
@@ -1554,11 +1590,11 @@ export default function Attendance() {
               )}
               {editingEvent && (
                 <div>
-                  <label className="block text-xs font-medium text-gray-600 mb-1.5">Status *</label>
+                  <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">Status *</label>
                   <select
                     value={formData.status}
                     onChange={(e) => setFormData({ ...formData, status: e.target.value })}
-                    className="w-full rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-gray-900 focus:ring-1 focus:ring-gray-400 focus:border-gray-400"
+                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm placeholder:text-gray-400 focus:outline-none focus:ring-1 focus:ring-gray-300 focus:border-gray-300"
                     required
                   >
                     <option value="approved">Approved</option>
@@ -1567,23 +1603,26 @@ export default function Attendance() {
                   </select>
                 </div>
               )}
+              </form>
             </div>
-            <div className="mt-4 flex justify-end gap-2">
+            <div className="flex-shrink-0 px-4 py-4 border-t border-gray-200 bg-white flex items-center justify-end gap-3 rounded-b-xl">
               <button
+                type="button"
                 onClick={() => {
                   setShowModal(false);
                   resetForm();
                 }}
-                className="px-3 py-1.5 text-xs border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+                className="px-3 py-1.5 rounded-lg text-sm font-medium text-gray-700 border border-gray-200 hover:bg-gray-50"
               >
                 Cancel
               </button>
               <button
-                onClick={handleSubmit}
-                disabled={isSubmitDisabled}
-                className="px-3 py-1.5 text-xs bg-brand-red text-white rounded-lg hover:bg-[#b01414] disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                type="submit"
+                form="attendance-form"
+                disabled={isSubmitDisabled || isSubmitting}
+                className="px-4 py-2 rounded-lg text-sm font-semibold text-white bg-brand-red hover:bg-[#aa1212] disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                {editingEvent ? 'Update' : 'Create'}
+                {isSubmitting ? 'Saving...' : editingEvent ? 'Update' : 'Create'}
               </button>
             </div>
           </div>

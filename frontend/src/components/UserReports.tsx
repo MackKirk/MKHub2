@@ -159,23 +159,13 @@ export default function UserReports({ userId, canEdit = true }: { userId: string
       {/* Reports Section */}
       <div className="rounded-xl border bg-white p-4">
         {/* Header */}
-        <div className="mb-4 flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <div className="w-8 h-8 rounded bg-red-100 flex items-center justify-center">
-              <svg className="w-5 h-5 text-red-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-              </svg>
-            </div>
-            <h5 className="text-sm font-semibold text-red-900">Reports</h5>
+        <div className="mb-4 flex items-center gap-2">
+          <div className="w-8 h-8 rounded bg-red-100 flex items-center justify-center">
+            <svg className="w-5 h-5 text-red-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+            </svg>
           </div>
-          {canEdit && (
-            <button
-              onClick={() => setShowCreateModal(true)}
-              className="px-2 py-1 text-xs bg-brand-red text-white rounded-lg font-medium hover:bg-red-700 transition-colors"
-            >
-              + Add Report
-            </button>
-          )}
+          <h5 className="text-sm font-semibold text-red-900">Reports</h5>
         </div>
 
         {/* Search */}
@@ -280,6 +270,20 @@ export default function UserReports({ userId, canEdit = true }: { userId: string
               </tr>
             </thead>
             <tbody>
+              {canEdit && (
+                <tr>
+                  <td colSpan={7} className="p-0 align-top">
+                    <button
+                      type="button"
+                      onClick={() => setShowCreateModal(true)}
+                      className="w-full border-2 border-dashed border-gray-300 rounded-t-xl p-2.5 hover:border-brand-red hover:bg-gray-50 flex items-center justify-center gap-2 min-h-[52px] text-gray-600 hover:text-brand-red transition-colors"
+                    >
+                      <span className="text-lg font-medium">+</span>
+                      <span className="text-sm font-medium">Add Report</span>
+                    </button>
+                  </td>
+                </tr>
+              )}
               {!reports ? (
                 <tr>
                   <td colSpan={7} className="p-4 text-center text-xs text-gray-500">
@@ -429,6 +433,17 @@ function CreateReportModal({ userId, report, onClose }: { userId: string; report
   const fileInputRef = useRef<HTMLInputElement>(null);
   
   const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [onClose]);
+
+  useEffect(() => {
+    document.body.style.overflow = 'hidden';
+    return () => { document.body.style.overflow = ''; };
+  }, []);
 
   // Fetch projects
   const { data: projects } = useQuery<any[]>({
@@ -645,17 +660,36 @@ function CreateReportModal({ userId, report, onClose }: { userId: string; report
   };
 
   return (
-    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 overflow-y-auto">
-      <div className="w-[700px] max-w-[95vw] bg-white rounded-xl shadow-lg overflow-visible my-8 relative flex flex-col max-h-[90vh]">
-        <div className="bg-gradient-to-br from-[#7f1010] to-[#a31414] text-white p-4 rounded-t-xl flex items-center justify-between">
-          <div className="text-lg font-extrabold">{report ? 'Edit Report' : 'Create Report'}</div>
-          <button onClick={onClose} className="text-white/80 hover:text-white text-xl font-bold w-6 h-6 flex items-center justify-center rounded hover:bg-white/10">
-            ×
-          </button>
+    <div
+      className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 p-4 overflow-y-auto"
+      onClick={onClose}
+    >
+      <div
+        className="w-[700px] max-w-[95vw] max-h-[90vh] flex flex-col rounded-xl border border-gray-200 bg-gray-100 shadow-xl overflow-hidden relative"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex-shrink-0 rounded-t-xl border-b border-gray-200 bg-white p-4">
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={onClose}
+              className="p-1 rounded-lg hover:bg-gray-100 text-gray-600"
+              title="Close"
+            >
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+              </svg>
+            </button>
+            <div>
+              <h2 className="text-sm font-semibold text-gray-900">{report ? 'Edit Report' : 'Create Report'}</h2>
+              <p className="text-xs text-gray-500 mt-0.5">{report ? 'Update report details' : 'Add a new report for this employee'}</p>
+            </div>
+          </div>
         </div>
-        <div className="flex-1 overflow-y-auto overflow-x-visible p-4 space-y-4">
+        <div className="flex-1 overflow-y-auto overflow-x-visible p-4">
+          <div className="rounded-xl border border-gray-200 bg-white p-4 space-y-4">
           <div>
-            <label className="block text-xs font-medium text-gray-600 mb-1.5">Title *</label>
+            <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">Title *</label>
             <input
               type="text"
               className="w-full rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-gray-900 focus:ring-1 focus:ring-gray-400 focus:border-gray-400"
@@ -1003,19 +1037,22 @@ function CreateReportModal({ userId, report, onClose }: { userId: string; report
               </div>
             )}
           </div>
+          </div>
         </div>
-        <div className="px-4 py-3 border-t bg-gray-50 flex items-center justify-end gap-2">
+        <div className="flex-shrink-0 px-4 py-4 border-t border-gray-200 bg-white flex items-center justify-end gap-3 rounded-b-xl">
           <button
+            type="button"
             onClick={onClose}
-            className="px-3 py-1.5 text-xs rounded bg-gray-200 hover:bg-gray-300"
             disabled={saving}
+            className="px-3 py-1.5 rounded-lg text-sm font-medium text-gray-700 border border-gray-200 hover:bg-gray-50 disabled:opacity-50"
           >
             Cancel
           </button>
           <button
+            type="button"
             onClick={handleSubmit}
             disabled={saving}
-            className="px-3 py-1.5 text-xs rounded bg-brand-red text-white hover:bg-red-700 disabled:opacity-50"
+            className="px-4 py-2 rounded-lg text-sm font-semibold text-white bg-brand-red hover:bg-[#aa1212] disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {saving ? (report ? 'Updating...' : 'Creating...') : (report ? 'Update Report' : 'Create Report')}
           </button>
@@ -1101,6 +1138,17 @@ function ReportDetailView({
     queryKey: ['report-detail', userId, reportId],
     queryFn: () => api<ReportDetail>('GET', `/employees/${userId}/reports/${reportId}`),
   });
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [onClose]);
+
+  useEffect(() => {
+    document.body.style.overflow = 'hidden';
+    return () => { document.body.style.overflow = ''; };
+  }, []);
 
   // Initialize edit form when report loads
   useEffect(() => {
@@ -1267,16 +1315,36 @@ function ReportDetailView({
 
   if (!report) {
     return (
-      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-        <div className="w-[900px] max-w-[95vw] max-h-[90vh] bg-white rounded-lg shadow-lg overflow-hidden flex flex-col">
-          <div className="px-4 py-3 border-b font-semibold flex items-center justify-between">
-            <span>Report Details</span>
-            <button onClick={onClose} className="text-gray-500 hover:text-gray-700">
-              ✕
-            </button>
+      <div
+        className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 overflow-y-auto"
+        onClick={onClose}
+      >
+        <div
+          className="w-[900px] max-w-[95vw] max-h-[90vh] flex flex-col rounded-xl border border-gray-200 bg-gray-100 shadow-xl overflow-hidden"
+          onClick={(e) => e.stopPropagation()}
+        >
+          <div className="flex-shrink-0 rounded-t-xl border-b border-gray-200 bg-white p-4">
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={onClose}
+                className="p-1 rounded-lg hover:bg-gray-100 text-gray-600"
+                title="Close"
+              >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                </svg>
+              </button>
+              <div>
+                <h2 className="text-sm font-semibold text-gray-900">Report Details</h2>
+                <p className="text-xs text-gray-500 mt-0.5">Loading…</p>
+              </div>
+            </div>
           </div>
           <div className="flex-1 overflow-y-auto p-4">
-            <div className="text-center py-8 text-gray-500">Loading...</div>
+            <div className="rounded-xl border border-gray-200 bg-white p-6 flex items-center justify-center">
+              <div className="text-sm text-gray-500">Loading...</div>
+            </div>
           </div>
         </div>
       </div>
@@ -1284,27 +1352,47 @@ function ReportDetailView({
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 overflow-y-auto">
-      <div className="w-[900px] max-w-[95vw] bg-white rounded-xl shadow-lg overflow-visible flex flex-col my-8 max-h-[90vh]">
-        <div className="bg-gradient-to-br from-[#7f1010] to-[#a31414] text-white p-4 rounded-t-xl flex items-center justify-between">
-          <div className="flex-1">
-            {editing ? (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 overflow-y-auto"
+      onClick={onClose}
+    >
+      <div
+        className="w-[900px] max-w-[95vw] max-h-[90vh] flex flex-col rounded-xl border border-gray-200 bg-gray-100 shadow-xl overflow-hidden"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex-shrink-0 rounded-t-xl border-b border-gray-200 bg-white p-4">
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={onClose}
+              className="p-1 rounded-lg hover:bg-gray-100 text-gray-600"
+              title="Close"
+            >
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+              </svg>
+            </button>
+            <div className="flex-1 min-w-0">
+              <h2 className="text-sm font-semibold text-gray-900">Report Details</h2>
+              <p className="text-xs text-gray-500 mt-0.5 truncate">{report.report_type}: {report.title}</p>
+            </div>
+          </div>
+        </div>
+        <div className="flex-1 overflow-y-auto overflow-x-visible p-4">
+          <div className="rounded-xl border border-gray-200 bg-white p-4 space-y-6">
+          {/* Basic Info - when editing, show title input at top of content */}
+          {editing && (
+            <div>
+              <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">Title</label>
               <input
                 type="text"
-                className="w-full border rounded-lg px-2.5 py-1.5 text-xs font-semibold text-gray-900"
+                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-gray-300 focus:border-gray-300"
                 value={editTitle}
                 onChange={(e) => setEditTitle(e.target.value)}
                 placeholder="Report title"
               />
-            ) : (
-              <div className="text-lg font-extrabold">{report.report_type}: {report.title}</div>
-            )}
-          </div>
-          <button onClick={onClose} className="text-white/80 hover:text-white text-xl font-bold w-6 h-6 flex items-center justify-center rounded hover:bg-white/10">
-            ×
-          </button>
-        </div>
-        <div className="flex-1 overflow-y-auto overflow-x-visible p-4 space-y-6">
+            </div>
+          )}
           {/* Basic Info */}
           <div className="grid md:grid-cols-2 gap-4">
             <div>
@@ -1779,19 +1867,22 @@ function ReportDetailView({
               </button>
             </div>
           </div>
+          </div>
         </div>
-        <div className="px-4 py-3 border-t bg-gray-50 flex items-center justify-end gap-2">
+        <div className="flex-shrink-0 px-4 py-4 border-t border-gray-200 bg-white flex items-center justify-end gap-3 rounded-b-xl">
           {editing ? (
             <>
               <button
+                type="button"
                 onClick={() => setEditing(false)}
-                className="px-3 py-1.5 text-xs rounded bg-gray-200 hover:bg-gray-300"
+                className="px-3 py-1.5 rounded-lg text-sm font-medium text-gray-700 border border-gray-200 hover:bg-gray-50"
               >
                 Cancel
               </button>
               <button
+                type="button"
                 onClick={handleSave}
-                className="px-3 py-1.5 text-xs rounded bg-brand-red text-white hover:bg-red-700"
+                className="px-4 py-2 rounded-lg text-sm font-semibold text-white bg-brand-red hover:bg-[#aa1212]"
               >
                 Save Changes
               </button>
@@ -1800,13 +1891,14 @@ function ReportDetailView({
             <>
               {canEdit && !showEditModal && (
                 <button
+                  type="button"
                   onClick={() => {
                     if (report) {
                       setEditingReportData(report);
                       setShowEditModal(true);
                     }
                   }}
-                  className="px-3 py-1.5 text-xs rounded bg-brand-red text-white hover:bg-red-700"
+                  className="px-4 py-2 rounded-lg text-sm font-semibold text-white bg-brand-red hover:bg-[#aa1212]"
                 >
                   Edit
                 </button>

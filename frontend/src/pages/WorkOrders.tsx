@@ -169,6 +169,8 @@ export default function WorkOrders() {
   const search = searchParams.get('search') ?? '';
   const [isFilterModalOpen, setIsFilterModalOpen] = useState(false);
   const [showNewWorkOrderModal, setShowNewWorkOrderModal] = useState(false);
+  const [newWorkOrderCanSubmit, setNewWorkOrderCanSubmit] = useState(false);
+  const [newWorkOrderIsPending, setNewWorkOrderIsPending] = useState(false);
 
   const pageParam = parseInt(searchParams.get('page') || '1', 10);
   const [page, setPage] = useState(pageParam);
@@ -539,13 +541,36 @@ export default function WorkOrders() {
             </div>
             <div className="overflow-y-auto flex-1 p-4">
               <WorkOrderNewForm
+                formId="work-order-new-form-modal"
                 onSuccess={(data) => {
                   setShowNewWorkOrderModal(false);
                   queryClient.invalidateQueries({ queryKey: ['workOrders'] });
+                  queryClient.invalidateQueries({ queryKey: ['fleet-work-orders-calendar'] });
                   nav(`/fleet/work-orders/${data.id}`);
                 }}
                 onCancel={() => setShowNewWorkOrderModal(false)}
+                onValidationChange={(canSubmit, isPending) => {
+                  setNewWorkOrderCanSubmit(canSubmit);
+                  setNewWorkOrderIsPending(isPending);
+                }}
               />
+            </div>
+            <div className="flex-shrink-0 px-4 py-4 border-t border-gray-200 bg-white flex items-center justify-end gap-3 rounded-b-xl">
+              <button
+                type="button"
+                onClick={() => setShowNewWorkOrderModal(false)}
+                className="px-3 py-1.5 rounded-lg text-sm font-medium text-gray-700 border border-gray-200 hover:bg-gray-50"
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                form="work-order-new-form-modal"
+                disabled={!newWorkOrderCanSubmit || newWorkOrderIsPending}
+                className="px-4 py-2 rounded-lg text-sm font-semibold text-white bg-brand-red hover:bg-[#aa1212] disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {newWorkOrderIsPending ? 'Creating...' : 'Create Work Order'}
+              </button>
             </div>
           </div>
         </div>

@@ -498,6 +498,8 @@ export default function FleetAssets() {
   const [searchParams, setSearchParams] = useSearchParams();
   const search = searchParams.get('search') ?? '';
   const [showNewAssetModal, setShowNewAssetModal] = useState(false);
+  const [newAssetCanSubmit, setNewAssetCanSubmit] = useState(false);
+  const [newAssetIsPending, setNewAssetIsPending] = useState(false);
   const [isFilterModalOpen, setIsFilterModalOpen] = useState(false);
   
   // Get initial type from URL or path
@@ -1110,6 +1112,7 @@ export default function FleetAssets() {
             </div>
             <div className="overflow-y-auto flex-1 p-4">
               <FleetAssetNewForm
+                formId="fleet-new-asset-form-modal"
                 initialAssetType={typeFilter === 'all' ? 'vehicle' : typeFilter}
                 onSuccess={(data) => {
                   setShowNewAssetModal(false);
@@ -1117,7 +1120,28 @@ export default function FleetAssets() {
                   nav(`/fleet/assets/${data.id}`);
                 }}
                 onCancel={() => setShowNewAssetModal(false)}
+                onValidationChange={(canSubmit, isPending) => {
+                  setNewAssetCanSubmit(canSubmit);
+                  setNewAssetIsPending(isPending);
+                }}
               />
+            </div>
+            <div className="flex-shrink-0 px-4 py-4 border-t border-gray-200 bg-white flex items-center justify-end gap-3 rounded-b-xl">
+              <button
+                type="button"
+                onClick={() => setShowNewAssetModal(false)}
+                className="px-3 py-1.5 rounded-lg text-sm font-medium text-gray-700 border border-gray-200 hover:bg-gray-50"
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                form="fleet-new-asset-form-modal"
+                disabled={!newAssetCanSubmit || newAssetIsPending}
+                className="px-4 py-2 rounded-lg text-sm font-semibold text-white bg-brand-red hover:bg-[#aa1212] disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {newAssetIsPending ? 'Creating...' : 'Create Asset'}
+              </button>
             </div>
           </div>
         </div>

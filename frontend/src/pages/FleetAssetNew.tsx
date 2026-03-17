@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useMutation } from '@tanstack/react-query';
 import { api } from '@/lib/api';
@@ -8,11 +8,15 @@ export type FleetAssetNewFormProps = {
   initialAssetType: string;
   onSuccess: (data: { id: string }) => void;
   onCancel: () => void;
+  /** When provided (e.g. in modal), parent will render footer; this form only renders content and reports canSubmit/isPending */
+  onValidationChange?: (canSubmit: boolean, isPending: boolean) => void;
+  formId?: string;
 };
 
-const inputClass = 'w-full px-3 py-2 border border-gray-200 rounded-lg mt-1 text-sm focus:outline-none focus:ring-2 focus:ring-brand-red focus:border-transparent';
+const labelClass = 'text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1';
+const inputClass = 'w-full border border-gray-200 rounded-lg px-3 py-2 text-sm placeholder:text-gray-400 focus:outline-none focus:ring-1 focus:ring-gray-300 focus:border-gray-300';
 
-export function FleetAssetNewForm({ initialAssetType, onSuccess, onCancel }: FleetAssetNewFormProps) {
+export function FleetAssetNewForm({ initialAssetType, onSuccess, onCancel, onValidationChange, formId = 'fleet-new-asset-form' }: FleetAssetNewFormProps) {
   const [form, setForm] = useState({
     asset_type: initialAssetType,
     name: '',
@@ -79,21 +83,26 @@ export function FleetAssetNewForm({ initialAssetType, onSuccess, onCancel }: Fle
   const hasAtLeastOne = fillableValues.some((v) => String(v ?? '').trim() !== '');
   const canSubmit = hasAtLeastOne;
 
+  useEffect(() => {
+    onValidationChange?.(canSubmit, createMutation.isPending);
+  }, [canSubmit, createMutation.isPending, onValidationChange]);
+
   return (
     <div className="rounded-xl border border-gray-200 bg-white overflow-hidden">
-      <div className="px-4 py-3 border-b border-gray-200 bg-gray-50">
-        <h4 className="font-semibold text-gray-900">Basic Information</h4>
+      <div className="px-4 py-3 border-b border-gray-200">
+        <h4 className={labelClass}>Basic Information</h4>
       </div>
       <form
+        id={formId}
         onSubmit={(e) => {
           e.preventDefault();
           if (canSubmit) createMutation.mutate();
         }}
         className="p-4"
       >
-        <div className="grid md:grid-cols-2 gap-3 text-sm">
+        <div className="grid md:grid-cols-2 gap-4">
           <div>
-            <div className="text-gray-600 mb-1">Asset Type</div>
+            <label className={labelClass}>Asset Type</label>
             <select
               value={form.asset_type}
               onChange={(e) => updateField('asset_type', e.target.value)}
@@ -105,7 +114,7 @@ export function FleetAssetNewForm({ initialAssetType, onSuccess, onCancel }: Fle
             </select>
           </div>
           <div>
-            <div className="text-gray-600 mb-1">Name</div>
+            <label className={labelClass}>Name</label>
             <input
               type="text"
               value={form.name}
@@ -114,47 +123,47 @@ export function FleetAssetNewForm({ initialAssetType, onSuccess, onCancel }: Fle
             />
           </div>
           <div>
-            <div className="text-gray-600 mb-1">Make</div>
+            <label className={labelClass}>Make</label>
             <input type="text" value={form.make} onChange={(e) => updateField('make', e.target.value)} className={inputClass} />
           </div>
           <div>
-            <div className="text-gray-600 mb-1">Model</div>
+            <label className={labelClass}>Model</label>
             <input type="text" value={form.model} onChange={(e) => updateField('model', e.target.value)} className={inputClass} />
           </div>
           <div>
-            <div className="text-gray-600 mb-1">Year</div>
+            <label className={labelClass}>Year</label>
             <input type="number" value={form.year} onChange={(e) => updateField('year', e.target.value)} className={inputClass} min={1900} max={new Date().getFullYear() + 1} />
           </div>
           <div>
-            <div className="text-gray-600 mb-1">VIN / Serial</div>
+            <label className={labelClass}>VIN / Serial</label>
             <input type="text" value={form.vin} onChange={(e) => updateField('vin', e.target.value)} className={inputClass} />
           </div>
           <div>
-            <div className="text-gray-600 mb-1">{(form.asset_type === 'heavy_machinery' || form.asset_type === 'other') ? 'License' : 'License Plate'}</div>
+            <label className={labelClass}>{(form.asset_type === 'heavy_machinery' || form.asset_type === 'other') ? 'License' : 'License Plate'}</label>
             <input type="text" value={form.license_plate} onChange={(e) => updateField('license_plate', e.target.value)} className={inputClass} />
           </div>
           <div>
-            <div className="text-gray-600 mb-1">Unit Number</div>
+            <label className={labelClass}>Unit Number</label>
             <input type="text" value={form.unit_number} onChange={(e) => updateField('unit_number', e.target.value)} className={inputClass} />
           </div>
           {(form.asset_type !== 'heavy_machinery' && form.asset_type !== 'other') && (
             <div>
-              <div className="text-gray-600 mb-1">Vehicle Type</div>
+              <label className={labelClass}>Vehicle Type</label>
               <input type="text" value={form.vehicle_type} onChange={(e) => updateField('vehicle_type', e.target.value)} className={inputClass} />
             </div>
           )}
           <div>
-            <div className="text-gray-600 mb-1">Fuel Type</div>
+            <label className={labelClass}>Fuel Type</label>
             <input type="text" value={form.fuel_type} onChange={(e) => updateField('fuel_type', e.target.value)} className={inputClass} />
           </div>
           {(form.asset_type === 'heavy_machinery' || form.asset_type === 'other') && (
             <div>
-              <div className="text-gray-600 mb-1">{(form.asset_type === 'heavy_machinery' || form.asset_type === 'other') ? 'Type' : 'Equipment Type Label'}</div>
+              <label className={labelClass}>{(form.asset_type === 'heavy_machinery' || form.asset_type === 'other') ? 'Type' : 'Equipment Type Label'}</label>
               <input type="text" value={form.equipment_type_label} onChange={(e) => updateField('equipment_type_label', e.target.value)} className={inputClass} />
             </div>
           )}
           <div>
-            <div className="text-gray-600 mb-1">Condition</div>
+            <label className={labelClass}>Condition</label>
             <select value={form.condition} onChange={(e) => updateField('condition', e.target.value)} className={inputClass}>
               <option value="">Select</option>
               <option value="new">New</option>
@@ -164,7 +173,7 @@ export function FleetAssetNewForm({ initialAssetType, onSuccess, onCancel }: Fle
             </select>
           </div>
           <div>
-            <div className="text-gray-600 mb-1">Status</div>
+            <label className={labelClass}>Status</label>
             <select value={form.status} onChange={(e) => updateField('status', e.target.value)} className={inputClass}>
               <option value="active">Active</option>
               <option value="inactive">Inactive</option>
@@ -173,18 +182,20 @@ export function FleetAssetNewForm({ initialAssetType, onSuccess, onCancel }: Fle
             </select>
           </div>
         </div>
-        <div className="flex gap-3 justify-end mt-4 pt-4 border-t border-gray-200">
-          <button type="button" onClick={onCancel} className="px-4 py-2 border border-gray-200 rounded-lg hover:bg-gray-50 text-sm font-medium text-gray-700">
-            Cancel
-          </button>
-          <button
-            type="submit"
-            disabled={!canSubmit || createMutation.isPending}
-            className="px-4 py-2 bg-brand-red text-white rounded-lg hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed text-sm font-medium"
-          >
-            {createMutation.isPending ? 'Creating...' : 'Create Asset'}
-          </button>
-        </div>
+        {!onValidationChange && (
+          <div className="flex gap-3 justify-end mt-4 pt-4 border-t border-gray-200">
+            <button type="button" onClick={onCancel} className="px-3 py-1.5 rounded-lg text-sm font-medium text-gray-700 border border-gray-200 hover:bg-gray-50">
+              Cancel
+            </button>
+            <button
+              type="submit"
+              disabled={!canSubmit || createMutation.isPending}
+              className="px-4 py-2 rounded-lg text-sm font-semibold text-white bg-brand-red hover:bg-[#aa1212] disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {createMutation.isPending ? 'Creating...' : 'Create Asset'}
+            </button>
+          </div>
+        )}
       </form>
     </div>
   );

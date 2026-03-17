@@ -273,6 +273,14 @@ export default function NewCustomerModal({ onClose, onSuccess }: NewCustomerModa
     return () => window.removeEventListener('keydown', onKey);
   }, [contactModalOpen, cPickerOpen, onClose]);
 
+  // Prevent body scroll when modal is open (same as New Opportunity)
+  useEffect(() => {
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.body.style.overflow = '';
+    };
+  }, []);
+
   const resetForm = () => {
     setForm({
       display_name: '', legal_name: '', name: '', client_status: 'Active', client_type: 'Customer',
@@ -284,72 +292,80 @@ export default function NewCustomerModal({ onClose, onSuccess }: NewCustomerModa
   };
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4">
-      <div className="w-[900px] max-w-[95vw] max-h-[90vh] bg-white rounded-xl overflow-hidden flex flex-col">
-        <div className="bg-gradient-to-br from-[#7f1010] to-[#a31414] p-6 flex items-center justify-between flex-shrink-0">
-          <div>
-            <div className="text-xl font-semibold text-white">New Customer</div>
-            <div className="text-sm text-white/90">Create a customer with required details</div>
+    <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center overflow-y-auto p-4">
+      <div className="w-[900px] max-w-[95vw] max-h-[90vh] bg-gray-100 rounded-xl overflow-hidden flex flex-col border border-gray-200 shadow-xl">
+        {/* Title bar - same style as New Opportunity (ProjectNew) */}
+        <div className="rounded-t-xl border-b border-gray-200 bg-white p-4 flex-shrink-0">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <button
+                onClick={onClose}
+                className="p-1.5 rounded hover:bg-gray-100 transition-colors flex items-center justify-center"
+                title="Close"
+              >
+                <svg className="w-4 h-4 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+                </svg>
+              </button>
+              <div>
+                <div className="text-sm font-semibold text-gray-900">New Customer</div>
+                <div className="text-xs text-gray-500 mt-0.5">{step === 1 ? 'Company and address' : 'Contacts'}</div>
+              </div>
+            </div>
+            <div className="inline-flex items-center gap-2 text-[10px] font-medium text-gray-500">
+              <span className={step === 1 ? 'px-2 py-1 rounded-full bg-gray-900 text-white' : 'px-2 py-1 rounded-full bg-gray-200 text-gray-600'}>Step 1</span>
+              <span className="text-gray-400">→</span>
+              <span className={step === 2 ? 'px-2 py-1 rounded-full bg-gray-900 text-white' : 'px-2 py-1 rounded-full bg-gray-200 text-gray-600'}>Step 2</span>
+            </div>
           </div>
-          <button
-            onClick={onClose}
-            className="text-2xl font-bold text-white hover:text-gray-200 w-8 h-8 flex items-center justify-center rounded hover:bg-white/20"
-            title="Close"
-          >
-            ×
-          </button>
         </div>
-        <div className="flex-1 overflow-y-auto p-6">
-          <div className="mb-4 flex items-center gap-2 text-sm">
-            {[1, 2].map(i => (
-              <div key={i} className={`flex-1 h-2 rounded ${step >= i ? 'bg-brand-red' : 'bg-gray-200'}`} title={`Step ${i}`}></div>
-            ))}
-          </div>
+        <div className="overflow-y-auto flex-1 p-4">
+          <div className="rounded-xl border bg-white p-4">
           {step === 1 && (
             <div className="space-y-4">
               <div>
-                <div className="flex items-center gap-2"><h4 className="font-semibold">Company</h4></div>
-                <div className="text-xs text-gray-500 mt-0.5 mb-2">Core company identity details.</div>
+                <div className="flex items-center gap-2"><h4 className="text-sm font-semibold text-gray-900">Company</h4></div>
+                <div className="text-[10px] text-gray-500 mt-0.5 mb-2">Core company identity details.</div>
                 <div className="grid md:grid-cols-2 gap-3">
-                  <div className="md:col-span-2"><label className="text-xs text-gray-600">Display name <span className="text-red-600">*</span></label><input className="w-full border rounded px-3 py-2" value={form.display_name} onChange={e => setForm((s: any) => ({ ...s, display_name: e.target.value }))} /></div>
-                  <div><label className="text-xs text-gray-600">Legal name <span className="text-red-600">*</span></label><input className="w-full border rounded px-3 py-2" value={form.legal_name} onChange={e => setForm((s: any) => ({ ...s, legal_name: e.target.value }))} /></div>
+                  <div className="md:col-span-2"><label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">Display name <span className="text-red-600">*</span></label><input className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" value={form.display_name} onChange={e => setForm((s: any) => ({ ...s, display_name: e.target.value }))} /></div>
+                  <div><label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">Legal name <span className="text-red-600">*</span></label><input className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" value={form.legal_name} onChange={e => setForm((s: any) => ({ ...s, legal_name: e.target.value }))} /></div>
                   <div>
-                    <label className="text-xs text-gray-600">Status</label>
-                    <select className="w-full border rounded px-3 py-2" value={form.client_status} onChange={e => setForm((s: any) => ({ ...s, client_status: e.target.value }))}>
+                    <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">Status</label>
+                    <select className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" value={form.client_status} onChange={e => setForm((s: any) => ({ ...s, client_status: e.target.value }))}>
                       {sortByLabel(statuses, (s: any) => (s.label || '').toString()).map((s: any) => <option key={s.label} value={s.label}>{s.label}</option>)}
                     </select>
                   </div>
                   <div>
-                    <label className="text-xs text-gray-600">Type</label>
-                    <select className="w-full border rounded px-3 py-2" value={form.client_type} onChange={e => setForm((s: any) => ({ ...s, client_type: e.target.value }))}>
+                    <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">Type</label>
+                    <select className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" value={form.client_type} onChange={e => setForm((s: any) => ({ ...s, client_type: e.target.value }))}>
                       {sortByLabel(types, (t: any) => (t.label || '').toString()).map((t: any) => <option key={t.label} value={t.label}>{t.label}</option>)}
                     </select>
                   </div>
-                  <div><label className="text-xs text-gray-600">Email</label><input className="w-full border rounded px-3 py-2" value={form.email} onChange={e => setForm((s: any) => ({ ...s, email: e.target.value }))} /></div>
-                  <div><label className="text-xs text-gray-600">Phone</label><input className="w-full border rounded px-3 py-2" value={form.phone} onChange={e => setForm((s: any) => ({ ...s, phone: formatPhone(e.target.value) }))} /></div>
+                  <div><label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">Email</label><input className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" value={form.email} onChange={e => setForm((s: any) => ({ ...s, email: e.target.value }))} /></div>
+                  <div><label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">Phone</label><input className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" value={form.phone} onChange={e => setForm((s: any) => ({ ...s, phone: formatPhone(e.target.value) }))} /></div>
                   <div>
-                    <label className="text-xs text-gray-600">Lead source</label>
-                    <select className="w-full border rounded px-3 py-2" value={form.lead_source || ''} onChange={e => setForm((s: any) => ({ ...s, lead_source: e.target.value }))}>
+                    <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">Lead source</label>
+                    <select className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" value={form.lead_source || ''} onChange={e => setForm((s: any) => ({ ...s, lead_source: e.target.value }))}>
                       <option value="">Select...</option>
                       {sortByLabel(leadSources, (ls: any) => (ls?.label ?? ls?.name ?? String(ls)).toString()).map((ls: any) => { const val = ls?.value ?? ls?.id ?? ls?.label ?? ls?.name ?? String(ls); const label = ls?.label ?? ls?.name ?? String(ls); return <option key={String(val)} value={String(val)}>{label}</option>; })}
                     </select>
                   </div>
                   <div>
-                    <label className="text-xs text-gray-600">Estimator</label>
-                    <select className="w-full border rounded px-3 py-2" value={form.estimator_id || ''} onChange={e => setForm((s: any) => ({ ...s, estimator_id: e.target.value || null }))}>
+                    <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">Estimator</label>
+                    <select className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" value={form.estimator_id || ''} onChange={e => setForm((s: any) => ({ ...s, estimator_id: e.target.value || null }))}>
                       <option value="">Select...</option>
                       {sortByLabel(employees || [], (emp: any) => (emp.name || emp.username || '').toString()).map((emp: any) => <option key={emp.id} value={emp.id}>{emp.name || emp.username}</option>)}
                     </select>
                   </div>
-                  <div><label className="text-xs text-gray-600">Tax number</label><input className="w-full border rounded px-3 py-2" value={form.tax_number} onChange={e => setForm((s: any) => ({ ...s, tax_number: e.target.value }))} /></div>
+                  <div><label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">Tax number</label><input className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" value={form.tax_number} onChange={e => setForm((s: any) => ({ ...s, tax_number: e.target.value }))} /></div>
                 </div>
               </div>
               <div>
-                <div className="flex items-center gap-2"><h4 className="font-semibold">Address</h4></div>
-                <div className="text-xs text-gray-500 mt-0.5 mb-2">Primary mailing and location address.</div>
+                <div className="flex items-center gap-2"><h4 className="text-sm font-semibold text-gray-900">Address</h4></div>
+                <div className="text-[10px] text-gray-500 mt-0.5 mb-2">Primary mailing and location address.</div>
                 <div className="grid md:grid-cols-2 gap-3">
                   <div className="md:col-span-2">
-                    <label className="text-xs text-gray-600">Address line 1</label>
+                    <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">Address line 1</label>
                     <AddressAutocomplete
                       value={form.address_line1}
                       onChange={(value) => setForm((s: any) => ({ ...s, address_line1: value }))}
@@ -364,20 +380,20 @@ export default function NewCustomerModal({ onClose, onSuccess }: NewCustomerModa
                           postal_code: address.postal_code !== undefined ? address.postal_code : s.postal_code,
                         }));
                       }}
-                      className="w-full border rounded px-3 py-2"
+                      className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"
                     />
                   </div>
                   <div className="md:col-span-2">
-                    <label className="text-xs text-gray-600">Address line 2</label>
+                    <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">Address line 2</label>
                     <AddressAutocomplete
                       value={form.address_line2}
                       onChange={(value) => setForm((s: any) => ({ ...s, address_line2: value }))}
-                      className="w-full border rounded px-3 py-2"
+                      className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"
                     />
                   </div>
                   <div>
-                    <label className="text-xs text-gray-600">Country</label>
-                    <select className="w-full border rounded px-3 py-2" value={form.country || ''} onChange={(e) => setForm((s: any) => ({ ...s, country: e.target.value }))} disabled={!countriesLoaded}>
+                    <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">Country</label>
+                    <select className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" value={form.country || ''} onChange={(e) => setForm((s: any) => ({ ...s, country: e.target.value }))} disabled={!countriesLoaded}>
                       <option value="">{countriesLoaded ? 'Select...' : 'Loading...'}</option>
                       {allCountries.map((c) => (
                         <option key={c} value={c}>{c}</option>
@@ -385,8 +401,8 @@ export default function NewCustomerModal({ onClose, onSuccess }: NewCustomerModa
                     </select>
                   </div>
                   <div>
-                    <label className="text-xs text-gray-600">Province/State</label>
-                    <select className="w-full border rounded px-3 py-2" value={form.province || ''} onChange={(e) => setForm((s: any) => ({ ...s, province: e.target.value }))} disabled={!form.country || loadingStates}>
+                    <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">Province/State</label>
+                    <select className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" value={form.province || ''} onChange={(e) => setForm((s: any) => ({ ...s, province: e.target.value }))} disabled={!form.country || loadingStates}>
                       <option value="">{loadingStates ? 'Loading...' : 'Select...'}</option>
                       {allStates.map((s) => (
                         <option key={s} value={s}>{s}</option>
@@ -394,8 +410,8 @@ export default function NewCustomerModal({ onClose, onSuccess }: NewCustomerModa
                     </select>
                   </div>
                   <div>
-                    <label className="text-xs text-gray-600">City</label>
-                    <select className="w-full border rounded px-3 py-2" value={form.city || ''} onChange={(e) => setForm((s: any) => ({ ...s, city: e.target.value }))} disabled={!form.country || loadingCities}>
+                    <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">City</label>
+                    <select className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" value={form.city || ''} onChange={(e) => setForm((s: any) => ({ ...s, city: e.target.value }))} disabled={!form.country || loadingCities}>
                       <option value="">{loadingCities ? 'Loading...' : 'Select...'}</option>
                       {allCities.map((ct) => (
                         <option key={ct} value={ct}>{ct}</option>
@@ -403,27 +419,27 @@ export default function NewCustomerModal({ onClose, onSuccess }: NewCustomerModa
                     </select>
                   </div>
                   <div>
-                    <label className="text-xs text-gray-600">Postal code</label>
-                    <input className="w-full border rounded px-3 py-2" value={form.postal_code} onChange={e => setForm((s: any) => ({ ...s, postal_code: e.target.value }))} />
+                    <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">Postal code</label>
+                    <input className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" value={form.postal_code} onChange={e => setForm((s: any) => ({ ...s, postal_code: e.target.value }))} />
                   </div>
                 </div>
               </div>
               <div>
-                <div className="flex items-center gap-2"><h4 className="font-semibold">Billing</h4></div>
-                <div className="text-xs text-gray-500 mt-0.5 mb-2">Preferences used for invoices and payments.</div>
+                <div className="flex items-center gap-2"><h4 className="text-sm font-semibold text-gray-900">Billing</h4></div>
+                <div className="text-[10px] text-gray-500 mt-0.5 mb-2">Preferences used for invoices and payments.</div>
                 <div className="grid md:grid-cols-2 gap-3">
-                  <div><label className="text-xs text-gray-600">Billing email</label><input className="w-full border rounded px-3 py-2" value={form.billing_email || ''} onChange={e => setForm((s: any) => ({ ...s, billing_email: e.target.value }))} /></div>
+                  <div><label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">Billing email</label><input className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" value={form.billing_email || ''} onChange={e => setForm((s: any) => ({ ...s, billing_email: e.target.value }))} /></div>
                   <div>
-                    <label className="text-xs text-gray-600">PO required</label>
-                    <select className="w-full border rounded px-3 py-2" value={form.po_required ? 'true' : 'false'} onChange={e => setForm((s: any) => ({ ...s, po_required: e.target.value === 'true' }))}><option value="false">No</option><option value="true">Yes</option></select>
+                    <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">PO required</label>
+                    <select className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" value={form.po_required ? 'true' : 'false'} onChange={e => setForm((s: any) => ({ ...s, po_required: e.target.value === 'true' }))}><option value="false">No</option><option value="true">Yes</option></select>
                   </div>
-                  <div className="md:col-span-2 text-sm">
-                    <label className="inline-flex items-center gap-2"><input type="checkbox" checked={!!form.use_diff_billing} onChange={e => setForm((s: any) => ({ ...s, use_diff_billing: !!e.target.checked }))} /> Use different address for Billing address</label>
+                  <div className="md:col-span-2">
+                    <label className="text-xs text-gray-600 inline-flex items-center gap-2"><input type="checkbox" checked={!!form.use_diff_billing} onChange={e => setForm((s: any) => ({ ...s, use_diff_billing: !!e.target.checked }))} /> Use different address for Billing address</label>
                   </div>
                   {form.use_diff_billing && (
                     <>
                       <div className="md:col-span-2">
-                        <label className="text-xs text-gray-600">Billing Address 1</label>
+                        <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">Billing Address 1</label>
                         <AddressAutocomplete
                           value={form.billing_address_line1 || ''}
                           onChange={(value) => setForm((s: any) => ({ ...s, billing_address_line1: value }))}
@@ -438,20 +454,20 @@ export default function NewCustomerModal({ onClose, onSuccess }: NewCustomerModa
                               billing_postal_code: address.postal_code !== undefined ? address.postal_code : s.billing_postal_code,
                             }));
                           }}
-                          className="w-full border rounded px-3 py-2"
+                          className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"
                         />
                       </div>
                       <div className="md:col-span-2">
-                        <label className="text-xs text-gray-600">Billing Address 2</label>
+                        <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">Billing Address 2</label>
                         <AddressAutocomplete
                           value={form.billing_address_line2 || ''}
                           onChange={(value) => setForm((s: any) => ({ ...s, billing_address_line2: value }))}
-                          className="w-full border rounded px-3 py-2"
+                          className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"
                         />
                       </div>
                       <div>
-                        <label className="text-xs text-gray-600">Billing Country</label>
-                        <select className="w-full border rounded px-3 py-2" value={form.billing_country || ''} onChange={(e) => setForm((s: any) => ({ ...s, billing_country: e.target.value }))} disabled={!countriesLoaded}>
+                        <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">Billing Country</label>
+                        <select className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" value={form.billing_country || ''} onChange={(e) => setForm((s: any) => ({ ...s, billing_country: e.target.value }))} disabled={!countriesLoaded}>
                           <option value="">{countriesLoaded ? 'Select...' : 'Loading...'}</option>
                           {allCountries.map((c) => (
                             <option key={c} value={c}>{c}</option>
@@ -459,8 +475,8 @@ export default function NewCustomerModal({ onClose, onSuccess }: NewCustomerModa
                         </select>
                       </div>
                       <div>
-                        <label className="text-xs text-gray-600">Billing Province/State</label>
-                        <select className="w-full border rounded px-3 py-2" value={form.billing_province || ''} onChange={(e) => setForm((s: any) => ({ ...s, billing_province: e.target.value }))} disabled={!form.billing_country || loadingBillingStates}>
+                        <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">Billing Province/State</label>
+                        <select className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" value={form.billing_province || ''} onChange={(e) => setForm((s: any) => ({ ...s, billing_province: e.target.value }))} disabled={!form.billing_country || loadingBillingStates}>
                           <option value="">{loadingBillingStates ? 'Loading...' : 'Select...'}</option>
                           {allBillingStates.map((s) => (
                             <option key={s} value={s}>{s}</option>
@@ -468,8 +484,8 @@ export default function NewCustomerModal({ onClose, onSuccess }: NewCustomerModa
                         </select>
                       </div>
                       <div>
-                        <label className="text-xs text-gray-600">Billing City</label>
-                        <select className="w-full border rounded px-3 py-2" value={form.billing_city || ''} onChange={(e) => setForm((s: any) => ({ ...s, billing_city: e.target.value }))} disabled={!form.billing_country || loadingBillingCities}>
+                        <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">Billing City</label>
+                        <select className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" value={form.billing_city || ''} onChange={(e) => setForm((s: any) => ({ ...s, billing_city: e.target.value }))} disabled={!form.billing_country || loadingBillingCities}>
                           <option value="">{loadingBillingCities ? 'Loading...' : 'Select...'}</option>
                           {allBillingCities.map((ct) => (
                             <option key={ct} value={ct}>{ct}</option>
@@ -477,8 +493,8 @@ export default function NewCustomerModal({ onClose, onSuccess }: NewCustomerModa
                         </select>
                       </div>
                       <div>
-                        <label className="text-xs text-gray-600">Billing Postal code</label>
-                        <input className="w-full border rounded px-3 py-2" value={form.billing_postal_code || ''} onChange={e => setForm((s: any) => ({ ...s, billing_postal_code: e.target.value }))} />
+                        <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">Billing Postal code</label>
+                        <input className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" value={form.billing_postal_code || ''} onChange={e => setForm((s: any) => ({ ...s, billing_postal_code: e.target.value }))} />
                       </div>
                     </>
                   )}
@@ -490,8 +506,8 @@ export default function NewCustomerModal({ onClose, onSuccess }: NewCustomerModa
             <div className="space-y-3">
               <div className="flex items-center justify-between">
                 <div>
-                  <div className="font-semibold">Contacts</div>
-                  <div className="text-xs text-gray-600">Add one or more contacts now (optional)</div>
+                  <div className="text-sm font-semibold text-gray-900">Contacts</div>
+                  <div className="text-[10px] text-gray-500 mt-0.5">Add one or more contacts now (optional)</div>
                 </div>
                 <button onClick={() => setContactModalOpen(true)} className="px-3 py-1.5 rounded bg-brand-red text-white">Add Contact</button>
               </div>
@@ -522,17 +538,19 @@ export default function NewCustomerModal({ onClose, onSuccess }: NewCustomerModa
               </div>
             </div>
           )}
+          </div>
         </div>
-        <div className="p-4 border-t bg-gray-50 flex items-center justify-between flex-shrink-0">
+        <div className="flex-shrink-0 px-4 py-4 border-t border-gray-200 bg-white flex items-center justify-between gap-3 rounded-b-xl">
+          <div className="text-xs text-gray-500">{step === 1 ? 'Step 1 of 2' : 'Step 2 of 2'}</div>
+          <div className="flex items-center gap-2">
           <button onClick={async () => {
             const ok = await confirm({ title: 'Cancel', message: 'Discard this customer draft and close?' });
             if (!ok) return;
             resetForm();
             onClose();
-          }} className="px-4 py-2 rounded bg-gray-100">Cancel</button>
-          <div className="space-x-2">
-            {step > 1 && <button className="px-4 py-2 rounded bg-gray-100" onClick={prev}>Back</button>}
-            {step === 1 && <button className="px-4 py-2 rounded bg-brand-red text-white disabled:opacity-50" disabled={!canSubmit} onClick={next}>Next</button>}
+          }} className="px-3 py-1.5 rounded-lg text-sm font-medium text-gray-700 border border-gray-200 hover:bg-gray-50">Cancel</button>
+            {step > 1 && <button className="px-3 py-1.5 rounded-lg text-sm font-medium text-gray-700 border border-gray-200 hover:bg-gray-50" onClick={prev}>Back</button>}
+            {step === 1 && <button disabled={!canSubmit} onClick={next} className="px-3 py-1.5 rounded-lg text-sm font-medium bg-brand-red text-white hover:bg-[#aa1212] disabled:opacity-50">Next</button>}
             {step === 2 && (
               <button onClick={async () => {
                 if (!canSubmit || isCreating) { toast.error('Missing required fields'); return; }
@@ -602,7 +620,7 @@ export default function NewCustomerModal({ onClose, onSuccess }: NewCustomerModa
                   console.error('Create customer error:', _e);
                   setIsCreating(false);
                 }
-              }} disabled={isCreating} className="px-4 py-2 rounded bg-brand-red text-white disabled:opacity-50 disabled:cursor-not-allowed">
+              }} disabled={isCreating} className="px-3 py-1.5 rounded-lg text-sm font-medium bg-brand-red text-white hover:bg-[#aa1212] disabled:opacity-50 disabled:cursor-not-allowed">
                 {isCreating ? 'Creating...' : 'Create'}
               </button>
             )}
@@ -618,7 +636,7 @@ export default function NewCustomerModal({ onClose, onSuccess }: NewCustomerModa
             </div>
             <div className="flex-1 overflow-y-auto p-4 grid md:grid-cols-5 gap-3 items-start">
               <div className="md:col-span-2">
-                <div className="text-[11px] uppercase text-gray-500 mb-1">Contact Photo</div>
+                <div className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">Contact Photo</div>
                 <button onClick={() => setCPickerOpen(true)} className="w-full h-40 border rounded grid place-items-center bg-gray-50 relative overflow-hidden">
                   {cPhotoPreview ? (
                     <img src={cPhotoPreview} className="w-full h-full object-cover" alt="Contact preview" />
@@ -629,28 +647,28 @@ export default function NewCustomerModal({ onClose, onSuccess }: NewCustomerModa
               </div>
               <div className="md:col-span-3 grid grid-cols-2 gap-2">
                 <div className="col-span-2">
-                  <label className="text-xs text-gray-600">Name</label>
-                  <input className="border rounded px-3 py-2 col-span-2 w-full" value={cName} onChange={e => setCName(e.target.value)} />
+                  <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">Name</label>
+                  <input className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm col-span-2" value={cName} onChange={e => setCName(e.target.value)} />
                 </div>
                 <div>
-                  <label className="text-xs text-gray-600">Role/Title</label>
-                  <input className="border rounded px-3 py-2 w-full" value={cRole} onChange={e => setCRole(e.target.value)} />
+                  <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">Role/Title</label>
+                  <input className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" value={cRole} onChange={e => setCRole(e.target.value)} />
                 </div>
                 <div>
-                  <label className="text-xs text-gray-600">Department</label>
-                  <input className="border rounded px-3 py-2 w-full" value={cDept} onChange={e => setCDept(e.target.value)} />
+                  <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">Department</label>
+                  <input className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" value={cDept} onChange={e => setCDept(e.target.value)} />
                 </div>
                 <div>
-                  <label className="text-xs text-gray-600">Email</label>
-                  <input className="border rounded px-3 py-2 w-full" value={cEmail} onChange={e => setCEmail(e.target.value)} />
+                  <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">Email</label>
+                  <input className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" value={cEmail} onChange={e => setCEmail(e.target.value)} />
                 </div>
                 <div>
-                  <label className="text-xs text-gray-600">Phone</label>
-                  <input className="border rounded px-3 py-2 w-full" value={cPhone} onChange={e => setCPhone(formatPhone(e.target.value))} />
+                  <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">Phone</label>
+                  <input className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" value={cPhone} onChange={e => setCPhone(formatPhone(e.target.value))} />
                 </div>
                 <div>
-                  <label className="text-xs text-gray-600">Primary</label>
-                  <select className="border rounded px-3 py-2 w-full" value={cPrimary} onChange={e => setCPrimary(e.target.value as any)}>
+                  <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">Primary</label>
+                  <select className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" value={cPrimary} onChange={e => setCPrimary(e.target.value as any)}>
                     <option value="false">No</option>
                     <option value="true">Yes</option>
                   </select>

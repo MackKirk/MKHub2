@@ -3738,6 +3738,25 @@ function TimesheetBlock({ userId, canEdit = true }:{ userId:string, canEdit?: bo
     setBreakMinutes('0');
   };
 
+  const closeAttendanceModal = () => {
+    setShowModal(false);
+    setEditingEvent(null);
+    resetForm();
+  };
+
+  useEffect(() => {
+    if (!showModal) return;
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') closeAttendanceModal(); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [showModal]);
+
+  useEffect(() => {
+    if (!showModal) return;
+    document.body.style.overflow = 'hidden';
+    return () => { document.body.style.overflow = ''; };
+  }, [showModal]);
+
   const handleOpenModal = (event?: AttendanceEvent) => {
     if (!canEdit) {
       toast.error('You do not have permission to edit attendance records');
@@ -4020,8 +4039,7 @@ function TimesheetBlock({ userId, canEdit = true }:{ userId:string, canEdit?: bo
         });
         setRefreshKey(prev => prev + 1);
         
-        setShowModal(false);
-        resetForm();
+        closeAttendanceModal();
       } else {
         const createPayload: any = {
           worker_id: userId,
@@ -4052,8 +4070,7 @@ function TimesheetBlock({ userId, canEdit = true }:{ userId:string, canEdit?: bo
         });
         setRefreshKey(prev => prev + 1);
         
-        setShowModal(false);
-        resetForm();
+        closeAttendanceModal();
       }
     } catch (e: any) {
       const errorMsg = e.message || 'Failed to save attendance event';
@@ -4077,23 +4094,13 @@ function TimesheetBlock({ userId, canEdit = true }:{ userId:string, canEdit?: bo
       {/* Timesheet Section */}
       <div className="rounded-xl border bg-white p-4">
         {/* Header */}
-        <div className="mb-4 flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <div className="w-8 h-8 rounded bg-indigo-100 flex items-center justify-center">
-              <svg className="w-5 h-5 text-indigo-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-              </svg>
-            </div>
-            <h5 className="text-sm font-semibold text-indigo-900">Timesheet</h5>
+        <div className="mb-4 flex items-center gap-2">
+          <div className="w-8 h-8 rounded bg-indigo-100 flex items-center justify-center">
+            <svg className="w-5 h-5 text-indigo-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
           </div>
-          {canEdit && (
-            <button
-              onClick={() => handleOpenModal()}
-              className="px-2 py-1 text-xs bg-[#d11616] text-white rounded-lg font-medium hover:bg-[#b01414] transition-colors"
-            >
-              + New Attendance
-            </button>
-          )}
+          <h5 className="text-sm font-semibold text-indigo-900">Timesheet</h5>
         </div>
 
         {/* Eligible for Break checkbox */}
@@ -4219,6 +4226,20 @@ function TimesheetBlock({ userId, canEdit = true }:{ userId:string, canEdit?: bo
               </tr>
             </thead>
             <tbody>
+              {canEdit && (
+                <tr>
+                  <td colSpan={8} className="p-0 align-top">
+                    <button
+                      type="button"
+                      onClick={() => handleOpenModal()}
+                      className="w-full border-2 border-dashed border-gray-300 rounded-t-xl p-2.5 hover:border-brand-red hover:bg-gray-50 flex items-center justify-center gap-2 min-h-[52px] text-gray-600 hover:text-brand-red transition-colors"
+                    >
+                      <span className="text-lg font-medium">+</span>
+                      <span className="text-sm font-medium">New Attendance</span>
+                    </button>
+                  </td>
+                </tr>
+              )}
               {isLoading ? (
                 <tr>
                   <td colSpan={8} className="p-4">
@@ -4327,14 +4348,40 @@ function TimesheetBlock({ userId, canEdit = true }:{ userId:string, canEdit?: bo
         </div>
       </div>
 
-      {/* Modal - same as Attendance.tsx */}
+      {/* New Attendance Event Modal - standardized */}
       {showModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg p-4 max-w-lg w-full mx-4 max-h-[90vh] overflow-y-auto">
-            <h2 className="text-lg font-bold mb-4">
-              {editingEvent ? 'Edit Attendance Event' : 'New Attendance Event'}
-            </h2>
-            <div className="space-y-4">
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 overflow-y-auto"
+          onClick={closeAttendanceModal}
+        >
+          <div
+            className="max-w-lg w-full max-h-[90vh] flex flex-col rounded-xl border border-gray-200 bg-gray-100 shadow-xl overflow-hidden"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex-shrink-0 rounded-t-xl border-b border-gray-200 bg-white p-4">
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={closeAttendanceModal}
+                  className="p-1 rounded-lg hover:bg-gray-100 text-gray-600"
+                  title="Close"
+                >
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                  </svg>
+                </button>
+                <div>
+                  <h2 className="text-sm font-semibold text-gray-900">
+                    {editingEvent ? 'Edit Attendance Event' : 'New Attendance Event'}
+                  </h2>
+                  <p className="text-xs text-gray-500 mt-0.5">
+                    {editingEvent ? 'Update clock-in/out or hours worked' : 'Add a new attendance record'}
+                  </p>
+                </div>
+              </div>
+            </div>
+            <div className="flex-1 overflow-y-auto p-4">
+              <div className="rounded-xl border border-gray-200 bg-white p-4 space-y-4">
               <div>
                 <label className="block text-xs font-medium text-gray-600 mb-1.5">Job *</label>
                 <select
@@ -4589,21 +4636,21 @@ function TimesheetBlock({ userId, canEdit = true }:{ userId:string, canEdit?: bo
                   </select>
                 </div>
               )}
+              </div>
             </div>
-            <div className="mt-6 flex justify-end gap-2">
+            <div className="flex-shrink-0 px-4 py-4 border-t border-gray-200 bg-white flex items-center justify-end gap-3 rounded-b-xl">
               <button
-                onClick={() => {
-                  setShowModal(false);
-                  resetForm();
-                }}
-                className="px-3 py-1.5 text-xs border border-gray-300 rounded-lg hover:bg-gray-50"
+                type="button"
+                onClick={closeAttendanceModal}
+                className="px-3 py-1.5 rounded-lg text-sm font-medium text-gray-700 border border-gray-200 hover:bg-gray-50"
               >
                 Cancel
               </button>
               <button
+                type="button"
                 onClick={handleSubmit}
                 disabled={isSubmitDisabled}
-                className="px-3 py-1.5 text-xs bg-[#d11616] text-white rounded-lg hover:bg-[#b01414] disabled:opacity-50 disabled:cursor-not-allowed"
+                className="px-4 py-2 rounded-lg text-sm font-semibold text-white bg-brand-red hover:bg-[#aa1212] disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {editingEvent ? 'Update' : 'Create'}
               </button>
@@ -7387,6 +7434,25 @@ function UserDocuments({ userId, canEdit }:{ userId:string, canEdit:boolean }){
   const [selectedDocIds, setSelectedDocIds] = useState<Set<string>>(new Set());
   const [preview, setPreview] = useState<{ url:string, title:string, ext:string }|null>(null);
 
+  const closeNewFolderModal = () => {
+    setShowNewFolder(false);
+    setNewFolderName('');
+    setNewFolderParentId(null);
+  };
+
+  useEffect(() => {
+    if (!showNewFolder) return;
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') closeNewFolderModal(); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [showNewFolder]);
+
+  useEffect(() => {
+    if (!showNewFolder) return;
+    document.body.style.overflow = 'hidden';
+    return () => { document.body.style.overflow = ''; };
+  }, [showNewFolder]);
+
   const fileExt = (name?:string)=>{
     const n = String(name||'').toLowerCase();
     const m = n.match(/\.([a-z0-9]+)$/); return m? m[1] : '';
@@ -7437,8 +7503,8 @@ function UserDocuments({ userId, canEdit }:{ userId:string, canEdit:boolean }){
       const name = newFolderName.trim(); if(!name){ toast.error('Folder name required'); return; }
       const body:any = { name };
       if(newFolderParentId) body.parent_id = newFolderParentId;
-      const r = await api('POST', `/auth/users/${encodeURIComponent(userId)}/folders`, body);
-      toast.success('Folder created'); setShowNewFolder(false); setNewFolderName(''); setNewFolderParentId(null); await refetchFolders();
+      await api('POST', `/auth/users/${encodeURIComponent(userId)}/folders`, body);
+      toast.success('Folder created'); closeNewFolderModal(); await refetchFolders();
     }catch(_e){ toast.error('Failed to create folder'); }
   };
 
@@ -7488,8 +7554,8 @@ function UserDocuments({ userId, canEdit }:{ userId:string, canEdit:boolean }){
       {activeFolderId==='all' ? (
         <>
           <div className="mb-3 flex items-center gap-2">
-            <div className="text-sm font-semibold">Folders</div>
-            {canEdit && <button onClick={()=> { setNewFolderParentId(null); setShowNewFolder(true); }} className="ml-auto px-3 py-2 rounded-lg border">New folder</button>}
+            <div className="text-sm font-semibold text-gray-900">Folders</div>
+            {canEdit && <button onClick={()=> { setNewFolderParentId(null); setShowNewFolder(true); }} className="ml-auto px-3 py-1.5 rounded-lg text-sm font-medium text-gray-700 border border-gray-200 hover:bg-gray-50">New folder</button>}
           </div>
           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-8 gap-2">
             {topFolders.map((f:any)=> (
@@ -7510,9 +7576,9 @@ function UserDocuments({ userId, canEdit }:{ userId:string, canEdit:boolean }){
                      if(e.dataTransfer.files?.length){ const arr=Array.from(e.dataTransfer.files); for(const file of arr){ await uploadToFolder(f.id, file); } toast.success('Uploaded'); }
                    }}>
                  <div className="text-4xl">📁</div>
-                 <div className="mt-1 text-sm font-medium truncate text-center w-full" title={f.name}>
+                 <div className="mt-1 text-sm font-medium truncate text-center w-full text-gray-900" title={f.name}>
                   {inlineRenameFolderId===f.id ? (
-                    <input autoFocus className="border rounded px-2 py-1 w-full"
+                    <input autoFocus className="border border-gray-200 rounded-lg px-2 py-1 w-full text-sm focus:outline-none focus:ring-1 focus:ring-gray-300 focus:border-gray-300"
                            value={inlineRenameFolderName}
                            onChange={e=> setInlineRenameFolderName(e.target.value)}
                            onBlur={async()=>{ if(inlineRenameFolderName.trim()){ await api('PUT', `/auth/users/${encodeURIComponent(userId)}/folders/${encodeURIComponent(f.id)}`, { name: inlineRenameFolderName.trim() }); await refetchFolders(); } setInlineRenameFolderId(null); }}
@@ -7522,37 +7588,38 @@ function UserDocuments({ userId, canEdit }:{ userId:string, canEdit:boolean }){
                 </div>
                 {canEdit && (
                   <div className="folder-actions absolute right-2 top-2 opacity-0 group-hover:opacity-100 transition-opacity flex gap-1">
-                    <button title="Rename" className="p-1 rounded hover:bg-gray-100" onClick={()=> { setInlineRenameFolderId(f.id); setInlineRenameFolderName(f.name); }}>✏️</button>
-                    <button title="Delete" className="p-1 rounded hover:bg-gray-100 text-red-600" onClick={()=> removeFolder(f.id)}>🗑️</button>
+                    <button type="button" title="Rename" className="p-1 rounded-lg hover:bg-gray-100 text-sm" onClick={()=> { setInlineRenameFolderId(f.id); setInlineRenameFolderName(f.name); }}>✏️</button>
+                    <button type="button" title="Delete" className="p-1 rounded-lg hover:bg-gray-100 text-red-600 text-sm" onClick={()=> removeFolder(f.id)}>🗑️</button>
                   </div>
                 )}
               </div>
             ))}
-            {!topFolders.length && <div className="text-sm text-gray-600">No folders yet</div>}
+            {!topFolders.length && <div className="text-sm text-gray-500">No folders yet</div>}
           </div>
         </>
       ) : (
         <>
           <div className="mb-3 flex items-center gap-2">
-            <button title="Home" onClick={()=> setActiveFolderId('all')} className="px-2 py-2 rounded-lg border">🏠</button>
+            <button type="button" title="Home" onClick={()=> setActiveFolderId('all')} className="px-3 py-1.5 rounded-lg text-sm font-medium text-gray-700 border border-gray-200 hover:bg-gray-50">🏠</button>
             <button
+              type="button"
               title="Up one level"
               onClick={()=>{
                 if (breadcrumb.length>1){ setActiveFolderId(breadcrumb[breadcrumb.length-2].id); } else { setActiveFolderId('all'); }
               }}
-              className="px-2 py-2 rounded-lg border"
+              className="px-3 py-1.5 rounded-lg text-sm font-medium text-gray-700 border border-gray-200 hover:bg-gray-50"
             >⬆️</button>
-            <div className="text-sm font-semibold flex gap-2 items-center">
+            <div className="text-sm font-semibold text-gray-900 flex gap-2 items-center min-w-0">
               {breadcrumb.map((f:any, idx:number)=> (
-                <span key={f.id} className="flex items-center gap-2">
-                  {idx>0 && <span className="opacity-60">/</span>}
-                  <button className="underline" onClick={()=> setActiveFolderId(f.id)}>{f.name}</button>
+                <span key={f.id} className="flex items-center gap-2 min-w-0">
+                  {idx>0 && <span className="opacity-60 text-gray-500">/</span>}
+                  <button type="button" className="underline text-left truncate hover:text-brand-red" onClick={()=> setActiveFolderId(f.id)}>{f.name}</button>
                 </span>
               ))}
             </div>
             {canEdit && <>
-              <button onClick={()=> { setNewFolderParentId(activeFolderId); setShowNewFolder(true); }} className="ml-auto px-3 py-2 rounded-lg border">New subfolder</button>
-              <button onClick={()=> setShowUpload(true)} className="px-3 py-2 rounded-lg bg-brand-red text-white">Add file</button>
+              <button type="button" onClick={()=> { setNewFolderParentId(activeFolderId); setShowNewFolder(true); }} className="ml-auto px-3 py-1.5 rounded-lg text-sm font-medium text-gray-700 border border-gray-200 hover:bg-gray-50">New subfolder</button>
+              <button type="button" onClick={()=> setShowUpload(true)} className="px-3 py-1.5 rounded-lg text-sm font-medium text-white bg-brand-red hover:bg-[#aa1212]">Add file</button>
             </>}
           </div>
           <div
@@ -7565,7 +7632,7 @@ function UserDocuments({ userId, canEdit }:{ userId:string, canEdit:boolean }){
             <div className="p-4">
               {childFolders.length>0 && (
                 <div className="mb-3">
-                  <div className="text-xs text-gray-600 mb-1">Subfolders</div>
+                  <div className="text-[10px] font-medium text-gray-500 uppercase tracking-wide mb-1">Subfolders</div>
                   <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-8 gap-2">
                     {childFolders.map((f:any)=> (
                       <div key={f.id}
@@ -7582,9 +7649,9 @@ function UserDocuments({ userId, canEdit }:{ userId:string, canEdit:boolean }){
                              if(e.dataTransfer.files?.length){ const arr=Array.from(e.dataTransfer.files); for(const file of arr){ await uploadToFolder(f.id, file); } toast.success('Uploaded'); }
                            }}>
                         <div className="text-4xl">📁</div>
-                        <div className="mt-1 text-sm font-medium truncate text-center w-full" title={f.name}>
+                        <div className="mt-1 text-sm font-medium truncate text-center w-full text-gray-900" title={f.name}>
                           {inlineRenameFolderId===f.id ? (
-                            <input autoFocus className="border rounded px-2 py-1 w-full"
+                            <input autoFocus className="border border-gray-200 rounded-lg px-2 py-1 w-full text-sm focus:outline-none focus:ring-1 focus:ring-gray-300 focus:border-gray-300"
                                    value={inlineRenameFolderName}
                                    onChange={e=> setInlineRenameFolderName(e.target.value)}
                                    onBlur={async()=>{ if(inlineRenameFolderName.trim()){ await api('PUT', `/auth/users/${encodeURIComponent(userId)}/folders/${encodeURIComponent(f.id)}`, { name: inlineRenameFolderName.trim() }); await refetchFolders(); } setInlineRenameFolderId(null); }}
@@ -7594,8 +7661,8 @@ function UserDocuments({ userId, canEdit }:{ userId:string, canEdit:boolean }){
                         </div>
                         {canEdit && (
                           <div className="folder-actions absolute right-2 top-2 opacity-0 group-hover:opacity-100 transition-opacity flex gap-1">
-                            <button title="Rename" className="p-1 rounded hover:bg-gray-100" onClick={()=> { setInlineRenameFolderId(f.id); setInlineRenameFolderName(f.name); }}>✏️</button>
-                            <button title="Delete" className="p-1 rounded hover:bg-gray-100 text-red-600" onClick={()=> removeFolder(f.id)}>🗑️</button>
+                            <button type="button" title="Rename" className="p-1 rounded-lg hover:bg-gray-100 text-sm" onClick={()=> { setInlineRenameFolderId(f.id); setInlineRenameFolderName(f.name); }}>✏️</button>
+                            <button type="button" title="Delete" className="p-1 rounded-lg hover:bg-gray-100 text-red-600 text-sm" onClick={()=> removeFolder(f.id)}>🗑️</button>
                           </div>
                         )}
                       </div>
@@ -7604,17 +7671,17 @@ function UserDocuments({ userId, canEdit }:{ userId:string, canEdit:boolean }){
                 </div>
               )}
               <div className="mb-3 flex items-center gap-2">
-                <div className="text-xs text-gray-600">Drag & drop files anywhere below to upload into this folder</div>
-                {canEdit && <button className="ml-auto text-sm px-3 py-1.5 rounded border" onClick={()=> { setSelectMode(s=> !s); if(selectMode) setSelectedDocIds(new Set()); }}>{selectMode? 'Done':'Select'}</button>}
+                <div className="text-xs text-gray-500">Drag & drop files anywhere below to upload into this folder</div>
+                {canEdit && <button type="button" className="ml-auto text-sm font-medium px-3 py-1.5 rounded-lg border border-gray-200 hover:bg-gray-50 text-gray-700" onClick={()=> { setSelectMode(s=> !s); if(selectMode) setSelectedDocIds(new Set()); }}>{selectMode ? 'Done' : 'Select'}</button>}
               </div>
               {selectMode && selectedDocIds.size>0 && (
                 <div className="mb-3 flex items-center gap-2">
-                  <div className="text-sm">{selectedDocIds.size} selected</div>
-                  <select id="bulk-move-target" className="border rounded px-2 py-1">
+                  <div className="text-sm font-medium text-gray-700">{selectedDocIds.size} selected</div>
+                  <select id="bulk-move-target" className="border border-gray-200 rounded-lg px-3 py-1.5 text-sm">
                     <option value="" disabled selected>Select destination</option>
                     {sortByLabel(folders||[], (f:any)=> (f.name||'').toString()).map((f:any)=> <option key={f.id} value={f.id}>{f.name}</option>)}
                   </select>
-                  <button className="px-3 py-1.5 rounded bg-brand-red text-white" onClick={async()=>{
+                  <button type="button" className="px-3 py-1.5 rounded-lg text-sm font-medium text-white bg-brand-red hover:bg-[#aa1212]" onClick={async()=>{
                     const sel = (document.getElementById('bulk-move-target') as HTMLSelectElement);
                     const dest = sel?.value || '';
                     if(!dest){ toast.error('Select destination folder'); return; }
@@ -7623,7 +7690,7 @@ function UserDocuments({ userId, canEdit }:{ userId:string, canEdit:boolean }){
                       toast.success('Moved'); setSelectedDocIds(new Set()); await refetch();
                     }catch(_e){ toast.error('Failed'); }
                   }}>Move</button>
-                  <button className="px-3 py-1.5 rounded border" onClick={()=> setSelectedDocIds(new Set())}>Clear</button>
+                  <button type="button" className="px-3 py-1.5 rounded-lg text-sm font-medium text-gray-700 border border-gray-200 hover:bg-gray-50" onClick={()=> setSelectedDocIds(new Set())}>Clear</button>
                 </div>
               )}
               <div className="rounded-lg border overflow-hidden bg-white">
@@ -7640,26 +7707,26 @@ function UserDocuments({ userId, canEdit }:{ userId:string, canEdit:boolean }){
                         <div className={`w-10 h-12 rounded-lg ${s.bg} ${s.txt} flex items-center justify-center text-[10px] font-extrabold select-none`}>{ext||'FILE'}</div>
                       ); })()}
                     <div className="flex-1 min-w-0" onClick={async()=>{
-                      try{
+                        try{
                         const r:any = await api('GET', `/files/${encodeURIComponent(d.file_id)}/download`);
                         const ext = fileExt(d.title);
                         setPreview({ url: r.download_url||'', title: d.title||'Preview', ext });
                       }catch(_e){ toast.error('Preview not available'); }
                     }}>
-                      <div className="font-medium truncate cursor-pointer hover:underline">{d.title||'Document'}</div>
-                      <div className="text-[11px] text-gray-600 truncate">Uploaded {String(d.created_at||'').slice(0,10)}</div>
+                      <div className="text-sm font-medium text-gray-900 truncate cursor-pointer hover:underline">{d.title||'Document'}</div>
+                      <div className="text-xs text-gray-500 truncate">Uploaded {String(d.created_at||'').slice(0,10)}</div>
                     </div>
                     <div className="ml-auto flex items-center gap-1">
-                      <a title="Download" className="p-2 rounded hover:bg-gray-100" href={`/files/${d.file_id}/download`} target="_blank">⬇️</a>
+                      <a title="Download" className="p-2 rounded-lg hover:bg-gray-100 text-sm" href={`/files/${d.file_id}/download`} target="_blank" rel="noopener noreferrer">⬇️</a>
                       {canEdit && <>
-                        <button title="Rename" onClick={()=> setRenameDoc({ id: d.id, title: d.title||'' })} className="p-2 rounded hover:bg-gray-100">✏️</button>
-                        <button title="Move" onClick={()=> setMoveDoc({ id: d.id })} className="p-2 rounded hover:bg-gray-100">📁</button>
-                        <button title="Delete" onClick={()=>del(d.id, d.title)} className="p-2 rounded hover:bg-gray-100 text-red-600">🗑️</button>
+                        <button type="button" title="Rename" onClick={()=> setRenameDoc({ id: d.id, title: d.title||'' })} className="p-2 rounded-lg hover:bg-gray-100 text-sm">✏️</button>
+                        <button type="button" title="Move" onClick={()=> setMoveDoc({ id: d.id })} className="p-2 rounded-lg hover:bg-gray-100 text-sm">📁</button>
+                        <button type="button" title="Delete" onClick={()=>del(d.id, d.title)} className="p-2 rounded-lg hover:bg-gray-100 text-red-600 text-sm">🗑️</button>
                       </>}
                     </div>
                   </div>
                 ))}
-                {!(docs||[]).length && <div className="px-3 py-3 text-sm text-gray-600">No documents in this folder</div>}
+                {!(docs||[]).length && <div className="px-3 py-3 text-sm text-gray-500">No documents in this folder</div>}
               </div>
             </div>
           </div>
@@ -7695,17 +7762,62 @@ function UserDocuments({ userId, canEdit }:{ userId:string, canEdit:boolean }){
         </div>
       )}
 
+      {/* New Folder Modal - standardized */}
       {showNewFolder && (
-        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
-          <div className="bg-white rounded-xl w-full max-w-sm p-4">
-            <div className="text-lg font-semibold mb-2">{newFolderParentId? 'New subfolder':'New folder'}</div>
-            <div>
-              <div className="text-xs text-gray-600">Folder name</div>
-              <input className="border rounded px-3 py-2 w-full" value={newFolderName} onChange={e=> setNewFolderName(e.target.value)} placeholder="e.g., Hiring pack" />
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 overflow-y-auto"
+          onClick={closeNewFolderModal}
+        >
+          <div
+            className="max-w-sm w-full flex flex-col rounded-xl border border-gray-200 bg-gray-100 shadow-xl overflow-hidden"
+            onClick={(e)=> e.stopPropagation()}
+          >
+            <div className="flex-shrink-0 rounded-t-xl border-b border-gray-200 bg-white p-4">
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={closeNewFolderModal}
+                  className="p-1 rounded-lg hover:bg-gray-100 text-gray-600"
+                  title="Close"
+                >
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                  </svg>
+                </button>
+                <div>
+                  <h2 className="text-sm font-semibold text-gray-900">{newFolderParentId ? 'New subfolder' : 'New folder'}</h2>
+                  <p className="text-xs text-gray-500 mt-0.5">{newFolderParentId ? 'Create a folder inside the current one' : 'Create a new top-level folder'}</p>
+                </div>
+              </div>
             </div>
-            <div className="mt-4 flex justify-end gap-2">
-              <button onClick={()=>setShowNewFolder(false)} className="px-3 py-2 rounded border">Cancel</button>
-              <button onClick={createFolder} className="px-3 py-2 rounded bg-brand-red text-white">Create</button>
+            <div className="flex-1 overflow-y-auto p-4">
+              <div className="rounded-xl border border-gray-200 bg-white p-4">
+                <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">Folder name</label>
+                <input
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-gray-300 focus:border-gray-300"
+                  value={newFolderName}
+                  onChange={e=> setNewFolderName(e.target.value)}
+                  placeholder="e.g., Hiring pack"
+                  onKeyDown={e=> { if (e.key === 'Enter') createFolder(); if (e.key === 'Escape') closeNewFolderModal(); }}
+                />
+              </div>
+            </div>
+            <div className="flex-shrink-0 px-4 py-4 border-t border-gray-200 bg-white flex items-center justify-end gap-3 rounded-b-xl">
+              <button
+                type="button"
+                onClick={closeNewFolderModal}
+                className="px-3 py-1.5 rounded-lg text-sm font-medium text-gray-700 border border-gray-200 hover:bg-gray-50"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={createFolder}
+                disabled={!newFolderName.trim()}
+                className="px-4 py-2 rounded-lg text-sm font-semibold text-white bg-brand-red hover:bg-[#aa1212] disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                Create
+              </button>
             </div>
           </div>
         </div>

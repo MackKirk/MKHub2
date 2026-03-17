@@ -2157,80 +2157,105 @@ function CreateTaskRequestModal({
     }
   };
 
-  return (
-    <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4">
-      <div className="bg-white rounded-xl shadow-xl w-full max-w-3xl max-h-[90vh] overflow-y-auto">
-        <div className="p-5 border-b flex items-center justify-between">
-          <div>
-            <div className="text-lg font-semibold text-gray-900">Create Task Request</div>
-            <p className="text-sm text-gray-600">Share the context and choose who should receive it.</p>
-          </div>
-          <button onClick={onClose} className="text-2xl leading-none text-gray-500 hover:text-gray-700">
-            ×
-          </button>
-        </div>
-        <form onSubmit={handleSubmit} className="p-6 space-y-5">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Title *</label>
-            <input
-              value={title}
-              onChange={(e) => setTitle(e.target.value)}
-              className="w-full rounded border px-3 py-2"
-              placeholder="Short summary"
-            />
-          </div>
+  const canSubmit = title.trim() && (targetType === 'user' ? !!targetUserId : !!targetDivisionId);
 
-          <div className="grid md:grid-cols-2 gap-4">
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+      onClick={onClose}
+    >
+      <div
+        className="w-full max-w-3xl max-h-[90vh] flex flex-col rounded-xl border border-gray-200 bg-gray-100 shadow-xl overflow-hidden"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex-shrink-0 rounded-t-xl border-b border-gray-200 bg-white p-4">
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={onClose}
+              className="p-1 rounded-lg hover:bg-gray-100 text-gray-600"
+            >
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+              </svg>
+            </button>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">Send to</label>
-              <div className="flex gap-2">
-                <button
-                  type="button"
-                  onClick={() => setTargetType('user')}
-                  className={`flex-1 px-3 py-2 rounded border ${
-                    targetType === 'user' ? 'bg-brand-red text-white border-brand-red' : 'bg-white text-gray-700'
-                  }`}
+              <h2 className="text-sm font-semibold text-gray-900">New Request</h2>
+              <p className="text-xs text-gray-500 mt-0.5">Share the context and choose who should receive it.</p>
+            </div>
+          </div>
+        </div>
+        <div className="flex-1 overflow-y-auto p-4">
+          <form
+            id="create-task-request-form"
+            onSubmit={handleSubmit}
+            className="rounded-xl border border-gray-200 bg-white p-4 space-y-4"
+          >
+            <div>
+              <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">Title *</label>
+              <input
+                value={title}
+                onChange={(e) => setTitle(e.target.value)}
+                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm placeholder:text-gray-400 focus:outline-none focus:ring-1 focus:ring-gray-300 focus:border-gray-300"
+                placeholder="Short summary"
+              />
+            </div>
+
+            <div className="grid md:grid-cols-2 gap-4">
+              <div>
+                <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">Send to</label>
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setTargetType('user')}
+                    className={`flex-1 px-3 py-2 rounded-lg border text-sm font-medium ${
+                      targetType === 'user'
+                        ? 'bg-brand-red text-white border-brand-red'
+                        : 'border-gray-200 bg-white text-gray-700 hover:bg-gray-50'
+                    }`}
+                  >
+                    Specific user
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setTargetType('division')}
+                    className={`flex-1 px-3 py-2 rounded-lg border text-sm font-medium ${
+                      targetType === 'division'
+                        ? 'bg-brand-red text-white border-brand-red'
+                        : 'border-gray-200 bg-white text-gray-700 hover:bg-gray-50'
+                    }`}
+                  >
+                    Division
+                  </button>
+                </div>
+              </div>
+              <div>
+                <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">Priority</label>
+                <select
+                  value={priority}
+                  onChange={(e) => setPriority(e.target.value)}
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm placeholder:text-gray-400 focus:outline-none focus:ring-1 focus:ring-gray-300 focus:border-gray-300"
                 >
-                  Specific user
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setTargetType('division')}
-                  className={`flex-1 px-3 py-2 rounded border ${
-                    targetType === 'division' ? 'bg-brand-red text-white border-brand-red' : 'bg-white text-gray-700'
-                  }`}
-                >
-                  Division
-                </button>
+                  {priorityOptions.map((opt) => (
+                    <option key={opt.value} value={opt.value}>
+                      {opt.label}
+                    </option>
+                  ))}
+                </select>
               </div>
             </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Priority</label>
-              <select
-                value={priority}
-                onChange={(e) => setPriority(e.target.value)}
-                className="w-full rounded border px-3 py-2"
-              >
-                {priorityOptions.map((opt) => (
-                  <option key={opt.value} value={opt.value}>
-                    {opt.label}
-                  </option>
-                ))}
-              </select>
-            </div>
-          </div>
 
-          {targetType === 'user' ? (
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Choose a user {targetUserId && '(1 selected)'}
-              </label>
-              <div className="relative" ref={workerDropdownRef}>
-                <button
-                  type="button"
-                  onClick={() => setWorkerDropdownOpen(!workerDropdownOpen)}
-                  className="w-full border rounded px-3 py-2 text-left bg-white flex items-center justify-between"
-                >
+            {targetType === 'user' ? (
+              <div>
+                <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">
+                  Choose a user {targetUserId && '(1 selected)'}
+                </label>
+                <div className="relative" ref={workerDropdownRef}>
+                  <button
+                    type="button"
+                    onClick={() => setWorkerDropdownOpen(!workerDropdownOpen)}
+                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm text-left bg-white flex items-center justify-between focus:outline-none focus:ring-1 focus:ring-gray-300 focus:border-gray-300"
+                  >
                   <span className="text-sm text-gray-600">
                     {!targetUserId
                       ? 'Select user...'
@@ -2252,7 +2277,7 @@ function CreateTaskRequestModal({
                         placeholder="Search user..."
                         value={userSearch}
                         onChange={(e) => setUserSearch(e.target.value)}
-                        className="w-full border rounded px-2 py-1 text-sm"
+                        className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm placeholder:text-gray-400 focus:outline-none focus:ring-1 focus:ring-gray-300 focus:border-gray-300"
                         onMouseDown={(e) => e.stopPropagation()}
                       />
                       <div className="flex items-center gap-2">
@@ -2358,11 +2383,11 @@ function CreateTaskRequestModal({
             </div>
           ) : (
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Select division</label>
+              <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">Select division</label>
               <select
                 value={targetDivisionId}
                 onChange={(e) => setTargetDivisionId(e.target.value)}
-                className="w-full rounded border px-3 py-2"
+                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm placeholder:text-gray-400 focus:outline-none focus:ring-1 focus:ring-gray-300 focus:border-gray-300"
               >
                 <option value="">Choose division...</option>
                 {divisions.map((division) => (
@@ -2371,65 +2396,70 @@ function CreateTaskRequestModal({
                   </option>
                 ))}
               </select>
-              <p className="text-xs text-gray-500 mt-1">
+              <p className="text-[10px] text-gray-500 mt-1">
                 Everyone in this division will see the request until someone accepts it.
               </p>
             </div>
           )}
 
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Project (optional)</label>
-            <select
-              value={projectId}
-              onChange={(e) => setProjectId(e.target.value)}
-              className="w-full rounded border px-3 py-2"
-            >
-              <option value="">No project</option>
-              {(projects || []).map((project) => (
-                <option key={project.id} value={project.id}>
-                  {project.code ? `${project.code} • ` : ''}
-                  {project.name}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          <div className="grid md:grid-cols-2 gap-4">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Due date (optional)</label>
-              <input
-                type="date"
-                value={dueDate}
-                onChange={(e) => setDueDate(e.target.value)}
-                className="w-full rounded border px-3 py-2"
+              <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">Project (optional)</label>
+              <select
+                value={projectId}
+                onChange={(e) => setProjectId(e.target.value)}
+                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm placeholder:text-gray-400 focus:outline-none focus:ring-1 focus:ring-gray-300 focus:border-gray-300"
+              >
+                <option value="">No project</option>
+                {(projects || []).map((project) => (
+                  <option key={project.id} value={project.id}>
+                    {project.code ? `${project.code} • ` : ''}
+                    {project.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div className="grid md:grid-cols-2 gap-4">
+              <div>
+                <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">Due date (optional)</label>
+                <input
+                  type="date"
+                  value={dueDate}
+                  onChange={(e) => setDueDate(e.target.value)}
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm placeholder:text-gray-400 focus:outline-none focus:ring-1 focus:ring-gray-300 focus:border-gray-300"
+                />
+              </div>
+            </div>
+
+            <div>
+              <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">Description</label>
+              <textarea
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+                rows={4}
+                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm placeholder:text-gray-400 focus:outline-none focus:ring-1 focus:ring-gray-300 focus:border-gray-300"
+                placeholder="Explain what needs to be done..."
               />
             </div>
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Description</label>
-            <textarea
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-              rows={4}
-              className="w-full rounded border px-3 py-2"
-              placeholder="Explain what needs to be done..."
-            />
-          </div>
-
-          <div className="flex items-center justify-end gap-3 pt-2">
-            <button type="button" onClick={onClose} className="px-4 py-2 rounded border">
-              Cancel
-            </button>
-            <button
-              type="submit"
-              disabled={isSubmitting}
-              className="px-4 py-2 rounded bg-brand-red text-white hover:bg-red-700 transition disabled:opacity-60"
-            >
-              {isSubmitting ? 'Creating...' : 'Create request'}
-            </button>
-          </div>
-        </form>
+          </form>
+        </div>
+        <div className="flex-shrink-0 px-4 py-4 border-t border-gray-200 bg-white flex items-center justify-end gap-3 rounded-b-xl">
+          <button
+            type="button"
+            onClick={onClose}
+            className="px-3 py-1.5 rounded-lg text-sm font-medium text-gray-700 border border-gray-200 hover:bg-gray-50"
+          >
+            Cancel
+          </button>
+          <button
+            type="submit"
+            form="create-task-request-form"
+            disabled={!canSubmit || isSubmitting}
+            className="px-4 py-2 rounded-lg text-sm font-semibold text-white bg-brand-red hover:bg-[#aa1212] disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {isSubmitting ? 'Creating...' : 'Create request'}
+          </button>
+        </div>
       </div>
     </div>
   );

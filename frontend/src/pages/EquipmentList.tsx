@@ -385,6 +385,8 @@ export default function EquipmentList() {
   const [searchParams, setSearchParams] = useSearchParams();
   const search = searchParams.get('search') ?? '';
   const [showNewEquipmentModal, setShowNewEquipmentModal] = useState(false);
+  const [newEquipmentCanSubmit, setNewEquipmentCanSubmit] = useState(false);
+  const [newEquipmentIsPending, setNewEquipmentIsPending] = useState(false);
   const [isFilterModalOpen, setIsFilterModalOpen] = useState(false);
   const [expandedRowId, setExpandedRowId] = useState<string | null>(null);
 
@@ -873,6 +875,7 @@ export default function EquipmentList() {
             </div>
             <div className="overflow-y-auto flex-1 p-4">
               <EquipmentNewForm
+                formId="equipment-new-form-modal"
                 initialCategory={categoryFilter === 'all' ? 'generator' : categoryFilter}
                 onSuccess={(data) => {
                   setShowNewEquipmentModal(false);
@@ -880,7 +883,28 @@ export default function EquipmentList() {
                   nav(`/fleet/equipment/${data.id}`);
                 }}
                 onCancel={() => setShowNewEquipmentModal(false)}
+                onValidationChange={(canSubmit, isPending) => {
+                  setNewEquipmentCanSubmit(canSubmit);
+                  setNewEquipmentIsPending(isPending);
+                }}
               />
+            </div>
+            <div className="flex-shrink-0 px-4 py-4 border-t border-gray-200 bg-white flex items-center justify-end gap-3 rounded-b-xl">
+              <button
+                type="button"
+                onClick={() => setShowNewEquipmentModal(false)}
+                className="px-3 py-1.5 rounded-lg text-sm font-medium text-gray-700 border border-gray-200 hover:bg-gray-50"
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                form="equipment-new-form-modal"
+                disabled={!newEquipmentCanSubmit || newEquipmentIsPending}
+                className="px-4 py-2 rounded-lg text-sm font-semibold text-white bg-brand-red hover:bg-[#aa1212] disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {newEquipmentIsPending ? 'Creating...' : 'Create Equipment'}
+              </button>
             </div>
           </div>
         </div>

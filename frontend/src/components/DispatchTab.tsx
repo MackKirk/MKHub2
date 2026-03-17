@@ -172,7 +172,7 @@ export default function DispatchTab({ projectId, statusLabel }: { projectId: str
     <div className="space-y-4">
       {/* Editing Restricted Warning */}
       {isEditingRestricted && statusLabel && (
-        <div className="mb-4 p-4 bg-yellow-50 border border-yellow-200 rounded text-sm text-yellow-800">
+        <div className="mb-4 p-3 bg-yellow-50 border border-yellow-200 rounded text-xs text-yellow-800">
           <strong>Editing Restricted:</strong> This project has status "{statusLabel}" which does not allow editing workload.
         </div>
       )}
@@ -181,18 +181,18 @@ export default function DispatchTab({ projectId, statusLabel }: { projectId: str
         <div className="flex items-center gap-2">
           <button
             onClick={() => setView('calendar')}
-            className={`px-4 py-2 rounded ${view === 'calendar' ? 'bg-brand-red text-white' : 'bg-gray-100'}`}
+            className={`px-3 py-1.5 rounded text-xs font-medium ${view === 'calendar' ? 'bg-brand-red text-white' : 'bg-gray-100 text-gray-700'}`}
           >
             Calendar
           </button>
           {canEditWorkload && (
             <button
               onClick={() => setView('pending')}
-              className={`px-4 py-2 rounded ${view === 'pending' ? 'bg-brand-red text-white' : 'bg-gray-100'}`}
+              className={`px-3 py-1.5 rounded text-xs font-medium ${view === 'pending' ? 'bg-brand-red text-white' : 'bg-gray-100 text-gray-700'}`}
             >
               Pending Queue
               {pendingAttendance && pendingAttendance.length > 0 && (
-                <span className="ml-2 px-2 py-0.5 rounded-full bg-red-500 text-white text-xs">
+                <span className="ml-1.5 px-1.5 py-0.5 rounded-full bg-red-500 text-white text-[10px] font-medium">
                   {pendingAttendance.length}
                 </span>
               )}
@@ -211,7 +211,7 @@ export default function DispatchTab({ projectId, statusLabel }: { projectId: str
                   newDate.setDate(newDate.getDate() - 7); // Previous week
                   setAnchorDate(newDate);
                 }}
-                className="px-3 py-1 rounded border"
+                className="px-2.5 py-1 rounded border text-xs font-medium"
               >
                 ← Prev
               </button>
@@ -228,7 +228,7 @@ export default function DispatchTab({ projectId, statusLabel }: { projectId: str
                   selectedDateObj.setHours(0, 0, 0, 0);
                   setAnchorDate(selectedDateObj);
                 }}
-                className="border rounded px-3 py-1"
+                className="border rounded px-2.5 py-1 text-xs"
               />
               <button
                 onClick={() => {
@@ -236,11 +236,11 @@ export default function DispatchTab({ projectId, statusLabel }: { projectId: str
                   newDate.setDate(newDate.getDate() + 7); // Next week
                   setAnchorDate(newDate);
                 }}
-                className="px-3 py-1 rounded border"
+                className="px-2.5 py-1 rounded border text-xs font-medium"
               >
                 Next →
               </button>
-              <span className="text-sm font-semibold text-gray-700 min-w-[200px] text-center">
+              <span className="text-xs font-semibold text-gray-700 min-w-[180px] text-center">
                 {weekLabel}
               </span>
               <button
@@ -252,7 +252,7 @@ export default function DispatchTab({ projectId, statusLabel }: { projectId: str
                   setAnchorDate(n);
                   setSelectedDate(formatDateLocal(n));
                 }}
-                className="px-3 py-1 rounded border"
+                className="px-2.5 py-1 rounded border text-xs font-medium"
               >
                 Today
               </button>
@@ -283,17 +283,17 @@ export default function DispatchTab({ projectId, statusLabel }: { projectId: str
                       toast.error(e.response?.data?.detail || e.message || 'Failed to send notifications');
                     }
                   }}
-                  className="px-4 py-2 rounded bg-blue-600 hover:bg-blue-700 text-white flex items-center gap-2"
+                  className="px-3 py-1.5 rounded text-xs font-medium bg-blue-600 hover:bg-blue-700 text-white flex items-center gap-1.5"
                   title="Send push notifications and emails to workers with scheduled shifts"
                 >
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
                   </svg>
                   Notify Workers
                 </button>
                 <button
                   onClick={() => setCreateShiftModal(true)}
-                  className="px-4 py-2 rounded bg-brand-red text-white"
+                  className="px-3 py-1.5 rounded text-xs font-medium bg-brand-red text-white"
                   disabled={deleteMode}
                 >
                   + Create Shift
@@ -310,7 +310,7 @@ export default function DispatchTab({ projectId, statusLabel }: { projectId: str
                       setSelectedShiftsForDelete(new Set());
                     }
                   }}
-                  className={`px-4 py-2 rounded text-white ${
+                  className={`px-3 py-1.5 rounded text-xs font-medium text-white ${
                     deleteMode 
                       ? 'bg-gray-600 hover:bg-gray-700' 
                       : 'bg-red-600 hover:bg-red-700'
@@ -422,7 +422,7 @@ export default function DispatchTab({ projectId, statusLabel }: { projectId: str
                       toast.error(e.message || 'Failed to delete shifts');
                     }
                   }}
-                  className="px-4 py-2 rounded bg-red-600 hover:bg-red-700 text-white"
+                  className="px-3 py-1.5 rounded text-xs font-medium bg-red-600 hover:bg-red-700 text-white"
                 >
                   Delete {selectedShiftsForDelete.size} Selected
                 </button>
@@ -432,9 +432,9 @@ export default function DispatchTab({ projectId, statusLabel }: { projectId: str
           </div>
 
           {deleteMode && (
-            <div className="rounded-xl border border-orange-300 bg-orange-50 p-3">
-              <div className="flex items-center gap-2 text-sm text-orange-800">
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <div className="rounded-xl border border-orange-300 bg-orange-50 p-2.5">
+              <div className="flex items-center gap-2 text-xs text-orange-800">
+                <svg className="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
                 </svg>
                 <div>
@@ -442,7 +442,7 @@ export default function DispatchTab({ projectId, statusLabel }: { projectId: str
                   {/* NOTE: During testing phase, past date validation is disabled */}
                   {/* Shifts from past dates cannot be deleted and will be automatically excluded. */}
                   {selectedShiftsForDelete.size > 0 && (
-                    <span className="ml-2 font-semibold">
+                    <span className="ml-1.5 font-semibold">
                       {selectedShiftsForDelete.size} shift{selectedShiftsForDelete.size > 1 ? 's' : ''} selected
                     </span>
                   )}
@@ -451,18 +451,18 @@ export default function DispatchTab({ projectId, statusLabel }: { projectId: str
             </div>
           )}
 
-          <div className="rounded-xl border bg-white p-4">
+          <div className="rounded-xl border bg-white p-3">
             {/* Day headers */}
-            <div className="grid grid-cols-7 gap-2 mb-2">
+            <div className="grid grid-cols-7 gap-1.5 mb-1.5">
               {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map((day) => (
-                <div key={day} className="text-xs font-semibold text-gray-600 text-center py-1">
+                <div key={day} className="text-[10px] font-semibold text-gray-600 text-center py-0.5">
                   {day}
                 </div>
               ))}
             </div>
             
             {/* Calendar grid */}
-            <div className="grid grid-cols-7 gap-2">
+            <div className="grid grid-cols-7 gap-1.5">
               {days.map(({ date, key, dayNumber }) => {
                 const dateStr = formatDateLocal(date);
                 const isToday = (() => {
@@ -493,14 +493,14 @@ export default function DispatchTab({ projectId, statusLabel }: { projectId: str
                   <div
                     key={key}
                     onClick={() => !deleteMode && setSelectedDate(dateStr)}
-                    className={`h-64 rounded border bg-white p-2 flex flex-col ${
+                    className={`h-64 rounded border bg-white p-1.5 flex flex-col ${
                       deleteMode ? '' : 'cursor-pointer'
                     } ${
                       isSelected && !deleteMode ? 'ring-2 ring-brand-red border-brand-red' : ''
                     } ${isToday && !isSelected && !deleteMode ? 'ring-1 ring-gray-300' : ''}`}
                   >
-                    <div className="text-xs font-semibold text-gray-700 flex-shrink-0 mb-1">
-                      <div className="text-[10px] text-gray-500 uppercase">{dayName}</div>
+                    <div className="text-[10px] font-semibold text-gray-700 flex-shrink-0 mb-0.5">
+                      <div className="text-[9px] text-gray-500 uppercase">{dayName}</div>
                       <div>{dayNumber}</div>
                     </div>
                     <div 
@@ -687,7 +687,7 @@ export default function DispatchTab({ projectId, statusLabel }: { projectId: str
 
       {view === 'pending' && (
         <div className="rounded-xl border bg-white">
-          <div className="p-4 border-b font-semibold">Pending Attendance Approval</div>
+          <div className="p-3 border-b text-xs font-semibold text-gray-900">Pending Attendance Approval</div>
           <div className="divide-y">
             {(pendingAttendance || []).length > 0 ? (
               pendingAttendance.map((attendance: any) => (
@@ -726,7 +726,7 @@ export default function DispatchTab({ projectId, statusLabel }: { projectId: str
                 />
               ))
             ) : (
-              <div className="p-4 text-sm text-gray-600">No pending attendance</div>
+              <div className="p-3 text-xs text-gray-600">No pending attendance</div>
             )}
           </div>
         </div>
@@ -783,53 +783,53 @@ function PendingAttendanceRow({
   const worker = employees.find((e: any) => e.id === attendance.worker_id);
 
   return (
-    <div className="p-4">
-      <div className="flex items-start justify-between">
-        <div className="flex-1">
-          <div className="font-medium">
+    <div className="p-3">
+      <div className="flex items-start justify-between gap-2">
+        <div className="flex-1 min-w-0">
+          <div className="text-xs font-medium text-gray-900">
             {worker?.name || attendance.worker_id} - {attendance.clock_in_time && !attendance.clock_out_time ? 'Clock In' : 
                                                       attendance.clock_out_time ? 'Clock Out' : 
                                                       attendance.type === 'in' ? 'Clock In' : 'Clock Out'}
           </div>
-          <div className="text-sm text-gray-600">
+          <div className="text-[10px] text-gray-600 mt-0.5">
             {attendance.clock_in_time ? new Date(attendance.clock_in_time).toLocaleString() : 
              attendance.clock_out_time ? new Date(attendance.clock_out_time).toLocaleString() :
              attendance.time_selected_utc ? new Date(attendance.time_selected_utc).toLocaleString() : '--'}
           </div>
           {attendance.reason_text && (
-            <div className="text-sm text-gray-700 mt-1">{attendance.reason_text}</div>
+            <div className="text-[10px] text-gray-700 mt-0.5">{attendance.reason_text}</div>
           )}
           {attendance.gps_lat && attendance.gps_lng && (
-            <div className="text-xs text-gray-500 mt-1">
+            <div className="text-[10px] text-gray-500 mt-0.5">
               GPS: {attendance.gps_lat.toFixed(6)}, {attendance.gps_lng.toFixed(6)}
               {attendance.gps_accuracy_m && ` (accuracy: ${attendance.gps_accuracy_m.toFixed(0)}m)`}
             </div>
           )}
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1.5 flex-shrink-0">
           {!showReject ? (
             <>
               <button
                 onClick={onApprove}
-                className="px-3 py-1 rounded bg-green-600 text-white text-sm"
+                className="px-2.5 py-1 rounded text-xs font-medium bg-green-600 text-white"
               >
                 Approve
               </button>
               <button
                 onClick={() => setShowReject(true)}
-                className="px-3 py-1 rounded bg-red-600 text-white text-sm"
+                className="px-2.5 py-1 rounded text-xs font-medium bg-red-600 text-white"
               >
                 Reject
               </button>
             </>
           ) : (
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-1.5">
               <input
                 type="text"
                 value={rejectReason}
                 onChange={(e) => setRejectReason(e.target.value)}
                 placeholder="Rejection reason"
-                className="border rounded px-2 py-1 text-sm"
+                className="border rounded px-2 py-1 text-xs w-32"
               />
               <button
                 onClick={async () => {
@@ -841,7 +841,7 @@ function PendingAttendanceRow({
                   setShowReject(false);
                   setRejectReason('');
                 }}
-                className="px-3 py-1 rounded bg-red-600 text-white text-sm"
+                className="px-2.5 py-1 rounded text-xs font-medium bg-red-600 text-white"
               >
                 Confirm
               </button>
@@ -850,7 +850,7 @@ function PendingAttendanceRow({
                   setShowReject(false);
                   setRejectReason('');
                 }}
-                className="px-3 py-1 rounded bg-gray-100 text-sm"
+                className="px-2.5 py-1 rounded text-xs font-medium bg-gray-100 text-gray-700"
               >
                 Cancel
               </button>
@@ -1073,33 +1073,57 @@ function CreateShiftModal({
     return null;
   }
 
-  return (
-    <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4">
-      <div className="bg-white rounded-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
-        <div className="sticky top-0 bg-white border-b p-4 flex items-center justify-between">
-          <h2 className="text-xl font-semibold">Create Shift</h2>
-          <button onClick={onClose} className="text-2xl font-bold text-gray-400 hover:text-gray-600">
-            ×
-          </button>
-        </div>
-        <div className="p-6 space-y-4">
-          {error && (
-            <div className="p-3 bg-red-100 text-red-700 rounded text-sm whitespace-pre-line">
-              {error}
-            </div>
-          )}
+  const canSubmit = Array.isArray(selectedWorkers) && selectedWorkers.length > 0 && Array.isArray(selectedDates) && selectedDates.length > 0;
 
-          {/* Worker Selection with Multi-Select */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Workers {(Array.isArray(selectedWorkers) ? selectedWorkers.length : 0) > 0 && `(${Array.isArray(selectedWorkers) ? selectedWorkers.length : 0} selected)`}
-            </label>
-            <div className="relative" ref={workerDropdownRef}>
-              <button
-                type="button"
-                onClick={() => setWorkerDropdownOpen(!workerDropdownOpen)}
-                className="w-full border rounded px-3 py-2 text-left bg-white flex items-center justify-between"
-              >
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+      onClick={onClose}
+    >
+      <div
+        className="max-w-2xl w-full max-h-[90vh] flex flex-col rounded-xl border border-gray-200 bg-gray-100 shadow-xl overflow-hidden"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex-shrink-0 rounded-t-xl border-b border-gray-200 bg-white p-4">
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={onClose}
+              className="p-1 rounded-lg hover:bg-gray-100 text-gray-600"
+            >
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+              </svg>
+            </button>
+            <div>
+              <h2 className="text-sm font-semibold text-gray-900">Create Shift</h2>
+              <p className="text-xs text-gray-500 mt-0.5">Add shifts for workers on the project</p>
+            </div>
+          </div>
+        </div>
+        <div className="flex-1 overflow-y-auto p-4">
+          <form
+            id="create-shift-form"
+            onSubmit={(e) => { e.preventDefault(); handleSave(); }}
+            className="rounded-xl border border-gray-200 bg-white p-4 space-y-4"
+          >
+            {error && (
+              <div className="p-3 bg-red-100 text-red-700 rounded-lg text-sm whitespace-pre-line">
+                {error}
+              </div>
+            )}
+
+            {/* Worker Selection with Multi-Select */}
+            <div>
+              <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">
+                Workers {(Array.isArray(selectedWorkers) ? selectedWorkers.length : 0) > 0 && `(${Array.isArray(selectedWorkers) ? selectedWorkers.length : 0} selected)`}
+              </label>
+              <div className="relative" ref={workerDropdownRef}>
+                <button
+                  type="button"
+                  onClick={() => setWorkerDropdownOpen(!workerDropdownOpen)}
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm text-left bg-white flex items-center justify-between focus:outline-none focus:ring-1 focus:ring-gray-300 focus:border-gray-300"
+                >
                   <span className="text-sm text-gray-600">
                     {(Array.isArray(selectedWorkers) ? selectedWorkers.length : 0) === 0
                       ? 'Select workers...'
@@ -1118,7 +1142,7 @@ function CreateShiftModal({
                       placeholder="Search workers..."
                       value={workerSearch}
                       onChange={(e) => setWorkerSearch(e.target.value)}
-                      className="w-full border rounded px-2 py-1 text-sm"
+                      className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm placeholder:text-gray-400 focus:outline-none focus:ring-1 focus:ring-gray-300 focus:border-gray-300"
                       onMouseDown={(e) => e.stopPropagation()}
                     />
                     <div className="flex items-center gap-2">
@@ -1214,70 +1238,72 @@ function CreateShiftModal({
             )}
           </div>
 
-          {/* Date Selection Mode */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Date Selection</label>
-            <div className="flex items-center gap-4 mb-2">
-              <label className="flex items-center gap-2">
-                <input
-                  type="radio"
-                  name="dateMode"
-                  checked={dateMode === 'single'}
-                  onChange={() => setDateMode('single')}
-                />
-                <span className="text-sm">Single Date</span>
-              </label>
-              <label className="flex items-center gap-2">
-                <input
-                  type="radio"
-                  name="dateMode"
-                  checked={dateMode === 'range'}
-                  onChange={() => setDateMode('range')}
-                />
-                <span className="text-sm">Date Range</span>
-              </label>
-            </div>
-
-            {dateMode === 'single' ? (
-              <div>
-                <input
-                  type="date"
-                  value={date}
-                  onChange={(e) => setDate(e.target.value)}
-                  className="w-full border rounded px-3 py-2"
-                />
-              </div>
-            ) : (
-              <div className="space-y-2">
-                <div className="grid grid-cols-2 gap-2">
-                  <div>
-                    <label className="block text-xs text-gray-600 mb-1">From</label>
-                    <input
-                      type="date"
-                      value={dateFrom}
-                      onChange={(e) => setDateFrom(e.target.value)}
-                      className="w-full border rounded px-3 py-2"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-xs text-gray-600 mb-1">To</label>
-                    <input
-                      type="date"
-                      value={dateTo}
-                      onChange={(e) => setDateTo(e.target.value)}
-                      className="w-full border rounded px-3 py-2"
-                    />
-                  </div>
-                </div>
+            {/* Date Selection Mode */}
+            <div>
+              <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">Date Selection</label>
+              <div className="flex items-center gap-4 mb-2">
                 <label className="flex items-center gap-2">
                   <input
-                    type="checkbox"
-                    checked={excludeWeekends}
-                    onChange={(e) => setExcludeWeekends(e.target.checked)}
-                    className="rounded"
+                    type="radio"
+                    name="dateMode"
+                    checked={dateMode === 'single'}
+                    onChange={() => setDateMode('single')}
+                    className="rounded border-gray-200"
                   />
-                  <span className="text-sm text-gray-600">Exclude weekends</span>
+                  <span className="text-sm">Single Date</span>
                 </label>
+                <label className="flex items-center gap-2">
+                  <input
+                    type="radio"
+                    name="dateMode"
+                    checked={dateMode === 'range'}
+                    onChange={() => setDateMode('range')}
+                    className="rounded border-gray-200"
+                  />
+                  <span className="text-sm">Date Range</span>
+                </label>
+              </div>
+
+              {dateMode === 'single' ? (
+                <div>
+                  <input
+                    type="date"
+                    value={date}
+                    onChange={(e) => setDate(e.target.value)}
+                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-gray-300 focus:border-gray-300"
+                  />
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">From</label>
+                      <input
+                        type="date"
+                        value={dateFrom}
+                        onChange={(e) => setDateFrom(e.target.value)}
+                        className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-gray-300 focus:border-gray-300"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">To</label>
+                      <input
+                        type="date"
+                        value={dateTo}
+                        onChange={(e) => setDateTo(e.target.value)}
+                        className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-gray-300 focus:border-gray-300"
+                      />
+                    </div>
+                  </div>
+                  <label className="flex items-center gap-2">
+                    <input
+                      type="checkbox"
+                      checked={excludeWeekends}
+                      onChange={(e) => setExcludeWeekends(e.target.checked)}
+                      className="rounded border-gray-200"
+                    />
+                    <span className="text-[10px] font-medium text-gray-500 uppercase tracking-wide">Exclude weekends</span>
+                  </label>
                 {Array.isArray(selectedDates) && selectedDates.length > 0 && (
                   <div className="text-xs text-gray-600">
                     {selectedDates.length} day{selectedDates.length > 1 ? 's' : ''} selected
@@ -1292,61 +1318,67 @@ function CreateShiftModal({
             )}
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Start Time</label>
-              <input
-                type="time"
-                value={startTime}
-                onChange={(e) => setStartTime(e.target.value)}
-                step="900"
-                className="w-full border rounded px-3 py-2"
-              />
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">Start Time</label>
+                <input
+                  type="time"
+                  value={startTime}
+                  onChange={(e) => setStartTime(e.target.value)}
+                  step="900"
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-gray-300 focus:border-gray-300"
+                />
+              </div>
+              <div>
+                <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">End Time</label>
+                <input
+                  type="time"
+                  value={endTime}
+                  onChange={(e) => setEndTime(e.target.value)}
+                  step="900"
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-gray-300 focus:border-gray-300"
+                />
+              </div>
             </div>
+
+            {/* Job Type Selection (Optional) */}
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">End Time</label>
-              <input
-                type="time"
-                value={endTime}
-                onChange={(e) => setEndTime(e.target.value)}
-                step="900"
-                className="w-full border rounded px-3 py-2"
-              />
+              <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">
+                Job Type <span className="text-gray-400 normal-case">(optional)</span>
+              </label>
+              <select
+                value={jobType}
+                onChange={(e) => setJobType(e.target.value)}
+                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm placeholder:text-gray-400 focus:outline-none focus:ring-1 focus:ring-gray-300 focus:border-gray-300"
+              >
+                <option value="">No job type selected</option>
+                {JOB_TYPES.map((job) => (
+                  <option key={job.id} value={job.name}>
+                    {job.name}
+                  </option>
+                ))}
+              </select>
             </div>
-          </div>
-
-
-          {/* Job Type Selection (Optional) */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Job Type <span className="text-gray-400 text-xs">(optional)</span>
-            </label>
-            <select
-              value={jobType}
-              onChange={(e) => setJobType(e.target.value)}
-              className="w-full border rounded px-3 py-2"
-            >
-              <option value="">No job type selected</option>
-              {JOB_TYPES.map((job) => (
-                <option key={job.id} value={job.name}>
-                  {job.name}
-                </option>
-              ))}
-            </select>
-          </div>
+          </form>
         </div>
-        <div className="sticky bottom-0 bg-white border-t p-4 flex justify-end gap-2">
-          <button onClick={onClose} className="px-4 py-2 rounded border bg-gray-100 hover:bg-gray-200">
+        <div className="flex-shrink-0 px-4 py-4 border-t border-gray-200 bg-white flex items-center justify-end gap-3 rounded-b-xl">
+          <button
+            type="button"
+            onClick={onClose}
+            disabled={saving}
+            className="px-3 py-1.5 rounded-lg text-sm font-medium text-gray-700 border border-gray-200 hover:bg-gray-50 disabled:opacity-50"
+          >
             Cancel
           </button>
           <button
-            onClick={handleSave}
-            disabled={saving || !Array.isArray(selectedWorkers) || selectedWorkers.length === 0 || !Array.isArray(selectedDates) || selectedDates.length === 0}
-            className="px-4 py-2 rounded bg-brand-red text-white hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed"
+            type="submit"
+            form="create-shift-form"
+            disabled={!canSubmit || saving}
+            className="px-4 py-2 rounded-lg text-sm font-semibold text-white bg-brand-red hover:bg-[#aa1212] disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {saving
               ? 'Creating...'
-              : Array.isArray(selectedWorkers) && selectedWorkers.length > 0 && Array.isArray(selectedDates) && selectedDates.length > 0
+              : canSubmit
               ? `Create ${selectedWorkers.length * selectedDates.length} Shift${selectedWorkers.length * selectedDates.length > 1 ? 's' : ''}`
               : 'Create Shift'}
           </button>

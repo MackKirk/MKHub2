@@ -1,19 +1,26 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import toast from 'react-hot-toast';
+
+const labelClass = 'text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1';
+const inputClass = 'w-full border border-gray-200 rounded-lg px-3 py-2 text-sm placeholder:text-gray-400 focus:outline-none focus:ring-1 focus:ring-gray-300 focus:border-gray-300';
 
 export function WorkOrderNewForm({
   initialEntityType = 'fleet',
   initialEntityId = '',
   onSuccess,
   onCancel,
+  onValidationChange,
+  formId = 'work-order-new-form',
 }: {
   initialEntityType?: string;
   initialEntityId?: string;
   onSuccess: (data: { id: string }) => void;
   onCancel: () => void;
+  onValidationChange?: (canSubmit: boolean, isPending: boolean) => void;
+  formId?: string;
 }) {
   const { data: employees = [] } = useQuery({
     queryKey: ['employees'],
@@ -87,40 +94,41 @@ export function WorkOrderNewForm({
 
   const canSubmit = form.description.trim().length > 0;
 
+  useEffect(() => {
+    onValidationChange?.(canSubmit, createMutation.isPending);
+  }, [canSubmit, createMutation.isPending, onValidationChange]);
+
   return (
-    <div className="rounded-xl border border-gray-200 bg-white p-4">
+    <div className="rounded-xl border border-gray-200 bg-white overflow-hidden">
+      <div className="px-4 py-3 border-b border-gray-200">
+        <h4 className={labelClass}>Basic Information</h4>
+      </div>
       <form
+        id={formId}
         onSubmit={(e) => {
           e.preventDefault();
-          if (canSubmit) {
-            createMutation.mutate();
-          }
+          if (canSubmit) createMutation.mutate();
         }}
-        className="space-y-6"
+        className="p-4"
       >
         <div className="grid grid-cols-2 gap-4">
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Entity Type
-            </label>
+            <label className={labelClass}>Entity Type</label>
             <select
               value={form.entity_type}
               onChange={(e) => updateField('entity_type', e.target.value)}
-              className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-red"
+              className={inputClass}
             >
               <option value="fleet">Fleet Asset</option>
               <option value="equipment">Equipment</option>
             </select>
           </div>
-
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Category
-            </label>
+            <label className={labelClass}>Category</label>
             <select
               value={form.category}
               onChange={(e) => updateField('category', e.target.value)}
-              className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-red"
+              className={inputClass}
             >
               <option value="maintenance">Maintenance</option>
               <option value="repair">Repair</option>
@@ -128,15 +136,12 @@ export function WorkOrderNewForm({
               <option value="other">Other</option>
             </select>
           </div>
-
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Urgency
-            </label>
+            <label className={labelClass}>Urgency</label>
             <select
               value={form.urgency}
               onChange={(e) => updateField('urgency', e.target.value)}
-              className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-red"
+              className={inputClass}
             >
               <option value="low">Low</option>
               <option value="normal">Normal</option>
@@ -144,15 +149,12 @@ export function WorkOrderNewForm({
               <option value="urgent">Urgent</option>
             </select>
           </div>
-
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Status
-            </label>
+            <label className={labelClass}>Status</label>
             <select
               value={form.status}
               onChange={(e) => updateField('status', e.target.value)}
-              className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-red"
+              className={inputClass}
             >
               <option value="open">Open</option>
               <option value="in_progress">In Progress</option>
@@ -161,15 +163,12 @@ export function WorkOrderNewForm({
               <option value="cancelled">Cancelled</option>
             </select>
           </div>
-
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Assigned To
-            </label>
+            <label className={labelClass}>Assigned To</label>
             <select
               value={form.assigned_to_user_id}
               onChange={(e) => updateField('assigned_to_user_id', e.target.value)}
-              className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-red"
+              className={inputClass}
             >
               <option value="">Unassigned</option>
               {Array.isArray(employees) && employees.map((emp: any) => (
@@ -182,36 +181,36 @@ export function WorkOrderNewForm({
         </div>
 
         {form.entity_type === 'fleet' && (
-          <div className="border-t border-gray-200 pt-4 space-y-4">
-            <h3 className="text-sm font-semibold text-gray-900">Service / Scheduling</h3>
+          <div className="border-t border-gray-200 pt-4 mt-4 space-y-4">
+            <h3 className={labelClass}>Service / Scheduling</h3>
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Scheduled date</label>
+                <label className={labelClass}>Scheduled date</label>
                 <input
                   type="date"
                   value={form.scheduled_date}
                   onChange={(e) => updateField('scheduled_date', e.target.value)}
-                  className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-red"
+                  className={inputClass}
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Hora</label>
+                <label className={labelClass}>Time</label>
                 <input
                   type="time"
                   value={form.scheduled_time}
                   onChange={(e) => updateField('scheduled_time', e.target.value)}
-                  className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-red"
+                  className={inputClass}
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Duração estimada (min)</label>
+                <label className={labelClass}>Estimated duration (min)</label>
                 <input
                   type="number"
                   min={0}
-                  placeholder="ex: 120"
+                  placeholder="e.g. 120"
                   value={form.estimated_duration_minutes}
                   onChange={(e) => updateField('estimated_duration_minutes', e.target.value)}
-                  className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-red"
+                  className={inputClass}
                 />
               </div>
               <div className="col-span-2 flex gap-6">
@@ -222,7 +221,7 @@ export function WorkOrderNewForm({
                     onChange={(e) => updateField('body_repair_required', e.target.checked)}
                     className="rounded border-gray-300"
                   />
-                  Reparo de carroceria
+                  Body repair required
                 </label>
                 <label className="flex items-center gap-2 text-sm text-gray-700">
                   <input
@@ -231,81 +230,77 @@ export function WorkOrderNewForm({
                     onChange={(e) => updateField('new_stickers_applied', e.target.checked)}
                     className="rounded border-gray-300"
                   />
-                  Adesivos novos
+                  New stickers applied
                 </label>
               </div>
             </div>
           </div>
         )}
 
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">
-            Description <span className="text-red-500">*</span>
-          </label>
+        <div className="mt-4">
+          <label className={labelClass}>Description <span className="text-red-600">*</span></label>
           <textarea
             value={form.description}
             onChange={(e) => updateField('description', e.target.value)}
             rows={4}
-            className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-red"
+            className={inputClass}
             required
           />
         </div>
 
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-2">Costs (Optional)</label>
+        <div className="mt-4">
+          <label className={labelClass}>Costs (optional)</label>
           <div className="grid grid-cols-3 gap-4">
             <div>
-              <label className="block text-xs text-gray-600 mb-1">Labor ($)</label>
+              <label className={labelClass}>Labor ($)</label>
               <input
                 type="number"
                 step="0.01"
                 value={form.labor_cost}
                 onChange={(e) => updateField('labor_cost', e.target.value)}
-                className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-red"
-                min="0"
+                className={inputClass}
+                min={0}
               />
             </div>
             <div>
-              <label className="block text-xs text-gray-600 mb-1">Parts ($)</label>
+              <label className={labelClass}>Parts ($)</label>
               <input
                 type="number"
                 step="0.01"
                 value={form.parts_cost}
                 onChange={(e) => updateField('parts_cost', e.target.value)}
-                className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-red"
-                min="0"
+                className={inputClass}
+                min={0}
               />
             </div>
             <div>
-              <label className="block text-xs text-gray-600 mb-1">Other ($)</label>
+              <label className={labelClass}>Other ($)</label>
               <input
                 type="number"
                 step="0.01"
                 value={form.other_cost}
                 onChange={(e) => updateField('other_cost', e.target.value)}
-                className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-red"
-                min="0"
+                className={inputClass}
+                min={0}
               />
             </div>
           </div>
         </div>
 
-        <div className="flex gap-3 justify-end">
-          <button
-            type="button"
-            onClick={onCancel}
-            className="px-4 py-2 border rounded-lg hover:bg-gray-50"
-          >
-            Cancel
-          </button>
-          <button
-            type="submit"
-            disabled={!canSubmit || createMutation.isPending}
-            className="px-4 py-2 bg-brand-red text-white rounded-lg hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            {createMutation.isPending ? 'Creating...' : 'Create Work Order'}
-          </button>
-        </div>
+        {!onValidationChange && (
+          <div className="flex gap-3 justify-end mt-4 pt-4 border-t border-gray-200">
+            <button type="button" onClick={onCancel} className="px-3 py-1.5 rounded-lg text-sm font-medium text-gray-700 border border-gray-200 hover:bg-gray-50">
+              Cancel
+            </button>
+            <button
+              type="submit"
+              disabled={!canSubmit || createMutation.isPending}
+              className="px-4 py-2 rounded-lg text-sm font-semibold text-white bg-brand-red hover:bg-[#aa1212] disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {createMutation.isPending ? 'Creating...' : 'Create Work Order'}
+            </button>
+          </div>
+        )}
       </form>
     </div>
   );

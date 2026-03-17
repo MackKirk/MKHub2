@@ -1,17 +1,24 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useMutation } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import toast from 'react-hot-toast';
 
+const labelClass = 'text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1';
+const inputClass = 'w-full border border-gray-200 rounded-lg px-3 py-2 text-sm placeholder:text-gray-400 focus:outline-none focus:ring-1 focus:ring-gray-300 focus:border-gray-300';
+
 export function EquipmentNewForm({
   initialCategory = 'generator',
   onSuccess,
   onCancel,
+  onValidationChange,
+  formId = 'equipment-new-form',
 }: {
   initialCategory?: string;
   onSuccess: (data: { id: string }) => void;
   onCancel: () => void;
+  onValidationChange?: (canSubmit: boolean, isPending: boolean) => void;
+  formId?: string;
 }) {
   const [form, setForm] = useState({
     category: initialCategory,
@@ -59,78 +66,96 @@ export function EquipmentNewForm({
 
   const canSubmit = form.name.trim().length > 0 && form.unit_number.trim().length > 0;
 
+  useEffect(() => {
+    onValidationChange?.(canSubmit, createMutation.isPending);
+  }, [canSubmit, createMutation.isPending, onValidationChange]);
+
   return (
-    <form
-      onSubmit={(e) => {
-        e.preventDefault();
-        if (canSubmit) createMutation.mutate();
-      }}
-      className="space-y-6"
-    >
-      <div className="grid grid-cols-2 gap-4">
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">Name <span className="text-red-500">*</span></label>
-          <input type="text" value={form.name} onChange={(e) => updateField('name', e.target.value)} className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-red" required />
-        </div>
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">Unit Number <span className="text-red-500">*</span></label>
-          <input type="text" value={form.unit_number} onChange={(e) => updateField('unit_number', e.target.value)} className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-red" required />
-        </div>
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">Category <span className="text-red-500">*</span></label>
-          <select value={form.category} onChange={(e) => updateField('category', e.target.value)} className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-red" required>
-            <option value="generator">Generator</option>
-            <option value="tool">Tool</option>
-            <option value="electronics">Electronics</option>
-            <option value="small_tool">Small Tool</option>
-            <option value="safety">Safety Equipment</option>
-          </select>
-        </div>
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">Serial Number</label>
-          <input type="text" value={form.serial_number} onChange={(e) => updateField('serial_number', e.target.value)} className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-red" />
-        </div>
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">Brand</label>
-          <input type="text" value={form.brand} onChange={(e) => updateField('brand', e.target.value)} className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-red" />
-        </div>
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">Model</label>
-          <input type="text" value={form.model} onChange={(e) => updateField('model', e.target.value)} className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-red" />
-        </div>
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">Value ($)</label>
-          <input type="number" step="0.01" value={form.value} onChange={(e) => updateField('value', e.target.value)} className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-red" min="0" />
-        </div>
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">Warranty Expiry</label>
-          <input type="date" value={form.warranty_expiry} onChange={(e) => updateField('warranty_expiry', e.target.value)} className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-red" />
-        </div>
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">Purchase Date</label>
-          <input type="date" value={form.purchase_date} onChange={(e) => updateField('purchase_date', e.target.value)} className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-red" />
-        </div>
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">Status</label>
-          <select value={form.status} onChange={(e) => updateField('status', e.target.value)} className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-red">
-            <option value="available">Available</option>
-            <option value="checked_out">Checked Out</option>
-            <option value="maintenance">Maintenance</option>
-            <option value="retired">Retired</option>
-          </select>
-        </div>
+    <div className="rounded-xl border border-gray-200 bg-white overflow-hidden">
+      <div className="px-4 py-3 border-b border-gray-200">
+        <h4 className={labelClass}>Basic Information</h4>
       </div>
-      <div>
-        <label className="block text-sm font-medium text-gray-700 mb-1">Notes</label>
-        <textarea value={form.notes} onChange={(e) => updateField('notes', e.target.value)} rows={4} className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-red" />
-      </div>
-      <div className="flex gap-3 justify-end">
-        <button type="button" onClick={onCancel} className="px-4 py-2 border rounded-lg hover:bg-gray-50">Cancel</button>
-        <button type="submit" disabled={!canSubmit || createMutation.isPending} className="px-4 py-2 bg-brand-red text-white rounded-lg hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed">
-          {createMutation.isPending ? 'Creating...' : 'Create Equipment'}
-        </button>
-      </div>
-    </form>
+      <form
+        id={formId}
+        onSubmit={(e) => {
+          e.preventDefault();
+          if (canSubmit) createMutation.mutate();
+        }}
+        className="p-4"
+      >
+        <div className="grid grid-cols-2 gap-4">
+          <div>
+            <label className={labelClass}>Name <span className="text-red-600">*</span></label>
+            <input type="text" value={form.name} onChange={(e) => updateField('name', e.target.value)} className={inputClass} required />
+          </div>
+          <div>
+            <label className={labelClass}>Unit Number <span className="text-red-600">*</span></label>
+            <input type="text" value={form.unit_number} onChange={(e) => updateField('unit_number', e.target.value)} className={inputClass} required />
+          </div>
+          <div>
+            <label className={labelClass}>Category <span className="text-red-600">*</span></label>
+            <select value={form.category} onChange={(e) => updateField('category', e.target.value)} className={inputClass} required>
+              <option value="generator">Generator</option>
+              <option value="tool">Tool</option>
+              <option value="electronics">Electronics</option>
+              <option value="small_tool">Small Tool</option>
+              <option value="safety">Safety Equipment</option>
+            </select>
+          </div>
+          <div>
+            <label className={labelClass}>Serial Number</label>
+            <input type="text" value={form.serial_number} onChange={(e) => updateField('serial_number', e.target.value)} className={inputClass} />
+          </div>
+          <div>
+            <label className={labelClass}>Brand</label>
+            <input type="text" value={form.brand} onChange={(e) => updateField('brand', e.target.value)} className={inputClass} />
+          </div>
+          <div>
+            <label className={labelClass}>Model</label>
+            <input type="text" value={form.model} onChange={(e) => updateField('model', e.target.value)} className={inputClass} />
+          </div>
+          <div>
+            <label className={labelClass}>Value ($)</label>
+            <input type="number" step="0.01" value={form.value} onChange={(e) => updateField('value', e.target.value)} className={inputClass} min={0} />
+          </div>
+          <div>
+            <label className={labelClass}>Warranty Expiry</label>
+            <input type="date" value={form.warranty_expiry} onChange={(e) => updateField('warranty_expiry', e.target.value)} className={inputClass} />
+          </div>
+          <div>
+            <label className={labelClass}>Purchase Date</label>
+            <input type="date" value={form.purchase_date} onChange={(e) => updateField('purchase_date', e.target.value)} className={inputClass} />
+          </div>
+          <div>
+            <label className={labelClass}>Status</label>
+            <select value={form.status} onChange={(e) => updateField('status', e.target.value)} className={inputClass}>
+              <option value="available">Available</option>
+              <option value="checked_out">Checked Out</option>
+              <option value="maintenance">Maintenance</option>
+              <option value="retired">Retired</option>
+            </select>
+          </div>
+        </div>
+        <div className="mt-4">
+          <label className={labelClass}>Notes</label>
+          <textarea value={form.notes} onChange={(e) => updateField('notes', e.target.value)} rows={4} className={inputClass} />
+        </div>
+        {!onValidationChange && (
+          <div className="flex gap-3 justify-end mt-4 pt-4 border-t border-gray-200">
+            <button type="button" onClick={onCancel} className="px-3 py-1.5 rounded-lg text-sm font-medium text-gray-700 border border-gray-200 hover:bg-gray-50">
+              Cancel
+            </button>
+            <button
+              type="submit"
+              disabled={!canSubmit || createMutation.isPending}
+              className="px-4 py-2 rounded-lg text-sm font-semibold text-white bg-brand-red hover:bg-[#aa1212] disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {createMutation.isPending ? 'Creating...' : 'Create Equipment'}
+            </button>
+          </div>
+        )}
+      </form>
+    </div>
   );
 }
 
@@ -170,13 +195,11 @@ export default function EquipmentNew() {
           </div>
         </div>
       </div>
-      <div className="rounded-xl border border-gray-200 bg-white p-4">
-        <EquipmentNewForm
-          initialCategory={categoryFromUrl}
-          onSuccess={(data) => nav(`/fleet/equipment/${data.id}`)}
-          onCancel={() => nav(-1)}
-        />
-      </div>
+      <EquipmentNewForm
+        initialCategory={categoryFromUrl}
+        onSuccess={(data) => nav(`/fleet/equipment/${data.id}`)}
+        onCancel={() => nav(-1)}
+      />
     </div>
   );
 }

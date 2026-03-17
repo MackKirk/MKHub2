@@ -585,6 +585,20 @@ export default function Projects(){
     queryFn: ()=> api<any[]>('GET','/employees'), 
     staleTime: 300_000
   });
+
+  // Only users with "Sales / Estimating" department for estimator filter dropdown
+  const ESTIMATOR_DEPARTMENT = 'Sales / Estimating';
+  const employeesInEstimatingDept = useMemo(() => {
+    const list = employees || [];
+    const target = ESTIMATOR_DEPARTMENT.toLowerCase();
+    return list.filter((emp: any) => {
+      if (Array.isArray(emp.divisions) && emp.divisions.length > 0) {
+        return emp.divisions.some((d: any) => String(d?.label || '').trim().toLowerCase() === target);
+      }
+      const dept = String((emp.department || emp.division || '')).trim();
+      return dept.toLowerCase().includes(target);
+    });
+  }, [employees]);
   
   const projectStatuses = settings?.project_statuses || [];
   const clients = clientsData?.items || clientsData || [];
@@ -709,7 +723,7 @@ export default function Projects(){
       label: 'Estimators',
       type: 'select',
       operators: ['is', 'is_not'],
-      getOptions: () => (employees || []).map((emp: any) => ({ 
+      getOptions: () => employeesInEstimatingDept.map((emp: any) => ({ 
         value: emp.id, 
         label: emp.name || emp.username || emp.id 
       })),
@@ -732,7 +746,7 @@ export default function Projects(){
       type: 'number',
       operators: ['is_equal_to', 'greater_than', 'less_than', 'between'],
     },
-  ], [projectStatuses, projectDivisions, clients, employees]);
+  ], [projectStatuses, projectDivisions, clients, employees, employeesInEstimatingDept]);
 
   const handleApplyFilters = (rules: FilterRule[]) => {
     const params = convertRulesToParams(rules);

@@ -86,6 +86,15 @@ export default function NewSupplierModal({ open, onClose, onSupplierCreated }: N
     return () => window.removeEventListener('keydown', onKey);
   }, [open, onClose]);
 
+  // Prevent body scroll when modal is open (same as New Opportunity)
+  useEffect(() => {
+    if (!open) return;
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.body.style.overflow = '';
+    };
+  }, [open]);
+
   const handleSubmit = () => {
     if (!name.trim()) {
       setNameError(true);
@@ -117,109 +126,138 @@ export default function NewSupplierModal({ open, onClose, onSupplierCreated }: N
 
   if (!open) return null;
 
-  const inputBase = 'w-full border border-gray-200 rounded-lg px-3 py-2 mt-1 text-xs text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-1 focus:ring-gray-300 focus:border-gray-300 bg-white';
+  const inputBase = 'w-full border border-gray-200 rounded-lg px-3 py-2 text-sm';
   const inputError = nameError && !name.trim() ? 'border-red-500 focus:ring-red-500 focus:border-red-500' : '';
-  const labelClass = 'text-xs font-medium text-gray-700';
+  const labelClass = 'text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1';
 
   return (
-    <div className="fixed inset-0 z-[90] bg-black/60 flex items-center justify-center p-4">
-      <div className="w-[900px] max-w-[95vw] max-h-[90vh] bg-white rounded-xl border border-gray-200 overflow-hidden flex flex-col shadow-xl">
-        {/* Header - same style as page title bars */}
-        <div className="flex-shrink-0 flex items-center justify-between p-4 border-b border-gray-200 bg-white">
-          <div>
-            <h2 className="text-sm font-semibold text-gray-900">New Supplier</h2>
-            <p className="text-xs text-gray-500 mt-0.5">Add a new supplier to your inventory</p>
+    <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center overflow-y-auto p-4">
+      <div className="w-[900px] max-w-[95vw] max-h-[90vh] bg-gray-100 rounded-xl overflow-hidden flex flex-col border border-gray-200 shadow-xl">
+        {/* Title bar - same style as New Customer */}
+        <div className="rounded-t-xl border-b border-gray-200 bg-white p-4 flex-shrink-0">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <button
+                type="button"
+                onClick={onClose}
+                className="p-1.5 rounded hover:bg-gray-100 transition-colors flex items-center justify-center"
+                title="Close"
+              >
+                <svg className="w-4 h-4 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+                </svg>
+              </button>
+              <div>
+                <div className="text-sm font-semibold text-gray-900">New Supplier</div>
+                <div className="text-xs text-gray-500 mt-0.5">Add a new supplier to your inventory</div>
+              </div>
+            </div>
           </div>
-          <button
-            onClick={onClose}
-            className="text-gray-400 hover:text-gray-600 w-8 h-8 flex items-center justify-center rounded-lg hover:bg-gray-100 text-xl font-medium leading-none"
-            title="Close"
-          >
-            ×
-          </button>
         </div>
 
-        <div className="flex-1 overflow-y-auto">
-          <div className="p-4 grid grid-cols-2 gap-4">
-            <div className="col-span-2">
-              <label className={labelClass}>Name *</label>
-              <input
-                type="text"
-                className={`${inputBase} ${inputError}`}
-                value={name}
-                onChange={(e) => {
-                  setName(e.target.value);
-                  if (nameError) setNameError(false);
-                }}
-              />
-              {nameError && !name.trim() && (
-                <div className="text-[11px] text-red-600 mt-1">This field is required</div>
-              )}
-            </div>
-            <div className="col-span-2">
-              <label className={labelClass}>Legal Name</label>
-              <input
-                type="text"
-                className={inputBase}
-                value={legalName}
-                onChange={(e) => setLegalName(e.target.value)}
-              />
-            </div>
-            <div>
-              <label className={labelClass}>Email</label>
-              <input
-                type="email"
-                className={inputBase}
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-              />
-            </div>
-            <div>
-              <label className={labelClass}>Phone</label>
-              <input
-                type="text"
-                className={inputBase}
-                value={phone}
-                onChange={(e) => setPhone(e.target.value)}
-              />
-            </div>
-            <div className="col-span-2">
-              <label className={labelClass}>Website</label>
-              <input
-                type="url"
-                className={inputBase}
-                value={website}
-                onChange={(e) => setWebsite(e.target.value)}
-              />
-            </div>
-            <div className="col-span-2 grid grid-cols-2 gap-4">
+        <div className="overflow-y-auto flex-1 p-4">
+          <div className="rounded-xl border bg-white p-4">
+            <div className="space-y-4">
               <div>
-                <label className={labelClass}>Address</label>
-                <AddressAutocomplete
-                  value={addressLine1}
-                  onChange={(value) => setAddressLine1(value)}
-                  onAddressSelect={(address) => {
-                    setAddressLine1(address.address_line1 || addressLine1);
-                    setCity(address.city !== undefined ? address.city : city);
-                    setProvince(address.province !== undefined ? address.province : province);
-                    setPostalCode(address.postal_code !== undefined ? address.postal_code : postalCode);
-                    setCountry(address.country !== undefined ? address.country : country);
-                  }}
-                  placeholder="Enter address"
-                  className={inputBase}
-                />
+                <div className="flex items-center gap-2">
+                  <h4 className="text-sm font-semibold text-gray-900">Company</h4>
+                </div>
+                <div className="text-[10px] text-gray-500 mt-0.5 mb-2">Core supplier identity details.</div>
+                <div className="grid md:grid-cols-2 gap-3">
+                  <div className="md:col-span-2">
+                    <label className={labelClass}>
+                      Name <span className="text-red-600">*</span>
+                    </label>
+                    <input
+                      type="text"
+                      className={`${inputBase} ${inputError}`}
+                      value={name}
+                      onChange={(e) => {
+                        setName(e.target.value);
+                        if (nameError) setNameError(false);
+                      }}
+                    />
+                    {nameError && !name.trim() && (
+                      <div className="text-[11px] text-red-600 mt-1">This field is required</div>
+                    )}
+                  </div>
+
+                  <div className="md:col-span-2">
+                    <label className={labelClass}>Legal name</label>
+                    <input
+                      type="text"
+                      className={inputBase}
+                      value={legalName}
+                      onChange={(e) => setLegalName(e.target.value)}
+                    />
+                  </div>
+
+                  <div>
+                    <label className={labelClass}>Email</label>
+                    <input
+                      type="email"
+                      className={inputBase}
+                      value={email}
+                      onChange={(e) => setEmail(e.target.value)}
+                    />
+                  </div>
+                  <div>
+                    <label className={labelClass}>Phone</label>
+                    <input
+                      type="text"
+                      className={inputBase}
+                      value={phone}
+                      onChange={(e) => setPhone(e.target.value)}
+                    />
+                  </div>
+
+                  <div className="md:col-span-2">
+                    <label className={labelClass}>Website</label>
+                    <input
+                      type="url"
+                      className={inputBase}
+                      value={website}
+                      onChange={(e) => setWebsite(e.target.value)}
+                    />
+                  </div>
+                </div>
               </div>
+
               <div>
-                <label className={labelClass}>Complement</label>
-                <input
-                  type="text"
-                  className={inputBase}
-                  value={addressLine1Complement}
-                  onChange={(e) => setAddressLine1Complement(e.target.value)}
-                  placeholder="Apartment, Unit, Block, etc (Optional)"
-                />
-              </div>
-            </div>
+                <div className="flex items-center gap-2">
+                  <h4 className="text-sm font-semibold text-gray-900">Address</h4>
+                </div>
+                <div className="text-[10px] text-gray-500 mt-0.5 mb-2">Primary mailing and location address.</div>
+
+                <div className="grid md:grid-cols-2 gap-3">
+                  <div className="md:col-span-2 grid grid-cols-2 gap-3">
+                    <div>
+                      <label className={labelClass}>Address line 1</label>
+                      <AddressAutocomplete
+                        value={addressLine1}
+                        onChange={(value) => setAddressLine1(value)}
+                        onAddressSelect={(address) => {
+                          setAddressLine1(address.address_line1 || addressLine1);
+                          setCity(address.city !== undefined ? address.city : city);
+                          setProvince(address.province !== undefined ? address.province : province);
+                          setPostalCode(address.postal_code !== undefined ? address.postal_code : postalCode);
+                          setCountry(address.country !== undefined ? address.country : country);
+                        }}
+                        placeholder="Enter address"
+                        className={inputBase}
+                      />
+                    </div>
+                    <div>
+                      <label className={labelClass}>Complement</label>
+                      <input
+                        type="text"
+                        className={inputBase}
+                        value={addressLine1Complement}
+                        onChange={(e) => setAddressLine1Complement(e.target.value)}
+                        placeholder="Apartment, Unit, Block, etc (Optional)"
+                      />
+                    </div>
+                  </div>
             {!showAddress2 && !showAddress3 && (
               <div className="col-span-2">
                 <button
@@ -236,7 +274,7 @@ export default function NewSupplierModal({ open, onClose, onSupplierCreated }: N
             )}
             {showAddress2 && (
               <>
-                <div className="col-span-2 grid grid-cols-[1fr_0.8fr_auto] gap-4 items-end">
+                <div className="col-span-2 grid grid-cols-[1fr_0.8fr_auto] gap-3 items-end">
                   <div>
                     <label className={labelClass}>Address 2</label>
                     <AddressAutocomplete
@@ -299,7 +337,7 @@ export default function NewSupplierModal({ open, onClose, onSupplierCreated }: N
             )}
             {showAddress3 && (
               <>
-                <div className="col-span-2 grid grid-cols-[1fr_0.8fr_auto] gap-4 items-end">
+                <div className="col-span-2 grid grid-cols-[1fr_0.8fr_auto] gap-3 items-end">
                   <div>
                     <label className={labelClass}>Address 3</label>
                     <AddressAutocomplete
@@ -339,62 +377,70 @@ export default function NewSupplierModal({ open, onClose, onSupplierCreated }: N
                 </div>
               </>
             )}
-            <div>
-              <label className={labelClass}>City</label>
-              <input
-                type="text"
-                className={`${inputBase} bg-gray-50 cursor-not-allowed border-gray-200`}
-                value={city}
-                readOnly
-                placeholder=""
-              />
-            </div>
-            <div>
-              <label className={labelClass}>Province</label>
-              <input
-                type="text"
-                className={`${inputBase} bg-gray-50 cursor-not-allowed border-gray-200`}
-                value={province}
-                readOnly
-                placeholder=""
-              />
-            </div>
-            <div>
-              <label className={labelClass}>Postal Code</label>
-              <input
-                type="text"
-                className={`${inputBase} bg-gray-50 cursor-not-allowed border-gray-200`}
-                value={postalCode}
-                readOnly
-                placeholder=""
-              />
-            </div>
-            <div>
-              <label className={labelClass}>Country</label>
-              <input
-                type="text"
-                className={`${inputBase} bg-gray-50 cursor-not-allowed border-gray-200`}
-                value={country}
-                readOnly
-                placeholder=""
-              />
+                  <div>
+                    <label className={labelClass}>City</label>
+                    <input
+                      type="text"
+                      className={`${inputBase} bg-gray-50 cursor-not-allowed border-gray-200`}
+                      value={city}
+                      readOnly
+                      placeholder=""
+                    />
+                  </div>
+                  <div>
+                    <label className={labelClass}>Province</label>
+                    <input
+                      type="text"
+                      className={`${inputBase} bg-gray-50 cursor-not-allowed border-gray-200`}
+                      value={province}
+                      readOnly
+                      placeholder=""
+                    />
+                  </div>
+                  <div>
+                    <label className={labelClass}>Postal code</label>
+                    <input
+                      type="text"
+                      className={`${inputBase} bg-gray-50 cursor-not-allowed border-gray-200`}
+                      value={postalCode}
+                      readOnly
+                      placeholder=""
+                    />
+                  </div>
+                  <div>
+                    <label className={labelClass}>Country</label>
+                    <input
+                      type="text"
+                      className={`${inputBase} bg-gray-50 cursor-not-allowed border-gray-200`}
+                      value={country}
+                      readOnly
+                      placeholder=""
+                    />
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
         </div>
-        <div className="flex-shrink-0 px-4 py-3 border-t border-gray-200 bg-gray-50 flex justify-end gap-2">
+        <div className="flex-shrink-0 px-4 py-4 border-t border-gray-200 bg-white flex items-center justify-between gap-3 rounded-b-xl">
+          <div className="text-xs text-gray-500" />
+          <div className="flex items-center gap-2">
           <button
+            type="button"
             onClick={onClose}
-            className="px-3 py-2 text-xs font-medium text-gray-700 border border-gray-200 rounded-lg bg-white hover:bg-gray-50 transition-colors"
+            className="px-3 py-1.5 rounded-lg text-sm font-medium text-gray-700 border border-gray-200 hover:bg-gray-50"
           >
             Cancel
           </button>
           <button
+            type="button"
             onClick={handleSubmit}
             disabled={createMut.isPending}
-            className="px-3 py-2 text-xs font-medium text-white bg-brand-red rounded-lg hover:opacity-90 disabled:opacity-50 transition-opacity"
+            className="px-3 py-1.5 rounded-lg text-sm font-medium text-white bg-brand-red hover:bg-[#aa1212] disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {createMut.isPending ? 'Creating...' : 'Create'}
           </button>
+          </div>
         </div>
       </div>
     </div>

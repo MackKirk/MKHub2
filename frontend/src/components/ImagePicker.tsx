@@ -752,14 +752,25 @@ export default function ImagePicker({
           flex-shrink: 0;
         }
       `}</style>
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
-      <div className="w-[900px] max-w-[95vw] bg-white rounded-xl overflow-hidden">
-        <div className="px-4 py-3 border-b flex items-center justify-between">
-          <div className="font-semibold">Image Picker</div>
-          <button type="button" onClick={onClose} className="text-gray-500 hover:text-gray-700 text-2xl font-bold w-8 h-8 flex items-center justify-center rounded hover:bg-gray-100" title="Close">×</button>
+    <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center overflow-y-auto p-4">
+      <div className="w-[900px] max-w-[95vw] max-h-[90vh] rounded-xl overflow-hidden flex flex-col border border-gray-200 shadow-xl bg-white">
+        <div className="rounded-t-xl border-b border-gray-200 bg-white p-4 flex-shrink-0">
+          <div className="flex items-center justify-between">
+            <h2 className="text-sm font-semibold text-gray-900">Choose image</h2>
+            <button
+              type="button"
+              onClick={onClose}
+              className="p-1.5 rounded hover:bg-gray-100 transition-colors flex items-center justify-center text-gray-500 hover:text-gray-700"
+              title="Close"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+          </div>
         </div>
-        <div className="grid grid-cols-3 gap-0">
-          <div className="border-r">
+        <div className="grid grid-cols-3 gap-0 flex-1 min-h-0 overflow-hidden">
+          <div className="border-r border-gray-200 bg-gray-50/50 overflow-y-auto min-h-0">
             {clientId && (
               <div className="p-3">
                 <div className="mb-2 flex items-center justify-between">
@@ -795,7 +806,7 @@ export default function ImagePicker({
                 )}
               </div>
             )}
-            <div className="p-3 border-t">
+            <div className="p-3 border-t border-gray-200">
               <div className="mb-2 text-sm font-semibold">Upload</div>
               <input ref={inputRef} type="file" accept="image/*,.heic,.heif,image/heic,image/heif" onChange={(e)=>{ const f=e.target.files?.[0]; if(f) loadFromFile(f); }} />
               <div className="mt-3">
@@ -810,7 +821,7 @@ export default function ImagePicker({
               </div>
             </div>
           </div>
-          <div className="col-span-2">
+          <div className="col-span-2 min-w-0 overflow-y-auto">
             <div className="p-4">
               <div className="mb-3 text-sm text-gray-600">Target: {targetWidth}×{targetHeight}px</div>
               <div ref={containerRef} className="relative bg-white overflow-hidden" style={{ width: cw, height: ch, userSelect:'none', cursor: (img && isPanning)? (dragging.current? 'grabbing':'grab') : 'default', touchAction:'none' as any }} onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={onPointerUp}>
@@ -852,8 +863,8 @@ export default function ImagePicker({
         </div>
       </div>
       {showProgress && (
-        <div className="fixed inset-0 z-[60] bg-black/60 grid place-items-center">
-          <div className="bg-white rounded-lg shadow-lg px-6 py-5 w-[360px] max-w-[90vw] text-center">
+        <div className="fixed inset-0 z-[60] bg-black/50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-xl border border-gray-200 shadow-xl px-6 py-5 w-[360px] max-w-[90vw] text-center">
             <div className="mx-auto mb-4 h-10 w-10 rounded-full border-4 border-gray-200 border-t-brand-red animate-spin" />
             <div className="text-sm text-gray-600">{progressMessage || 'Processing...'}</div>
           </div>

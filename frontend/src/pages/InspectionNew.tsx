@@ -1,9 +1,12 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import toast from 'react-hot-toast';
 import { formatDateLocal } from '@/lib/dateUtils';
+
+const labelClass = 'text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1';
+const inputClass = 'w-full border border-gray-200 rounded-lg px-3 py-2 text-sm placeholder:text-gray-400 focus:outline-none focus:ring-1 focus:ring-gray-300 focus:border-gray-300';
 
 const CATEGORY_OPTIONS = [
   { value: 'maintenance', label: 'Maintenance' },
@@ -24,10 +27,14 @@ export function InspectionScheduleForm({
   initialAssetId = '',
   onSuccess,
   onCancel,
+  onValidationChange,
+  formId = 'inspection-schedule-form',
 }: {
   initialAssetId?: string;
   onSuccess: (data: { id: string }) => void;
   onCancel: () => void;
+  onValidationChange?: (canSubmit: boolean, isPending: boolean) => void;
+  formId?: string;
 }) {
   const queryClient = useQueryClient();
   const { data: assetsRes } = useQuery({
@@ -74,24 +81,30 @@ export function InspectionScheduleForm({
 
   const canSubmit = form.fleet_asset_id.trim().length > 0;
 
+  useEffect(() => {
+    onValidationChange?.(canSubmit, createMutation.isPending);
+  }, [canSubmit, createMutation.isPending, onValidationChange]);
+
   return (
-    <div className="rounded-xl border border-gray-200 bg-white p-4">
+    <div className="rounded-xl border border-gray-200 bg-white overflow-hidden">
+      <div className="px-4 py-3 border-b border-gray-200">
+        <h4 className={labelClass}>Schedule</h4>
+      </div>
       <form
+        id={formId}
         onSubmit={(e) => {
           e.preventDefault();
           if (canSubmit) createMutation.mutate();
         }}
-        className="space-y-6"
+        className="p-4"
       >
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Vehicle <span className="text-red-500">*</span>
-            </label>
+            <label className={labelClass}>Vehicle <span className="text-red-600">*</span></label>
             <select
               value={form.fleet_asset_id}
               onChange={(e) => updateField('fleet_asset_id', e.target.value)}
-              className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-red"
+              className={inputClass}
               required
             >
               <option value="">Select vehicle</option>
@@ -104,23 +117,21 @@ export function InspectionScheduleForm({
             </select>
           </div>
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Date <span className="text-red-500">*</span>
-            </label>
+            <label className={labelClass}>Date <span className="text-red-600">*</span></label>
             <input
               type="date"
               value={form.scheduled_at}
               onChange={(e) => updateField('scheduled_at', e.target.value)}
-              className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-red"
+              className={inputClass}
               required
             />
           </div>
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Urgency</label>
+            <label className={labelClass}>Urgency</label>
             <select
               value={form.urgency}
               onChange={(e) => updateField('urgency', e.target.value)}
-              className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-red"
+              className={inputClass}
             >
               {URGENCY_OPTIONS.map((opt) => (
                 <option key={opt.value} value={opt.value}>
@@ -130,11 +141,11 @@ export function InspectionScheduleForm({
             </select>
           </div>
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Category</label>
+            <label className={labelClass}>Category</label>
             <select
               value={form.category}
               onChange={(e) => updateField('category', e.target.value)}
-              className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-red"
+              className={inputClass}
             >
               {CATEGORY_OPTIONS.map((opt) => (
                 <option key={opt.value} value={opt.value}>
@@ -144,28 +155,30 @@ export function InspectionScheduleForm({
             </select>
           </div>
         </div>
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">Notes (optional)</label>
+        <div className="mt-4">
+          <label className={labelClass}>Notes (optional)</label>
           <textarea
             value={form.notes}
             onChange={(e) => updateField('notes', e.target.value)}
             rows={3}
-            className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-red"
+            className={inputClass}
             placeholder="Observações..."
           />
         </div>
-        <div className="flex gap-3 justify-end">
-          <button type="button" onClick={onCancel} className="px-4 py-2 border rounded-lg hover:bg-gray-50">
-            Cancel
-          </button>
-          <button
-            type="submit"
-            disabled={!canSubmit || createMutation.isPending}
-            className="px-4 py-2 bg-brand-red text-white rounded-lg hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            {createMutation.isPending ? 'Scheduling...' : 'Schedule inspection'}
-          </button>
-        </div>
+        {!onValidationChange && (
+          <div className="flex gap-3 justify-end mt-4 pt-4 border-t border-gray-200">
+            <button type="button" onClick={onCancel} className="px-3 py-1.5 rounded-lg text-sm font-medium text-gray-700 border border-gray-200 hover:bg-gray-50">
+              Cancel
+            </button>
+            <button
+              type="submit"
+              disabled={!canSubmit || createMutation.isPending}
+              className="px-4 py-2 rounded-lg text-sm font-semibold text-white bg-brand-red hover:bg-[#aa1212] disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {createMutation.isPending ? 'Scheduling...' : 'Schedule inspection'}
+            </button>
+          </div>
+        )}
       </form>
     </div>
   );

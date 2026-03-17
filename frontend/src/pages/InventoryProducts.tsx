@@ -794,157 +794,165 @@ export default function InventoryProducts(){
       </LoadingOverlay>
 
       {open && (
-        <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4">
-          <div className="w-[900px] max-w-[95vw] max-h-[90vh] bg-white rounded-xl border border-gray-200 overflow-hidden flex flex-col shadow-xl">
-              {viewing && !editing ? (
-                // View mode - display product details
+        <div className={`fixed inset-0 z-50 flex items-center justify-center overflow-y-auto p-4 ${viewing && !editing ? 'bg-black/50' : 'bg-black/50'}`}>
+          {viewing && !editing ? (
+            // View mode - same as Suppliers product modal (gray container, white bar, tabs, white content card, footer)
+            <div className="w-[900px] max-w-[95vw] max-h-[90vh] bg-gray-100 rounded-xl overflow-hidden flex flex-col border border-gray-200 shadow-xl">
                 <>
-                  {/* Product Header - new style */}
-                  <div className="flex-shrink-0 p-4 border-b border-gray-200 bg-white">
-                    <div className="flex items-start gap-4">
-                      <div className="w-16 h-16 rounded-xl border border-gray-200 overflow-hidden bg-white flex items-center justify-center flex-shrink-0">
-                        <img 
-                          src={viewing.image_base64 || '/ui/assets/placeholders/product.png'} 
-                          className="w-full h-full object-cover" 
+                {/* Title bar - same style as New Product / Contact (Suppliers) */}
+                <div className="rounded-t-xl border-b border-gray-200 bg-white p-4 flex-shrink-0">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      <button
+                        type="button"
+                        onClick={resetModal}
+                        className="p-1.5 rounded hover:bg-gray-100 transition-colors flex items-center justify-center"
+                        title="Close"
+                      >
+                        <svg className="w-4 h-4 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+                        </svg>
+                      </button>
+                      <div className="w-14 h-14 rounded-xl border border-gray-200 overflow-hidden bg-white flex-shrink-0">
+                        <img
+                          src={viewing.image_base64 || '/ui/assets/placeholders/product.png'}
+                          className="w-full h-full object-cover"
                           alt={viewing.name}
                         />
                       </div>
-                      <div className="flex-1 min-w-0">
-                        <h2 className="text-sm font-semibold text-gray-900">{viewing.name}</h2>
-                        <div className="flex items-center gap-3 mt-1 text-xs text-gray-600">
+                      <div>
+                        <div className="text-sm font-semibold text-gray-900">{viewing.name}</div>
+                        <div className="text-xs text-gray-500 mt-0.5 flex items-center gap-3">
                           {viewing.supplier_name && <span>{viewing.supplier_name}</span>}
                           {viewing.category && <span>{viewing.category}</span>}
                         </div>
-                        {/* Tabs - same style as TaskRequests / Suppliers */}
-                        <div className="flex gap-1 border-b border-gray-200 mt-3 -mb-[-1px]">
-                          <button
-                            onClick={() => setProductTab('details')}
-                            className={`px-3 py-2 text-xs font-medium transition-colors border-b-2 -mb-[1px] ${
-                              productTab === 'details'
-                                ? 'border-brand-red text-brand-red'
-                                : 'border-transparent text-gray-600 hover:text-gray-900'
-                            }`}
-                          >
-                            Details
-                          </button>
-                          <button
-                            onClick={() => setProductTab('usage')}
-                            className={`px-3 py-2 text-xs font-medium transition-colors border-b-2 -mb-[1px] ${
-                              productTab === 'usage'
-                                ? 'border-brand-red text-brand-red'
-                                : 'border-transparent text-gray-600 hover:text-gray-900'
-                            }`}
-                          >
-                            Usage {productUsage.length > 0 && `(${productUsage.length})`}
-                          </button>
-                          {canEditProducts && viewing && (
-                            <button
-                              onClick={() => {
-                                setProductTab('related');
-                                if (viewing.id && relatedList.length === 0) {
-                                  handleViewRelated(viewing.id);
-                                }
-                              }}
-                              className={`px-3 py-2 text-xs font-medium transition-colors border-b-2 -mb-[1px] ${
-                                productTab === 'related'
-                                  ? 'border-brand-red text-brand-red'
-                                  : 'border-transparent text-gray-600 hover:text-gray-900'
-                              }`}
-                            >
-                              Related {relatedCounts[viewing.id] ? `(${relatedCounts[viewing.id]})` : ''}
-                            </button>
-                          )}
-                        </div>
                       </div>
-                      <button
-                        onClick={resetModal}
-                        className="text-gray-400 hover:text-gray-600 w-8 h-8 flex items-center justify-center rounded-lg hover:bg-gray-100 text-xl font-medium leading-none flex-shrink-0"
-                        title="Close"
-                      >
-                        ×
-                      </button>
                     </div>
                   </div>
+                </div>
 
-                  {/* Product Details or Usage */}
-                  <div className="flex-1 overflow-y-auto">
+                {/* Tabs - same as Suppliers */}
+                <div className="flex-shrink-0 px-4 border-b border-gray-200 bg-white">
+                  <div className="flex gap-1">
+                    <button
+                      onClick={() => setProductTab('details')}
+                      className={`px-4 py-2 font-medium text-sm transition-colors ${
+                        productTab === 'details'
+                          ? 'text-brand-red border-b-2 border-brand-red'
+                          : 'text-gray-600 hover:text-gray-900'
+                      }`}
+                    >
+                      Details
+                    </button>
+                    <button
+                      onClick={() => setProductTab('usage')}
+                      className={`px-4 py-2 font-medium text-sm transition-colors ${
+                        productTab === 'usage'
+                          ? 'text-brand-red border-b-2 border-brand-red'
+                          : 'text-gray-600 hover:text-gray-900'
+                      }`}
+                    >
+                      Usage {productUsage.length > 0 && `(${productUsage.length})`}
+                    </button>
+                    {canEditProducts && viewing && (
+                      <button
+                        onClick={() => {
+                          setProductTab('related');
+                          if (viewing.id && relatedList.length === 0) {
+                            handleViewRelated(viewing.id);
+                          }
+                        }}
+                        className={`px-4 py-2 font-medium text-sm transition-colors ${
+                          productTab === 'related'
+                            ? 'text-brand-red border-b-2 border-brand-red'
+                            : 'text-gray-600 hover:text-gray-900'
+                        }`}
+                      >
+                        Related {relatedCounts[viewing.id] ? `(${relatedCounts[viewing.id]})` : ''}
+                      </button>
+                    )}
+                  </div>
+                </div>
+
+                {/* Product Details, Usage, or Related - same structure as Suppliers */}
+                <div className="overflow-y-auto flex-1 p-4">
                   {productTab === 'details' ? (
-                  <div className="px-4 pb-4 space-y-4">
-                    <div className="grid grid-cols-2 gap-4">
-                      {viewing.unit && (
-                        <div className="bg-white border border-gray-200 rounded-lg p-4">
-                          <div className="text-[10px] font-medium text-gray-500 uppercase tracking-wide mb-1">Sell Unit</div>
-                          <div className="text-xs text-gray-900">{viewing.unit}</div>
+                    <div className="rounded-xl border bg-white p-4 space-y-4">
+                      <div className="grid grid-cols-2 gap-4">
+                        {viewing.unit && (
+                          <div className="bg-white border rounded-lg p-4">
+                            <div className="text-[10px] font-medium text-gray-500 uppercase tracking-wide mb-1">Sell Unit</div>
+                            <div className="text-sm text-gray-900">{viewing.unit}</div>
+                          </div>
+                        )}
+                        {viewing.unit_type && (
+                          <div className="bg-white border rounded-lg p-4">
+                            <div className="text-[10px] font-medium text-gray-500 uppercase tracking-wide mb-1">Unit Type</div>
+                            <div className="text-sm text-gray-900">{viewing.unit_type}</div>
+                          </div>
+                        )}
+                      </div>
+                      {typeof viewing.price === 'number' && (
+                        <div className="bg-white border rounded-lg p-4">
+                          <div className="text-[10px] font-medium text-gray-500 uppercase tracking-wide mb-1">Price</div>
+                          <div className="text-sm text-gray-900 font-semibold">${viewing.price.toFixed(2)}</div>
                         </div>
                       )}
-                      {viewing.unit_type && (
-                        <div className="bg-white border border-gray-200 rounded-lg p-4">
-                          <div className="text-[10px] font-medium text-gray-500 uppercase tracking-wide mb-1">Unit Type</div>
-                          <div className="text-xs text-gray-900">{viewing.unit_type}</div>
+                      {viewing.units_per_package && (
+                        <div className="bg-white border rounded-lg p-4">
+                          <div className="text-[10px] font-medium text-gray-500 uppercase tracking-wide mb-1">Units per Package</div>
+                          <div className="text-sm text-gray-900">{viewing.units_per_package}</div>
                         </div>
                       )}
-                    </div>
-                    {typeof viewing.price === 'number' && (
-                      <div className="bg-white border border-gray-200 rounded-lg p-4">
-                        <div className="text-[10px] font-medium text-gray-500 uppercase tracking-wide mb-1">Price</div>
-                        <div className="text-xs text-gray-900 font-semibold">${viewing.price.toFixed(2)}</div>
-                      </div>
-                    )}
-                    {viewing.units_per_package && (
-                      <div className="bg-white border border-gray-200 rounded-lg p-4">
-                        <div className="text-[10px] font-medium text-gray-500 uppercase tracking-wide mb-1">Units per Package</div>
-                        <div className="text-xs text-gray-900">{viewing.units_per_package}</div>
-                      </div>
-                    )}
-                    {(viewing.coverage_sqs || viewing.coverage_ft2 || viewing.coverage_m2) && (
-                      <div className="bg-white border border-gray-200 rounded-lg p-4">
-                        <div className="text-xs font-semibold text-gray-900 mb-2">Coverage Area</div>
-                        <div className="grid grid-cols-3 gap-2 text-xs text-gray-700">
-                          <div>SQS: {viewing.coverage_sqs||'-'}</div>
-                          <div>ft²: {viewing.coverage_ft2||'-'}</div>
-                          <div>m²: {viewing.coverage_m2||'-'}</div>
-                        </div>
-                      </div>
-                    )}
-                    {viewing.description && (
-                      <div className="bg-white border border-gray-200 rounded-lg p-4">
-                        <div className="text-xs font-semibold text-gray-900 mb-2">Description</div>
-                        <div className="text-xs text-gray-700 whitespace-pre-wrap">{viewing.description}</div>
-                      </div>
-                    )}
-                    {viewing.technical_manual_url && (() => {
-                      const url = viewing.technical_manual_url.trim();
-                      const absoluteUrl = url.match(/^https?:\/\//i) ? url : `https://${url}`;
-                      return (
-                        <div className="bg-white border border-gray-200 rounded-lg p-4">
-                          <div className="flex items-center justify-between">
-                            <div className="text-xs font-semibold text-gray-900">Technical Manual</div>
-                            <a
-                              href={absoluteUrl}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              onClick={(e) => {
-                                if (!absoluteUrl || absoluteUrl === 'https://') e.preventDefault();
-                              }}
-                              className="px-3 py-2 text-xs font-medium rounded-lg bg-brand-red text-white hover:opacity-90 transition-opacity flex items-center gap-2"
-                            >
-                              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
-                              </svg>
-                              View Manual
-                            </a>
+                      {(viewing.coverage_sqs || viewing.coverage_ft2 || viewing.coverage_m2) && (
+                        <div className="bg-white border rounded-lg p-4">
+                          <div className="text-[10px] font-medium text-gray-500 uppercase tracking-wide mb-2">Coverage Area</div>
+                          <div className="grid grid-cols-3 gap-2 text-sm text-gray-700">
+                            <div>SQS: {viewing.coverage_sqs||'-'}</div>
+                            <div>ft²: {viewing.coverage_ft2||'-'}</div>
+                            <div>m²: {viewing.coverage_m2||'-'}</div>
                           </div>
                         </div>
-                      );
-                    })()}
-                  </div>
+                      )}
+                      {viewing.description && (
+                        <div className="bg-white border rounded-lg p-4">
+                          <div className="text-[10px] font-medium text-gray-500 uppercase tracking-wide mb-2">Description</div>
+                          <div className="text-sm text-gray-700 whitespace-pre-wrap">{viewing.description}</div>
+                        </div>
+                      )}
+                      {viewing.technical_manual_url && (() => {
+                        const url = viewing.technical_manual_url.trim();
+                        const absoluteUrl = url.match(/^https?:\/\//i) ? url : `https://${url}`;
+                        return (
+                          <div className="bg-white border rounded-lg p-4">
+                            <div className="flex items-center justify-between">
+                              <div className="text-[10px] font-medium text-gray-500 uppercase tracking-wide">Technical Manual</div>
+                              <a
+                                href={absoluteUrl}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                onClick={(e) => {
+                                  if (!absoluteUrl || absoluteUrl === 'https://') e.preventDefault();
+                                }}
+                                className="px-3 py-1.5 rounded-lg text-sm font-medium bg-brand-red text-white hover:bg-[#aa1212] transition-colors flex items-center gap-2"
+                              >
+                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                                </svg>
+                                View Manual
+                              </a>
+                            </div>
+                          </div>
+                        );
+                      })()}
+                    </div>
                   ) : productTab === 'usage' ? (
-                    <div className="px-4 pb-4">
+                    <div className="rounded-xl border bg-white p-4">
                       {loadingUsage ? (
-                        <div className="py-8 text-center text-xs text-gray-500">Loading usage data...</div>
+                        <div className="py-8 text-center text-sm text-gray-500">Loading usage data...</div>
                       ) : productUsage.length === 0 ? (
-                        <div className="py-8 text-center text-xs text-gray-500">
-                          <div className="text-lg mb-2">📦</div>
+                        <div className="py-8 text-center text-sm text-gray-500">
+                          <div className="text-base mb-2">📦</div>
                           <div>This product is not being used in any estimates.</div>
                         </div>
                       ) : (
@@ -952,56 +960,57 @@ export default function InventoryProducts(){
                           <div className="text-xs text-gray-600 mb-4">
                             This product is being used in {productUsage.length} estimate{productUsage.length !== 1 ? 's' : ''}:
                           </div>
-                          <div className="border border-gray-200 rounded-lg divide-y divide-gray-200">
+                          <div className="border rounded-lg divide-y">
                             {productUsage.map((usage, idx) => (
-                              <div key={idx} className="p-4 hover:bg-gray-50">
+                              <div key={idx} className="p-3 hover:bg-gray-50">
                                 {usage.status === 'orphaned' ? (
                                   <div className="flex items-center justify-between">
                                     <div>
-                                      <div className="font-medium text-gray-900">Orphaned Estimate</div>
-                                      <div className="text-sm text-gray-500">Estimate #{usage.estimate_id} (deleted)</div>
+                                      <div className="text-sm font-medium text-gray-900">Orphaned Estimate</div>
+                                      <div className="text-xs text-gray-500">Estimate #{usage.estimate_id} (deleted)</div>
                                     </div>
-                                    <span className="px-2 py-1 text-xs rounded bg-amber-100 text-amber-800">Orphaned</span>
+                                    <span className="px-2 py-0.5 text-[10px] rounded bg-amber-100 text-amber-800">Orphaned</span>
                                   </div>
                                 ) : usage.status === 'project_deleted' || usage.project_deleted ? (
                                   <div className="flex items-center justify-between">
                                     <div className="flex-1">
-                                      <div className="font-medium text-gray-900">{usage.project_name || 'Project Deleted'}</div>
-                                      <div className="text-sm text-gray-500">Estimate #{usage.estimate_id} - Project was deleted</div>
+                                      <div className="text-sm font-medium text-gray-900">{usage.project_name || 'Project Deleted'}</div>
+                                      <div className="text-xs text-gray-500">Estimate #{usage.estimate_id} - Project was deleted</div>
                                       {usage.created_at && (
-                                        <div className="text-xs text-gray-400 mt-1">
+                                        <div className="text-[10px] text-gray-400 mt-1">
                                           Created: {new Date(usage.created_at).toLocaleDateString()}
                                         </div>
                                       )}
                                     </div>
-                                    <span className="px-2 py-1 text-xs rounded bg-red-100 text-red-800">Project Deleted</span>
+                                    <span className="px-2 py-0.5 text-[10px] rounded bg-red-100 text-red-800">Project Deleted</span>
                                   </div>
                                 ) : (
                                   <div className="flex items-center justify-between">
                                     <div className="flex-1">
                                       {usage.project_name ? (
                                         <>
-                                          <div className="font-medium text-gray-900">{usage.project_name}</div>
+                                          <div className="text-sm font-medium text-gray-900">{usage.project_name}</div>
                                           {usage.client_name && (
-                                            <div className="text-sm text-gray-500">Client: {usage.client_name}</div>
+                                            <div className="text-xs text-gray-500">Client: {usage.client_name}</div>
                                           )}
                                           {usage.created_at && (
-                                            <div className="text-xs text-gray-400 mt-1">
+                                            <div className="text-[10px] text-gray-400 mt-1">
                                               Created: {new Date(usage.created_at).toLocaleDateString()}
                                             </div>
                                           )}
                                         </>
                                       ) : (
-                                        <div className="text-gray-500">No project associated</div>
+                                        <div className="text-xs text-gray-500">No project associated</div>
                                       )}
                                     </div>
                                     {usage.project_id && !usage.project_deleted && (
                                       <button
+                                        type="button"
                                         onClick={() => {
                                           navigate(`/projects/${usage.project_id}`);
                                           resetModal();
                                         }}
-                                        className="px-3 py-2 text-xs font-medium rounded-lg bg-brand-red text-white hover:opacity-90 transition-opacity"
+                                        className="px-3 py-1.5 rounded-lg text-xs font-medium bg-brand-red text-white hover:bg-[#aa1212] transition-colors"
                                       >
                                         View Project
                                       </button>
@@ -1015,35 +1024,36 @@ export default function InventoryProducts(){
                       )}
                     </div>
                   ) : productTab === 'related' && viewing ? (
-                    <div className="px-4 pb-4">
+                    <div className="rounded-xl border bg-white p-4">
                       {Array.isArray(relatedList) && relatedList.length ? (
                         <div className="space-y-3">
                           <div className="text-xs text-gray-600 mb-4">
                             This product is related to {relatedList.length} product{relatedList.length !== 1 ? 's' : ''}:
                           </div>
-                          <div className="border border-gray-200 rounded-lg divide-y divide-gray-200">
+                          <div className="border rounded-lg divide-y">
                             {relatedList.map((r: any, i: number) => (
-                              <div key={i} className="p-4 hover:bg-gray-50 flex items-center gap-4">
+                              <div key={i} className="p-3 hover:bg-gray-50 flex items-center gap-3">
                                 <img
                                   src={r.image_base64 || '/ui/assets/placeholders/product.png'}
-                                  className="w-16 h-16 rounded-lg border object-cover flex-shrink-0"
+                                  className="w-12 h-12 rounded-lg border object-cover flex-shrink-0"
                                   alt={r.name}
                                 />
                                 <div className="flex-1 min-w-0">
-                                  <div className="font-medium text-gray-900">{r.name}</div>
+                                  <div className="text-sm font-medium text-gray-900">{r.name}</div>
                                   {r.supplier_name && (
-                                    <div className="text-sm text-gray-500">Supplier: {r.supplier_name}</div>
+                                    <div className="text-xs text-gray-500">Supplier: {r.supplier_name}</div>
                                   )}
                                   {typeof r.price === 'number' && (
-                                    <div className="text-sm text-brand-red font-semibold mt-1">
+                                    <div className="text-xs text-brand-red font-semibold mt-0.5">
                                       ${r.price.toFixed(2)}
                                     </div>
                                   )}
                                 </div>
                                 {canEditProducts && (
                                   <button
+                                    type="button"
                                     onClick={() => deleteRelation(viewing.id, r.id)}
-                                    className="px-3 py-2 text-xs font-medium rounded-lg bg-red-50 text-red-700 hover:bg-red-100 flex-shrink-0 transition-colors"
+                                    className="px-2 py-1 rounded-lg text-xs font-medium bg-red-100 text-red-700 hover:bg-red-200 flex-shrink-0"
                                   >
                                     Remove
                                   </button>
@@ -1053,21 +1063,23 @@ export default function InventoryProducts(){
                           </div>
                           {canEditProducts && (
                             <button
+                              type="button"
                               onClick={() => handleAddRelated(viewing.id)}
-                              className="w-full mt-4 px-3 py-2 text-xs font-medium rounded-lg bg-brand-red text-white hover:opacity-90 transition-opacity"
+                              className="w-full mt-4 px-3 py-1.5 rounded-lg text-sm font-medium bg-brand-red text-white hover:bg-[#aa1212] transition-colors"
                             >
                               + Add Related Product
                             </button>
                           )}
                         </div>
                       ) : (
-                        <div className="py-8 text-center text-xs text-gray-500">
-                          <div className="text-lg mb-2">🔗</div>
+                        <div className="py-8 text-center text-sm text-gray-500">
+                          <div className="text-base mb-2">🔗</div>
                           <div>This product has no related products.</div>
                           {canEditProducts && (
                             <button
+                              type="button"
                               onClick={() => handleAddRelated(viewing.id)}
-                              className="mt-4 px-3 py-2 text-xs font-medium rounded-lg bg-brand-red text-white hover:opacity-90 transition-opacity"
+                              className="mt-4 px-3 py-1.5 rounded-lg text-sm font-medium bg-brand-red text-white hover:bg-[#aa1212] transition-colors"
                             >
                               + Add Related Product
                             </button>
@@ -1076,37 +1088,56 @@ export default function InventoryProducts(){
                       )}
                     </div>
                   ) : null}
-                  </div>
-                </>
-              ) : (
-                // Edit/Create mode - form inputs
-                <>
-                  {/* Edit Header - new style */}
-                  <div className="flex-shrink-0 flex items-center justify-between p-4 border-b border-gray-200 bg-white">
-                    <div>
-                      <h2 className="text-sm font-semibold text-gray-900">
-                        {editing ? 'Edit Product' : 'New Product'}
-                      </h2>
-                      <p className="text-xs text-gray-500 mt-0.5">
-                        {editing ? 'Update product information' : 'Add a new product to your inventory'}
-                      </p>
-                    </div>
+                </div>
+                {/* Footer - same as Suppliers (Edit only in view mode) */}
+                <div className="flex-shrink-0 px-4 py-4 border-t border-gray-200 bg-white flex items-center justify-end gap-3 rounded-b-xl">
+                  {canEditProducts && (
                     <button
-                      onClick={resetModal}
-                      className="text-gray-400 hover:text-gray-600 w-8 h-8 flex items-center justify-center rounded-lg hover:bg-gray-100 text-xl font-medium leading-none"
-                      title="Close"
+                      type="button"
+                      onClick={openEditModal}
+                      className="px-3 py-1.5 rounded-lg text-sm font-medium border border-gray-200 hover:bg-gray-50 text-gray-700"
                     >
-                      ×
+                      Edit
                     </button>
+                  )}
+                </div>
+                </>
+            </div>
+          ) : (
+            <div className="w-[900px] max-w-[95vw] max-h-[90vh] rounded-xl overflow-hidden flex flex-col shadow-xl bg-gray-100 border border-gray-200">
+                {/* Edit/Create mode - form inputs */}
+                <>
+                  {/* Title bar - same style as suppliers New Product */}
+                  <div className="rounded-t-xl border-b border-gray-200 bg-white p-4 flex-shrink-0">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-3">
+                        <button
+                          type="button"
+                          onClick={resetModal}
+                          className="p-1.5 rounded hover:bg-gray-100 transition-colors flex items-center justify-center"
+                          title="Close"
+                        >
+                          <svg className="w-4 h-4 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+                          </svg>
+                        </button>
+                        <div>
+                          <div className="text-sm font-semibold text-gray-900">{editing ? 'Edit Product' : 'New Product'}</div>
+                          <div className="text-sm text-gray-500 mt-0.5">{editing ? 'Update product information' : 'Add a new product to your inventory'}</div>
+                        </div>
+                      </div>
+                    </div>
                   </div>
-                  
-                  <div className="flex-1 overflow-y-auto p-4 grid grid-cols-2 gap-4">
+
+                  <div className="overflow-y-auto flex-1 p-4">
+                    <div className="rounded-xl border bg-white p-4">
+                      <div className="grid grid-cols-2 gap-4">
               <div className="col-span-2">
-                <label className="text-xs font-medium text-gray-700">
+                <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">
                   Name <span className="text-red-600">*</span>
                 </label>
                 <input 
-                  className={`w-full border border-gray-200 rounded-lg px-3 py-2 mt-1 text-xs text-gray-900 focus:outline-none focus:ring-1 focus:ring-gray-300 focus:border-gray-300 ${nameError && !name.trim() ? 'border-red-500' : ''}`}
+                  className={`w-full border border-gray-200 rounded-lg px-3 py-2 text-sm ${nameError && !name.trim() ? 'border-red-500' : ''}`}
                   value={name} 
                   onChange={e=>{
                     setName(e.target.value);
@@ -1118,10 +1149,10 @@ export default function InventoryProducts(){
                 )}
               </div>
               <div>
-                <label className="text-xs font-medium text-gray-700">
+                <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">
                   Supplier <span className="text-red-600">*</span>
                 </label>
-                <div className="mt-1">
+                <div className="mt-1 text-sm">
                   <SupplierSelect
                     value={newSupplier}
                     onChange={(value) => {
@@ -1131,21 +1162,22 @@ export default function InventoryProducts(){
                     onOpenNewSupplierModal={() => setNewSupplierModalOpen(true)}
                     error={supplierError && !newSupplier.trim()}
                     placeholder="Select a supplier"
+                    className="[&_button]:text-sm"
                   />
                 </div>
                 {supplierError && !newSupplier.trim() && (
                   <div className="text-[11px] text-red-600 mt-1">This field is required</div>
                 )}
               </div>
-              <div><label className="text-xs font-medium text-gray-700">Category</label><input className="w-full border border-gray-200 rounded-lg px-3 py-2 mt-1 text-xs text-gray-900 focus:outline-none focus:ring-1 focus:ring-gray-300 focus:border-gray-300" value={newCategory} onChange={e=>setNewCategory(e.target.value)} /></div>
-              <div><label className="text-xs font-medium text-gray-700">Sell Unit</label><input className="w-full border border-gray-200 rounded-lg px-3 py-2 mt-1 text-xs text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-1 focus:ring-gray-300 focus:border-gray-300" placeholder="e.g., Roll, Pail (20L), Box" value={unit} onChange={e=>setUnit(e.target.value)} /></div>
+              <div><label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">Category</label><input className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" value={newCategory} onChange={e=>setNewCategory(e.target.value)} /></div>
+              <div><label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">Sell Unit</label><input className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm placeholder:text-gray-400" placeholder="e.g., Roll, Pail (20L), Box" value={unit} onChange={e=>setUnit(e.target.value)} /></div>
               <div>
-                <label className="text-xs font-medium text-gray-700">
+                <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">
                   Price ($) <span className="text-red-600">*</span>
                 </label>
                 <input 
                   type="text" 
-                  className={`w-full border border-gray-200 rounded-lg px-3 py-2 mt-1 text-xs text-gray-900 focus:outline-none focus:ring-1 focus:ring-gray-300 focus:border-gray-300 ${priceError && (!price || !price.trim() || Number(parseCurrency(price)) <= 0) ? 'border-red-500' : ''}`}
+                  className={`w-full border border-gray-200 rounded-lg px-3 py-2 text-sm ${priceError && (!price || !price.trim() || Number(parseCurrency(price)) <= 0) ? 'border-red-500' : ''}`}
                   placeholder="$0.00"
                   value={priceFocused ? priceDisplay : (price ? formatCurrency(price) : '')}
                   onFocus={() => {
@@ -1169,80 +1201,80 @@ export default function InventoryProducts(){
                 )}
               </div>
               <div className="col-span-2">
-                <label className="text-xs font-medium text-gray-700">Unit Type</label>
+                <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">Unit Type</label>
                 <div className="flex items-center gap-6 mt-1">
-                  <label className="flex items-center gap-2 text-xs"><input type="radio" name="unit-type" checked={unitType==='unitary'} onChange={()=>{ setUnitType('unitary'); setUnitsPerPackage(''); setCovSqs(''); setCovFt2(''); setCovM2(''); }} /> Unitary</label>
-                  <label className="flex items-center gap-2 text-xs"><input type="radio" name="unit-type" checked={unitType==='multiple'} onChange={()=>{ setUnitType('multiple'); setCovSqs(''); setCovFt2(''); setCovM2(''); }} /> Multiple</label>
-                  <label className="flex items-center gap-2 text-xs"><input type="radio" name="unit-type" checked={unitType==='coverage'} onChange={()=>{ setUnitType('coverage'); setUnitsPerPackage(''); }} /> Coverage</label>
+                  <label className="flex items-center gap-2 text-sm"><input type="radio" name="unit-type" checked={unitType==='unitary'} onChange={()=>{ setUnitType('unitary'); setUnitsPerPackage(''); setCovSqs(''); setCovFt2(''); setCovM2(''); }} /> Unitary</label>
+                  <label className="flex items-center gap-2 text-sm"><input type="radio" name="unit-type" checked={unitType==='multiple'} onChange={()=>{ setUnitType('multiple'); setCovSqs(''); setCovFt2(''); setCovM2(''); }} /> Multiple</label>
+                  <label className="flex items-center gap-2 text-sm"><input type="radio" name="unit-type" checked={unitType==='coverage'} onChange={()=>{ setUnitType('coverage'); setUnitsPerPackage(''); }} /> Coverage</label>
                 </div>
               </div>
               {unitType==='multiple' && (
                 <div className="col-span-2">
-                  <label className="text-xs font-medium text-gray-700">Units per Package</label>
-                  <input type="number" step="0.01" className="w-full border border-gray-200 rounded-lg px-3 py-2 mt-1 text-xs text-gray-900 focus:outline-none focus:ring-1 focus:ring-gray-300 focus:border-gray-300" value={unitsPerPackage} onChange={e=>setUnitsPerPackage(e.target.value)} />
+                  <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">Units per Package</label>
+                  <input type="number" step="0.01" className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" value={unitsPerPackage} onChange={e=>setUnitsPerPackage(e.target.value)} />
                 </div>
               )}
               {unitType==='coverage' && (
                 <div className="col-span-2">
-                  <label className="text-xs font-medium text-gray-700">Coverage Area</label>
+                  <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">Coverage Area</label>
                   <div className="flex items-center gap-2 mt-1">
                     <div className="flex-1 flex items-center gap-1">
                       <input 
                         type="number"
                         step="any"
-                        className="w-full border border-gray-200 rounded-lg px-3 py-2 text-xs text-gray-900 focus:outline-none focus:ring-1 focus:ring-gray-300 focus:border-gray-300" 
+                        className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" 
                         placeholder="0" 
                         value={covSqs} 
                         onChange={e=> onCoverageChange('sqs', e.target.value)} 
                       />
-                      <span className="text-xs text-gray-600 whitespace-nowrap">SQS</span>
+                      <span className="text-sm text-gray-600 whitespace-nowrap">SQS</span>
                     </div>
                     <span className="text-gray-400">=</span>
                     <div className="flex-1 flex items-center gap-1">
                       <input 
                         type="number"
                         step="any"
-                        className="w-full border border-gray-200 rounded-lg px-3 py-2 text-xs text-gray-900 focus:outline-none focus:ring-1 focus:ring-gray-300 focus:border-gray-300" 
+                        className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" 
                         placeholder="0" 
                         value={covFt2} 
                         onChange={e=> onCoverageChange('ft2', e.target.value)} 
                       />
-                      <span className="text-xs text-gray-600 whitespace-nowrap">ft²</span>
+                      <span className="text-sm text-gray-600 whitespace-nowrap">ft²</span>
                     </div>
                     <span className="text-gray-400">=</span>
                     <div className="flex-1 flex items-center gap-1">
                       <input 
                         type="number"
                         step="any"
-                        className="w-full border border-gray-200 rounded-lg px-3 py-2 text-xs text-gray-900 focus:outline-none focus:ring-1 focus:ring-gray-300 focus:border-gray-300" 
+                        className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" 
                         placeholder="0" 
                         value={covM2} 
                         onChange={e=> onCoverageChange('m2', e.target.value)} 
                       />
-                      <span className="text-xs text-gray-600 whitespace-nowrap">m²</span>
+                      <span className="text-sm text-gray-600 whitespace-nowrap">m²</span>
                     </div>
                   </div>
                 </div>
               )}
-              <div className="col-span-2"><label className="text-xs font-medium text-gray-700">Description / Notes</label><textarea className="w-full border border-gray-200 rounded-lg px-3 py-2 mt-1 text-xs text-gray-900 focus:outline-none focus:ring-1 focus:ring-gray-300 focus:border-gray-300" rows={3} value={desc} onChange={e=>setDesc(e.target.value)} /></div>
+              <div className="col-span-2"><label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">Description / Notes</label><textarea className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" rows={3} value={desc} onChange={e=>setDesc(e.target.value)} /></div>
               <div className="col-span-2">
-                <label className="text-xs font-medium text-gray-700">Technical Manual URL</label>
+                <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">Technical Manual URL</label>
                 <input 
-                  className="w-full border border-gray-200 rounded-lg px-3 py-2 mt-1 text-xs text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-1 focus:ring-gray-300 focus:border-gray-300" 
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm placeholder:text-gray-400" 
                   type="url"
                   placeholder="https://supplier.com/manual/product"
                   value={technicalManualUrl} 
                   onChange={e=>setTechnicalManualUrl(e.target.value)} 
                 />
-                <div className="text-[11px] text-gray-500 mt-1">Link to the technical manual on the supplier's website</div>
+                <div className="text-[10px] text-gray-500 mt-1">Link to the technical manual on the supplier's website</div>
               </div>
               <div className="col-span-2">
-                <label className="text-xs font-medium text-gray-700">Product Image</label>
+                <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">Product Image</label>
                 <div className="mt-1 space-y-2">
                   <button
                     type="button"
                     onClick={() => setImagePickerOpen(true)}
-                    className="px-3 py-2 text-xs font-medium rounded-lg border border-gray-200 bg-white hover:bg-gray-50 transition-colors">
+                    className="px-3 py-2 rounded-lg text-sm bg-gray-100 hover:bg-gray-200">
                     {imageDataUrl ? 'Change Image' : 'Select Image'}
                   </button>
                   {imageDataUrl && (
@@ -1251,31 +1283,23 @@ export default function InventoryProducts(){
                       <button
                         type="button"
                         onClick={() => setImageDataUrl('')}
-                        className="mt-2 px-2 py-1.5 text-xs font-medium rounded-lg bg-red-50 text-red-700 hover:bg-red-100 transition-colors">
+                        className="mt-2 px-2 py-1.5 text-sm font-medium rounded-lg bg-red-50 text-red-700 hover:bg-red-100 transition-colors">
                         Remove Image
                       </button>
                     </div>
                   )}
                 </div>
               </div>
+                      </div>
+                    </div>
                   </div>
                 </>
-              )}
-            <div className="flex-shrink-0 px-4 py-3 border-t border-gray-200 bg-gray-50 flex justify-end gap-2">
-              {viewing && !editing ? (
-                // View mode buttons
+              <div className="flex-shrink-0 px-4 py-4 border-t border-gray-200 bg-white flex items-center justify-end gap-3 rounded-b-xl">
+                {/* Edit/Create mode buttons */}
                 <>
-                  {canEditProducts && (
-                    <>
-                      <button onClick={openEditModal} className="px-3 py-2 text-xs font-medium text-gray-700 border border-gray-200 rounded-lg bg-white hover:bg-gray-50 transition-colors">Edit</button>
-                      <button onClick={()=> handleDelete(viewing.id)} className="px-3 py-2 text-xs font-medium text-white bg-red-600 rounded-lg hover:opacity-90 transition-opacity">Delete</button>
-                    </>
-                  )}
-                </>
-              ) : (
-                // Edit/Create mode buttons
-                <>
-                  <button onClick={()=>{
+                  <button
+                    type="button"
+                    onClick={()=>{
                     if(editing){
                       setViewing(editing);
                       setEditing(null);
@@ -1285,8 +1309,10 @@ export default function InventoryProducts(){
                     }else{
                       resetModal();
                     }
-                  }} className="px-3 py-2 text-xs font-medium text-gray-700 border border-gray-200 rounded-lg bg-white hover:bg-gray-50 transition-colors">Cancel</button>
-                  <button onClick={async()=>{
+                  }} className="px-3 py-1.5 rounded-lg text-sm font-medium text-gray-700 border border-gray-200 hover:bg-gray-50">Cancel</button>
+                  <button
+                    type="button"
+                    onClick={async()=>{
                     if(isSavingProduct) return;
                     
                     // Validate name
@@ -1334,62 +1360,76 @@ export default function InventoryProducts(){
                       await refetch();
                     }catch(_e){ toast.error('Failed'); }
                     finally{ setIsSavingProduct(false); }
-                  }} disabled={isSavingProduct} className="px-3 py-2 text-xs font-medium text-white bg-brand-red rounded-lg hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed transition-opacity">
+                  }} disabled={isSavingProduct} className="px-4 py-2 rounded-lg text-sm font-semibold text-white bg-brand-red hover:bg-[#aa1212] disabled:opacity-50 disabled:cursor-not-allowed">
                     {isSavingProduct ? (editing ? 'Updating...' : 'Creating...') : (editing ? 'Update' : 'Create')}
                   </button>
                 </>
-              )}
+              </div>
             </div>
-          </div>
+          )}
         </div>
       )}
 
 
       {addRelatedOpen && (
-        <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center">
-          <div className="w-[600px] max-w-[95vw] bg-white rounded-xl overflow-hidden">
-            <div className="px-6 py-4 border-b flex items-center justify-between bg-gray-50">
-              <div className="font-semibold text-lg">Add Related Product</div>
-              <button
-                onClick={() => setAddRelatedOpen(false)}
-                className="text-gray-500 hover:text-gray-700 text-2xl font-bold w-8 h-8 flex items-center justify-center rounded hover:bg-gray-100"
-                title="Close"
-              >
-                ×
-              </button>
+        <div className="fixed inset-0 z-[120] bg-black/50 flex items-center justify-center overflow-y-auto p-4">
+          <div className="w-[600px] max-w-[95vw] max-h-[90vh] bg-gray-100 rounded-xl overflow-hidden flex flex-col border border-gray-200 shadow-xl">
+            <div className="rounded-t-xl border-b border-gray-200 bg-white p-4 flex-shrink-0">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <button
+                    type="button"
+                    onClick={() => setAddRelatedOpen(false)}
+                    className="p-1.5 rounded hover:bg-gray-100 transition-colors flex items-center justify-center"
+                    title="Close"
+                  >
+                    <svg className="w-4 h-4 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+                    </svg>
+                  </button>
+                  <div>
+                    <div className="text-sm font-semibold text-gray-900">Add Related Product</div>
+                    <div className="text-xs text-gray-500 mt-0.5">Search and link a product to this one</div>
+                  </div>
+                </div>
+              </div>
             </div>
-            <div className="p-4">
-              <input
-                type="text"
-                className="w-full border rounded px-3 py-2 mb-4"
-                placeholder="Search products..."
-                value={addRelatedSearch}
-                onChange={e => searchRelatedProducts(e.target.value)}
-              />
-              <div className="max-h-[50vh] overflow-y-auto">
-                {Array.isArray(addRelatedResults) && addRelatedResults.length > 0 ? (
-                  addRelatedResults.map(r => (
-                    <button
-                      key={r.id}
-                      onClick={() => createRelation(addRelatedTarget!, r.id)}
-                      className="w-full text-left p-3 border-b hover:bg-gray-50 flex items-center justify-between"
-                    >
-                      <div>
-                        <div className="font-medium">{r.name}</div>
-                        {r.supplier_name && (
-                          <div className="text-sm text-gray-500">{r.supplier_name}</div>
-                        )}
-                      </div>
-                      <div className="text-sm text-brand-red font-semibold">
-                        ${Number(r.price || 0).toFixed(2)}
-                      </div>
-                    </button>
-                  ))
-                ) : addRelatedResults.length === 0 && !addRelatedSearch ? (
-                  <div className="p-3 text-gray-500 text-center">Start typing to search products...</div>
-                ) : addRelatedSearch && addRelatedResults.length === 0 ? (
-                  <div className="p-3 text-gray-500 text-center">No products found</div>
-                ) : null}
+            <div className="overflow-y-auto flex-1 p-4">
+              <div className="rounded-xl border bg-white p-4">
+                <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">Search products</label>
+                <input
+                  type="text"
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm mb-4"
+                  placeholder="Search products..."
+                  value={addRelatedSearch}
+                  onChange={e => searchRelatedProducts(e.target.value)}
+                />
+                <div>
+                  {Array.isArray(addRelatedResults) && addRelatedResults.length > 0 ? (
+                    addRelatedResults.map(r => (
+                      <button
+                        key={r.id}
+                        type="button"
+                        onClick={() => createRelation(addRelatedTarget!, r.id)}
+                        className="w-full text-left p-3 border-b border-gray-100 last:border-b-0 hover:bg-gray-50 flex items-center justify-between text-sm"
+                      >
+                        <div>
+                          <div className="font-medium text-gray-900">{r.name}</div>
+                          {r.supplier_name && (
+                            <div className="text-xs text-gray-500">{r.supplier_name}</div>
+                          )}
+                        </div>
+                        <div className="text-xs text-brand-red font-semibold">
+                          ${Number(r.price || 0).toFixed(2)}
+                        </div>
+                      </button>
+                    ))
+                  ) : addRelatedResults.length === 0 && !addRelatedSearch ? (
+                    <div className="p-3 text-xs text-gray-500 text-center">Start typing to search products...</div>
+                  ) : addRelatedSearch && addRelatedResults.length === 0 ? (
+                    <div className="p-3 text-xs text-gray-500 text-center">No products found</div>
+                  ) : null}
+                </div>
               </div>
             </div>
           </div>

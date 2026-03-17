@@ -32,6 +32,8 @@ export default function Inspections() {
   const [searchParams, setSearchParams] = useSearchParams();
   const search = searchParams.get('search') ?? '';
   const [showNewInspectionModal, setShowNewInspectionModal] = useState(false);
+  const [newInspectionCanSubmit, setNewInspectionCanSubmit] = useState(false);
+  const [newInspectionIsPending, setNewInspectionIsPending] = useState(false);
 
   type SortColumn = 'scheduled_at' | 'asset';
   const validSorts: SortColumn[] = ['scheduled_at', 'asset'];
@@ -329,6 +331,7 @@ export default function Inspections() {
             </div>
             <div className="overflow-y-auto flex-1 p-4">
               <InspectionScheduleForm
+                formId="inspection-schedule-form-inspections-modal"
                 onSuccess={(data) => {
                   setShowNewInspectionModal(false);
                   queryClient.invalidateQueries({ queryKey: ['inspection-schedules'] });
@@ -336,7 +339,28 @@ export default function Inspections() {
                   nav('/fleet/inspections');
                 }}
                 onCancel={() => setShowNewInspectionModal(false)}
+                onValidationChange={(canSubmit, isPending) => {
+                  setNewInspectionCanSubmit(canSubmit);
+                  setNewInspectionIsPending(isPending);
+                }}
               />
+            </div>
+            <div className="flex-shrink-0 px-4 py-4 border-t border-gray-200 bg-white flex items-center justify-end gap-3 rounded-b-xl">
+              <button
+                type="button"
+                onClick={() => setShowNewInspectionModal(false)}
+                className="px-3 py-1.5 rounded-lg text-sm font-medium text-gray-700 border border-gray-200 hover:bg-gray-50"
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                form="inspection-schedule-form-inspections-modal"
+                disabled={!newInspectionCanSubmit || newInspectionIsPending}
+                className="px-4 py-2 rounded-lg text-sm font-semibold text-white bg-brand-red hover:bg-[#aa1212] disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {newInspectionIsPending ? 'Scheduling...' : 'Schedule inspection'}
+              </button>
             </div>
           </div>
         </div>

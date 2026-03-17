@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import toast from 'react-hot-toast';
@@ -199,8 +199,8 @@ export default function UserLoans({ userId, canEdit = true }: { userId: string; 
 
       {/* Loans Section */}
       <div className="rounded-xl border bg-white p-4">
-        {/* Header with Create Button */}
-        <div className="mb-4 flex items-center justify-between">
+        {/* Header */}
+        <div className="mb-4 flex items-center gap-4">
           <div className="flex items-center gap-2">
             <div className="w-8 h-8 rounded bg-purple-100 flex items-center justify-center">
               <svg className="w-5 h-5 text-purple-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -209,27 +209,17 @@ export default function UserLoans({ userId, canEdit = true }: { userId: string; 
             </div>
             <h5 className="text-sm font-semibold text-purple-900">Loans</h5>
           </div>
-          <div className="flex items-center gap-4">
-            <div className="flex items-center gap-2">
-              <input
-                type="checkbox"
-                id="show-closed"
-                checked={showClosedLoans}
-                onChange={(e) => setShowClosedLoans(e.target.checked)}
-                className="w-3.5 h-3.5 rounded border-gray-300 text-brand-red focus:ring-brand-red"
-              />
-              <label htmlFor="show-closed" className="text-xs font-medium text-gray-700 cursor-pointer">
-                Show "Closed" Loans
-              </label>
-            </div>
-            {canEdit && (
-              <button
-                onClick={() => setShowCreateModal(true)}
-                className="px-2 py-1 text-xs bg-[#d11616] text-white rounded-lg font-medium hover:bg-[#b01414] transition-colors"
-              >
-                + Create Loan
-              </button>
-            )}
+          <div className="flex items-center gap-2">
+            <input
+              type="checkbox"
+              id="show-closed"
+              checked={showClosedLoans}
+              onChange={(e) => setShowClosedLoans(e.target.checked)}
+              className="w-3.5 h-3.5 rounded border-gray-300 text-brand-red focus:ring-brand-red"
+            />
+            <label htmlFor="show-closed" className="text-xs font-medium text-gray-700 cursor-pointer">
+              Show "Closed" Loans
+            </label>
           </div>
         </div>
 
@@ -324,6 +314,20 @@ export default function UserLoans({ userId, canEdit = true }: { userId: string; 
               </tr>
             </thead>
             <tbody>
+              {canEdit && (
+                <tr>
+                  <td colSpan={6} className="p-0 align-top">
+                    <button
+                      type="button"
+                      onClick={() => setShowCreateModal(true)}
+                      className="w-full border-2 border-dashed border-gray-300 rounded-t-xl p-2.5 hover:border-brand-red hover:bg-gray-50 flex items-center justify-center gap-2 min-h-[52px] text-gray-600 hover:text-brand-red transition-colors"
+                    >
+                      <span className="text-lg font-medium">+</span>
+                      <span className="text-sm font-medium">Create Loan</span>
+                    </button>
+                  </td>
+                </tr>
+              )}
               {!loans ? (
                 <tr>
                   <td colSpan={6} className="p-4 text-center text-xs text-gray-500">
@@ -464,6 +468,17 @@ function CreateLoanModal({ userId, onClose }: { userId: string; onClose: () => v
   const [notes, setNotes] = useState('');
   const [saving, setSaving] = useState(false);
 
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [onClose]);
+
+  useEffect(() => {
+    document.body.style.overflow = 'hidden';
+    return () => { document.body.style.overflow = ''; };
+  }, []);
+
   // Calculate total loan amount (base + fees)
   const totalLoanAmount = useMemo(() => {
     const baseAmount = parseFloat(loanAmount) || 0;
@@ -519,110 +534,132 @@ function CreateLoanModal({ userId, onClose }: { userId: string; onClose: () => v
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-      <div className="w-[600px] max-w-[95vw] bg-white rounded-xl shadow-lg overflow-hidden flex flex-col max-h-[90vh]">
-        <div className="bg-gradient-to-br from-[#7f1010] to-[#a31414] text-white p-4 rounded-t-xl flex items-center justify-between">
-          <div className="text-lg font-extrabold">Create Loan</div>
-          <button onClick={onClose} className="text-white/80 hover:text-white text-xl font-bold w-6 h-6 flex items-center justify-center rounded hover:bg-white/10">
-            ×
-          </button>
-        </div>
-        <div className="flex-1 overflow-y-auto p-4 space-y-4">
-          <div>
-            <label className="block text-xs font-medium text-gray-600 mb-1.5">Loan Amount *</label>
-            <input
-              type="number"
-              step="0.01"
-              min="0"
-              className="w-full rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-gray-900 focus:ring-1 focus:ring-gray-400 focus:border-gray-400"
-              value={loanAmount}
-              onChange={(e) => setLoanAmount(e.target.value)}
-              placeholder="0.00"
-            />
-          </div>
-          <div>
-            <label className="block text-xs font-medium text-gray-600 mb-1.5">Fees (%)</label>
-            <input
-              type="number"
-              step="0.01"
-              min="0"
-              max="100"
-              className="w-full rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-gray-900 focus:ring-1 focus:ring-gray-400 focus:border-gray-400"
-              value={fees}
-              onChange={(e) => setFees(e.target.value)}
-              placeholder="0.00"
-            />
-            <div className="text-[10px] text-gray-500 mt-1">Interest rate percentage to be added to the loan amount</div>
-          </div>
-          {loanAmount && parseFloat(loanAmount) > 0 && (
-            <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg">
-              <div className="text-xs text-blue-600 font-medium mb-1">Total Loan Amount</div>
-              <div className="text-sm font-semibold text-blue-900">
-                {formatCurrency(totalLoanAmount)}
-              </div>
-              <div className="text-[10px] text-blue-700 mt-1">
-                Base: {formatCurrency(parseFloat(loanAmount) || 0)} 
-                {fees && parseFloat(fees) > 0 && (
-                  <> + Fees ({parseFloat(fees) || 0}%): {formatCurrency((parseFloat(loanAmount) || 0) * (parseFloat(fees) || 0) / 100)}</>
-                )}
-              </div>
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 overflow-y-auto"
+      onClick={onClose}
+    >
+      <div
+        className="w-[600px] max-w-[95vw] max-h-[90vh] flex flex-col rounded-xl border border-gray-200 bg-gray-100 shadow-xl overflow-hidden"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex-shrink-0 rounded-t-xl border-b border-gray-200 bg-white p-4">
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={onClose}
+              className="p-1 rounded-lg hover:bg-gray-100 text-gray-600"
+              title="Close"
+            >
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+              </svg>
+            </button>
+            <div>
+              <h2 className="text-sm font-semibold text-gray-900">Create Loan</h2>
+              <p className="text-xs text-gray-500 mt-0.5">Add a new loan for this employee</p>
             </div>
-          )}
-          <div>
-            <label className="block text-xs font-medium text-gray-600 mb-1.5">Agreement Date *</label>
-            <input
-              type="date"
-              className="w-full rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-gray-900 focus:ring-1 focus:ring-gray-400 focus:border-gray-400"
-              value={agreementDate}
-              onChange={(e) => setAgreementDate(e.target.value)}
-            />
-          </div>
-          <div>
-            <label className="block text-xs font-medium text-gray-600 mb-1.5">Payment Method *</label>
-            <select
-              className="w-full rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-gray-900 focus:ring-1 focus:ring-gray-400 focus:border-gray-400"
-              value={paymentMethod}
-              onChange={(e) => setPaymentMethod(e.target.value)}
-            >
-              <option value="Payroll">Payroll</option>
-              <option value="Manual">Manual</option>
-            </select>
-          </div>
-          <div>
-            <label className="block text-xs font-medium text-gray-600 mb-1.5">Status</label>
-            <select
-              className="w-full rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-gray-900 focus:ring-1 focus:ring-gray-400 focus:border-gray-400"
-              value={status}
-              onChange={(e) => setStatus(e.target.value)}
-            >
-              <option value="Active">Active</option>
-              <option value="Closed">Closed</option>
-              <option value="Cancelled">Cancelled</option>
-            </select>
-          </div>
-          <div>
-            <label className="block text-xs font-medium text-gray-600 mb-1.5">Notes</label>
-            <textarea
-              className="w-full rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-gray-900 focus:ring-1 focus:ring-gray-400 focus:border-gray-400"
-              rows={3}
-              value={notes}
-              onChange={(e) => setNotes(e.target.value)}
-              placeholder="Optional notes about the loan agreement"
-            />
           </div>
         </div>
-        <div className="px-4 py-3 border-t bg-gray-50 flex items-center justify-end gap-2">
+        <div className="flex-1 overflow-y-auto p-4">
+          <div className="rounded-xl border border-gray-200 bg-white p-4 space-y-4">
+            <div>
+              <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">Loan Amount *</label>
+              <input
+                type="number"
+                step="0.01"
+                min="0"
+                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-gray-300 focus:border-gray-300"
+                value={loanAmount}
+                onChange={(e) => setLoanAmount(e.target.value)}
+                placeholder="0.00"
+              />
+            </div>
+            <div>
+              <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">Fees (%)</label>
+              <input
+                type="number"
+                step="0.01"
+                min="0"
+                max="100"
+                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-gray-300 focus:border-gray-300"
+                value={fees}
+                onChange={(e) => setFees(e.target.value)}
+                placeholder="0.00"
+              />
+              <div className="text-[10px] text-gray-500 mt-1">Interest rate percentage to be added to the loan amount</div>
+            </div>
+            {loanAmount && parseFloat(loanAmount) > 0 && (
+              <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                <div className="text-xs text-blue-600 font-medium mb-1">Total Loan Amount</div>
+                <div className="text-sm font-semibold text-blue-900">
+                  {formatCurrency(totalLoanAmount)}
+                </div>
+                <div className="text-[10px] text-blue-700 mt-1">
+                  Base: {formatCurrency(parseFloat(loanAmount) || 0)}
+                  {fees && parseFloat(fees) > 0 && (
+                    <> + Fees ({parseFloat(fees) || 0}%): {formatCurrency((parseFloat(loanAmount) || 0) * (parseFloat(fees) || 0) / 100)}</>
+                  )}
+                </div>
+              </div>
+            )}
+            <div>
+              <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">Agreement Date *</label>
+              <input
+                type="date"
+                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-gray-300 focus:border-gray-300"
+                value={agreementDate}
+                onChange={(e) => setAgreementDate(e.target.value)}
+              />
+            </div>
+            <div>
+              <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">Payment Method *</label>
+              <select
+                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-gray-300 focus:border-gray-300"
+                value={paymentMethod}
+                onChange={(e) => setPaymentMethod(e.target.value)}
+              >
+                <option value="Payroll">Payroll</option>
+                <option value="Manual">Manual</option>
+              </select>
+            </div>
+            <div>
+              <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">Status</label>
+              <select
+                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-gray-300 focus:border-gray-300"
+                value={status}
+                onChange={(e) => setStatus(e.target.value)}
+              >
+                <option value="Active">Active</option>
+                <option value="Closed">Closed</option>
+                <option value="Cancelled">Cancelled</option>
+              </select>
+            </div>
+            <div>
+              <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">Notes</label>
+              <textarea
+                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-gray-300 focus:border-gray-300"
+                rows={3}
+                value={notes}
+                onChange={(e) => setNotes(e.target.value)}
+                placeholder="Optional notes about the loan agreement"
+              />
+            </div>
+          </div>
+        </div>
+        <div className="flex-shrink-0 px-4 py-4 border-t border-gray-200 bg-white flex items-center justify-end gap-3 rounded-b-xl">
           <button
+            type="button"
             onClick={onClose}
-            className="px-3 py-1.5 text-xs rounded bg-gray-200 hover:bg-gray-300"
             disabled={saving}
+            className="px-3 py-1.5 rounded-lg text-sm font-medium text-gray-700 border border-gray-200 hover:bg-gray-50 disabled:opacity-50"
           >
             Cancel
           </button>
           <button
+            type="button"
             onClick={handleSubmit}
             disabled={saving}
-            className="px-3 py-1.5 text-xs rounded bg-brand-red text-white hover:bg-red-700 disabled:opacity-50"
+            className="px-4 py-2 rounded-lg text-sm font-semibold text-white bg-brand-red hover:bg-[#aa1212] disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {saving ? 'Creating...' : 'Create Loan'}
           </button>
@@ -647,6 +684,17 @@ function AddPaymentModal({
   const [paymentMethod, setPaymentMethod] = useState('Payroll');
   const [notes, setNotes] = useState('');
   const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [onClose]);
+
+  useEffect(() => {
+    document.body.style.overflow = 'hidden';
+    return () => { document.body.style.overflow = ''; };
+  }, []);
 
   // Fetch loan details to get remaining balance
   const { data: loan } = useQuery<LoanDetail>({
@@ -745,75 +793,97 @@ function AddPaymentModal({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-      <div className="w-[500px] max-w-[95vw] bg-white rounded-xl shadow-lg overflow-hidden flex flex-col max-h-[90vh]">
-        <div className="bg-gradient-to-br from-[#7f1010] to-[#a31414] text-white p-4 rounded-t-xl flex items-center justify-between">
-          <div className="text-lg font-extrabold">Add Payment</div>
-          <button onClick={onClose} className="text-white/80 hover:text-white text-xl font-bold w-6 h-6 flex items-center justify-center rounded hover:bg-white/10">
-            ×
-          </button>
-        </div>
-        <div className="flex-1 overflow-y-auto p-6 space-y-4">
-          <div>
-            <label className="block text-xs font-medium text-gray-600 mb-1.5">Payment Date *</label>
-            <input
-              type="date"
-              className="w-full rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-gray-900 focus:ring-1 focus:ring-gray-400 focus:border-gray-400"
-              value={paymentDate}
-              onChange={(e) => setPaymentDate(e.target.value)}
-            />
-          </div>
-          <div>
-            <label className="block text-xs font-medium text-gray-600 mb-1.5">Payment Amount *</label>
-            <input
-              type="number"
-              step="0.01"
-              min="0"
-              className="w-full rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-gray-900 focus:ring-1 focus:ring-gray-400 focus:border-gray-400"
-              value={paymentAmount}
-              onChange={(e) => setPaymentAmount(e.target.value)}
-              placeholder="0.00"
-            />
-            {loan && loan.remaining_balance > 0 && (
-              <div className="text-[10px] text-gray-500 mt-1">
-                Remaining balance: {formatCurrency(loan.remaining_balance)}
-              </div>
-            )}
-          </div>
-          <div>
-            <label className="block text-xs font-medium text-gray-600 mb-1.5">Payment Method *</label>
-            <select
-              className="w-full rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-gray-900 focus:ring-1 focus:ring-gray-400 focus:border-gray-400"
-              value={paymentMethod}
-              onChange={(e) => setPaymentMethod(e.target.value)}
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 overflow-y-auto"
+      onClick={onClose}
+    >
+      <div
+        className="w-[500px] max-w-[95vw] max-h-[90vh] flex flex-col rounded-xl border border-gray-200 bg-gray-100 shadow-xl overflow-hidden"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex-shrink-0 rounded-t-xl border-b border-gray-200 bg-white p-4">
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={onClose}
+              className="p-1 rounded-lg hover:bg-gray-100 text-gray-600"
+              title="Close"
             >
-              <option value="Payroll">Payroll</option>
-              <option value="Manual">Manual</option>
-            </select>
-          </div>
-          <div>
-            <label className="block text-xs font-medium text-gray-600 mb-1.5">Notes</label>
-            <textarea
-              className="w-full rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-gray-900 focus:ring-1 focus:ring-gray-400 focus:border-gray-400"
-              rows={3}
-              value={notes}
-              onChange={(e) => setNotes(e.target.value)}
-              placeholder="Optional notes"
-            />
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+              </svg>
+            </button>
+            <div>
+              <h2 className="text-sm font-semibold text-gray-900">Add Payment</h2>
+              <p className="text-xs text-gray-500 mt-0.5">Record a payment for this loan</p>
+            </div>
           </div>
         </div>
-        <div className="px-4 py-3 border-t bg-gray-50 flex items-center justify-end gap-2">
+        <div className="flex-1 overflow-y-auto p-4">
+          <div className="rounded-xl border border-gray-200 bg-white p-4 space-y-4">
+            <div>
+              <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">Payment Date *</label>
+              <input
+                type="date"
+                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-gray-300 focus:border-gray-300"
+                value={paymentDate}
+                onChange={(e) => setPaymentDate(e.target.value)}
+              />
+            </div>
+            <div>
+              <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">Payment Amount *</label>
+              <input
+                type="number"
+                step="0.01"
+                min="0"
+                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-gray-300 focus:border-gray-300"
+                value={paymentAmount}
+                onChange={(e) => setPaymentAmount(e.target.value)}
+                placeholder="0.00"
+              />
+              {loan && loan.remaining_balance > 0 && (
+                <div className="text-[10px] text-gray-500 mt-1">
+                  Remaining balance: {formatCurrency(loan.remaining_balance)}
+                </div>
+              )}
+            </div>
+            <div>
+              <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">Payment Method *</label>
+              <select
+                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-gray-300 focus:border-gray-300"
+                value={paymentMethod}
+                onChange={(e) => setPaymentMethod(e.target.value)}
+              >
+                <option value="Payroll">Payroll</option>
+                <option value="Manual">Manual</option>
+              </select>
+            </div>
+            <div>
+              <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">Notes</label>
+              <textarea
+                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-gray-300 focus:border-gray-300"
+                rows={3}
+                value={notes}
+                onChange={(e) => setNotes(e.target.value)}
+                placeholder="Optional notes"
+              />
+            </div>
+          </div>
+        </div>
+        <div className="flex-shrink-0 px-4 py-4 border-t border-gray-200 bg-white flex items-center justify-end gap-3 rounded-b-xl">
           <button
+            type="button"
             onClick={onClose}
-            className="px-3 py-1.5 text-xs rounded bg-gray-200 hover:bg-gray-300"
             disabled={saving}
+            className="px-3 py-1.5 rounded-lg text-sm font-medium text-gray-700 border border-gray-200 hover:bg-gray-50 disabled:opacity-50"
           >
             Cancel
           </button>
           <button
+            type="button"
             onClick={handleSubmit}
             disabled={saving}
-            className="px-3 py-1.5 text-xs rounded bg-brand-red text-white hover:bg-red-700 disabled:opacity-50"
+            className="px-4 py-2 rounded-lg text-sm font-semibold text-white bg-brand-red hover:bg-[#aa1212] disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {saving ? 'Adding...' : 'Add Payment'}
           </button>
@@ -840,25 +910,56 @@ function LoanDetailView({
 }) {
   const confirm = useConfirm();
   const [showPaymentModal, setShowPaymentModal] = useState(false);
-  
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [onClose]);
+
+  useEffect(() => {
+    document.body.style.overflow = 'hidden';
+    return () => { document.body.style.overflow = ''; };
+  }, []);
+
   // Fetch loan details to ensure we have the latest data including payments
   const { data: loan } = useQuery<LoanDetail>({
     queryKey: ['loan-detail', userId, loanId],
     queryFn: () => api<LoanDetail>('GET', `/employees/${userId}/loans/${loanId}`),
   });
-  
+
   if (!loan) {
     return (
-      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-        <div className="w-[800px] max-w-[95vw] max-h-[90vh] bg-white rounded-lg shadow-lg overflow-hidden flex flex-col">
-          <div className="px-4 py-3 border-b font-semibold flex items-center justify-between">
-            <span>Loan Details</span>
-            <button onClick={onClose} className="text-gray-500 hover:text-gray-700">
-              ✕
-            </button>
+      <div
+        className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 overflow-y-auto"
+        onClick={onClose}
+      >
+        <div
+          className="w-[800px] max-w-[95vw] max-h-[90vh] flex flex-col rounded-xl border border-gray-200 bg-gray-100 shadow-xl overflow-hidden"
+          onClick={(e) => e.stopPropagation()}
+        >
+          <div className="flex-shrink-0 rounded-t-xl border-b border-gray-200 bg-white p-4">
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={onClose}
+                className="p-1 rounded-lg hover:bg-gray-100 text-gray-600"
+                title="Close"
+              >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                </svg>
+              </button>
+              <div>
+                <h2 className="text-sm font-semibold text-gray-900">Loan Details</h2>
+                <p className="text-xs text-gray-500 mt-0.5">Loading…</p>
+              </div>
+            </div>
           </div>
           <div className="flex-1 overflow-y-auto p-4">
-            <div className="text-center py-8 text-gray-500">Loading...</div>
+            <div className="rounded-xl border border-gray-200 bg-white p-6 flex items-center justify-center">
+              <div className="text-sm text-gray-500">Loading...</div>
+            </div>
           </div>
         </div>
       </div>
@@ -924,15 +1025,34 @@ function LoanDetailView({
   activities.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-      <div className="w-[800px] max-w-[95vw] max-h-[90vh] bg-white rounded-lg shadow-lg overflow-hidden flex flex-col">
-        <div className="px-4 py-3 border-b flex items-center justify-between">
-          <span className="text-sm font-semibold text-gray-900">Loan Details</span>
-          <button onClick={onClose} className="text-gray-500 hover:text-gray-700 text-lg">
-            ✕
-          </button>
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 overflow-y-auto"
+      onClick={onClose}
+    >
+      <div
+        className="w-[800px] max-w-[95vw] max-h-[90vh] flex flex-col rounded-xl border border-gray-200 bg-gray-100 shadow-xl overflow-hidden"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex-shrink-0 rounded-t-xl border-b border-gray-200 bg-white p-4">
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={onClose}
+              className="p-1 rounded-lg hover:bg-gray-100 text-gray-600"
+              title="Close"
+            >
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+              </svg>
+            </button>
+            <div>
+              <h2 className="text-sm font-semibold text-gray-900">Loan Details</h2>
+              <p className="text-xs text-gray-500 mt-0.5">{formatCurrency(loan.loan_amount)} · {loan.status}</p>
+            </div>
+          </div>
         </div>
-        <div className="flex-1 overflow-y-auto p-4 space-y-6">
+        <div className="flex-1 overflow-y-auto p-4">
+          <div className="rounded-xl border border-gray-200 bg-white p-4 space-y-6">
           {/* Loan Info */}
           <div className="grid md:grid-cols-2 gap-4">
             <div>
@@ -990,15 +1110,17 @@ function LoanDetailView({
           {canEdit && loan.status === 'Active' && (
             <div className="flex gap-2">
               <button
+                type="button"
                 onClick={() => setShowPaymentModal(true)}
-                className="px-2 py-1 text-xs rounded bg-blue-600 text-white hover:bg-blue-700"
+                className="px-3 py-1.5 rounded-lg text-sm font-medium text-white bg-blue-600 hover:bg-blue-700"
               >
                 + Add Payment
               </button>
               {loan.remaining_balance <= 0 && (
                 <button
+                  type="button"
                   onClick={handleCloseLoan}
-                  className="px-2 py-1 text-xs rounded bg-orange-600 text-white hover:bg-orange-700"
+                  className="px-3 py-1.5 rounded-lg text-sm font-medium text-white bg-orange-600 hover:bg-orange-700"
                 >
                   Close Loan
                 </button>
@@ -1055,6 +1177,7 @@ function LoanDetailView({
                 </div>
               ))}
             </div>
+          </div>
           </div>
         </div>
       </div>
