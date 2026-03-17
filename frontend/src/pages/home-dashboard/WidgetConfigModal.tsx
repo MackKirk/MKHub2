@@ -145,36 +145,31 @@ export function WidgetConfigModal({ widget, onClose, onSave }: WidgetConfigModal
   };
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4" onClick={onClose}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={onClose}>
       <div
-        className="bg-white rounded-xl shadow-xl max-w-md w-full max-h-[90vh] overflow-hidden flex flex-col border border-gray-200"
+        className="max-w-md w-full max-h-[90vh] flex flex-col rounded-xl border border-gray-200 bg-gray-100 shadow-xl overflow-hidden"
         onClick={(e) => e.stopPropagation()}
       >
-        {/* Header - same style as Create Request */}
-        <div className="p-4 border-b border-gray-200 flex-shrink-0">
-          <div className="flex items-start justify-between gap-4">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-xl bg-brand-red/10 flex items-center justify-center">
-                <svg className="w-5 h-5 text-brand-red" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                </svg>
-              </div>
-              <div>
-                <h2 className="text-sm font-semibold text-gray-900">Widget settings</h2>
-                <p className="text-xs text-gray-500 mt-0.5">Customize this widget</p>
-              </div>
-            </div>
+        {/* Header - same style as New Note */}
+        <div className="flex-shrink-0 rounded-t-xl border-b border-gray-200 bg-white p-4">
+          <div className="flex items-center gap-2">
             <button
+              type="button"
               onClick={onClose}
-              className="text-2xl font-bold text-gray-400 hover:text-gray-600 w-8 h-8 flex items-center justify-center rounded-lg hover:bg-gray-100 transition-colors"
+              className="p-1 rounded-lg hover:bg-gray-100 text-gray-600"
             >
-              ×
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+              </svg>
             </button>
+            <div>
+              <h2 className="text-sm font-semibold text-gray-900">Widget settings</h2>
+              <p className="text-xs text-gray-500 mt-0.5">Customize this widget</p>
+            </div>
           </div>
         </div>
 
-        <div className="p-4 overflow-auto space-y-4 flex-1 min-h-0">
+        <div className="p-4 overflow-y-auto space-y-4 flex-1 min-h-0 bg-gray-100">
           {widget.type !== 'chart' && (
             <div>
               <label className="block text-xs font-semibold text-gray-700 mb-1">Title</label>
@@ -230,6 +225,19 @@ export function WidgetConfigModal({ widget, onClose, onSave }: WidgetConfigModal
               : dataOptions[0].value;
             return (
             <>
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={Boolean(config.related_to_me)}
+                  onChange={(e) => setConfig({ ...config, related_to_me: e.target.checked })}
+                  className="rounded border-gray-300 text-brand-red focus:ring-brand-red/40"
+                />
+                <span className="text-sm">
+                  {isOpportunitiesChart
+                    ? 'Show only Opportunities related to me'
+                    : 'Show only Projects related to me'}
+                </span>
+              </label>
               <div>
                 <label className="block text-xs font-semibold text-gray-700 mb-1">Customer</label>
                 <select
@@ -399,11 +407,11 @@ export function WidgetConfigModal({ widget, onClose, onSave }: WidgetConfigModal
             </div>
           )}
         </div>
-        <div className="p-4 border-t border-gray-200 bg-gray-50/50 flex items-center justify-end gap-2 flex-shrink-0">
-          <button type="button" onClick={onClose} className="px-3 py-2 rounded-lg border border-gray-200 hover:bg-gray-50 transition-colors text-xs font-medium">
+        <div className="flex-shrink-0 px-4 py-4 border-t border-gray-200 bg-white flex items-center justify-end gap-3 rounded-b-xl">
+          <button type="button" onClick={onClose} className="px-3 py-1.5 rounded-lg text-sm font-medium text-gray-700 border border-gray-200 hover:bg-gray-50">
             Cancel
           </button>
-          <button type="button" onClick={handleSave} className="px-3 py-2 rounded-lg bg-brand-red text-white hover:opacity-90 transition-colors text-xs font-medium">
+          <button type="button" onClick={handleSave} className="px-4 py-2 rounded-lg text-sm font-semibold text-white bg-brand-red hover:bg-[#aa1212]">
             Save
           </button>
         </div>

@@ -58,6 +58,7 @@ type ChartWidgetProps = {
     customer_id?: string;
     mode?: 'quantity' | 'value';
     palette?: ChartPaletteId;
+    related_to_me?: boolean;
   };
 };
 
@@ -67,19 +68,21 @@ function useChartData(
   divisionId: string | undefined,
   customerId: string | undefined,
   date_from: string | undefined,
-  date_to: string | undefined
+  date_to: string | undefined,
+  relatedToMe: boolean
 ): { entries: ChartEntry[]; isLoading: boolean; error: unknown } {
   const isByDivision =
     metric === 'opportunities_by_division' || metric === 'projects_by_division';
 
   const dashboardQuery = useQuery<DashboardStats>({
-    queryKey: ['home-chart-dashboard', metric, divisionId, customerId, mode, date_from, date_to],
+    queryKey: ['home-chart-dashboard', metric, divisionId, customerId, mode, date_from, date_to, relatedToMe],
     queryFn: () => {
       const params = new URLSearchParams();
       if (divisionId) params.set('division_id', divisionId);
       if (customerId) params.set('customer_id', customerId);
       if (date_from) params.set('date_from', date_from);
       if (date_to) params.set('date_to', date_to);
+      if (relatedToMe) params.set('related_to_me', 'true');
       params.set('mode', mode);
       return api('GET', `/projects/business/dashboard?${params.toString()}`);
     },
@@ -88,13 +91,14 @@ function useChartData(
   });
 
   const divisionsQuery = useQuery<DivisionStatsRow[]>({
-    queryKey: ['home-chart-divisions', metric, divisionId, customerId, mode, date_from, date_to],
+    queryKey: ['home-chart-divisions', metric, divisionId, customerId, mode, date_from, date_to, relatedToMe],
     queryFn: async () => {
       const params = new URLSearchParams();
       if (divisionId) params.set('division_id', divisionId);
       if (customerId) params.set('customer_id', customerId);
       if (date_from) params.set('date_from', date_from);
       if (date_to) params.set('date_to', date_to);
+      if (relatedToMe) params.set('related_to_me', 'true');
       params.set('mode', mode);
       const url = `/projects/business/divisions-stats${params.toString() ? '?' + params.toString() : ''}`;
       return api('GET', url);
@@ -149,10 +153,11 @@ function useChartTimeseries(
   customerId: string | undefined,
   date_from: string | undefined,
   date_to: string | undefined,
+  relatedToMe: boolean,
   enabled: boolean
 ): { data: TimeseriesResponse | null; isLoading: boolean; error: unknown } {
   const query = useQuery<TimeseriesResponse>({
-    queryKey: ['home-chart-timeseries', metric, mode, divisionId, customerId, date_from, date_to],
+    queryKey: ['home-chart-timeseries', metric, mode, divisionId, customerId, date_from, date_to, relatedToMe],
     queryFn: () => {
       const params = new URLSearchParams();
       params.set('metric', metric);
@@ -161,6 +166,7 @@ function useChartTimeseries(
       if (customerId) params.set('customer_id', customerId);
       if (date_from) params.set('date_from', date_from);
       if (date_to) params.set('date_to', date_to);
+      if (relatedToMe) params.set('related_to_me', 'true');
       return api('GET', `/projects/business/dashboard-timeseries?${params.toString()}`);
     },
     staleTime: 60_000,
@@ -181,18 +187,20 @@ export function ChartWidget({ config }: ChartWidgetProps) {
   const mode = config?.mode ?? 'quantity';
   const divisionId = config?.division_id;
   const customerId = config?.customer_id;
+  const relatedToMe = Boolean(config?.related_to_me);
   const period = (config?.period as DateFilterType) ?? 'all';
   const { date_from, date_to } = calculateDateRange(period, config?.customStart ?? '', config?.customEnd ?? '');
 
   const isLineChart = rawChartType === 'line';
-  const timeseries = useChartTimeseries(metric, mode, divisionId, customerId, date_from, date_to, isLineChart);
+  const timeseries = useChartTimeseries(metric, mode, divisionId, customerId, date_from, date_to, relatedToMe, isLineChart);
   const { entries: rawEntries, isLoading, error } = useChartData(
     metric,
     mode,
     divisionId,
     customerId,
     date_from,
-    date_to
+    date_to,
+    relatedToMe
   );
 
   const isOpportunities = metric === 'opportunities_by_status' || metric === 'opportunities_by_division';

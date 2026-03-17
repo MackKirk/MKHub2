@@ -243,37 +243,33 @@ export function AddWidgetModal({ open, onClose, onAdd, existingLayout }: AddWidg
 
   return (
     <div
-      className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
       onClick={onClose}
     >
       <div
-        className="bg-white rounded-xl shadow-xl w-full max-w-2xl max-h-[90vh] flex flex-col overflow-hidden border border-gray-200"
+        className="max-w-2xl w-full max-h-[90vh] flex flex-col rounded-xl border border-gray-200 bg-gray-100 shadow-xl overflow-hidden"
         onClick={(e) => e.stopPropagation()}
       >
-        {/* Header - same style as Create Request */}
-        <div className="p-4 border-b border-gray-200 flex-shrink-0">
-          <div className="flex items-start justify-between gap-4">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-xl bg-brand-red/10 flex items-center justify-center">
-                <svg className="w-5 h-5 text-brand-red" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-                </svg>
-              </div>
-              <div>
-                <h2 className="text-sm font-semibold text-gray-900">Add Widget</h2>
-                <p className="text-xs text-gray-500 mt-0.5">Choose a widget to add to your dashboard. Click any card to add it.</p>
-              </div>
-            </div>
+        {/* Header - same style as New Note */}
+        <div className="flex-shrink-0 rounded-t-xl border-b border-gray-200 bg-white p-4">
+          <div className="flex items-center gap-2">
             <button
+              type="button"
               onClick={onClose}
-              className="text-2xl font-bold text-gray-400 hover:text-gray-600 w-8 h-8 flex items-center justify-center rounded-lg hover:bg-gray-100 transition-colors"
+              className="p-1 rounded-lg hover:bg-gray-100 text-gray-600"
             >
-              ×
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+              </svg>
             </button>
+            <div>
+              <h2 className="text-sm font-semibold text-gray-900">Add Widget</h2>
+              <p className="text-xs text-gray-500 mt-0.5">Choose a widget to add to your dashboard. Click any card to add it.</p>
+            </div>
           </div>
         </div>
 
-        <div className="border-b border-gray-200 shrink-0">
+        <div className="border-b border-gray-200 shrink-0 bg-white">
           <nav className="flex gap-0 px-4" role="tablist">
             {GALLERY_TABS.map((tab) => (
               <button
@@ -294,7 +290,7 @@ export function AddWidgetModal({ open, onClose, onAdd, existingLayout }: AddWidg
           </nav>
         </div>
 
-        <div className="flex-1 overflow-auto p-4 min-h-0">
+        <div className="flex-1 overflow-y-auto p-4 min-h-0 bg-gray-100">
           {itemsByTab.length === 0 ? (
             <p className="text-xs text-gray-500 py-8 text-center">
               No widgets in this category.
@@ -337,11 +333,11 @@ export function AddWidgetModal({ open, onClose, onAdd, existingLayout }: AddWidg
           )}
         </div>
 
-        <div className="p-4 border-t border-gray-200 bg-gray-50/50 flex items-center justify-end gap-2 flex-shrink-0">
+        <div className="flex-shrink-0 px-4 py-4 border-t border-gray-200 bg-white flex items-center justify-end gap-3 rounded-b-xl">
           <button
             type="button"
             onClick={onClose}
-            className="px-3 py-2 rounded-lg border border-gray-200 hover:bg-gray-50 transition-colors text-xs font-medium"
+            className="px-3 py-1.5 rounded-lg text-sm font-medium text-gray-700 border border-gray-200 hover:bg-gray-50"
           >
             Cancel
           </button>

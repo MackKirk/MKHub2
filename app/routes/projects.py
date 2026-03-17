@@ -3574,6 +3574,24 @@ def calculate_estimate_values(estimate, db: Session) -> tuple[Optional[float], O
         return (None, None)
 
 
+def _project_related_to_user_filter(user_id):
+    """Filter projects/opportunities where the current user is estimator, project_admin, or onsite_lead (or in estimator_ids / division_onsite_leads)."""
+    # Scalar fields: estimator_id, project_admin_id, onsite_lead_id
+    scalar = or_(
+        Project.estimator_id == user_id,
+        Project.project_admin_id == user_id,
+        Project.onsite_lead_id == user_id,
+    )
+    # estimator_ids: JSON array of user UUIDs; division_onsite_leads: JSON dict of division_id -> user_id
+    # Use cast + like for portability (works on SQLite and PostgreSQL); user_id is UUID so substring false positives are unlikely
+    user_id_str = str(user_id)
+    json_related = or_(
+        cast(Project.estimator_ids, String).like(f'%{user_id_str}%'),
+        cast(Project.division_onsite_leads, String).like(f'%{user_id_str}%'),
+    )
+    return or_(scalar, json_related)
+
+
 @router.get("/business/dashboard")
 def business_dashboard(
     division_id: Optional[str] = None,
@@ -3584,13 +3602,19 @@ def business_dashboard(
     mode: Optional[str] = "quantity",
     opportunity_status_labels: Optional[List[str]] = Query(None),
     project_status_labels: Optional[List[str]] = Query(None),
+    related_to_me: Optional[bool] = False,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user)
 ):
-    """Get business dashboard statistics. opportunity_status_labels / project_status_labels: optional lists to filter by status. customer_id: optional filter by customer (client)."""
+    """Get business dashboard statistics. opportunity_status_labels / project_status_labels: optional lists to filter by status. customer_id: optional filter by customer (client). related_to_me: if True, only projects/opportunities where the current user is estimator, project_admin, or onsite_lead."""
     # Base queries
     opportunities_query = db.query(Project).filter(Project.is_bidding == True, Project.deleted_at.is_(None))
     projects_query = db.query(Project).filter(Project.is_bidding == False, Project.deleted_at.is_(None))
+
+    if related_to_me:
+        related_filter = _project_related_to_user_filter(user.id)
+        opportunities_query = opportunities_query.filter(related_filter)
+        projects_query = projects_query.filter(related_filter)
 
     # Filter by customer (client) if provided
     if customer_id:
@@ -3842,10 +3866,11 @@ def business_dashboard_timeseries(
     date_to: Optional[str] = None,
     mode: Optional[str] = "quantity",
     metric: Optional[str] = "opportunities_by_status",
+    related_to_me: Optional[bool] = False,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user)
 ):
-    """Get dashboard stats by month for line charts. Returns months (X) and series (one line per status/division). customer_id: optional filter by customer (client)."""
+    """Get dashboard stats by month for line charts. Returns months (X) and series (one line per status/division). customer_id: optional filter by customer (client). related_to_me: if True, only projects/opportunities related to the current user."""
     from ..models.models import SettingList, SettingItem
     months = _month_range(date_from, date_to)
     if not months:
@@ -3914,6 +3939,8 @@ def business_dashboard_timeseries(
             cast(effective_start_dt, Date) >= start_d,
             cast(effective_start_dt, Date) <= end_d
         )
+        if related_to_me:
+            base = base.filter(_project_related_to_user_filter(user.id))
         base = apply_division_filters(base, subdiv_id=subdivision_id, div_id=division_id)
         if customer_id:
             try:
@@ -3995,6 +4022,8 @@ def business_dashboard_timeseries(
             cast(effective_start_dt, Date) >= start_d,
             cast(effective_start_dt, Date) <= end_d
         )
+        if related_to_me:
+            base = base.filter(_project_related_to_user_filter(user.id))
         base = apply_division_filters(base, subdiv_id=subdivision_id, div_id=division_id)
         if customer_id:
             try:
@@ -5100,6 +5129,12 @@ def _apply_customer_filter(opp_query, proj_query, customer_id: Optional[str]):
         return opp_query, proj_query
 
 
+def _apply_related_to_me_filter(opp_query, proj_query, user_id):
+    """Apply related_to_me filter to opportunity and project queries."""
+    f = _project_related_to_user_filter(user_id)
+    return opp_query.filter(f), proj_query.filter(f)
+
+
 @router.get("/business/divisions-stats")
 def business_divisions_stats(
     division_id: Optional[str] = None,
@@ -5107,12 +5142,13 @@ def business_divisions_stats(
     date_from: Optional[str] = None,
     date_to: Optional[str] = None,
     mode: Optional[str] = "quantity",
+    related_to_me: Optional[bool] = False,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user)
 ):
-    """Get statistics for each project division, or subdivisions of a specific division. customer_id: optional filter by customer (client)."""
+    """Get statistics for each project division, or subdivisions of a specific division. customer_id: optional filter by customer (client). related_to_me: if True, only projects/opportunities related to the current user."""
     from ..models.models import SettingList, SettingItem
-    
+
     divisions_list = db.query(SettingList).filter(SettingList.name == "project_divisions").first()
     if not divisions_list:
         return []
@@ -5184,7 +5220,9 @@ def business_divisions_stats(
                         pass
                 
                 opp_query, proj_query = _apply_customer_filter(opp_query, proj_query, customer_id)
-                
+                if related_to_me:
+                    opp_query, proj_query = _apply_related_to_me_filter(opp_query, proj_query, user.id)
+
                 opportunities_count = opp_query.count()
                 projects_count = proj_query.count()
                 
@@ -5317,7 +5355,9 @@ def business_divisions_stats(
                         pass
                 
                 opp_query, proj_query = _apply_customer_filter(opp_query, proj_query, customer_id)
-                
+                if related_to_me:
+                    opp_query, proj_query = _apply_related_to_me_filter(opp_query, proj_query, user.id)
+
                 opportunities_count = opp_query.count()
                 projects_count = proj_query.count()
                 
@@ -5460,7 +5500,9 @@ def business_divisions_stats(
                     pass
             
             opp_query, proj_query = _apply_customer_filter(opp_query, proj_query, customer_id)
-            
+            if related_to_me:
+                opp_query, proj_query = _apply_related_to_me_filter(opp_query, proj_query, user.id)
+
             opportunities_count = opp_query.count()
             projects_count = proj_query.count()
             
