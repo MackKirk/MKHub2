@@ -15,7 +15,7 @@ from ..models.models import (
     TimeOffBalance, TimeOffRequest, TimeOffHistory,
     EmployeeReport, ReportAttachment, ReportComment
 )
-from ..auth.security import require_permissions, get_current_user
+from ..auth.security import require_permissions, require_roles, get_current_user
 from ..services.bamboohr_client import BambooHRClient
 
 
@@ -931,6 +931,66 @@ def update_equipment(
 # BambooHR Sync
 # =====================
 
+def _get_bamboohr_id_for_user(db: Session, client: BambooHRClient, user: User) -> Optional[tuple]:
+    """
+    Find BambooHR employee by user email. Returns (bamboohr_id, bamboohr_employee_data) or None.
+    Uses directory data first to match by email when available, so we only call get_employee once
+    for the matching employee instead of for every employee.
+    """
+    email = (user.email_personal or user.email_corporate or "").strip().lower()
+    if not email:
+        return None
+    directory = client.get_employees_directory()
+    employees = directory if isinstance(directory, list) else (directory.get("employees", []) if isinstance(directory, dict) else [])
+    if not employees:
+        return None
+
+    def _email_matches(emp_dict: dict) -> bool:
+        """Check if any email field in emp_dict matches the user email."""
+        for key in ("workEmail", "email", "homeEmail", "personalEmail"):
+            val = emp_dict.get(key)
+            if isinstance(val, str) and val.strip().lower() == email:
+                return True
+        for key, val in emp_dict.items():
+            if isinstance(val, str) and "@" in val and val.strip().lower() == email:
+                return True
+        return False
+
+    # First pass: match using directory entry fields if they include email (avoids N get_employee calls)
+    for emp in employees:
+        emp_id = str(emp.get("id", "") or "").strip()
+        if not emp_id:
+            continue
+        if _email_matches(emp):
+            try:
+                emp_data = client.get_employee(emp_id)
+                bamboohr_employee = dict(emp_data) if isinstance(emp_data, dict) else {"id": emp_id}
+                if "employee" in bamboohr_employee:
+                    bamboohr_employee = bamboohr_employee["employee"]
+                bamboohr_employee["id"] = emp_id
+                return (emp_id, bamboohr_employee)
+            except Exception:
+                continue
+
+    # Fallback: directory may use numeric field IDs, so fetch each employee until we find the match
+    for emp in employees:
+        emp_id = str(emp.get("id", "") or "").strip()
+        if not emp_id:
+            continue
+        try:
+            emp_data = client.get_employee(emp_id)
+            emp_email = (
+                (emp_data.get("homeEmail") or emp_data.get("personalEmail") or emp_data.get("workEmail") or emp_data.get("email")) or ""
+            ).strip().lower()
+            if emp_email == email:
+                bamboohr_employee = dict(emp_data)
+                bamboohr_employee["id"] = emp_id
+                return (emp_id, bamboohr_employee)
+        except Exception:
+            continue
+    return None
+
+
 @router.post("/{user_id}/sync-bamboohr")
 def sync_user_from_bamboohr(
     user_id: str,
@@ -952,51 +1012,19 @@ def sync_user_from_bamboohr(
     - force_update: If True, will overwrite manually edited fields (like pay_rate).
                     If False (default), will preserve manually edited fields.
     """
-    # Check if force_update is requested (default: True for explicit sync button clicks)
     force_update = payload.get("force_update", True)
-    # Get user
     user = db.query(User).filter(User.id == user_id).first()
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
-    
-    # Get user's email (prefer personal, fallback to corporate)
     email = user.email_personal or user.email_corporate
     if not email:
         raise HTTPException(status_code=400, detail="User has no email address to match with BambooHR")
-    
     try:
-        # Initialize BambooHR client
         client = BambooHRClient()
-        
-        # Get employee directory to find employee by email
-        directory = client.get_employees_directory()
-        employees = directory if isinstance(directory, list) else (directory.get("employees", []) if isinstance(directory, dict) else [])
-        
-        # Find employee by email
-        bamboohr_employee = None
-        bamboohr_id = None
-        
-        for emp in employees:
-            emp_id = str(emp.get("id", ""))
-            try:
-                emp_data = client.get_employee(emp_id)
-                # Check all email fields
-                emp_email = (
-                    emp_data.get("homeEmail") or
-                    emp_data.get("personalEmail") or
-                    emp_data.get("workEmail") or
-                    emp_data.get("email")
-                )
-                if emp_email and emp_email.strip().lower() == email.strip().lower():
-                    bamboohr_employee = emp_data
-                    bamboohr_employee["id"] = emp_id
-                    bamboohr_id = emp_id
-                    break
-            except Exception:
-                continue
-        
-        if not bamboohr_employee:
+        result = _get_bamboohr_id_for_user(db, client, user)
+        if not result:
             raise HTTPException(status_code=404, detail=f"Employee not found in BambooHR for email: {email}")
+        bamboohr_id, bamboohr_employee = result
         
         # Import sync function
         import sys
@@ -1113,6 +1141,90 @@ def sync_user_from_bamboohr(
     except Exception as e:
         db.rollback()
         raise HTTPException(status_code=500, detail=f"Error syncing from BambooHR: {str(e)}")
+
+
+@router.post("/{user_id}/sync-photo")
+def sync_user_photo_from_bamboohr(
+    user_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+    _=Depends(require_permissions("users:write"))
+):
+    """Sync only the profile photo from BambooHR for this user."""
+    user = db.query(User).filter(User.id == user_id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    if not (user.email_personal or user.email_corporate):
+        raise HTTPException(status_code=400, detail="User has no email address to match with BambooHR")
+    from pathlib import Path
+    import sys
+    import importlib.util
+    script_dir = Path(__file__).resolve().parent.parent.parent / "scripts"
+    sys.path.insert(0, str(script_dir))
+    try:
+        client = BambooHRClient()
+        result = _get_bamboohr_id_for_user(db, client, user)
+        if not result:
+            raise HTTPException(status_code=404, detail="Employee not found in BambooHR for this user's email")
+        bamboohr_id, _ = result
+        spec = importlib.util.spec_from_file_location("sync_bamboohr_employees", script_dir / "sync_bamboohr_employees.py")
+        if spec is None or spec.loader is None:
+            raise HTTPException(status_code=500, detail="Could not load sync module")
+        sync_module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(sync_module)
+        get_storage = sync_module.get_storage
+        sync_employee_photo = sync_module.sync_employee_photo
+        storage = get_storage()
+        updated = sync_employee_photo(db=db, client=client, storage=storage, user=user, bamboohr_id=bamboohr_id, dry_run=False, force_update=True)
+        db.commit()
+        return {"message": "Photo synced", "updated": updated}
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Error syncing photo: {str(e)}")
+
+
+@router.post("/{user_id}/sync-documents")
+def sync_user_documents_from_bamboohr(
+    user_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+    _=Depends(require_permissions("users:write"))
+):
+    """Sync only documents from BambooHR for this user."""
+    user = db.query(User).filter(User.id == user_id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    if not (user.email_personal or user.email_corporate):
+        raise HTTPException(status_code=400, detail="User has no email address to match with BambooHR")
+    from pathlib import Path
+    import sys
+    import importlib.util
+    script_dir = Path(__file__).resolve().parent.parent.parent / "scripts"
+    sys.path.insert(0, str(script_dir))
+    try:
+        client = BambooHRClient()
+        result = _get_bamboohr_id_for_user(db, client, user)
+        if not result:
+            raise HTTPException(status_code=404, detail="Employee not found in BambooHR for this user's email")
+        bamboohr_id, _ = result
+        spec = importlib.util.spec_from_file_location("sync_bamboohr_documents", script_dir / "sync_bamboohr_documents.py")
+        if spec is None or spec.loader is None:
+            raise HTTPException(status_code=500, detail="Could not load sync documents module")
+        docs_module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(docs_module)
+        get_storage = docs_module.get_storage
+        sync_documents_for_employee = docs_module.sync_documents_for_employee
+        storage = get_storage()
+        created, skipped = sync_documents_for_employee(db=db, client=client, storage=storage, employee_id=bamboohr_id, dry_run=False)
+        db.commit()
+        return {"message": "Documents synced", "created": created, "skipped": skipped}
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Error syncing documents: {str(e)}")
 
 
 # =====================
@@ -1715,6 +1827,186 @@ def get_time_off_history(
         "balance_after": float(h.balance_after),
         "bamboohr_transaction_id": h.bamboohr_transaction_id
     } for h in history]
+
+
+@router.post("/{user_id}/time-off/history")
+def add_time_off_history_entry(
+    user_id: str,
+    payload: dict = Body(...),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+    _=Depends(require_roles("admin"))
+):
+    """Add a manual time off history entry (admin only). Updates balance for the policy/year."""
+    user = db.query(User).filter(User.id == user_id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    policy_name = payload.get("policy_name")
+    transaction_date_str = payload.get("transaction_date")
+    description = (payload.get("description") or "").strip()
+    used_days = payload.get("used_days")
+    earned_days = payload.get("earned_days")
+    if not policy_name:
+        raise HTTPException(status_code=400, detail="policy_name is required")
+    if not transaction_date_str:
+        raise HTTPException(status_code=400, detail="transaction_date is required")
+    try:
+        transaction_date = datetime.fromisoformat(transaction_date_str.split("T")[0]).date()
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid transaction_date. Use YYYY-MM-DD")
+    used_val = float(used_days) if used_days is not None and str(used_days).strip() != "" else None
+    earned_val = float(earned_days) if earned_days is not None and str(earned_days).strip() != "" else None
+    if (used_val is None or used_val == 0) and (earned_val is None or earned_val == 0):
+        raise HTTPException(status_code=400, detail="At least one of used_days or earned_days must be provided and non-zero")
+    year = transaction_date.year
+    balance = db.query(TimeOffBalance).filter(
+        TimeOffBalance.user_id == user.id,
+        TimeOffBalance.policy_name == policy_name,
+        TimeOffBalance.year == year
+    ).first()
+    if not balance:
+        balance = TimeOffBalance(
+            id=uuid_lib.uuid4(),
+            user_id=user.id,
+            policy_name=policy_name,
+            balance_hours=0.0,
+            accrued_hours=0.0,
+            used_hours=0.0,
+            year=year,
+            created_at=datetime.now(timezone.utc),
+            updated_at=datetime.now(timezone.utc),
+        )
+        db.add(balance)
+        db.flush()
+    current_balance_hours = float(balance.balance_hours)
+    current_balance_days = current_balance_hours / 8.0
+    balance_after_days = current_balance_days + (earned_val or 0) - (used_val or 0)
+    balance.balance_hours = balance_after_days * 8.0
+    if earned_val:
+        balance.accrued_hours = float(balance.accrued_hours) + (earned_val * 8.0)
+    if used_val:
+        balance.used_hours = float(balance.used_hours) + (used_val * 8.0)
+    balance.updated_at = datetime.now(timezone.utc)
+    admin_name = "Admin"
+    admin_profile = db.query(EmployeeProfile).filter(EmployeeProfile.user_id == current_user.id).first()
+    if admin_profile and (admin_profile.first_name or admin_profile.last_name):
+        admin_name = f"{admin_profile.first_name or ''} {admin_profile.last_name or ''}".strip()
+    else:
+        admin_name = current_user.username or current_user.email_personal or current_user.email_corporate or "Admin"
+    desc_text = description or "Manual entry"
+    if not desc_text.lower().startswith("manual") and not desc_text.lower().startswith("adjusted"):
+        desc_text = f"Manual: {desc_text} (by {admin_name})"
+    else:
+        desc_text = f"{desc_text} (by {admin_name})"
+    history = TimeOffHistory(
+        id=uuid_lib.uuid4(),
+        user_id=user.id,
+        policy_name=policy_name,
+        transaction_date=transaction_date,
+        description=desc_text,
+        earned_days=earned_val,
+        used_days=used_val,
+        balance_after=balance_after_days,
+        created_at=datetime.now(timezone.utc),
+    )
+    db.add(history)
+    try:
+        db.commit()
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
+    return {
+        "id": str(history.id),
+        "policy_name": policy_name,
+        "transaction_date": transaction_date.isoformat(),
+        "description": desc_text,
+        "used_days": used_val,
+        "earned_days": earned_val,
+        "balance_after": balance_after_days,
+        "message": "History entry added",
+    }
+
+
+def _recompute_balance_from_history(db: Session, user_id: uuid_lib.UUID, policy_name: str, year: int) -> None:
+    """Recompute TimeOffBalance for user/policy/year from remaining TimeOffHistory entries."""
+    remaining = (
+        db.query(TimeOffHistory)
+        .filter(
+            TimeOffHistory.user_id == user_id,
+            TimeOffHistory.policy_name == policy_name,
+            func.extract("year", TimeOffHistory.transaction_date) == year,
+        )
+        .order_by(TimeOffHistory.transaction_date.desc())
+        .all()
+    )
+    if not remaining:
+        balance_days = 0.0
+        accrued_days = 0.0
+        used_days_total = 0.0
+    else:
+        balance_days = float(remaining[0].balance_after)
+        accrued_days = sum(float(h.earned_days or 0) for h in remaining)
+        used_days_total = sum(float(h.used_days or 0) for h in remaining)
+    balance_hours = balance_days * 8.0
+    accrued_hours = accrued_days * 8.0
+    used_hours = used_days_total * 8.0
+    balance = db.query(TimeOffBalance).filter(
+        TimeOffBalance.user_id == user_id,
+        TimeOffBalance.policy_name == policy_name,
+        TimeOffBalance.year == year,
+    ).first()
+    if not balance:
+        balance = TimeOffBalance(
+            id=uuid_lib.uuid4(),
+            user_id=user_id,
+            policy_name=policy_name,
+            balance_hours=balance_hours,
+            accrued_hours=accrued_hours,
+            used_hours=used_hours,
+            year=year,
+            created_at=datetime.now(timezone.utc),
+            updated_at=datetime.now(timezone.utc),
+        )
+        db.add(balance)
+    else:
+        balance.balance_hours = balance_hours
+        balance.accrued_hours = accrued_hours
+        balance.used_hours = used_hours
+        balance.updated_at = datetime.now(timezone.utc)
+
+
+@router.delete("/{user_id}/time-off/history/{entry_id}")
+def delete_time_off_history_entry(
+    user_id: str,
+    entry_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+    _=Depends(require_roles("admin")),
+):
+    """Delete a time off history entry (admin only). Recomputes balance from remaining history."""
+    user = db.query(User).filter(User.id == user_id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    try:
+        entry_uuid = uuid_lib.UUID(entry_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid entry id")
+    entry = db.query(TimeOffHistory).filter(
+        TimeOffHistory.id == entry_uuid,
+        TimeOffHistory.user_id == user.id,
+    ).first()
+    if not entry:
+        raise HTTPException(status_code=404, detail="History entry not found")
+    policy_name = entry.policy_name
+    year = entry.transaction_date.year if hasattr(entry.transaction_date, "year") else int(entry.transaction_date)
+    db.delete(entry)
+    _recompute_balance_from_history(db, user.id, policy_name, year)
+    try:
+        db.commit()
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
+    return {"message": "History entry deleted"}
 
 
 @router.post("/{user_id}/time-off/history/sync")

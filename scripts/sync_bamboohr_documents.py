@@ -67,19 +67,15 @@ def find_user_by_bamboohr_id(db: Session, client: BambooHRClient, bamboohr_id: s
 
 
 def canonical_key(employee_id: str, original_name: str, category: str = "bamboohr") -> str:
-    """Generate canonical storage key for employee document"""
+    """Generate canonical storage key for employee document (org/employees/{id}/... without year)."""
     from slugify import slugify
     from pathlib import Path
     
     today = datetime.now(timezone.utc)
-    year = today.strftime("%Y")
-    
-    # Sanitize filename
     path = Path(original_name)
     safe_name = slugify(path.stem)
     ext = path.suffix.lower()
-    
-    return f"/org/{year}/employees/{employee_id}/{category}/{today.strftime('%Y%m%d')}_{safe_name}{ext}"
+    return f"/org/employees/{employee_id}/{category}/{today.strftime('%Y%m%d')}_{safe_name}{ext}"
 
 
 def create_file_object(

@@ -168,13 +168,12 @@ def create_file_object(
     from pathlib import Path
     from slugify import slugify
     
-    # Generate storage key
+    # Generate storage key (org/employees/{id}/profile/... without year)
     today = datetime.now(timezone.utc)
-    year = today.strftime("%Y")
     path = Path(original_name)
     safe_name = slugify(path.stem)
     ext = path.suffix.lower()
-    key = f"/org/{year}/employees/{employee_id}/profile/{today.strftime('%Y%m%d')}_{safe_name}{ext}"
+    key = f"/org/employees/{employee_id}/profile/{today.strftime('%Y%m%d')}_{safe_name}{ext}"
     
     # Calculate checksum
     checksum = hashlib.sha256(file_data).hexdigest()

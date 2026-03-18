@@ -116,6 +116,97 @@ function SyncBambooHRButton({ userId, onSuccess }: { userId: string; onSuccess?:
   );
 }
 
+function SyncPhotoButton({ userId, onSuccess }: { userId: string; onSuccess?: () => void }) {
+  const [syncing, setSyncing] = useState(false);
+  const queryClient = useQueryClient();
+  const handleSync = async () => {
+    if (syncing) return;
+    setSyncing(true);
+    try {
+      await api<any>('POST', `/employees/${userId}/sync-photo`);
+      toast.success('Photo synced from BambooHR');
+      queryClient.invalidateQueries({ queryKey: ['userProfile', userId] });
+      if (onSuccess) onSuccess();
+    } catch (error: any) {
+      toast.error(error?.message || 'Failed to sync photo');
+    } finally {
+      setSyncing(false);
+    }
+  };
+  return (
+    <button
+      onClick={handleSync}
+      disabled={syncing}
+      className="px-3 py-1.5 rounded-lg bg-gray-100 hover:bg-gray-200 text-gray-700 border border-gray-300 text-xs font-medium disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 transition-colors"
+      title="Sync profile photo from BambooHR"
+    >
+      {syncing ? (
+        <>
+          <svg className="animate-spin h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+          </svg>
+          Syncing...
+        </>
+      ) : (
+        <>
+          <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14" />
+          </svg>
+          Sincronizar foto
+        </>
+      )}
+    </button>
+  );
+}
+
+function SyncDocumentsButton({ userId, onSuccess }: { userId: string; onSuccess?: () => void }) {
+  const [syncing, setSyncing] = useState(false);
+  const queryClient = useQueryClient();
+  const handleSync = async () => {
+    if (syncing) return;
+    setSyncing(true);
+    try {
+      const result = await api<{ created?: number; skipped?: number }>('POST', `/employees/${userId}/sync-documents`);
+      const created = result.created ?? 0;
+      const skipped = result.skipped ?? 0;
+      toast.success(`${created} document(s) created, ${skipped} already existed`);
+      queryClient.invalidateQueries({ queryKey: ['userProfile', userId] });
+      queryClient.invalidateQueries({ queryKey: ['user-docs', userId] });
+      if (onSuccess) onSuccess();
+    } catch (error: any) {
+      toast.error(error?.message || 'Failed to sync documents');
+    } finally {
+      setSyncing(false);
+    }
+  };
+  return (
+    <button
+      onClick={handleSync}
+      disabled={syncing}
+      className="px-3 py-1.5 rounded-lg bg-gray-100 hover:bg-gray-200 text-gray-700 border border-gray-300 text-xs font-medium disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 transition-colors"
+      title="Sync documents from BambooHR"
+    >
+      {syncing ? (
+        <>
+          <svg className="animate-spin h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+          </svg>
+          Syncing...
+        </>
+      ) : (
+        <>
+          <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+          </svg>
+          Sincronizar documentos
+        </>
+      )}
+    </button>
+  );
+}
+
 export type UserPermissionsRef = {
   hasUnsavedChanges: () => boolean;
   save: () => Promise<void>;
@@ -2757,8 +2848,10 @@ export default function UserInfo(){
             </div>
             <h5 className="text-xs font-semibold text-gray-900">BambooHR Integration</h5>
           </div>
-          <div className="flex gap-2">
+          <div className="flex flex-wrap gap-2">
             <SyncBambooHRButton userId={String(userId)} onSuccess={() => { window.location.reload(); }} />
+            <SyncPhotoButton userId={String(userId)} onSuccess={() => { window.location.reload(); }} />
+            <SyncDocumentsButton userId={String(userId)} onSuccess={() => { window.location.reload(); }} />
           </div>
         </div>
       )}
@@ -5515,6 +5608,7 @@ function TimeOffSection({ userId, canEdit }:{ userId:string, canEdit:boolean }){
   
   // Ensure canEdit is true for admins
   const hasEditPermission = canEdit || (me?.roles || []).some((r: string) => String(r || '').toLowerCase() === 'admin') || (me?.permissions || []).includes('users:write');
+  const isAdmin = (me?.roles || []).some((r: string) => String(r || '').toLowerCase() === 'admin');
   
   const { data:balances, refetch:refetchBalances } = useQuery({ 
     queryKey:['time-off-balance', userId], 
@@ -5545,6 +5639,14 @@ function TimeOffSection({ userId, canEdit }:{ userId:string, canEdit:boolean }){
   const [effectiveDate, setEffectiveDate] = useState(new Date().toISOString().split('T')[0]);
   const [adjustmentNote, setAdjustmentNote] = useState('');
   const [adjusting, setAdjusting] = useState(false);
+  const [showAddHistoryModal, setShowAddHistoryModal] = useState(false);
+  const [addHistoryPolicy, setAddHistoryPolicy] = useState('');
+  const [addHistoryDate, setAddHistoryDate] = useState(new Date().toISOString().split('T')[0]);
+  const [addHistoryDescription, setAddHistoryDescription] = useState('');
+  const [addHistoryUsedDays, setAddHistoryUsedDays] = useState('');
+  const [addHistoryEarnedDays, setAddHistoryEarnedDays] = useState('');
+  const [addingHistory, setAddingHistory] = useState(false);
+  const [deletingHistoryId, setDeletingHistoryId] = useState<string | null>(null);
   
   const calculateHours = () => {
     if (startDate && endDate) {
@@ -5673,6 +5775,66 @@ function TimeOffSection({ userId, canEdit }:{ userId:string, canEdit:boolean }){
       toast.error(error?.message || 'Failed to adjust balance');
     } finally {
       setAdjusting(false);
+    }
+  };
+  
+  const handleOpenAddHistory = () => {
+    setAddHistoryPolicy(availablePolicies[0] || 'Vacation');
+    setAddHistoryDate(new Date().toISOString().split('T')[0]);
+    setAddHistoryDescription('');
+    setAddHistoryUsedDays('');
+    setAddHistoryEarnedDays('');
+    setShowAddHistoryModal(true);
+  };
+  
+  const handleAddHistoryEntry = async () => {
+    const used = addHistoryUsedDays.trim() ? parseFloat(addHistoryUsedDays) : undefined;
+    const earned = addHistoryEarnedDays.trim() ? parseFloat(addHistoryEarnedDays) : undefined;
+    if (!addHistoryPolicy || !addHistoryDate) {
+      toast.error('Policy and date are required');
+      return;
+    }
+    if ((used === undefined || isNaN(used) || used === 0) && (earned === undefined || isNaN(earned) || earned === 0)) {
+      toast.error('Enter at least one of Used days or Earned days');
+      return;
+    }
+    setAddingHistory(true);
+    try {
+      await api('POST', `/employees/${userId}/time-off/history`, {
+        policy_name: addHistoryPolicy,
+        transaction_date: addHistoryDate,
+        description: addHistoryDescription.trim() || undefined,
+        used_days: used !== undefined && !isNaN(used) ? used : undefined,
+        earned_days: earned !== undefined && !isNaN(earned) ? earned : undefined,
+      });
+      toast.success('History entry added');
+      setShowAddHistoryModal(false);
+      setAddHistoryPolicy('');
+      setAddHistoryDescription('');
+      setAddHistoryUsedDays('');
+      setAddHistoryEarnedDays('');
+      refetchHistory();
+      refetchBalances();
+    } catch (error: any) {
+      toast.error(error?.message || 'Failed to add history entry');
+    } finally {
+      setAddingHistory(false);
+    }
+  };
+  
+  const handleDeleteHistoryEntry = async (entryId: string) => {
+    if (!isAdmin) return;
+    if (deletingHistoryId) return;
+    setDeletingHistoryId(entryId);
+    try {
+      await api('DELETE', `/employees/${userId}/time-off/history/${encodeURIComponent(entryId)}`);
+      toast.success('History entry deleted');
+      refetchHistory();
+      refetchBalances();
+    } catch (error: any) {
+      toast.error(error?.message || 'Failed to delete entry');
+    } finally {
+      setDeletingHistoryId(null);
     }
   };
   
@@ -5887,6 +6049,25 @@ function TimeOffSection({ userId, canEdit }:{ userId:string, canEdit:boolean }){
               </svg>
               History
             </h5>
+            <div className="flex items-center gap-2">
+              {hasEditPermission && (
+                <button
+                  onClick={handleSyncHistory}
+                  disabled={syncingHistory}
+                  className="px-2 py-1.5 rounded border border-gray-300 text-gray-700 text-xs font-medium hover:bg-gray-100 disabled:opacity-50"
+                >
+                  {syncingHistory ? 'Syncing...' : 'Sync History'}
+                </button>
+              )}
+              {isAdmin && (
+                <button
+                  onClick={handleOpenAddHistory}
+                  className="px-2 py-1.5 rounded border border-blue-300 text-blue-700 text-xs font-medium hover:bg-blue-50"
+                >
+                  Add entry
+                </button>
+              )}
+            </div>
           </div>
         {history && history.length > 0 ? (() => {
           // Group history by policy
@@ -5898,9 +6079,9 @@ function TimeOffSection({ userId, canEdit }:{ userId:string, canEdit:boolean }){
             return acc;
           }, {});
           
-          // Check if entry is a manual adjustment
+          // Check if entry is a manual adjustment or manual history entry
           const isManualAdjustment = (desc: string) => {
-            return desc && desc.includes('Adjusted by');
+            return desc && (desc.includes('Adjusted by') || desc.includes('Manual') || desc.includes('(by '));
           };
           
           return (
@@ -5919,11 +6100,13 @@ function TimeOffSection({ userId, canEdit }:{ userId:string, canEdit:boolean }){
                           <th className="text-right py-2 px-3 font-semibold text-xs">Used Days (-)</th>
                           <th className="text-right py-2 px-3 font-semibold text-xs">Earned Days (+)</th>
                           <th className="text-right py-2 px-3 font-semibold text-xs">Balance</th>
+                          {isAdmin && <th className="text-right py-2 px-3 font-semibold text-xs w-10"> </th>}
                         </tr>
                       </thead>
                       <tbody>
                         {entries.map((h: any) => {
                           const isAdjustment = isManualAdjustment(h.description || '');
+                          const isDeleting = deletingHistoryId === h.id;
                           return (
                             <tr key={h.id} className={`border-b ${isAdjustment ? 'bg-blue-50' : ''}`}>
                               <td className="py-2 px-3">
@@ -5965,6 +6148,28 @@ function TimeOffSection({ userId, canEdit }:{ userId:string, canEdit:boolean }){
                               <td className="py-2 px-3 text-right font-semibold">
                                 {parseFloat(h.balance_after).toFixed(2)} days
                               </td>
+                              {isAdmin && (
+                                <td className="py-2 px-3 text-right">
+                                  <button
+                                    type="button"
+                                    onClick={() => handleDeleteHistoryEntry(h.id)}
+                                    disabled={isDeleting}
+                                    className="p-1 rounded text-gray-400 hover:text-red-600 hover:bg-red-50 disabled:opacity-50"
+                                    title="Delete entry"
+                                  >
+                                    {isDeleting ? (
+                                      <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
+                                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                                      </svg>
+                                    ) : (
+                                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                                      </svg>
+                                    )}
+                                  </button>
+                                </td>
+                              )}
                             </tr>
                           );
                         })}
@@ -6304,6 +6509,97 @@ function TimeOffSection({ userId, canEdit }:{ userId:string, canEdit:boolean }){
                 className="px-4 py-2 rounded bg-brand-red text-white text-sm disabled:opacity-50 hover:bg-red-700"
               >
                 {adjusting ? 'Saving...' : 'Save'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      
+      {/* Add History Entry Modal - Admin only */}
+      {showAddHistoryModal && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50" onClick={() => setShowAddHistoryModal(false)}>
+          <div className="bg-white rounded-xl w-full max-w-md p-6" onClick={(e) => e.stopPropagation()}>
+            <h3 className="text-lg font-semibold text-gray-900 mb-4">Add time off history entry</h3>
+            <div className="space-y-4">
+              <div>
+                <label className="text-sm font-medium text-gray-700 block mb-1">Policy*</label>
+                <select
+                  value={addHistoryPolicy}
+                  onChange={(e) => setAddHistoryPolicy(e.target.value)}
+                  className="w-full border rounded px-3 py-2"
+                >
+                  {availablePolicies.length > 0 ? (
+                    availablePolicies.map((p: string) => (
+                      <option key={p} value={p}>{p}</option>
+                    ))
+                  ) : (
+                    <>
+                      <option value="Vacation">Vacation</option>
+                      <option value="Sick Leave">Sick Leave</option>
+                    </>
+                  )}
+                </select>
+              </div>
+              <div>
+                <label className="text-sm font-medium text-gray-700 block mb-1">Transaction date*</label>
+                <input
+                  type="date"
+                  value={addHistoryDate}
+                  onChange={(e) => setAddHistoryDate(e.target.value)}
+                  className="w-full border rounded px-3 py-2"
+                />
+              </div>
+              <div>
+                <label className="text-sm font-medium text-gray-700 block mb-1">Description (optional)</label>
+                <input
+                  type="text"
+                  value={addHistoryDescription}
+                  onChange={(e) => setAddHistoryDescription(e.target.value)}
+                  className="w-full border rounded px-3 py-2"
+                  placeholder="e.g. Manual adjustment, Carryover..."
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-sm font-medium text-gray-700 block mb-1">Used days (-)</label>
+                  <input
+                    type="number"
+                    step="0.5"
+                    min="0"
+                    value={addHistoryUsedDays}
+                    onChange={(e) => setAddHistoryUsedDays(e.target.value)}
+                    className="w-full border rounded px-3 py-2"
+                    placeholder="0"
+                  />
+                </div>
+                <div>
+                  <label className="text-sm font-medium text-gray-700 block mb-1">Earned days (+)</label>
+                  <input
+                    type="number"
+                    step="0.5"
+                    min="0"
+                    value={addHistoryEarnedDays}
+                    onChange={(e) => setAddHistoryEarnedDays(e.target.value)}
+                    className="w-full border rounded px-3 py-2"
+                    placeholder="0"
+                  />
+                </div>
+              </div>
+              <p className="text-xs text-gray-500">Provide at least one of Used days or Earned days.</p>
+            </div>
+            <div className="mt-6 flex justify-end gap-2">
+              <button
+                onClick={() => setShowAddHistoryModal(false)}
+                className="px-4 py-2 rounded border text-sm hover:bg-gray-50"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleAddHistoryEntry}
+                disabled={addingHistory || !addHistoryPolicy || !addHistoryDate || ((!addHistoryUsedDays || parseFloat(addHistoryUsedDays) === 0) && (!addHistoryEarnedDays || parseFloat(addHistoryEarnedDays) === 0))}
+                className="px-4 py-2 rounded bg-brand-red text-white text-sm disabled:opacity-50 hover:bg-red-700"
+              >
+                {addingHistory ? 'Adding...' : 'Add entry'}
               </button>
             </div>
           </div>
