@@ -12,6 +12,8 @@ import PasswordReset from './pages/PasswordReset';
 import Protected from './lib/protected';
 
 const OnboardingWizard = lazy(() => import('./pages/OnboardingWizard'));
+const OnboardingDocuments = lazy(() => import('./pages/OnboardingDocuments'));
+const OnboardingAdmin = lazy(() => import('./pages/OnboardingAdmin'));
 const ProjectDetail = lazy(() => import('./pages/ProjectDetail'));
 const CustomerDetail = lazy(() => import('./pages/CustomerDetail'));
 const DocumentCreator = lazy(() => import('./pages/DocumentCreator'));
@@ -101,6 +103,8 @@ export default function App(){
         <Route path="/install" element={<Install/>} />
         <Route element={<Protected/>}>
           <Route path="/onboarding" element={<Suspense fallback={<div className="min-h-screen flex items-center justify-center"><div>Loading...</div></div>}><OnboardingWizard/></Suspense>} />
+          <Route path="/onboarding/documents" element={<Suspense fallback={<div className="min-h-screen flex items-center justify-center"><div>Loading...</div></div>}><OnboardingDocuments/></Suspense>} />
+          <Route path="/onboarding/admin" element={<AppShell><OnboardingAdmin/></AppShell>} />
           <Route path="/home" element={<AppShell><HomePage/></AppShell>} />
           <Route path="/overview" element={<AppShell><Overview/></AppShell>} />
           <Route path="/profile" element={<AppShell><Profile/></AppShell>} />

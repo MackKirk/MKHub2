@@ -772,6 +772,13 @@ def register(payload: RegisterPayload, db: Session = Depends(get_db)):
         structlog.get_logger().warning("training_assignment_failed", error=str(e))
         # Don't fail registration if training assignment fails
 
+    try:
+        from ..services.onboarding_assign import apply_onboarding_for_new_user
+
+        apply_onboarding_for_new_user(db, user.id, inv)
+    except Exception as e:
+        structlog.get_logger().warning("onboarding_package_assignment_failed", error=str(e))
+
     access = create_access_token(str(user.id), roles=[r.name for r in user.roles])
     refresh = create_refresh_token(str(user.id))
     # Send username email if SMTP configured

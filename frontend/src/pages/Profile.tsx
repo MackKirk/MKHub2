@@ -2959,6 +2959,18 @@ function VisaInformationSection({ userId, canEdit, isRequired = false, showInlin
 function UserDocuments({ userId, canEdit }:{ userId:string, canEdit:boolean }){
   const confirm = useConfirm();
   const { data:folders, refetch: refetchFolders } = useQuery({ queryKey:['user-folders', userId], queryFn: ()=> api<any[]>('GET', `/auth/users/${encodeURIComponent(userId)}/folders`) });
+  const defaultFoldersCreatedRef = useRef(false);
+  useEffect(() => {
+    if (!canEdit || !folders || folders.length > 0 || defaultFoldersCreatedRef.current) return;
+    defaultFoldersCreatedRef.current = true;
+    const names = ['HR Documents', 'Contracts', 'Training', 'Other'];
+    (async () => {
+      for (const name of names) {
+        try { await api('POST', `/auth/users/${encodeURIComponent(userId)}/folders`, { name }); } catch (_) { /* ignore */ }
+      }
+      refetchFolders();
+    })();
+  }, [userId, canEdit, folders, refetchFolders]);
   const [activeFolderId, setActiveFolderId] = useState<string>('all');
   const { data:docs, refetch } = useQuery({ queryKey:['user-docs', userId, activeFolderId], queryFn: ()=> {
     const qs = activeFolderId!=='all'? (`?folder_id=${encodeURIComponent(activeFolderId)}`): '';

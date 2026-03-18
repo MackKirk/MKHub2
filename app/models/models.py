@@ -960,6 +960,96 @@ class EmployeeDocument(Base):
     updated_by: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True))
 
 
+HR_DOCUMENTS_FOLDER_NAME = "HR Documents"
+
+
+class OnboardingBaseDocument(Base):
+    """Template PDF for onboarding signing."""
+    __tablename__ = "onboarding_base_documents"
+
+    id: Mapped[uuid.UUID] = uuid_pk()
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    file_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("file_objects.id", ondelete="RESTRICT"), nullable=False)
+    content_hash: Mapped[Optional[str]] = mapped_column(String(128))
+    sign_placement: Mapped[Optional[dict]] = mapped_column(JSON)  # page_index, x, y, w, h
+    default_deadline_days: Mapped[int] = mapped_column(Integer, default=7)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
+    updated_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+
+
+class OnboardingPackage(Base):
+    __tablename__ = "onboarding_packages"
+
+    id: Mapped[uuid.UUID] = uuid_pk()
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    description: Mapped[Optional[str]] = mapped_column(String(1000))
+    active: Mapped[bool] = mapped_column(Boolean, default=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
+
+
+class OnboardingPackageItem(Base):
+    __tablename__ = "onboarding_package_items"
+
+    id: Mapped[uuid.UUID] = uuid_pk()
+    package_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("onboarding_packages.id", ondelete="CASCADE"), index=True)
+    base_document_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("onboarding_base_documents.id", ondelete="CASCADE"), index=True)
+    required: Mapped[bool] = mapped_column(Boolean, default=True)
+    employee_visible: Mapped[bool] = mapped_column(Boolean, default=True)
+    sort_order: Mapped[int] = mapped_column(Integer, default=0)
+
+
+class OnboardingTrigger(Base):
+    __tablename__ = "onboarding_triggers"
+
+    id: Mapped[uuid.UUID] = uuid_pk()
+    package_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("onboarding_packages.id", ondelete="CASCADE"), index=True)
+    condition_type: Mapped[str] = mapped_column(String(50), nullable=False)  # all | division | flag
+    condition_value: Mapped[Optional[dict]] = mapped_column(JSON)
+    sort_order: Mapped[int] = mapped_column(Integer, default=0)
+
+
+class OnboardingAssignment(Base):
+    __tablename__ = "onboarding_assignments"
+
+    id: Mapped[uuid.UUID] = uuid_pk()
+    user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    package_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("onboarding_packages.id", ondelete="CASCADE"), index=True)
+    assigned_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
+    assigned_by_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"))
+
+
+class OnboardingAssignmentItem(Base):
+    __tablename__ = "onboarding_assignment_items"
+
+    id: Mapped[uuid.UUID] = uuid_pk()
+    assignment_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("onboarding_assignments.id", ondelete="CASCADE"), index=True)
+    base_document_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("onboarding_base_documents.id", ondelete="CASCADE"), index=True)
+    required: Mapped[bool] = mapped_column(Boolean, default=True)
+    employee_visible: Mapped[bool] = mapped_column(Boolean, default=True)
+    deadline_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    status: Mapped[str] = mapped_column(String(20), default="pending")  # pending | signed
+    signed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    signed_file_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), ForeignKey("file_objects.id", ondelete="SET NULL"))
+
+
+class OnboardingSignedDocument(Base):
+    __tablename__ = "onboarding_signed_documents"
+
+    id: Mapped[uuid.UUID] = uuid_pk()
+    user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    base_document_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("onboarding_base_documents.id", ondelete="CASCADE"), index=True)
+    assignment_item_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), ForeignKey("onboarding_assignment_items.id", ondelete="SET NULL"))
+    signed_file_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("file_objects.id", ondelete="RESTRICT"), nullable=False)
+    employee_document_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), ForeignKey("employee_documents.id", ondelete="SET NULL"))
+    certificate_hash: Mapped[Optional[str]] = mapped_column(String(128))
+    signer_name: Mapped[Optional[str]] = mapped_column(String(255))
+    signer_email: Mapped[Optional[str]] = mapped_column(String(255))
+    signed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
+    ip_address: Mapped[Optional[str]] = mapped_column(String(100))
+    user_agent: Mapped[Optional[str]] = mapped_column(String(500))
+    acceptance_text: Mapped[Optional[str]] = mapped_column(String(2000))
+
+
 # =====================
 # Inventory domain
 # =====================

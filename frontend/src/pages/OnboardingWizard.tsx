@@ -573,11 +573,12 @@ export default function OnboardingWizard() {
         return;
       }
       
-      // Onboarding complete!
-      toast.success('Onboarding complete! Welcome to MKHub!');
+      // Step 1 complete → Step 2 documents (or home if none assigned)
+      toast.success('Profile saved! Next: sign any required documents.');
       await queryClient.invalidateQueries({ queryKey: ['meProfile'] });
       await queryClient.invalidateQueries({ queryKey: ['emergency-contacts', userId] });
-      navigate('/home', { replace: true });
+      await queryClient.invalidateQueries({ queryKey: ['me-onboarding-docs'] });
+      navigate('/onboarding/documents', { replace: true });
     }
   };
   

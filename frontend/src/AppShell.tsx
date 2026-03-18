@@ -238,6 +238,43 @@ export default function AppShell({ children }: PropsWithChildren){
     }
     return missingPersonalWithContact.length === 0;
   }, [meProfile, emergencyContactsData, userId, emergencyContactsLoading]);
+
+  const { data: onboardingStatus } = useQuery({
+    queryKey: ['me-onboarding-status'],
+    queryFn: async () => {
+      try {
+        return await api<{
+          has_pending: boolean;
+          past_deadline: boolean;
+          pending_count: number;
+          earliest_deadline: string | null;
+        }>('GET', '/auth/me/onboarding/status');
+      } catch {
+        return {
+          has_pending: false,
+          past_deadline: false,
+          pending_count: 0,
+          earliest_deadline: null,
+        };
+      }
+    },
+    enabled: !!userId && isProfileComplete,
+    retry: false,
+  });
+
+  const onboardingDocPaths = ['/onboarding/documents', '/profile'];
+  const onboardingBlocked =
+    isProfileComplete &&
+    onboardingStatus?.past_deadline &&
+    onboardingStatus?.has_pending;
+
+  // Redirect when onboarding documents overdue
+  useEffect(() => {
+    if (!isProfileComplete || !onboardingBlocked) return;
+    const path = location.pathname;
+    if (onboardingDocPaths.some((p) => path === p || path.startsWith(p + '/'))) return;
+    navigate('/onboarding/documents', { replace: true });
+  }, [isProfileComplete, onboardingBlocked, location.pathname, navigate]);
   
   // Redirect to onboarding if incomplete and trying to access other routes
   // Only redirect if queries have finished loading and profile is confirmed incomplete
@@ -429,6 +466,7 @@ export default function AppShell({ children }: PropsWithChildren){
         // Check hr:access permission first - if not granted, hide entire category
         ...((me?.roles||[]).includes('admin') || (me?.permissions||[]).includes('hr:access') || (me?.permissions||[]).includes('users:read')) ? [
           { id: 'users', label: 'Users', path: '/users', icon: <IconUsersGroup />, requiredPermission: 'hr:users:read' },
+          { id: 'onboarding-admin', label: 'Onboarding', path: '/onboarding/admin', icon: <IconDocument />, requiredPermission: 'hr:users:read' },
           { id: 'attendance', label: 'Attendance', path: '/settings/attendance', icon: <IconCalendar />, requiredPermission: 'hr:attendance:read' },
           { id: 'community', label: 'Community', path: '/community', icon: <IconUsersGroup />, requiredPermission: 'hr:community:read' },
           ...(((me?.roles||[]).includes('admin') || (me?.permissions||[]).includes('hr:reviews:admin') || (me?.permissions||[]).includes('reviews:admin')) ? [
@@ -955,7 +993,30 @@ export default function AppShell({ children }: PropsWithChildren){
             </div>
           </div>
         </div>
-        <div className="p-5 min-h-full">{children}</div>
+        <div className="p-5 min-h-full">
+          {onboardingStatus?.has_pending &&
+            !onboardingStatus?.past_deadline &&
+            location.pathname !== '/onboarding/documents' && (
+              <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900 flex flex-wrap items-center justify-between gap-2">
+                <span>
+                  You have {onboardingStatus.pending_count} required onboarding document
+                  {onboardingStatus.pending_count !== 1 ? 's' : ''} to sign
+                  {onboardingStatus.earliest_deadline
+                    ? ` (deadline ${new Date(onboardingStatus.earliest_deadline).toLocaleDateString()})`
+                    : ''}
+                  .
+                </span>
+                <button
+                  type="button"
+                  onClick={() => navigate('/onboarding/documents')}
+                  className="shrink-0 px-3 py-1.5 rounded-lg bg-amber-700 text-white text-sm font-medium hover:bg-amber-800"
+                >
+                  Complete documents
+                </button>
+              </div>
+            )}
+          {children}
+        </div>
       </main>
       <InstallPrompt />
     </div>

@@ -43,6 +43,7 @@ from .routes.training import router as training_router
 from .routes.bug_report import router as bug_report_router
 from .routes.search import router as search_router
 from .routes.admin_system import router as admin_system_router
+from .routes.onboarding import me_router as onboarding_me_router, router as onboarding_router
 
 
 def create_app() -> FastAPI:
@@ -147,6 +148,8 @@ def create_app() -> FastAPI:
     app.include_router(bug_report_router)
     app.include_router(search_router)
     app.include_router(admin_system_router)
+    app.include_router(onboarding_router)
+    app.include_router(onboarding_me_router)
     from .routes import dispatch
     app.include_router(dispatch.router)
     # Legacy UI redirects to new React routes (exact paths)
@@ -446,6 +449,38 @@ def create_app() -> FastAPI:
                     except Exception:
                         pass
                     print("[startup] document_types table ready")
+
+                    # Onboarding (Step 2 documents, packages, signing)
+                    rows = db.execute(
+                        text(
+                            "SELECT 1 FROM information_schema.tables WHERE table_name = 'onboarding_base_documents' LIMIT 1"
+                        )
+                    ).fetchall()
+                    if not rows:
+                        from .models.models import (
+                            OnboardingAssignment,
+                            OnboardingAssignmentItem,
+                            OnboardingBaseDocument,
+                            OnboardingPackage,
+                            OnboardingPackageItem,
+                            OnboardingSignedDocument,
+                            OnboardingTrigger,
+                        )
+
+                        Base.metadata.create_all(
+                            bind=engine,
+                            tables=[
+                                OnboardingBaseDocument.__table__,
+                                OnboardingPackage.__table__,
+                                OnboardingPackageItem.__table__,
+                                OnboardingTrigger.__table__,
+                                OnboardingAssignment.__table__,
+                                OnboardingAssignmentItem.__table__,
+                                OnboardingSignedDocument.__table__,
+                            ],
+                        )
+                        db.commit()
+                        print("[startup] Created onboarding_* tables")
 
                     # Project folders
                     db.execute(text("""
