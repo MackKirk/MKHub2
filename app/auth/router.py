@@ -20,6 +20,10 @@ from ..schemas.auth import (
     TokenResponse,
     MeResponse,
 )
+from ..schemas.employee_training import (
+    EmployeeTrainingRecordCreate,
+    EmployeeTrainingRecordUpdate,
+)
 from .security import (
     get_password_hash,
     verify_password,
@@ -36,9 +40,13 @@ from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from email.message import EmailMessage
 import secrets
+import html as html_module
 from sqlalchemy import and_, func
 import random
 
+
+# Password-reset link lifetime when an admin sends a “welcome / access” email (hours).
+ACCESS_INVITE_RESET_HOURS = 72
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -557,6 +565,161 @@ def generate_account_ready_email_html(
     return html.strip()
 
 
+def generate_user_access_invite_email_html(
+    username: str,
+    greeting_line: str,
+    login_link: str,
+    set_password_link: str,
+    app_name: str,
+    public_base_url: str,
+    inviter_name: str,
+    reset_expires_hours: int,
+) -> str:
+    """Welcome email for existing users: username, set-password link, and sign-in link."""
+    logo_url = f"{public_base_url}/proposals/assets/logo.png"
+    u_safe = html_module.escape(username)
+    greet_safe = html_module.escape(greeting_line)
+    inv_safe = html_module.escape(inviter_name)
+    app_safe = html_module.escape(app_name)
+
+    html = f"""
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Your {app_safe} access</title>
+</head>
+<body style="margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; background-color: #f6f7f9;">
+    <table role="presentation" style="width: 100%; border-collapse: collapse;">
+        <tr>
+            <td align="center" style="padding: 40px 20px;">
+                <table role="presentation" style="max-width: 600px; width: 100%; background-color: #ffffff; border-radius: 12px; box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1); border: 1px solid #e5e7eb;">
+                    <tr>
+                        <td align="center" style="padding: 40px 20px 30px; background: linear-gradient(135deg, #7f1010 0%, #a31414 100%); border-radius: 12px 12px 0 0;">
+                            <img src="{logo_url}" alt="{app_safe}" style="max-width: 300px; height: auto; display: block;" />
+                        </td>
+                    </tr>
+                    <tr>
+                        <td style="padding: 40px 30px;">
+                            <h1 style="margin: 0 0 20px 0; font-size: 28px; font-weight: 700; color: #0f172a; line-height: 1.3;">
+                                You&apos;re invited to {app_safe}
+                            </h1>
+                            <p style="margin: 0 0 16px 0; font-size: 16px; line-height: 1.6; color: #374151;">
+                                {greet_safe}
+                            </p>
+                            <p style="margin: 0 0 24px 0; font-size: 16px; line-height: 1.6; color: #374151;">
+                                Your account is ready. Use the <strong>username</strong> below to sign in. If you haven&apos;t set a password yet, use the first button to create one (same as &quot;Forgot password&quot; on the login page).
+                            </p>
+                            <div style="background-color: #f9fafb; border: 2px solid #e5e7eb; border-radius: 8px; padding: 20px; margin: 24px 0;">
+                                <p style="margin: 0 0 10px 0; font-size: 14px; font-weight: 600; color: #6b7280; text-transform: uppercase; letter-spacing: 0.5px;">
+                                    Your username
+                                </p>
+                                <p style="margin: 0; font-size: 24px; font-weight: 700; color: #0f172a; font-family: 'Courier New', monospace;">
+                                    {u_safe}
+                                </p>
+                            </div>
+                            <p style="margin: 0 0 8px 0; font-size: 15px; font-weight: 600; color: #0f172a;">Step 1 — Set or reset your password</p>
+                            <table role="presentation" style="width: 100%; margin: 12px 0 28px 0;">
+                                <tr>
+                                    <td align="center" style="padding: 8px 0;">
+                                        <table role="presentation" cellspacing="0" cellpadding="0" border="0">
+                                            <tr>
+                                                <td style="background-color: #d11616; border-radius: 8px; text-align: center;">
+                                                    <a href="{set_password_link}" style="background-color: #d11616; border: 2px solid #d11616; border-radius: 8px; color: #ffffff; display: inline-block; font-size: 16px; font-weight: 700; line-height: 1.5; text-decoration: none; padding: 14px 32px;">
+                                                        Open secure password link
+                                                    </a>
+                                                </td>
+                                            </tr>
+                                        </table>
+                                    </td>
+                                </tr>
+                            </table>
+                            <p style="margin: 0 0 8px 0; font-size: 15px; font-weight: 600; color: #0f172a;">Step 2 — Sign in to the app</p>
+                            <table role="presentation" style="width: 100%; margin: 12px 0 24px 0;">
+                                <tr>
+                                    <td align="center" style="padding: 8px 0;">
+                                        <table role="presentation" cellspacing="0" cellpadding="0" border="0">
+                                            <tr>
+                                                <td style="background-color: #ffffff; border: 2px solid #d11616; border-radius: 8px; text-align: center;">
+                                                    <a href="{login_link}" style="color: #d11616; display: inline-block; font-size: 16px; font-weight: 700; line-height: 1.5; text-decoration: none; padding: 12px 28px;">
+                                                        Go to login
+                                                    </a>
+                                                </td>
+                                            </tr>
+                                        </table>
+                                    </td>
+                                </tr>
+                            </table>
+                            <p style="margin: 0 0 8px 0; font-size: 14px; line-height: 1.6; color: #6b7280;">Password link (copy &amp; paste):</p>
+                            <p style="margin: 0 0 16px 0; font-size: 14px; line-height: 1.6; color: #2563eb; word-break: break-all;">{set_password_link}</p>
+                            <p style="margin: 0 0 8px 0; font-size: 14px; line-height: 1.6; color: #6b7280;">Login page:</p>
+                            <p style="margin: 0 0 24px 0; font-size: 14px; line-height: 1.6; color: #2563eb; word-break: break-all;">{login_link}</p>
+                            <div style="border-top: 1px solid #e5e7eb; padding-top: 24px; margin-top: 8px;">
+                                <p style="margin: 0; font-size: 14px; line-height: 1.6; color: #6b7280;">
+                                    The password link expires in <strong>{reset_expires_hours} hours</strong>. You can request a new one anytime from the login page using &quot;Forgot password&quot; with your username or email.
+                                </p>
+                            </div>
+                        </td>
+                    </tr>
+                    <tr>
+                        <td style="padding: 30px; background-color: #f9fafb; border-top: 1px solid #e5e7eb; border-radius: 0 0 12px 12px;">
+                            <p style="margin: 0 0 10px 0; font-size: 16px; font-weight: 600; color: #0f172a;">Best regards,</p>
+                            <p style="margin: 0 0 4px 0; font-size: 15px; color: #374151;">{inv_safe}</p>
+                            <p style="margin: 0; font-size: 14px; color: #6b7280;">{app_safe}</p>
+                        </td>
+                    </tr>
+                </table>
+                <table role="presentation" style="max-width: 600px; width: 100%; margin-top: 20px;">
+                    <tr>
+                        <td align="center" style="padding: 20px;">
+                            <p style="margin: 0; font-size: 12px; color: #9ca3af;">
+                                © {datetime.now(timezone.utc).year} {app_safe}. All rights reserved.
+                            </p>
+                        </td>
+                    </tr>
+                </table>
+            </td>
+        </tr>
+    </table>
+</body>
+</html>
+    """
+    return html.strip()
+
+
+def generate_user_access_invite_email_text(
+    username: str,
+    greeting_line: str,
+    login_link: str,
+    set_password_link: str,
+    app_name: str,
+    inviter_name: str,
+    reset_expires_hours: int,
+) -> str:
+    return f"""
+You're invited to {app_name}
+
+{greeting_line}
+
+Your account is ready. Use this username to sign in:
+
+  Username: {username}
+
+Step 1 — Set or reset your password (open this link in your browser):
+{set_password_link}
+
+Step 2 — Sign in:
+{login_link}
+
+The password link expires in {reset_expires_hours} hours. You can request a new one anytime from the login page using "Forgot password" with your username or email.
+
+Best regards,
+{inviter_name}
+{app_name}
+""".strip()
+
+
 def generate_invite_email_text(
     invitee_email: str,
     invite_link: str,
@@ -1032,6 +1195,7 @@ def my_profile(user: User = Depends(get_current_user), db: Session = Depends(get
             "emergency_contact_relationship": ep.emergency_contact_relationship,
             "emergency_contact_phone": ep.emergency_contact_phone,
             "cloth_size": getattr(ep, "cloth_size", None),
+            "bamboo_files_last_sync_at": _dt(getattr(ep, "bamboo_files_last_sync_at", None)),
         }
         # Get global custom cloth sizes
         from ..models.models import SettingList, SettingItem
@@ -1215,6 +1379,7 @@ def get_user_profile(user_id: str, db: Session = Depends(get_db), me: User = Dep
                 "emergency_contact_name","emergency_contact_relationship","emergency_contact_phone",
                 "cloth_size",
                 "project_division_ids",
+                "bamboo_files_last_sync_at",
             ]
         }
         # New API field backed by legacy column
@@ -1242,7 +1407,12 @@ def get_user_profile(user_id: str, db: Session = Depends(get_db), me: User = Dep
 
 
 @router.put("/users/{user_id}/profile")
-def update_user_profile(user_id: str, payload: EmployeeProfileInput, db: Session = Depends(get_db), _=Depends(require_permissions("users:write", "hr:users:edit:general"))):
+def update_user_profile(
+    user_id: str,
+    payload: EmployeeProfileInput,
+    db: Session = Depends(get_db),
+    me: User = Depends(require_permissions("users:write", "hr:users:edit:general")),
+):
     from ..models.models import EmployeeProfile
     u = db.query(User).filter(User.id == user_id).first()
     if not u:
@@ -1256,16 +1426,24 @@ def update_user_profile(user_id: str, payload: EmployeeProfileInput, db: Session
     # Map new API field to legacy column
     if "work_eligibility_status" in data and data.get("work_eligibility_status") is not None:
         data["work_permit_status"] = data["work_eligibility_status"]
-    for k in ("date_of_birth","hire_date","termination_date"):
+    data.pop("work_eligibility_status", None)
+    # bamboo_files_last_sync_at: only admins may set (HR editors keep sync buttons but not this audit date)
+    is_admin = any((getattr(r, "name", None) or "").lower() == "admin" for r in me.roles)
+    if "bamboo_files_last_sync_at" in data and not is_admin:
+        data.pop("bamboo_files_last_sync_at", None)
+    for k in ("date_of_birth", "hire_date", "termination_date", "bamboo_files_last_sync_at"):
         if k in data and isinstance(data[k], str):
             try:
-                dt = datetime.strptime(data[k], "%Y-%m-%d").replace(tzinfo=timezone.utc)
+                dt = datetime.strptime(data[k][:10], "%Y-%m-%d").replace(tzinfo=timezone.utc)
                 data[k] = dt
             except Exception:
                 data[k] = None
-    for k,v in data.items(): setattr(ep,k,v)
+        elif k in data and data[k] is None:
+            pass
+    for k, v in data.items():
+        setattr(ep, k, v)
     db.commit()
-    return {"status":"ok"}
+    return {"status": "ok"}
 
 
 # Role and permission management
@@ -1971,6 +2149,129 @@ def update_user(user_id: str, email_personal: Optional[str] = None, username: Op
     return {"status":"ok"}
 
 
+@router.post("/users/{user_id}/send-access-invite")
+def send_user_access_invite(
+    user_id: str,
+    db: Session = Depends(get_db),
+    actor: User = Depends(require_permissions("users:write", "hr:users:edit:general")),
+):
+    """
+    Email an existing user their username, a time-limited password link (same mechanism as forgot-password),
+    and the login URL. Intended when sign-in is only via password recovery / first-time setup.
+    """
+    from ..models.models import PasswordReset
+
+    target = db.query(User).filter(User.id == user_id).first()
+    if not target:
+        raise HTTPException(status_code=404, detail="User not found")
+    if not target.is_active:
+        raise HTTPException(status_code=400, detail="Cannot send invite to an inactive user")
+
+    ep = db.query(EmployeeProfile).filter(EmployeeProfile.user_id == target.id).first()
+    if ep:
+        fn = (ep.preferred_name or ep.first_name or "").strip()
+        ln = (ep.last_name or "").strip()
+        if fn and ln:
+            greeting_line = f"Hello {fn},"
+        elif fn:
+            greeting_line = f"Hello {fn},"
+        else:
+            greeting_line = "Hello,"
+    else:
+        greeting_line = "Hello,"
+
+    inv_ep = db.query(EmployeeProfile).filter(EmployeeProfile.user_id == actor.id).first()
+    inviter_name = actor.username
+    if inv_ep:
+        if inv_ep.first_name and inv_ep.last_name:
+            inviter_name = f"{inv_ep.first_name} {inv_ep.last_name}"
+        elif inv_ep.preferred_name:
+            inviter_name = inv_ep.preferred_name
+
+    token = secrets.token_urlsafe(32)
+    now = datetime.now(timezone.utc)
+    pr = PasswordReset(
+        user_id=target.id,
+        token=token,
+        expires_at=now + timedelta(hours=ACCESS_INVITE_RESET_HOURS),
+    )
+    db.add(pr)
+    db.commit()
+
+    base = (settings.public_base_url or "").rstrip("/")
+    login_link = f"{base}/login"
+    set_password_link = f"{base}/password-reset?token={token}"
+
+    email_sent = False
+    email_error = None
+    try:
+        if not settings.smtp_host:
+            structlog.get_logger().warning("access_invite_email_skipped", reason="SMTP_HOST not configured")
+        elif not settings.mail_from:
+            structlog.get_logger().warning("access_invite_email_skipped", reason="MAIL_FROM not configured")
+        elif not settings.public_base_url:
+            structlog.get_logger().warning("access_invite_email_skipped", reason="PUBLIC_BASE_URL not configured")
+        else:
+            html_content = generate_user_access_invite_email_html(
+                username=target.username,
+                greeting_line=greeting_line,
+                login_link=login_link,
+                set_password_link=set_password_link,
+                app_name=settings.app_name,
+                public_base_url=settings.public_base_url,
+                inviter_name=inviter_name,
+                reset_expires_hours=ACCESS_INVITE_RESET_HOURS,
+            )
+            text_content = generate_user_access_invite_email_text(
+                username=target.username,
+                greeting_line=greeting_line,
+                login_link=login_link,
+                set_password_link=set_password_link,
+                app_name=settings.app_name,
+                inviter_name=inviter_name,
+                reset_expires_hours=ACCESS_INVITE_RESET_HOURS,
+            )
+            msg_multipart = MIMEMultipart("alternative")
+            msg_multipart["Subject"] = f"Your {settings.app_name} access — sign in"
+            msg_multipart["From"] = settings.mail_from
+            msg_multipart["To"] = target.email_personal
+            msg_multipart.attach(MIMEText(text_content, "plain"))
+            msg_multipart.attach(MIMEText(html_content, "html"))
+            if settings.smtp_tls:
+                with smtplib.SMTP(settings.smtp_host, settings.smtp_port) as s:
+                    s.starttls()
+                    if settings.smtp_username and settings.smtp_password:
+                        s.login(settings.smtp_username, settings.smtp_password)
+                    s.send_message(msg_multipart)
+            else:
+                with smtplib.SMTP(settings.smtp_host, settings.smtp_port) as s:
+                    if settings.smtp_username and settings.smtp_password:
+                        s.login(settings.smtp_username, settings.smtp_password)
+                    s.send_message(msg_multipart)
+            email_sent = True
+            structlog.get_logger().info(
+                "user_access_invite_sent",
+                target_user_id=str(target.id),
+                sent_by=str(actor.id),
+                email=target.email_personal,
+            )
+    except Exception as e:
+        email_error = str(e)
+        structlog.get_logger().error(
+            "user_access_invite_failed",
+            error=str(e),
+            target_user_id=str(target.id),
+            exc_info=True,
+        )
+
+    return {
+        "status": "ok",
+        "email_sent": email_sent,
+        "email_error": email_error,
+        "reset_expires_hours": ACCESS_INVITE_RESET_HOURS,
+    }
+
+
 # Password reset
 @router.post("/password/forgot")
 def password_forgot(identifier: str, db: Session = Depends(get_db)):
@@ -2138,6 +2439,180 @@ def delete_custom_cloth_size(size: str, db: Session = Depends(get_db), _=Depends
         raise HTTPException(status_code=404, detail="Size not found")
     
     db.delete(item)
+    db.commit()
+    return {"status": "ok"}
+
+
+# =====================
+# Manual employee training records (HR; not LMS)
+# =====================
+
+
+def _training_can_view(user: User, user_id: str) -> bool:
+    if str(user.id) == str(user_id):
+        return True
+    return _has_permission(user, "users:read") or _has_permission(user, "hr:users:read") or _has_permission(
+        user, "hr:users:view:general"
+    )
+
+
+def _training_can_edit(user: User, user_id: str) -> bool:
+    if str(user.id) == str(user_id):
+        return True
+    return _has_permission(user, "users:write") or _has_permission(user, "hr:users:edit:general")
+
+
+def _training_row(r):
+    return {
+        "id": str(r.id),
+        "user_id": str(r.user_id),
+        "title": r.title,
+        "provider": r.provider,
+        "category": r.category,
+        "delivery_format": r.delivery_format,
+        "start_date": r.start_date.isoformat() if r.start_date else None,
+        "end_date": r.end_date.isoformat() if r.end_date else None,
+        "completion_date": r.completion_date.isoformat() if r.completion_date else None,
+        "duration_hours": float(r.duration_hours) if r.duration_hours is not None else None,
+        "status": r.status or "completed",
+        "certificate_number": r.certificate_number,
+        "expiry_date": r.expiry_date.isoformat() if r.expiry_date else None,
+        "notes": r.notes,
+        "created_at": r.created_at.isoformat() if r.created_at else None,
+        "updated_at": r.updated_at.isoformat() if r.updated_at else None,
+        "created_by_user_id": str(r.created_by_user_id) if r.created_by_user_id else None,
+    }
+
+
+@router.get("/users/{user_id}/training-records")
+def list_training_records(user_id: str, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    if not _training_can_view(user, user_id):
+        raise HTTPException(status_code=403, detail="Forbidden")
+    from ..models.models import EmployeeTrainingRecord
+
+    rows = (
+        db.query(EmployeeTrainingRecord)
+        .filter(EmployeeTrainingRecord.user_id == user_id)
+        .order_by(EmployeeTrainingRecord.completion_date.desc(), EmployeeTrainingRecord.created_at.desc())
+        .all()
+    )
+    return [_training_row(r) for r in rows]
+
+
+@router.post("/users/{user_id}/training-records")
+def create_training_record(
+    user_id: str,
+    payload: EmployeeTrainingRecordCreate,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    from ..models.models import EmployeeTrainingRecord
+
+    if not _training_can_edit(user, user_id):
+        raise HTTPException(status_code=403, detail="Forbidden")
+    target = db.query(User).filter(User.id == user_id).first()
+    if not target:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    now = datetime.now(timezone.utc)
+    r = EmployeeTrainingRecord(
+        user_id=uuid.UUID(str(user_id)),
+        title=payload.title.strip(),
+        provider=(payload.provider or "").strip() or None,
+        category=(payload.category or "").strip() or None,
+        delivery_format=(payload.delivery_format or "").strip() or None,
+        start_date=payload.start_date,
+        end_date=payload.end_date,
+        completion_date=payload.completion_date,
+        duration_hours=payload.duration_hours,
+        status=(payload.status or "completed").strip() or "completed",
+        certificate_number=(payload.certificate_number or "").strip() or None,
+        expiry_date=payload.expiry_date,
+        notes=payload.notes,
+        created_at=now,
+        updated_at=now,
+        created_by_user_id=user.id,
+        updated_by_user_id=user.id,
+    )
+    db.add(r)
+    db.commit()
+    db.refresh(r)
+    return _training_row(r)
+
+
+@router.patch("/users/{user_id}/training-records/{record_id}")
+def update_training_record(
+    user_id: str,
+    record_id: str,
+    payload: EmployeeTrainingRecordUpdate,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    from ..models.models import EmployeeTrainingRecord
+
+    if not _training_can_edit(user, user_id):
+        raise HTTPException(status_code=403, detail="Forbidden")
+    r = (
+        db.query(EmployeeTrainingRecord)
+        .filter(EmployeeTrainingRecord.user_id == user_id, EmployeeTrainingRecord.id == record_id)
+        .first()
+    )
+    if not r:
+        raise HTTPException(status_code=404, detail="Training record not found")
+
+    data = payload.model_dump(exclude_unset=True)
+    for key in (
+        "title",
+        "provider",
+        "category",
+        "delivery_format",
+        "start_date",
+        "end_date",
+        "completion_date",
+        "duration_hours",
+        "status",
+        "certificate_number",
+        "expiry_date",
+        "notes",
+    ):
+        if key in data:
+            val = data[key]
+            if key == "title" and val is not None:
+                val = str(val).strip()
+            elif key in ("provider", "category", "delivery_format", "certificate_number") and val is not None:
+                val = str(val).strip() or None
+            setattr(r, key, val)
+    sd = r.start_date
+    ed = r.end_date
+    if sd and ed and ed < sd:
+        raise HTTPException(status_code=400, detail="end_date must be on or after start_date")
+
+    r.updated_at = datetime.now(timezone.utc)
+    r.updated_by_user_id = user.id
+    db.commit()
+    db.refresh(r)
+    return _training_row(r)
+
+
+@router.delete("/users/{user_id}/training-records/{record_id}")
+def delete_training_record(
+    user_id: str,
+    record_id: str,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    from ..models.models import EmployeeTrainingRecord
+
+    if not _training_can_edit(user, user_id):
+        raise HTTPException(status_code=403, detail="Forbidden")
+    r = (
+        db.query(EmployeeTrainingRecord)
+        .filter(EmployeeTrainingRecord.user_id == user_id, EmployeeTrainingRecord.id == record_id)
+        .first()
+    )
+    if not r:
+        raise HTTPException(status_code=404, detail="Training record not found")
+    db.delete(r)
     db.commit()
     return {"status": "ok"}
 
