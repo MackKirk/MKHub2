@@ -466,8 +466,14 @@ class EquipmentCheckoutBase(BaseModel):
     notes_out: Optional[str] = None
 
 
-class EquipmentCheckoutCreate(EquipmentCheckoutBase):
-    pass
+class EquipmentCheckoutCreate(BaseModel):
+    """Body for POST /equipment/{equipment_id}/checkout — equipment_id comes from the path, not the body."""
+
+    checked_out_by_user_id: uuid.UUID
+    checked_out_at: Optional[datetime] = None
+    expected_return_date: Optional[datetime] = None
+    condition_out: Condition
+    notes_out: Optional[str] = None
 
 
 class EquipmentCheckinUpdate(BaseModel):

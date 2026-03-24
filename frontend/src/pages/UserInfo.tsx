@@ -207,6 +207,65 @@ function SyncDocumentsButton({ userId, onSuccess }: { userId: string; onSuccess?
   );
 }
 
+function BambooFilesLastSyncRow({
+  userId,
+  lastSyncIso,
+  isAdmin,
+}: {
+  userId: string;
+  lastSyncIso: string | null | undefined;
+  isAdmin: boolean;
+}) {
+  const [saving, setSaving] = useState(false);
+  const queryClient = useQueryClient();
+  const display = (() => {
+    if (!lastSyncIso) return '—';
+    const ymd = String(lastSyncIso).slice(0, 10);
+    if (/^\d{4}-\d{2}-\d{2}$/.test(ymd)) {
+      const [y, m, d] = ymd.split('-').map(Number);
+      return new Date(y, m - 1, d).toLocaleDateString(undefined, { dateStyle: 'medium' });
+    }
+    try {
+      return new Date(lastSyncIso).toLocaleDateString(undefined, { dateStyle: 'medium' });
+    } catch {
+      return '—';
+    }
+  })();
+  const saveToday = async () => {
+    if (saving || !isAdmin) return;
+    const d = new Date();
+    const ymd = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    setSaving(true);
+    try {
+      await api('PUT', `/auth/users/${encodeURIComponent(userId)}/profile`, { bamboo_files_last_sync_at: ymd });
+      toast.success('Last Update Sync saved');
+      await queryClient.invalidateQueries({ queryKey: ['userProfile', userId] });
+    } catch (e: any) {
+      toast.error(e?.message || 'Failed to save');
+    } finally {
+      setSaving(false);
+    }
+  };
+  return (
+    <div className="w-full mt-3 pt-3 border-t border-gray-100 flex flex-wrap items-center gap-3">
+      <div className="text-xs text-gray-600">
+        <span className="font-semibold text-gray-800">Last Update Sync (Bamboo files): </span>
+        <span className="text-gray-900">{display}</span>
+      </div>
+      {isAdmin && (
+        <button
+          type="button"
+          onClick={saveToday}
+          disabled={saving}
+          className="px-3 py-1.5 rounded-lg bg-white hover:bg-gray-50 text-gray-800 border border-gray-300 text-xs font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+        >
+          {saving ? 'Saving…' : "Save today's date"}
+        </button>
+      )}
+    </div>
+  );
+}
+
 export type UserPermissionsRef = {
   hasUnsavedChanges: () => boolean;
   save: () => Promise<void>;
@@ -2156,7 +2215,7 @@ function UserLabel({ id, fallback }:{ id:string, fallback:string }){
 export default function UserInfo(){
   const { userId } = useParams();
   const [sp] = useSearchParams();
-  const tabParam = sp.get('tab') as ('personal'|'job'|'docs'|'timesheet'|'loans'|'reports'|'permissions') | null;
+  const tabParam = sp.get('tab') as ('personal'|'job'|'docs'|'timesheet'|'loans'|'training'|'assets'|'reports'|'permissions') | null;
   const [tab, setTab] = useState<typeof tabParam | 'personal'>(tabParam || 'personal');
   const confirm = useConfirm();
   const queryClient = useQueryClient();
@@ -2168,6 +2227,7 @@ export default function UserInfo(){
     (me?.roles || []).some((r: string) => String(r || '').toLowerCase() === 'admin') || 
     (me?.permissions || []).includes('users:write')
   );
+  const isAdmin = !!(me?.roles || []).some((r: string) => String(r || '').toLowerCase() === 'admin');
   const canSelfEdit = me && userId && String(me.id) === String(userId);
   
   // Check edit permissions for general tab (Personal, Job, Docs)
@@ -2223,6 +2283,24 @@ export default function UserInfo(){
     const perms = me?.permissions || [];
     return perms.includes('hr:users:view:general') || perms.includes('users:read'); // Legacy
   }, [me]);
+
+  const canViewTraining = useMemo(() => {
+    if (!me) return false;
+    if (userId && String(me.id) === String(userId)) return true;
+    const isAdmin = (me?.roles || []).some((r: string) => String(r || '').toLowerCase() === 'admin');
+    if (isAdmin) return true;
+    const perms = me?.permissions || [];
+    return perms.includes('hr:users:view:general') || perms.includes('users:read');
+  }, [me, userId]);
+
+  const canEditTraining = useMemo(() => {
+    if (!me) return false;
+    if (canSelfEdit) return true;
+    const isAdmin = (me?.roles || []).some((r: string) => String(r || '').toLowerCase() === 'admin');
+    if (isAdmin) return true;
+    const perms = me?.permissions || [];
+    return perms.includes('hr:users:edit:general') || perms.includes('users:write');
+  }, [me, canSelfEdit]);
   
   const canViewReports = useMemo(() => {
     if (!me) return false;
@@ -2247,6 +2325,27 @@ export default function UserInfo(){
     const perms = me?.permissions || [];
     return perms.includes('hr:users:view:permissions') || perms.includes('users:read'); // Legacy
   }, [me]);
+  const canViewAssets = useMemo(() => {
+    if (!me) return false;
+    const isAdmin = (me?.roles || []).some((r: string) => String(r || '').toLowerCase() === 'admin');
+    if (isAdmin) return true;
+    const perms = me?.permissions || [];
+    return perms.includes('fleet:access') || perms.includes('fleet:read') || perms.includes('equipment:read');
+  }, [me]);
+  const canEditAssets = useMemo(() => {
+    if (!me) return false;
+    const isAdmin = (me?.roles || []).some((r: string) => String(r || '').toLowerCase() === 'admin');
+    if (isAdmin) return true;
+    const perms = me?.permissions || [];
+    return perms.includes('equipment:write');
+  }, [me]);
+  const canEditFleetAssets = useMemo(() => {
+    if (!me) return false;
+    const isAdmin = (me?.roles || []).some((r: string) => String(r || '').toLowerCase() === 'admin');
+    if (isAdmin) return true;
+    const perms = me?.permissions || [];
+    return perms.includes('fleet:write');
+  }, [me]);
   const p = data?.profile || {};
   const u = data?.user || {};
   const { data: visasData } = useQuery({ 
@@ -2264,6 +2363,7 @@ export default function UserInfo(){
   const [selectedDivisions, setSelectedDivisions] = useState<string[]>([]);
   const [selectedProjectDivisions, setSelectedProjectDivisions] = useState<string[]>([]);
   const [isEditingPersonal, setIsEditingPersonal] = useState(false);
+  const [sendingAccessInvite, setSendingAccessInvite] = useState(false);
   
   // Auto-fill work_eligibility_status if user has visas but no status
   useEffect(() => {
@@ -2352,6 +2452,7 @@ export default function UserInfo(){
     const isGeneralTab = ['personal', 'job', 'docs'].includes(newTab);
     const isTimesheetTab = newTab === 'timesheet';
     const isLoansTab = newTab === 'loans';
+    const isTrainingTab = newTab === 'training';
     const isReportsTab = newTab === 'reports';
     const isPermissionsTab = newTab === 'permissions';
     
@@ -2364,6 +2465,14 @@ export default function UserInfo(){
       return;
     }
     if (isLoansTab && !canViewLoans) {
+      return;
+    }
+    if (isTrainingTab && !canViewTraining) {
+      toast.error('You do not have permission to view this tab');
+      return;
+    }
+    if (newTab === 'assets' && !canViewAssets) {
+      toast.error('You do not have permission to view this tab');
       return;
     }
     if (isReportsTab && !canViewReports) {
@@ -2544,9 +2653,45 @@ export default function UserInfo(){
               <p className="text-xs text-gray-600 mt-0.5">Personal details, employment, and documents.</p>
             </div>
           </div>
-          <div className="text-right">
-            <div className="text-[10px] text-gray-400 mb-1 font-medium uppercase tracking-wide">Today</div>
-            <div className="text-xs font-semibold text-gray-700">{todayLabel}</div>
+          <div className="text-right flex flex-col items-end gap-2 shrink-0">
+            {canEditGeneral && userId && u?.is_active && (
+              <button
+                type="button"
+                disabled={sendingAccessInvite}
+                onClick={async () => {
+                  if (!userId || sendingAccessInvite) return;
+                  setSendingAccessInvite(true);
+                  try {
+                    const res = await api<{
+                      email_sent?: boolean;
+                      email_error?: string | null;
+                      reset_expires_hours?: number;
+                    }>('POST', `/auth/users/${encodeURIComponent(String(userId))}/send-access-invite`, {});
+                    if (res?.email_sent) {
+                      toast.success(
+                        `Access invite sent${typeof res.reset_expires_hours === 'number' ? ` (password link valid ${res.reset_expires_hours}h)` : ''}`,
+                      );
+                    } else if (res?.email_error) {
+                      toast.error(String(res.email_error));
+                    } else {
+                      toast.error('Email was not sent. Check SMTP, MAIL_FROM, and PUBLIC_BASE_URL.');
+                    }
+                  } catch (e: any) {
+                    toast.error(e?.message || e?.detail || 'Failed to send access invite');
+                  } finally {
+                    setSendingAccessInvite(false);
+                  }
+                }}
+                className="px-3 py-1.5 rounded-lg text-xs font-semibold text-white bg-gradient-to-r from-brand-red to-[#ee2b2b] shadow-sm hover:opacity-95 disabled:opacity-50 disabled:cursor-not-allowed border border-transparent"
+                title="Email username, password setup link, and login URL"
+              >
+                {sendingAccessInvite ? 'Sending…' : 'Send access invite'}
+              </button>
+            )}
+            <div>
+              <div className="text-[10px] text-gray-400 mb-1 font-medium uppercase tracking-wide">Today</div>
+              <div className="text-xs font-semibold text-gray-700">{todayLabel}</div>
+            </div>
           </div>
         </div>
       </div>
@@ -2670,6 +2815,8 @@ export default function UserInfo(){
               ...(canViewGeneral || canSelfEdit ? ['personal','job','docs'] : []),
               ...(canViewTimesheet || canSelfEdit ? ['timesheet'] : []),
               ...(canViewLoans ? ['loans'] : []),
+              ...(canViewTraining ? ['training'] : []),
+              ...(canViewAssets ? ['assets'] : []),
               ...(canViewReports ? ['reports'] : []),
               ...(canViewPermissions ? ['permissions'] : [])
             ] as const).map((k)=> (
@@ -2694,7 +2841,7 @@ export default function UserInfo(){
         <div className="p-5">
           {isLoading? <div className="h-24 animate-pulse bg-gray-100 rounded"/> : (
             <>
-              {!canViewGeneral && !canViewTimesheet && !canViewLoans && !canViewReports && !canViewPermissions && !canSelfEdit && (
+              {!canViewGeneral && !canViewTimesheet && !canViewLoans && !canViewTraining && !canViewAssets && !canViewReports && !canViewPermissions && !canSelfEdit && (
                 <div className="text-center py-12">
                   <div className="text-red-600 font-semibold mb-2">Access Denied</div>
                   <div className="text-gray-600">You do not have permission to view this user's information.</div>
@@ -2783,6 +2930,16 @@ export default function UserInfo(){
               {tab==='docs' && canViewGeneral && <UserDocuments userId={String(userId)} canEdit={canEditGeneral} />}
               {tab==='timesheet' && canViewTimesheet && <TimesheetBlock userId={String(userId)} canEdit={canEditTimesheet} />}
               {tab==='loans' && canViewLoans && <UserLoans userId={String(userId)} canEdit={canEditGeneral || (me?.roles || []).some((r: string) => String(r || '').toLowerCase() === 'admin') || (me?.permissions || []).includes('hr:users:write') || (me?.permissions || []).includes('users:write')} />}
+              {tab==='training' && canViewTraining && (
+                <EmployeeTrainingSection userId={String(userId)} canEdit={canEditTraining} />
+              )}
+              {tab==='assets' && canViewAssets && (
+                <UserAssetsSection
+                  userId={String(userId)}
+                  canEditEquipment={canEditAssets}
+                  canEditFleet={canEditFleetAssets}
+                />
+              )}
               {tab==='reports' && canViewReports && <UserReports userId={String(userId)} canEdit={canEditGeneral || (me?.roles || []).some((r: string) => String(r || '').toLowerCase() === 'admin') || (me?.permissions || []).includes('hr:users:write') || (me?.permissions || []).includes('users:write')} />}
               {tab==='permissions' && canViewPermissions && <UserPermissions ref={permissionsRef} userId={String(userId)} onDirtyChange={setPermissionsDirty} canEdit={canEditPermissions} />}
             </>
@@ -2853,6 +3010,13 @@ export default function UserInfo(){
             <SyncPhotoButton userId={String(userId)} onSuccess={() => { window.location.reload(); }} />
             <SyncDocumentsButton userId={String(userId)} onSuccess={() => { window.location.reload(); }} />
           </div>
+          {userId && (
+            <BambooFilesLastSyncRow
+              userId={String(userId)}
+              lastSyncIso={p.bamboo_files_last_sync_at}
+              isAdmin={isAdmin}
+            />
+          )}
         </div>
       )}
     </div>
@@ -6602,6 +6766,1095 @@ function TimeOffSection({ userId, canEdit }:{ userId:string, canEdit:boolean }){
                 {addingHistory ? 'Adding...' : 'Add entry'}
               </button>
             </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** Format API date/datetime for asset tables; avoids showing one calendar day early when the API stores UTC midnight for a business date. */
+function formatAssetDisplayDate(iso: string | null | undefined): string {
+  if (iso == null || iso === '') return '—';
+  const s = String(iso).trim();
+  const d = new Date(s);
+  if (Number.isNaN(d.getTime())) return '—';
+  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) {
+    const [y, m, day] = s.split('-').map(Number);
+    return new Date(y, m - 1, day).toLocaleDateString('en-US', { dateStyle: 'short' });
+  }
+  if (
+    d.getUTCHours() === 0 &&
+    d.getUTCMinutes() === 0 &&
+    d.getUTCSeconds() === 0 &&
+    d.getUTCMilliseconds() === 0
+  ) {
+    return d.toLocaleDateString('en-US', { timeZone: 'UTC', year: 'numeric', month: 'short', day: 'numeric' });
+  }
+  return d.toLocaleDateString('en-US', { dateStyle: 'short' });
+}
+
+function UserAssetsSection({
+  userId,
+  canEditEquipment,
+  canEditFleet,
+}: {
+  userId: string;
+  canEditEquipment: boolean;
+  canEditFleet: boolean;
+}) {
+  const { data: me } = useQuery({ queryKey: ['me'], queryFn: () => api<any>('GET', '/auth/me') });
+  const isAdmin = useMemo(() => {
+    if (!me) return false;
+    return (me?.roles || []).some((r: string) => String(r || '').toLowerCase() === 'admin');
+  }, [me]);
+  const confirm = useConfirm();
+  const { data: assetsData, refetch: refetchAssets } = useQuery({
+    queryKey: ['user-assets', userId],
+    queryFn: () => api<any>('GET', `/fleet/users/${encodeURIComponent(userId)}/assets`),
+    enabled: !!userId,
+  });
+  const [showCheckoutModal, setShowCheckoutModal] = useState(false);
+  const [showVehicleCheckoutModal, setShowVehicleCheckoutModal] = useState(false);
+  const [showCheckinModal, setShowCheckinModal] = useState(false);
+  const [checkinEquipmentId, setCheckinEquipmentId] = useState<string | null>(null);
+  const [returnFleetAssetId, setReturnFleetAssetId] = useState<string | null>(null);
+  const [checkoutSubmitting, setCheckoutSubmitting] = useState(false);
+  const [checkinSubmitting, setCheckinSubmitting] = useState(false);
+  const [fleetReturnSubmitting, setFleetReturnSubmitting] = useState(false);
+
+  const current_checkouts = assetsData?.current_checkouts ?? [];
+  const current_assignments = assetsData?.current_assignments ?? [];
+  const checkout_history = assetsData?.checkout_history ?? [];
+  const assignment_history = assetsData?.assignment_history ?? [];
+
+  const { data: availableEquipment, isLoading: loadingAvailable } = useQuery({
+    queryKey: ['fleet-equipment-available'],
+    queryFn: () => api<any>('GET', '/fleet/equipment?status=available&limit=100'),
+    enabled: showCheckoutModal && !!userId,
+  });
+  const availableList = availableEquipment?.items ?? availableEquipment ?? [];
+
+  const { data: availableFleetVehicles, isLoading: loadingFleetAvailable } = useQuery({
+    queryKey: ['fleet-vehicles-unassigned'],
+    queryFn: () =>
+      api<any>('GET', '/fleet/assets?asset_type=vehicle&assigned=false&limit=100'),
+    enabled: showVehicleCheckoutModal && !!userId,
+  });
+  const fleetVehicleList = availableFleetVehicles?.items ?? [];
+
+  const handleCheckin = (equipmentId: string) => {
+    setCheckinEquipmentId(equipmentId);
+    setShowCheckinModal(true);
+  };
+
+  const handleFleetReturn = (fleetAssetId: string) => {
+    setReturnFleetAssetId(fleetAssetId);
+  };
+
+  const handleFleetReturnSubmit = async (payload: { odometer_in?: number; notes_in?: string }) => {
+    if (!returnFleetAssetId) return;
+    setFleetReturnSubmitting(true);
+    try {
+      await api('POST', `/fleet/assets/${returnFleetAssetId}/return`, payload);
+      toast.success('Vehicle returned');
+      setReturnFleetAssetId(null);
+      refetchAssets();
+    } catch (e: any) {
+      toast.error(e?.message || 'Return failed');
+    } finally {
+      setFleetReturnSubmitting(false);
+    }
+  };
+
+  const handleDeleteCheckout = async (checkoutId: string) => {
+    if (!isAdmin) return;
+    const result = await confirm({
+      title: 'Delete checkout?',
+      message: 'This will permanently delete this checkout record. This action cannot be undone.',
+      confirmText: 'Delete',
+      cancelText: 'Cancel',
+    });
+    if (result !== 'confirm') return;
+    try {
+      await api('DELETE', `/fleet/equipment/checkouts/${checkoutId}`);
+      toast.success('Checkout deleted');
+      refetchAssets();
+    } catch (e: any) {
+      toast.error(e?.message || 'Failed to delete checkout');
+    }
+  };
+
+  const handleDeleteAssignment = async (assignmentId: string) => {
+    if (!isAdmin) return;
+    const result = await confirm({
+      title: 'Delete assignment?',
+      message: 'This will permanently delete this assignment record. This action cannot be undone.',
+      confirmText: 'Delete',
+      cancelText: 'Cancel',
+    });
+    if (result !== 'confirm') return;
+    try {
+      await api('DELETE', `/fleet/assets/assignments/${assignmentId}`);
+      toast.success('Assignment deleted');
+      refetchAssets();
+    } catch (e: any) {
+      toast.error(e?.message || 'Failed to delete assignment');
+    }
+  };
+  const handleCheckinSubmit = async (payload: { actual_return_date: string; condition_in: string; notes_in?: string }) => {
+    if (!checkinEquipmentId) return;
+    setCheckinSubmitting(true);
+    try {
+      await api('POST', `/fleet/equipment/${checkinEquipmentId}/checkin`, payload);
+      toast.success('Equipment checked in');
+      setShowCheckinModal(false);
+      setCheckinEquipmentId(null);
+      refetchAssets();
+    } catch (e: any) {
+      toast.error(e?.message || 'Check-in failed');
+    } finally {
+      setCheckinSubmitting(false);
+    }
+  };
+
+  return (
+    <div className="rounded-xl border bg-white p-4 space-y-6 pb-24">
+      <div className="flex items-center justify-between">
+        <h5 className="font-semibold text-gray-900 flex items-center gap-2">
+          <svg className="w-5 h-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+          </svg>
+          Assets
+        </h5>
+        <div className="flex flex-wrap items-center gap-2">
+          {canEditEquipment && (
+            <button
+              type="button"
+              onClick={() => setShowCheckoutModal(true)}
+              className="px-3 py-1.5 rounded-lg border border-brand-red text-brand-red text-xs font-medium hover:bg-red-50"
+            >
+              Check out equipment
+            </button>
+          )}
+          {canEditFleet && (
+            <button
+              type="button"
+              onClick={() => setShowVehicleCheckoutModal(true)}
+              className="px-3 py-1.5 rounded-lg border border-slate-700 text-slate-800 text-xs font-medium hover:bg-slate-100"
+            >
+              Check out vehicle
+            </button>
+          )}
+        </div>
+      </div>
+
+      {/* Currently with this employee */}
+      <div className="rounded-lg border bg-gray-50 p-4">
+        <h6 className="text-sm font-semibold text-gray-900 mb-3">Currently with this employee</h6>
+        {current_checkouts.length === 0 && current_assignments.length === 0 ? (
+          <p className="text-sm text-gray-500">No assets currently assigned.</p>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b bg-gray-100">
+                  <th className="text-left py-2 px-3 font-semibold text-xs">Type</th>
+                  <th className="text-left py-2 px-3 font-semibold text-xs">Name</th>
+                  <th className="text-left py-2 px-3 font-semibold text-xs">Checked out</th>
+                  <th className="text-left py-2 px-3 font-semibold text-xs">Expected return</th>
+                  {(canEditEquipment || canEditFleet) && <th className="text-right py-2 px-3 font-semibold text-xs w-24"> </th>}
+                </tr>
+              </thead>
+              <tbody>
+                {current_checkouts.map((c: any) => (
+                  <tr key={c.id} className="border-b">
+                    <td className="py-2 px-3">Equipment</td>
+                    <td className="py-2 px-3 font-medium">{c.equipment_name || c.equipment_id}</td>
+                    <td className="py-2 px-3">{formatAssetDisplayDate(c.checked_out_at)}</td>
+                    <td className="py-2 px-3">{formatAssetDisplayDate(c.expected_return_date)}</td>
+                    {canEditEquipment && (
+                      <td className="py-2 px-3 text-right">
+                        <button
+                          type="button"
+                          onClick={() => handleCheckin(c.equipment_id)}
+                          className="text-xs px-2 py-1 rounded border border-gray-300 hover:bg-gray-100"
+                        >
+                          Check in
+                        </button>
+                      </td>
+                    )}
+                    {!canEditEquipment && canEditFleet && <td className="py-2 px-3 text-right">—</td>}
+                  </tr>
+                ))}
+                {current_assignments.map((a: any) => (
+                  <tr key={a.id} className="border-b">
+                    <td className="py-2 px-3">{a.target_type === 'fleet' ? 'Fleet' : 'Equipment'}</td>
+                    <td className="py-2 px-3 font-medium">{a.asset_name || a.equipment_id || a.fleet_asset_id}</td>
+                    <td className="py-2 px-3">{formatAssetDisplayDate(a.assigned_at)}</td>
+                    <td className="py-2 px-3">{formatAssetDisplayDate(a.expected_return_at)}</td>
+                    {canEditFleet && a.target_type === 'fleet' && a.fleet_asset_id ? (
+                      <td className="py-2 px-3 text-right">
+                        <button
+                          type="button"
+                          onClick={() => handleFleetReturn(a.fleet_asset_id)}
+                          className="text-xs px-2 py-1 rounded border border-gray-300 hover:bg-gray-100"
+                        >
+                          Return vehicle
+                        </button>
+                      </td>
+                    ) : (
+                      (canEditEquipment || canEditFleet) && <td className="py-2 px-3 text-right">—</td>
+                    )}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+
+      {/* History */}
+      <div className="rounded-lg border bg-gray-50 p-4">
+        <h6 className="text-sm font-semibold text-gray-900 mb-3">History</h6>
+        {checkout_history.length === 0 && assignment_history.length === 0 ? (
+          <p className="text-sm text-gray-500">No history yet.</p>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b bg-gray-100">
+                  <th className="text-left py-2 px-3 font-semibold text-xs">Type</th>
+                  <th className="text-left py-2 px-3 font-semibold text-xs">Name</th>
+                  <th className="text-left py-2 px-3 font-semibold text-xs">Checked out</th>
+                  <th className="text-left py-2 px-3 font-semibold text-xs">Returned</th>
+                  <th className="text-left py-2 px-3 font-semibold text-xs">Status</th>
+                  {isAdmin && <th className="text-right py-2 px-3 font-semibold text-xs w-12"> </th>}
+                </tr>
+              </thead>
+              <tbody>
+                {checkout_history.map((c: any) => (
+                  <tr key={c.id} className="border-b">
+                    <td className="py-2 px-3">Equipment</td>
+                    <td className="py-2 px-3">{c.equipment_name || c.equipment_id}</td>
+                    <td className="py-2 px-3">{formatAssetDisplayDate(c.checked_out_at)}</td>
+                    <td className="py-2 px-3">{formatAssetDisplayDate(c.actual_return_date)}</td>
+                    <td className="py-2 px-3">{c.status || '—'}</td>
+                    {isAdmin && (
+                      <td className="py-2 px-3 text-right">
+                        <button
+                          type="button"
+                          onClick={() => handleDeleteCheckout(c.id)}
+                          className="text-red-600 hover:text-red-700"
+                          title="Delete checkout (admin only)"
+                        >
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                          </svg>
+                        </button>
+                      </td>
+                    )}
+                  </tr>
+                ))}
+                {assignment_history.map((a: any) => (
+                  <tr key={a.id} className="border-b">
+                    <td className="py-2 px-3">{a.target_type === 'fleet' ? 'Fleet' : 'Equipment'}</td>
+                    <td className="py-2 px-3">{a.asset_name || a.equipment_id || a.fleet_asset_id}</td>
+                    <td className="py-2 px-3">{formatAssetDisplayDate(a.assigned_at)}</td>
+                    <td className="py-2 px-3">{formatAssetDisplayDate(a.returned_at)}</td>
+                    <td className="py-2 px-3">{a.returned_at ? 'Returned' : 'Active'}</td>
+                    {isAdmin && (
+                      <td className="py-2 px-3 text-right">
+                        <button
+                          type="button"
+                          onClick={() => handleDeleteAssignment(a.id)}
+                          className="text-red-600 hover:text-red-700"
+                          title="Delete assignment (admin only)"
+                        >
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                          </svg>
+                        </button>
+                      </td>
+                    )}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+
+      {/* Checkout modal */}
+      {showCheckoutModal && (
+        <UserAssetsCheckoutModal
+          userId={userId}
+          availableEquipment={Array.isArray(availableList) ? availableList : []}
+          loading={loadingAvailable}
+          onClose={() => setShowCheckoutModal(false)}
+          onSuccess={() => {
+            setShowCheckoutModal(false);
+            refetchAssets();
+          }}
+        />
+      )}
+
+      {/* Check-in modal */}
+      {showCheckinModal && checkinEquipmentId && (
+        <UserAssetsCheckinModal
+          equipmentId={checkinEquipmentId}
+          onClose={() => {
+            setShowCheckinModal(false);
+            setCheckinEquipmentId(null);
+          }}
+          onSubmit={handleCheckinSubmit}
+          submitting={checkinSubmitting}
+        />
+      )}
+
+      {/* Vehicle assign (checkout) modal */}
+      {showVehicleCheckoutModal && (
+        <UserFleetVehicleCheckoutModal
+          userId={userId}
+          availableVehicles={Array.isArray(fleetVehicleList) ? fleetVehicleList : []}
+          loading={loadingFleetAvailable}
+          onClose={() => setShowVehicleCheckoutModal(false)}
+          onSuccess={() => {
+            setShowVehicleCheckoutModal(false);
+            refetchAssets();
+          }}
+        />
+      )}
+
+      {/* Fleet return modal */}
+      {returnFleetAssetId && (
+        <UserFleetReturnModal
+          onClose={() => setReturnFleetAssetId(null)}
+          onSubmit={handleFleetReturnSubmit}
+          submitting={fleetReturnSubmitting}
+        />
+      )}
+    </div>
+  );
+}
+
+function UserAssetsCheckoutModal({
+  userId,
+  availableEquipment,
+  loading,
+  onClose,
+  onSuccess,
+}: {
+  userId: string;
+  availableEquipment: any[];
+  loading: boolean;
+  onClose: () => void;
+  onSuccess: () => void;
+}) {
+  const [selectedId, setSelectedId] = useState('');
+  const [condition, setCondition] = useState<'new' | 'good' | 'fair' | 'poor'>('good');
+  const [expectedReturnDate, setExpectedReturnDate] = useState('');
+  const [notes, setNotes] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedId) {
+      toast.error('Select equipment');
+      return;
+    }
+    setSubmitting(true);
+    try {
+      await api('POST', `/fleet/equipment/${selectedId}/checkout`, {
+        checked_out_by_user_id: userId,
+        checked_out_at: new Date().toISOString(),
+        expected_return_date: expectedReturnDate || undefined,
+        condition_out: condition,
+        notes_out: notes || undefined,
+      });
+      toast.success('Equipment checked out');
+      onSuccess();
+    } catch (err: any) {
+      toast.error(err?.message || 'Checkout failed');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={onClose}>
+      <div className="bg-white rounded-xl shadow-lg max-w-md w-full max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+        <div className="p-4 border-b font-semibold">Check out equipment</div>
+        <form onSubmit={handleSubmit} className="p-4 space-y-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Equipment *</label>
+            <select
+              value={selectedId}
+              onChange={e => setSelectedId(e.target.value)}
+              required
+              className="w-full border rounded-lg px-3 py-2"
+              disabled={loading}
+            >
+              <option value="">Select...</option>
+              {availableEquipment.map((eq: any) => (
+                <option key={eq.id} value={eq.id}>{eq.name || eq.serial_number || eq.id}</option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Condition</label>
+            <select value={condition} onChange={e => setCondition(e.target.value as any)} className="w-full border rounded-lg px-3 py-2">
+              <option value="new">New</option>
+              <option value="good">Good</option>
+              <option value="fair">Fair</option>
+              <option value="poor">Poor</option>
+            </select>
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Expected return date</label>
+            <input type="date" value={expectedReturnDate} onChange={e => setExpectedReturnDate(e.target.value)} className="w-full border rounded-lg px-3 py-2" />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Notes</label>
+            <textarea value={notes} onChange={e => setNotes(e.target.value)} className="w-full border rounded-lg px-3 py-2" rows={2} />
+          </div>
+          <div className="flex gap-2 justify-end">
+            <button type="button" onClick={onClose} className="px-4 py-2 border rounded-lg hover:bg-gray-50">Cancel</button>
+            <button type="submit" disabled={submitting} className="px-4 py-2 bg-brand-red text-white rounded-lg hover:bg-red-700 disabled:opacity-50">
+              {submitting ? 'Saving...' : 'Check out'}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+function UserAssetsCheckinModal({
+  equipmentId,
+  onClose,
+  onSubmit,
+  submitting,
+}: {
+  equipmentId: string;
+  onClose: () => void;
+  onSubmit: (p: { actual_return_date: string; condition_in: string; notes_in?: string }) => Promise<void>;
+  submitting: boolean;
+}) {
+  const [actualReturnDate, setActualReturnDate] = useState(new Date().toISOString().split('T')[0]);
+  const [condition, setCondition] = useState<'new' | 'good' | 'fair' | 'poor'>('good');
+  const [notes, setNotes] = useState('');
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    await onSubmit({
+      actual_return_date: new Date(actualReturnDate).toISOString(),
+      condition_in: condition,
+      notes_in: notes || undefined,
+    });
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={onClose}>
+      <div className="bg-white rounded-xl shadow-lg max-w-md w-full" onClick={e => e.stopPropagation()}>
+        <div className="p-4 border-b font-semibold">Check in equipment</div>
+        <form onSubmit={handleSubmit} className="p-4 space-y-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Return date *</label>
+            <input type="date" value={actualReturnDate} onChange={e => setActualReturnDate(e.target.value)} className="w-full border rounded-lg px-3 py-2" required />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Condition in</label>
+            <select value={condition} onChange={e => setCondition(e.target.value as any)} className="w-full border rounded-lg px-3 py-2">
+              <option value="new">New</option>
+              <option value="good">Good</option>
+              <option value="fair">Fair</option>
+              <option value="poor">Poor</option>
+            </select>
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Notes</label>
+            <textarea value={notes} onChange={e => setNotes(e.target.value)} className="w-full border rounded-lg px-3 py-2" rows={2} />
+          </div>
+          <div className="flex gap-2 justify-end">
+            <button type="button" onClick={onClose} className="px-4 py-2 border rounded-lg hover:bg-gray-50">Cancel</button>
+            <button type="submit" disabled={submitting} className="px-4 py-2 bg-brand-red text-white rounded-lg hover:bg-red-700 disabled:opacity-50">
+              {submitting ? 'Saving...' : 'Check in'}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+function UserFleetVehicleCheckoutModal({
+  userId,
+  availableVehicles,
+  loading,
+  onClose,
+  onSuccess,
+}: {
+  userId: string;
+  availableVehicles: any[];
+  loading: boolean;
+  onClose: () => void;
+  onSuccess: () => void;
+}) {
+  const [selectedId, setSelectedId] = useState('');
+  const [expectedReturnDate, setExpectedReturnDate] = useState('');
+  const [notes, setNotes] = useState('');
+  const [odometerOut, setOdometerOut] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedId) {
+      toast.error('Select a vehicle');
+      return;
+    }
+    setSubmitting(true);
+    try {
+      const payload: Record<string, unknown> = {
+        assigned_to_user_id: userId,
+        notes_out: notes || undefined,
+      };
+      if (expectedReturnDate) {
+        payload.expected_return_at = new Date(`${expectedReturnDate}T12:00:00`).toISOString();
+      }
+      if (odometerOut.trim() !== '') {
+        const n = parseInt(odometerOut, 10);
+        if (!Number.isNaN(n)) payload.odometer_out = n;
+      }
+      await api('POST', `/fleet/assets/${selectedId}/assign`, payload);
+      toast.success('Vehicle assigned');
+      onSuccess();
+    } catch (err: any) {
+      toast.error(err?.message || 'Assignment failed');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const vehicleLabel = (v: any) => {
+    const parts = [v.name, v.license_plate, v.make && v.model ? `${v.make} ${v.model}` : v.make || v.model].filter(Boolean);
+    return parts.length ? parts.join(' · ') : v.id;
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={onClose}>
+      <div className="bg-white rounded-xl shadow-lg max-w-md w-full max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+        <div className="p-4 border-b font-semibold">Check out vehicle</div>
+        <form onSubmit={handleSubmit} className="p-4 space-y-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Vehicle *</label>
+            <select
+              value={selectedId}
+              onChange={e => setSelectedId(e.target.value)}
+              required
+              className="w-full border rounded-lg px-3 py-2"
+              disabled={loading}
+            >
+              <option value="">Select...</option>
+              {availableVehicles.map((v: any) => (
+                <option key={v.id} value={v.id}>
+                  {vehicleLabel(v)}
+                </option>
+              ))}
+            </select>
+            {!loading && availableVehicles.length === 0 && (
+              <p className="text-xs text-amber-700 mt-1">No unassigned vehicles. Assign a driver elsewhere or return a vehicle first.</p>
+            )}
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Odometer (out)</label>
+            <input
+              type="number"
+              min={0}
+              value={odometerOut}
+              onChange={e => setOdometerOut(e.target.value)}
+              className="w-full border rounded-lg px-3 py-2"
+              placeholder="Optional"
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Expected return date</label>
+            <input type="date" value={expectedReturnDate} onChange={e => setExpectedReturnDate(e.target.value)} className="w-full border rounded-lg px-3 py-2" />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Notes</label>
+            <textarea value={notes} onChange={e => setNotes(e.target.value)} className="w-full border rounded-lg px-3 py-2" rows={2} />
+          </div>
+          <div className="flex gap-2 justify-end">
+            <button type="button" onClick={onClose} className="px-4 py-2 border rounded-lg hover:bg-gray-50">
+              Cancel
+            </button>
+            <button
+              type="submit"
+              disabled={submitting || loading}
+              className="px-4 py-2 bg-slate-800 text-white rounded-lg hover:bg-slate-900 disabled:opacity-50"
+            >
+              {submitting ? 'Saving...' : 'Assign vehicle'}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+function UserFleetReturnModal({
+  onClose,
+  onSubmit,
+  submitting,
+}: {
+  onClose: () => void;
+  onSubmit: (p: { odometer_in?: number; notes_in?: string }) => Promise<void>;
+  submitting: boolean;
+}) {
+  const [odometerIn, setOdometerIn] = useState('');
+  const [notes, setNotes] = useState('');
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const payload: { odometer_in?: number; notes_in?: string } = {};
+    if (odometerIn.trim() !== '') {
+      const n = parseInt(odometerIn, 10);
+      if (!Number.isNaN(n)) payload.odometer_in = n;
+    }
+    if (notes.trim()) payload.notes_in = notes.trim();
+    await onSubmit(payload);
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={onClose}>
+      <div className="bg-white rounded-xl shadow-lg max-w-md w-full" onClick={e => e.stopPropagation()}>
+        <div className="p-4 border-b font-semibold">Return vehicle</div>
+        <form onSubmit={handleSubmit} className="p-4 space-y-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Odometer (in)</label>
+            <input
+              type="number"
+              min={0}
+              value={odometerIn}
+              onChange={e => setOdometerIn(e.target.value)}
+              className="w-full border rounded-lg px-3 py-2"
+              placeholder="Optional"
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Notes</label>
+            <textarea value={notes} onChange={e => setNotes(e.target.value)} className="w-full border rounded-lg px-3 py-2" rows={2} />
+          </div>
+          <div className="flex gap-2 justify-end">
+            <button type="button" onClick={onClose} className="px-4 py-2 border rounded-lg hover:bg-gray-50">
+              Cancel
+            </button>
+            <button type="submit" disabled={submitting} className="px-4 py-2 bg-slate-800 text-white rounded-lg hover:bg-slate-900 disabled:opacity-50">
+              {submitting ? 'Saving...' : 'Confirm return'}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+const TRAINING_CATEGORIES = ['', 'Safety', 'Compliance', 'Technical skills', 'Soft skills', 'Leadership', 'Other'];
+const TRAINING_FORMATS = ['', 'in_person', 'online', 'hybrid'];
+const TRAINING_STATUSES = ['completed', 'in_progress', 'scheduled', 'expired'];
+
+function EmployeeTrainingSection({ userId, canEdit }: { userId: string; canEdit: boolean }) {
+  const confirm = useConfirm();
+  const { data: rows = [], refetch, isLoading } = useQuery({
+    queryKey: ['employee-training-records', userId],
+    queryFn: () => api<any[]>('GET', `/auth/users/${encodeURIComponent(userId)}/training-records`),
+    enabled: !!userId,
+  });
+  const [modalOpen, setModalOpen] = useState(false);
+  const [editing, setEditing] = useState<any | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [form, setForm] = useState({
+    title: '',
+    provider: '',
+    category: '',
+    delivery_format: '',
+    start_date: '',
+    end_date: '',
+    completion_date: '',
+    duration_hours: '',
+    status: 'completed',
+    certificate_number: '',
+    expiry_date: '',
+    notes: '',
+  });
+
+  const resetForm = (defaults?: Partial<typeof form>) => {
+    setForm({
+      title: '',
+      provider: '',
+      category: '',
+      delivery_format: '',
+      start_date: '',
+      end_date: '',
+      completion_date: new Date().toISOString().slice(0, 10),
+      duration_hours: '',
+      status: 'completed',
+      certificate_number: '',
+      expiry_date: '',
+      notes: '',
+      ...defaults,
+    });
+  };
+
+  const openAdd = () => {
+    setEditing(null);
+    resetForm();
+    setModalOpen(true);
+  };
+
+  const openEdit = (r: any) => {
+    setEditing(r);
+    setForm({
+      title: r.title || '',
+      provider: r.provider || '',
+      category: r.category || '',
+      delivery_format: r.delivery_format || '',
+      start_date: r.start_date ? String(r.start_date).slice(0, 10) : '',
+      end_date: r.end_date ? String(r.end_date).slice(0, 10) : '',
+      completion_date: r.completion_date ? String(r.completion_date).slice(0, 10) : '',
+      duration_hours: r.duration_hours != null ? String(r.duration_hours) : '',
+      status: r.status || 'completed',
+      certificate_number: r.certificate_number || '',
+      expiry_date: r.expiry_date ? String(r.expiry_date).slice(0, 10) : '',
+      notes: r.notes || '',
+    });
+    setModalOpen(true);
+  };
+
+  const closeModal = () => {
+    setModalOpen(false);
+    setEditing(null);
+  };
+
+  const buildPayload = () => {
+    const duration_hours =
+      form.duration_hours.trim() === '' ? undefined : parseFloat(form.duration_hours);
+    if (form.duration_hours.trim() !== '' && Number.isNaN(duration_hours)) {
+      throw new Error('Invalid duration (hours)');
+    }
+    return {
+      title: form.title.trim(),
+      provider: form.provider.trim() || undefined,
+      category: form.category.trim() || undefined,
+      delivery_format: form.delivery_format.trim() || undefined,
+      start_date: form.start_date || undefined,
+      end_date: form.end_date || undefined,
+      completion_date: form.completion_date,
+      duration_hours,
+      status: form.status || 'completed',
+      certificate_number: form.certificate_number.trim() || undefined,
+      expiry_date: form.expiry_date || undefined,
+      notes: form.notes.trim() || undefined,
+    };
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!form.title.trim()) {
+      toast.error('Title is required');
+      return;
+    }
+    if (!form.completion_date) {
+      toast.error('Completion date is required');
+      return;
+    }
+    let payload: Record<string, unknown>;
+    try {
+      payload = buildPayload();
+    } catch (err: any) {
+      toast.error(err?.message || 'Invalid form');
+      return;
+    }
+    setSaving(true);
+    try {
+      if (editing) {
+        await api('PATCH', `/auth/users/${encodeURIComponent(userId)}/training-records/${editing.id}`, payload);
+        toast.success('Record updated');
+      } else {
+        await api('POST', `/auth/users/${encodeURIComponent(userId)}/training-records`, payload);
+        toast.success('Record added');
+      }
+      closeModal();
+      refetch();
+    } catch (err: any) {
+      toast.error(err?.message || 'Save failed');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleDelete = async (r: any) => {
+    const res = await confirm({
+      title: 'Delete training record?',
+      message: 'This cannot be undone.',
+      confirmText: 'Delete',
+      cancelText: 'Cancel',
+    });
+    if (res !== 'confirm') return;
+    try {
+      await api('DELETE', `/auth/users/${encodeURIComponent(userId)}/training-records/${r.id}`);
+      toast.success('Deleted');
+      refetch();
+    } catch (err: any) {
+      toast.error(err?.message || 'Delete failed');
+    }
+  };
+
+  const fmtDate = (s: string | null | undefined) => {
+    if (!s) return '—';
+    return String(s).slice(0, 10);
+  };
+
+  const formatLabel = (v: string) => {
+    if (v === 'in_person') return 'In person';
+    if (v === 'online') return 'Online';
+    if (v === 'hybrid') return 'Hybrid';
+    return v || '—';
+  };
+
+  return (
+    <div className="rounded-xl border bg-white p-4 space-y-4 pb-24">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <h5 className="font-semibold text-gray-900 flex items-center gap-2">
+          <svg className="w-5 h-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
+          </svg>
+          Training & courses
+        </h5>
+        {canEdit && (
+          <button
+            type="button"
+            onClick={openAdd}
+            className="px-3 py-1.5 rounded-lg border border-brand-red text-brand-red text-xs font-medium hover:bg-red-50"
+          >
+            Add record
+          </button>
+        )}
+      </div>
+      <p className="text-sm text-gray-500">
+        Manual training and certification history for this employee (not linked to the LMS).
+      </p>
+
+      {isLoading ? (
+        <div className="h-24 animate-pulse bg-gray-100 rounded" />
+      ) : !rows.length ? (
+        <p className="text-sm text-gray-500">No training records yet.</p>
+      ) : (
+        <div className="overflow-x-auto rounded-lg border">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b bg-gray-50">
+                <th className="text-left py-2 px-3 font-semibold text-xs">Title</th>
+                <th className="text-left py-2 px-3 font-semibold text-xs">Provider</th>
+                <th className="text-left py-2 px-3 font-semibold text-xs">Category</th>
+                <th className="text-left py-2 px-3 font-semibold text-xs">Completed</th>
+                <th className="text-left py-2 px-3 font-semibold text-xs">Hours</th>
+                <th className="text-left py-2 px-3 font-semibold text-xs">Status</th>
+                <th className="text-left py-2 px-3 font-semibold text-xs">Expires</th>
+                {canEdit && <th className="text-right py-2 px-3 font-semibold text-xs w-28"> </th>}
+              </tr>
+            </thead>
+            <tbody>
+              {(rows as any[]).map((r) => (
+                <tr key={r.id} className="border-b hover:bg-gray-50/80">
+                  <td className="py-2 px-3 font-medium text-gray-900">{r.title}</td>
+                  <td className="py-2 px-3">{r.provider || '—'}</td>
+                  <td className="py-2 px-3">{r.category || '—'}</td>
+                  <td className="py-2 px-3">{fmtDate(r.completion_date)}</td>
+                  <td className="py-2 px-3">{r.duration_hours != null ? r.duration_hours : '—'}</td>
+                  <td className="py-2 px-3 capitalize">{r.status || '—'}</td>
+                  <td className="py-2 px-3">{fmtDate(r.expiry_date)}</td>
+                  {canEdit && (
+                    <td className="py-2 px-3 text-right space-x-2 whitespace-nowrap">
+                      <button
+                        type="button"
+                        onClick={() => openEdit(r)}
+                        className="text-xs text-brand-red hover:underline"
+                      >
+                        Edit
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleDelete(r)}
+                        className="text-xs text-red-600 hover:underline"
+                      >
+                        Delete
+                      </button>
+                    </td>
+                  )}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {modalOpen && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={closeModal}>
+          <div
+            className="bg-white rounded-xl shadow-lg max-w-lg w-full max-h-[90vh] overflow-y-auto"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="p-4 border-b font-semibold">{editing ? 'Edit training record' : 'Add training record'}</div>
+            <form onSubmit={handleSubmit} className="p-4 space-y-3">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Title *</label>
+                <input
+                  value={form.title}
+                  onChange={(e) => setForm((f) => ({ ...f, title: e.target.value }))}
+                  className="w-full border rounded-lg px-3 py-2"
+                  required
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Provider</label>
+                <input
+                  value={form.provider}
+                  onChange={(e) => setForm((f) => ({ ...f, provider: e.target.value }))}
+                  className="w-full border rounded-lg px-3 py-2"
+                  placeholder="Organization or trainer"
+                />
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Category</label>
+                  <select
+                    value={form.category}
+                    onChange={(e) => setForm((f) => ({ ...f, category: e.target.value }))}
+                    className="w-full border rounded-lg px-3 py-2"
+                  >
+                    {TRAINING_CATEGORIES.map((c) => (
+                      <option key={c || 'empty'} value={c}>
+                        {c || '— Select —'}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Format</label>
+                  <select
+                    value={form.delivery_format}
+                    onChange={(e) => setForm((f) => ({ ...f, delivery_format: e.target.value }))}
+                    className="w-full border rounded-lg px-3 py-2"
+                  >
+                    <option value="">—</option>
+                    {TRAINING_FORMATS.filter(Boolean).map((c) => (
+                      <option key={c} value={c}>
+                        {formatLabel(c)}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Start date</label>
+                  <input
+                    type="date"
+                    value={form.start_date}
+                    onChange={(e) => setForm((f) => ({ ...f, start_date: e.target.value }))}
+                    className="w-full border rounded-lg px-3 py-2"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">End date</label>
+                  <input
+                    type="date"
+                    value={form.end_date}
+                    onChange={(e) => setForm((f) => ({ ...f, end_date: e.target.value }))}
+                    className="w-full border rounded-lg px-3 py-2"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Completion date *</label>
+                  <input
+                    type="date"
+                    value={form.completion_date}
+                    onChange={(e) => setForm((f) => ({ ...f, completion_date: e.target.value }))}
+                    className="w-full border rounded-lg px-3 py-2"
+                    required
+                  />
+                </div>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Duration (hours)</label>
+                  <input
+                    type="number"
+                    min={0}
+                    step={0.25}
+                    value={form.duration_hours}
+                    onChange={(e) => setForm((f) => ({ ...f, duration_hours: e.target.value }))}
+                    className="w-full border rounded-lg px-3 py-2"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Status</label>
+                  <select
+                    value={form.status}
+                    onChange={(e) => setForm((f) => ({ ...f, status: e.target.value }))}
+                    className="w-full border rounded-lg px-3 py-2"
+                  >
+                    {TRAINING_STATUSES.map((s) => (
+                      <option key={s} value={s}>
+                        {s.replace('_', ' ')}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Certificate / reference #</label>
+                  <input
+                    value={form.certificate_number}
+                    onChange={(e) => setForm((f) => ({ ...f, certificate_number: e.target.value }))}
+                    className="w-full border rounded-lg px-3 py-2"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Expiry / renewal date</label>
+                  <input
+                    type="date"
+                    value={form.expiry_date}
+                    onChange={(e) => setForm((f) => ({ ...f, expiry_date: e.target.value }))}
+                    className="w-full border rounded-lg px-3 py-2"
+                  />
+                </div>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Notes</label>
+                <textarea
+                  value={form.notes}
+                  onChange={(e) => setForm((f) => ({ ...f, notes: e.target.value }))}
+                  className="w-full border rounded-lg px-3 py-2"
+                  rows={3}
+                />
+              </div>
+              <div className="flex gap-2 justify-end pt-2">
+                <button type="button" onClick={closeModal} className="px-4 py-2 border rounded-lg hover:bg-gray-50">
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={saving}
+                  className="px-4 py-2 bg-brand-red text-white rounded-lg hover:bg-red-700 disabled:opacity-50"
+                >
+                  {saving ? 'Saving...' : 'Save'}
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}

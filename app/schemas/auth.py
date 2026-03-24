@@ -108,6 +108,8 @@ class EmployeeProfileInput(BaseModel):
     emergency_contact_phone: Optional[str] = None
     cloth_size: Optional[str] = None
     cloth_sizes_custom: Optional[List[str]] = None
+    # Admin-only in PUT /users/{id}/profile — last Bamboo files sync date (YYYY-MM-DD or ISO)
+    bamboo_files_last_sync_at: Optional[str] = None
 
 
 class RegisterPayload(BaseModel):

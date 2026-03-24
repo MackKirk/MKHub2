@@ -795,6 +795,8 @@ class EmployeeProfile(Base):
     created_by: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True))
     updated_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
     updated_by: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True))
+    # Manual marker: last calendar day Bamboo files were synced/updated for this employee (admin-only write)
+    bamboo_files_last_sync_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
 
 
 # Multi-record tables
@@ -859,6 +861,30 @@ class EmployeeFolder(Base):
     sort_index: Mapped[int] = mapped_column(Integer, default=0)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
     created_by: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True))
+
+class EmployeeTrainingRecord(Base):
+    """Manual HR log of courses/trainings completed (not linked to LMS training_courses)."""
+    __tablename__ = "employee_training_records"
+
+    id: Mapped[uuid.UUID] = uuid_pk()
+    user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    title: Mapped[str] = mapped_column(String(500), nullable=False)
+    provider: Mapped[Optional[str]] = mapped_column(String(500))
+    category: Mapped[Optional[str]] = mapped_column(String(100))
+    delivery_format: Mapped[Optional[str]] = mapped_column(String(50))  # in_person | online | hybrid
+    start_date: Mapped[Optional[Date]] = mapped_column(Date)
+    end_date: Mapped[Optional[Date]] = mapped_column(Date)
+    completion_date: Mapped[Date] = mapped_column(Date, nullable=False)
+    duration_hours: Mapped[Optional[float]] = mapped_column(Numeric(10, 2))
+    status: Mapped[str] = mapped_column(String(50), default="completed")  # completed | in_progress | scheduled | expired
+    certificate_number: Mapped[Optional[str]] = mapped_column(String(255))
+    expiry_date: Mapped[Optional[Date]] = mapped_column(Date)
+    notes: Mapped[Optional[str]] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
+    updated_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    created_by_user_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"))
+    updated_by_user_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"))
+
 
 class EmployeeVisa(Base):
     __tablename__ = "employee_visas"

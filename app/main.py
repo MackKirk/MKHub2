@@ -352,6 +352,24 @@ def create_app() -> FastAPI:
                     if not rows:
                         db.execute(text("ALTER TABLE employee_profiles ADD COLUMN cloth_sizes_custom JSON NULL"))
 
+                    rows = db.execute(
+                        text(
+                            """
+                            SELECT 1
+                            FROM information_schema.columns
+                            WHERE table_name = 'employee_profiles'
+                              AND column_name = 'bamboo_files_last_sync_at'
+                            LIMIT 1
+                            """
+                        )
+                    ).fetchall()
+                    if not rows:
+                        db.execute(
+                            text(
+                                "ALTER TABLE employee_profiles ADD COLUMN bamboo_files_last_sync_at TIMESTAMPTZ NULL"
+                            )
+                        )
+
                     db.commit()
 
                     # Check for project_division_percentages column in projects
@@ -919,6 +937,23 @@ def create_app() -> FastAPI:
                         Base.metadata.create_all(bind=engine, tables=[WorkOrderActivityLog.__table__])
                         db.commit()
                         print("[startup] Created work_order_activity_logs table")
+
+                    # Manual HR training records (not LMS)
+                    rows = db.execute(
+                        text(
+                            """
+                            SELECT 1
+                            FROM information_schema.tables
+                            WHERE table_name = 'employee_training_records'
+                            LIMIT 1
+                            """
+                        )
+                    ).fetchall()
+                    if not rows:
+                        from .models.models import EmployeeTrainingRecord
+                        Base.metadata.create_all(bind=engine, tables=[EmployeeTrainingRecord.__table__])
+                        db.commit()
+                        print("[startup] Created employee_training_records table")
 
                     # Soft delete columns (if missing)
                     for table_name, fk_col in [("projects", "deleted_by_id"), ("clients", "deleted_by_id"), ("proposals", "deleted_by_id"), ("quotes", "deleted_by_id")]:

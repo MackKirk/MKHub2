@@ -988,6 +988,229 @@ def get_overdue_equipment(
     return overdue
 
 
+@router.get("/users/{user_id}/assets")
+def get_user_assets(
+    user_id: str,
+    db: Session = Depends(get_db),
+    _=Depends(require_permissions("fleet:access", "fleet:read", "equipment:read")),
+):
+    """Get assets currently with this user and full checkout/assignment history."""
+    try:
+        user_uuid = uuid.UUID(user_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid user id")
+    user = db.query(User).filter(User.id == user_uuid).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    # Current checkouts (EquipmentCheckout, status=checked_out)
+    current_checkouts_q = (
+        db.query(EquipmentCheckout, Equipment)
+        .join(Equipment, EquipmentCheckout.equipment_id == Equipment.id)
+        .filter(
+            EquipmentCheckout.checked_out_by_user_id == user_uuid,
+            EquipmentCheckout.status == "checked_out",
+        )
+    )
+    current_checkouts = []
+    for co, eq in current_checkouts_q.all():
+        current_checkouts.append({
+            "id": str(co.id),
+            "equipment_id": str(co.equipment_id),
+            "equipment_name": eq.name or "",
+            "equipment_category": eq.category or "",
+            "checked_out_at": co.checked_out_at.isoformat() if co.checked_out_at else None,
+            "expected_return_date": co.expected_return_date.isoformat() if co.expected_return_date else None,
+            "condition_out": co.condition_out,
+            "notes_out": co.notes_out,
+        })
+
+    # Current assignments (AssetAssignment, returned_at is None)
+    current_assignments_q = (
+        db.query(AssetAssignment)
+        .filter(
+            AssetAssignment.assigned_to_user_id == user_uuid,
+            AssetAssignment.returned_at.is_(None),
+        )
+    )
+    current_assignments = []
+    for a in current_assignments_q.all():
+        asset_name = ""
+        if a.equipment_id:
+            eq = db.query(Equipment).filter(Equipment.id == a.equipment_id).first()
+            asset_name = eq.name if eq else ""
+        elif a.fleet_asset_id:
+            fa = db.query(FleetAsset).filter(FleetAsset.id == a.fleet_asset_id).first()
+            asset_name = fa.name if fa else ""
+        current_assignments.append({
+            "id": str(a.id),
+            "target_type": a.target_type,
+            "equipment_id": str(a.equipment_id) if a.equipment_id else None,
+            "fleet_asset_id": str(a.fleet_asset_id) if a.fleet_asset_id else None,
+            "asset_name": asset_name,
+            "assigned_at": a.assigned_at.isoformat() if a.assigned_at else None,
+            "expected_return_at": a.expected_return_at.isoformat() if a.expected_return_at else None,
+        })
+
+    # Checkout history (all checkouts for this user)
+    checkout_history_q = (
+        db.query(EquipmentCheckout, Equipment)
+        .join(Equipment, EquipmentCheckout.equipment_id == Equipment.id)
+        .filter(EquipmentCheckout.checked_out_by_user_id == user_uuid)
+        .order_by(EquipmentCheckout.checked_out_at.desc())
+    )
+    checkout_history = []
+    for co, eq in checkout_history_q.all():
+        checkout_history.append({
+            "id": str(co.id),
+            "equipment_id": str(co.equipment_id),
+            "equipment_name": eq.name or "",
+            "equipment_category": eq.category or "",
+            "checked_out_at": co.checked_out_at.isoformat() if co.checked_out_at else None,
+            "actual_return_date": co.actual_return_date.isoformat() if co.actual_return_date else None,
+            "expected_return_date": co.expected_return_date.isoformat() if co.expected_return_date else None,
+            "status": co.status,
+        })
+
+    # Assignment history (all assignments for this user)
+    assignment_history_q = (
+        db.query(AssetAssignment)
+        .filter(AssetAssignment.assigned_to_user_id == user_uuid)
+        .order_by(AssetAssignment.assigned_at.desc())
+    )
+    assignment_history = []
+    for a in assignment_history_q.all():
+        asset_name = ""
+        if a.equipment_id:
+            eq = db.query(Equipment).filter(Equipment.id == a.equipment_id).first()
+            asset_name = eq.name if eq else ""
+        elif a.fleet_asset_id:
+            fa = db.query(FleetAsset).filter(FleetAsset.id == a.fleet_asset_id).first()
+            asset_name = fa.name if fa else ""
+        assignment_history.append({
+            "id": str(a.id),
+            "target_type": a.target_type,
+            "equipment_id": str(a.equipment_id) if a.equipment_id else None,
+            "fleet_asset_id": str(a.fleet_asset_id) if a.fleet_asset_id else None,
+            "asset_name": asset_name,
+            "assigned_at": a.assigned_at.isoformat() if a.assigned_at else None,
+            "returned_at": a.returned_at.isoformat() if a.returned_at else None,
+            "expected_return_at": a.expected_return_at.isoformat() if a.expected_return_at else None,
+        })
+
+    return {
+        "current_checkouts": current_checkouts,
+        "current_assignments": current_assignments,
+        "checkout_history": checkout_history,
+        "assignment_history": assignment_history,
+    }
+
+
+@router.delete("/users/{user_id}/assets/history")
+def delete_user_assets_history(
+    user_id: str,
+    db: Session = Depends(get_db),
+    user=Depends(get_current_user),
+    _=Depends(require_permissions("fleet:write"))
+):
+    """Delete all asset checkout and assignment history for a user. Admin only."""
+    # Check if current user is admin
+    if not user.roles or not any(r.name.lower() == "admin" for r in user.roles):
+        raise HTTPException(status_code=403, detail="Only admins can delete asset history")
+    
+    try:
+        user_uuid = uuid.UUID(user_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid user id")
+    
+    target_user = db.query(User).filter(User.id == user_uuid).first()
+    if not target_user:
+        raise HTTPException(status_code=404, detail="User not found")
+    
+    # Delete all checkout history (including active checkouts - be careful!)
+    deleted_checkouts = db.query(EquipmentCheckout).filter(
+        EquipmentCheckout.checked_out_by_user_id == user_uuid
+    ).all()
+    for co in deleted_checkouts:
+        # Reset equipment status if it was checked out
+        if co.status == "checked_out":
+            equipment = db.query(Equipment).filter(Equipment.id == co.equipment_id).first()
+            if equipment:
+                equipment.status = "available"
+                equipment.updated_at = datetime.now(timezone.utc)
+        db.delete(co)
+    
+    # Delete all assignment history (including active assignments)
+    deleted_assignments = db.query(AssetAssignment).filter(
+        AssetAssignment.assigned_to_user_id == user_uuid
+    ).all()
+    for a in deleted_assignments:
+        # Reset fleet asset driver if it was assigned
+        if a.fleet_asset_id and a.returned_at is None:
+            asset = db.query(FleetAsset).filter(FleetAsset.id == a.fleet_asset_id).first()
+            if asset:
+                asset.driver_id = None
+                asset.updated_at = datetime.now(timezone.utc)
+        db.delete(a)
+    
+    db.commit()
+    return {"message": f"Deleted {len(deleted_checkouts)} checkouts and {len(deleted_assignments)} assignments"}
+
+
+@router.delete("/equipment/checkouts/{checkout_id}")
+def delete_equipment_checkout(
+    checkout_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    user=Depends(get_current_user),
+    _=Depends(require_permissions("fleet:write"))
+):
+    """Delete a single equipment checkout. Admin only."""
+    if not user.roles or not any(r.name.lower() == "admin" for r in user.roles):
+        raise HTTPException(status_code=403, detail="Only admins can delete checkouts")
+    
+    checkout = db.query(EquipmentCheckout).filter(EquipmentCheckout.id == checkout_id).first()
+    if not checkout:
+        raise HTTPException(status_code=404, detail="Checkout not found")
+    
+    # Reset equipment status if it was checked out
+    if checkout.status == "checked_out":
+        equipment = db.query(Equipment).filter(Equipment.id == checkout.equipment_id).first()
+        if equipment:
+            equipment.status = "available"
+            equipment.updated_at = datetime.now(timezone.utc)
+    
+    db.delete(checkout)
+    db.commit()
+    return {"message": "Checkout deleted"}
+
+
+@router.delete("/assets/assignments/{assignment_id}")
+def delete_asset_assignment(
+    assignment_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    user=Depends(get_current_user),
+    _=Depends(require_permissions("fleet:write"))
+):
+    """Delete a single asset assignment. Admin only."""
+    if not user.roles or not any(r.name.lower() == "admin" for r in user.roles):
+        raise HTTPException(status_code=403, detail="Only admins can delete assignments")
+    
+    assignment = db.query(AssetAssignment).filter(AssetAssignment.id == assignment_id).first()
+    if not assignment:
+        raise HTTPException(status_code=404, detail="Assignment not found")
+    
+    # Reset fleet asset driver if it was assigned and not returned
+    if assignment.fleet_asset_id and assignment.returned_at is None:
+        asset = db.query(FleetAsset).filter(FleetAsset.id == assignment.fleet_asset_id).first()
+        if asset:
+            asset.driver_id = None
+            asset.updated_at = datetime.now(timezone.utc)
+    
+    db.delete(assignment)
+    db.commit()
+    return {"message": "Assignment deleted"}
+
+
 # ---------- EQUIPMENT ASSIGNMENTS (unified asset_assignments) ----------
 @router.get("/equipment/{equipment_id}/assignments", response_model=List[AssetAssignmentRead])
 def get_equipment_assignments(
