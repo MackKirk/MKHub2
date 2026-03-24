@@ -2957,7 +2957,20 @@ function VisaInformationSection({ userId, canEdit, isRequired = false, showInlin
 }
 
 function UserDocuments({ userId, canEdit }:{ userId:string, canEdit:boolean }){
+  const navigate = useNavigate();
   const confirm = useConfirm();
+  const { data: me } = useQuery({ queryKey: ['me'], queryFn: () => api<{ id: string }>('GET', '/auth/me') });
+  const isOwnProfile = Boolean(me?.id && String(me.id) === String(userId));
+  const { data: onboardingRows = [] } = useQuery({
+    queryKey: ['me-onboarding-docs'],
+    queryFn: () =>
+      api<Array<{ id: string; document_name: string; status: string }>>('GET', '/auth/me/onboarding/documents'),
+    enabled: isOwnProfile,
+  });
+  const pendingOnboarding = useMemo(
+    () => onboardingRows.filter((d) => d.status === 'pending'),
+    [onboardingRows]
+  );
   const { data:folders, refetch: refetchFolders } = useQuery({ queryKey:['user-folders', userId], queryFn: ()=> api<any[]>('GET', `/auth/users/${encodeURIComponent(userId)}/folders`) });
   const defaultFoldersCreatedRef = useRef(false);
   useEffect(() => {
@@ -3090,6 +3103,23 @@ function UserDocuments({ userId, canEdit }:{ userId:string, canEdit:boolean }){
 
   return (
     <div>
+      {pendingOnboarding.length > 0 && (
+        <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50/90 p-4 flex flex-wrap items-center justify-between gap-3">
+          <div className="min-w-0">
+            <div className="text-sm font-semibold text-amber-950">Documents waiting for signature</div>
+            <div className="text-xs text-amber-900/85 mt-0.5">
+              {pendingOnboarding.length} onboarding document{pendingOnboarding.length !== 1 ? 's' : ''} need your signature. Signed PDFs are saved here under HR Documents afterward.
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={() => navigate('/onboarding/documents')}
+            className="shrink-0 px-3 py-2 text-xs font-medium text-white bg-brand-red rounded-lg hover:opacity-90"
+          >
+            Review &amp; sign
+          </button>
+        </div>
+      )}
       {activeFolderId==='all' ? (
         <>
           <div className="mb-3 flex items-center gap-2">

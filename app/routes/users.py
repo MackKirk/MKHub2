@@ -113,10 +113,10 @@ def list_users(
     Args:
         q: Search query (username, email, or name)
         page: Page number (1-indexed)
-        limit: Number of items per page (default 50, max 200)
+        limit: Number of items per page (default 50, max 2000)
     """
     # Ensure reasonable limits
-    limit = min(max(1, limit), 200)
+    limit = min(max(1, limit), 2000)
     page = max(1, page)
     offset = (page - 1) * limit
     

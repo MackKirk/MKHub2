@@ -772,13 +772,6 @@ def register(payload: RegisterPayload, db: Session = Depends(get_db)):
         structlog.get_logger().warning("training_assignment_failed", error=str(e))
         # Don't fail registration if training assignment fails
 
-    try:
-        from ..services.onboarding_assign import apply_onboarding_for_new_user
-
-        apply_onboarding_for_new_user(db, user.id, inv)
-    except Exception as e:
-        structlog.get_logger().warning("onboarding_package_assignment_failed", error=str(e))
-
     access = create_access_token(str(user.id), roles=[r.name for r in user.roles])
     refresh = create_refresh_token(str(user.id))
     # Send username email if SMTP configured
@@ -1094,6 +1087,12 @@ def update_my_profile(payload: EmployeeProfileInput, user: User = Depends(get_cu
     ep.updated_at = datetime.now(timezone.utc)
     ep.updated_by = user.id
     db.commit()
+    try:
+        from ..services.onboarding_assign import maybe_apply_onboarding_after_profile_complete
+
+        maybe_apply_onboarding_after_profile_complete(db, user.id)
+    except Exception as e:
+        structlog.get_logger().warning("onboarding_after_profile_failed", error=str(e))
     return {"status": "ok"}
 
 
@@ -1778,6 +1777,13 @@ def create_emergency_contact(user_id: str, payload: dict = Body(...), db: Sessio
     )
     db.add(e)
     db.commit()
+    if str(user.id) == str(user_id):
+        try:
+            from ..services.onboarding_assign import maybe_apply_onboarding_after_profile_complete
+
+            maybe_apply_onboarding_after_profile_complete(db, user.id)
+        except Exception as ex:
+            structlog.get_logger().warning("onboarding_after_emergency_contact_failed", error=str(ex))
     return {"id": str(e.id)}
 
 
@@ -1810,6 +1816,13 @@ def update_emergency_contact(user_id: str, eid: str, payload: dict = Body(...), 
         e.address = payload["address"]
     
     db.commit()
+    if str(user.id) == str(user_id):
+        try:
+            from ..services.onboarding_assign import maybe_apply_onboarding_after_profile_complete
+
+            maybe_apply_onboarding_after_profile_complete(db, user.id)
+        except Exception as ex:
+            structlog.get_logger().warning("onboarding_after_emergency_contact_failed", error=str(ex))
     return {"status": "ok"}
 
 
@@ -1822,6 +1835,14 @@ def delete_emergency_contact(user_id: str, eid: str, db: Session = Depends(get_d
     from ..models.models import EmployeeEmergencyContact
     db.query(EmployeeEmergencyContact).filter(and_(EmployeeEmergencyContact.user_id == user_id, EmployeeEmergencyContact.id == eid)).delete()
     db.commit()
+    if str(user.id) == str(user_id):
+        try:
+            from ..services.onboarding_assign import maybe_apply_onboarding_after_profile_complete
+            from uuid import UUID as _UUID
+
+            maybe_apply_onboarding_after_profile_complete(db, _UUID(str(user_id)))
+        except Exception as ex:
+            structlog.get_logger().warning("onboarding_after_emergency_contact_failed", error=str(ex))
     return {"status": "ok"}
 
 
