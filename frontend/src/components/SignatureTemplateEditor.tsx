@@ -1,9 +1,10 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import * as pdfjsLib from 'pdfjs-dist';
 import workerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
 import { api, getToken } from '@/lib/api';
 import { overlayPxToPdfRect, pdfRectToOverlayStyle, type PdfRect } from '@/lib/pdfCoordinates';
 import OverlayPortal from '@/components/OverlayPortal';
+import { useConfirm } from '@/components/ConfirmProvider';
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = workerUrl;
 
@@ -79,16 +80,21 @@ function getFieldDisplayName(f: { type: TemplateFieldType; employee_info_key?: s
   return defaultFieldLabel(f.type);
 }
 
-function newField(t: TemplateFieldType, pageIndex: number): TemplateField {
+function defaultFieldSize(t: TemplateFieldType): { w: number; h: number } {
   const w =
     t === 'signature' || t === 'initials' ? 150 : t === 'paragraph' ? 200 : t === 'checkbox' ? 24 : 140;
   const h =
     t === 'signature' || t === 'initials' ? 48 : t === 'paragraph' ? 96 : t === 'checkbox' ? 24 : 28;
+  return { w, h };
+}
+
+function newField(t: TemplateFieldType, pageIndex: number, rect?: PdfRect): TemplateField {
+  const { w, h } = defaultFieldSize(t);
   const base: TemplateField = {
     id: crypto.randomUUID(),
     type: t,
     page_index: pageIndex,
-    rect: { x: 72, y: 120, width: w, height: h },
+    rect: rect ?? { x: 72, y: 120, width: w, height: h },
     field_name: defaultFieldLabel(t),
     required: t === 'signature' || t === 'date',
     assignee: 'employee',
@@ -156,6 +162,7 @@ function PdfPageCanvas({
 }
 
 export default function SignatureTemplateEditor({ docId, docName, initialTemplate, onClose, onSaved }: Props) {
+  const confirm = useConfirm();
   const [pdf, setPdf] = useState<pdfjsLib.PDFDocumentProxy | null>(null);
   const [pageHeights, setPageHeights] = useState<number[]>([]);
   const pageHeightsRef = useRef<number[]>([]);
@@ -171,6 +178,7 @@ export default function SignatureTemplateEditor({ docId, docName, initialTemplat
   const [pageUi, setPageUi] = useState(1);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const pageWrapRefs = useRef<(HTMLDivElement | null)[]>([]);
+  const getVisiblePageIndexFromDomRef = useRef<() => number>(() => 0);
   const layoutUpdater = useCallback((pi: number) => (layout: PageLayout) => {
     setPageLayouts((prev) => {
       const next = [...prev];
@@ -188,16 +196,57 @@ export default function SignatureTemplateEditor({ docId, docName, initialTemplat
     pageIndex: number;
   } | null>(null);
 
+  // Snapshot inicial para detetar alterações não guardadas.
+  const initialSnapshotRef = useRef<string>('[]');
+
+  const normalizeFieldsForCompare = (fs: TemplateField[]) =>
+    [...fs]
+      .sort((a, b) => a.id.localeCompare(b.id))
+      .map((f) => ({
+        id: f.id,
+        type: f.type,
+        page_index: f.page_index,
+        rect: { x: f.rect.x, y: f.rect.y, width: f.rect.width, height: f.rect.height },
+        field_name: f.field_name,
+        required: f.required,
+        assignee: f.assignee,
+        ...(f.type === 'employee_info' ? { employee_info_key: f.employee_info_key } : {}),
+      }));
+
+  const currentSnapshot = useMemo(() => JSON.stringify(normalizeFieldsForCompare(fields)), [fields]);
+
   /** In-memory copy for Ctrl+C / Ctrl+V (same session). */
   const fieldClipboardRef = useRef<TemplateField | null>(null);
   const fieldsRef = useRef<TemplateField[]>(fields);
   fieldsRef.current = fields;
   const selectedIdRef = useRef<string | null>(selectedId);
   selectedIdRef.current = selectedId;
-  const pageUiRef = useRef(pageUi);
-  pageUiRef.current = pageUi;
   const numPagesRef = useRef(numPages);
   numPagesRef.current = numPages;
+
+  /** 0-based page index whose center is closest to the scroll container center (same logic as toolbar). */
+  const getVisiblePageIndexFromDom = useCallback((): number => {
+    const root = scrollContainerRef.current;
+    if (!root || numPages < 1) return 0;
+    const rootRect = root.getBoundingClientRect();
+    const centerY = rootRect.top + rootRect.height / 2;
+    let bestPi = 0;
+    let bestDist = Infinity;
+    for (let pi = 0; pi < numPages; pi++) {
+      const el = pageWrapRefs.current[pi];
+      if (!el) continue;
+      const r = el.getBoundingClientRect();
+      const pageCenterY = r.top + r.height / 2;
+      const dist = Math.abs(pageCenterY - centerY);
+      if (dist < bestDist) {
+        bestDist = dist;
+        bestPi = pi;
+      }
+    }
+    return bestPi;
+  }, [numPages]);
+
+  getVisiblePageIndexFromDomRef.current = getVisiblePageIndexFromDom;
 
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
@@ -226,7 +275,7 @@ export default function SignatureTemplateEditor({ docId, docName, initialTemplat
         e.preventDefault();
         const nPages = numPagesRef.current;
         if (nPages < 1) return;
-        const pi = Math.min(nPages, Math.max(1, pageUiRef.current)) - 1;
+        const pi = getVisiblePageIndexFromDomRef.current();
         const ph = pageHeightsRef.current[pi] ?? 792;
         const dx = 12;
         const dy = 12;
@@ -243,6 +292,14 @@ export default function SignatureTemplateEditor({ docId, docName, initialTemplat
         };
         setFields((prev) => [...prev, newF]);
         setSelectedId(newF.id);
+        setPageUi(pi + 1);
+        requestAnimationFrame(() => {
+          requestAnimationFrame(() => {
+            document
+              .querySelector(`[data-sig-tpl-field="${newF.id}"]`)
+              ?.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'nearest' });
+          });
+        });
       }
     };
     window.addEventListener('keydown', onKeyDown);
@@ -251,42 +308,83 @@ export default function SignatureTemplateEditor({ docId, docName, initialTemplat
 
   /** Which page is most visible in the scroll area (1-based) — drives toolbar + "add field" target page. */
   const updateVisiblePage = useCallback(() => {
-    const root = scrollContainerRef.current;
-    if (!root || numPages < 1) return;
-    const rootRect = root.getBoundingClientRect();
-    const centerY = rootRect.top + rootRect.height / 2;
-    let bestPi = 0;
-    let bestDist = Infinity;
-    for (let pi = 0; pi < numPages; pi++) {
-      const el = pageWrapRefs.current[pi];
-      if (!el) continue;
-      const r = el.getBoundingClientRect();
-      const pageCenterY = r.top + r.height / 2;
-      const dist = Math.abs(pageCenterY - centerY);
-      if (dist < bestDist) {
-        bestDist = dist;
-        bestPi = pi;
+    if (numPages < 1) return;
+    setPageUi(getVisiblePageIndexFromDom() + 1);
+  }, [numPages, getVisiblePageIndexFromDom]);
+
+  /** Place a new field in the PDF region that intersects the current scroll viewport (so the user sees it). */
+  const computeInitialRectForAdd = useCallback(
+    (t: TemplateFieldType, pageIndex: number): PdfRect => {
+      const { w, h } = defaultFieldSize(t);
+      const ph = pageLayouts[pageIndex]?.heightPt || pageHeights[pageIndex] || 792;
+      const cw = pageLayouts[pageIndex]?.canvasW || 0;
+      const ch = pageLayouts[pageIndex]?.canvasH || 0;
+      const wPx = w * scale;
+      const hPx = h * scale;
+      const margin = 4;
+      const pwPt = cw > 0 ? cw / scale : 612;
+
+      if (cw < wPx + margin * 2 || ch < hPx + margin * 2) {
+        const x = Math.max(margin, (pwPt - w) / 2);
+        const y = Math.max(0, ph / 2 - h / 2);
+        return { x, y, width: w, height: h };
       }
-    }
-    if (bestDist === Infinity) return;
-    setPageUi(bestPi + 1);
-  }, [numPages]);
+
+      const root = scrollContainerRef.current;
+      const pageEl = pageWrapRefs.current[pageIndex];
+      if (!root || !pageEl) {
+        const x = Math.max(margin, (pwPt - w) / 2);
+        const y = Math.max(0, ph / 2 - h / 2);
+        return { x, y, width: w, height: h };
+      }
+
+      const rootRect = root.getBoundingClientRect();
+      const pageRect = pageEl.getBoundingClientRect();
+
+      const visTop = Math.max(rootRect.top, pageRect.top);
+      const visBottom = Math.min(rootRect.bottom, pageRect.bottom);
+      const visLeft = Math.max(rootRect.left, pageRect.left);
+      const visRight = Math.min(rootRect.right, pageRect.right);
+
+      const visH = visBottom - visTop;
+      const visW = visRight - visLeft;
+
+      let leftPx: number;
+      let topPx: number;
+
+      if (visH < 24 || visW < 24) {
+        leftPx = (cw - wPx) / 2;
+        topPx = (ch - hPx) / 2;
+      } else {
+        const centerX = (visLeft + visRight) / 2;
+        const centerY = (visTop + visBottom) / 2;
+        leftPx = centerX - pageRect.left - wPx / 2;
+        topPx = centerY - pageRect.top - hPx / 2;
+      }
+
+      leftPx = Math.min(Math.max(margin, leftPx), cw - wPx - margin);
+      topPx = Math.min(Math.max(margin, topPx), ch - hPx - margin);
+
+      return overlayPxToPdfRect(leftPx, topPx, wPx, hPx, ph, scale);
+    },
+    [pageHeights, pageLayouts, scale],
+  );
 
   useEffect(() => {
-    if (initialTemplate?.fields?.length) {
-      setFields(
-        initialTemplate.fields.map((f) => ({
-          id: f.id,
-          type: f.type as TemplateFieldType,
-          page_index: f.page_index,
-          rect: { ...f.rect },
-          field_name: f.field_name,
-          required: !!f.required,
-          assignee: (f.assignee === 'user' ? 'user' : 'employee') as 'employee' | 'user',
-          employee_info_key: f.employee_info_key,
-        })),
-      );
-    }
+    const initFields: TemplateField[] = (initialTemplate?.fields ?? []).map((f) => ({
+      id: f.id,
+      type: f.type as TemplateFieldType,
+      page_index: f.page_index,
+      rect: { ...f.rect },
+      field_name: f.field_name,
+      required: !!f.required,
+      assignee: (f.assignee === 'user' ? 'user' : 'employee') as 'employee' | 'user',
+      employee_info_key: f.employee_info_key,
+    }));
+
+    initialSnapshotRef.current = JSON.stringify(normalizeFieldsForCompare(initFields));
+    setFields(initFields);
+    setSelectedId(null);
   }, [initialTemplate]);
 
   useEffect(() => {
@@ -356,10 +454,20 @@ export default function SignatureTemplateEditor({ docId, docName, initialTemplat
   };
 
   const addField = (t: TemplateFieldType) => {
-    const pi = Math.min(numPages, Math.max(1, pageUi)) - 1;
-    const newF = newField(t, pi);
+    if (numPages < 1) return;
+    const pi = getVisiblePageIndexFromDom();
+    setPageUi(pi + 1);
+    const rect = computeInitialRectForAdd(t, pi);
+    const newF = newField(t, pi, rect);
     setFields((prev) => [...prev, newF]);
     setSelectedId(newF.id);
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        document
+          .querySelector(`[data-sig-tpl-field="${newF.id}"]`)
+          ?.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'nearest' });
+      });
+    });
   };
 
   const onPointerMove = useCallback(
@@ -439,9 +547,40 @@ export default function SignatureTemplateEditor({ docId, docName, initialTemplat
     }
   };
 
+  const tryClose = async () => {
+    if (saving || loading) return;
+    const hasUnsavedChanges = currentSnapshot !== initialSnapshotRef.current;
+    if (!hasUnsavedChanges) {
+      onClose();
+      return;
+    }
+
+    const result = await confirm({
+      title: 'Discard changes?',
+      message: 'You have unsaved changes. Close without saving?',
+      confirmText: 'Discard',
+      cancelText: 'Keep editing',
+    });
+    if (result === 'confirm') onClose();
+  };
+
   const selected = fields.find((f) => f.id === selectedId);
 
-  const borderForType = (t: TemplateFieldType) => {
+  /** Border + fill: stronger colours when selected (no ring). */
+  const fieldOverlayClasses = (t: TemplateFieldType, selected: boolean) => {
+    if (selected) {
+      switch (t) {
+        case 'signature':
+        case 'initials':
+          return 'border-emerald-700 bg-emerald-500/40';
+        case 'date':
+          return 'border-teal-800 bg-teal-600/35';
+        case 'value':
+          return 'border-slate-700 bg-slate-500/30';
+        default:
+          return 'border-lime-800 bg-lime-600/35';
+      }
+    }
     switch (t) {
       case 'signature':
       case 'initials':
@@ -459,7 +598,7 @@ export default function SignatureTemplateEditor({ docId, docName, initialTemplat
     <OverlayPortal>
     <div
       className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center overflow-y-auto p-4"
-      onClick={onClose}
+      onClick={() => void tryClose()}
     >
       <div
         className="w-[1400px] max-w-[95vw] max-h-[90vh] bg-gray-100 rounded-xl overflow-hidden flex flex-col border border-gray-200 shadow-xl"
@@ -470,7 +609,7 @@ export default function SignatureTemplateEditor({ docId, docName, initialTemplat
             <div className="flex items-center gap-3 min-w-0">
               <button
                 type="button"
-                onClick={onClose}
+                onClick={() => void tryClose()}
                 className="p-1.5 rounded hover:bg-gray-100 transition-colors flex items-center justify-center flex-shrink-0"
                 title="Close"
               >
@@ -563,9 +702,11 @@ export default function SignatureTemplateEditor({ docId, docName, initialTemplat
                           return (
                             <div
                               key={f.id}
-                              className={`pointer-events-auto absolute cursor-move border-2 ${borderForType(f.type)} ${
-                                sel ? 'ring-2 ring-amber-500' : ''
-                              }`}
+                              data-sig-tpl-field={f.id}
+                              className={`pointer-events-auto absolute cursor-move border-2 transition-colors ${fieldOverlayClasses(
+                                f.type,
+                                sel,
+                              )}`}
                               style={{ left: st.left, top: st.top, width: st.width, height: st.height }}
                               onClick={(e) => {
                                 e.stopPropagation();
@@ -578,7 +719,7 @@ export default function SignatureTemplateEditor({ docId, docName, initialTemplat
                                 {f.required ? <span className="text-red-600"> *</span> : null}
                               </span>
                               <div
-                                className="absolute bottom-0 right-0 h-3 w-3 cursor-nwse-resize bg-amber-500/80"
+                                className="absolute bottom-0 right-0 h-3 w-3 cursor-nwse-resize bg-gray-700/75"
                                 onMouseDown={(e) => {
                                   e.stopPropagation();
                                   startDrag(f.id, 'resize', e);
@@ -601,9 +742,10 @@ export default function SignatureTemplateEditor({ docId, docName, initialTemplat
               <div className="flex min-h-0 flex-1 flex-col overflow-y-auto rounded-xl border border-gray-200 bg-white shadow-sm p-4">
             <div className="text-xs font-semibold uppercase tracking-wide text-gray-500">Signature setup</div>
             <p className="mt-1 text-[11px] leading-snug text-gray-600">
-              New fields are placed on the page currently in view (scroll the PDF or use Page ‹ ›). Saved positions use PDF
-              coordinates (bottom-left origin). With a field selected, use Ctrl+C / Ctrl+V (Cmd on Mac) to copy and paste a
-              duplicate (offset slightly; paste lands on the page in view).
+              New fields are placed in the part of the PDF you are currently looking at (scroll the PDF or use Page ‹ ›), and
+              the view scrolls so the new field is visible. Saved positions use PDF coordinates (bottom-left origin). With a field
+              selected, use Ctrl+C / Ctrl+V (Cmd on Mac) to copy and paste a duplicate (offset slightly; paste uses the page
+              in view).
             </p>
             <div className="mt-4 space-y-1.5">
               {FIELD_TYPES.map(({ type, label }) => (
@@ -707,7 +849,7 @@ export default function SignatureTemplateEditor({ docId, docName, initialTemplat
           >
             {saving ? 'Saving…' : 'Save template'}
           </button>
-          <button type="button" onClick={onClose} className="text-sm text-gray-600 hover:text-gray-900">
+          <button type="button" onClick={() => void tryClose()} className="text-sm text-gray-600 hover:text-gray-900">
             Cancel
           </button>
         </footer>

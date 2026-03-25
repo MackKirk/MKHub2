@@ -302,9 +302,27 @@ export default function AppShell({ children }: PropsWithChildren){
       return has || permissionsSet.has(legacyPerm);
     }
     // Fleet & Equipment: accept legacy/alternate permission keys so tabs show correctly
-    if (requiredPermission === 'fleet:access') return has || permissionsSet.has('fleet:read');
-    if (requiredPermission === 'fleet:vehicles:read') return has || permissionsSet.has('fleet:access') || permissionsSet.has('fleet:read');
-    if (requiredPermission === 'equipment:read') return has || permissionsSet.has('fleet:equipment:read') || permissionsSet.has('fleet:access') || permissionsSet.has('fleet:read');
+    if (requiredPermission === 'fleet:access') {
+      return (
+        has ||
+        permissionsSet.has('fleet:read') ||
+        permissionsSet.has('fleet:vehicles:read') ||
+        permissionsSet.has('fleet:vehicles:write') ||
+        permissionsSet.has('fleet:equipment:read') ||
+        permissionsSet.has('fleet:equipment:write')
+      );
+    }
+    if (requiredPermission === 'fleet:vehicles:read') {
+      return has || permissionsSet.has('fleet:access') || permissionsSet.has('fleet:read');
+    }
+    if (requiredPermission === 'equipment:read') {
+      return (
+        has ||
+        permissionsSet.has('fleet:equipment:read') ||
+        permissionsSet.has('fleet:access') ||
+        permissionsSet.has('fleet:read')
+      );
+    }
     return has;
   };
 

@@ -622,10 +622,25 @@ const UserPermissions = forwardRef<UserPermissionsRef, { userId: string; onDirty
       }
       
       newPerms[key] = newValue;
+
+      // Fleet & Equipment: enabling any fleet sub-permission turns on area access (matches UserDetail / backend hierarchy)
+      if (newValue && key.startsWith('fleet:') && key !== 'fleet:access') {
+        newPerms['fleet:access'] = true;
+      }
       
       // If disabling a view permission, also disable the corresponding edit permission
       if (!newValue) {
-        if (key === 'hr:users:view:general') {
+        if (key === 'fleet:access') {
+          Object.keys(newPerms).forEach((k) => {
+            if (k.startsWith('fleet:') && k !== 'fleet:access') {
+              newPerms[k] = false;
+            }
+          });
+        } else if (key === 'fleet:vehicles:read') {
+          newPerms['fleet:vehicles:write'] = false;
+        } else if (key === 'fleet:equipment:read') {
+          newPerms['fleet:equipment:write'] = false;
+        } else if (key === 'hr:users:view:general') {
           newPerms['hr:users:edit:general'] = false;
         } else if (key === 'hr:users:view:timesheet') {
           newPerms['hr:users:edit:timesheet'] = false;
@@ -730,6 +745,12 @@ const UserPermissions = forwardRef<UserPermissionsRef, { userId: string; onDirty
     if (permKey.startsWith('business:projects:') && permKey.endsWith(':write') && permKey !== 'business:projects:write') {
       const viewKey = permKey.replace(':write', ':read');
       return !!permissions[viewKey];
+    }
+    if (permKey === 'fleet:vehicles:write') {
+      return !!permissions['fleet:vehicles:read'];
+    }
+    if (permKey === 'fleet:equipment:write') {
+      return !!permissions['fleet:equipment:read'];
     }
     return true; // Default: no restrictions
   };
@@ -1420,6 +1441,23 @@ const UserPermissions = forwardRef<UserPermissionsRef, { userId: string; onDirty
                     ) : cat.category.name === 'fleet' ? (
                       /* Special handling for Fleet & Equipment category - group by vehicles and equipment */
                       <div className="space-y-4">
+                        {areaAccessPerm && (
+                          <label className="flex items-start gap-1.5 p-2 rounded-lg bg-white border border-gray-200 hover:bg-gray-50 cursor-pointer">
+                            <input
+                              type="checkbox"
+                              checked={permissions[areaAccessPerm.key] || false}
+                              onChange={() => canEdit && handleToggle(areaAccessPerm.key)}
+                              disabled={!canEdit}
+                              className="mt-0.5 w-3.5 h-3.5 rounded border-gray-300 text-brand-red focus:ring-brand-red flex-shrink-0 disabled:opacity-50 disabled:cursor-not-allowed"
+                            />
+                            <div className="flex-1 min-w-0">
+                              <div className="text-xs font-semibold text-gray-900">{areaAccessPerm.label}</div>
+                              {areaAccessPerm.description && (
+                                <div className="text-[10px] text-gray-500 mt-0.5">{areaAccessPerm.description}</div>
+                              )}
+                            </div>
+                          </label>
+                        )}
                         {['vehicles', 'equipment'].map((area: string) => {
                           const areaPerms = subPermissions.filter((p: any) => p.key.includes(`fleet:${area}`));
                           if (areaPerms.length === 0) return null;
@@ -1469,16 +1507,18 @@ const UserPermissions = forwardRef<UserPermissionsRef, { userId: string; onDirty
                                 {editPerms.length > 0 && (
                                   <div className="space-y-1.5">
                                     <div className="text-[10px] font-semibold text-gray-600 mb-1.5 uppercase tracking-wide">Edit</div>
-                                    {editPerms.map((perm: any) => (
+                                    {editPerms.map((perm: any) => {
+                                      const canEnableFleetEdit = canEdit && canEnableEditPermission(perm.key, permissions);
+                                      return (
                                       <label
                                         key={perm.id}
-                                        className="flex items-start gap-1.5 p-1.5 rounded bg-white hover:bg-gray-50 cursor-pointer"
+                                        className={`flex items-start gap-1.5 p-1.5 rounded bg-white ${canEnableFleetEdit ? 'hover:bg-gray-50 cursor-pointer' : 'cursor-default'}`}
                                       >
                                         <input
                                           type="checkbox"
                                           checked={permissions[perm.key] || false}
-                                          onChange={() => canEdit && handleToggle(perm.key)}
-                                          disabled={!canEdit}
+                                          onChange={() => canEnableFleetEdit && handleToggle(perm.key)}
+                                          disabled={!canEnableFleetEdit}
                                           className="mt-0.5 w-3.5 h-3.5 rounded border-gray-300 text-brand-red focus:ring-brand-red flex-shrink-0 disabled:opacity-50 disabled:cursor-not-allowed"
                                         />
                                         <div className="flex-1 min-w-0">
@@ -1495,7 +1535,8 @@ const UserPermissions = forwardRef<UserPermissionsRef, { userId: string; onDirty
                                           )}
                                         </div>
                                       </label>
-                                    ))}
+                                      );
+                                    })}
                                   </div>
                                 )}
                               </div>
@@ -2335,21 +2376,27 @@ export default function UserInfo(){
     const isAdmin = (me?.roles || []).some((r: string) => String(r || '').toLowerCase() === 'admin');
     if (isAdmin) return true;
     const perms = me?.permissions || [];
-    return perms.includes('fleet:access') || perms.includes('fleet:read') || perms.includes('equipment:read');
+    return (
+      perms.includes('fleet:access') ||
+      perms.includes('fleet:read') ||
+      perms.includes('fleet:vehicles:read') ||
+      perms.includes('fleet:equipment:read') ||
+      perms.includes('equipment:read')
+    );
   }, [me]);
   const canEditAssets = useMemo(() => {
     if (!me) return false;
     const isAdmin = (me?.roles || []).some((r: string) => String(r || '').toLowerCase() === 'admin');
     if (isAdmin) return true;
     const perms = me?.permissions || [];
-    return perms.includes('equipment:write');
+    return perms.includes('equipment:write') || perms.includes('fleet:equipment:write');
   }, [me]);
   const canEditFleetAssets = useMemo(() => {
     if (!me) return false;
     const isAdmin = (me?.roles || []).some((r: string) => String(r || '').toLowerCase() === 'admin');
     if (isAdmin) return true;
     const perms = me?.permissions || [];
-    return perms.includes('fleet:write');
+    return perms.includes('fleet:write') || perms.includes('fleet:vehicles:write');
   }, [me]);
   const p = data?.profile || {};
   const u = data?.user || {};
