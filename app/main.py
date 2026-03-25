@@ -844,6 +844,17 @@ def create_app() -> FastAPI:
                                 print("[startup] Seeded HR Onboarding system package")
                         except Exception as _e:
                             print(f"[startup] HR Onboarding package seed skipped: {_e}")
+                        try:
+                            if not _onb_col("onboarding_packages", "document_delivery_enabled"):
+                                db.execute(
+                                    text(
+                                        "ALTER TABLE onboarding_packages ADD COLUMN document_delivery_enabled BOOLEAN NOT NULL DEFAULT true"
+                                    )
+                                )
+                                db.commit()
+                                print("[startup] Added onboarding_packages.document_delivery_enabled")
+                        except Exception as _e:
+                            print(f"[startup] onboarding_packages.document_delivery_enabled migration: {_e}")
 
                     # Project folders
                     db.execute(text("""

@@ -5,6 +5,7 @@ import { getChartMetricLabel } from './widgets/chartShared';
 import type { GalleryItem } from './galleryConfig';
 import type { WidgetDef } from './types';
 import type { LayoutItem } from './types';
+import OverlayPortal from '@/components/OverlayPortal';
 
 type AddWidgetModalProps = {
   open: boolean;
@@ -242,7 +243,7 @@ export function AddWidgetModal({ open, onClose, onAdd, existingLayout }: AddWidg
   if (!open) return null;
 
   return (
-    <div
+    <OverlayPortal><div
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
       onClick={onClose}
     >
@@ -343,6 +344,6 @@ export function AddWidgetModal({ open, onClose, onAdd, existingLayout }: AddWidg
           </button>
         </div>
       </div>
-    </div>
+    </div></OverlayPortal>
   );
 }

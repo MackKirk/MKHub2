@@ -5,6 +5,17 @@
 html,body,#root{height:100%}
 body{font-family:theme(fontFamily.sans);background:#f6f7f9}
 
+/* Full-screen modals portaled here so dimmed backdrops cover the viewport (incl. top bar). */
+#overlay-root {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 100000;
+}
+#overlay-root > * {
+  pointer-events: auto;
+}
+
 /* Google Places Autocomplete dropdown */
 .pac-container{
   z-index: 100000 !important;

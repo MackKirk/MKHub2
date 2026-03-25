@@ -8,6 +8,7 @@ import NationalitySelect from '@/components/NationalitySelect';
 import AddressAutocomplete from '@/components/AddressAutocomplete';
 import PostalCodeAutocomplete from '@/components/PostalCodeAutocomplete';
 import { useConfirm } from '@/components/ConfirmProvider';
+import OverlayPortal from '@/components/OverlayPortal';
 
 type ProfileResp = { user: { username: string; email: string; first_name?: string; last_name?: string }, profile?: any };
 
@@ -1535,6 +1536,7 @@ function EmergencyContactsStep({ userId }: { userId: string }) {
       </div>
       
       {createOpen && (
+        <OverlayPortal>
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
           <div className="w-[800px] max-w-[95vw] bg-white rounded-xl overflow-hidden">
             <div className="px-4 py-3 border-b flex items-center justify-between">
@@ -1643,6 +1645,7 @@ function EmergencyContactsStep({ userId }: { userId: string }) {
             </div>
           </div>
         </div>
+        </OverlayPortal>
       )}
     </div>
   );
@@ -2248,6 +2251,7 @@ function VisaInformationSection({ userId, canEdit, isRequired = false, showInlin
       )}
       
       {createOpen && (
+        <OverlayPortal>
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
           <div className="w-[600px] max-w-[95vw] bg-white rounded-xl overflow-hidden">
             <div className="px-4 py-3 border-b flex items-center justify-between">
@@ -2343,6 +2347,7 @@ function VisaInformationSection({ userId, canEdit, isRequired = false, showInlin
             </div>
           </div>
         </div>
+        </OverlayPortal>
       )}
     </div>
   );

@@ -9,6 +9,7 @@ import {
   INSPECTION_RESULT_LABELS,
   INSPECTION_RESULT_COLORS,
 } from '@/lib/fleetBadges';
+import OverlayPortal from '@/components/OverlayPortal';
 
 type Schedule = {
   id: string;
@@ -301,7 +302,7 @@ export default function Inspections() {
 
       {/* New Inspection Modal */}
       {showNewInspectionModal && (
-        <div
+        <OverlayPortal><div
           className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center overflow-y-auto p-4"
           onClick={() => setShowNewInspectionModal(false)}
         >
@@ -363,7 +364,7 @@ export default function Inspections() {
               </button>
             </div>
           </div>
-        </div>
+        </div></OverlayPortal>
       )}
     </div>
   );

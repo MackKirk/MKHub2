@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { api } from '@/lib/api';
 import { useQueryClient, useQuery } from '@tanstack/react-query';
+import OverlayPortal from '@/components/OverlayPortal';
 
 type InviteModalProps = {
   isOpen: boolean;
@@ -103,6 +104,7 @@ export default function InviteUserModal({ isOpen, onClose }: InviteModalProps) {
   if (!isOpen) return null;
 
   return (
+    <OverlayPortal>
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50" onClick={onClose}>
       <div className="bg-white rounded-lg shadow-xl max-w-2xl w-full mx-4 max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
         <div className="p-6 border-b">
@@ -419,6 +421,7 @@ export default function InviteUserModal({ isOpen, onClose }: InviteModalProps) {
         </form>
       </div>
     </div>
+    </OverlayPortal>
   );
 }
 

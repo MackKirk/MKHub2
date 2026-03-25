@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
 import { api } from '@/lib/api';
+import OverlayPortal from '@/components/OverlayPortal';
 import { useNavigate, useLocation } from 'react-router-dom';
 
 type TaskRequestMessage = {
@@ -761,6 +762,7 @@ function ViewRequestModal({
 
   if (isLoading) {
                 return (
+                  <OverlayPortal>
                   <div
         className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4"
         onClick={onClose}
@@ -772,11 +774,13 @@ function ViewRequestModal({
           <div className="p-8 text-center text-xs text-gray-500">Loading request details...</div>
         </div>
       </div>
+                  </OverlayPortal>
     );
   }
 
   if (!request) {
     return (
+      <OverlayPortal>
       <div 
         className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4"
         onClick={onClose}
@@ -788,12 +792,14 @@ function ViewRequestModal({
           <div className="p-8 text-center text-xs text-gray-500">Request not found</div>
         </div>
       </div>
+      </OverlayPortal>
     );
   }
 
   const statusConfig = getStatusConfig(request.status);
 
   return (
+    <OverlayPortal>
     <div 
       className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4"
       onClick={onClose}
@@ -1016,6 +1022,7 @@ function ViewRequestModal({
         </div>
       </div>
     </div>
+    </OverlayPortal>
   );
 }
 
@@ -1123,6 +1130,7 @@ function CreateRequestModal({
   };
 
   return (
+    <OverlayPortal>
     <div 
       className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4"
       onClick={onClose}
@@ -1371,6 +1379,7 @@ function CreateRequestModal({
         </div>
       </div>
     </div>
+    </OverlayPortal>
   );
 }
 
@@ -1498,6 +1507,7 @@ function RequestsListModal({
 
   return (
     <>
+      <OverlayPortal>
       <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4">
         <div className="bg-white rounded-xl max-w-7xl w-full max-h-[90vh] overflow-hidden flex flex-col border border-gray-200">
           <div className="sticky top-0 bg-white border-b border-gray-200 p-4 flex items-center justify-between">
@@ -1764,6 +1774,7 @@ function RequestsListModal({
           </div>
         </div>
       </div>
+      </OverlayPortal>
 
       {showHistoryModal && (
         <RequestsHistoryModal
@@ -1812,6 +1823,7 @@ function RequestsHistoryModal({
   const selected = detail;
 
   return (
+    <OverlayPortal>
     <div className="fixed inset-0 z-[60] bg-black/60 flex items-center justify-center p-4">
       <div className="bg-white rounded-xl max-w-7xl w-full max-h-[90vh] overflow-hidden flex flex-col">
         <div className="sticky top-0 bg-white border-b p-4 flex items-center justify-between">
@@ -1996,6 +2008,7 @@ function RequestsHistoryModal({
         </div>
       </div>
     </div>
+    </OverlayPortal>
   );
 }
 
@@ -2160,6 +2173,7 @@ function CreateTaskRequestModal({
   const canSubmit = title.trim() && (targetType === 'user' ? !!targetUserId : !!targetDivisionId);
 
   return (
+    <OverlayPortal>
     <div
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
       onClick={onClose}
@@ -2462,6 +2476,7 @@ function CreateTaskRequestModal({
         </div>
       </div>
     </div>
+    </OverlayPortal>
   );
 }
 

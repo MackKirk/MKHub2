@@ -5,6 +5,7 @@ import { logoutSession } from '@/lib/logoutSession';
 import { api, getToken } from '@/lib/api';
 import toast from 'react-hot-toast';
 import OnboardingSignModal from '@/components/OnboardingSignModal';
+import OverlayPortal from '@/components/OverlayPortal';
 
 type DocRow = {
   id: string;
@@ -323,12 +324,15 @@ export default function OnboardingDocuments() {
       </div>
 
       {pdfPreviewLoading && !pdfPreview && (
+        <OverlayPortal>
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-[60] pointer-events-none">
           <div className="rounded-lg bg-white px-4 py-3 text-sm text-gray-700 shadow-lg">Loading PDF…</div>
         </div>
+        </OverlayPortal>
       )}
 
       {pdfPreview && (
+        <OverlayPortal>
         <div
           className="fixed inset-0 bg-black/80 flex items-center justify-center z-[60] p-4"
           onClick={closePdfPreview}
@@ -368,6 +372,7 @@ export default function OnboardingDocuments() {
             </div>
           </div>
         </div>
+        </OverlayPortal>
       )}
 
       {signItem && (

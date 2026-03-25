@@ -3,6 +3,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import toast from 'react-hot-toast';
 import { useConfirm } from '@/components/ConfirmProvider';
+import OverlayPortal from '@/components/OverlayPortal';
 
 type Folder = { id: string; name: string; parent_id?: string; sort_index?: number; access_permissions?: any; created_at?: string; last_modified?: string };
 type Document = { id: string; folder_id?: string; title: string; notes?: string; file_id?: string; created_at?: string };
@@ -933,7 +934,7 @@ export default function CompanyFiles(){
 
       {/* Upload Modal */}
       {showUpload && (
-        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50" onClick={(e)=>e.target===e.currentTarget && setShowUpload(false)}>
+        <OverlayPortal><div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50" onClick={(e)=>e.target===e.currentTarget && setShowUpload(false)}>
           <div className="bg-white rounded-xl border border-gray-200 shadow-lg w-full max-w-md p-4" onClick={(e)=>e.stopPropagation()}>
             <div className="text-sm font-semibold text-gray-900 mb-3">Upload Files</div>
             <div className="space-y-3">
@@ -967,7 +968,7 @@ export default function CompanyFiles(){
               >Cancel</button>
             </div>
           </div>
-        </div>
+        </div></OverlayPortal>
       )}
 
       {/* Upload Progress Modal */}
@@ -1019,7 +1020,7 @@ export default function CompanyFiles(){
 
       {/* New Folder Modal */}
       {newFolderOpen && (
-        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
+        <OverlayPortal><div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
           <div className="bg-white rounded-xl border border-gray-200 shadow-lg w-full max-w-sm p-4">
             <div className="text-sm font-semibold text-gray-900 mb-3">
               {newFolderParentId? 'New Subfolder':'New Folder'}
@@ -1094,12 +1095,12 @@ export default function CompanyFiles(){
               >Create</button>
             </div>
           </div>
-        </div>
+        </div></OverlayPortal>
       )}
 
       {/* Move Document Modal */}
       {moveDoc && (
-        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50" onClick={(e)=>e.target===e.currentTarget && setMoveDoc(null)}>
+        <OverlayPortal><div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50" onClick={(e)=>e.target===e.currentTarget && setMoveDoc(null)}>
           <div className="bg-white rounded-xl border border-gray-200 shadow-lg w-full max-w-sm p-4" onClick={(e)=>e.stopPropagation()}>
             <div className="text-sm font-semibold text-gray-900 mb-3">Move Document</div>
             <div>
@@ -1139,12 +1140,12 @@ export default function CompanyFiles(){
               >Move</button>
             </div>
           </div>
-        </div>
+        </div></OverlayPortal>
       )}
 
       {/* Rename Folder Modal */}
       {renameFolder && (
-        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50" onClick={(e)=>e.target===e.currentTarget && setRenameFolder(null)}>
+        <OverlayPortal><div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50" onClick={(e)=>e.target===e.currentTarget && setRenameFolder(null)}>
           <div className="bg-white rounded-xl border border-gray-200 shadow-lg w-full max-w-sm p-4" onClick={(e)=>e.stopPropagation()}>
             <div className="text-sm font-semibold text-gray-900 mb-3">Rename Folder</div>
             <div>
@@ -1203,12 +1204,12 @@ export default function CompanyFiles(){
               >Rename</button>
             </div>
           </div>
-        </div>
+        </div></OverlayPortal>
       )}
 
       {/* Rename Document Modal */}
       {renameDoc && (
-        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50" onClick={(e)=>e.target===e.currentTarget && setRenameDoc(null)}>
+        <OverlayPortal><div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50" onClick={(e)=>e.target===e.currentTarget && setRenameDoc(null)}>
           <div className="bg-white rounded-xl border border-gray-200 shadow-lg w-full max-w-sm p-4" onClick={(e)=>e.stopPropagation()}>
             <div className="text-sm font-semibold text-gray-900 mb-3">Rename Document</div>
             <div>
@@ -1267,12 +1268,12 @@ export default function CompanyFiles(){
               >Rename</button>
             </div>
           </div>
-        </div>
+        </div></OverlayPortal>
       )}
 
       {/* Folder Permissions Modal */}
       {permissionsFolder && (
-        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50" onClick={(e)=>e.target===e.currentTarget && setPermissionsFolder(null)}>
+        <OverlayPortal><div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50" onClick={(e)=>e.target===e.currentTarget && setPermissionsFolder(null)}>
           <div className="bg-white rounded-xl w-full max-w-2xl p-6 max-h-[90vh] overflow-y-auto" onClick={(e)=>e.stopPropagation()}>
             <div className="text-lg font-semibold mb-4">Access Permissions: {permissionsFolder.name}</div>
             
@@ -1366,12 +1367,12 @@ export default function CompanyFiles(){
               <div className="py-8 text-center text-gray-500">Failed to load permissions</div>
             )}
           </div>
-        </div>
+        </div></OverlayPortal>
       )}
 
       {/* PDF/Excel Preview Modal */}
       {previewPdf && (
-        <div className="fixed inset-0 bg-black/90 flex items-center justify-center z-50" onClick={()=>setPreviewPdf(null)}>
+        <OverlayPortal><div className="fixed inset-0 bg-black/90 flex items-center justify-center z-50" onClick={()=>setPreviewPdf(null)}>
           <div className="w-full h-full flex items-center justify-center p-4 relative">
             <iframe
               src={previewPdf.url}
@@ -1397,12 +1398,12 @@ export default function CompanyFiles(){
               </button>
             </div>
           </div>
-        </div>
+        </div></OverlayPortal>
       )}
 
       {/* Image Preview Modal */}
       {previewImage && (
-        <div className="fixed inset-0 bg-black/90 flex items-center justify-center z-50" onClick={()=>setPreviewImage(null)}>
+        <OverlayPortal><div className="fixed inset-0 bg-black/90 flex items-center justify-center z-50" onClick={()=>setPreviewImage(null)}>
           <div className="w-full h-full flex items-center justify-center p-4 relative">
             <div className="max-w-7xl max-h-[90vh] flex flex-col items-center">
               <img
@@ -1435,7 +1436,7 @@ export default function CompanyFiles(){
               </div>
             </div>
           </div>
-        </div>
+        </div></OverlayPortal>
       )}
     </div>
   );

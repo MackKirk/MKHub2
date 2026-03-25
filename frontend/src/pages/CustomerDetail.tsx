@@ -14,6 +14,7 @@ import LoadingOverlay from '@/components/LoadingOverlay';
 import { CustomerFilesTabEnhanced } from './CustomerFilesTabEnhanced';
 import { OpportunityListItem, CreateReportModal } from './Opportunities';
 import { ProjectListItem } from './Projects';
+import OverlayPortal from '@/components/OverlayPortal';
 
 type Client = { id:string, name?:string, display_name?:string, code?:string, city?:string, province?:string, postal_code?:string, country?:string, address_line1?:string, address_line2?:string, created_at?:string };
 type Site = { id:string, site_name?:string, site_address_line1?:string, site_city?:string, site_province?:string, site_country?:string };
@@ -121,7 +122,7 @@ function DateRangeModal({ open, onClose, onConfirm, initialStartDate = '', initi
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={onClose}>
+    <OverlayPortal><div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={onClose}>
       <div className="w-[400px] max-w-[95vw] bg-white rounded-lg shadow-lg overflow-hidden" onClick={(e) => e.stopPropagation()}>
         <div className="px-4 py-3 border-b font-semibold">Custom Date Range</div>
         <div className="p-4 space-y-4">
@@ -160,7 +161,7 @@ function DateRangeModal({ open, onClose, onConfirm, initialStartDate = '', initi
           </button>
         </div>
       </div>
-    </div>
+    </div></OverlayPortal>
   );
 }
 
@@ -3305,7 +3306,7 @@ function CustomerDocuments({ id, files, sites, onRefresh, hasEditPermission }: {
       </div>
 
       {showUpload && (
-        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
+        <OverlayPortal><div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
           <div className="bg-white rounded-xl w-full max-w-md p-4">
             <div className="text-lg font-semibold mb-2">Add file</div>
             <div className="space-y-3">
@@ -3330,11 +3331,11 @@ function CustomerDocuments({ id, files, sites, onRefresh, hasEditPermission }: {
               <button onClick={upload} className="px-3 py-2 rounded bg-brand-red text-white">Upload</button>
             </div>
           </div>
-        </div>
+        </div></OverlayPortal>
       )}
 
       {newFolderOpen && (
-        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
+        <OverlayPortal><div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
           <div className="bg-white rounded-xl w-full max-w-sm p-4">
             <div className="text-lg font-semibold mb-2">{newFolderParentId? 'New subfolder':'New folder'}</div>
             <div>
@@ -3346,11 +3347,11 @@ function CustomerDocuments({ id, files, sites, onRefresh, hasEditPermission }: {
               <button onClick={async()=>{ try{ const body:any = { name: (newFolderName||'').trim() }; if(newFolderParentId) body.parent_id = newFolderParentId; if(!body.name){ toast.error('Folder name required'); return; } await api('POST', `/clients/${encodeURIComponent(id)}/folders`, body); toast.success('Folder created'); setNewFolderOpen(false); setNewFolderName(''); setNewFolderParentId(null); await refetchFolders(); }catch(_e){ toast.error('Failed to create folder'); } }} className="px-3 py-2 rounded bg-brand-red text-white">Create</button>
             </div>
           </div>
-        </div>
+        </div></OverlayPortal>
       )}
 
       {renameFolder && (
-        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
+        <OverlayPortal><div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
           <div className="bg-white rounded-xl w-full max-w-sm p-4">
             <div className="text-lg font-semibold mb-2">Rename folder</div>
             <div>
@@ -3362,11 +3363,11 @@ function CustomerDocuments({ id, files, sites, onRefresh, hasEditPermission }: {
               <button onClick={async()=>{ try{ await api('PUT', `/clients/${encodeURIComponent(id)}/folders/${encodeURIComponent(renameFolder.id)}`, { name: (renameFolder.name||'').trim() }); toast.success('Renamed'); setRenameFolder(null); await refetchFolders(); }catch(_e){ toast.error('Failed to rename'); } }} className="px-3 py-2 rounded bg-brand-red text-white">Save</button>
             </div>
           </div>
-        </div>
+        </div></OverlayPortal>
       )}
 
       {renameDoc && (
-        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
+        <OverlayPortal><div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
           <div className="bg-white rounded-xl w-full max-w-sm p-4">
             <div className="text-lg font-semibold mb-2">Rename file</div>
             <div>
@@ -3378,11 +3379,11 @@ function CustomerDocuments({ id, files, sites, onRefresh, hasEditPermission }: {
               <button onClick={async()=>{ try{ await api('PUT', `/clients/${encodeURIComponent(id)}/documents/${encodeURIComponent(renameDoc.id)}`, { title: (renameDoc.title||'').trim() }); toast.success('Renamed'); setRenameDoc(null); await refetchDocs(); }catch(_e){ toast.error('Failed to rename'); } }} className="px-3 py-2 rounded bg-brand-red text-white">Save</button>
             </div>
           </div>
-        </div>
+        </div></OverlayPortal>
       )}
 
       {moveDoc && (
-        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
+        <OverlayPortal><div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
           <div className="bg-white rounded-xl w-full max-w-sm p-4">
             <div className="text-lg font-semibold mb-2">Move file</div>
             <div>
@@ -3397,11 +3398,11 @@ function CustomerDocuments({ id, files, sites, onRefresh, hasEditPermission }: {
               <button onClick={async()=>{ try{ const sel = document.getElementById('move-target-client') as HTMLSelectElement; const dest = sel?.value||''; if(!dest){ toast.error('Select destination'); return; } await api('PUT', `/clients/${encodeURIComponent(id)}/documents/${encodeURIComponent(moveDoc.id)}`, { folder_id: dest }); toast.success('Moved'); setMoveDoc(null); await refetchDocs(); }catch(_e){ toast.error('Failed to move'); } }} className="px-3 py-2 rounded bg-brand-red text-white">Move</button>
             </div>
           </div>
-        </div>
+        </div></OverlayPortal>
       )}
 
       {previewPdf && (
-        <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50">
+        <OverlayPortal><div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50">
           <div className="w-[1000px] max-w-[95vw] h-[85vh] bg-white rounded-xl overflow-hidden shadow-2xl flex flex-col">
             <div className="px-3 py-2 border-b flex items-center justify-between">
               <div className="font-semibold text-sm truncate pr-2">{previewPdf.name}</div>
@@ -3412,7 +3413,7 @@ function CustomerDocuments({ id, files, sites, onRefresh, hasEditPermission }: {
             </div>
             <iframe className="flex-1" src={previewPdf.url} title="PDF Preview"></iframe>
           </div>
-        </div>
+        </div></OverlayPortal>
       )}
       
       {editingImage && (
@@ -3644,7 +3645,7 @@ function ContactsCard({ id, hasEditPermission }: { id: string, hasEditPermission
         {(!data || !data.length) && <div className="text-sm text-gray-600">No contacts</div>}
       </div>
       {createOpen && (
-        <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center overflow-y-auto p-4">
+        <OverlayPortal><div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center overflow-y-auto p-4">
           <div className="w-[900px] max-w-[95vw] max-h-[90vh] bg-gray-100 rounded-xl overflow-hidden flex flex-col border border-gray-200 shadow-xl">
             {/* Title bar - same style as New Site (SiteDetail) */}
             <div className="rounded-t-xl border-b border-gray-200 bg-white p-4 flex-shrink-0">
@@ -3740,7 +3741,7 @@ function ContactsCard({ id, hasEditPermission }: { id: string, hasEditPermission
               </button>
             </div>
           </div>
-        </div>
+        </div></OverlayPortal>
       )}
       {pickerForContact && (
         <ImagePicker isOpen={true} onClose={()=>setPickerForContact(null)} clientId={String(id)} targetWidth={400} targetHeight={400} allowEdit={true} onConfirm={async(blob)=>{

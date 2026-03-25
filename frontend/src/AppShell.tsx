@@ -957,8 +957,8 @@ export default function AppShell({ children }: PropsWithChildren){
           })}
         </nav>
       </aside>
-      <main className={`flex-1 min-w-0 transition-all duration-300 ${sidebarCollapsed ? 'ml-16' : 'ml-64'}`} style={{ height: '100vh', overflowY: 'auto' }}>
-        <div className="h-14 border-b border-gray-700/40 shadow-sm text-white flex items-center justify-between px-6 bg-gradient-to-r from-gray-700 via-gray-700 to-gray-800">
+      <main className={`flex-1 min-w-0 flex flex-col min-h-0 transition-all duration-300 ${sidebarCollapsed ? 'ml-16' : 'ml-64'}`} style={{ height: '100vh' }}>
+        <div className="h-14 shrink-0 border-b border-gray-700/40 shadow-sm text-white flex items-center justify-between px-6 bg-gradient-to-r from-gray-700 via-gray-700 to-gray-800">
           <GlobalSearch
             widthClassName="w-[760px] max-w-[70vw]"
             maxRecents={4}
@@ -985,6 +985,7 @@ export default function AppShell({ children }: PropsWithChildren){
             </div>
           </div>
         </div>
+        <div className="flex-1 min-h-0 overflow-y-auto">
         <div className="p-5 min-h-full">
           {onboardingStatus?.has_pending &&
             !onboardingStatus?.past_deadline &&
@@ -1008,6 +1009,7 @@ export default function AppShell({ children }: PropsWithChildren){
               </div>
             )}
           {children}
+        </div>
         </div>
       </main>
       <InstallPrompt />

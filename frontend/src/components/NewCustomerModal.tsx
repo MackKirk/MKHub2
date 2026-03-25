@@ -6,6 +6,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useConfirm } from '@/components/ConfirmProvider';
 import ImagePicker from '@/components/ImagePicker';
 import AddressAutocomplete from '@/components/AddressAutocomplete';
+import OverlayPortal from '@/components/OverlayPortal';
 
 type NewCustomerModalProps = {
   onClose: () => void;
@@ -292,7 +293,7 @@ export default function NewCustomerModal({ onClose, onSuccess }: NewCustomerModa
   };
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center overflow-y-auto p-4">
+    <OverlayPortal><div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center overflow-y-auto p-4">
       <div className="w-[900px] max-w-[95vw] max-h-[90vh] bg-gray-100 rounded-xl overflow-hidden flex flex-col border border-gray-200 shadow-xl">
         {/* Title bar - same style as New Opportunity (ProjectNew) */}
         <div className="rounded-t-xl border-b border-gray-200 bg-white p-4 flex-shrink-0">
@@ -703,7 +704,7 @@ export default function NewCustomerModal({ onClose, onSuccess }: NewCustomerModa
           finally { setCPickerOpen(false); }
         }} />
       )}
-    </div>
+    </div></OverlayPortal>
   );
 }
 

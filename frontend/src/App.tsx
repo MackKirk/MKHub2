@@ -213,7 +213,7 @@ export default function App(){
           </Routes>
         </Suspense>
       )}
-      <Toaster position="top-right" />
+      <Toaster position="top-right" containerStyle={{ zIndex: 100002 }} />
       </ConfirmProvider>
       </UnsavedChangesProvider>
     </QueryClientProvider>

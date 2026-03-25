@@ -1028,6 +1028,8 @@ class OnboardingPackage(Base):
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     description: Mapped[Optional[str]] = mapped_column(String(1000))
     active: Mapped[bool] = mapped_column(Boolean, default=True)
+    # When False, automatic assignment of base documents for signature is skipped (admin toggle).
+    document_delivery_enabled: Mapped[bool] = mapped_column(Boolean, default=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
 
 

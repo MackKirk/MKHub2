@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { FilterRule, FieldConfig } from './types';
 import FilterRuleRow from './FilterRuleRow';
+import OverlayPortal from '@/components/OverlayPortal';
 
 interface FilterBuilderModalProps {
   isOpen: boolean;
@@ -71,7 +72,7 @@ export default function FilterBuilderModal({
   if (!isOpen) return null;
 
   return (
-    <div 
+    <OverlayPortal><div 
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 transition-opacity duration-200 ease-out"
       onClick={(e) => {
         if (e.target === e.currentTarget) {
@@ -159,7 +160,7 @@ export default function FilterBuilderModal({
           </div>
         </div>
       </div>
-    </div>
+    </div></OverlayPortal>
   );
 }
 

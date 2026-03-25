@@ -4,6 +4,7 @@ import { api } from '@/lib/api';
 import type { WidgetDef } from './types';
 import { getWidgetMeta } from './widgetRegistry';
 import { getChartMetricLabel, CHART_PALETTE_OPTIONS, CHART_PALETTES } from './widgets/chartShared';
+import OverlayPortal from '@/components/OverlayPortal';
 
 const OPPORTUNITY_STATUS_LABELS = ['Prospecting', 'Sent to Customer', 'Refused'];
 
@@ -145,7 +146,7 @@ export function WidgetConfigModal({ widget, onClose, onSave }: WidgetConfigModal
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={onClose}>
+    <OverlayPortal><div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={onClose}>
       <div
         className="max-w-md w-full max-h-[90vh] flex flex-col rounded-xl border border-gray-200 bg-gray-100 shadow-xl overflow-hidden"
         onClick={(e) => e.stopPropagation()}
@@ -416,6 +417,6 @@ export function WidgetConfigModal({ widget, onClose, onSave }: WidgetConfigModal
           </button>
         </div>
       </div>
-    </div>
+    </div></OverlayPortal>
   );
 }

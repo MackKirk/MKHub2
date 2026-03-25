@@ -8,6 +8,7 @@ import { useNavigate } from 'react-router-dom';
 import ImagePicker from '@/components/ImagePicker';
 import AddressAutocomplete from '@/components/AddressAutocomplete';
 import { useUnsavedChangesGuard } from '@/hooks/useUnsavedChangesGuard';
+import OverlayPortal from '@/components/OverlayPortal';
 
 export default function CustomerNew(){
   const confirm = useConfirm();
@@ -590,7 +591,7 @@ export default function CustomerNew(){
       </div>
       </div>
       {contactModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
+        <OverlayPortal><div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
           <div className="w-[800px] max-w-[95vw] bg-white rounded-xl overflow-hidden">
             <div className="px-4 py-3 border-b flex items-center justify-between">
               <div className="font-semibold">New Contact</div>
@@ -654,7 +655,7 @@ export default function CustomerNew(){
               </div>
             </div>
           </div>
-        </div>
+        </div></OverlayPortal>
       )}
       {cPickerOpen && (
         <ImagePicker isOpen={true} onClose={()=>setCPickerOpen(false)} clientId={''} targetWidth={400} targetHeight={400} allowEdit={true} onConfirm={async(blob)=>{

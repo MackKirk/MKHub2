@@ -3,6 +3,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useState, useEffect, useMemo, Fragment } from 'react';
 import { api } from '@/lib/api';
 import { FleetAssetNewForm } from './FleetAssetNew';
+import OverlayPortal from '@/components/OverlayPortal';
 
 type FleetAsset = {
   id: string;
@@ -429,7 +430,7 @@ function FleetFilterBuilderModal({
   if (!isOpen) return null;
 
   return (
-    <div
+    <OverlayPortal><div
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 transition-opacity duration-200 ease-out"
       onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
     >
@@ -488,7 +489,7 @@ function FleetFilterBuilderModal({
           </div>
         </div>
       </div>
-    </div>
+    </div></OverlayPortal>
   );
 }
 
@@ -1082,7 +1083,7 @@ export default function FleetAssets() {
 
       {/* New Asset Modal - same visual as New Site (SiteDetail) */}
       {showNewAssetModal && (
-        <div
+        <OverlayPortal><div
           className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center overflow-y-auto p-4"
           onClick={() => setShowNewAssetModal(false)}
         >
@@ -1144,7 +1145,7 @@ export default function FleetAssets() {
               </button>
             </div>
           </div>
-        </div>
+        </div></OverlayPortal>
       )}
     </div>
   );

@@ -1,5 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import { api } from '@/lib/api';
+import OverlayPortal from '@/components/OverlayPortal';
 
 export type DocumentTypePreset = {
   id: string;
@@ -31,7 +32,7 @@ export function ChooseDocumentTypeModal({
   if (!open) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+    <OverlayPortal><div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
       <div className="bg-white rounded-xl shadow-xl max-w-md w-full max-h-[85vh] flex flex-col">
         <div className="p-4 border-b border-gray-200">
           <h2 className="text-lg font-semibold text-gray-900">Create document</h2>
@@ -82,6 +83,6 @@ export function ChooseDocumentTypeModal({
           </button>
         </div>
       </div>
-    </div>
+    </div></OverlayPortal>
   );
 }

@@ -92,6 +92,12 @@ def maybe_apply_onboarding_after_profile_complete(db: Session, user_id: UUID) ->
     apply_onboarding_after_profile_complete(db, user_id)
 
 
+def is_onboarding_document_delivery_enabled(db: Session) -> bool:
+    """Global switch: when False, no new onboarding signature assignments are created."""
+    pkg = get_or_create_system_package(db)
+    return bool(getattr(pkg, "document_delivery_enabled", True))
+
+
 def apply_onboarding_after_profile_complete(db: Session, subject_user_id: UUID) -> None:
     """
     Assign all onboarding base documents according to each document's preferences.
@@ -99,6 +105,8 @@ def apply_onboarding_after_profile_complete(db: Session, subject_user_id: UUID) 
     """
     user = db.query(User).filter(User.id == subject_user_id).first()
     if not user:
+        return
+    if not is_onboarding_document_delivery_enabled(db):
         return
     now = datetime.now(timezone.utc)
     ep = db.query(EmployeeProfile).filter(EmployeeProfile.user_id == subject_user_id).first()
@@ -183,6 +191,8 @@ def create_resend_assignment_items(
     assigned_by_id: Optional[UUID],
 ) -> int:
     """Create new pending items for users."""
+    if not is_onboarding_document_delivery_enabled(db):
+        return 0
     now = datetime.now(timezone.utc)
     bd = db.query(OnboardingBaseDocument).filter(OnboardingBaseDocument.id == base_document_id).first()
     if not bd:

@@ -7,6 +7,7 @@ import toast from 'react-hot-toast';
 import { useConfirm } from '@/components/ConfirmProvider';
 import { formatDateLocal, getCurrentMonthLocal } from '@/lib/dateUtils';
 import UserLoans from '@/components/UserLoans';
+import OverlayPortal from '@/components/OverlayPortal';
 
 // Helper function to convert 24h time (HH:MM:SS or HH:MM) to 12h format (h:mm AM/PM)
 function formatTime12h(timeStr: string | null | undefined): string {
@@ -506,6 +507,7 @@ function UserPermissions({ userId, user: userProp, canEdit = true }:{ userId:str
 
         {/* Modal: Apply template as Merge or Replace */}
         {showApplyTemplateModal && (
+          <OverlayPortal>
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={() => setShowApplyTemplateModal(false)}>
             <div className="bg-white rounded-lg shadow-xl p-4 max-w-md w-full mx-4" onClick={(e) => e.stopPropagation()}>
               <h3 className="text-base font-semibold text-gray-900 mb-2">Apply permission template</h3>
@@ -537,6 +539,7 @@ function UserPermissions({ userId, user: userProp, canEdit = true }:{ userId:str
               </div>
             </div>
           </div>
+          </OverlayPortal>
         )}
 
       <div className="space-y-6">

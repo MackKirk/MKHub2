@@ -5,6 +5,7 @@ import { api } from '@/lib/api';
 import toast from 'react-hot-toast';
 import ImagePicker from '@/components/ImagePicker';
 import { useConfirm } from '@/components/ConfirmProvider';
+import OverlayPortal from '@/components/OverlayPortal';
 
 type Group = {
   id: string;
@@ -341,7 +342,7 @@ export default function CommunityGroups() {
 
       {/* Create Group Modal */}
       {showCreateModal && (
-        <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4">
+        <OverlayPortal><div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4">
           <div className="bg-white rounded-xl max-w-md w-full p-6 space-y-4">
             <h2 className="text-xl font-semibold">Create New Group</h2>
             <div>
@@ -388,12 +389,12 @@ export default function CommunityGroups() {
               </button>
             </div>
           </div>
-        </div>
+        </div></OverlayPortal>
       )}
 
       {/* Manage Members Modal */}
       {showManageMembersModal && selectedGroup && (
-        <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4">
+        <OverlayPortal><div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4">
           <div className="bg-white rounded-xl max-w-lg w-full p-6 space-y-4">
             <h3 className="text-lg font-semibold">Manage Members for "{selectedGroup.name}"</h3>
             
@@ -483,12 +484,12 @@ export default function CommunityGroups() {
               </button>
             </div>
           </div>
-        </div>
+        </div></OverlayPortal>
       )}
 
       {/* Group Settings Modal */}
       {showSettingsModal && selectedGroup && (
-        <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4">
+        <OverlayPortal><div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4">
           <div className="bg-white rounded-xl max-w-3xl w-full max-h-[90vh] overflow-hidden flex flex-col">
             <div className="p-6 border-b">
               <h2 className="text-xl font-semibold">Group Settings</h2>
@@ -843,6 +844,7 @@ export default function CommunityGroups() {
             </div>
           </div>
         </div>
+        </OverlayPortal>
       )}
 
       {/* Image Picker */}

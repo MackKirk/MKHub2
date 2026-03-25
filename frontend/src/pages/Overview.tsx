@@ -7,6 +7,7 @@ import { api } from '@/lib/api';
 import toast from 'react-hot-toast';
 import { ReportAttachmentAreaSingle } from '@/components/ReportAttachmentArea';
 import { formatDateLocal } from '@/lib/dateUtils';
+import OverlayPortal from '@/components/OverlayPortal';
 
 // Helper function to get time-based greeting
 function getTimeBasedGreeting(): string {
@@ -464,7 +465,7 @@ function QuickReportModal({ onClose, onSuccess }: { onClose: () => void, onSucce
   };
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4">
+    <OverlayPortal><div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4">
       <div className="bg-white rounded-xl max-w-2xl w-full max-h-[90vh] overflow-hidden flex flex-col">
         <div className="bg-gradient-to-br from-[#7f1010] to-[#a31414] p-6 flex items-center justify-between flex-shrink-0">
           <h2 className="text-xl font-semibold text-white">Create Project Report</h2>
@@ -552,6 +553,6 @@ function QuickReportModal({ onClose, onSuccess }: { onClose: () => void, onSucce
           </button>
         </div>
       </div>
-    </div>
+    </div></OverlayPortal>
   );
 }

@@ -7,6 +7,7 @@ import { useConfirm } from '@/components/ConfirmProvider';
 import EditShiftModal from '@/components/EditShiftModal';
 import { JOB_TYPES } from '@/constants/jobTypes';
 import { formatDateLocal, getTodayLocal } from '@/lib/dateUtils';
+import OverlayPortal from '@/components/OverlayPortal';
 
 // Helper function to convert 24h time (HH:MM:SS or HH:MM) to 12h format (h:mm AM/PM)
 function formatTime12h(timeStr: string | null | undefined): string {
@@ -1076,7 +1077,7 @@ function CreateShiftModal({
   const canSubmit = Array.isArray(selectedWorkers) && selectedWorkers.length > 0 && Array.isArray(selectedDates) && selectedDates.length > 0;
 
   return (
-    <div
+    <OverlayPortal><div
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
       onClick={onClose}
     >
@@ -1384,7 +1385,7 @@ function CreateShiftModal({
           </button>
         </div>
       </div>
-    </div>
+    </div></OverlayPortal>
   );
 }
 

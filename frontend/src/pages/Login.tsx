@@ -3,6 +3,7 @@ import { api } from '@/lib/api';
 import { resolvePostAuthDestination } from '@/lib/profileCompleteness';
 import { useLocation, useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
+import OverlayPortal from '@/components/OverlayPortal';
 
 export default function Login(){
   const [identifier, setIdentifier] = useState('');
@@ -68,6 +69,7 @@ export default function Login(){
       </div>
       
       {forgotPasswordOpen && (
+        <OverlayPortal>
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
           <div className="w-[500px] max-w-[95vw] bg-white rounded-xl overflow-hidden">
             <div className="px-4 py-3 border-b flex items-center justify-between">
@@ -152,6 +154,7 @@ export default function Login(){
             </div>
           </div>
         </div>
+        </OverlayPortal>
       )}
     </div>
   );

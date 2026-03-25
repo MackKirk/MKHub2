@@ -1,4 +1,5 @@
 import DocumentEditor from '@/components/DocumentEditor';
+import OverlayPortal from '@/components/OverlayPortal';
 
 type DocumentCreatorModalProps = {
   open: boolean;
@@ -27,6 +28,7 @@ export function DocumentCreatorModal({
   if (!open) return null;
 
   return (
+    <OverlayPortal>
     <div className="fixed inset-0 z-50 flex flex-col bg-white">
       <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
         {documentId ? (
@@ -43,5 +45,6 @@ export function DocumentCreatorModal({
         )}
       </div>
     </div>
+    </OverlayPortal>
   );
 }

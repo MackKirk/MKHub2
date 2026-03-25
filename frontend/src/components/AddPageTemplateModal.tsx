@@ -1,3 +1,5 @@
+import OverlayPortal from '@/components/OverlayPortal';
+
 type Template = { id: string; name: string; description?: string; background_file_id?: string };
 
 type AddPageTemplateModalProps = {
@@ -18,6 +20,7 @@ export function AddPageTemplateModal({
   if (!open) return null;
 
   return (
+    <OverlayPortal>
     <div
       className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50"
       onClick={onClose}
@@ -84,5 +87,6 @@ export function AddPageTemplateModal({
         </div>
       </div>
     </div>
+    </OverlayPortal>
   );
 }

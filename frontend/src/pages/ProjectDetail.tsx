@@ -17,6 +17,7 @@ import ProjectDocumentsTab from '@/components/ProjectDocumentsTab';
 import { formatDateLocal, getCurrentMonthLocal } from '@/lib/dateUtils';
 import { DivisionIcon } from '@/components/DivisionIcon';
 import { ReportAttachmentAreaMultiple } from '@/components/ReportAttachmentArea';
+import OverlayPortal from '@/components/OverlayPortal';
 
 // Helper function to calculate and format time since status change
 function getTimeSinceStatusChange(project: any): string {
@@ -2135,7 +2136,7 @@ export default function ProjectDetail(){
 
       {/* Audit Log Modal */}
       {showAuditLogModal && (
-        <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4">
+        <OverlayPortal><div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4">
           <div className="bg-white rounded-xl max-w-6xl w-full max-h-[90vh] overflow-hidden flex flex-col">
             <div className="sticky top-0 bg-white border-b p-4 flex items-center justify-between">
               <h2 className="text-xl font-semibold">Audit Log</h2>
@@ -2193,7 +2194,7 @@ export default function ProjectDetail(){
               </div>
             </div>
           </div>
-        </div>
+        </div></OverlayPortal>
       )}
 
       {/* Edit Status Modal */}
@@ -2404,7 +2405,7 @@ function EditStartDateModal({ projectId, currentStartDate, onClose, onSave }: {
   };
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4" onClick={onClose}>
+    <OverlayPortal><div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4" onClick={onClose}>
       <div className="bg-white rounded-xl w-full max-w-md shadow-xl" onClick={(e) => e.stopPropagation()}>
         <div className="p-4 border-b flex items-center justify-between">
           <h3 className="text-lg font-semibold">Edit Start Date</h3>
@@ -2442,7 +2443,7 @@ function EditStartDateModal({ projectId, currentStartDate, onClose, onSave }: {
           </button>
         </div>
       </div>
-    </div>
+    </div></OverlayPortal>
   );
 }
 
@@ -2480,7 +2481,7 @@ function EditEtaModal({ projectId, currentEta, onClose, onSave }: {
   };
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4" onClick={onClose}>
+    <OverlayPortal><div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4" onClick={onClose}>
       <div className="bg-white rounded-xl w-full max-w-md shadow-xl" onClick={(e) => e.stopPropagation()}>
         <div className="p-4 border-b flex items-center justify-between">
           <h3 className="text-lg font-semibold">Edit ETA</h3>
@@ -2518,7 +2519,7 @@ function EditEtaModal({ projectId, currentEta, onClose, onSave }: {
           </button>
         </div>
       </div>
-    </div>
+    </div></OverlayPortal>
   );
 }
 
@@ -2595,7 +2596,7 @@ function EditRelatedCustomersModal({
   };
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4" onClick={onClose}>
+    <OverlayPortal><div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4" onClick={onClose}>
       <div className="bg-white rounded-xl w-full max-w-lg max-h-[90vh] flex flex-col shadow-xl" onClick={(e) => e.stopPropagation()}>
         <div className="p-4 border-b flex items-center justify-between flex-shrink-0">
           <h3 className="text-lg font-semibold">Edit Related Customers</h3>
@@ -2675,7 +2676,7 @@ function EditRelatedCustomersModal({
           </button>
         </div>
       </div>
-    </div>
+    </div></OverlayPortal>
   );
 }
 
@@ -2715,7 +2716,7 @@ function EditLeadSourceModal({ projectId, currentLeadSource, onClose, onSave }: 
   };
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4" onClick={onClose}>
+    <OverlayPortal><div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4" onClick={onClose}>
       <div className="bg-white rounded-xl w-full max-w-md shadow-xl" onClick={(e) => e.stopPropagation()}>
         <div className="p-4 border-b flex items-center justify-between">
           <h3 className="text-lg font-semibold">Edit Lead Source</h3>
@@ -2759,7 +2760,7 @@ function EditLeadSourceModal({ projectId, currentLeadSource, onClose, onSave }: 
           </button>
         </div>
       </div>
-    </div>
+    </div></OverlayPortal>
   );
 }
 
@@ -2996,7 +2997,9 @@ function ConvertToProjectModal({
                 </div>
                 {openDropdownId === 'projectAdmin' && dropdownPosition && (
                   <>
-                    <div className="fixed inset-0 z-[60]" onClick={closeDropdown} />
+                    <OverlayPortal>
+                      <div className="fixed inset-0 z-[60]" onClick={closeDropdown} />
+                    </OverlayPortal>
                     <div
                       className="fixed z-[70] bg-white border rounded-lg shadow-xl overflow-hidden flex flex-col"
                       style={{
@@ -3072,7 +3075,9 @@ function ConvertToProjectModal({
                 </div>
                 {openDropdownId === 'leadSource' && dropdownPosition && (
                   <>
-                    <div className="fixed inset-0 z-[60]" onClick={closeDropdown} />
+                    <OverlayPortal>
+                      <div className="fixed inset-0 z-[60]" onClick={closeDropdown} />
+                    </OverlayPortal>
                     <div
                       className="fixed z-[70] bg-white border rounded-lg shadow-xl overflow-hidden flex flex-col"
                       style={{
@@ -3159,7 +3164,9 @@ function ConvertToProjectModal({
                           </div>
                           {openDropdownId === divKey && dropdownPosition && (
                             <>
-                              <div className="fixed inset-0 z-[60]" onClick={closeDropdown} />
+                              <OverlayPortal>
+                                <div className="fixed inset-0 z-[60]" onClick={closeDropdown} />
+                              </OverlayPortal>
                               <div
                                 className="fixed z-[70] bg-white border rounded-lg shadow-xl overflow-hidden flex flex-col"
                                 style={{
@@ -3964,7 +3971,7 @@ function ReportsTabEnhanced({ projectId, items, onRefresh }:{ projectId:string, 
       )}
 
       {previewAttachment && (
-        <div className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-4" onClick={() => setPreviewAttachment(null)}>
+        <OverlayPortal><div className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-4" onClick={() => setPreviewAttachment(null)}>
           <div className="max-w-4xl max-h-[90vh] bg-white rounded-lg overflow-hidden" onClick={(e) => e.stopPropagation()}>
             <div className="p-4 border-b flex items-center justify-between">
               <h3 className="font-semibold">{previewAttachment.original_name}</h3>
@@ -3983,7 +3990,7 @@ function ReportsTabEnhanced({ projectId, items, onRefresh }:{ projectId:string, 
               />
             </div>
           </div>
-        </div>
+        </div></OverlayPortal>
       )}
     </div>
   );
@@ -4109,7 +4116,7 @@ function CreateReportModal({ projectId, reportCategories, onClose, onSuccess }: 
   };
 
   return (
-    <div
+    <OverlayPortal><div
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
       onClick={onClose}
     >
@@ -4246,7 +4253,7 @@ function CreateReportModal({ projectId, reportCategories, onClose, onSuccess }: 
           </button>
         </div>
       </div>
-    </div>
+    </div></OverlayPortal>
   );
 }
 
@@ -5035,7 +5042,7 @@ function ProjectFilesTabEnhanced({ projectId, files, onRefresh }:{ projectId:str
             )}
 
             {showNewFolderModal && (
-              <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={() => setShowNewFolderModal(false)}>
+              <OverlayPortal><div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={() => setShowNewFolderModal(false)}>
                 <div className="bg-white rounded-lg shadow-xl p-4 max-w-sm w-full mx-4" onClick={e => e.stopPropagation()}>
                   <h3 className="text-sm font-semibold mb-2">New folder</h3>
                   {(selectedCategory === 'all' || selectedCategory === 'uncategorized') && (
@@ -5075,7 +5082,7 @@ function ProjectFilesTabEnhanced({ projectId, files, onRefresh }:{ projectId:str
                     </button>
                   </div>
                 </div>
-              </div>
+              </div></OverlayPortal>
             )}
 
             <div className="rounded-lg border overflow-hidden bg-white">
@@ -5357,7 +5364,7 @@ function ProjectFilesTabEnhanced({ projectId, files, onRefresh }:{ projectId:str
 
       {/* Upload Modal */}
       {showUpload && (
-        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50" onClick={(e) => e.target === e.currentTarget && setShowUpload(false)}>
+        <OverlayPortal><div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50" onClick={(e) => e.target === e.currentTarget && setShowUpload(false)}>
           <div className="bg-white rounded-xl w-full max-w-md p-4" onClick={(e) => e.stopPropagation()}>
             <div className="text-sm font-semibold mb-3">Upload Files</div>
             <div className="space-y-3">
@@ -5389,7 +5396,7 @@ function ProjectFilesTabEnhanced({ projectId, files, onRefresh }:{ projectId:str
               </button>
             </div>
           </div>
-        </div>
+        </div></OverlayPortal>
       )}
 
       {/* Upload Progress */}
@@ -5440,7 +5447,7 @@ function ProjectFilesTabEnhanced({ projectId, files, onRefresh }:{ projectId:str
 
       {/* Image Preview Modal */}
       {previewImage && (
-        <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4" onClick={() => setPreviewImage(null)}>
+        <OverlayPortal><div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4" onClick={() => setPreviewImage(null)}>
           <div className="w-full h-full max-w-[95vw] max-h-[95vh] bg-white rounded-lg overflow-hidden flex flex-col" onClick={(e) => e.stopPropagation()}>
             <div className="p-3 border-b flex items-center justify-between flex-shrink-0">
               <h3 className="text-sm font-semibold">{previewImage.name}</h3>
@@ -5498,12 +5505,12 @@ function ProjectFilesTabEnhanced({ projectId, files, onRefresh }:{ projectId:str
               />
             </div>
           </div>
-        </div>
+        </div></OverlayPortal>
       )}
 
       {/* PDF Preview Modal */}
       {previewPdf && (
-        <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4" onClick={() => setPreviewPdf(null)}>
+        <OverlayPortal><div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4" onClick={() => setPreviewPdf(null)}>
           <div className="w-full h-full max-w-[95vw] max-h-[95vh] bg-white rounded-lg overflow-hidden flex flex-col" onClick={(e) => e.stopPropagation()}>
             <div className="p-3 border-b flex items-center justify-between flex-shrink-0">
               <h3 className="text-sm font-semibold">{previewPdf.name}</h3>
@@ -5533,12 +5540,12 @@ function ProjectFilesTabEnhanced({ projectId, files, onRefresh }:{ projectId:str
               />
             </div>
           </div>
-        </div>
+        </div></OverlayPortal>
       )}
 
       {/* Excel Preview/Edit Modal */}
       {previewExcel && (
-        <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4" onClick={() => setPreviewExcel(null)}>
+        <OverlayPortal><div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4" onClick={() => setPreviewExcel(null)}>
           <div className="w-full h-full max-w-[95vw] max-h-[95vh] bg-white rounded-lg overflow-hidden flex flex-col" onClick={(e) => e.stopPropagation()}>
             <div className="p-3 border-b flex items-center justify-between flex-shrink-0">
               <h3 className="text-sm font-semibold">{previewExcel.name}</h3>
@@ -5577,7 +5584,7 @@ function ProjectFilesTabEnhanced({ projectId, files, onRefresh }:{ projectId:str
               />
             </div>
           </div>
-        </div>
+        </div></OverlayPortal>
       )}
     </div>
   );
@@ -7087,7 +7094,7 @@ function TimesheetTab({ projectId, statusLabel }:{ projectId:string; statusLabel
       </div>
       {/* Edit Time Entry Modal */}
       {editingEntry && (
-        <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4">
+        <OverlayPortal><div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4">
           <div className="bg-white rounded-xl max-w-md w-full p-6 space-y-4">
             <h3 className="text-lg font-semibold">Edit Time Entry</h3>
             
@@ -7208,12 +7215,12 @@ function TimesheetTab({ projectId, statusLabel }:{ projectId:string; statusLabel
               </button>
             </div>
           </div>
-        </div>
+        </div></OverlayPortal>
       )}
 
       {/* Clock In/Out Modal - standardized with EventModal / EditShiftModal */}
       {showClockModal && selectedShift && clockType && (
-        <div
+        <OverlayPortal><div
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 overflow-y-auto"
           onClick={closeClockModal}
         >
@@ -7549,7 +7556,7 @@ function TimesheetTab({ projectId, statusLabel }:{ projectId:string; statusLabel
               </button>
             </div>
           </div>
-        </div>
+        </div></OverlayPortal>
       )}
     </div>
   );
@@ -8114,10 +8121,12 @@ function OnSiteLeadsModal({ projectId, originalDivisions, divisionLeads, setting
                 {isExpanded && canEdit && dropdownPosition && (
                   <>
                     {/* Backdrop to close dropdown */}
-                    <div 
-                      className="fixed inset-0 z-[60]" 
-                      onClick={() => setOpenDivisionId(null)}
-                    />
+                    <OverlayPortal>
+                      <div 
+                        className="fixed inset-0 z-[60]" 
+                        onClick={() => setOpenDivisionId(null)}
+                      />
+                    </OverlayPortal>
                     {/* Dropdown */}
                     <div 
                       className="fixed z-[70] bg-white border rounded-lg shadow-xl overflow-hidden flex flex-col"
@@ -8746,7 +8755,7 @@ function EditStatusModal({ projectId, currentStatus, currentStatusLabel, setting
   };
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4" onClick={onClose}>
+    <OverlayPortal><div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4" onClick={onClose}>
       <div className="bg-white rounded-xl w-full max-w-md shadow-xl" onClick={(e) => e.stopPropagation()}>
         <div className="p-4 border-b flex items-center justify-between">
           <h3 className="text-lg font-semibold">Edit Status</h3>
@@ -8792,7 +8801,7 @@ function EditStatusModal({ projectId, currentStatus, currentStatusLabel, setting
           </div>
         </div>
       </div>
-    </div>
+    </div></OverlayPortal>
   );
 }
 
@@ -8836,7 +8845,7 @@ function EditProjectNameModal({ projectId, currentName, onClose, onSave }: {
   };
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4" onClick={onClose}>
+    <OverlayPortal><div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4" onClick={onClose}>
       <div className="bg-white rounded-xl w-full max-w-md shadow-xl" onClick={(e) => e.stopPropagation()}>
         <div className="p-4 border-b flex items-center justify-between">
           <h3 className="text-lg font-semibold">Edit Project Name</h3>
@@ -8900,7 +8909,7 @@ function EditProjectNameModal({ projectId, currentName, onClose, onSave }: {
           </div>
         </div>
       </div>
-    </div>
+    </div></OverlayPortal>
   );
 }
 
@@ -8961,7 +8970,7 @@ function EditSiteModal({ projectId, project, onClose, onSave }: {
   };
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4" onClick={onClose}>
+    <OverlayPortal><div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4" onClick={onClose}>
       <div className="bg-white rounded-xl w-full max-w-lg shadow-xl" onClick={(e) => e.stopPropagation()}>
         <div className="p-4 border-b flex items-center justify-between">
           <h3 className="text-lg font-semibold">Edit Project Site</h3>
@@ -9067,7 +9076,7 @@ function EditSiteModal({ projectId, project, onClose, onSave }: {
           </div>
         </div>
       </div>
-    </div>
+    </div></OverlayPortal>
   );
 }
 
@@ -9144,7 +9153,7 @@ function EditEstimatorModal({ projectId, currentEstimatorIds, employees, onClose
   };
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4">
+    <OverlayPortal><div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4">
       <div className="bg-white rounded-xl w-full max-w-md max-h-[90vh] overflow-hidden flex flex-col shadow-xl">
         <div className="p-4 bg-[#7f1010] flex items-center justify-between flex-shrink-0">
           <h3 className="text-lg font-semibold text-white">Edit Estimators</h3>
@@ -9248,7 +9257,7 @@ function EditEstimatorModal({ projectId, currentEstimatorIds, employees, onClose
           </button>
         </div>
       </div>
-    </div>
+    </div></OverlayPortal>
   );
 }
 
@@ -9301,7 +9310,7 @@ function EditProjectAdminModal({ projectId, currentAdminId, employees, onClose, 
   };
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4">
+    <OverlayPortal><div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4">
       <div className="bg-white rounded-xl w-full max-w-md max-h-[90vh] overflow-hidden flex flex-col shadow-xl">
         <div className="p-4 bg-[#7f1010] flex items-center justify-between flex-shrink-0">
           <h3 className="text-lg font-semibold text-white">Edit Project Admin</h3>
@@ -9432,7 +9441,7 @@ function EditProjectAdminModal({ projectId, currentAdminId, employees, onClose, 
           </button>
         </div>
       </div>
-    </div>
+    </div></OverlayPortal>
   );
 }
 
@@ -9517,7 +9526,7 @@ function EditProgressModal({ projectId, currentProgress, onClose, onSave }: {
   `;
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4">
+    <OverlayPortal><div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4">
       <style>{progressModalSliderStyle}</style>
       <div className="bg-white rounded-xl w-full max-w-md shadow-xl">
         <div className="p-4 border-b flex items-center justify-between">
@@ -9571,7 +9580,7 @@ function EditProgressModal({ projectId, currentProgress, onClose, onSave }: {
           </div>
         </div>
       </div>
-    </div>
+    </div></OverlayPortal>
   );
 }
 
@@ -9837,7 +9846,7 @@ function EditDivisionsModal({ projectId, currentDivisions, currentPercentages, p
   };
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4" onClick={onClose}>
+    <OverlayPortal><div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4" onClick={onClose}>
       <div className="bg-white rounded-xl w-full max-w-5xl max-h-[90vh] overflow-hidden flex flex-col shadow-xl" onClick={(e) => e.stopPropagation()}>
         <div className="p-4 bg-[#7f1010] flex items-center justify-between">
           <h3 className="text-lg font-semibold text-white">Edit Project Divisions</h3>
@@ -9933,7 +9942,7 @@ function EditDivisionsModal({ projectId, currentDivisions, currentPercentages, p
           </button>
         </div>
       </div>
-    </div>
+    </div></OverlayPortal>
   );
 }
 

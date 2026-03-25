@@ -27,6 +27,8 @@ from ..models.models import (
 from ..services.onboarding_assign import (
     create_resend_assignment_items,
     get_or_create_hr_documents_folder,
+    get_or_create_system_package,
+    is_onboarding_document_delivery_enabled,
     promote_scheduled_assignment_items,
 )
 from ..services.onboarding_sign import (
@@ -196,6 +198,26 @@ def _apply_base_document_preferences(bd: OnboardingBaseDocument, payload: dict) 
 
 
 # ----- Admin -----
+
+
+@router.get("/settings")
+def get_onboarding_settings(db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    if not _admin(user):
+        raise HTTPException(403, "Forbidden")
+    pkg = get_or_create_system_package(db)
+    return {"document_delivery_enabled": bool(getattr(pkg, "document_delivery_enabled", True))}
+
+
+@router.patch("/settings")
+def patch_onboarding_settings(payload: dict, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    if not _admin(user):
+        raise HTTPException(403, "Forbidden")
+    if "document_delivery_enabled" not in payload:
+        raise HTTPException(400, "document_delivery_enabled required")
+    pkg = get_or_create_system_package(db)
+    pkg.document_delivery_enabled = bool(payload.get("document_delivery_enabled"))
+    db.commit()
+    return {"document_delivery_enabled": pkg.document_delivery_enabled}
 
 
 @router.get("/base-documents")
@@ -626,6 +648,8 @@ def resend_document(doc_id: UUID, payload: dict, db: Session = Depends(get_db), 
     uids = [UUID(str(x)) for x in (payload.get("user_ids") or [])]
     if not uids:
         raise HTTPException(400, "user_ids required")
+    if not is_onboarding_document_delivery_enabled(db):
+        raise HTTPException(400, "Document delivery is turned off in HR Onboarding settings")
     n = create_resend_assignment_items(db, doc_id, uids, user.id)
     return {"created": n}
 
@@ -664,6 +688,41 @@ def list_assignments(
             }
         )
     return out
+
+
+@router.post("/assignments/{assignment_id}/cancel-pending")
+def cancel_assignment_pending(
+    assignment_id: UUID,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Remove all pending/scheduled onboarding items for this assignment (admin monitoring)."""
+    if not _admin(user):
+        raise HTTPException(403, "Forbidden")
+    a = db.query(OnboardingAssignment).filter(OnboardingAssignment.id == assignment_id).first()
+    if not a:
+        raise HTTPException(404, "Assignment not found")
+    to_remove = (
+        db.query(OnboardingAssignmentItem)
+        .filter(
+            OnboardingAssignmentItem.assignment_id == assignment_id,
+            OnboardingAssignmentItem.status.in_(["pending", "scheduled"]),
+        )
+        .all()
+    )
+    n = len(to_remove)
+    for it in to_remove:
+        db.delete(it)
+    db.flush()
+    remaining = (
+        db.query(OnboardingAssignmentItem)
+        .filter(OnboardingAssignmentItem.assignment_id == assignment_id)
+        .count()
+    )
+    if remaining == 0:
+        db.delete(a)
+    db.commit()
+    return {"cancelled": n, "assignment_removed": remaining == 0}
 
 
 # ----- Me (Step 2) -----

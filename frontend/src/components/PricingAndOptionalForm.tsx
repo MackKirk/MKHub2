@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
 import { DivisionIcon } from '@/components/DivisionIcon';
+import OverlayPortal from '@/components/OverlayPortal';
 
 function getDivisionIcon(label: string) {
   return <DivisionIcon label={label} size={24} />;
@@ -69,7 +70,7 @@ function DivisionSelectionModal({
   }, [projectDivisions, projectDivisionIds]);
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4" onClick={onClose}>
+    <OverlayPortal><div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4" onClick={onClose}>
       <div className="bg-white rounded-xl max-w-md w-full max-h-[80vh] overflow-hidden flex flex-col shadow-xl" onClick={(e) => e.stopPropagation()}>
         <div className="bg-slate-200 p-2.5 text-gray-900 font-semibold text-xs flex items-center justify-between">
           <span>Select Division</span>
@@ -100,7 +101,7 @@ function DivisionSelectionModal({
           )}
         </div>
       </div>
-    </div>
+    </div></OverlayPortal>
   );
 }
 

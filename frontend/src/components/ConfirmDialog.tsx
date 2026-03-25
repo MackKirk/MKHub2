@@ -1,4 +1,5 @@
 import { useEffect } from 'react';
+import OverlayPortal from '@/components/OverlayPortal';
 
 type Props = {
   open: boolean;
@@ -21,6 +22,7 @@ export default function ConfirmDialog({ open, title='Confirm', message, confirmT
   }, [open, onCancel, onConfirm]);
   if (!open) return null;
   return (
+    <OverlayPortal>
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
       <div className="w-[480px] max-w-[95vw] bg-white rounded-xl border border-gray-200 shadow-lg overflow-hidden">
         <div className="px-4 py-3 border-b border-gray-200 text-sm font-semibold text-gray-900">{title}</div>
@@ -34,6 +36,7 @@ export default function ConfirmDialog({ open, title='Confirm', message, confirmT
         </div>
       </div>
     </div>
+    </OverlayPortal>
   );
 }
 

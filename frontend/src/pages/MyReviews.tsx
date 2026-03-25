@@ -2,6 +2,7 @@ import { useQuery } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import { useState, useMemo } from 'react';
 import toast from 'react-hot-toast';
+import OverlayPortal from '@/components/OverlayPortal';
 
 export default function MyReviews() {
   const { data: reviewsAvailable } = useQuery({
@@ -190,7 +191,7 @@ export default function MyReviews() {
 
       {openId && (
         <>
-          <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4" style={{ touchAction: 'none' }}>
+          <OverlayPortal><div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4" style={{ touchAction: 'none' }}>
             <div className="bg-white rounded-xl w-full max-w-2xl max-h-[90vh] flex flex-col" style={{ touchAction: 'auto' }}>
               <div className="flex-shrink-0 p-4 border-b">
                 <div className="text-lg font-semibold">Fill Review</div>
@@ -213,7 +214,7 @@ export default function MyReviews() {
                 </button>
               </div>
             </div>
-          </div>
+          </div></OverlayPortal>
           {hasNotes && (
             <button
               onClick={() => setShowNotes(!showNotes)}

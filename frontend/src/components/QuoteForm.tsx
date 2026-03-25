@@ -10,6 +10,7 @@ import { useUnsavedChanges } from '@/components/UnsavedChangesProvider';
 import EstimateBuilder, { EstimateBuilderRef } from '@/components/EstimateBuilder';
 import SupplierSelect from '@/components/SupplierSelect';
 import NewSupplierModal from '@/components/NewSupplierModal';
+import OverlayPortal from '@/components/OverlayPortal';
 type Client = { id:string, name?:string, display_name?:string, address_line1?:string, city?:string, province?:string, country?:string };
 type Material = { id:number, name:string, supplier_name?:string, category?:string, unit?:string, price?:number, last_updated?:string, unit_type?:string, units_per_package?:number, coverage_sqs?:number, coverage_ft2?:number, coverage_m2?:number, description?:string, image_base64?:string, technical_manual_url?:string };
 
@@ -2206,6 +2207,7 @@ export default function QuoteForm({ mode, clientId: clientIdProp, initial, disab
       
       {/* New Contact Modal */}
       {contactModalOpen && (
+        <OverlayPortal>
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
           <div className="w-[800px] max-w-[95vw] bg-white rounded-xl overflow-hidden">
             <div className="px-4 py-3 bg-gradient-to-br from-[#7f1010] to-[#a31414] flex items-center justify-between">
@@ -2405,6 +2407,7 @@ export default function QuoteForm({ mode, clientId: clientIdProp, initial, disab
             </div>
           </div>
         </div>
+        </OverlayPortal>
       )}
       {pickerForContact && (
         <ImagePicker 
@@ -2563,6 +2566,7 @@ function AddProductModalForQuote({ open, onClose, onSelect }: { open: boolean, o
 
   return (
     <>
+      <OverlayPortal>
       <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center">
         <div className="w-[720px] max-w-[95vw] bg-white rounded-xl overflow-hidden max-h-[90vh] flex flex-col">
           <div className="bg-gradient-to-br from-[#7f1010] to-[#a31414] p-6 flex items-center gap-6 relative flex-shrink-0">
@@ -2703,6 +2707,7 @@ function AddProductModalForQuote({ open, onClose, onSelect }: { open: boolean, o
           </div>
         </div>
       </div>
+      </OverlayPortal>
       {supplierModalOpen && (
         <SupplierProductModalForQuote
           open={supplierModalOpen}
@@ -2889,6 +2894,7 @@ function NewProductModalForQuote({ open, onClose, onProductCreated, initialSuppl
 
   return (
     <>
+      <OverlayPortal>
       <div className="fixed inset-0 z-[80] bg-black/60 flex items-center justify-center p-4">
         <div className="w-[800px] max-w-[95vw] bg-white rounded-xl overflow-hidden max-h-[90vh] flex flex-col">
           <div className="bg-gradient-to-br from-[#7f1010] to-[#a31414] p-6 flex items-center gap-6 relative flex-shrink-0">
@@ -3147,6 +3153,7 @@ function NewProductModalForQuote({ open, onClose, onProductCreated, initialSuppl
           </div>
         </div>
       </div>
+      </OverlayPortal>
       {imagePickerOpen && (
         <ImagePicker
           isOpen={true}
@@ -3234,6 +3241,7 @@ function SupplierProductModalForQuote({ open, onClose, onSelect }: { open: boole
 
   return (
     <>
+      <OverlayPortal>
       <div className="fixed inset-0 z-[60] bg-black/60 flex items-center justify-center p-2 sm:p-4">
       <div className="w-[1000px] max-w-[95vw] bg-white rounded-xl overflow-hidden max-h-[90vh] flex flex-col">
         <div className="bg-gradient-to-br from-[#7f1010] to-[#a31414] p-4 sm:p-6 flex items-center gap-4 sm:gap-6 relative flex-shrink-0">
@@ -3343,6 +3351,7 @@ function SupplierProductModalForQuote({ open, onClose, onSelect }: { open: boole
         </div>
       </div>
       </div>
+      </OverlayPortal>
       {newProductModalOpen && selectedSupplier && (
         <NewProductModalForQuote
           open={true}
@@ -3375,6 +3384,7 @@ function CompareProductsModalForQuote({ open, onClose, selectedProduct, onSelect
   if (!open) return null;
 
   return (
+    <OverlayPortal>
     <div className="fixed inset-0 z-[70] bg-black/60 flex items-center justify-center">
       <div className="w-[720px] max-w-[95vw] bg-white rounded-xl overflow-hidden max-h-[90vh] flex flex-col">
         <div className="bg-gradient-to-br from-[#7f1010] to-[#a31414] p-6 flex items-center gap-6 relative flex-shrink-0">
@@ -3402,6 +3412,7 @@ function CompareProductsModalForQuote({ open, onClose, selectedProduct, onSelect
         </div>
       </div>
     </div>
+    </OverlayPortal>
   );
 }
 

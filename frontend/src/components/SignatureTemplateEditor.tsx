@@ -3,6 +3,7 @@ import * as pdfjsLib from 'pdfjs-dist';
 import workerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
 import { api, getToken } from '@/lib/api';
 import { overlayPxToPdfRect, pdfRectToOverlayStyle, type PdfRect } from '@/lib/pdfCoordinates';
+import OverlayPortal from '@/components/OverlayPortal';
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = workerUrl;
 
@@ -455,6 +456,7 @@ export default function SignatureTemplateEditor({ docId, docName, initialTemplat
   };
 
   return (
+    <OverlayPortal>
     <div
       className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center overflow-y-auto p-4"
       onClick={onClose}
@@ -711,5 +713,6 @@ export default function SignatureTemplateEditor({ docId, docName, initialTemplat
         </footer>
       </div>
     </div>
+    </OverlayPortal>
   );
 }

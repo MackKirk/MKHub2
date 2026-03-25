@@ -4,6 +4,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, getToken } from '@/lib/api';
 import toast from 'react-hot-toast';
 import { useConfirm } from '@/components/ConfirmProvider';
+import OverlayPortal from '@/components/OverlayPortal';
 import SignatureTemplateEditor from '@/components/SignatureTemplateEditor';
 
 type UserPickerRow = { id: string; name?: string | null; username?: string; email?: string };
@@ -223,6 +224,183 @@ function ResendUserPicker({
   );
 }
 
+function ResendDocPicker({
+  docs,
+  selectedIds,
+  onToggle,
+  onAddIds,
+  onRemoveIds,
+  onClearAll,
+  disabled,
+}: {
+  docs: BaseDoc[];
+  selectedIds: Set<string>;
+  onToggle: (id: string) => void;
+  onAddIds: (ids: string[]) => void;
+  onRemoveIds: (ids: string[]) => void;
+  onClearAll: () => void;
+  disabled?: boolean;
+}) {
+  const [open, setOpen] = useState(false);
+  const [search, setSearch] = useState('');
+  const anchorRef = useRef<HTMLDivElement>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
+  const [panelPos, setPanelPos] = useState<{ top: number; left: number; width: number; maxH: number } | null>(null);
+
+  const filtered = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    if (!q) return docs;
+    return docs.filter((d) => {
+      const name = (d.name || '').toLowerCase();
+      return name.includes(q) || d.id.toLowerCase().includes(q);
+    });
+  }, [docs, search]);
+
+  const updatePanelPosition = useCallback(() => {
+    const el = anchorRef.current;
+    if (!el || !open) return;
+    const r = el.getBoundingClientRect();
+    const gap = 4;
+    const margin = 8;
+    const maxH = Math.min(384, Math.max(120, window.innerHeight - r.bottom - gap - margin));
+    setPanelPos({
+      top: r.bottom + gap,
+      left: r.left,
+      width: r.width,
+      maxH,
+    });
+  }, [open]);
+
+  useLayoutEffect(() => {
+    if (!open) {
+      setPanelPos(null);
+      return;
+    }
+    updatePanelPosition();
+    window.addEventListener('resize', updatePanelPosition);
+    window.addEventListener('scroll', updatePanelPosition, true);
+    return () => {
+      window.removeEventListener('resize', updatePanelPosition);
+      window.removeEventListener('scroll', updatePanelPosition, true);
+    };
+  }, [open, updatePanelPosition]);
+
+  useEffect(() => {
+    if (!open) return;
+    const onDoc = (e: MouseEvent) => {
+      const t = e.target as Node;
+      if (anchorRef.current?.contains(t)) return;
+      if (panelRef.current?.contains(t)) return;
+      setOpen(false);
+    };
+    document.addEventListener('mousedown', onDoc);
+    return () => document.removeEventListener('mousedown', onDoc);
+  }, [open]);
+
+  const allFilteredInSelection =
+    filtered.length > 0 && filtered.every((d) => selectedIds.has(d.id));
+
+  const panel =
+    open &&
+    panelPos &&
+    typeof document !== 'undefined' &&
+    createPortal(
+      <div
+        ref={panelRef}
+        className="fixed z-[10050] rounded-lg border border-gray-200 bg-white shadow-xl flex flex-col overflow-hidden"
+        style={{
+          top: panelPos.top,
+          left: panelPos.left,
+          width: panelPos.width,
+          maxHeight: panelPos.maxH,
+        }}
+      >
+        <div className="p-2 border-b border-gray-100 space-y-2 flex-shrink-0">
+          <input
+            type="search"
+            autoFocus
+            placeholder="Search document name…"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            className="w-full rounded-md border border-gray-200 px-2.5 py-1.5 text-xs text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-1 focus:ring-gray-300"
+          />
+          <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              className="text-[11px] font-medium text-amber-800 bg-amber-50 border border-amber-200 rounded px-2 py-1 hover:bg-amber-100 disabled:opacity-40"
+              disabled={filtered.length === 0}
+              onClick={() => {
+                const ids = filtered.map((d) => d.id);
+                if (allFilteredInSelection) onRemoveIds(ids);
+                else onAddIds(ids);
+              }}
+            >
+              {allFilteredInSelection ? 'Deselect' : 'Select'} all{search.trim() ? ' (filtered)' : ''}
+            </button>
+            <button
+              type="button"
+              className="text-[11px] font-medium text-gray-700 border border-gray-200 rounded px-2 py-1 hover:bg-gray-50 disabled:opacity-40"
+              disabled={selectedIds.size === 0}
+              onClick={onClearAll}
+            >
+              Clear selection
+            </button>
+          </div>
+        </div>
+        <div className="overflow-y-auto min-h-0 flex-1 p-1">
+          {filtered.length === 0 ? (
+            <div className="px-2 py-6 text-center text-xs text-gray-500">No documents match.</div>
+          ) : (
+            filtered.map((d) => {
+              const checked = selectedIds.has(d.id);
+              return (
+                <label
+                  key={d.id}
+                  className="flex items-start gap-2 rounded-md px-2 py-1.5 hover:bg-gray-50 cursor-pointer text-left"
+                >
+                  <input
+                    type="checkbox"
+                    className="mt-0.5 rounded border-gray-300"
+                    checked={checked}
+                    onChange={() => onToggle(d.id)}
+                  />
+                  <span className="min-w-0 flex-1">
+                    <span className="block text-xs font-medium text-gray-900 truncate">{d.name}</span>
+                  </span>
+                </label>
+              );
+            })
+          )}
+        </div>
+        <div className="px-2 py-1.5 border-t border-gray-100 text-[10px] text-gray-500 flex-shrink-0">
+          Showing {filtered.length} of {docs.length}
+        </div>
+      </div>,
+      document.body
+    );
+
+  return (
+    <div className="relative" ref={anchorRef}>
+      <button
+        type="button"
+        disabled={disabled || docs.length === 0}
+        onClick={() => setOpen((o) => !o)}
+        className={`${INPUT_FIELD_CLASS} w-full text-left flex items-center justify-between gap-2`}
+      >
+        <span className="truncate">
+          {selectedIds.size === 0
+            ? 'Select base documents…'
+            : `${selectedIds.size} document${selectedIds.size === 1 ? '' : 's'} selected`}
+        </span>
+        <svg className="w-4 h-4 shrink-0 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+        </svg>
+      </button>
+      {panel}
+    </div>
+  );
+}
+
 function displayNameFromPdfFile(file: File): string {
   const base = file.name.replace(/\.pdf$/i, '').trim();
   return base.replace(/[_]+/g, ' ').replace(/-/g, ' ').trim() || 'Document';
@@ -330,6 +508,11 @@ export default function OnboardingAdmin() {
     queryKey: ['onb-base-docs'],
     queryFn: () => api<BaseDoc[]>('GET', '/onboarding/base-documents'),
   });
+  const { data: onbSettings } = useQuery({
+    queryKey: ['onboarding-settings'],
+    queryFn: () => api<{ document_delivery_enabled: boolean }>('GET', '/onboarding/settings'),
+  });
+  const [deliveryTogglePending, setDeliveryTogglePending] = useState(false);
   const { data: userPickerList = [], isLoading: usersPickerLoading } = useQuery({
     queryKey: ['onb-users-picker'],
     queryFn: async () => {
@@ -407,7 +590,7 @@ export default function OnboardingAdmin() {
       }
     };
   }, []);
-  const [resendDocId, setResendDocId] = useState('');
+  const [resendDocIds, setResendDocIds] = useState<Set<string>>(() => new Set());
   const [resendSelectedIds, setResendSelectedIds] = useState<Set<string>>(() => new Set());
 
   const [prefsDoc, setPrefsDoc] = useState<BaseDoc | null>(null);
@@ -677,6 +860,25 @@ export default function OnboardingAdmin() {
 
   const docMenuDoc = docMenuOpenId ? baseDocs.find((x) => x.id === docMenuOpenId) : null;
 
+  const documentDeliveryEnabled = onbSettings?.document_delivery_enabled !== false;
+
+  const setDocumentDeliveryEnabled = async (enabled: boolean) => {
+    setDeliveryTogglePending(true);
+    try {
+      await api('PATCH', '/onboarding/settings', { document_delivery_enabled: enabled });
+      await qc.invalidateQueries({ queryKey: ['onboarding-settings'] });
+      toast.success(
+        enabled
+          ? 'New hires will receive onboarding documents for signature.'
+          : 'Automatic document delivery is off. New hires will not be assigned signing tasks.',
+      );
+    } catch (e: unknown) {
+      toast.error(e instanceof Error ? e.message : 'Could not update settings');
+    } finally {
+      setDeliveryTogglePending(false);
+    }
+  };
+
   return (
     <div className="space-y-4 min-w-0 overflow-x-hidden">
       {docMenuDoc &&
@@ -758,21 +960,42 @@ export default function OnboardingAdmin() {
         </div>
       </div>
 
-      {/* Tabs — Fleet-style underline */}
+      {/* Tabs — Fleet-style underline + document delivery toggle */}
       <div className="rounded-xl border bg-white p-4">
-        <div className="flex gap-1 border-b border-gray-200 px-0 pt-0 pb-3 -mb-px flex-wrap">
-          {tabs.map(({ id, label }) => (
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between sm:gap-4">
+          <div className="flex gap-1 px-0 pt-0 pb-3 flex-wrap flex-1 min-w-0">
+            {tabs.map(({ id, label }) => (
+              <button
+                key={id}
+                type="button"
+                onClick={() => setTabAndCollapse(id)}
+                className={`px-3 py-2 text-xs font-medium transition-colors border-b-2 -mb-[1px] ${
+                  tab === id ? 'border-brand-red text-brand-red' : 'border-transparent text-gray-600 hover:text-gray-900'
+                }`}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+          <label className="flex items-center gap-2.5 cursor-pointer select-none shrink-0 sm:pb-3">
+            <span className="text-xs text-gray-700">Send documents for signature</span>
             <button
-              key={id}
               type="button"
-              onClick={() => setTabAndCollapse(id)}
-              className={`px-3 py-2 text-xs font-medium transition-colors border-b-2 -mb-[1px] ${
-                tab === id ? 'border-brand-red text-brand-red' : 'border-transparent text-gray-600 hover:text-gray-900'
+              role="switch"
+              aria-checked={documentDeliveryEnabled}
+              disabled={deliveryTogglePending || onbSettings === undefined}
+              onClick={() => setDocumentDeliveryEnabled(!documentDeliveryEnabled)}
+              className={`relative inline-flex h-6 w-11 shrink-0 rounded-full border transition-colors focus:outline-none focus:ring-2 focus:ring-gray-300 focus:ring-offset-1 disabled:opacity-50 ${
+                documentDeliveryEnabled ? 'bg-gray-900 border-gray-900' : 'bg-gray-200 border-gray-300'
               }`}
             >
-              {label}
+              <span
+                className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow transition-transform mt-0.5 ${
+                  documentDeliveryEnabled ? 'translate-x-5 ml-0.5' : 'translate-x-0.5'
+                }`}
+              />
             </button>
-          ))}
+          </label>
         </div>
       </div>
 
@@ -929,6 +1152,7 @@ export default function OnboardingAdmin() {
       )}
 
       {prefsDoc && (
+        <OverlayPortal>
         <div
           className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center overflow-y-auto p-4"
           onClick={() => setPrefsDoc(null)}
@@ -1222,6 +1446,7 @@ export default function OnboardingAdmin() {
             </div>
           </div>
         </div>
+        </OverlayPortal>
       )}
 
       {tab === 'monitor' && (
@@ -1247,12 +1472,13 @@ export default function OnboardingAdmin() {
                   <th className="px-3 py-2 text-left">Package</th>
                   <th className="px-3 py-2 text-left">Pending</th>
                   <th className="px-3 py-2 text-left">Assigned</th>
+                  <th className="px-3 py-2 text-right">Actions</th>
                 </tr>
               </thead>
               <tbody>
                 {assignments.length === 0 ? (
                   <tr>
-                    <td colSpan={4} className="px-3 py-8 text-center text-xs text-gray-500">
+                    <td colSpan={5} className="px-3 py-8 text-center text-xs text-gray-500">
                       No assignments yet.
                     </td>
                   </tr>
@@ -1263,6 +1489,49 @@ export default function OnboardingAdmin() {
                       <td className="px-3 py-3 text-xs text-gray-600">{a.package_name}</td>
                       <td className="px-3 py-3 text-xs text-gray-600 tabular-nums">{a.items_pending}</td>
                       <td className="px-3 py-3 text-xs text-gray-500">{a.assigned_at?.slice(0, 10)}</td>
+                      <td className="px-3 py-3 text-right">
+                        <button
+                          type="button"
+                          disabled={Number(a.items_pending ?? 0) < 1}
+                          onClick={async () => {
+                            const result = await askConfirm({
+                              title: 'Cancel pending documents',
+                              message:
+                                'Remove all documents that are waiting for signature (pending or scheduled) for this assignment? Signed documents are not affected.',
+                              confirmText: 'Cancel pending',
+                              cancelText: 'Back',
+                            });
+                            if (result !== 'confirm') return;
+                            try {
+                              const r = await api<{ cancelled: number; assignment_removed: boolean }>(
+                                'POST',
+                                `/onboarding/assignments/${a.id}/cancel-pending`,
+                                {},
+                              );
+                              if (r.cancelled === 0) {
+                                toast.error('Nothing to cancel');
+                              } else {
+                                toast.success(
+                                  r.assignment_removed
+                                    ? `Cancelled ${r.cancelled} item(s); assignment removed (no items left).`
+                                    : `Cancelled ${r.cancelled} pending item(s).`,
+                                );
+                              }
+                              void qc.invalidateQueries({ queryKey: ['onb-assignments'] });
+                              void qc.invalidateQueries({ queryKey: ['me-onboarding-docs'] });
+                              void qc.invalidateQueries({ queryKey: ['me-onboarding-status'] });
+                              void qc.invalidateQueries({ queryKey: ['notifications-recent'] });
+                              void qc.invalidateQueries({ queryKey: ['notifications-all'] });
+                              void qc.invalidateQueries({ queryKey: ['notifications-unread-count'] });
+                            } catch (e: unknown) {
+                              toast.error(e instanceof Error ? e.message : 'Request failed');
+                            }
+                          }}
+                          className="px-2.5 py-1.5 text-[11px] font-medium rounded-lg border border-gray-200 text-gray-700 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed"
+                        >
+                          Cancel pending
+                        </button>
+                      </td>
                     </tr>
                   ))
                 )}
@@ -1273,6 +1542,7 @@ export default function OnboardingAdmin() {
       )}
 
       {resendModalOpen && (
+        <OverlayPortal>
         <div
           className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/50"
           onClick={() => setResendModalOpen(false)}
@@ -1283,9 +1553,10 @@ export default function OnboardingAdmin() {
           >
             <div className="px-4 py-3 border-b border-gray-100 flex items-start justify-between gap-3">
               <div>
-                <div className="text-sm font-semibold text-gray-900">Resend document</div>
+                <div className="text-sm font-semibold text-gray-900">Resend document(s)</div>
                 <div className="text-xs text-gray-500 mt-0.5">
-                  Create pending onboarding items for the users you select (multi-select, search, select all).
+                  Choose one or more base documents and users. Each document is sent to each selected user (multi-select,
+                  search, select all on both lists).
                 </div>
               </div>
               <button
@@ -1300,16 +1571,36 @@ export default function OnboardingAdmin() {
             <div className="p-4 space-y-4">
               <div>
                 <label className="block text-[10px] font-medium text-gray-500 uppercase tracking-wide mb-1">
-                  Base document
+                  Base document(s)
                 </label>
-                <select className={inputFleet} value={resendDocId} onChange={(e) => setResendDocId(e.target.value)}>
-                  <option value="">Select…</option>
-                  {baseDocs.map((d) => (
-                    <option key={d.id} value={d.id}>
-                      {d.name}
-                    </option>
-                  ))}
-                </select>
+                <ResendDocPicker
+                  docs={baseDocs}
+                  selectedIds={resendDocIds}
+                  disabled={baseDocs.length === 0}
+                  onToggle={(id) => {
+                    setResendDocIds((prev) => {
+                      const n = new Set(prev);
+                      if (n.has(id)) n.delete(id);
+                      else n.add(id);
+                      return n;
+                    });
+                  }}
+                  onAddIds={(ids) => {
+                    setResendDocIds((prev) => {
+                      const n = new Set(prev);
+                      ids.forEach((i) => n.add(i));
+                      return n;
+                    });
+                  }}
+                  onRemoveIds={(ids) => {
+                    setResendDocIds((prev) => {
+                      const n = new Set(prev);
+                      ids.forEach((i) => n.delete(i));
+                      return n;
+                    });
+                  }}
+                  onClearAll={() => setResendDocIds(new Set())}
+                />
                 <p className="text-xs text-gray-500 mt-1.5">
                   Signing deadline for resend uses each base document&apos;s default (7 days), not the per-package setting.
                 </p>
@@ -1361,17 +1652,23 @@ export default function OnboardingAdmin() {
                   type="button"
                   className="px-3 py-2 text-xs font-medium text-white bg-brand-red rounded-lg hover:opacity-90"
                   onClick={async () => {
-                    const ids = Array.from(resendSelectedIds);
-                    if (!resendDocId || !ids.length) {
-                      toast.error('Select a document and at least one user');
+                    const userIds = Array.from(resendSelectedIds);
+                    const docIds = Array.from(resendDocIds);
+                    if (docIds.length === 0 || userIds.length === 0) {
+                      toast.error('Select at least one document and one user');
                       return;
                     }
                     try {
-                      const r = await api<{ created: number }>('POST', `/onboarding/base-documents/${resendDocId}/resend`, {
-                        user_ids: ids,
-                      });
-                      toast.success(`Created ${r.created} pending item(s)`);
+                      let created = 0;
+                      for (const docId of docIds) {
+                        const r = await api<{ created: number }>('POST', `/onboarding/base-documents/${docId}/resend`, {
+                          user_ids: userIds,
+                        });
+                        created += r.created;
+                      }
+                      toast.success(`Created ${created} pending item(s)`);
                       setResendSelectedIds(new Set());
+                      setResendDocIds(new Set());
                       qc.invalidateQueries({ queryKey: ['onb-assignments'] });
                       qc.invalidateQueries({ queryKey: ['me-onboarding-docs'] });
                       qc.invalidateQueries({ queryKey: ['me-onboarding-status'] });
@@ -1389,15 +1686,19 @@ export default function OnboardingAdmin() {
             </div>
           </div>
         </div>
+        </OverlayPortal>
       )}
 
       {baseDocPreviewLoading && !baseDocPreview && (
+        <OverlayPortal>
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-[55] pointer-events-none">
           <div className="rounded-lg bg-white px-4 py-3 text-sm text-gray-700 shadow-lg">Loading PDF…</div>
         </div>
+        </OverlayPortal>
       )}
 
       {baseDocPreview && (
+        <OverlayPortal>
         <div
           className="fixed inset-0 bg-black/80 flex items-center justify-center z-[55] p-4"
           onClick={closeBaseDocPreview}
@@ -1437,6 +1738,7 @@ export default function OnboardingAdmin() {
             </div>
           </div>
         </div>
+        </OverlayPortal>
       )}
 
       {templateDoc && (

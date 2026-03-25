@@ -8,6 +8,7 @@ import AddressAutocomplete from '@/components/AddressAutocomplete';
 import { formatDateLocal } from '@/lib/dateUtils';
 import { useUnsavedChangesGuard } from '@/hooks/useUnsavedChangesGuard';
 import { InspectionScheduleForm } from './InspectionNew';
+import OverlayPortal from '@/components/OverlayPortal';
 
 type FleetAsset = {
   id: string;
@@ -993,7 +994,7 @@ export default function FleetAssetDetail() {
 
       {/* New Inspection Modal */}
       {showScheduleInspectionModal && id && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setShowScheduleInspectionModal(false)}>
+        <OverlayPortal><div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setShowScheduleInspectionModal(false)}>
           <div className="bg-white rounded-xl shadow-lg max-w-lg w-full max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
             <div className="p-4 border-b font-semibold flex items-center justify-between">
               <span>Schedule inspection</span>
@@ -1012,10 +1013,10 @@ export default function FleetAssetDetail() {
               />
             </div>
           </div>
-        </div>
+        </div></OverlayPortal>
       )}
       {showInspectionForm && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setShowInspectionForm(false)}>
+        <OverlayPortal><div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setShowInspectionForm(false)}>
           <div className="bg-white rounded-xl shadow-lg max-w-lg w-full max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
             <div className="p-4 border-b font-semibold flex items-center justify-between">
               <span>New Inspection</span>
@@ -1033,11 +1034,11 @@ export default function FleetAssetDetail() {
               />
             </div>
           </div>
-        </div>
+        </div></OverlayPortal>
       )}
       {/* New Work Order Modal */}
       {showWorkOrderForm && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setShowWorkOrderForm(false)}>
+        <OverlayPortal><div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setShowWorkOrderForm(false)}>
           <div className="bg-white rounded-xl shadow-lg max-w-lg w-full max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
             <div className="p-4 border-b font-semibold flex items-center justify-between">
               <span>New Work Order</span>
@@ -1055,7 +1056,7 @@ export default function FleetAssetDetail() {
               />
             </div>
           </div>
-        </div>
+        </div></OverlayPortal>
       )}
       {/* Assign Modal */}
       {showAssignModal && (
@@ -1647,7 +1648,7 @@ function AssignModal({
   }, []);
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={onClose}>
+    <OverlayPortal><div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={onClose}>
       <div className="bg-white rounded-xl shadow-lg max-w-md w-full max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
         <div className="p-4 border-b font-semibold">Assign</div>
         <form onSubmit={handleSubmit} className="p-4 space-y-4">
@@ -1848,7 +1849,7 @@ function AssignModal({
           </div>
         </form>
       </div>
-    </div>
+    </div></OverlayPortal>
   );
 }
 
@@ -1865,7 +1866,7 @@ function AssignmentLogDetailModal({
   const showReturn = !!assignment.returned_at;
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={onClose}>
+    <OverlayPortal><div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={onClose}>
       <div className="bg-white rounded-xl shadow-lg max-w-lg w-full max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
         <div className="p-4 border-b font-semibold flex items-center justify-between">
           <span>{logType === 'assignment' ? 'Assignment' : 'Return'} details</span>
@@ -1920,7 +1921,7 @@ function AssignmentLogDetailModal({
           )}
         </div>
       </div>
-    </div>
+    </div></OverlayPortal>
   );
 }
 
@@ -1956,7 +1957,7 @@ function ReturnModal({
   };
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={onClose}>
+    <OverlayPortal><div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={onClose}>
       <div className="bg-white rounded-xl shadow-lg max-w-md w-full max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
         <div className="p-4 border-b font-semibold">Return</div>
         <form onSubmit={handleSubmit} className="p-4 space-y-4">
@@ -2037,7 +2038,7 @@ function ReturnModal({
           </div>
         </form>
       </div>
-    </div>
+    </div></OverlayPortal>
   );
 }
 
@@ -2099,7 +2100,7 @@ function ComplianceModal({
   };
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={onClose}>
+    <OverlayPortal><div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={onClose}>
       <div className="bg-white rounded-xl shadow-lg max-w-md w-full max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
         <div className="p-4 border-b font-semibold">{recordId ? 'Edit compliance record' : 'Add compliance record'}</div>
         <form onSubmit={handleSubmit} className="p-4 space-y-4">
@@ -2155,6 +2156,6 @@ function ComplianceModal({
           </div>
         </form>
       </div>
-    </div>
+    </div></OverlayPortal>
   );
 }

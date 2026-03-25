@@ -6,6 +6,7 @@ import toast from 'react-hot-toast';
 import { api, getToken } from '@/lib/api';
 import { formatCurrencyAmount, parseCurrencyAmount } from '@/lib/currencyFormat';
 import { pdfRectToOverlayStyle, type PdfRect } from '@/lib/pdfCoordinates';
+import OverlayPortal from '@/components/OverlayPortal';
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = workerUrl;
 
@@ -732,6 +733,7 @@ export default function OnboardingSignModal({ signItem, onClose, onSigned }: Pro
   const templateSplitLayout = !ctxLoading && usesTemplate && pdfDoc;
 
   return (
+    <OverlayPortal>
     <div
       className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/80"
       onClick={() => !submitting && onClose()}
@@ -1165,5 +1167,6 @@ export default function OnboardingSignModal({ signItem, onClose, onSigned }: Pro
         </div>
       </div>
     </div>
+    </OverlayPortal>
   );
 }

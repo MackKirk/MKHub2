@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import type { DocumentPage } from '@/types/documentCreator';
+import OverlayPortal from '@/components/OverlayPortal';
 
 export type DocumentTypePreset = {
   id: string;
@@ -105,7 +106,7 @@ export function AddPageModal({
   if (!open) return null;
 
   return (
-    <div
+    <OverlayPortal><div
       className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50"
       onClick={onClose}
     >
@@ -265,6 +266,6 @@ export function AddPageModal({
           )}
         </div>
       </div>
-    </div>
+    </div></OverlayPortal>
   );
 }

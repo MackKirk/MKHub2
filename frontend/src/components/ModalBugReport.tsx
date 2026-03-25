@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { api } from '@/lib/api';
 import toast from 'react-hot-toast';
+import OverlayPortal from '@/components/OverlayPortal';
 
 interface ModalBugReportProps {
   onClose: () => void;
@@ -59,6 +60,7 @@ export default function ModalBugReport({ onClose, onSuccess }: ModalBugReportPro
   };
 
   return (
+    <OverlayPortal>
     <div 
       className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4"
       onClick={(e) => {
@@ -160,6 +162,7 @@ export default function ModalBugReport({ onClose, onSuccess }: ModalBugReportPro
         </form>
       </div>
     </div>
+    </OverlayPortal>
   );
 }
 

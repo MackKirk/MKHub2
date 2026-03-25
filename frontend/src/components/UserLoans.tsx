@@ -4,6 +4,7 @@ import { api } from '@/lib/api';
 import toast from 'react-hot-toast';
 import { formatDateLocal } from '@/lib/dateUtils';
 import { useConfirm } from '@/components/ConfirmProvider';
+import OverlayPortal from '@/components/OverlayPortal';
 
 type Loan = {
   id: string;
@@ -534,7 +535,7 @@ function CreateLoanModal({ userId, onClose }: { userId: string; onClose: () => v
   };
 
   return (
-    <div
+    <OverlayPortal><div
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 overflow-y-auto"
       onClick={onClose}
     >
@@ -665,7 +666,7 @@ function CreateLoanModal({ userId, onClose }: { userId: string; onClose: () => v
           </button>
         </div>
       </div>
-    </div>
+    </div></OverlayPortal>
   );
 }
 
@@ -793,7 +794,7 @@ function AddPaymentModal({
   };
 
   return (
-    <div
+    <OverlayPortal><div
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 overflow-y-auto"
       onClick={onClose}
     >
@@ -889,7 +890,7 @@ function AddPaymentModal({
           </button>
         </div>
       </div>
-    </div>
+    </div></OverlayPortal>
   );
 }
 
@@ -930,7 +931,7 @@ function LoanDetailView({
 
   if (!loan) {
     return (
-      <div
+      <OverlayPortal><div
         className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 overflow-y-auto"
         onClick={onClose}
       >
@@ -962,7 +963,7 @@ function LoanDetailView({
             </div>
           </div>
         </div>
-      </div>
+      </div></OverlayPortal>
     );
   }
 
@@ -1025,7 +1026,7 @@ function LoanDetailView({
   activities.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
 
   return (
-    <div
+    <OverlayPortal><div
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 overflow-y-auto"
       onClick={onClose}
     >
@@ -1193,7 +1194,7 @@ function LoanDetailView({
           }}
         />
       )}
-    </div>
+    </div></OverlayPortal>
   );
 }
 

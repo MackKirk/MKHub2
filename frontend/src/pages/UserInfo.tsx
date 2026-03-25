@@ -14,6 +14,7 @@ import { useUnsavedChangesGuard } from '@/hooks/useUnsavedChangesGuard';
 import UserLoans from '@/components/UserLoans';
 import UserReports from '@/components/UserReports';
 import { DivisionIcon } from '@/components/DivisionIcon';
+import OverlayPortal from '@/components/OverlayPortal';
 
 // List of implemented permissions (permissions that are actually checked in the codebase)
 const IMPLEMENTED_PERMISSIONS = new Set([
@@ -310,6 +311,7 @@ function ProjectFilesCategoriesModal({
   const title = mode === 'read' ? 'View Files Categories' : 'Edit Files Categories';
 
   return (
+    <OverlayPortal>
     <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4">
       <div className="bg-white rounded-xl w-full max-w-2xl max-h-[90vh] overflow-hidden flex flex-col">
         <div className="p-4 border-b flex items-center justify-between">
@@ -387,6 +389,7 @@ function ProjectFilesCategoriesModal({
         </div>
       </div>
     </div>
+    </OverlayPortal>
   );
 }
 
@@ -961,6 +964,7 @@ const UserPermissions = forwardRef<UserPermissionsRef, { userId: string; onDirty
 
         {/* Modal: Apply template as Merge or Replace */}
         {showApplyTemplateModal && (
+          <OverlayPortal>
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={() => setShowApplyTemplateModal(false)}>
             <div className="bg-white rounded-lg shadow-xl p-4 max-w-md w-full mx-4" onClick={(e) => e.stopPropagation()}>
               <h3 className="text-base font-semibold text-gray-900 mb-2">Apply permission template</h3>
@@ -992,6 +996,7 @@ const UserPermissions = forwardRef<UserPermissionsRef, { userId: string; onDirty
               </div>
             </div>
           </div>
+          </OverlayPortal>
         )}
 
         <div className="space-y-6">
@@ -4639,6 +4644,7 @@ function TimesheetBlock({ userId, canEdit = true }:{ userId:string, canEdit?: bo
 
       {/* New Attendance Event Modal - standardized */}
       {showModal && (
+        <OverlayPortal>
         <div
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 overflow-y-auto"
           onClick={closeAttendanceModal}
@@ -4946,6 +4952,7 @@ function TimesheetBlock({ userId, canEdit = true }:{ userId:string, canEdit?: bo
             </div>
           </div>
         </div>
+        </OverlayPortal>
       )}
     </div>
   );
@@ -5160,6 +5167,7 @@ function SalaryHistorySection({ userId, canEdit, settings }:{ userId:string, can
       )}
 
       {showAdd && (
+        <OverlayPortal>
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
           <div className="bg-white rounded-xl w-full max-w-lg p-4">
             <div className="text-lg font-semibold mb-4">New salary entry</div>
@@ -5215,6 +5223,7 @@ function SalaryHistorySection({ userId, canEdit, settings }:{ userId:string, can
             </div>
           </div>
         </div>
+        </OverlayPortal>
       )}
     </div>
   );
@@ -6419,6 +6428,7 @@ function TimeOffSection({ userId, canEdit }:{ userId:string, canEdit:boolean }){
       
       {/* Request Form Modal */}
       {showRequestForm && (
+        <OverlayPortal>
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
           <div className="bg-white rounded-xl w-full max-w-md p-4">
             <div className="text-lg font-semibold mb-4">Request Time Off</div>
@@ -6549,9 +6559,11 @@ function TimeOffSection({ userId, canEdit }:{ userId:string, canEdit:boolean }){
             </div>
           </div>
         </div>
+        </OverlayPortal>
       )}
       
       {showAdjustModal && adjustingBalance && (
+        <OverlayPortal>
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50" onClick={() => setShowAdjustModal(false)}>
           <div className="bg-white rounded-xl w-full max-w-lg p-6" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between mb-4">
@@ -6709,10 +6721,12 @@ function TimeOffSection({ userId, canEdit }:{ userId:string, canEdit:boolean }){
             </div>
           </div>
         </div>
+        </OverlayPortal>
       )}
       
       {/* Add History Entry Modal - Admin only */}
       {showAddHistoryModal && (
+        <OverlayPortal>
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50" onClick={() => setShowAddHistoryModal(false)}>
           <div className="bg-white rounded-xl w-full max-w-md p-6" onClick={(e) => e.stopPropagation()}>
             <h3 className="text-lg font-semibold text-gray-900 mb-4">Add time off history entry</h3>
@@ -6800,6 +6814,7 @@ function TimeOffSection({ userId, canEdit }:{ userId:string, canEdit:boolean }){
             </div>
           </div>
         </div>
+        </OverlayPortal>
       )}
     </div>
   );
@@ -7214,6 +7229,7 @@ function UserAssetsCheckoutModal({
   };
 
   return (
+    <OverlayPortal>
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={onClose}>
       <div className="bg-white rounded-xl shadow-lg max-w-md w-full max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
         <div className="p-4 border-b font-semibold">Check out equipment</div>
@@ -7259,6 +7275,7 @@ function UserAssetsCheckoutModal({
         </form>
       </div>
     </div>
+    </OverlayPortal>
   );
 }
 
@@ -7287,6 +7304,7 @@ function UserAssetsCheckinModal({
   };
 
   return (
+    <OverlayPortal>
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={onClose}>
       <div className="bg-white rounded-xl shadow-lg max-w-md w-full" onClick={e => e.stopPropagation()}>
         <div className="p-4 border-b font-semibold">Check in equipment</div>
@@ -7317,6 +7335,7 @@ function UserAssetsCheckinModal({
         </form>
       </div>
     </div>
+    </OverlayPortal>
   );
 }
 
@@ -7374,6 +7393,7 @@ function UserFleetVehicleCheckoutModal({
   };
 
   return (
+    <OverlayPortal>
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={onClose}>
       <div className="bg-white rounded-xl shadow-lg max-w-md w-full max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
         <div className="p-4 border-b font-semibold">Check out vehicle</div>
@@ -7432,6 +7452,7 @@ function UserFleetVehicleCheckoutModal({
         </form>
       </div>
     </div>
+    </OverlayPortal>
   );
 }
 
@@ -7459,6 +7480,7 @@ function UserFleetReturnModal({
   };
 
   return (
+    <OverlayPortal>
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={onClose}>
       <div className="bg-white rounded-xl shadow-lg max-w-md w-full" onClick={e => e.stopPropagation()}>
         <div className="p-4 border-b font-semibold">Return vehicle</div>
@@ -7489,6 +7511,7 @@ function UserFleetReturnModal({
         </form>
       </div>
     </div>
+    </OverlayPortal>
   );
 }
 
@@ -7733,6 +7756,7 @@ function EmployeeTrainingSection({ userId, canEdit }: { userId: string; canEdit:
       )}
 
       {modalOpen && (
+        <OverlayPortal>
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={closeModal}>
           <div
             className="bg-white rounded-xl shadow-lg max-w-lg w-full max-h-[90vh] overflow-y-auto"
@@ -7889,6 +7913,7 @@ function EmployeeTrainingSection({ userId, canEdit }: { userId: string; canEdit:
             </form>
           </div>
         </div>
+        </OverlayPortal>
       )}
     </div>
   );
@@ -8191,6 +8216,7 @@ function EmergencyContactsSection({ userId, canEdit }:{ userId:string, canEdit:b
       </div>
       
       {createOpen && (
+        <OverlayPortal>
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
           <div className="w-[800px] max-w-[95vw] bg-white rounded-xl overflow-hidden">
             <div className="px-4 py-3 border-b flex items-center justify-between">
@@ -8283,6 +8309,7 @@ function EmergencyContactsSection({ userId, canEdit }:{ userId:string, canEdit:b
             </div>
           </div>
         </div>
+        </OverlayPortal>
       )}
     </div>
   );
@@ -8898,6 +8925,7 @@ function VisaInformationSection({ userId, canEdit, isRequired = false, showInlin
       )}
       
       {createOpen && (
+        <OverlayPortal>
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
           <div className="w-[600px] max-w-[95vw] bg-white rounded-xl overflow-hidden">
             <div className="px-4 py-3 border-b flex items-center justify-between">
@@ -8986,6 +9014,7 @@ function VisaInformationSection({ userId, canEdit, isRequired = false, showInlin
             </div>
           </div>
         </div>
+        </OverlayPortal>
       )}
     </div>
   );
@@ -9400,6 +9429,7 @@ function UserDocuments({ userId, canEdit }:{ userId:string, canEdit:boolean }){
       </div>
 
       {showUpload && (
+        <OverlayPortal>
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
           <div className="bg-white rounded-xl w-full max-w-md p-4">
             <div className="text-lg font-semibold mb-2">Add file</div>
@@ -9426,10 +9456,12 @@ function UserDocuments({ userId, canEdit }:{ userId:string, canEdit:boolean }){
             </div>
           </div>
         </div>
+        </OverlayPortal>
       )}
 
       {/* New Folder Modal - standardized */}
       {showNewFolder && (
+        <OverlayPortal>
         <div
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 overflow-y-auto"
           onClick={closeNewFolderModal}
@@ -9487,9 +9519,11 @@ function UserDocuments({ userId, canEdit }:{ userId:string, canEdit:boolean }){
             </div>
           </div>
         </div>
+        </OverlayPortal>
       )}
 
       {renameFolder && (
+        <OverlayPortal>
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
           <div className="bg-white rounded-xl w-full max-w-sm p-4">
             <div className="text-lg font-semibold mb-2">Rename folder</div>
@@ -9503,9 +9537,11 @@ function UserDocuments({ userId, canEdit }:{ userId:string, canEdit:boolean }){
             </div>
           </div>
         </div>
+        </OverlayPortal>
       )}
 
       {moveDoc && (
+        <OverlayPortal>
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
           <div className="bg-white rounded-xl w-full max-w-sm p-4">
             <div className="text-lg font-semibold mb-2">Move file</div>
@@ -9522,9 +9558,11 @@ function UserDocuments({ userId, canEdit }:{ userId:string, canEdit:boolean }){
             </div>
           </div>
         </div>
+        </OverlayPortal>
       )}
 
       {renameDoc && (
+        <OverlayPortal>
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
           <div className="bg-white rounded-xl w-full max-w-sm p-4">
             <div className="text-lg font-semibold mb-2">Rename file</div>
@@ -9538,9 +9576,11 @@ function UserDocuments({ userId, canEdit }:{ userId:string, canEdit:boolean }){
             </div>
           </div>
         </div>
+        </OverlayPortal>
       )}
 
       {preview && (
+        <OverlayPortal>
         <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50" onClick={()=> setPreview(null)}>
           <div className="bg-white rounded-xl w-[92vw] h-[88vh] p-3 relative" onClick={(e)=> e.stopPropagation()}>
             <div className="flex items-center justify-between mb-2">
@@ -9558,6 +9598,7 @@ function UserDocuments({ userId, canEdit }:{ userId:string, canEdit:boolean }){
             </div>
           </div>
         </div>
+        </OverlayPortal>
       )}
     </div>
   );
