@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { api } from '@/lib/api';
+import { resolvePostAuthDestination } from '@/lib/profileCompleteness';
 import { useLocation, useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
 
@@ -10,6 +11,7 @@ export default function Login(){
   const [forgotPasswordOpen, setForgotPasswordOpen] = useState(false);
   const [forgotIdentifier, setForgotIdentifier] = useState('');
   const [forgotPasswordSent, setForgotPasswordSent] = useState(false);
+  const [loggingIn, setLoggingIn] = useState(false);
   const nav = useNavigate();
   const loc = useLocation() as any;
 
@@ -19,8 +21,16 @@ export default function Login(){
       const j = await api<{access_token:string}>('POST','/auth/login',{ identifier, password });
       if (j && j.access_token){
         localStorage.setItem('user_token', j.access_token);
-        const to = (loc.state && loc.state.from) ? String(loc.state.from) : '/home';
-        nav(to, { replace: true });
+        const requested = (loc.state && loc.state.from) ? String(loc.state.from) : '/home';
+        setLoggingIn(true);
+        try {
+          const to = await resolvePostAuthDestination(requested);
+          nav(to, { replace: true });
+        } catch {
+          nav(requested, { replace: true });
+        } finally {
+          setLoggingIn(false);
+        }
       }
       else setError('Invalid credentials');
     }catch(err:any){ setError(err?.message||'Login failed'); }
@@ -43,7 +53,7 @@ export default function Login(){
             <input className="w-full rounded-lg border px-3 py-2 bg-[#f8fafc]" placeholder="Email or username" value={identifier} onChange={e=>setIdentifier(e.target.value)} />
             <input className="w-full rounded-lg border px-3 py-2 bg-[#f8fafc]" placeholder="Password" type="password" value={password} onChange={e=>setPassword(e.target.value)} />
             {error && <div className="text-red-600 text-sm">{error}</div>}
-            <button className="w-full rounded-lg py-2 font-bold text-white bg-gradient-to-r from-brand-red to-[#ee2b2b]">Login</button>
+            <button disabled={loggingIn} className="w-full rounded-lg py-2 font-bold text-white bg-gradient-to-r from-brand-red to-[#ee2b2b] disabled:opacity-60">{loggingIn ? 'Signing in…' : 'Login'}</button>
             <div className="text-center mt-2">
               <button 
                 type="button"

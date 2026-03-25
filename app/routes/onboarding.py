@@ -927,13 +927,16 @@ async def me_sign(
             user_agent=request.headers.get("user-agent") or "",
             acceptance_statement=acceptance,
         )
+    # Signed PDFs live in the new hire's HR folder. When someone else signs (subject_user_id set),
+    # storage still belongs to the employee the document is about; the actual signer is on the cert / created_by.
+    doc_owner_id = it.subject_user_id if getattr(it, "subject_user_id", None) else user.id
     safe_name = re.sub(r"[^\w\s.-]", "", bd.name)[:80] or "document"
     fname = f"{safe_name}_signed_{now.strftime('%Y%m%d')}.pdf"
-    signed_fo = save_pdf_bytes_as_file_object(db, final_pdf, fname, user.id, user.id)
-    folder = get_or_create_hr_documents_folder(db, user.id, user.id)
+    signed_fo = save_pdf_bytes_as_file_object(db, final_pdf, fname, doc_owner_id, user.id)
+    folder = get_or_create_hr_documents_folder(db, doc_owner_id, user.id)
     tag = f"folder:{folder.id}"
     edoc = EmployeeDocument(
-        user_id=user.id,
+        user_id=doc_owner_id,
         doc_type=tag,
         title=f"{bd.name} (signed {now.strftime('%Y-%m-%d')}).pdf",
         file_id=signed_fo.id,
@@ -942,7 +945,7 @@ async def me_sign(
     db.add(edoc)
     db.flush()
     sd = OnboardingSignedDocument(
-        user_id=user.id,
+        user_id=doc_owner_id,
         base_document_id=bd.id,
         assignment_item_id=it.id,
         signed_file_id=signed_fo.id,

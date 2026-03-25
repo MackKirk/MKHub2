@@ -971,7 +971,8 @@ export default function OnboardingAdmin() {
                     <label className={`block ${PREFS_SECTION_TITLE} mb-1`}>Send to</label>
                     <p className="text-xs text-gray-500 mb-3">
                       <strong>Employee</strong> = the new hire receives this document. <strong>Specific users</strong> = selected users each get
-                      a copy to sign with context about the new hire.
+                      a copy to sign with context about the new hire. After signing, the PDF is always saved in the new hire&apos;s HR documents
+                      folder (including when a specific user signs).
                     </p>
                     <div className="space-y-2">
                       <label className="flex items-center gap-2">

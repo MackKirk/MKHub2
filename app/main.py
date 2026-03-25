@@ -1014,18 +1014,24 @@ def create_app() -> FastAPI:
                 return FileResponse(index_path, headers={"Cache-Control":"no-cache, no-store, must-revalidate"})
         return RedirectResponse(url="/ui/index.html")
 
-    # After all API routers, provide SPA catch-all for deep links
+    # After all API routers, serve built JS/CSS with correct MIME types and avoid
+    # returning index.html for missing *.js (which breaks dynamic imports with "text/html" MIME).
     if os.path.isdir(FRONT_DIST):
         INDEX_PATH = os.path.join(FRONT_DIST, "index.html")
+        assets_dir = os.path.join(FRONT_DIST, "assets")
+        if os.path.isdir(assets_dir):
+            app.mount("/assets", StaticFiles(directory=assets_dir), name="spa_assets")
 
         @app.get("/{full_path:path}")
         def spa_fallback(full_path: str):
-            # If a built asset exists, serve it; otherwise serve index.html
+            # If a built file exists under dist (e.g. favicon at root), serve it
             asset_path = os.path.join(FRONT_DIST, full_path)
             if os.path.isfile(asset_path):
-                # Cache static assets briefly; index is handled separately
                 headers = {"Cache-Control":"public, max-age=3600"}
                 return FileResponse(asset_path, headers=headers)
+            # Missing chunk under /assets: never serve SPA shell (browser expects JS)
+            if full_path.startswith("assets/") or full_path == "assets":
+                raise FastAPIHTTPException(status_code=404, detail="Not found")
             # For SPA routes like /home, serve index.html with no-cache
             return FileResponse(INDEX_PATH, headers={"Cache-Control":"no-cache, no-store, must-revalidate"})
 

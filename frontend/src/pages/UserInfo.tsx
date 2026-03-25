@@ -2364,6 +2364,7 @@ export default function UserInfo(){
   const [selectedProjectDivisions, setSelectedProjectDivisions] = useState<string[]>([]);
   const [isEditingPersonal, setIsEditingPersonal] = useState(false);
   const [sendingAccessInvite, setSendingAccessInvite] = useState(false);
+  const [deletingUser, setDeletingUser] = useState(false);
   
   // Auto-fill work_eligibility_status if user has visas but no status
   useEffect(() => {
@@ -2654,6 +2655,37 @@ export default function UserInfo(){
             </div>
           </div>
           <div className="text-right flex flex-col items-end gap-2 shrink-0">
+            {isAdmin && userId && !canSelfEdit && (
+              <button
+                type="button"
+                disabled={deletingUser}
+                onClick={async () => {
+                  if (!userId || deletingUser) return;
+                  const choice = await confirm({
+                    title: 'Delete user',
+                    message: `Permanently delete ${u?.username || String(userId)}? This removes the account and related data where the database allows. This cannot be undone.`,
+                    confirmText: 'Delete user',
+                    cancelText: 'Cancel',
+                  });
+                  if (choice !== 'confirm') return;
+                  setDeletingUser(true);
+                  try {
+                    await api('DELETE', `/users/${encodeURIComponent(String(userId))}`);
+                    toast.success('User deleted');
+                    queryClient.invalidateQueries({ queryKey: ['user'] });
+                    navigate('/users');
+                  } catch (e: any) {
+                    toast.error(e?.message || e?.detail || 'Failed to delete user');
+                  } finally {
+                    setDeletingUser(false);
+                  }
+                }}
+                className="px-3 py-1.5 rounded-lg text-xs font-semibold border border-red-300 text-red-700 bg-red-50 hover:bg-red-100 disabled:opacity-50 disabled:cursor-not-allowed"
+                title="Administrator only — permanently delete this user"
+              >
+                {deletingUser ? 'Deleting…' : 'Delete user'}
+              </button>
+            )}
             {canEditGeneral && userId && u?.is_active && (
               <button
                 type="button"
@@ -9065,8 +9097,8 @@ function UserDocuments({ userId, canEdit }:{ userId:string, canEdit:boolean }){
   };
 
   const del = async(id:string, title?:string)=>{
-    const ok = await confirm({ title:'Delete file', message:`Are you sure you want to delete "${title||'file'}"?` });
-    if(!ok) return;
+    const choice = await confirm({ title:'Delete file', message:`Are you sure you want to delete "${title||'file'}"?` });
+    if (choice !== 'confirm') return;
     try{ await api('DELETE', `/auth/users/${encodeURIComponent(userId)}/documents/${encodeURIComponent(id)}`); await refetch(); }
     catch(_e){ toast.error('Delete failed'); }
   };

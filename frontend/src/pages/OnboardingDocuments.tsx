@@ -1,6 +1,7 @@
 import { useState, useMemo, useRef, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { logoutSession } from '@/lib/logoutSession';
 import { api, getToken } from '@/lib/api';
 import toast from 'react-hot-toast';
 import OnboardingSignModal from '@/components/OnboardingSignModal';
@@ -21,6 +22,7 @@ const LOGO_SRC = '/ui/assets/login/logo-light.svg';
 
 function PageShell({ children }: { children: React.ReactNode }) {
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col">
       <header className="bg-white border-b border-gray-200 shadow-sm shrink-0">
@@ -49,6 +51,13 @@ function PageShell({ children }: { children: React.ReactNode }) {
               className="px-3 py-2 text-xs font-medium text-white bg-gradient-to-r from-brand-red to-[#ee2b2b] rounded-lg hover:opacity-95 shadow-sm"
             >
               Home
+            </button>
+            <button
+              type="button"
+              onClick={() => logoutSession(queryClient, navigate)}
+              className="px-3 py-2 text-xs font-medium text-gray-700 bg-white border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors"
+            >
+              Logout
             </button>
           </nav>
         </div>
