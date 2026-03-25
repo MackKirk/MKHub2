@@ -998,7 +998,25 @@ class OnboardingBaseDocument(Base):
     file_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("file_objects.id", ondelete="RESTRICT"), nullable=False)
     content_hash: Mapped[Optional[str]] = mapped_column(String(128))
     sign_placement: Mapped[Optional[dict]] = mapped_column(JSON)  # page_index, x, y, w, h
+    signature_template: Mapped[Optional[dict]] = mapped_column(JSON)  # version + fields[] (PDF overlay template)
     default_deadline_days: Mapped[int] = mapped_column(Integer, default=7)
+    # Per-document onboarding preferences (replaces package-item config for HR onboarding)
+    assignee_type: Mapped[str] = mapped_column(String(20), default="employee")  # employee | user
+    assignee_user_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), index=True)
+    # When assignee_type is user: one or more users who receive the document (UUID strings); legacy assignee_user_id may still exist alone
+    assignee_user_ids: Mapped[Optional[list]] = mapped_column(JSON)
+    required: Mapped[bool] = mapped_column(Boolean, default=True)
+    employee_visible: Mapped[bool] = mapped_column(Boolean, default=True)
+    sort_order: Mapped[int] = mapped_column(Integer, default=0)
+    display_name: Mapped[Optional[str]] = mapped_column(String(255))
+    notification_message: Mapped[Optional[str]] = mapped_column(String(4000))
+    delivery_mode: Mapped[str] = mapped_column(String(20), default="on_hire")  # on_hire | custom | none
+    delivery_amount: Mapped[Optional[int]] = mapped_column(Integer)
+    delivery_unit: Mapped[Optional[str]] = mapped_column(String(16))  # days | weeks | months
+    delivery_direction: Mapped[Optional[str]] = mapped_column(String(16))  # before | after
+    requires_signature: Mapped[bool] = mapped_column(Boolean, default=True)
+    notification_policy: Mapped[Optional[dict]] = mapped_column(JSON)
+    signing_deadline_days: Mapped[int] = mapped_column(Integer, default=7)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
     updated_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
 
@@ -1010,6 +1028,8 @@ class OnboardingPackage(Base):
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     description: Mapped[Optional[str]] = mapped_column(String(1000))
     active: Mapped[bool] = mapped_column(Boolean, default=True)
+    # When False, automatic assignment of base documents for signature is skipped (admin toggle).
+    document_delivery_enabled: Mapped[bool] = mapped_column(Boolean, default=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
 
 
@@ -1022,6 +1042,17 @@ class OnboardingPackageItem(Base):
     required: Mapped[bool] = mapped_column(Boolean, default=True)
     employee_visible: Mapped[bool] = mapped_column(Boolean, default=True)
     sort_order: Mapped[int] = mapped_column(Integer, default=0)
+    display_name: Mapped[Optional[str]] = mapped_column(String(255))
+    notification_message: Mapped[Optional[str]] = mapped_column(String(4000))
+    delivery_mode: Mapped[str] = mapped_column(String(20), default="on_hire")  # on_hire | custom | none
+    delivery_amount: Mapped[Optional[int]] = mapped_column(Integer)
+    delivery_unit: Mapped[Optional[str]] = mapped_column(String(16))  # days | weeks | months
+    delivery_direction: Mapped[Optional[str]] = mapped_column(String(16))  # before | after
+    requires_signature: Mapped[bool] = mapped_column(Boolean, default=True)
+    notification_policy: Mapped[Optional[dict]] = mapped_column(JSON)
+    recipient_scope: Mapped[str] = mapped_column(String(24), default="everyone")  # everyone | specific_users
+    recipient_user_ids: Mapped[Optional[list]] = mapped_column(JSON)  # UUID strings when specific_users
+    signing_deadline_days: Mapped[int] = mapped_column(Integer, default=7)  # days to sign after available_at
 
 
 class OnboardingTrigger(Base):
@@ -1052,10 +1083,15 @@ class OnboardingAssignmentItem(Base):
     base_document_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("onboarding_base_documents.id", ondelete="CASCADE"), index=True)
     required: Mapped[bool] = mapped_column(Boolean, default=True)
     employee_visible: Mapped[bool] = mapped_column(Boolean, default=True)
+    available_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     deadline_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
-    status: Mapped[str] = mapped_column(String(20), default="pending")  # pending | signed
+    status: Mapped[str] = mapped_column(String(20), default="pending")  # scheduled | pending | signed
+    display_name: Mapped[Optional[str]] = mapped_column(String(255))
+    user_message: Mapped[Optional[str]] = mapped_column(String(4000))
     signed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
     signed_file_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), ForeignKey("file_objects.id", ondelete="SET NULL"))
+    # When the signer is not the new hire, which user this document is about (new employee)
+    subject_user_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), index=True)
 
 
 class OnboardingSignedDocument(Base):

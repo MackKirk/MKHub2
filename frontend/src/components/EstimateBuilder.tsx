@@ -6,6 +6,7 @@ import { useConfirm } from '@/components/ConfirmProvider';
 import ImagePicker from '@/components/ImagePicker';
 import SupplierSelect from '@/components/SupplierSelect';
 import NewSupplierModal from '@/components/NewSupplierModal';
+import OverlayPortal from '@/components/OverlayPortal';
 
 type Material = { id:number, name:string, supplier_name?:string, category?:string, unit?:string, price?:number, last_updated?:string, unit_type?:string, units_per_package?:number, coverage_sqs?:number, coverage_ft2?:number, coverage_m2?:number, description?:string, image_base64?:string };
 type Item = { material_id?:number, name:string, unit?:string, quantity:number, unit_price:number, section:string, description?:string, item_type?:string, supplier_name?:string, unit_type?:string, qty_required?:number, unit_required?:string, markup?:number, taxable?:boolean, units_per_package?:number, coverage_sqs?:number, coverage_ft2?:number, coverage_m2?:number, labour_journey?:number, labour_men?:number, labour_journey_type?:'days'|'hours'|'contract', added_via_report_id?:string, added_via_report_date?:string };
@@ -2276,7 +2277,7 @@ function SummaryModal({ open, onClose, items, pstRate, gstRate, markup, profitRa
   if (!open) return null;
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4">
+    <OverlayPortal><div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4">
       <div className="w-[800px] max-w-full bg-white rounded-xl overflow-hidden max-h-[90vh] flex flex-col">
         <div className="bg-gradient-to-br from-[#7f1010] to-[#a31414] p-6 flex items-center gap-6 relative flex-shrink-0">
           <div className="font-semibold text-lg text-white">Summary and Analysis</div>
@@ -2505,7 +2506,7 @@ function SummaryModal({ open, onClose, items, pstRate, gstRate, markup, profitRa
           </div>
         </div>
       </div>
-    </div>
+    </div></OverlayPortal>
   );
 }
 
@@ -2517,7 +2518,7 @@ function ProductViewModal({ product, onClose }: { product: Material, onClose: ()
   }, [onClose]);
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center">
+    <OverlayPortal><div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center">
       <div className="w-[900px] max-w-[95vw] max-h-[90vh] bg-white rounded-xl overflow-hidden flex flex-col">
         {/* Product Header */}
         <div className="flex-shrink-0 bg-gradient-to-br from-[#7f1010] to-[#a31414] p-6 flex items-center gap-6 relative">
@@ -2602,7 +2603,7 @@ function ProductViewModal({ product, onClose }: { product: Material, onClose: ()
           </div>
         </div>
       </div>
-    </div>
+    </div></OverlayPortal>
   );
 }
 
@@ -2658,7 +2659,7 @@ function AddProductModal({ onAdd, disabled, defaultMarkup, open: openProp, onClo
         <button onClick={()=>setOpen(true)} className="px-3 py-2 rounded bg-gray-100" disabled={disabled}>+ Add Product</button>
       )}
       {open && (
-        <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center">
+        <OverlayPortal><div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center">
           <div className="w-[720px] max-w-[95vw] bg-white rounded-xl overflow-hidden max-h-[90vh] flex flex-col">
             <div className="bg-gradient-to-br from-[#7f1010] to-[#a31414] p-6 flex items-center gap-6 relative flex-shrink-0">
               <div className="font-semibold text-lg text-white">Add Product</div>
@@ -2797,7 +2798,7 @@ function AddProductModal({ onAdd, disabled, defaultMarkup, open: openProp, onClo
               </div>
             </div>
           </div>
-        </div>
+        </div></OverlayPortal>
       )}
       {supplierModalOpen && (
         <SupplierProductModal
@@ -2892,7 +2893,7 @@ function SupplierProductModal({ open, onClose, onSelect }: { open: boolean, onCl
   if (!open) return null;
 
   return (
-    <div className="fixed inset-0 z-[60] bg-black/60 flex items-center justify-center p-4">
+    <OverlayPortal><div className="fixed inset-0 z-[60] bg-black/60 flex items-center justify-center p-4">
       <div className="w-[1000px] max-w-[95vw] bg-white rounded-xl overflow-hidden max-h-[90vh] flex flex-col">
         <div className="bg-gradient-to-br from-[#7f1010] to-[#a31414] p-6 flex items-center gap-6 relative flex-shrink-0">
           <div className="font-semibold text-lg text-white">Browse Products by Supplier</div>
@@ -3012,7 +3013,7 @@ function SupplierProductModal({ open, onClose, onSelect }: { open: boolean, onCl
           }}
         />
       )}
-    </div>
+    </div></OverlayPortal>
   );
 }
 
@@ -3040,7 +3041,7 @@ function CompareProductsModal({ open, onClose, selectedProduct, onSelect }: { op
   if (!open) return null;
 
   return (
-    <div className="fixed inset-0 z-[70] bg-black/60 flex items-center justify-center p-4">
+    <OverlayPortal><div className="fixed inset-0 z-[70] bg-black/60 flex items-center justify-center p-4">
       <div className="w-[900px] max-w-[95vw] bg-white rounded-xl overflow-hidden max-h-[90vh] flex flex-col">
         <div className="bg-gradient-to-br from-[#7f1010] to-[#a31414] p-6 flex items-center gap-6 relative flex-shrink-0">
           <div className="font-semibold text-lg text-white">Compare Products</div>
@@ -3138,7 +3139,7 @@ function CompareProductsModal({ open, onClose, selectedProduct, onSelect }: { op
           </div>
         </div>
       </div>
-    </div>
+    </div></OverlayPortal>
   );
 }
 
@@ -3288,7 +3289,7 @@ function NewProductModal({ open, onClose, onProductCreated, initialSupplier, ini
 
   return (
     <>
-      <div className="fixed inset-0 z-[80] bg-black/60 flex items-center justify-center p-4">
+      <OverlayPortal><div className="fixed inset-0 z-[80] bg-black/60 flex items-center justify-center p-4">
         <div className="w-[800px] max-w-[95vw] bg-white rounded-xl overflow-hidden max-h-[90vh] flex flex-col">
           <div className="bg-gradient-to-br from-[#7f1010] to-[#a31414] p-6 flex items-center gap-6 relative flex-shrink-0">
             <div className="font-semibold text-lg text-white">New Product</div>
@@ -3548,7 +3549,7 @@ function NewProductModal({ open, onClose, onProductCreated, initialSupplier, ini
             </button>
           </div>
         </div>
-      </div>
+      </div></OverlayPortal>
       {imagePickerOpen && (
         <ImagePicker
           isOpen={true}
@@ -3641,7 +3642,7 @@ function AddLabourModal({ onAdd, disabled, defaultMarkup, open: openProp, onClos
         <button onClick={()=>setOpen(true)} className="px-3 py-2 rounded bg-gray-100" disabled={disabled}>+ Add Labour</button>
       )}
       {open && (
-        <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center">
+        <OverlayPortal><div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center">
           <div className="w-[600px] max-w-[95vw] bg-white rounded-xl overflow-hidden max-h-[90vh] flex flex-col">
             <div className="bg-gradient-to-br from-[#7f1010] to-[#a31414] p-6 flex items-center gap-6 relative flex-shrink-0">
               <div className="font-semibold text-lg text-white">Add Labour</div>
@@ -3717,7 +3718,7 @@ function AddLabourModal({ onAdd, disabled, defaultMarkup, open: openProp, onClos
               </div>
             </div>
           </div>
-        </div>
+        </div></OverlayPortal>
       )}
     </>
   );
@@ -3809,7 +3810,7 @@ function AddSubContractorModal({ onAdd, disabled, defaultMarkup, open: openProp,
         <button onClick={()=>setOpen(true)} className="px-3 py-2 rounded bg-gray-100" disabled={disabled}>+ Add Sub-Contractor</button>
       )}
       {open && (
-        <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center">
+        <OverlayPortal><div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center">
           <div className="w-[700px] max-w-[95vw] bg-white rounded-xl overflow-hidden max-h-[90vh] flex flex-col">
             <div className="bg-gradient-to-br from-[#7f1010] to-[#a31414] p-6 flex items-center gap-6 relative flex-shrink-0">
               <div className="font-semibold text-lg text-white">Add Sub-Contractors</div>
@@ -3942,7 +3943,7 @@ function AddSubContractorModal({ onAdd, disabled, defaultMarkup, open: openProp,
               </div>
             </div>
           </div>
-        </div>
+        </div></OverlayPortal>
       )}
     </>
   );
@@ -3973,7 +3974,7 @@ function AddMiscellaneousModal({ onAdd, disabled, defaultMarkup, open: openProp,
         <button onClick={()=>setOpen(true)} className="px-3 py-2 rounded bg-gray-100" disabled={disabled}>+ Add Miscellaneous</button>
       )}
       {open && (
-        <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center">
+        <OverlayPortal><div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center">
           <div className="w-[600px] max-w-[95vw] bg-white rounded-xl overflow-hidden max-h-[90vh] flex flex-col">
             <div className="bg-gradient-to-br from-[#7f1010] to-[#a31414] p-6 flex items-center gap-6 relative flex-shrink-0">
               <div className="font-semibold text-lg text-white">Add Miscellaneous</div>
@@ -4008,7 +4009,7 @@ function AddMiscellaneousModal({ onAdd, disabled, defaultMarkup, open: openProp,
               </div>
             </div>
           </div>
-        </div>
+        </div></OverlayPortal>
       )}
     </>
   );
@@ -4039,7 +4040,7 @@ function AddShopModal({ onAdd, disabled, defaultMarkup, open: openProp, onClose:
         <button onClick={()=>setOpen(true)} className="px-3 py-2 rounded bg-gray-100" disabled={disabled}>+ Add Shop</button>
       )}
       {open && (
-        <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center">
+        <OverlayPortal><div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center">
           <div className="w-[600px] max-w-[95vw] bg-white rounded-xl overflow-hidden max-h-[90vh] flex flex-col">
             <div className="bg-gradient-to-br from-[#7f1010] to-[#a31414] p-6 flex items-center gap-6 relative flex-shrink-0">
               <div className="font-semibold text-lg text-white">Add Shop</div>
@@ -4074,7 +4075,7 @@ function AddShopModal({ onAdd, disabled, defaultMarkup, open: openProp, onClose:
               </div>
             </div>
           </div>
-        </div>
+        </div></OverlayPortal>
       )}
     </>
   );

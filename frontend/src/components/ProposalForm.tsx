@@ -8,6 +8,7 @@ import ImagePicker from '@/components/ImagePicker';
 import { useConfirm } from '@/components/ConfirmProvider';
 import { useUnsavedChanges } from '@/components/UnsavedChangesProvider';
 import { DivisionIcon } from '@/components/DivisionIcon';
+import OverlayPortal from '@/components/OverlayPortal';
 // EstimateBuilder removed - now using simple pricing items
 
 export type AreaUnit = 'sqft' | 'm2' | 'sqs';
@@ -2760,7 +2761,7 @@ By signing the accompanying proposal, the Owner agrees to these Terms and Condit
       
       {/* New Contact Modal */}
       {contactModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
+        <OverlayPortal><div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
           <div className="w-[800px] max-w-[95vw] bg-white rounded-xl overflow-hidden">
             <div className="px-4 py-3 bg-gradient-to-br from-[#7f1010] to-[#a31414] flex items-center justify-between">
               <div className="font-semibold text-white">New Contact</div>
@@ -2958,7 +2959,7 @@ By signing the accompanying proposal, the Owner agrees to these Terms and Condit
               </div>
             </div>
           </div>
-        </div>
+        </div></OverlayPortal>
       )}
       {pickerForContact && (
         <ImagePicker 
@@ -3073,7 +3074,7 @@ function DivisionSelectionModal({
   }, [projectDivisions, projectDivisionIds]);
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4" onClick={onClose}>
+    <OverlayPortal><div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4" onClick={onClose}>
       <div className="bg-white rounded-xl max-w-md w-full max-h-[80vh] overflow-hidden flex flex-col shadow-xl" onClick={(e) => e.stopPropagation()}>
         <div className="bg-slate-200 p-2.5 text-gray-900 font-semibold text-xs flex items-center justify-between">
           <span>Select Division</span>
@@ -3104,7 +3105,7 @@ function DivisionSelectionModal({
           )}
         </div>
       </div>
-    </div>
+    </div></OverlayPortal>
   );
 }
 
@@ -3122,7 +3123,7 @@ function SectionTypeSelectionModal({
   ];
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4" onClick={onClose}>
+    <OverlayPortal><div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4" onClick={onClose}>
       <div className="bg-white rounded-xl w-full max-w-md overflow-hidden flex flex-col shadow-xl" onClick={(e) => e.stopPropagation()}>
         <div className="bg-slate-200 p-2.5 text-gray-900 font-semibold text-xs flex items-center justify-between">
           <span>Select Section Type</span>
@@ -3147,7 +3148,7 @@ function SectionTypeSelectionModal({
           </div>
         </div>
       </div>
-    </div>
+    </div></OverlayPortal>
   );
 }
 

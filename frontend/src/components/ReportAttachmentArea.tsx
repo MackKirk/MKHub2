@@ -1,4 +1,5 @@
 import { useCallback, useRef, useEffect, useState, useMemo } from 'react';
+import OverlayPortal from '@/components/OverlayPortal';
 
 const ACCEPT_IMAGES_PDF_DOC = 'image/*,.pdf,.doc,.docx';
 const ACCEPT_IMAGES_ONLY = 'image/*';
@@ -144,7 +145,7 @@ export function ReportAttachmentAreaSingle({
                 onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setViewerOpen(true); } }}
               />
               {viewerOpen && (
-                <div
+                <OverlayPortal><div
                   className="fixed inset-0 z-[100] bg-black/80 flex items-center justify-center p-4"
                   onClick={() => setViewerOpen(false)}
                   role="dialog"
@@ -165,7 +166,7 @@ export function ReportAttachmentAreaSingle({
                   >
                     ×
                   </button>
-                </div>
+                </div></OverlayPortal>
               )}
               <div className="p-2 bg-white border-t flex items-center justify-between">
                 <span className="text-sm text-gray-600 truncate" title={file.name}>
@@ -363,7 +364,7 @@ export function ReportAttachmentAreaMultiple({
         </div>
       )}
       {viewerUrl && (
-        <div
+        <OverlayPortal><div
           className="fixed inset-0 z-[100] bg-black/80 flex items-center justify-center p-4"
           onClick={() => setViewerUrl(null)}
           role="dialog"
@@ -384,7 +385,7 @@ export function ReportAttachmentAreaMultiple({
           >
             ×
           </button>
-        </div>
+        </div></OverlayPortal>
       )}
     </div>
   );

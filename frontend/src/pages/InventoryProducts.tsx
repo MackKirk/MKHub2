@@ -11,6 +11,7 @@ import FilterBuilderModal from '@/components/FilterBuilder/FilterBuilderModal';
 import FilterChip from '@/components/FilterBuilder/FilterChip';
 import { FilterRule, FieldConfig } from '@/components/FilterBuilder/types';
 import LoadingOverlay from '@/components/LoadingOverlay';
+import OverlayPortal from '@/components/OverlayPortal';
 
 type Material = { id:number, name:string, supplier_name?:string, category?:string, unit?:string, price?:number, last_updated?:string, unit_type?:string, units_per_package?:number, coverage_sqs?:number, coverage_ft2?:number, coverage_m2?:number, description?:string, image_base64?:string, technical_manual_url?:string };
 
@@ -1372,7 +1373,7 @@ export default function InventoryProducts(){
 
 
       {addRelatedOpen && (
-        <div className="fixed inset-0 z-[120] bg-black/50 flex items-center justify-center overflow-y-auto p-4">
+        <OverlayPortal><div className="fixed inset-0 z-[120] bg-black/50 flex items-center justify-center overflow-y-auto p-4">
           <div className="w-[600px] max-w-[95vw] max-h-[90vh] bg-gray-100 rounded-xl overflow-hidden flex flex-col border border-gray-200 shadow-xl">
             <div className="rounded-t-xl border-b border-gray-200 bg-white p-4 flex-shrink-0">
               <div className="flex items-center justify-between">
@@ -1433,7 +1434,7 @@ export default function InventoryProducts(){
               </div>
             </div>
           </div>
-        </div>
+        </div></OverlayPortal>
       )}
       <ImagePicker
         isOpen={imagePickerOpen}

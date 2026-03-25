@@ -4,6 +4,7 @@ import { useState, useEffect, useMemo, Fragment } from 'react';
 import { api } from '@/lib/api';
 import { EquipmentNewForm } from './EquipmentNew';
 import { formatDateLocal } from '@/lib/dateUtils';
+import OverlayPortal from '@/components/OverlayPortal';
 
 type Equipment = {
   id: string;
@@ -318,7 +319,7 @@ function EquipmentFilterBuilderModal({
   if (!isOpen) return null;
 
   return (
-    <div
+    <OverlayPortal><div
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 transition-opacity duration-200 ease-out"
       onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
     >
@@ -375,7 +376,7 @@ function EquipmentFilterBuilderModal({
           </div>
         </div>
       </div>
-    </div>
+    </div></OverlayPortal>
   );
 }
 
@@ -845,7 +846,7 @@ export default function EquipmentList() {
       />
 
       {showNewEquipmentModal && (
-        <div
+        <OverlayPortal><div
           className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center overflow-y-auto p-4"
           onClick={() => setShowNewEquipmentModal(false)}
         >
@@ -907,7 +908,7 @@ export default function EquipmentList() {
               </button>
             </div>
           </div>
-        </div>
+        </div></OverlayPortal>
       )}
     </div>
   );

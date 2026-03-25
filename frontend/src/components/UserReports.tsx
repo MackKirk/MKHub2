@@ -4,6 +4,7 @@ import { api } from '@/lib/api';
 import toast from 'react-hot-toast';
 import { formatDateLocal } from '@/lib/dateUtils';
 import { useConfirm } from '@/components/ConfirmProvider';
+import OverlayPortal from '@/components/OverlayPortal';
 
 type Report = {
   id: string;
@@ -909,13 +910,15 @@ function CreateReportModal({ userId, report, onClose }: { userId: string; report
               </button>
               {dropdownOpen && dropdownPosition && (
                 <>
-                  <div 
-                    className="fixed inset-0 z-[60]" 
-                    onClick={() => {
-                      setDropdownOpen(false);
-                      setDropdownPosition(null);
-                    }}
-                  />
+                  <OverlayPortal>
+                    <div 
+                      className="fixed inset-0 z-[60]" 
+                      onClick={() => {
+                        setDropdownOpen(false);
+                        setDropdownPosition(null);
+                      }}
+                    />
+                  </OverlayPortal>
                   <div 
                     className="fixed bg-white border rounded-lg shadow-xl overflow-y-auto z-[100]"
                     style={{
@@ -1315,7 +1318,7 @@ function ReportDetailView({
 
   if (!report) {
     return (
-      <div
+      <OverlayPortal><div
         className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 overflow-y-auto"
         onClick={onClose}
       >
@@ -1347,7 +1350,7 @@ function ReportDetailView({
             </div>
           </div>
         </div>
-      </div>
+      </div></OverlayPortal>
     );
   }
 
@@ -1576,13 +1579,15 @@ function ReportDetailView({
                 </button>
                 {editDropdownOpen && editDropdownPosition && (
                   <>
-                    <div 
-                      className="fixed inset-0 z-[60]" 
-                      onClick={() => {
-                        setEditDropdownOpen(false);
-                        setEditDropdownPosition(null);
-                      }}
-                    />
+                    <OverlayPortal>
+                      <div 
+                        className="fixed inset-0 z-[60]" 
+                        onClick={() => {
+                          setEditDropdownOpen(false);
+                          setEditDropdownPosition(null);
+                        }}
+                      />
+                    </OverlayPortal>
                     <div 
                       className="fixed bg-white border rounded-lg shadow-xl overflow-y-auto z-[100]"
                       style={{

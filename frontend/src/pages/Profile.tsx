@@ -12,6 +12,7 @@ import { useUnsavedChangesGuard } from '@/hooks/useUnsavedChangesGuard';
 import UserLoans from '@/components/UserLoans';
 import UserReports from '@/components/UserReports';
 import { useNavigate, useLocation } from 'react-router-dom';
+import OverlayPortal from '@/components/OverlayPortal';
 
 type ProfileResp = { user:{ username:string, email:string, first_name?:string, last_name?:string, divisions?: Array<{id:string, label:string}> }, profile?: any };
 
@@ -1469,7 +1470,7 @@ function TimeOffSection({ userId, canEdit }:{ userId:string, canEdit:boolean }){
       </div>
       
       {showRequestForm && (
-        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
+        <OverlayPortal><div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
           <div className="bg-white rounded-xl w-full max-w-md p-4">
             <div className="text-lg font-semibold mb-4">Request Time Off</div>
             <div className="space-y-3">
@@ -1598,11 +1599,11 @@ function TimeOffSection({ userId, canEdit }:{ userId:string, canEdit:boolean }){
               </button>
             </div>
           </div>
-        </div>
+        </div></OverlayPortal>
       )}
       
       {showAdjustModal && adjustingBalance && (
-        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50" onClick={() => setShowAdjustModal(false)}>
+        <OverlayPortal><div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50" onClick={() => setShowAdjustModal(false)}>
           <div className="bg-white rounded-xl w-full max-w-lg p-6" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-xl font-semibold text-brand-red">
@@ -1758,7 +1759,7 @@ function TimeOffSection({ userId, canEdit }:{ userId:string, canEdit:boolean }){
               </button>
             </div>
           </div>
-        </div>
+        </div></OverlayPortal>
       )}
     </div>
   );
@@ -2148,7 +2149,7 @@ function EmergencyContactsSection({ userId, canEdit }:{ userId:string, canEdit:b
       </div>
       
       {createOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
+        <OverlayPortal><div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
           <div className="w-[800px] max-w-[95vw] bg-white rounded-xl overflow-hidden">
             <div className="px-4 py-3 border-b flex items-center justify-between">
               <div className="font-semibold">New Emergency Contact</div>
@@ -2242,7 +2243,7 @@ function EmergencyContactsSection({ userId, canEdit }:{ userId:string, canEdit:b
               </div>
             </div>
           </div>
-        </div>
+        </div></OverlayPortal>
       )}
     </div>
   );
@@ -2863,7 +2864,7 @@ function VisaInformationSection({ userId, canEdit, isRequired = false, showInlin
       )}
       
       {createOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
+        <OverlayPortal><div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
           <div className="w-[600px] max-w-[95vw] bg-white rounded-xl overflow-hidden">
             <div className="px-4 py-3 border-b flex items-center justify-between">
               <div className="font-semibold">Add Visa Entry</div>
@@ -2950,14 +2951,27 @@ function VisaInformationSection({ userId, canEdit, isRequired = false, showInlin
               </div>
             </div>
           </div>
-        </div>
+        </div></OverlayPortal>
       )}
     </div>
   );
 }
 
 function UserDocuments({ userId, canEdit }:{ userId:string, canEdit:boolean }){
+  const navigate = useNavigate();
   const confirm = useConfirm();
+  const { data: me } = useQuery({ queryKey: ['me'], queryFn: () => api<{ id: string }>('GET', '/auth/me') });
+  const isOwnProfile = Boolean(me?.id && String(me.id) === String(userId));
+  const { data: onboardingRows = [] } = useQuery({
+    queryKey: ['me-onboarding-docs'],
+    queryFn: () =>
+      api<Array<{ id: string; document_name: string; status: string }>>('GET', '/auth/me/onboarding/documents'),
+    enabled: isOwnProfile,
+  });
+  const pendingOnboarding = useMemo(
+    () => onboardingRows.filter((d) => d.status === 'pending'),
+    [onboardingRows]
+  );
   const { data:folders, refetch: refetchFolders } = useQuery({ queryKey:['user-folders', userId], queryFn: ()=> api<any[]>('GET', `/auth/users/${encodeURIComponent(userId)}/folders`) });
   const defaultFoldersCreatedRef = useRef(false);
   useEffect(() => {
@@ -3132,6 +3146,23 @@ function UserDocuments({ userId, canEdit }:{ userId:string, canEdit:boolean }){
 
   return (
     <div>
+      {pendingOnboarding.length > 0 && (
+        <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50/90 p-4 flex flex-wrap items-center justify-between gap-3">
+          <div className="min-w-0">
+            <div className="text-sm font-semibold text-amber-950">Documents waiting for signature</div>
+            <div className="text-xs text-amber-900/85 mt-0.5">
+              {pendingOnboarding.length} onboarding document{pendingOnboarding.length !== 1 ? 's' : ''} need your signature. Signed PDFs are saved here under HR Documents afterward.
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={() => navigate('/onboarding/documents')}
+            className="shrink-0 px-3 py-2 text-xs font-medium text-white bg-brand-red rounded-lg hover:opacity-90"
+          >
+            Review &amp; sign
+          </button>
+        </div>
+      )}
       {activeFolderId==='all' ? (
         <>
           <div className="mb-3 flex items-center gap-2">
@@ -3318,7 +3349,7 @@ function UserDocuments({ userId, canEdit }:{ userId:string, canEdit:boolean }){
       )}
 
       {showUpload && (
-        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
+        <OverlayPortal><div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
           <div className="bg-white rounded-xl w-full max-w-md p-4">
             <div className="text-lg font-semibold mb-2">Add file</div>
             <div className="space-y-3">
@@ -3343,11 +3374,11 @@ function UserDocuments({ userId, canEdit }:{ userId:string, canEdit:boolean }){
               <button onClick={upload} className="px-3 py-2 rounded bg-brand-red text-white">Upload</button>
             </div>
           </div>
-        </div>
+        </div></OverlayPortal>
       )}
 
       {showNewFolder && (
-        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
+        <OverlayPortal><div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
           <div className="bg-white rounded-xl w-full max-w-sm p-4">
             <div className="text-lg font-semibold mb-2">{newFolderParentId? 'New subfolder':'New folder'}</div>
             <div>
@@ -3359,11 +3390,11 @@ function UserDocuments({ userId, canEdit }:{ userId:string, canEdit:boolean }){
               <button onClick={createFolder} className="px-3 py-2 rounded bg-brand-red text-white">Create</button>
             </div>
           </div>
-        </div>
+        </div></OverlayPortal>
       )}
 
       {renameFolder && (
-        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
+        <OverlayPortal><div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
           <div className="bg-white rounded-xl w-full max-w-sm p-4">
             <div className="text-lg font-semibold mb-2">Rename folder</div>
             <div>
@@ -3375,11 +3406,11 @@ function UserDocuments({ userId, canEdit }:{ userId:string, canEdit:boolean }){
               <button onClick={doRenameFolder} className="px-3 py-2 rounded bg-brand-red text-white">Save</button>
             </div>
           </div>
-        </div>
+        </div></OverlayPortal>
       )}
 
       {moveDoc && (
-        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
+        <OverlayPortal><div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
           <div className="bg-white rounded-xl w-full max-w-sm p-4">
             <div className="text-lg font-semibold mb-2">Move file</div>
             <div>
@@ -3394,11 +3425,11 @@ function UserDocuments({ userId, canEdit }:{ userId:string, canEdit:boolean }){
               <button onClick={doMoveDoc} className="px-3 py-2 rounded bg-brand-red text-white">Move</button>
             </div>
           </div>
-        </div>
+        </div></OverlayPortal>
       )}
 
       {renameDoc && (
-        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
+        <OverlayPortal><div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
           <div className="bg-white rounded-xl w-full max-w-sm p-4">
             <div className="text-lg font-semibold mb-2">Rename file</div>
             <div>
@@ -3410,7 +3441,7 @@ function UserDocuments({ userId, canEdit }:{ userId:string, canEdit:boolean }){
               <button onClick={doRenameDoc} className="px-3 py-2 rounded bg-brand-red text-white">Save</button>
             </div>
           </div>
-        </div>
+        </div></OverlayPortal>
       )}
 
       {previewImage && (
@@ -3463,7 +3494,7 @@ function UserDocuments({ userId, canEdit }:{ userId:string, canEdit:boolean }){
               <iframe src={`https://view.officeapps.live.com/op/embed.aspx?src=${encodeURIComponent(previewExcel.url)}`} className="w-full h-full border-0" title={previewExcel.name} allow="fullscreen" />
             </div>
           </div>
-        </div>
+        </div></OverlayPortal>
       )}
     </div>
   );

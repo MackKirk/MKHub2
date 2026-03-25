@@ -2,6 +2,7 @@ import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import toast from 'react-hot-toast';
+import OverlayPortal from '@/components/OverlayPortal';
 
 type CommunityPost = {
   id: string;
@@ -447,7 +448,7 @@ export default function EmployeeCommunity({ expanded = false, feedMode = false }
 
       {/* Post Detail Modal */}
       {modalPost && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50" onClick={() => setModalPost(null)}>
+        <OverlayPortal><div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50" onClick={() => setModalPost(null)}>
           <div className="bg-white w-full max-w-2xl max-h-[90vh] flex flex-col rounded-xl overflow-hidden" onClick={(e) => e.stopPropagation()}>
             {/* Scrollable content */}
             <div className="flex-1 overflow-y-auto">
@@ -642,7 +643,7 @@ export default function EmployeeCommunity({ expanded = false, feedMode = false }
               </form>
             </div>
           </div>
-        </div>
+        </div></OverlayPortal>
       )}
     </div>
   );

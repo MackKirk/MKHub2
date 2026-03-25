@@ -1,7 +1,8 @@
-import { Routes, Route, Navigate, useLocation } from 'react-router-dom';
+import { Routes, Route, Navigate, useLocation, useNavigate } from 'react-router-dom';
 import { QueryClientProvider } from '@tanstack/react-query';
 import { Toaster } from 'react-hot-toast';
-import { lazy, Suspense } from 'react';
+import { lazy, Suspense, useEffect } from 'react';
+import { resolvePostAuthDestination } from '@/lib/profileCompleteness';
 import { queryClient } from './lib/queryClient';
 import ConfirmProvider from './components/ConfirmProvider';
 import UnsavedChangesProvider from './components/UnsavedChangesProvider';
@@ -11,8 +12,8 @@ import Register from './pages/Register';
 import PasswordReset from './pages/PasswordReset';
 import Protected from './lib/protected';
 
-const OnboardingWizard = lazy(() => import('./pages/OnboardingWizard'));
-const OnboardingDocuments = lazy(() => import('./pages/OnboardingDocuments'));
+import OnboardingWizard from './pages/OnboardingWizard';
+import OnboardingDocuments from './pages/OnboardingDocuments';
 const OnboardingAdmin = lazy(() => import('./pages/OnboardingAdmin'));
 const ProjectDetail = lazy(() => import('./pages/ProjectDetail'));
 const CustomerDetail = lazy(() => import('./pages/CustomerDetail'));
@@ -84,7 +85,31 @@ import Install from './pages/Install';
 const RouteFallback = () => <div className="min-h-[40vh] flex items-center justify-center text-gray-500">Loading...</div>;
 
 import { getToken } from './lib/api';
-function Home(){ return <Navigate to={getToken()? '/home':'/login'} replace />; }
+
+/** Root `/` with token: resolve onboarding vs hub before navigating (matches post-login behavior). */
+function Home() {
+  const navigate = useNavigate();
+  const token = getToken();
+  useEffect(() => {
+    if (!token) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const to = await resolvePostAuthDestination('/home');
+        if (!cancelled) navigate(to, { replace: true });
+      } catch {
+        if (!cancelled) navigate('/home', { replace: true });
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [token, navigate]);
+  if (!token) return <Navigate to="/login" replace />;
+  return (
+    <div className="min-h-screen flex items-center justify-center text-gray-500">Loading...</div>
+  );
+}
 
 export default function App(){
   const location = useLocation();
@@ -102,8 +127,8 @@ export default function App(){
         <Route path="/password-reset" element={<PasswordReset/>} />
         <Route path="/install" element={<Install/>} />
         <Route element={<Protected/>}>
-          <Route path="/onboarding" element={<Suspense fallback={<div className="min-h-screen flex items-center justify-center"><div>Loading...</div></div>}><OnboardingWizard/></Suspense>} />
-          <Route path="/onboarding/documents" element={<Suspense fallback={<div className="min-h-screen flex items-center justify-center"><div>Loading...</div></div>}><OnboardingDocuments/></Suspense>} />
+          <Route path="/onboarding" element={<OnboardingWizard />} />
+          <Route path="/onboarding/documents" element={<OnboardingDocuments />} />
           <Route path="/onboarding/admin" element={<AppShell><OnboardingAdmin/></AppShell>} />
           <Route path="/home" element={<AppShell><HomePage/></AppShell>} />
           <Route path="/overview" element={<AppShell><Overview/></AppShell>} />
@@ -188,7 +213,7 @@ export default function App(){
           </Routes>
         </Suspense>
       )}
-      <Toaster position="top-right" />
+      <Toaster position="top-right" containerStyle={{ zIndex: 100002 }} />
       </ConfirmProvider>
       </UnsavedChangesProvider>
     </QueryClientProvider>

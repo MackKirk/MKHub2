@@ -7,6 +7,7 @@ import { WorkOrderNewForm } from './WorkOrderNew';
 import FilterBuilderModal from '@/components/FilterBuilder/FilterBuilderModal';
 import FilterChip from '@/components/FilterBuilder/FilterChip';
 import { FilterRule, FieldConfig } from '@/components/FilterBuilder/types';
+import OverlayPortal from '@/components/OverlayPortal';
 
 type WorkOrder = {
   id: string;
@@ -511,7 +512,7 @@ export default function WorkOrders() {
 
       {/* New Work Order Modal */}
       {showNewWorkOrderModal && (
-        <div
+        <OverlayPortal><div
           className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center overflow-y-auto p-4"
           onClick={() => setShowNewWorkOrderModal(false)}
         >
@@ -573,7 +574,7 @@ export default function WorkOrders() {
               </button>
             </div>
           </div>
-        </div>
+        </div></OverlayPortal>
       )}
     </div>
   );

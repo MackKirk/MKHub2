@@ -5,6 +5,7 @@ import { api } from '@/lib/api';
 import toast from 'react-hot-toast';
 import { WORK_ORDER_STATUS_OPTIONS, WORK_ORDER_STATUS_COLORS, WORK_ORDER_STATUS_LABELS, URGENCY_COLORS } from '@/lib/fleetBadges';
 import FleetDetailHeader from '@/components/FleetDetailHeader';
+import OverlayPortal from '@/components/OverlayPortal';
 
 type CostItem = {
   id?: string;
@@ -1101,7 +1102,7 @@ function WorkOrderFilesTab({ workOrderId }: { workOrderId: string }) {
 
       {/* Upload modal */}
       {showUpload && (
-        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50" onClick={(e) => e.target === e.currentTarget && setShowUpload(false)}>
+        <OverlayPortal><div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50" onClick={(e) => e.target === e.currentTarget && setShowUpload(false)}>
           <div className="bg-white rounded-xl w-full max-w-md p-4" onClick={(e) => e.stopPropagation()}>
             <div className="text-sm font-semibold mb-3">Upload Files</div>
             <div className="space-y-3">
@@ -1143,7 +1144,7 @@ function WorkOrderFilesTab({ workOrderId }: { workOrderId: string }) {
               </button>
             </div>
           </div>
-        </div>
+        </div></OverlayPortal>
       )}
 
       {/* Upload progress */}

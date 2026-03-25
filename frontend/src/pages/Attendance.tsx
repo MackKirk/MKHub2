@@ -4,6 +4,7 @@ import toast from 'react-hot-toast';
 import { api } from '@/lib/api';
 import { useConfirm } from '@/components/ConfirmProvider';
 import { formatDateLocal, getTodayLocal } from '@/lib/dateUtils';
+import OverlayPortal from '@/components/OverlayPortal';
 
 
 type Attendance = {
@@ -1163,7 +1164,7 @@ export default function Attendance() {
 
       {/* Modal */}
       {showModal && (
-        <div
+        <OverlayPortal><div
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
           onClick={() => {
             setShowModal(false);
@@ -1626,7 +1627,7 @@ export default function Attendance() {
               </button>
             </div>
           </div>
-        </div>
+        </div></OverlayPortal>
       )}
     </div>
   );

@@ -4,6 +4,7 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import { api } from '@/lib/api';
 import toast from 'react-hot-toast';
 import { useConfirm } from '@/components/ConfirmProvider';
+import OverlayPortal from '@/components/OverlayPortal';
 
 type Order = {
   id: string;
@@ -417,7 +418,7 @@ export default function OrdersTab({ projectId, project, statusLabel }: { project
 
       {/* Review & Email Modal */}
       {reviewingOrder && (
-        <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4">
+        <OverlayPortal><div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4">
           <div className="w-[800px] max-w-[95vw] bg-white rounded-xl overflow-hidden max-h-[90vh] flex flex-col">
             <div className="bg-gradient-to-br from-[#7f1010] to-[#a31414] p-6 flex items-center gap-6 relative flex-shrink-0">
               <div className="font-semibold text-lg text-white">Review & Email Order</div>
@@ -516,12 +517,12 @@ export default function OrdersTab({ projectId, project, statusLabel }: { project
               </div>
             </div>
           </div>
-        </div>
+        </div></OverlayPortal>
       )}
 
       {/* Order Items Modal */}
       {viewingItemsOrder && (
-        <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4">
+        <OverlayPortal><div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4">
           <div className="w-[700px] max-w-[95vw] bg-white rounded-xl overflow-hidden max-h-[90vh] flex flex-col">
             <div className="bg-gradient-to-br from-[#7f1010] to-[#a31414] p-6 flex items-center gap-6 relative flex-shrink-0">
               <div className="font-semibold text-lg text-white">
@@ -603,7 +604,7 @@ export default function OrdersTab({ projectId, project, statusLabel }: { project
               </button>
             </div>
           </div>
-        </div>
+        </div></OverlayPortal>
       )}
 
       {/* Add Extra Order Wizard Modal */}
@@ -883,7 +884,7 @@ function AddExtraOrderWizard({
   };
   
   return (
-    <div className="fixed inset-0 z-[70] bg-black/60 flex items-center justify-center p-4">
+    <OverlayPortal><div className="fixed inset-0 z-[70] bg-black/60 flex items-center justify-center p-4">
       <div className="w-[900px] max-w-[95vw] bg-white rounded-xl overflow-hidden max-h-[90vh] flex flex-col" style={{ position: 'relative', zIndex: 70 }}>
         <div className="bg-gradient-to-br from-[#7f1010] to-[#a31414] p-6 flex items-center gap-6 relative flex-shrink-0">
           <div className="font-semibold text-lg text-white">Add Extra Order</div>
@@ -1489,7 +1490,7 @@ function AddExtraOrderWizard({
           onClose={() => setProductSearchModalOpen(null)}
         />
       )}
-    </div>
+    </div></OverlayPortal>
   );
 }
 
@@ -1541,7 +1542,7 @@ function AddProductModalForOrder({
   if (!open) return null;
 
   return (
-    <div className="fixed inset-0 z-[80] bg-black/60 flex items-center justify-center">
+    <OverlayPortal><div className="fixed inset-0 z-[80] bg-black/60 flex items-center justify-center">
       <div className="w-[720px] max-w-[95vw] bg-white rounded-xl overflow-hidden max-h-[90vh] flex flex-col">
         <div className="bg-gradient-to-br from-[#7f1010] to-[#a31414] p-6 flex items-center gap-6 relative flex-shrink-0">
           <div className="font-semibold text-lg text-white">Add Product</div>
@@ -1611,7 +1612,7 @@ function AddProductModalForOrder({
           </div>
         </div>
       </div>
-    </div>
+    </div></OverlayPortal>
   );
 }
 
@@ -1706,7 +1707,7 @@ function SupplierProductModalForOrder({
   if (!open) return null;
 
   return (
-    <div className="fixed inset-0 z-[80] bg-black/60 flex items-center justify-center p-4">
+    <OverlayPortal><div className="fixed inset-0 z-[80] bg-black/60 flex items-center justify-center p-4">
       <div className={`${supplierId ? 'w-[1200px]' : 'w-[1000px]'} max-w-[95vw] bg-white rounded-xl overflow-hidden max-h-[90vh] flex flex-col`}>
         <div className="bg-gradient-to-br from-[#7f1010] to-[#a31414] p-6 flex items-center gap-6 relative flex-shrink-0">
           <div className="font-semibold text-lg text-white">
@@ -1808,7 +1809,7 @@ function SupplierProductModalForOrder({
           </div>
         </div>
       </div>
-    </div>
+    </div></OverlayPortal>
   );
 }
 

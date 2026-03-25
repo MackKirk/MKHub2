@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { api } from '@/lib/api';
+import OverlayPortal from '@/components/OverlayPortal';
 import toast from 'react-hot-toast';
 import { JOB_TYPES } from '@/constants/jobTypes';
 import { formatDateLocal } from '@/lib/dateUtils';
@@ -103,6 +104,7 @@ export default function EditShiftModal({
   const inputDisabled = 'bg-gray-100 text-gray-600 cursor-not-allowed border-gray-200';
 
   return (
+    <OverlayPortal>
     <div
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 overflow-y-auto"
       onClick={onClose}
@@ -238,6 +240,7 @@ export default function EditShiftModal({
         </div>
       </div>
     </div>
+    </OverlayPortal>
   );
 }
 

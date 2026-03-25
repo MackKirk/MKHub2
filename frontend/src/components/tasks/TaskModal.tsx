@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
 import { useNavigate } from 'react-router-dom';
 import { api } from '@/lib/api';
+import OverlayPortal from '@/components/OverlayPortal';
 import BugReportDescription from './BugReportDescription';
 import type { Task, TaskStatus } from './types';
 import { getStatusBadgeClass, getStatusBorderColor, getStatusLabel, getTaskSourceLabel, priorityDot } from './taskUi';
@@ -418,6 +419,7 @@ export default function TaskModal({ open, taskId, onClose, onUpdated }: Props) {
   if (!open) return null;
 
   return (
+    <OverlayPortal>
     <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4" onClick={onClose}>
       <div
         className="bg-white rounded-xl max-w-[75vw] w-full h-[85vh] max-h-[85vh] overflow-hidden flex flex-col shadow-xl border border-gray-200 relative"
@@ -995,6 +997,7 @@ export default function TaskModal({ open, taskId, onClose, onUpdated }: Props) {
         </div>
       </div>
     </div>
+    </OverlayPortal>
   );
 }
 

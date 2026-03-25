@@ -5,6 +5,7 @@ import { api } from '@/lib/api';
 import { sortByLabel } from '@/lib/sortOptions';
 import toast from 'react-hot-toast';
 import ImagePicker from '@/components/ImagePicker';
+import OverlayPortal from '@/components/OverlayPortal';
 
 type Client = { id:string, display_name?:string, name?:string, city?:string, province?:string, address_line1?:string };
 
@@ -118,6 +119,7 @@ export default function QuoteNew(){
 
   return (
     <>
+    <OverlayPortal>
     <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center overflow-y-auto">
       <div className="w-[600px] max-w-[95vw] max-h-[90vh] bg-white rounded-xl overflow-hidden flex flex-col">
         <div className="bg-gradient-to-br from-[#7f1010] to-[#a31414] p-6 relative">
@@ -228,6 +230,7 @@ export default function QuoteNew(){
         </div>
       </div>
     </div>
+    </OverlayPortal>
     {clientModalOpen && (
       <ClientSelectModal
         open={clientModalOpen}
@@ -298,6 +301,7 @@ function ClientSelectModal({ open, onClose, onSelect }: { open: boolean, onClose
   if (!open) return null;
 
   return (
+    <OverlayPortal>
     <div className="fixed inset-0 z-[60] bg-black/60 flex items-center justify-center">
       <div className="w-[720px] max-w-[95vw] bg-white rounded-xl overflow-hidden max-h-[90vh] flex flex-col">
         <div className="bg-gradient-to-br from-[#7f1010] to-[#a31414] p-6 flex items-center gap-6 relative flex-shrink-0">
@@ -347,9 +351,10 @@ function ClientSelectModal({ open, onClose, onSelect }: { open: boolean, onClose
             <div className="text-center py-8 text-gray-500">
               No customers available
             </div>
-          )}
+          )}   
         </div>
       </div>
     </div>
+    </OverlayPortal>
   );
 }

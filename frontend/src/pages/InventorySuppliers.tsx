@@ -10,6 +10,7 @@ import FilterBuilderModal from '@/components/FilterBuilder/FilterBuilderModal';
 import FilterChip from '@/components/FilterBuilder/FilterChip';
 import { FilterRule, FieldConfig } from '@/components/FilterBuilder/types';
 import LoadingOverlay from '@/components/LoadingOverlay';
+import OverlayPortal from '@/components/OverlayPortal';
 
 type Supplier = {
   id: string;
@@ -1030,7 +1031,7 @@ export default function InventorySuppliers() {
       </LoadingOverlay>
 
       {open && (
-        <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center overflow-y-auto p-4">
+        <OverlayPortal><div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center overflow-y-auto p-4">
           <div className="w-[900px] max-w-[95vw] max-h-[90vh] bg-gray-100 rounded-xl border border-gray-200 overflow-hidden flex flex-col shadow-xl">
               {viewing && !editing ? (
                 // View mode - display supplier details
@@ -1701,6 +1702,7 @@ export default function InventorySuppliers() {
             </div>
           </div>
         </div>
+        </OverlayPortal>
       )}
 
       {pickerOpen && (
@@ -2862,6 +2864,7 @@ export default function InventorySuppliers() {
       )}
 
       {contactModalOpen && (
+        <OverlayPortal>
         <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center overflow-y-auto p-4">
           <div className="w-[900px] max-w-[95vw] max-h-[90vh] bg-gray-100 rounded-xl overflow-hidden flex flex-col border border-gray-200 shadow-xl">
             {/* Title bar - same style as customer (ContactsCard) */}
@@ -2998,6 +3001,7 @@ export default function InventorySuppliers() {
             </div>
           </div>
         </div>
+        </OverlayPortal>
       )}
       
       {/* Filter Builder Modal */}

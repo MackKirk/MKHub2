@@ -5,6 +5,7 @@ import { api } from '@/lib/api';
 import toast from 'react-hot-toast';
 import { formatDateLocal, getTodayLocal } from '@/lib/dateUtils';
 import { useConfirm } from '@/components/ConfirmProvider';
+import OverlayPortal from '@/components/OverlayPortal';
 
 // Helper function to convert 24h time (HH:MM:SS or HH:MM) to 12h format (h:mm AM/PM)
 function formatTime12h(timeStr: string | null | undefined): string {
@@ -1981,6 +1982,7 @@ export default function ClockInOut() {
 
       {/* Clock Modal - Standard style */}
       {clockType && (
+        <OverlayPortal>
         <div
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
           onClick={() => {
@@ -2259,11 +2261,12 @@ export default function ClockInOut() {
             </div>
           </div>
         </div>
+        </OverlayPortal>
       )}
 
       {/* Shift Picker Modal (when multiple shifts exist for the selected project/job on the same day) */}
       {shiftPickOpen && (
-        <div
+        <OverlayPortal><div
           className="fixed inset-0 z-[60] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4"
           onClick={(e) => {
             if (e.target === e.currentTarget) {
@@ -2344,10 +2347,12 @@ export default function ClockInOut() {
             </div>
           </div>
         </div>
+        </OverlayPortal>
       )}
 
       {/* Edit Attendance Modal */}
       {editingAttendance && editingType && (
+        <OverlayPortal>
         <div 
           className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4"
           onClick={(e) => {
@@ -2459,10 +2464,12 @@ export default function ClockInOut() {
             </div>
           </div>
         </div>
+        </OverlayPortal>
       )}
 
       {/* Edit Break Time Only Modal */}
       {editingBreakTimeAttendance && (
+        <OverlayPortal>
         <div 
           className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4"
           onClick={(e) => {
@@ -2543,6 +2550,7 @@ export default function ClockInOut() {
             </div>
           </div>
         </div>
+        </OverlayPortal>
       )}
     </div>
   );

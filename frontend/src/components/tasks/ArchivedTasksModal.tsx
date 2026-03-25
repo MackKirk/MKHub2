@@ -1,6 +1,7 @@
 import { useState, useMemo } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
+import OverlayPortal from '@/components/OverlayPortal';
 import TaskCard from './TaskCard';
 import TaskModal from './TaskModal';
 import type { Task } from './types';
@@ -53,6 +54,7 @@ export default function ArchivedTasksModal({ open, onClose }: Props) {
 
   return (
     <>
+      <OverlayPortal>
       <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4" onClick={onClose}>
         <div
           className="bg-white rounded-xl max-w-4xl w-full max-h-[90vh] flex flex-col border border-gray-200"
@@ -162,6 +164,7 @@ export default function ArchivedTasksModal({ open, onClose }: Props) {
           </div>
         </div>
       </div>
+      </OverlayPortal>
 
       {/* Task Detail Modal */}
       <TaskModal

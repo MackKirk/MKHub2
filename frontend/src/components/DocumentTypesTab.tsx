@@ -6,6 +6,7 @@ import { useConfirm } from '@/components/ConfirmProvider';
 import type { DocumentTypePreset } from '@/components/ChooseDocumentTypeModal';
 import type { DocElement, PageMargins } from '@/types/documentCreator';
 import { DocumentTypePageLayoutModal } from '@/components/DocumentTypePageLayoutModal';
+import OverlayPortal from '@/components/OverlayPortal';
 
 const A4_ASPECT = 210 / 297;
 
@@ -480,6 +481,7 @@ export default function DocumentTypesTab() {
       )}
 
       {showForm && (
+        <OverlayPortal>
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
           <div className="bg-white rounded-xl shadow-xl max-w-lg w-full max-h-[90vh] flex flex-col">
             <div className="p-4 border-b border-gray-200">
@@ -624,6 +626,7 @@ export default function DocumentTypesTab() {
             </div>
           </div>
         </div>
+        </OverlayPortal>
       )}
 
       {layoutModalPageIndex !== null && layoutPage && (

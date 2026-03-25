@@ -4,6 +4,7 @@ import { api } from '@/lib/api';
 import { useMemo, useState } from 'react';
 import { FleetAssetNewForm } from './FleetAssetNew';
 import { EquipmentNewForm } from './EquipmentNew';
+import OverlayPortal from '@/components/OverlayPortal';
 
 type DashboardData = {
   total_fleet_assets: number;
@@ -922,7 +923,7 @@ export default function FleetDashboard() {
 
       {/* New Asset Modal (same as FleetAssets page) */}
       {newAssetModalType !== null && (
-        <div
+        <OverlayPortal><div
           className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center overflow-y-auto p-4"
           onClick={() => setNewAssetModalType(null)}
         >
@@ -963,12 +964,12 @@ export default function FleetDashboard() {
               />
             </div>
           </div>
-        </div>
+        </div></OverlayPortal>
       )}
 
       {/* New Equipment Modal (same as EquipmentList page) */}
       {newEquipmentModalOpen && (
-        <div
+        <OverlayPortal><div
           className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center overflow-y-auto p-4"
           onClick={() => setNewEquipmentModalOpen(false)}
         >
@@ -1009,7 +1010,7 @@ export default function FleetDashboard() {
               />
             </div>
           </div>
-        </div>
+        </div></OverlayPortal>
       )}
     </div>
   );

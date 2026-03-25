@@ -5,6 +5,7 @@ import { api } from '@/lib/api';
 import toast from 'react-hot-toast';
 import AddressAutocomplete from '@/components/AddressAutocomplete';
 import { formatDateLocal } from '@/lib/dateUtils';
+import OverlayPortal from '@/components/OverlayPortal';
 
 type Equipment = {
   id: string;
@@ -549,7 +550,7 @@ export default function EquipmentDetail() {
         />
       )}
       {showWorkOrderForm && (
-        <div
+        <OverlayPortal><div
           className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4"
           onClick={() => setShowWorkOrderForm(false)}
         >
@@ -579,7 +580,7 @@ export default function EquipmentDetail() {
               />
             </div>
           </div>
-        </div>
+        </div></OverlayPortal>
       )}
     </div>
   );
@@ -901,7 +902,7 @@ function EquipmentAssignModal({
   }, []);
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={onClose}>
+    <OverlayPortal><div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={onClose}>
       <div
         className="bg-white rounded-xl shadow-lg max-w-md w-full max-h-[90vh] overflow-y-auto"
         onClick={(e) => e.stopPropagation()}
@@ -1117,7 +1118,7 @@ function EquipmentAssignModal({
           </div>
         </form>
       </div>
-    </div>
+    </div></OverlayPortal>
   );
 }
 
@@ -1146,7 +1147,7 @@ function EquipmentReturnModal({
   };
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={onClose}>
+    <OverlayPortal><div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={onClose}>
       <div
         className="bg-white rounded-xl shadow-lg max-w-md w-full max-h-[90vh] overflow-y-auto"
         onClick={(e) => e.stopPropagation()}
@@ -1239,7 +1240,7 @@ function EquipmentReturnModal({
           </div>
         </form>
       </div>
-    </div>
+    </div></OverlayPortal>
   );
 }
 
@@ -1256,7 +1257,7 @@ function EquipmentAssignmentLogDetailModal({
   const showReturn = !!assignment.returned_at;
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={onClose}>
+    <OverlayPortal><div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={onClose}>
       <div
         className="bg-white rounded-xl shadow-lg max-w-lg w-full max-h-[90vh] overflow-y-auto"
         onClick={(e) => e.stopPropagation()}
@@ -1358,6 +1359,6 @@ function EquipmentAssignmentLogDetailModal({
           )}
         </div>
       </div>
-    </div>
+    </div></OverlayPortal>
   );
 }

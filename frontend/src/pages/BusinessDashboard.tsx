@@ -5,6 +5,7 @@ import { createPortal } from 'react-dom';
 import { Link, useNavigate } from 'react-router-dom';
 import LoadingOverlay from '@/components/LoadingOverlay';
 import { DivisionIcon } from '@/components/DivisionIcon';
+import OverlayPortal from '@/components/OverlayPortal';
 
 // Hook for count-up animation
 function useCountUp(end: number, duration: number = 600, enabled: boolean = true): number {
@@ -106,7 +107,7 @@ function DateRangeModal({ open, onClose, onConfirm, initialStartDate = '', initi
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={onClose}>
+    <OverlayPortal><div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={onClose}>
       <div className="w-[400px] max-w-[95vw] bg-white rounded-lg shadow-lg overflow-hidden" onClick={(e) => e.stopPropagation()}>
         <div className="px-4 py-3 border-b font-semibold">Custom Date Range</div>
         <div className="p-4 space-y-4">
@@ -145,7 +146,7 @@ function DateRangeModal({ open, onClose, onConfirm, initialStartDate = '', initi
           </button>
         </div>
       </div>
-    </div>
+    </div></OverlayPortal>
   );
 }
 

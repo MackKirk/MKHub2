@@ -2,13 +2,17 @@ import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { api } from '@/lib/api';
+import { logoutSession } from '@/lib/logoutSession';
 import toast from 'react-hot-toast';
 import NationalitySelect from '@/components/NationalitySelect';
 import AddressAutocomplete from '@/components/AddressAutocomplete';
 import PostalCodeAutocomplete from '@/components/PostalCodeAutocomplete';
 import { useConfirm } from '@/components/ConfirmProvider';
+import OverlayPortal from '@/components/OverlayPortal';
 
 type ProfileResp = { user: { username: string; email: string; first_name?: string; last_name?: string }, profile?: any };
+
+const LOGO_SRC = '/ui/assets/login/logo-light.svg';
 
 // Field component helper
 function Field({ label, children, required, invalid }: { label: string; children: any; required?: boolean; invalid?: boolean }) {
@@ -44,6 +48,15 @@ export default function OnboardingWizard() {
   // Current step state
   const [currentStep, setCurrentStep] = useState(1);
   const totalSteps = 6;
+
+  const STEP_LABELS: Record<number, string> = {
+    1: 'Basic Information',
+    2: 'Address',
+    3: 'Contact',
+    4: 'Education',
+    5: 'Legal & Documents',
+    6: 'Emergency Contacts',
+  };
   
   // Form state
   const [form, setForm] = useState<any>({});
@@ -117,6 +130,55 @@ export default function OnboardingWizard() {
   });
   
   const hasEmergencyContact = emergencyContactsData && emergencyContactsData.length > 0;
+
+  /** Fields required to enter the Hub (must match isOnboardingComplete / AppShell). */
+  const HUB_REQUIRED_FIELDS = [
+    'gender',
+    'date_of_birth',
+    'marital_status',
+    'nationality',
+    'phone',
+    'address_line1',
+    'city',
+    'province',
+    'postal_code',
+    'country',
+    'sin_number',
+    'work_eligibility_status',
+  ] as const;
+
+  /** Which wizard steps still block "Save and continue to the Hub". */
+  const getHubIncompleteSteps = useCallback((): number[] => {
+    const steps = new Set<number>();
+    const fieldToStep: Record<string, number> = {
+      gender: 1,
+      date_of_birth: 1,
+      marital_status: 1,
+      nationality: 1,
+      address_line1: 2,
+      city: 2,
+      province: 2,
+      postal_code: 2,
+      country: 2,
+      phone: 3,
+      sin_number: 5,
+      work_eligibility_status: 5,
+    };
+    for (const field of HUB_REQUIRED_FIELDS) {
+      const value = String((form as any)[field] || '').trim();
+      if (!value) {
+        steps.add(fieldToStep[field] ?? 1);
+      }
+    }
+    if (userId) {
+      if (emergencyContactsLoading || emergencyContactsData === undefined) {
+        steps.add(6);
+      } else if (!hasEmergencyContact) {
+        steps.add(6);
+      }
+    }
+    return Array.from(steps).sort((a, b) => a - b);
+  }, [form, userId, emergencyContactsLoading, emergencyContactsData, hasEmergencyContact]);
   
   // Required fields for each step
   const stepRequiredFields: Record<number, string[]> = {
@@ -127,25 +189,6 @@ export default function OnboardingWizard() {
     5: ['sin_number', 'work_eligibility_status'], // SIN/SSN and Work Eligibility Status are required
     6: [], // Emergency contacts checked separately
   };
-  
-  // Check if current step is valid
-  const isStepValid = useCallback((step: number): boolean => {
-    const required = stepRequiredFields[step] || [];
-    
-    // Check basic required fields
-    for (const field of required) {
-      if (!String((form as any)[field] || '').trim()) {
-        return false;
-      }
-    }
-    
-    // Step 6: Check if at least one emergency contact exists
-    if (step === 6) {
-      return hasEmergencyContact;
-    }
-    
-    return true;
-  }, [form, hasEmergencyContact]);
   
   // Find the first step with missing required fields
   const findFirstIncompleteStep = useCallback((formData: any, hasEmergency: boolean): number => {
@@ -194,8 +237,6 @@ export default function OnboardingWizard() {
       await api('PUT', '/auth/me/profile', form);
       await queryClient.invalidateQueries({ queryKey: ['meProfile'] });
       await queryClient.invalidateQueries({ queryKey: ['me-profile'] });
-      // Reset unsaved changes flag after successful save
-      setHasUnsavedChanges(false);
     } catch (error: any) {
       toast.error(error?.message || 'Failed to save');
       throw error; // Re-throw to allow callers to handle the error
@@ -444,157 +485,59 @@ export default function OnboardingWizard() {
     }
   }, [formInitialized, currentStep, form.country, form.province, form.city, loadCountries, loadProvincesForCountry]);
   
-  // Check if onboarding is complete (memoized to prevent unnecessary recalculations)
-  const reqPersonal = useMemo(() => ['gender', 'date_of_birth', 'marital_status', 'nationality', 'phone', 'address_line1', 'city', 'province', 'postal_code', 'country', 'sin_number', 'work_eligibility_status'], []);
-  const missingPersonal = useMemo(() => {
-    return reqPersonal.filter(k => {
-      const value = String((form as any)[k] || '').trim();
-      return !value || value.length === 0;
-    });
-  }, [form, reqPersonal]);
-  
-  // Only require emergency contacts if userId exists (meaning the query was enabled)
-  // If emergency contacts query is still loading, we can't determine completion yet
-  const emergencyContactsReady = userId ? (!emergencyContactsLoading && emergencyContactsData !== undefined) : true;
-  const isOnboardingComplete = useMemo(() => {
-    // Check each required field individually
-    for (const field of reqPersonal) {
-      const value = String((form as any)[field] || '').trim();
-      if (!value || value.length === 0) {
-        return false;
-      }
-    }
-    
-    // Check emergency contacts
-    if (userId) {
-      if (!emergencyContactsReady) {
-        return false;
-      }
-      if (!hasEmergencyContact) {
-        return false;
-      }
-    }
-    
-    return true;
-  }, [form, reqPersonal, userId, emergencyContactsReady, hasEmergencyContact]);
-  
-  // Check if onboarding is complete based on saved server data (not local form state)
-  // This prevents redirects during typing
-  const isOnboardingCompleteFromServer = useMemo(() => {
-    if (!profileData?.profile) return false;
-    
-    const p = profileData.profile;
-    const reqPersonal = ['gender', 'date_of_birth', 'marital_status', 'nationality', 'phone', 'address_line1', 'city', 'province', 'postal_code', 'country', 'sin_number', 'work_eligibility_status'];
-    
-    // Check each required field from server data
-    for (const field of reqPersonal) {
-      const value = String((p as any)[field] || '').trim();
-      if (!value || value.length === 0) {
-        return false;
-      }
-    }
-    
-    // Check emergency contacts
-    if (userId) {
-      if (emergencyContactsLoading) {
-        return false; // Still loading, can't determine
-      }
-      if (!hasEmergencyContact) {
-        return false;
-      }
-    }
-    
-    return true;
-  }, [profileData, userId, emergencyContactsLoading, hasEmergencyContact]);
-  
-  // Track if user has made any changes to the form (to prevent redirects during editing)
-  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
-  
-  // Update hasUnsavedChanges when form changes
-  useEffect(() => {
-    if (formInitialized && Object.keys(form).length > 0) {
-      // Compare form with server data to detect changes
-      const serverData = profileData?.profile || {};
-      const formChanged = Object.keys(form).some(key => {
-        const formValue = String((form as any)[key] || '').trim();
-        const serverValue = String((serverData as any)[key] || '').trim();
-        return formValue !== serverValue;
-      });
-      setHasUnsavedChanges(formChanged);
-    }
-  }, [form, profileData, formInitialized]);
-  
-  // Redirect to home if onboarding is already complete (based on server data only)
-  // Only redirect if all data has finished loading and onboarding is confirmed complete
-  useEffect(() => {
-    // Don't redirect if we're still loading data
-    if (profileLoading || (userId && emergencyContactsLoading)) {
-      return;
-    }
-    
-    // Don't redirect if form hasn't been initialized yet
-    if (!formInitialized) {
-      return;
-    }
-    
-    // Don't redirect if user has unsaved changes (prevents redirect during typing)
-    if (hasUnsavedChanges) {
-      return;
-    }
-    
-    // Only redirect if onboarding is truly complete based on server data
-    // This prevents redirects when user is typing in the form
-    if (profileData && isOnboardingCompleteFromServer) {
-      navigate('/home', { replace: true });
-    }
-  }, [isOnboardingCompleteFromServer, profileData, profileLoading, navigate, userId, emergencyContactsLoading, formInitialized, hasUnsavedChanges]);
-  
-  // Handle next step
+  // Handle next step — always move forward (no per-step validation); save best-effort
   const handleNext = async () => {
-    if (!isStepValid(currentStep)) {
-      toast.error('Please complete all required fields before continuing');
-      return;
-    }
-    
-    // Save before moving to next step
+    if (currentStep >= totalSteps) return;
     try {
       await saveProfile();
-    } catch (error) {
-      // Error already handled in saveProfile
+    } catch {
+      // Still advance so the user can move freely between steps
+    }
+    setCurrentStep((s) => Math.min(s + 1, totalSteps));
+  };
+
+  const handleSaveAndContinueToHub = async () => {
+    const incomplete = getHubIncompleteSteps();
+    if (incomplete.length > 0) {
+      const detail = incomplete.map((s) => `Step ${s} (${STEP_LABELS[s]})`).join(', ');
+      toast.error(
+        `Please complete all required fields before continuing to the Hub. Missing information in: ${detail}.`
+      );
       return;
     }
-    
-    if (currentStep < totalSteps) {
-      setCurrentStep(currentStep + 1);
-    } else {
-      // Final step - check if all required fields are complete
-      if (!isOnboardingComplete) {
-        toast.error('Please complete all required fields to finish onboarding');
-        return;
-      }
-      
-      // Step 1 complete → Step 2 documents (or home if none assigned)
-      toast.success('Profile saved! Next: sign any required documents.');
+    try {
+      await saveProfile();
       await queryClient.invalidateQueries({ queryKey: ['meProfile'] });
+      await queryClient.invalidateQueries({ queryKey: ['me-profile'] });
       await queryClient.invalidateQueries({ queryKey: ['emergency-contacts', userId] });
       await queryClient.invalidateQueries({ queryKey: ['me-onboarding-docs'] });
-      navigate('/onboarding/documents', { replace: true });
+      await queryClient.invalidateQueries({ queryKey: ['me-onboarding-status'] });
+      toast.success('Profile saved. Welcome to the Hub.');
+      navigate('/home', { replace: true });
+    } catch {
+      // saveProfile already toasts
     }
   };
-  
-  // Handle previous step
+
+  // Handle previous step — save best-effort, always go back when not on step 1
   const handlePrevious = async () => {
-    // Save before moving to previous step
+    if (currentStep <= 1) return;
     try {
       await saveProfile();
-    } catch (error) {
-      // Error already handled in saveProfile, but continue anyway
-      // User can still go back even if save fails
+    } catch {
+      // User can still go back
     }
-    
-    if (currentStep > 1) {
-      setCurrentStep(currentStep - 1);
+    setCurrentStep((s) => Math.max(s - 1, 1));
+  };
+
+  const handleJumpToStep = async (step: number) => {
+    if (step < 1 || step > totalSteps || step === currentStep || saving) return;
+    try {
+      await saveProfile();
+    } catch {
+      // Still jump — same as Next/Previous
     }
+    setCurrentStep(step);
   };
   
   if (meLoading || profileLoading || !userId) {
@@ -606,41 +549,107 @@ export default function OnboardingWizard() {
   }
   
   return (
-    <div className="min-h-screen bg-gray-50">
-      {/* Progress Bar */}
-      <div className="bg-white border-b">
-        <div className="max-w-4xl mx-auto px-6 py-4">
-          <div className="flex items-center justify-between mb-2">
-            <h1 className="text-2xl font-bold">Complete Your Onboarding</h1>
-            <div className="text-sm text-gray-600">
-              Step {currentStep} of {totalSteps}
+    <div className="min-h-screen bg-gray-50 flex flex-col">
+      <header className="bg-white border-b border-gray-200 shadow-sm shrink-0">
+        <div className="max-w-5xl mx-auto px-4 sm:px-6 py-4 flex flex-wrap items-center justify-between gap-4">
+          <div className="flex items-center gap-3 sm:gap-4 min-w-0">
+            <div className="flex items-center gap-2 shrink-0">
+              <img src={LOGO_SRC} alt="Company" className="h-14 w-auto max-w-[180px] object-contain object-left" />
+            </div>
+            <div className="hidden sm:block h-10 w-px bg-gray-200 shrink-0" aria-hidden />
+            <div className="min-w-0">
+              <p className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider">MK Hub · HR</p>
+              <h1 className="text-lg sm:text-xl font-bold text-gray-900 truncate">Profile onboarding</h1>
             </div>
           </div>
-          <div className="w-full bg-gray-200 rounded-full h-2">
-            <div
-              className="bg-gradient-to-r from-brand-red to-[#ee2b2b] h-2 rounded-full transition-all duration-300"
-              style={{ width: `${(currentStep / totalSteps) * 100}%` }}
-            />
-          </div>
-          <div className="flex justify-between mt-2 text-xs text-gray-500">
-            <span>Basic Information</span>
-            <span>Address</span>
-            <span>Contact</span>
-            <span>Education</span>
-            <span>Legal & Documents</span>
-            <span>Emergency Contacts</span>
-          </div>
+          <nav className="flex items-center gap-2 shrink-0">
+            <button
+              type="button"
+              onClick={() => logoutSession(queryClient, navigate)}
+              className="px-3 py-2 text-xs font-medium text-gray-700 bg-white border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors"
+            >
+              Logout
+            </button>
+          </nav>
         </div>
-      </div>
-      
-      {/* Main Content */}
-      <div className="max-w-4xl mx-auto px-6 py-8">
-        <div className="bg-white rounded-xl shadow-sm border p-8">
+      </header>
+
+      <main className="flex-1 w-full max-w-5xl mx-auto px-4 sm:px-6 py-6 sm:py-8 pb-10">
+        <div className="space-y-5">
+          <div className="rounded-xl border border-gray-200 bg-white shadow-sm p-5 sm:p-6">
+            <div className="flex flex-wrap items-start justify-between gap-4 mb-4">
+              <div className="min-w-0 max-w-xl">
+                <h2 className="text-base sm:text-lg font-semibold text-gray-900">Your progress</h2>
+              </div>
+              <div className="text-right shrink-0">
+                <div className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide">Progress</div>
+                <div className="text-sm font-medium text-gray-800 mt-0.5">
+                  Step {currentStep} of {totalSteps}
+                </div>
+              </div>
+            </div>
+            <div
+              className="flex gap-1 w-full"
+              role="tablist"
+              aria-label="Onboarding steps"
+            >
+              {Array.from({ length: totalSteps }, (_, i) => {
+                const step = i + 1;
+                const reached = step <= currentStep;
+                const isCurrent = step === currentStep;
+                return (
+                  <button
+                    key={step}
+                    type="button"
+                    role="tab"
+                    aria-selected={isCurrent}
+                    aria-current={isCurrent ? 'step' : undefined}
+                    disabled={saving}
+                    onClick={() => handleJumpToStep(step)}
+                    title={STEP_LABELS[step]}
+                    className={`flex-1 min-h-[10px] rounded-full transition-all disabled:opacity-50 disabled:cursor-not-allowed ${
+                      reached
+                        ? 'bg-gradient-to-r from-brand-red to-[#ee2b2b]'
+                        : 'bg-gray-200'
+                    } ${
+                      isCurrent
+                        ? 'ring-2 ring-brand-red ring-offset-2 ring-offset-white'
+                        : 'hover:brightness-95'
+                    } cursor-pointer`}
+                  />
+                );
+              })}
+            </div>
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-x-2 gap-y-1 mt-3 text-xs">
+              {Array.from({ length: totalSteps }, (_, i) => {
+                const step = i + 1;
+                const isCurrent = step === currentStep;
+                return (
+                  <button
+                    key={step}
+                    type="button"
+                    disabled={saving}
+                    onClick={() => handleJumpToStep(step)}
+                    className={`text-left rounded-md px-1.5 py-2 transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${
+                      isCurrent
+                        ? 'text-brand-red font-semibold bg-red-50'
+                        : 'text-gray-500 hover:text-gray-900 hover:bg-gray-100'
+                    }`}
+                  >
+                    <span className="sr-only">Step {step}: </span>
+                    {STEP_LABELS[step]}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          <div className="rounded-xl border border-gray-200 bg-white shadow-sm p-5 sm:p-6 sm:p-8">
           {/* Step 1: Basic Information */}
           {currentStep === 1 && (
             <div className="space-y-6">
               <div>
-                <h2 className="text-xl font-semibold mb-1">Basic Information</h2>
+                <h2 className="text-base sm:text-lg font-semibold text-gray-900 mb-1">Basic Information</h2>
                 <p className="text-sm text-gray-500">Core personal details</p>
               </div>
               <div className="grid md:grid-cols-2 gap-4">
@@ -723,7 +732,7 @@ export default function OnboardingWizard() {
           {currentStep === 2 && (
             <div className="space-y-6">
               <div>
-                <h2 className="text-xl font-semibold mb-1">Address</h2>
+                <h2 className="text-base sm:text-lg font-semibold text-gray-900 mb-1">Address</h2>
                 <p className="text-sm text-gray-500">Home address for contact and records</p>
               </div>
               <div className="grid md:grid-cols-2 gap-4">
@@ -827,7 +836,7 @@ export default function OnboardingWizard() {
           {currentStep === 3 && (
             <div className="space-y-6">
               <div>
-                <h2 className="text-xl font-semibold mb-1">Contact</h2>
+                <h2 className="text-base sm:text-lg font-semibold text-gray-900 mb-1">Contact</h2>
                 <p className="text-sm text-gray-500">How we can reach you</p>
               </div>
               <div className="grid md:grid-cols-2 gap-4">
@@ -867,28 +876,43 @@ export default function OnboardingWizard() {
           )}
           
           {/* Navigation Buttons */}
-          <div className="mt-8 pt-6 border-t flex items-center justify-between">
+          <div className="mt-8 pt-6 border-t border-gray-100 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
             <button
+              type="button"
               onClick={handlePrevious}
               disabled={currentStep === 1}
-              className={`px-6 py-2 rounded-lg font-medium ${
+              className={`px-5 py-2.5 text-sm font-medium rounded-lg border transition-colors ${
                 currentStep === 1
-                  ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
-                  : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                  ? 'border-gray-100 bg-gray-50 text-gray-400 cursor-not-allowed'
+                  : 'border-gray-200 text-gray-700 bg-white hover:bg-gray-50 hover:border-gray-300'
               }`}
             >
               Previous
             </button>
-            <button
-              onClick={handleNext}
-              disabled={saving}
-              className="px-6 py-2 rounded-lg font-medium text-white bg-gradient-to-r from-brand-red to-[#ee2b2b] hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              {saving ? 'Saving...' : currentStep === totalSteps ? 'Complete Onboarding' : 'Next'}
-            </button>
+            <div className="flex flex-wrap items-center justify-end gap-2 sm:gap-3">
+              {currentStep < totalSteps && (
+                <button
+                  type="button"
+                  onClick={handleNext}
+                  disabled={saving}
+                  className="px-5 py-2.5 text-sm font-medium text-white bg-gradient-to-r from-brand-red to-[#ee2b2b] rounded-lg hover:opacity-95 shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {saving ? 'Saving...' : 'Next'}
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={handleSaveAndContinueToHub}
+                disabled={saving}
+                className="px-5 py-2.5 text-sm font-medium text-gray-700 border border-gray-200 rounded-lg bg-white hover:bg-gray-50 hover:border-gray-300 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {saving ? 'Saving...' : 'Go to the Hub!'}
+              </button>
+            </div>
           </div>
         </div>
-      </div>
+        </div>
+      </main>
     </div>
   );
 }
@@ -956,7 +980,7 @@ function EducationStep({ userId }: { userId: string }) {
   return (
     <div className="space-y-6">
       <div>
-        <h2 className="text-xl font-semibold mb-1">Education</h2>
+        <h2 className="text-base sm:text-lg font-semibold text-gray-900 mb-1">Education</h2>
         <p className="text-sm text-gray-500">Academic history (optional)</p>
       </div>
       {isLoading ? (
@@ -1056,7 +1080,7 @@ function LegalDocumentsStep({ userId, form, set, formatSIN }: { userId: string; 
   return (
     <div className="space-y-6">
       <div>
-        <h2 className="text-xl font-semibold mb-1">Legal & Documents</h2>
+        <h2 className="text-base sm:text-lg font-semibold text-gray-900 mb-1">Legal & Documents</h2>
         <p className="text-sm text-gray-500">Legal status and identification</p>
       </div>
       <div className="grid md:grid-cols-2 gap-4">
@@ -1318,7 +1342,7 @@ function EmergencyContactsStep({ userId }: { userId: string }) {
   return (
     <div className="space-y-6">
       <div>
-        <h2 className="text-xl font-semibold mb-1">Emergency Contacts</h2>
+        <h2 className="text-base sm:text-lg font-semibold text-gray-900 mb-1">Emergency Contacts</h2>
         <p className="text-sm text-gray-500">
           People to contact in case of emergency. At least one contact is required.
         </p>
@@ -1512,6 +1536,7 @@ function EmergencyContactsStep({ userId }: { userId: string }) {
       </div>
       
       {createOpen && (
+        <OverlayPortal>
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
           <div className="w-[800px] max-w-[95vw] bg-white rounded-xl overflow-hidden">
             <div className="px-4 py-3 border-b flex items-center justify-between">
@@ -1620,6 +1645,7 @@ function EmergencyContactsStep({ userId }: { userId: string }) {
             </div>
           </div>
         </div>
+        </OverlayPortal>
       )}
     </div>
   );
@@ -2225,6 +2251,7 @@ function VisaInformationSection({ userId, canEdit, isRequired = false, showInlin
       )}
       
       {createOpen && (
+        <OverlayPortal>
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
           <div className="w-[600px] max-w-[95vw] bg-white rounded-xl overflow-hidden">
             <div className="px-4 py-3 border-b flex items-center justify-between">
@@ -2320,6 +2347,7 @@ function VisaInformationSection({ userId, canEdit, isRequired = false, showInlin
             </div>
           </div>
         </div>
+        </OverlayPortal>
       )}
     </div>
   );

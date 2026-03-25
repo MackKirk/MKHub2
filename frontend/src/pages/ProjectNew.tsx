@@ -6,6 +6,7 @@ import { sortByLabel } from '@/lib/sortOptions';
 import toast from 'react-hot-toast';
 import ImagePicker from '@/components/ImagePicker';
 import AddressAutocomplete from '@/components/AddressAutocomplete';
+import OverlayPortal from '@/components/OverlayPortal';
 
 type Client = { id:string, display_name?:string, name?:string, city?:string, province?:string, address_line1?:string };
 type Site = { id:string, site_name?:string, site_address_line1?:string, site_city?:string, site_province?:string, site_country?:string, site_postal_code?:string, site_address_line2?:string, site_lat?:number, site_lng?:number, site_notes?:string };
@@ -229,7 +230,7 @@ export default function ProjectNew(){
 
   return (
     <>
-    <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center overflow-y-auto p-4">
+    <OverlayPortal><div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center overflow-y-auto p-4">
       <div className="w-[900px] max-w-[95vw] max-h-[90vh] bg-gray-100 rounded-xl overflow-hidden flex flex-col border border-gray-200 shadow-xl">
         {/* Title bar - same style as Opportunities / ProjectDetail */}
         <div className="rounded-t-xl border-b border-gray-200 bg-white p-4 flex-shrink-0">
@@ -681,7 +682,7 @@ export default function ProjectNew(){
           </div>
         </div>
       </div>
-    </div>
+    </div></OverlayPortal>
     {hiddenPickerOpen && (
       <ImagePicker isOpen={true} onClose={()=> setHiddenPickerOpen(false)} clientId={String(clientId||'')} targetWidth={800} targetHeight={800} allowEdit={true} onConfirm={async(blob)=>{
         try{ setCoverBlob(blob); setCoverPreview(URL.createObjectURL(blob)); }catch(_e){} finally{ setHiddenPickerOpen(false); }
@@ -776,7 +777,7 @@ function ClientSelectModal({ open, onClose, onSelect }: { open: boolean, onClose
   if (!open) return null;
 
   return (
-    <div className="fixed inset-0 z-[60] bg-black/50 flex items-center justify-center p-4">
+    <OverlayPortal><div className="fixed inset-0 z-[60] bg-black/50 flex items-center justify-center p-4">
       <div className="w-[720px] max-w-[95vw] bg-gray-100 rounded-xl overflow-hidden max-h-[90vh] flex flex-col border border-gray-200 shadow-xl">
         <div className="rounded-t-xl border-b border-gray-200 bg-white p-4 flex items-center justify-between flex-shrink-0">
           <div>
@@ -835,7 +836,7 @@ function ClientSelectModal({ open, onClose, onSelect }: { open: boolean, onClose
           )}
         </div>
       </div>
-    </div>
+    </div></OverlayPortal>
   );
 }
 
@@ -951,7 +952,7 @@ function RelatedClientSelectModal({
   if (!open) return null;
 
   return (
-    <div className="fixed inset-0 z-[60] bg-black/50 flex items-center justify-center p-4">
+    <OverlayPortal><div className="fixed inset-0 z-[60] bg-black/50 flex items-center justify-center p-4">
       <div className="w-[720px] max-w-[95vw] bg-gray-100 rounded-xl overflow-hidden max-h-[90vh] flex flex-col border border-gray-200 shadow-xl">
         <div className="rounded-t-xl border-b border-gray-200 bg-white p-4 flex items-center justify-between flex-shrink-0">
           <div>
@@ -1029,7 +1030,7 @@ function RelatedClientSelectModal({
           </button>
         </div>
       </div>
-    </div>
+    </div></OverlayPortal>
   );
 }
 

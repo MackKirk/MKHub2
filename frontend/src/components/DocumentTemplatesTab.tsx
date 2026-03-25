@@ -3,6 +3,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import toast from 'react-hot-toast';
 import { useConfirm } from '@/components/ConfirmProvider';
+import OverlayPortal from '@/components/OverlayPortal';
 
 type Template = {
   id: string;
@@ -291,7 +292,7 @@ export default function DocumentTemplatesTab() {
         )}
       </div>
       {editingTemplate && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+        <OverlayPortal><div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
           <div className="bg-white rounded-xl shadow-xl max-w-md w-full">
             <div className="p-4 border-b border-gray-200">
               <h3 className="text-lg font-semibold text-gray-900">Edit template</h3>
@@ -374,7 +375,7 @@ export default function DocumentTemplatesTab() {
               </button>
             </div>
           </div>
-        </div>
+        </div></OverlayPortal>
       )}
     </div>
   );

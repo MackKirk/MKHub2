@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import FleetServiceCalendar from './FleetServiceCalendar';
 import { InspectionScheduleForm } from './InspectionNew';
+import OverlayPortal from '@/components/OverlayPortal';
 
 export default function FleetSchedulePage() {
   const queryClient = useQueryClient();
@@ -38,7 +39,7 @@ export default function FleetSchedulePage() {
       <FleetServiceCalendar embedView />
 
       {showNewInspectionModal && (
-        <div
+        <OverlayPortal><div
           className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center overflow-y-auto p-4"
           onClick={() => setShowNewInspectionModal(false)}
         >
@@ -101,7 +102,7 @@ export default function FleetSchedulePage() {
               </button>
             </div>
           </div>
-        </div>
+        </div></OverlayPortal>
       )}
     </div>
   );

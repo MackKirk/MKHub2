@@ -2,13 +2,26 @@ import json
 from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, HTTPException, Body
 from pydantic import BaseModel
+from sqlalchemy import update
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 from typing import Optional, List, Any
 import uuid
 
 from ..db import get_db
-from ..models.models import User, Role, EmployeeProfile, UserHomeDashboard
-from ..auth.security import require_permissions, get_current_user
+from ..models.models import (
+    User,
+    Role,
+    EmployeeProfile,
+    UserHomeDashboard,
+    FileObject,
+    Invite,
+    ProjectReport,
+    ProjectEvent,
+    Client,
+    EmployeeNote,
+)
+from ..auth.security import require_permissions, require_roles, get_current_user
 
 
 router = APIRouter(prefix="/users", tags=["users"])
@@ -113,10 +126,10 @@ def list_users(
     Args:
         q: Search query (username, email, or name)
         page: Page number (1-indexed)
-        limit: Number of items per page (default 50, max 200)
+        limit: Number of items per page (default 50, max 2000)
     """
     # Ensure reasonable limits
-    limit = min(max(1, limit), 200)
+    limit = min(max(1, limit), 2000)
     page = max(1, page)
     offset = (page - 1) * limit
     
@@ -200,6 +213,68 @@ def update_user(user_id: str, payload: dict, db: Session = Depends(get_db), _=De
     db.commit()
     ep = db.query(EmployeeProfile).filter(EmployeeProfile.user_id == u.id).first()
     return _user_to_dict(u, ep)
+
+
+def _nullify_optional_user_references(db: Session, user_uuid: uuid.UUID) -> None:
+    """
+    Postgres uses NO ACTION on several optional FKs to users.id (model omits ondelete).
+    Clear those before deleting the user row.
+    """
+    db.execute(update(FileObject).where(FileObject.created_by == user_uuid).values(created_by=None))
+    db.execute(update(Invite).where(Invite.created_by == user_uuid).values(created_by=None))
+    db.execute(update(EmployeeProfile).where(EmployeeProfile.manager_user_id == user_uuid).values(manager_user_id=None))
+    db.execute(update(ProjectReport).where(ProjectReport.approved_by == user_uuid).values(approved_by=None))
+    db.execute(update(ProjectEvent).where(ProjectEvent.created_by == user_uuid).values(created_by=None))
+    db.execute(update(Client).where(Client.estimator_id == user_uuid).values(estimator_id=None))
+    db.execute(update(EmployeeNote).where(EmployeeNote.created_by == user_uuid).values(created_by=None))
+
+
+@router.delete("/{user_id}")
+def delete_user(
+    user_id: str,
+    db: Session = Depends(get_db),
+    admin: User = Depends(require_roles("admin")),
+):
+    """Permanently delete a user. Restricted to accounts with the admin system role (Administrator Access)."""
+    if str(admin.id) == str(user_id):
+        raise HTTPException(status_code=400, detail="Cannot delete your own account")
+    u = db.query(User).filter(User.id == user_id).first()
+    if not u:
+        raise HTTPException(status_code=404, detail="Not found")
+    user_info = {
+        "user_id": str(u.id),
+        "email_personal": getattr(u, "email_personal", None),
+        "username": getattr(u, "username", None),
+    }
+    uid = u.id if isinstance(u.id, uuid.UUID) else uuid.UUID(str(u.id))
+    try:
+        _nullify_optional_user_references(db, uid)
+        db.delete(u)
+        db.commit()
+    except IntegrityError as exc:
+        db.rollback()
+        raise HTTPException(
+            status_code=409,
+            detail="Cannot delete user while other data still references this account. "
+            + (str(exc.orig) if getattr(exc, "orig", None) else str(exc)),
+        ) from exc
+    try:
+        from ..services.audit import create_audit_log
+
+        create_audit_log(
+            db=db,
+            entity_type="user",
+            entity_id=user_info["user_id"],
+            action="DELETE",
+            actor_id=str(admin.id) if admin else None,
+            actor_role="admin",
+            source="api",
+            changes_json={"deleted_user": user_info},
+            context={},
+        )
+    except Exception:
+        pass
+    return {"deleted": True}
 
 
 # =====================

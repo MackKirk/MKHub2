@@ -9,6 +9,7 @@ import { AddPageModal } from '@/components/AddPageModal';
 import ImagePicker from '@/components/ImagePicker';
 import type { DocumentPage, DocElement, PageMargins } from '@/types/documentCreator';
 import { DOCUMENT_EDITOR_FONTS, TEXT_STYLE_PRESETS, createTextElement, createImageElement, createImagePlaceholder, createBlockElement } from '@/types/documentCreator';
+import OverlayPortal from '@/components/OverlayPortal';
 
 type Template = {
   id: string;
@@ -1573,7 +1574,7 @@ export default function DocumentEditor(props: DocumentEditorProps) {
         )}
       </div>
       {pdfPreview && (
-        <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4" role="dialog" aria-modal="true">
+        <OverlayPortal><div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4" role="dialog" aria-modal="true">
           <div className="w-full max-w-5xl bg-white rounded-xl shadow-xl overflow-hidden border border-gray-200">
             <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200 bg-gray-50">
               <div className="min-w-0">
@@ -1616,7 +1617,7 @@ export default function DocumentEditor(props: DocumentEditorProps) {
               />
             </div>
           </div>
-        </div>
+        </div></OverlayPortal>
       )}
       <div className="flex-1 flex min-h-0">
         <DocumentPagesStrip

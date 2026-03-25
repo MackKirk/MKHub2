@@ -145,6 +145,61 @@ def _get_user_permission_map(user: User) -> dict:
     return perm_map
 
 
+def _fleet_area_unlocked(perm_map: dict) -> bool:
+    """True if user may use Fleet & Equipment scoped permissions (UI + legacy keys)."""
+    if perm_map.get("fleet:access") or perm_map.get("fleet:read"):
+        return True
+    return bool(
+        perm_map.get("fleet:vehicles:read")
+        or perm_map.get("fleet:vehicles:write")
+        or perm_map.get("fleet:equipment:read")
+        or perm_map.get("fleet:equipment:write")
+    )
+
+
+def _perm_matches_map(perm_map: dict, perm: str) -> bool:
+    """Whether perm_map grants `perm`, including granular Fleet & Equipment aliases."""
+    if perm_map.get(perm):
+        return True
+    if perm == "fleet:access":
+        return _fleet_area_unlocked(perm_map)
+    if perm == "fleet:read":
+        return bool(perm_map.get("fleet:vehicles:read"))
+    if perm == "fleet:write":
+        return bool(perm_map.get("fleet:vehicles:write"))
+    if perm == "equipment:read":
+        return bool(perm_map.get("fleet:equipment:read") and _fleet_area_unlocked(perm_map))
+    if perm == "equipment:write":
+        return bool(perm_map.get("fleet:equipment:write") and _fleet_area_unlocked(perm_map))
+    # Work orders & inspections live under Fleet in the UI; fleet tab permissions imply access here.
+    # (There is no work_orders:access / inspections:access in the permission seed.)
+    if perm == "work_orders:read":
+        return _fleet_area_unlocked(perm_map)
+    if perm == "work_orders:write":
+        return bool(
+            perm_map.get("fleet:write")
+            or perm_map.get("fleet:vehicles:write")
+            or perm_map.get("fleet:equipment:write")
+        )
+    if perm == "work_orders:assign":
+        return bool(
+            perm_map.get("work_orders:assign")
+            or perm_map.get("work_orders:write")
+            or perm_map.get("fleet:write")
+            or perm_map.get("fleet:vehicles:write")
+            or perm_map.get("fleet:equipment:write")
+        )
+    if perm == "inspections:read":
+        return _fleet_area_unlocked(perm_map)
+    if perm == "inspections:write":
+        return bool(
+            perm_map.get("fleet:write")
+            or perm_map.get("fleet:vehicles:write")
+            or perm_map.get("fleet:equipment:write")
+        )
+    return False
+
+
 def _has_permission(user: User, perm: str) -> bool:
     # Admin role bypass
     if any((getattr(r, 'name', None) or '').lower() == 'admin' for r in user.roles):
@@ -174,6 +229,20 @@ def _has_permission(user: User, perm: str) -> bool:
                 elif area == 'inventory' and (perm.startswith('inventory:products:') or perm.startswith('inventory:suppliers:')):
                     # Skip area access check for inventory products/suppliers permissions
                     pass
+                # Fleet: allow granular tab permissions without a stored fleet:access row (legacy UI gap)
+                elif area == 'fleet' and perm != 'fleet:access':
+                    if area_access_key in perm_map and not perm_map.get(area_access_key):
+                        return False
+                    if not _fleet_area_unlocked(perm_map):
+                        return False
+                # Equipment API uses equipment:read/write; those are granted via fleet:equipment:* + fleet area
+                elif area == 'equipment' and perm in ('equipment:read', 'equipment:write'):
+                    pass
+                # No work_orders:access / inspections:access in product; rules are in _perm_matches_map
+                elif area == 'work_orders':
+                    pass
+                elif area == 'inspections':
+                    pass
                 else:
                     # Check if area access is explicitly denied (False in override)
                     if area_access_key in perm_map and not perm_map.get(area_access_key):
@@ -183,8 +252,7 @@ def _has_permission(user: User, perm: str) -> bool:
                         # Area access not granted, deny all sub-permissions
                         return False
     
-    # Check the specific permission
-    return bool(perm_map.get(perm))
+    return _perm_matches_map(perm_map, perm)
 
 
 def has_project_files_category_permission(

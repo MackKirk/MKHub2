@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import QRCodeLib from 'qrcode';
+import OverlayPortal from '@/components/OverlayPortal';
 
 type Platform = 'android' | 'ios' | 'desktop' | 'unknown';
 
@@ -322,7 +323,7 @@ export default function Install() {
 
       {/* iOS Installation Modal - Auto-shows on iOS */}
       {showIOSModal && platform === 'ios' && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4 animate-fade-in">
+        <OverlayPortal><div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4 animate-fade-in">
           <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-6 animate-slide-up">
             <div className="flex items-center justify-between mb-4">
               <h2 className="text-2xl font-bold text-gray-900">Install MK Hub</h2>
@@ -413,7 +414,7 @@ export default function Install() {
               animation: slide-up 0.4s ease-out;
             }
           `}</style>
-        </div>
+        </div></OverlayPortal>
       )}
     </div>
   );

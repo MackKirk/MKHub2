@@ -9,6 +9,7 @@ import { Link, useLocation, useSearchParams, useNavigate } from 'react-router-do
 import LoadingOverlay from '@/components/LoadingOverlay';
 import { DivisionIcon } from '@/components/DivisionIcon';
 import { ReportAttachmentAreaMultiple } from '@/components/ReportAttachmentArea';
+import OverlayPortal from '@/components/OverlayPortal';
 
 // Helper function to get user initials
 function getUserInitials(user: any): string {
@@ -734,7 +735,7 @@ function FilterBuilderModal({
   if (!isOpen) return null;
 
   return (
-    <div 
+    <OverlayPortal><div 
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 transition-opacity duration-200 ease-out"
       onClick={(e) => {
         if (e.target === e.currentTarget) {
@@ -825,7 +826,7 @@ function FilterBuilderModal({
           </div>
         </div>
       </div>
-    </div>
+    </div></OverlayPortal>
   );
 }
 
@@ -1480,7 +1481,7 @@ export function CreateReportModal({ projectId, reportCategories, onClose, onSucc
   };
 
   return (
-    <div
+    <OverlayPortal><div
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
       onClick={onClose}
     >
@@ -1584,7 +1585,7 @@ export function CreateReportModal({ projectId, reportCategories, onClose, onSucc
           </button>
         </div>
       </div>
-    </div>
+    </div></OverlayPortal>
   );
 }
 

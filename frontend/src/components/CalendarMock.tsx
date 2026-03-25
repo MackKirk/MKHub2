@@ -5,6 +5,7 @@ import toast from 'react-hot-toast';
 import EventModal from './EventModal';
 import { useConfirm } from '@/components/ConfirmProvider';
 import { formatDateLocal } from '@/lib/dateUtils';
+import OverlayPortal from '@/components/OverlayPortal';
 
 type CalendarMockProps = {
   title?: string;
@@ -582,7 +583,7 @@ function EventViewModal({
   };
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4">
+    <OverlayPortal><div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4">
       <div className="bg-white rounded-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
         <div className="sticky top-0 bg-white border-b p-4 flex items-center justify-between">
           <h2 className="text-xl font-semibold">{event.name}</h2>
@@ -696,6 +697,6 @@ function EventViewModal({
           </div>
         </div>
       </div>
-    </div>
+    </div></OverlayPortal>
   );
 }

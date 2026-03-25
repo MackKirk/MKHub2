@@ -14,6 +14,7 @@ import { useUnsavedChangesGuard } from '@/hooks/useUnsavedChangesGuard';
 import UserLoans from '@/components/UserLoans';
 import UserReports from '@/components/UserReports';
 import { DivisionIcon } from '@/components/DivisionIcon';
+import OverlayPortal from '@/components/OverlayPortal';
 
 // List of implemented permissions (permissions that are actually checked in the codebase)
 const IMPLEMENTED_PERMISSIONS = new Set([
@@ -310,6 +311,7 @@ function ProjectFilesCategoriesModal({
   const title = mode === 'read' ? 'View Files Categories' : 'Edit Files Categories';
 
   return (
+    <OverlayPortal>
     <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4">
       <div className="bg-white rounded-xl w-full max-w-2xl max-h-[90vh] overflow-hidden flex flex-col">
         <div className="p-4 border-b flex items-center justify-between">
@@ -387,6 +389,7 @@ function ProjectFilesCategoriesModal({
         </div>
       </div>
     </div>
+    </OverlayPortal>
   );
 }
 
@@ -619,10 +622,25 @@ const UserPermissions = forwardRef<UserPermissionsRef, { userId: string; onDirty
       }
       
       newPerms[key] = newValue;
+
+      // Fleet & Equipment: enabling any fleet sub-permission turns on area access (matches UserDetail / backend hierarchy)
+      if (newValue && key.startsWith('fleet:') && key !== 'fleet:access') {
+        newPerms['fleet:access'] = true;
+      }
       
       // If disabling a view permission, also disable the corresponding edit permission
       if (!newValue) {
-        if (key === 'hr:users:view:general') {
+        if (key === 'fleet:access') {
+          Object.keys(newPerms).forEach((k) => {
+            if (k.startsWith('fleet:') && k !== 'fleet:access') {
+              newPerms[k] = false;
+            }
+          });
+        } else if (key === 'fleet:vehicles:read') {
+          newPerms['fleet:vehicles:write'] = false;
+        } else if (key === 'fleet:equipment:read') {
+          newPerms['fleet:equipment:write'] = false;
+        } else if (key === 'hr:users:view:general') {
           newPerms['hr:users:edit:general'] = false;
         } else if (key === 'hr:users:view:timesheet') {
           newPerms['hr:users:edit:timesheet'] = false;
@@ -727,6 +745,12 @@ const UserPermissions = forwardRef<UserPermissionsRef, { userId: string; onDirty
     if (permKey.startsWith('business:projects:') && permKey.endsWith(':write') && permKey !== 'business:projects:write') {
       const viewKey = permKey.replace(':write', ':read');
       return !!permissions[viewKey];
+    }
+    if (permKey === 'fleet:vehicles:write') {
+      return !!permissions['fleet:vehicles:read'];
+    }
+    if (permKey === 'fleet:equipment:write') {
+      return !!permissions['fleet:equipment:read'];
     }
     return true; // Default: no restrictions
   };
@@ -961,6 +985,7 @@ const UserPermissions = forwardRef<UserPermissionsRef, { userId: string; onDirty
 
         {/* Modal: Apply template as Merge or Replace */}
         {showApplyTemplateModal && (
+          <OverlayPortal>
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={() => setShowApplyTemplateModal(false)}>
             <div className="bg-white rounded-lg shadow-xl p-4 max-w-md w-full mx-4" onClick={(e) => e.stopPropagation()}>
               <h3 className="text-base font-semibold text-gray-900 mb-2">Apply permission template</h3>
@@ -992,6 +1017,7 @@ const UserPermissions = forwardRef<UserPermissionsRef, { userId: string; onDirty
               </div>
             </div>
           </div>
+          </OverlayPortal>
         )}
 
         <div className="space-y-6">
@@ -1415,6 +1441,23 @@ const UserPermissions = forwardRef<UserPermissionsRef, { userId: string; onDirty
                     ) : cat.category.name === 'fleet' ? (
                       /* Special handling for Fleet & Equipment category - group by vehicles and equipment */
                       <div className="space-y-4">
+                        {areaAccessPerm && (
+                          <label className="flex items-start gap-1.5 p-2 rounded-lg bg-white border border-gray-200 hover:bg-gray-50 cursor-pointer">
+                            <input
+                              type="checkbox"
+                              checked={permissions[areaAccessPerm.key] || false}
+                              onChange={() => canEdit && handleToggle(areaAccessPerm.key)}
+                              disabled={!canEdit}
+                              className="mt-0.5 w-3.5 h-3.5 rounded border-gray-300 text-brand-red focus:ring-brand-red flex-shrink-0 disabled:opacity-50 disabled:cursor-not-allowed"
+                            />
+                            <div className="flex-1 min-w-0">
+                              <div className="text-xs font-semibold text-gray-900">{areaAccessPerm.label}</div>
+                              {areaAccessPerm.description && (
+                                <div className="text-[10px] text-gray-500 mt-0.5">{areaAccessPerm.description}</div>
+                              )}
+                            </div>
+                          </label>
+                        )}
                         {['vehicles', 'equipment'].map((area: string) => {
                           const areaPerms = subPermissions.filter((p: any) => p.key.includes(`fleet:${area}`));
                           if (areaPerms.length === 0) return null;
@@ -1464,16 +1507,18 @@ const UserPermissions = forwardRef<UserPermissionsRef, { userId: string; onDirty
                                 {editPerms.length > 0 && (
                                   <div className="space-y-1.5">
                                     <div className="text-[10px] font-semibold text-gray-600 mb-1.5 uppercase tracking-wide">Edit</div>
-                                    {editPerms.map((perm: any) => (
+                                    {editPerms.map((perm: any) => {
+                                      const canEnableFleetEdit = canEdit && canEnableEditPermission(perm.key, permissions);
+                                      return (
                                       <label
                                         key={perm.id}
-                                        className="flex items-start gap-1.5 p-1.5 rounded bg-white hover:bg-gray-50 cursor-pointer"
+                                        className={`flex items-start gap-1.5 p-1.5 rounded bg-white ${canEnableFleetEdit ? 'hover:bg-gray-50 cursor-pointer' : 'cursor-default'}`}
                                       >
                                         <input
                                           type="checkbox"
                                           checked={permissions[perm.key] || false}
-                                          onChange={() => canEdit && handleToggle(perm.key)}
-                                          disabled={!canEdit}
+                                          onChange={() => canEnableFleetEdit && handleToggle(perm.key)}
+                                          disabled={!canEnableFleetEdit}
                                           className="mt-0.5 w-3.5 h-3.5 rounded border-gray-300 text-brand-red focus:ring-brand-red flex-shrink-0 disabled:opacity-50 disabled:cursor-not-allowed"
                                         />
                                         <div className="flex-1 min-w-0">
@@ -1490,7 +1535,8 @@ const UserPermissions = forwardRef<UserPermissionsRef, { userId: string; onDirty
                                           )}
                                         </div>
                                       </label>
-                                    ))}
+                                      );
+                                    })}
                                   </div>
                                 )}
                               </div>
@@ -2330,21 +2376,27 @@ export default function UserInfo(){
     const isAdmin = (me?.roles || []).some((r: string) => String(r || '').toLowerCase() === 'admin');
     if (isAdmin) return true;
     const perms = me?.permissions || [];
-    return perms.includes('fleet:access') || perms.includes('fleet:read') || perms.includes('equipment:read');
+    return (
+      perms.includes('fleet:access') ||
+      perms.includes('fleet:read') ||
+      perms.includes('fleet:vehicles:read') ||
+      perms.includes('fleet:equipment:read') ||
+      perms.includes('equipment:read')
+    );
   }, [me]);
   const canEditAssets = useMemo(() => {
     if (!me) return false;
     const isAdmin = (me?.roles || []).some((r: string) => String(r || '').toLowerCase() === 'admin');
     if (isAdmin) return true;
     const perms = me?.permissions || [];
-    return perms.includes('equipment:write');
+    return perms.includes('equipment:write') || perms.includes('fleet:equipment:write');
   }, [me]);
   const canEditFleetAssets = useMemo(() => {
     if (!me) return false;
     const isAdmin = (me?.roles || []).some((r: string) => String(r || '').toLowerCase() === 'admin');
     if (isAdmin) return true;
     const perms = me?.permissions || [];
-    return perms.includes('fleet:write');
+    return perms.includes('fleet:write') || perms.includes('fleet:vehicles:write');
   }, [me]);
   const p = data?.profile || {};
   const u = data?.user || {};
@@ -2364,6 +2416,7 @@ export default function UserInfo(){
   const [selectedProjectDivisions, setSelectedProjectDivisions] = useState<string[]>([]);
   const [isEditingPersonal, setIsEditingPersonal] = useState(false);
   const [sendingAccessInvite, setSendingAccessInvite] = useState(false);
+  const [deletingUser, setDeletingUser] = useState(false);
   
   // Auto-fill work_eligibility_status if user has visas but no status
   useEffect(() => {
@@ -2654,6 +2707,37 @@ export default function UserInfo(){
             </div>
           </div>
           <div className="text-right flex flex-col items-end gap-2 shrink-0">
+            {isAdmin && userId && !canSelfEdit && (
+              <button
+                type="button"
+                disabled={deletingUser}
+                onClick={async () => {
+                  if (!userId || deletingUser) return;
+                  const choice = await confirm({
+                    title: 'Delete user',
+                    message: `Permanently delete ${u?.username || String(userId)}? This removes the account and related data where the database allows. This cannot be undone.`,
+                    confirmText: 'Delete user',
+                    cancelText: 'Cancel',
+                  });
+                  if (choice !== 'confirm') return;
+                  setDeletingUser(true);
+                  try {
+                    await api('DELETE', `/users/${encodeURIComponent(String(userId))}`);
+                    toast.success('User deleted');
+                    queryClient.invalidateQueries({ queryKey: ['user'] });
+                    navigate('/users');
+                  } catch (e: any) {
+                    toast.error(e?.message || e?.detail || 'Failed to delete user');
+                  } finally {
+                    setDeletingUser(false);
+                  }
+                }}
+                className="px-3 py-1.5 rounded-lg text-xs font-semibold border border-red-300 text-red-700 bg-red-50 hover:bg-red-100 disabled:opacity-50 disabled:cursor-not-allowed"
+                title="Administrator only — permanently delete this user"
+              >
+                {deletingUser ? 'Deleting…' : 'Delete user'}
+              </button>
+            )}
             {canEditGeneral && userId && u?.is_active && (
               <button
                 type="button"
@@ -4607,6 +4691,7 @@ function TimesheetBlock({ userId, canEdit = true }:{ userId:string, canEdit?: bo
 
       {/* New Attendance Event Modal - standardized */}
       {showModal && (
+        <OverlayPortal>
         <div
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 overflow-y-auto"
           onClick={closeAttendanceModal}
@@ -4914,6 +4999,7 @@ function TimesheetBlock({ userId, canEdit = true }:{ userId:string, canEdit?: bo
             </div>
           </div>
         </div>
+        </OverlayPortal>
       )}
     </div>
   );
@@ -5128,6 +5214,7 @@ function SalaryHistorySection({ userId, canEdit, settings }:{ userId:string, can
       )}
 
       {showAdd && (
+        <OverlayPortal>
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
           <div className="bg-white rounded-xl w-full max-w-lg p-4">
             <div className="text-lg font-semibold mb-4">New salary entry</div>
@@ -5183,6 +5270,7 @@ function SalaryHistorySection({ userId, canEdit, settings }:{ userId:string, can
             </div>
           </div>
         </div>
+        </OverlayPortal>
       )}
     </div>
   );
@@ -6387,6 +6475,7 @@ function TimeOffSection({ userId, canEdit }:{ userId:string, canEdit:boolean }){
       
       {/* Request Form Modal */}
       {showRequestForm && (
+        <OverlayPortal>
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
           <div className="bg-white rounded-xl w-full max-w-md p-4">
             <div className="text-lg font-semibold mb-4">Request Time Off</div>
@@ -6517,9 +6606,11 @@ function TimeOffSection({ userId, canEdit }:{ userId:string, canEdit:boolean }){
             </div>
           </div>
         </div>
+        </OverlayPortal>
       )}
       
       {showAdjustModal && adjustingBalance && (
+        <OverlayPortal>
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50" onClick={() => setShowAdjustModal(false)}>
           <div className="bg-white rounded-xl w-full max-w-lg p-6" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between mb-4">
@@ -6677,10 +6768,12 @@ function TimeOffSection({ userId, canEdit }:{ userId:string, canEdit:boolean }){
             </div>
           </div>
         </div>
+        </OverlayPortal>
       )}
       
       {/* Add History Entry Modal - Admin only */}
       {showAddHistoryModal && (
+        <OverlayPortal>
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50" onClick={() => setShowAddHistoryModal(false)}>
           <div className="bg-white rounded-xl w-full max-w-md p-6" onClick={(e) => e.stopPropagation()}>
             <h3 className="text-lg font-semibold text-gray-900 mb-4">Add time off history entry</h3>
@@ -6768,6 +6861,7 @@ function TimeOffSection({ userId, canEdit }:{ userId:string, canEdit:boolean }){
             </div>
           </div>
         </div>
+        </OverlayPortal>
       )}
     </div>
   );
@@ -7182,6 +7276,7 @@ function UserAssetsCheckoutModal({
   };
 
   return (
+    <OverlayPortal>
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={onClose}>
       <div className="bg-white rounded-xl shadow-lg max-w-md w-full max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
         <div className="p-4 border-b font-semibold">Check out equipment</div>
@@ -7227,6 +7322,7 @@ function UserAssetsCheckoutModal({
         </form>
       </div>
     </div>
+    </OverlayPortal>
   );
 }
 
@@ -7255,6 +7351,7 @@ function UserAssetsCheckinModal({
   };
 
   return (
+    <OverlayPortal>
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={onClose}>
       <div className="bg-white rounded-xl shadow-lg max-w-md w-full" onClick={e => e.stopPropagation()}>
         <div className="p-4 border-b font-semibold">Check in equipment</div>
@@ -7285,6 +7382,7 @@ function UserAssetsCheckinModal({
         </form>
       </div>
     </div>
+    </OverlayPortal>
   );
 }
 
@@ -7342,6 +7440,7 @@ function UserFleetVehicleCheckoutModal({
   };
 
   return (
+    <OverlayPortal>
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={onClose}>
       <div className="bg-white rounded-xl shadow-lg max-w-md w-full max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
         <div className="p-4 border-b font-semibold">Check out vehicle</div>
@@ -7400,6 +7499,7 @@ function UserFleetVehicleCheckoutModal({
         </form>
       </div>
     </div>
+    </OverlayPortal>
   );
 }
 
@@ -7427,6 +7527,7 @@ function UserFleetReturnModal({
   };
 
   return (
+    <OverlayPortal>
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={onClose}>
       <div className="bg-white rounded-xl shadow-lg max-w-md w-full" onClick={e => e.stopPropagation()}>
         <div className="p-4 border-b font-semibold">Return vehicle</div>
@@ -7457,6 +7558,7 @@ function UserFleetReturnModal({
         </form>
       </div>
     </div>
+    </OverlayPortal>
   );
 }
 
@@ -7701,6 +7803,7 @@ function EmployeeTrainingSection({ userId, canEdit }: { userId: string; canEdit:
       )}
 
       {modalOpen && (
+        <OverlayPortal>
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={closeModal}>
           <div
             className="bg-white rounded-xl shadow-lg max-w-lg w-full max-h-[90vh] overflow-y-auto"
@@ -7857,6 +7960,7 @@ function EmployeeTrainingSection({ userId, canEdit }: { userId: string; canEdit:
             </form>
           </div>
         </div>
+        </OverlayPortal>
       )}
     </div>
   );
@@ -8159,6 +8263,7 @@ function EmergencyContactsSection({ userId, canEdit }:{ userId:string, canEdit:b
       </div>
       
       {createOpen && (
+        <OverlayPortal>
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
           <div className="w-[800px] max-w-[95vw] bg-white rounded-xl overflow-hidden">
             <div className="px-4 py-3 border-b flex items-center justify-between">
@@ -8251,6 +8356,7 @@ function EmergencyContactsSection({ userId, canEdit }:{ userId:string, canEdit:b
             </div>
           </div>
         </div>
+        </OverlayPortal>
       )}
     </div>
   );
@@ -8866,6 +8972,7 @@ function VisaInformationSection({ userId, canEdit, isRequired = false, showInlin
       )}
       
       {createOpen && (
+        <OverlayPortal>
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
           <div className="w-[600px] max-w-[95vw] bg-white rounded-xl overflow-hidden">
             <div className="px-4 py-3 border-b flex items-center justify-between">
@@ -8954,6 +9061,7 @@ function VisaInformationSection({ userId, canEdit, isRequired = false, showInlin
             </div>
           </div>
         </div>
+        </OverlayPortal>
       )}
     </div>
   );
@@ -9067,8 +9175,8 @@ function UserDocuments({ userId, canEdit }:{ userId:string, canEdit:boolean }){
   };
 
   const del = async(id:string, title?:string)=>{
-    const ok = await confirm({ title:'Delete file', message:`Are you sure you want to delete "${title||'file'}"?` });
-    if(!ok) return;
+    const choice = await confirm({ title:'Delete file', message:`Are you sure you want to delete "${title||'file'}"?` });
+    if (choice !== 'confirm') return;
     try{ await api('DELETE', `/auth/users/${encodeURIComponent(userId)}/documents/${encodeURIComponent(id)}`); await refetch(); }
     catch(_e){ toast.error('Delete failed'); }
   };
@@ -9434,6 +9542,7 @@ function UserDocuments({ userId, canEdit }:{ userId:string, canEdit:boolean }){
       </div>
 
       {showUpload && (
+        <OverlayPortal>
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
           <div className="bg-white rounded-xl w-full max-w-md p-4">
             <div className="text-lg font-semibold mb-2">Add file</div>
@@ -9460,10 +9569,12 @@ function UserDocuments({ userId, canEdit }:{ userId:string, canEdit:boolean }){
             </div>
           </div>
         </div>
+        </OverlayPortal>
       )}
 
       {/* New Folder Modal - standardized */}
       {showNewFolder && (
+        <OverlayPortal>
         <div
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 overflow-y-auto"
           onClick={closeNewFolderModal}
@@ -9521,9 +9632,11 @@ function UserDocuments({ userId, canEdit }:{ userId:string, canEdit:boolean }){
             </div>
           </div>
         </div>
+        </OverlayPortal>
       )}
 
       {renameFolder && (
+        <OverlayPortal>
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
           <div className="bg-white rounded-xl w-full max-w-sm p-4">
             <div className="text-lg font-semibold mb-2">Rename folder</div>
@@ -9537,9 +9650,11 @@ function UserDocuments({ userId, canEdit }:{ userId:string, canEdit:boolean }){
             </div>
           </div>
         </div>
+        </OverlayPortal>
       )}
 
       {moveDoc && (
+        <OverlayPortal>
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
           <div className="bg-white rounded-xl w-full max-w-sm p-4">
             <div className="text-lg font-semibold mb-2">Move file</div>
@@ -9556,9 +9671,11 @@ function UserDocuments({ userId, canEdit }:{ userId:string, canEdit:boolean }){
             </div>
           </div>
         </div>
+        </OverlayPortal>
       )}
 
       {renameDoc && (
+        <OverlayPortal>
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
           <div className="bg-white rounded-xl w-full max-w-sm p-4">
             <div className="text-lg font-semibold mb-2">Rename file</div>
@@ -9572,6 +9689,7 @@ function UserDocuments({ userId, canEdit }:{ userId:string, canEdit:boolean }){
             </div>
           </div>
         </div>
+        </OverlayPortal>
       )}
 
       {previewImage && (
@@ -9686,6 +9804,7 @@ function UserDocuments({ userId, canEdit }:{ userId:string, canEdit:boolean }){
             </div>
           </div>
         </div>
+        </OverlayPortal>
       )}
     </div>
   );

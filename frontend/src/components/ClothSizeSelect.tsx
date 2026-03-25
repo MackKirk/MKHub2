@@ -2,6 +2,7 @@ import { useState, useMemo, useEffect, useRef, useContext } from 'react';
 import { ConfirmContext } from '@/components/ConfirmProvider';
 import { api } from '@/lib/api';
 import toast from 'react-hot-toast';
+import OverlayPortal from '@/components/OverlayPortal';
 
 const DEFAULT_SIZES = ['S', 'M', 'L', 'XL', 'XXL'];
 
@@ -254,7 +255,7 @@ export default function ClothSizeSelect({
 
       {/* Modal for adding custom size */}
       {showModal && (
-        <div 
+        <OverlayPortal><div 
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
           onClick={(e) => {
             if (e.target === e.currentTarget) {
@@ -300,7 +301,7 @@ export default function ClothSizeSelect({
               </button>
             </div>
           </div>
-        </div>
+        </div></OverlayPortal>
       )}
     </>
   );

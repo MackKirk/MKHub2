@@ -1,11 +1,13 @@
-import { useParams } from 'react-router-dom';
+import { useParams, useNavigate } from 'react-router-dom';
 import { useMemo, useState, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import { sortByLabel } from '@/lib/sortOptions';
 import toast from 'react-hot-toast';
+import { useConfirm } from '@/components/ConfirmProvider';
 import { formatDateLocal, getCurrentMonthLocal } from '@/lib/dateUtils';
 import UserLoans from '@/components/UserLoans';
+import OverlayPortal from '@/components/OverlayPortal';
 
 // Helper function to convert 24h time (HH:MM:SS or HH:MM) to 12h format (h:mm AM/PM)
 function formatTime12h(timeStr: string | null | undefined): string {
@@ -22,11 +24,16 @@ function formatTime12h(timeStr: string | null | undefined): string {
 
 export default function UserDetail(){
   const { id } = useParams();
+  const navigate = useNavigate();
+  const confirm = useConfirm();
   const { data:user, refetch } = useQuery({ queryKey:['user', id], queryFn: ()=> api<any>('GET', `/users/${id}`) });
   const { data:roles } = useQuery({ queryKey:['rolesAll'], queryFn: ()=> api<any[]>('GET', '/users/roles/all') });
   const { data:me } = useQuery({ queryKey:['me'], queryFn: ()=> api<any>('GET','/auth/me') });
   const [sel, setSel] = useState<string>('');
   const [tab, setTab] = useState<'general'|'timesheet'|'loans'|'permissions'>('general');
+  const [deletingUser, setDeletingUser] = useState(false);
+  const isAdministrator = !!(me?.roles || []).some((r: string) => String(r || '').toLowerCase() === 'admin');
+  const isSelfProfile = !!(me && id && String(me.id) === String(id));
   
   // Check permissions for each tab
   // Note: hr:users:read alone is NOT enough - need specific view permissions
@@ -92,9 +99,38 @@ export default function UserDetail(){
   };
   return (
     <div className="max-w-5xl">
-      <div className="mb-3 flex items-center justify-between">
+      <div className="mb-3 flex items-center justify-between gap-3 flex-wrap">
         <div className="flex items-center gap-3"><img src={user.profile_photo_file_id? `/files/${user.profile_photo_file_id}/thumbnail?w=160`:'/ui/assets/placeholders/user.png'} className="w-16 h-16 rounded-full object-cover"/><h1 className="text-2xl font-bold">{user.name||user.username}</h1></div>
-        <div className="flex gap-2">
+        <div className="flex gap-2 items-center flex-wrap">
+          {isAdministrator && !isSelfProfile && (
+            <button
+              type="button"
+              disabled={deletingUser}
+              onClick={async () => {
+                if (!id || deletingUser) return;
+                const choice = await confirm({
+                  title: 'Delete user',
+                  message: `Permanently delete ${user.username || String(id)}? This cannot be undone.`,
+                  confirmText: 'Delete user',
+                  cancelText: 'Cancel',
+                });
+                if (choice !== 'confirm') return;
+                setDeletingUser(true);
+                try {
+                  await api('DELETE', `/users/${encodeURIComponent(String(id))}`);
+                  toast.success('User deleted');
+                  navigate('/users');
+                } catch (_e: any) {
+                  toast.error(_e?.message || _e?.detail || 'Failed to delete user');
+                } finally {
+                  setDeletingUser(false);
+                }
+              }}
+              className="px-3 py-1.5 rounded-full text-sm border border-red-300 text-red-700 bg-red-50 hover:bg-red-100 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {deletingUser ? 'Deleting…' : 'Delete user'}
+            </button>
+          )}
           {([
             ...(canViewGeneral ? ['general'] : []),
             ...(canViewTimesheet ? ['timesheet'] : []),
@@ -471,6 +507,7 @@ function UserPermissions({ userId, user: userProp, canEdit = true }:{ userId:str
 
         {/* Modal: Apply template as Merge or Replace */}
         {showApplyTemplateModal && (
+          <OverlayPortal>
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={() => setShowApplyTemplateModal(false)}>
             <div className="bg-white rounded-lg shadow-xl p-4 max-w-md w-full mx-4" onClick={(e) => e.stopPropagation()}>
               <h3 className="text-base font-semibold text-gray-900 mb-2">Apply permission template</h3>
@@ -502,6 +539,7 @@ function UserPermissions({ userId, user: userProp, canEdit = true }:{ userId:str
               </div>
             </div>
           </div>
+          </OverlayPortal>
         )}
 
       <div className="space-y-6">

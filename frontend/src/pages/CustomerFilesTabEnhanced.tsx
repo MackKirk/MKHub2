@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState } from 'react';
 import toast from 'react-hot-toast';
 import { api } from '@/lib/api';
 import ImageEditor from '@/components/ImageEditor';
+import OverlayPortal from '@/components/OverlayPortal';
 
 export type ClientFileForFiles = { id: string; file_object_id: string; is_image?: boolean; content_type?: string; category?: string; original_name?: string; uploaded_at?: string; site_id?: string };
 
@@ -432,7 +433,7 @@ export function CustomerFilesTabEnhanced({ clientId, files, onRefresh, hasEditPe
         </div>
       </div>
       {showUpload && (
-        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50" onClick={(e) => e.target === e.currentTarget && setShowUpload(false)}>
+        <OverlayPortal><div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50" onClick={(e) => e.target === e.currentTarget && setShowUpload(false)}>
           <div className="bg-white rounded-xl w-full max-w-md p-4" onClick={(e) => e.stopPropagation()}>
             <div className="text-sm font-semibold mb-3">Upload Files</div>
             <div className="space-y-3">
@@ -446,7 +447,7 @@ export function CustomerFilesTabEnhanced({ clientId, files, onRefresh, hasEditPe
               <button onClick={() => setShowUpload(false)} className="px-3 py-1.5 rounded border text-xs">Cancel</button>
             </div>
           </div>
-        </div>
+        </div></OverlayPortal>
       )}
       {uploadQueue.length > 0 && (
         <div className="fixed bottom-4 right-4 bg-white rounded-lg shadow-2xl border w-80 max-h-96 overflow-hidden z-50">
@@ -472,7 +473,7 @@ export function CustomerFilesTabEnhanced({ clientId, files, onRefresh, hasEditPe
         </div>
       )}
       {previewImage && (
-        <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4" onClick={() => setPreviewImage(null)}>
+        <OverlayPortal><div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4" onClick={() => setPreviewImage(null)}>
           <div className="w-full h-full max-w-[95vw] max-h-[95vh] bg-white rounded-lg overflow-hidden flex flex-col" onClick={(e) => e.stopPropagation()}>
             <div className="p-3 border-b flex items-center justify-between flex-shrink-0">
               <h3 className="text-sm font-semibold">{previewImage.name}</h3>
@@ -489,10 +490,10 @@ export function CustomerFilesTabEnhanced({ clientId, files, onRefresh, hasEditPe
               <img src={previewImage.url} alt={previewImage.name} className="max-w-full max-h-full h-auto object-contain" />
             </div>
           </div>
-        </div>
+        </div></OverlayPortal>
       )}
       {previewPdf && (
-        <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4" onClick={() => setPreviewPdf(null)}>
+        <OverlayPortal><div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4" onClick={() => setPreviewPdf(null)}>
           <div className="w-full h-full max-w-[95vw] max-h-[95vh] bg-white rounded-lg overflow-hidden flex flex-col" onClick={(e) => e.stopPropagation()}>
             <div className="p-3 border-b flex items-center justify-between flex-shrink-0">
               <h3 className="text-sm font-semibold">{previewPdf.name}</h3>
@@ -505,10 +506,10 @@ export function CustomerFilesTabEnhanced({ clientId, files, onRefresh, hasEditPe
               <iframe src={previewPdf.url} className="w-full h-full border-0" title={previewPdf.name} />
             </div>
           </div>
-        </div>
+        </div></OverlayPortal>
       )}
       {previewExcel && (
-        <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4" onClick={() => setPreviewExcel(null)}>
+        <OverlayPortal><div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4" onClick={() => setPreviewExcel(null)}>
           <div className="w-full h-full max-w-[95vw] max-h-[95vh] bg-white rounded-lg overflow-hidden flex flex-col" onClick={(e) => e.stopPropagation()}>
             <div className="p-3 border-b flex items-center justify-between flex-shrink-0">
               <h3 className="text-sm font-semibold">{previewExcel.name}</h3>
@@ -522,7 +523,7 @@ export function CustomerFilesTabEnhanced({ clientId, files, onRefresh, hasEditPe
               <iframe src={`https://view.officeapps.live.com/op/embed.aspx?src=${encodeURIComponent(previewExcel.url)}`} className="w-full h-full border-0" title={previewExcel.name} allow="fullscreen" />
             </div>
           </div>
-        </div>
+        </div></OverlayPortal>
       )}
       {editingImage && (
         <ImageEditor

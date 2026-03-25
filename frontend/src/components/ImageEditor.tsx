@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, useCallback, useMemo } from 'react';
 import { api } from '@/lib/api';
+import OverlayPortal from '@/components/OverlayPortal';
 
 // Custom slider styles and icon rendering improvements
 const sliderStyle = `
@@ -2561,6 +2562,7 @@ export default function ImageEditor({ isOpen, onClose, imageUrl, imageName = 'im
   return (
     <>
       <style>{sliderStyle}</style>
+      <OverlayPortal>
       <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4">
       <div 
         className="bg-white rounded-xl overflow-hidden flex flex-col"
@@ -2939,6 +2941,7 @@ export default function ImageEditor({ isOpen, onClose, imageUrl, imageName = 'im
         </div>
       </div>
       </div>
+      </OverlayPortal>
     </>
   );
 }

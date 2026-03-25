@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
+import OverlayPortal from '@/components/OverlayPortal';
 import toast from 'react-hot-toast';
 import AddressAutocomplete from '@/components/AddressAutocomplete';
 
@@ -131,6 +132,7 @@ export default function NewSupplierModal({ open, onClose, onSupplierCreated }: N
   const labelClass = 'text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1';
 
   return (
+    <OverlayPortal>
     <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center overflow-y-auto p-4">
       <div className="w-[900px] max-w-[95vw] max-h-[90vh] bg-gray-100 rounded-xl overflow-hidden flex flex-col border border-gray-200 shadow-xl">
         {/* Title bar - same style as New Customer */}
@@ -444,6 +446,7 @@ export default function NewSupplierModal({ open, onClose, onSupplierCreated }: N
         </div>
       </div>
     </div>
+    </OverlayPortal>
   );
 }
 

@@ -500,6 +500,362 @@ def create_app() -> FastAPI:
                         db.commit()
                         print("[startup] Created onboarding_* tables")
 
+                    def _onb_col(table: str, col: str) -> bool:
+                        return bool(
+                            db.execute(
+                                text(
+                                    "SELECT 1 FROM information_schema.columns "
+                                    "WHERE table_schema = 'public' AND table_name = :t AND column_name = :c LIMIT 1"
+                                ),
+                                {"t": table, "c": col},
+                            ).fetchall()
+                        )
+
+                    if db.execute(
+                        text("SELECT 1 FROM information_schema.tables WHERE table_name = 'onboarding_package_items' LIMIT 1")
+                    ).fetchall():
+                        for tbl, col, ddl in [
+                            ("onboarding_package_items", "display_name", "VARCHAR(255)"),
+                            ("onboarding_package_items", "notification_message", "VARCHAR(4000)"),
+                            ("onboarding_package_items", "delivery_mode", "VARCHAR(20) NOT NULL DEFAULT 'on_hire'"),
+                            ("onboarding_package_items", "delivery_amount", "INTEGER"),
+                            ("onboarding_package_items", "delivery_unit", "VARCHAR(16)"),
+                            ("onboarding_package_items", "delivery_direction", "VARCHAR(16)"),
+                            (
+                                "onboarding_package_items",
+                                "requires_signature",
+                                "BOOLEAN NOT NULL DEFAULT true",
+                            ),
+                            ("onboarding_package_items", "notification_policy", "JSONB"),
+                        ]:
+                            if not _onb_col(tbl, col):
+                                db.execute(text(f"ALTER TABLE {tbl} ADD COLUMN {col} {ddl}"))
+                                db.commit()
+                                print(f"[startup] Added {tbl}.{col}")
+                        if not _onb_col("onboarding_package_items", "applies_to_mode") and not _onb_col(
+                            "onboarding_package_items", "recipient_scope"
+                        ):
+                            db.execute(text("ALTER TABLE onboarding_package_items ADD COLUMN applies_to_mode VARCHAR(20)"))
+                            db.execute(text("ALTER TABLE onboarding_package_items ADD COLUMN applies_to_division_ids JSONB"))
+                            db.commit()
+                            print("[startup] Added onboarding_package_items applies_to_* (legacy)")
+                            import json as _json
+
+                            pkg_rows = db.execute(text("SELECT id FROM onboarding_packages")).fetchall()
+                            for (pid,) in pkg_rows:
+                                tr = db.execute(
+                                    text(
+                                        "SELECT condition_type, condition_value FROM onboarding_triggers WHERE package_id = :p"
+                                    ),
+                                    {"p": pid},
+                                ).fetchall()
+                                item_rows = db.execute(
+                                    text("SELECT id FROM onboarding_package_items WHERE package_id = :p"),
+                                    {"p": pid},
+                                ).fetchall()
+                                if not item_rows:
+                                    continue
+                                has_all = any((str(t[0] or "").lower() == "all") for t in tr)
+                                if has_all:
+                                    mode, div_json = "all", "[]"
+                                elif tr:
+                                    union_ids = []
+                                    seen = set()
+                                    for t in tr:
+                                        if str(t[0] or "").lower() != "division":
+                                            continue
+                                        cv = t[1]
+                                        if isinstance(cv, str):
+                                            try:
+                                                cv = _json.loads(cv) if cv else {}
+                                            except Exception:
+                                                cv = {}
+                                        elif not isinstance(cv, dict):
+                                            cv = {}
+                                        for x in cv.get("division_ids") or []:
+                                            s = str(x)
+                                            if s not in seen:
+                                                seen.add(s)
+                                                union_ids.append(s)
+                                    mode = "division"
+                                    div_json = _json.dumps(union_ids)
+                                else:
+                                    mode = "division"
+                                    div_json = "[]"
+                                db.execute(
+                                    text(
+                                        """
+                                        UPDATE onboarding_package_items
+                                        SET applies_to_mode = :m,
+                                            applies_to_division_ids = CAST(:j AS JSONB)
+                                        WHERE package_id = :p
+                                        """
+                                    ),
+                                    {"m": mode, "j": div_json, "p": pid},
+                                )
+                            db.execute(
+                                text(
+                                    "UPDATE onboarding_package_items SET applies_to_mode = 'all' "
+                                    "WHERE applies_to_mode IS NULL"
+                                )
+                            )
+                            db.execute(
+                                text(
+                                    "UPDATE onboarding_package_items SET applies_to_division_ids = '[]'::jsonb "
+                                    "WHERE applies_to_division_ids IS NULL"
+                                )
+                            )
+                            db.execute(
+                                text(
+                                    "ALTER TABLE onboarding_package_items ALTER COLUMN applies_to_mode SET DEFAULT 'all'"
+                                )
+                            )
+                            db.execute(
+                                text(
+                                    "ALTER TABLE onboarding_package_items ALTER COLUMN applies_to_mode SET NOT NULL"
+                                )
+                            )
+                            db.commit()
+                            print("[startup] Migrated package item applies_to from triggers (legacy)")
+                        if not _onb_col("onboarding_package_items", "recipient_scope"):
+                            db.execute(
+                                text("ALTER TABLE onboarding_package_items ADD COLUMN recipient_scope VARCHAR(24)")
+                            )
+                            db.execute(text("ALTER TABLE onboarding_package_items ADD COLUMN recipient_user_ids JSONB"))
+                            db.commit()
+                            has_applies = _onb_col("onboarding_package_items", "applies_to_mode")
+                            has_assign = _onb_col("onboarding_package_items", "assign_to")
+                            if has_applies and has_assign:
+                                db.execute(
+                                    text(
+                                        """
+                                        UPDATE onboarding_package_items SET
+                                          recipient_user_ids = '[]'::jsonb,
+                                          recipient_scope = CASE
+                                            WHEN LOWER(TRIM(COALESCE(applies_to_mode, 'all'))) = 'division'
+                                              THEN 'specific_users'
+                                            WHEN LOWER(TRIM(COALESCE(assign_to, 'employee'))) = 'manager'
+                                              THEN 'specific_users'
+                                            ELSE 'everyone'
+                                          END
+                                        """
+                                    )
+                                )
+                            elif has_applies:
+                                db.execute(
+                                    text(
+                                        """
+                                        UPDATE onboarding_package_items SET
+                                          recipient_user_ids = '[]'::jsonb,
+                                          recipient_scope = CASE
+                                            WHEN LOWER(TRIM(COALESCE(applies_to_mode, 'all'))) = 'division'
+                                              THEN 'specific_users'
+                                            ELSE 'everyone'
+                                          END
+                                        """
+                                    )
+                                )
+                            elif has_assign:
+                                db.execute(
+                                    text(
+                                        """
+                                        UPDATE onboarding_package_items SET
+                                          recipient_user_ids = '[]'::jsonb,
+                                          recipient_scope = CASE
+                                            WHEN LOWER(TRIM(COALESCE(assign_to, 'employee'))) = 'manager'
+                                              THEN 'specific_users'
+                                            ELSE 'everyone'
+                                          END
+                                        """
+                                    )
+                                )
+                            else:
+                                db.execute(
+                                    text(
+                                        "UPDATE onboarding_package_items SET recipient_scope = 'everyone', "
+                                        "recipient_user_ids = '[]'::jsonb"
+                                    )
+                                )
+                            db.execute(text("UPDATE onboarding_package_items SET recipient_user_ids = '[]'::jsonb WHERE recipient_user_ids IS NULL"))
+                            db.execute(text("UPDATE onboarding_package_items SET recipient_scope = 'everyone' WHERE recipient_scope IS NULL OR recipient_scope = ''"))
+                            db.execute(
+                                text(
+                                    "ALTER TABLE onboarding_package_items ALTER COLUMN recipient_scope SET DEFAULT 'everyone'"
+                                )
+                            )
+                            db.execute(
+                                text(
+                                    "ALTER TABLE onboarding_package_items ALTER COLUMN recipient_scope SET NOT NULL"
+                                )
+                            )
+                            db.commit()
+                            print("[startup] Migrated onboarding_package_items to recipient_scope / recipient_user_ids")
+                        for legacy_col in ("assign_to", "applies_to_mode", "applies_to_division_ids"):
+                            if _onb_col("onboarding_package_items", legacy_col):
+                                try:
+                                    db.execute(
+                                        text(f"ALTER TABLE onboarding_package_items DROP COLUMN {legacy_col}")
+                                    )
+                                    db.commit()
+                                    print(f"[startup] Dropped onboarding_package_items.{legacy_col}")
+                                except Exception as _e:
+                                    print(f"[startup] Could not drop onboarding_package_items.{legacy_col}: {_e}")
+                        if not _onb_col("onboarding_package_items", "signing_deadline_days"):
+                            db.execute(
+                                text("ALTER TABLE onboarding_package_items ADD COLUMN signing_deadline_days INTEGER")
+                            )
+                            db.commit()
+                            db.execute(
+                                text(
+                                    """
+                                    UPDATE onboarding_package_items AS i
+                                    SET signing_deadline_days = COALESCE(
+                                      (SELECT b.default_deadline_days FROM onboarding_base_documents AS b
+                                       WHERE b.id = i.base_document_id),
+                                      7
+                                    )
+                                    """
+                                )
+                            )
+                            db.execute(
+                                text(
+                                    "UPDATE onboarding_package_items SET signing_deadline_days = 7 "
+                                    "WHERE signing_deadline_days IS NULL"
+                                )
+                            )
+                            db.execute(
+                                text(
+                                    "ALTER TABLE onboarding_package_items ALTER COLUMN signing_deadline_days SET DEFAULT 7"
+                                )
+                            )
+                            db.execute(
+                                text(
+                                    "ALTER TABLE onboarding_package_items ALTER COLUMN signing_deadline_days SET NOT NULL"
+                                )
+                            )
+                            db.commit()
+                            print("[startup] Added onboarding_package_items.signing_deadline_days")
+                    if db.execute(
+                        text("SELECT 1 FROM information_schema.tables WHERE table_name = 'onboarding_assignment_items' LIMIT 1")
+                    ).fetchall():
+                        if not _onb_col("onboarding_assignment_items", "available_at"):
+                            db.execute(text("ALTER TABLE onboarding_assignment_items ADD COLUMN available_at TIMESTAMP WITH TIME ZONE"))
+                            db.execute(
+                                text(
+                                    """
+                                    UPDATE onboarding_assignment_items AS i
+                                    SET available_at = a.assigned_at
+                                    FROM onboarding_assignments AS a
+                                    WHERE i.assignment_id = a.id AND i.available_at IS NULL
+                                    """
+                                )
+                            )
+                            db.execute(text("UPDATE onboarding_assignment_items SET available_at = NOW() WHERE available_at IS NULL"))
+                            db.execute(
+                                text(
+                                    "ALTER TABLE onboarding_assignment_items ALTER COLUMN available_at SET NOT NULL"
+                                )
+                            )
+                            db.commit()
+                            print("[startup] Added onboarding_assignment_items.available_at")
+                        for tbl, col, ddl in [
+                            ("onboarding_assignment_items", "display_name", "VARCHAR(255)"),
+                            ("onboarding_assignment_items", "user_message", "VARCHAR(4000)"),
+                        ]:
+                            if not _onb_col(tbl, col):
+                                db.execute(text(f"ALTER TABLE {tbl} ADD COLUMN {col} {ddl}"))
+                                db.commit()
+                                print(f"[startup] Added {tbl}.{col}")
+                        if not _onb_col("onboarding_assignment_items", "subject_user_id"):
+                            db.execute(
+                                text(
+                                    "ALTER TABLE onboarding_assignment_items ADD COLUMN subject_user_id UUID REFERENCES users(id) ON DELETE SET NULL"
+                                )
+                            )
+                            db.commit()
+                            print("[startup] Added onboarding_assignment_items.subject_user_id")
+
+                    # Onboarding base document preferences (per-doc, no package UI)
+                    if db.execute(
+                        text("SELECT 1 FROM information_schema.tables WHERE table_name = 'onboarding_base_documents' LIMIT 1")
+                    ).fetchall():
+                        for tbl, col, ddl in [
+                            ("onboarding_base_documents", "assignee_type", "VARCHAR(20) NOT NULL DEFAULT 'employee'"),
+                            ("onboarding_base_documents", "assignee_user_id", "UUID REFERENCES users(id) ON DELETE SET NULL"),
+                            ("onboarding_base_documents", "assignee_user_ids", "JSONB"),
+                            ("onboarding_base_documents", "required", "BOOLEAN NOT NULL DEFAULT true"),
+                            ("onboarding_base_documents", "employee_visible", "BOOLEAN NOT NULL DEFAULT true"),
+                            ("onboarding_base_documents", "sort_order", "INTEGER NOT NULL DEFAULT 0"),
+                            ("onboarding_base_documents", "display_name", "VARCHAR(255)"),
+                            ("onboarding_base_documents", "notification_message", "VARCHAR(4000)"),
+                            ("onboarding_base_documents", "delivery_mode", "VARCHAR(20) NOT NULL DEFAULT 'on_hire'"),
+                            ("onboarding_base_documents", "delivery_amount", "INTEGER"),
+                            ("onboarding_base_documents", "delivery_unit", "VARCHAR(16)"),
+                            ("onboarding_base_documents", "delivery_direction", "VARCHAR(16)"),
+                            ("onboarding_base_documents", "requires_signature", "BOOLEAN NOT NULL DEFAULT true"),
+                            ("onboarding_base_documents", "notification_policy", "JSONB"),
+                            ("onboarding_base_documents", "signing_deadline_days", "INTEGER NOT NULL DEFAULT 7"),
+                            ("onboarding_base_documents", "signature_template", "JSONB"),
+                        ]:
+                            if not _onb_col(tbl, col):
+                                db.execute(text(f"ALTER TABLE {tbl} ADD COLUMN {col} {ddl}"))
+                                db.commit()
+                                print(f"[startup] Added {tbl}.{col}")
+                        try:
+                            db.execute(
+                                text(
+                                    """
+                                    UPDATE onboarding_base_documents SET signing_deadline_days = default_deadline_days
+                                    WHERE signing_deadline_days IS NOT NULL AND default_deadline_days IS NOT NULL
+                                    """
+                                )
+                            )
+                            db.commit()
+                        except Exception:
+                            pass
+                        try:
+                            db.execute(
+                                text(
+                                    """
+                                    UPDATE onboarding_base_documents
+                                    SET assignee_user_ids = jsonb_build_array(assignee_user_id::text)
+                                    WHERE assignee_user_id IS NOT NULL
+                                      AND (assignee_user_ids IS NULL OR assignee_user_ids = '[]'::jsonb)
+                                    """
+                                )
+                            )
+                            db.commit()
+                        except Exception:
+                            pass
+                        try:
+                            rows_pkg = db.execute(
+                                text("SELECT 1 FROM onboarding_packages WHERE name = 'HR Onboarding' LIMIT 1")
+                            ).fetchall()
+                            if not rows_pkg:
+                                db.execute(
+                                    text(
+                                        """
+                                        INSERT INTO onboarding_packages (id, name, description, active, created_at)
+                                        VALUES (gen_random_uuid(), 'HR Onboarding', 'System package for onboarding base documents', true, NOW())
+                                        """
+                                    )
+                                )
+                                db.commit()
+                                print("[startup] Seeded HR Onboarding system package")
+                        except Exception as _e:
+                            print(f"[startup] HR Onboarding package seed skipped: {_e}")
+                        try:
+                            if not _onb_col("onboarding_packages", "document_delivery_enabled"):
+                                db.execute(
+                                    text(
+                                        "ALTER TABLE onboarding_packages ADD COLUMN document_delivery_enabled BOOLEAN NOT NULL DEFAULT true"
+                                    )
+                                )
+                                db.commit()
+                                print("[startup] Added onboarding_packages.document_delivery_enabled")
+                        except Exception as _e:
+                            print(f"[startup] onboarding_packages.document_delivery_enabled migration: {_e}")
+
                     # Project folders
                     db.execute(text("""
                         CREATE TABLE IF NOT EXISTS project_folders (
@@ -669,18 +1025,24 @@ def create_app() -> FastAPI:
                 return FileResponse(index_path, headers={"Cache-Control":"no-cache, no-store, must-revalidate"})
         return RedirectResponse(url="/ui/index.html")
 
-    # After all API routers, provide SPA catch-all for deep links
+    # After all API routers, serve built JS/CSS with correct MIME types and avoid
+    # returning index.html for missing *.js (which breaks dynamic imports with "text/html" MIME).
     if os.path.isdir(FRONT_DIST):
         INDEX_PATH = os.path.join(FRONT_DIST, "index.html")
+        assets_dir = os.path.join(FRONT_DIST, "assets")
+        if os.path.isdir(assets_dir):
+            app.mount("/assets", StaticFiles(directory=assets_dir), name="spa_assets")
 
         @app.get("/{full_path:path}")
         def spa_fallback(full_path: str):
-            # If a built asset exists, serve it; otherwise serve index.html
+            # If a built file exists under dist (e.g. favicon at root), serve it
             asset_path = os.path.join(FRONT_DIST, full_path)
             if os.path.isfile(asset_path):
-                # Cache static assets briefly; index is handled separately
                 headers = {"Cache-Control":"public, max-age=3600"}
                 return FileResponse(asset_path, headers=headers)
+            # Missing chunk under /assets: never serve SPA shell (browser expects JS)
+            if full_path.startswith("assets/") or full_path == "assets":
+                raise FastAPIHTTPException(status_code=404, detail="Not found")
             # For SPA routes like /home, serve index.html with no-cache
             return FileResponse(INDEX_PATH, headers={"Cache-Control":"no-cache, no-store, must-revalidate"})
 

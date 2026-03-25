@@ -4,6 +4,7 @@ import { api } from '@/lib/api';
 import toast from 'react-hot-toast';
 import { formatDateLocal } from '@/lib/dateUtils';
 import { formatDateLocal } from '@/lib/dateUtils';
+import OverlayPortal from '@/components/OverlayPortal';
 
 // Helper function to convert 24h time (HH:MM:SS or HH:MM) to 12h format (h:mm AM/PM)
 function formatTime12h(timeStr: string | null | undefined): string {
@@ -773,7 +774,7 @@ export default function ScheduleModal({ onClose }: ScheduleModalProps) {
 
   return (
     <>
-      <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4">
+      <OverlayPortal><div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4">
         <div className="bg-white rounded-xl max-w-7xl w-full max-h-[90vh] overflow-hidden flex flex-col">
           <div className="sticky top-0 bg-white border-b p-4 flex items-center justify-between">
             <h2 className="text-xl font-semibold">Schedule</h2>
@@ -1259,11 +1260,11 @@ export default function ScheduleModal({ onClose }: ScheduleModalProps) {
             </div>
           </div>
         </div>
-      </div>
+      </div></OverlayPortal>
 
       {/* Clock In/Out Modal */}
       {showClockModal && clockType && (
-        <div className="fixed inset-0 z-[60] bg-black/60 flex items-center justify-center p-4">
+        <OverlayPortal><div className="fixed inset-0 z-[60] bg-black/60 flex items-center justify-center p-4">
           <div className="bg-white rounded-xl max-w-md w-full p-6 space-y-4">
             <h3 className="text-lg font-semibold">
               Clock {clockType === 'in' ? 'In' : 'Out'}
@@ -1555,7 +1556,7 @@ export default function ScheduleModal({ onClose }: ScheduleModalProps) {
               </button>
             </div>
           </div>
-        </div>
+        </div></OverlayPortal>
       )}
     </>
   );

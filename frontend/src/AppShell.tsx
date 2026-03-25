@@ -1,7 +1,12 @@
-import { PropsWithChildren, useState, useMemo, useEffect, useRef } from 'react';
+import { PropsWithChildren, useState, useMemo, useEffect } from 'react';
 import { Link, NavLink, useLocation, useNavigate } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
+import {
+  computeIsProfileComplete,
+  isExemptFromProfileWizardRedirect,
+  matchesOnboardingDocumentsRedirectExempt,
+} from '@/lib/profileCompleteness';
 import NotificationBell from '@/components/NotificationBell';
 import { useUnsavedChanges } from '@/components/UnsavedChangesProvider';
 import { useConfirm } from '@/components/ConfirmProvider';
@@ -207,7 +212,7 @@ export default function AppShell({ children }: PropsWithChildren){
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { data:meProfile, isLoading: meProfileLoading } = useQuery({ queryKey:['me-profile'], queryFn: ()=>api<any>('GET','/auth/me/profile') });
-  const { data:me } = useQuery({ queryKey:['me'], queryFn: ()=>api<any>('GET','/auth/me') });
+  const { data: me, isLoading: meLoading } = useQuery({ queryKey: ['me'], queryFn: () => api<any>('GET', '/auth/me') });
   const userId = me?.id ? String(me.id) : '';
   
   // Check emergency contacts
@@ -222,24 +227,13 @@ export default function AppShell({ children }: PropsWithChildren){
     queryFn: () => api<{ available?: boolean }>('GET', '/reviews/me/available'),
   });
 
-  // Check if profile is complete (all required fields filled)
-  const isProfileComplete = useMemo(() => {
-    // If we're still loading, don't consider it complete yet (but also don't redirect until we know)
-    if (!meProfile?.profile) return false;
-    const p = meProfile.profile;
-    const reqPersonal = ['gender','date_of_birth','marital_status','nationality','phone','address_line1','city','province','postal_code','country','sin_number','work_eligibility_status'];
-    const missingPersonal = reqPersonal.filter(k => !String((p as any)[k]||'').trim());
-    // Only check emergency contacts if userId exists (query enabled) and query has finished loading
-    const hasEmergencyContact = userId ? (emergencyContactsData !== undefined && emergencyContactsData.length > 0) : true;
-    const missingPersonalWithContact = [...missingPersonal];
-    // Only require emergency contact if we have a userId (meaning the query was enabled)
-    if (!hasEmergencyContact && userId && !emergencyContactsLoading) {
-      missingPersonalWithContact.push('emergency_contact');
-    }
-    return missingPersonalWithContact.length === 0;
-  }, [meProfile, emergencyContactsData, userId, emergencyContactsLoading]);
+  const isProfileComplete = useMemo(
+    () =>
+      computeIsProfileComplete(meProfile, emergencyContactsData, userId, emergencyContactsLoading),
+    [meProfile, emergencyContactsData, userId, emergencyContactsLoading]
+  );
 
-  const { data: onboardingStatus } = useQuery({
+  const { data: onboardingStatus, isLoading: onboardingStatusLoading } = useQuery({
     queryKey: ['me-onboarding-status'],
     queryFn: async () => {
       try {
@@ -262,7 +256,6 @@ export default function AppShell({ children }: PropsWithChildren){
     retry: false,
   });
 
-  const onboardingDocPaths = ['/onboarding/documents', '/profile'];
   const onboardingBlocked =
     isProfileComplete &&
     onboardingStatus?.past_deadline &&
@@ -272,45 +265,21 @@ export default function AppShell({ children }: PropsWithChildren){
   useEffect(() => {
     if (!isProfileComplete || !onboardingBlocked) return;
     const path = location.pathname;
-    if (onboardingDocPaths.some((p) => path === p || path.startsWith(p + '/'))) return;
+    if (matchesOnboardingDocumentsRedirectExempt(path)) return;
     navigate('/onboarding/documents', { replace: true });
   }, [isProfileComplete, onboardingBlocked, location.pathname, navigate]);
   
-  // Redirect to onboarding if incomplete and trying to access other routes
-  // Only redirect if queries have finished loading and profile is confirmed incomplete
-  // IMPORTANT: Add debounce to prevent rapid redirects during form updates
-  const redirectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  // Redirect to onboarding wizard if profile incomplete (same exempt paths as before)
   useEffect(() => {
-    // Clear any pending redirect
-    if (redirectTimeoutRef.current) {
-      clearTimeout(redirectTimeoutRef.current);
-      redirectTimeoutRef.current = null;
+    if (meLoading || meProfileLoading || (userId && emergencyContactsLoading)) return;
+    if (
+      meProfile &&
+      !isProfileComplete &&
+      !isExemptFromProfileWizardRedirect(location.pathname)
+    ) {
+      navigate('/onboarding', { replace: true });
     }
-    
-    // Don't redirect if we're still loading data
-    if (meProfileLoading || (userId && emergencyContactsLoading)) {
-      return;
-    }
-    
-    // Only redirect if profile data exists, is incomplete, and we're not already on onboarding/profile pages
-    if (meProfile && !isProfileComplete && location.pathname !== '/profile' && location.pathname !== '/onboarding') {
-      // Add a small delay to prevent rapid redirects during form updates
-      redirectTimeoutRef.current = setTimeout(() => {
-        // Double-check conditions before redirecting
-        if (meProfile && !isProfileComplete && location.pathname !== '/profile' && location.pathname !== '/onboarding') {
-          navigate('/onboarding', { replace: true });
-        }
-        redirectTimeoutRef.current = null;
-      }, 1000); // 1 second delay to allow form updates to settle
-    }
-    
-    return () => {
-      if (redirectTimeoutRef.current) {
-        clearTimeout(redirectTimeoutRef.current);
-        redirectTimeoutRef.current = null;
-      }
-    };
-  }, [meProfile, isProfileComplete, location.pathname, navigate, meProfileLoading, emergencyContactsLoading, userId]);
+  }, [meProfile, isProfileComplete, location.pathname, navigate, meLoading, meProfileLoading, emergencyContactsLoading, userId]);
   
   const displayName = (meProfile?.profile?.preferred_name) || ([meProfile?.profile?.first_name, meProfile?.profile?.last_name].filter(Boolean).join(' ') || meProfile?.user?.username || 'User');
   const avatarId = meProfile?.profile?.profile_photo_file_id;
@@ -333,9 +302,27 @@ export default function AppShell({ children }: PropsWithChildren){
       return has || permissionsSet.has(legacyPerm);
     }
     // Fleet & Equipment: accept legacy/alternate permission keys so tabs show correctly
-    if (requiredPermission === 'fleet:access') return has || permissionsSet.has('fleet:read');
-    if (requiredPermission === 'fleet:vehicles:read') return has || permissionsSet.has('fleet:access') || permissionsSet.has('fleet:read');
-    if (requiredPermission === 'equipment:read') return has || permissionsSet.has('fleet:equipment:read') || permissionsSet.has('fleet:access') || permissionsSet.has('fleet:read');
+    if (requiredPermission === 'fleet:access') {
+      return (
+        has ||
+        permissionsSet.has('fleet:read') ||
+        permissionsSet.has('fleet:vehicles:read') ||
+        permissionsSet.has('fleet:vehicles:write') ||
+        permissionsSet.has('fleet:equipment:read') ||
+        permissionsSet.has('fleet:equipment:write')
+      );
+    }
+    if (requiredPermission === 'fleet:vehicles:read') {
+      return has || permissionsSet.has('fleet:access') || permissionsSet.has('fleet:read');
+    }
+    if (requiredPermission === 'equipment:read') {
+      return (
+        has ||
+        permissionsSet.has('fleet:equipment:read') ||
+        permissionsSet.has('fleet:access') ||
+        permissionsSet.has('fleet:read')
+      );
+    }
     return has;
   };
 
@@ -633,6 +620,29 @@ export default function AppShell({ children }: PropsWithChildren){
     return menuCategories.find(cat => isCategoryActive(cat));
   }, [location.pathname, menuCategories, currentProject, isViewingOpportunity]);
 
+  const showHubLoadingGate =
+    meLoading ||
+    meProfileLoading ||
+    (userId && emergencyContactsLoading) ||
+    (!!userId && isProfileComplete && onboardingStatusLoading);
+
+  const needsWizardRedirectWhileInShell =
+    !!meProfile &&
+    !isProfileComplete &&
+    !isExemptFromProfileWizardRedirect(location.pathname);
+
+  const needsDocumentsRedirectWhileInShell =
+    isProfileComplete &&
+    onboardingBlocked &&
+    !matchesOnboardingDocumentsRedirectExempt(location.pathname);
+
+  if (showHubLoadingGate || needsWizardRedirectWhileInShell || needsDocumentsRedirectWhileInShell) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-slate-50 text-gray-500">
+        <div>Loading...</div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen flex">
@@ -965,8 +975,8 @@ export default function AppShell({ children }: PropsWithChildren){
           })}
         </nav>
       </aside>
-      <main className={`flex-1 min-w-0 transition-all duration-300 ${sidebarCollapsed ? 'ml-16' : 'ml-64'}`} style={{ height: '100vh', overflowY: 'auto' }}>
-        <div className="h-14 border-b border-gray-700/40 shadow-sm text-white flex items-center justify-between px-6 bg-gradient-to-r from-gray-700 via-gray-700 to-gray-800">
+      <main className={`flex-1 min-w-0 flex flex-col min-h-0 transition-all duration-300 ${sidebarCollapsed ? 'ml-16' : 'ml-64'}`} style={{ height: '100vh' }}>
+        <div className="h-14 shrink-0 border-b border-gray-700/40 shadow-sm text-white flex items-center justify-between px-6 bg-gradient-to-r from-gray-700 via-gray-700 to-gray-800">
           <GlobalSearch
             widthClassName="w-[760px] max-w-[70vw]"
             maxRecents={4}
@@ -993,6 +1003,7 @@ export default function AppShell({ children }: PropsWithChildren){
             </div>
           </div>
         </div>
+        <div className="flex-1 min-h-0 overflow-y-auto">
         <div className="p-5 min-h-full">
           {onboardingStatus?.has_pending &&
             !onboardingStatus?.past_deadline &&
@@ -1016,6 +1027,7 @@ export default function AppShell({ children }: PropsWithChildren){
               </div>
             )}
           {children}
+        </div>
         </div>
       </main>
       <InstallPrompt />

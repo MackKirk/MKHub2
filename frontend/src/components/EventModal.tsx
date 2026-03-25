@@ -1,5 +1,6 @@
 import { useState, useMemo, useEffect } from 'react';
 import toast from 'react-hot-toast';
+import OverlayPortal from '@/components/OverlayPortal';
 import { formatDateLocal, getTodayLocal } from '@/lib/dateUtils';
 
 type Event = {
@@ -541,6 +542,7 @@ export default function EventModal({ projectId, mode, event, onClose, onSave }: 
   const previewOccurrences = occurrences.slice(0, 30);
 
   return (
+    <OverlayPortal>
     <div
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
       onClick={onClose}
@@ -994,5 +996,6 @@ export default function EventModal({ projectId, mode, event, onClose, onSave }: 
         </div>
       </div>
     </div>
+    </OverlayPortal>
   );
 }

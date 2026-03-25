@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState, useCallback } from 'react';
 import { api } from '@/lib/api';
 import toast from 'react-hot-toast';
 import ImageEditor from '@/components/ImageEditor';
+import OverlayPortal from '@/components/OverlayPortal';
 
 type LibraryFile = { id:string, file_object_id:string, is_image?:boolean, content_type?:string, category?:string };
 
@@ -747,6 +748,7 @@ export default function ImagePicker({
           flex-shrink: 0;
         }
       `}</style>
+    <OverlayPortal>
     <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center overflow-y-auto p-4">
       <div className="w-[900px] max-w-[95vw] max-h-[90vh] rounded-xl overflow-hidden flex flex-col border border-gray-200 shadow-xl bg-white">
         <div className="rounded-t-xl border-b border-gray-200 bg-white p-4 flex-shrink-0">
@@ -894,13 +896,17 @@ export default function ImagePicker({
           </div>
         </div>
       </div>
+    </div>
+    </OverlayPortal>
       {showProgress && (
+        <OverlayPortal>
         <div className="fixed inset-0 z-[60] bg-black/50 flex items-center justify-center p-4">
           <div className="bg-white rounded-xl border border-gray-200 shadow-xl px-6 py-5 w-[360px] max-w-[90vw] text-center">
             <div className="mx-auto mb-4 h-10 w-10 rounded-full border-4 border-gray-200 border-t-brand-red animate-spin" />
             <div className="text-sm text-gray-600">{progressMessage || 'Processing...'}</div>
           </div>
         </div>
+        </OverlayPortal>
       )}
       {showImageEditor && img && (
         <ImageEditor
@@ -915,7 +921,6 @@ export default function ImagePicker({
           onSave={handleImageEditorSave}
         />
       )}
-    </div>
     </>
   );
 }
