@@ -2990,7 +2990,9 @@ function UserDocuments({ userId, canEdit }:{ userId:string, canEdit:boolean }){
   const [inlineRenameFolderName, setInlineRenameFolderName] = useState<string>('');
   const [selectMode, setSelectMode] = useState<boolean>(false);
   const [selectedDocIds, setSelectedDocIds] = useState<Set<string>>(new Set());
-  const [preview, setPreview] = useState<{ url:string, title:string, ext:string }|null>(null);
+  const [previewImage, setPreviewImage] = useState<{ url: string; name: string } | null>(null);
+  const [previewPdf, setPreviewPdf] = useState<{ url: string; name: string } | null>(null);
+  const [previewExcel, setPreviewExcel] = useState<{ url: string; name: string } | null>(null);
 
   const fileExt = (name?:string)=>{
     const n = String(name||'').toLowerCase();
@@ -3006,6 +3008,46 @@ function UserDocuments({ userId, canEdit }:{ userId:string, canEdit:boolean }){
     if(['zip','rar','7z','tar','gz'].includes(e)) return { bg:'bg-[#34495e]', txt:'text-white' };
     if(['txt','md','json','xml','yaml','yml'].includes(e)) return { bg:'bg-[#16a085]', txt:'text-white' };
     return { bg:'bg-gray-300', txt:'text-gray-800' };
+  };
+
+  const getFileTypeForDoc = (d: any): 'image' | 'pdf' | 'excel' | 'other' => {
+    const name = String(d?.title || '');
+    const ext = (name.includes('.') ? name.split('.').pop() : '').toLowerCase() || '';
+    if (['png', 'jpg', 'jpeg', 'webp', 'gif', 'bmp', 'svg'].includes(ext)) return 'image';
+    if (ext === 'pdf') return 'pdf';
+    if (['xlsx', 'xls', 'csv'].includes(ext)) return 'excel';
+    return 'other';
+  };
+
+  const fetchEmployeeDocDownloadUrl = async (fileId: string) => {
+    try {
+      const r: any = await api('GET', `/files/${encodeURIComponent(fileId)}/download`);
+      return String(r.download_url || '');
+    } catch {
+      toast.error('Download link unavailable');
+      return '';
+    }
+  };
+
+  const handleEmployeeDocPreview = async (d: any) => {
+    const fileId = d.file_id;
+    if (!fileId) return;
+    const name = d.title || 'Document';
+    try {
+      const r: any = await api('GET', `/files/${encodeURIComponent(fileId)}/preview`);
+      const url = String(r.preview_url || r.download_url || '');
+      if (!url) {
+        toast.error('Preview not available');
+        return;
+      }
+      const ft = getFileTypeForDoc(d);
+      if (ft === 'image') setPreviewImage({ url, name });
+      else if (ft === 'pdf') setPreviewPdf({ url, name });
+      else if (ft === 'excel') setPreviewExcel({ url, name });
+      else window.open(url, '_blank', 'noopener,noreferrer');
+    } catch {
+      toast.error('Preview not available');
+    }
   };
 
   const upload = async()=>{
@@ -3241,20 +3283,25 @@ function UserDocuments({ userId, canEdit }:{ userId:string, canEdit:boolean }){
                     )}
                     {(()=>{ const ext=fileExt(d.title).toUpperCase(); const s=extStyle(ext);
                       return (
-                        <div className={`w-10 h-12 rounded-lg ${s.bg} ${s.txt} flex items-center justify-center text-[10px] font-extrabold select-none`}>{ext||'FILE'}</div>
+                        <button type="button" className={`w-10 h-12 rounded-lg ${s.bg} ${s.txt} flex items-center justify-center text-[10px] font-extrabold select-none border-0`} onClick={() => handleEmployeeDocPreview(d)}>{ext||'FILE'}</button>
                       ); })()}
-                    <div className="flex-1 min-w-0" onClick={async()=>{
-                      try{
-                        const r:any = await api('GET', `/files/${encodeURIComponent(d.file_id)}/download`);
-                        const ext = fileExt(d.title);
-                        setPreview({ url: r.download_url||'', title: d.title||'Preview', ext });
-                      }catch(_e){ toast.error('Preview not available'); }
-                    }}>
+                    <button type="button" className="flex-1 min-w-0 text-left" onClick={() => handleEmployeeDocPreview(d)}>
                       <div className="font-medium truncate cursor-pointer hover:underline">{d.title||'Document'}</div>
                       <div className="text-[11px] text-gray-600 truncate">Uploaded {String(d.created_at||'').slice(0,10)}</div>
-                    </div>
+                    </button>
                     <div className="ml-auto flex items-center gap-1">
-                      <a title="Download" className="p-2 rounded hover:bg-gray-100" href={`/files/${d.file_id}/download`} target="_blank">⬇️</a>
+                      <button
+                        type="button"
+                        title="Download"
+                        className="p-2 rounded hover:bg-gray-100"
+                        onClick={async (e) => {
+                          e.stopPropagation();
+                          const url = await fetchEmployeeDocDownloadUrl(d.file_id);
+                          if (url) window.open(url, '_blank', 'noopener,noreferrer');
+                        }}
+                      >
+                        ⬇️
+                      </button>
                       {canEdit && <>
                         <button title="Rename" onClick={()=> setRenameDoc({ id: d.id, title: d.title||'' })} className="p-2 rounded hover:bg-gray-100">✏️</button>
                         <button title="Move" onClick={()=> setMoveDoc({ id: d.id })} className="p-2 rounded hover:bg-gray-100">📁</button>
@@ -3366,21 +3413,54 @@ function UserDocuments({ userId, canEdit }:{ userId:string, canEdit:boolean }){
         </div>
       )}
 
-      {preview && (
-        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50" onClick={()=> setPreview(null)}>
-          <div className="bg-white rounded-xl w-[92vw] h-[88vh] p-3 relative" onClick={(e)=> e.stopPropagation()}>
-            <div className="flex items-center justify-between mb-2">
-              <div className="font-semibold truncate mr-4">{preview.title}</div>
-              <button onClick={()=> setPreview(null)} className="px-3 py-1.5 rounded border">Close</button>
+      {previewImage && (
+        <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4" onClick={() => setPreviewImage(null)}>
+          <div className="w-full h-full max-w-[95vw] max-h-[95vh] bg-white rounded-lg overflow-hidden flex flex-col" onClick={(e) => e.stopPropagation()}>
+            <div className="p-3 border-b flex items-center justify-between flex-shrink-0">
+              <h3 className="text-sm font-semibold truncate pr-2">{previewImage.name}</h3>
+              <div className="flex items-center gap-2 flex-shrink-0">
+                <a href={previewImage.url} download={previewImage.name} className="text-xs px-2 py-1 rounded border hover:bg-gray-50" title="Download">⬇️</a>
+                <a href={previewImage.url} target="_blank" rel="noopener noreferrer" className="text-xs px-2 py-1 rounded border hover:bg-gray-50" title="Open in new tab">🔗</a>
+                <button type="button" onClick={() => setPreviewImage(null)} className="text-lg font-bold text-gray-400 hover:text-gray-600 w-6 h-6">×</button>
+              </div>
             </div>
-            <div className="w-full h-[calc(100%-40px)] border rounded overflow-hidden bg-gray-50">
-              {['png','jpg','jpeg','webp','gif','bmp','svg'].includes(preview.ext) ? (
-                <img src={preview.url} className="w-full h-full object-contain" />
-              ) : preview.ext==='pdf' ? (
-                <iframe src={preview.url} className="w-full h-full" />
-              ) : (
-                <div className="p-6 text-sm text-gray-600">Preview not available. <a className="underline" href={preview.url} target="_blank">Download</a></div>
-              )}
+            <div className="flex-1 overflow-auto p-3 min-h-0 flex items-center justify-center">
+              <img src={previewImage.url} alt={previewImage.name} className="max-w-full max-h-full h-auto object-contain" />
+            </div>
+          </div>
+        </div>
+      )}
+
+      {previewPdf && (
+        <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4" onClick={() => setPreviewPdf(null)}>
+          <div className="w-full h-full max-w-[95vw] max-h-[95vh] bg-white rounded-lg overflow-hidden flex flex-col" onClick={(e) => e.stopPropagation()}>
+            <div className="p-3 border-b flex items-center justify-between flex-shrink-0">
+              <h3 className="text-sm font-semibold truncate pr-2">{previewPdf.name}</h3>
+              <div className="flex items-center gap-2 flex-shrink-0">
+                <a href={previewPdf.url} target="_blank" rel="noopener noreferrer" className="text-xs px-2 py-1 rounded border hover:bg-gray-50" title="Open in new tab">🔗</a>
+                <button type="button" onClick={() => setPreviewPdf(null)} className="text-lg font-bold text-gray-400 hover:text-gray-600 w-6 h-6">×</button>
+              </div>
+            </div>
+            <div className="flex-1 overflow-hidden min-h-0">
+              <iframe src={previewPdf.url} className="w-full h-full border-0" title={previewPdf.name} />
+            </div>
+          </div>
+        </div>
+      )}
+
+      {previewExcel && (
+        <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4" onClick={() => setPreviewExcel(null)}>
+          <div className="w-full h-full max-w-[95vw] max-h-[95vh] bg-white rounded-lg overflow-hidden flex flex-col" onClick={(e) => e.stopPropagation()}>
+            <div className="p-3 border-b flex items-center justify-between flex-shrink-0">
+              <h3 className="text-sm font-semibold truncate pr-2">{previewExcel.name}</h3>
+              <div className="flex items-center gap-2 flex-shrink-0">
+                <a href={previewExcel.url} download={previewExcel.name} className="text-xs px-2 py-1 rounded border hover:bg-gray-50" title="Download">⬇️</a>
+                <a href={previewExcel.url} target="_blank" rel="noopener noreferrer" className="text-xs px-2 py-1 rounded border hover:bg-gray-50" title="Open in new tab">🔗</a>
+                <button type="button" onClick={() => setPreviewExcel(null)} className="text-lg font-bold text-gray-400 hover:text-gray-600 w-6 h-6">×</button>
+              </div>
+            </div>
+            <div className="flex-1 overflow-hidden min-h-0">
+              <iframe src={`https://view.officeapps.live.com/op/embed.aspx?src=${encodeURIComponent(previewExcel.url)}`} className="w-full h-full border-0" title={previewExcel.name} allow="fullscreen" />
             </div>
           </div>
         </div>

@@ -658,6 +658,38 @@ def serve_local_file(file_path: str):
     )
 
 
+@router.get("/local-inline/{file_path:path}")
+def serve_local_file_inline(file_path: str):
+    """Serve local files inline for preview (no attachment filename)."""
+    from fastapi.responses import FileResponse
+
+    clean_path = unquote(file_path).lstrip("/").replace("..", "").replace("\\", "/")
+    local_storage = LocalStorageProvider()
+    file_path_obj = local_storage._get_path(clean_path)
+
+    storage_base = local_storage.base_dir.resolve()
+    file_resolved = file_path_obj.resolve()
+
+    if not str(file_resolved).startswith(str(storage_base)):
+        raise HTTPException(status_code=403, detail="Access denied")
+
+    if not file_path_obj.exists():
+        raise HTTPException(status_code=404, detail="File not found")
+
+    content_type = "application/octet-stream"
+    if file_path_obj.suffix:
+        from mimetypes import guess_type
+        guessed = guess_type(str(file_path_obj))
+        if guessed[0]:
+            content_type = guessed[0]
+
+    # Intentionally omit "filename" to avoid forced attachment download.
+    return FileResponse(
+        path=str(file_path_obj),
+        media_type=content_type,
+    )
+
+
 @router.get("/{file_id}/download")
 def download(file_id: str, db: Session = Depends(get_db)):
     import logging
@@ -710,6 +742,48 @@ def download(file_id: str, db: Session = Depends(get_db)):
     if not url:
         raise HTTPException(status_code=404, detail="File not available in blob storage")
     return {"download_url": url, "expires_in": 300}
+
+
+@router.get("/{file_id}/preview")
+def preview(file_id: str, db: Session = Depends(get_db)):
+    """Return an inline-friendly preview URL for browser viewers."""
+    fo: Optional[FileObject] = db.query(FileObject).filter(FileObject.id == file_id).first()
+    if not fo:
+        raise HTTPException(status_code=404, detail="File not found")
+
+    storage = get_storage_for_file(fo)
+
+    if isinstance(storage, LocalStorageProvider):
+        key = quote(fo.key.lstrip("/"))
+        base = (settings.public_base_url or "").rstrip("/")
+        return {"preview_url": f"{base}/files/local-inline/{key}", "expires_in": 300}
+
+    # Blob storage: generate SAS URL with inline content disposition.
+    try:
+        from datetime import timedelta
+        from azure.storage.blob import generate_blob_sas, BlobSasPermissions
+        expiry = datetime.utcnow() + timedelta(seconds=300)
+        service = storage._service
+        container = storage._container
+        blob_name = fo.key.lstrip("/")
+        sas = generate_blob_sas(
+            account_name=service.account_name,
+            container_name=container,
+            blob_name=blob_name,
+            account_key=service.credential.account_key,
+            permission=BlobSasPermissions(read=True),
+            expiry=expiry,
+            content_disposition="inline",
+            content_type=(fo.content_type or None),
+        )
+        blob_url = service.get_blob_client(container, blob_name).url
+        return {"preview_url": f"{blob_url}?{sas}", "expires_in": 300}
+    except Exception:
+        # Fallback to regular signed URL when inline override isn't available.
+        url = storage.get_download_url(fo.key, expires_s=300)
+        if not url:
+            raise HTTPException(status_code=404, detail="File not available in blob storage")
+        return {"preview_url": url, "expires_in": 300}
 
 
 @router.get("/{file_id}/thumbnail")
