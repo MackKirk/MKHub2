@@ -3494,7 +3494,7 @@ function UserDocuments({ userId, canEdit }:{ userId:string, canEdit:boolean }){
               <iframe src={`https://view.officeapps.live.com/op/embed.aspx?src=${encodeURIComponent(previewExcel.url)}`} className="w-full h-full border-0" title={previewExcel.name} allow="fullscreen" />
             </div>
           </div>
-        </div></OverlayPortal>
+        </div>
       )}
     </div>
   );

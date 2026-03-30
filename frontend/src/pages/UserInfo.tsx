@@ -9804,7 +9804,6 @@ function UserDocuments({ userId, canEdit }:{ userId:string, canEdit:boolean }){
             </div>
           </div>
         </div>
-        </OverlayPortal>
       )}
     </div>
   );
