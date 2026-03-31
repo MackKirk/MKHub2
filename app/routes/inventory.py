@@ -3,6 +3,7 @@ from datetime import datetime, timezone
 from typing import List
 
 from fastapi import APIRouter, Depends, HTTPException, Body, Query
+from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
 from ..db import get_db
@@ -103,7 +104,18 @@ def list_suppliers(
         query = db.query(Supplier)
         if q:
             like = f"%{q}%"
-            query = query.filter((Supplier.name.ilike(like)) | (Supplier.legal_name.ilike(like)))
+            query = query.filter(
+                or_(
+                    Supplier.name.ilike(like),
+                    Supplier.legal_name.ilike(like),
+                    Supplier.address_line1.ilike(like),
+                    Supplier.address_line2.ilike(like),
+                    Supplier.city.ilike(like),
+                    Supplier.province.ilike(like),
+                    Supplier.postal_code.ilike(like),
+                    Supplier.country.ilike(like),
+                )
+            )
         
         # Filter by country
         if country:

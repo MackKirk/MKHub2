@@ -322,7 +322,13 @@ def list_clients(
             (Client.city.ilike(search_term)) |
             (Client.province.ilike(search_term)) |
             (Client.postal_code.ilike(search_term)) |
-            (Client.country.ilike(search_term))
+            (Client.country.ilike(search_term)) |
+            (Client.billing_address_line1.ilike(search_term)) |
+            (Client.billing_address_line2.ilike(search_term)) |
+            (Client.billing_city.ilike(search_term)) |
+            (Client.billing_province.ilike(search_term)) |
+            (Client.billing_postal_code.ilike(search_term)) |
+            (Client.billing_country.ilike(search_term))
         )
     
     # Get total count

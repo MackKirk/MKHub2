@@ -4369,16 +4369,27 @@ def business_opportunities(
     if value_max is not None:
         query = query.filter(Project.cost_estimated <= value_max)
     
-    # Search - include client name if client relation exists
+    # Search - include client name and address fields (project + client)
     if q:
         from ..models.models import Client
+        like = f"%{q}%"
         query = query.outerjoin(Client, Project.client_id == Client.id)
         query = query.filter(
             or_(
-                Project.name.ilike(f"%{q}%"),
-                Project.code.ilike(f"%{q}%"),
-                Client.display_name.ilike(f"%{q}%"),
-                Client.name.ilike(f"%{q}%")
+                Project.name.ilike(like),
+                Project.code.ilike(like),
+                Client.display_name.ilike(like),
+                Client.name.ilike(like),
+                Project.address.ilike(like),
+                Project.address_city.ilike(like),
+                Project.address_province.ilike(like),
+                Project.address_country.ilike(like),
+                Client.address_line1.ilike(like),
+                Client.address_line2.ilike(like),
+                Client.city.ilike(like),
+                Client.province.ilike(like),
+                Client.postal_code.ilike(like),
+                Client.country.ilike(like),
             )
         )
     
@@ -4788,25 +4799,36 @@ def business_projects(
     if value_max is not None:
         query = query.filter(Project.cost_estimated <= value_max)
     
-    # Search (by name, code, or client name)
+    # Search (by name, code, client fields, or project/site address)
     if q:
-        # First, find client IDs that match the search query
+        like = f"%{q}%"
+        # First, find client IDs that match the search query (name or address)
         # Note: Client is imported at the top, but there's a conditional import later that causes UnboundLocalError
         # So we use the global Client directly by ensuring it's not shadowed
         matching_client_ids = db.query(Client.id).filter(
             or_(
-                Client.name.ilike(f"%{q}%"),
-                Client.display_name.ilike(f"%{q}%")
+                Client.name.ilike(like),
+                Client.display_name.ilike(like),
+                Client.address_line1.ilike(like),
+                Client.address_line2.ilike(like),
+                Client.city.ilike(like),
+                Client.province.ilike(like),
+                Client.postal_code.ilike(like),
+                Client.country.ilike(like),
             )
         )
         
         # Get list of matching client IDs
         matching_ids = [str(cid[0]) for cid in matching_client_ids.all()]
         
-        # Then filter projects by name, code, or client_id in matching clients
+        # Then filter projects by name, code, address, or client_id in matching clients
         search_conditions = [
-            Project.name.ilike(f"%{q}%"),
-            Project.code.ilike(f"%{q}%")
+            Project.name.ilike(like),
+            Project.code.ilike(like),
+            Project.address.ilike(like),
+            Project.address_city.ilike(like),
+            Project.address_province.ilike(like),
+            Project.address_country.ilike(like),
         ]
         
         # Add client_id filter if we have matching clients

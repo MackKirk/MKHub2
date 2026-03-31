@@ -2405,39 +2405,58 @@ function EditStartDateModal({ projectId, currentStartDate, onClose, onSave }: {
   };
 
   return (
-    <OverlayPortal><div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4" onClick={onClose}>
-      <div className="bg-white rounded-xl w-full max-w-md shadow-xl" onClick={(e) => e.stopPropagation()}>
-        <div className="p-4 border-b flex items-center justify-between">
-          <h3 className="text-lg font-semibold">Edit Start Date</h3>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-600">
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-            </svg>
-          </button>
-        </div>
-        <div className="p-4 space-y-4">
-          <div>
-            <label className="text-sm font-medium text-gray-700 mb-2 block">Start Date</label>
-            <input
-              type="date"
-              value={startDate}
-              onChange={(e) => setStartDate(e.target.value)}
-              className="w-full border rounded px-3 py-2"
-            />
+    <OverlayPortal><div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+      onClick={onClose}
+    >
+      <div
+        className="max-w-md w-full max-h-[90vh] flex flex-col rounded-xl border border-gray-200 bg-gray-100 shadow-xl overflow-hidden"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex-shrink-0 rounded-t-xl border-b border-gray-200 bg-white p-4">
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={onClose}
+              className="p-1 rounded-lg hover:bg-gray-100 text-gray-600"
+            >
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+              </svg>
+            </button>
+            <div>
+              <h2 className="text-sm font-semibold text-gray-900">Edit Start Date</h2>
+              <p className="text-xs text-gray-500 mt-0.5">When work begins or is scheduled to begin</p>
+            </div>
           </div>
         </div>
-        <div className="p-4 border-t flex justify-end gap-2">
+        <div className="flex-1 overflow-y-auto p-4 min-h-0">
+          <div className="rounded-xl border border-gray-200 bg-white p-4 space-y-4">
+            <div>
+              <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">Start Date</label>
+              <input
+                type="date"
+                value={startDate}
+                onChange={(e) => setStartDate(e.target.value)}
+                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-gray-300 focus:border-gray-300"
+              />
+            </div>
+          </div>
+        </div>
+        <div className="flex-shrink-0 px-4 py-4 border-t border-gray-200 bg-white flex items-center justify-end gap-3 rounded-b-xl">
           <button
+            type="button"
             onClick={onClose}
             disabled={saving}
-            className="px-4 py-2 rounded border bg-white hover:bg-gray-50 text-gray-700 font-medium disabled:opacity-50"
+            className="px-3 py-1.5 rounded-lg text-sm font-medium text-gray-700 border border-gray-200 hover:bg-gray-50 disabled:opacity-50"
           >
             Cancel
           </button>
           <button
+            type="button"
             onClick={handleSave}
             disabled={saving}
-            className="px-4 py-2 rounded bg-brand-red text-white font-medium disabled:opacity-50"
+            className="px-4 py-2 rounded-lg text-sm font-semibold text-white bg-brand-red hover:bg-[#aa1212] disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {saving ? 'Saving...' : 'Save'}
           </button>
@@ -2481,39 +2500,58 @@ function EditEtaModal({ projectId, currentEta, onClose, onSave }: {
   };
 
   return (
-    <OverlayPortal><div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4" onClick={onClose}>
-      <div className="bg-white rounded-xl w-full max-w-md shadow-xl" onClick={(e) => e.stopPropagation()}>
-        <div className="p-4 border-b flex items-center justify-between">
-          <h3 className="text-lg font-semibold">Edit ETA</h3>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-600">
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-            </svg>
-          </button>
-        </div>
-        <div className="p-4 space-y-4">
-          <div>
-            <label className="text-sm font-medium text-gray-700 mb-2 block">ETA Date</label>
-            <input
-              type="date"
-              value={eta}
-              onChange={(e) => setEta(e.target.value)}
-              className="w-full border rounded px-3 py-2"
-            />
+    <OverlayPortal><div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+      onClick={onClose}
+    >
+      <div
+        className="max-w-md w-full max-h-[90vh] flex flex-col rounded-xl border border-gray-200 bg-gray-100 shadow-xl overflow-hidden"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex-shrink-0 rounded-t-xl border-b border-gray-200 bg-white p-4">
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={onClose}
+              className="p-1 rounded-lg hover:bg-gray-100 text-gray-600"
+            >
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+              </svg>
+            </button>
+            <div>
+              <h2 className="text-sm font-semibold text-gray-900">Edit ETA</h2>
+              <p className="text-xs text-gray-500 mt-0.5">Target completion date</p>
+            </div>
           </div>
         </div>
-        <div className="p-4 border-t flex justify-end gap-2">
+        <div className="flex-1 overflow-y-auto p-4 min-h-0">
+          <div className="rounded-xl border border-gray-200 bg-white p-4 space-y-4">
+            <div>
+              <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">ETA Date</label>
+              <input
+                type="date"
+                value={eta}
+                onChange={(e) => setEta(e.target.value)}
+                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-gray-300 focus:border-gray-300"
+              />
+            </div>
+          </div>
+        </div>
+        <div className="flex-shrink-0 px-4 py-4 border-t border-gray-200 bg-white flex items-center justify-end gap-3 rounded-b-xl">
           <button
+            type="button"
             onClick={onClose}
             disabled={saving}
-            className="px-4 py-2 rounded border bg-white hover:bg-gray-50 text-gray-700 font-medium disabled:opacity-50"
+            className="px-3 py-1.5 rounded-lg text-sm font-medium text-gray-700 border border-gray-200 hover:bg-gray-50 disabled:opacity-50"
           >
             Cancel
           </button>
           <button
+            type="button"
             onClick={handleSave}
             disabled={saving}
-            className="px-4 py-2 rounded bg-brand-red text-white font-medium disabled:opacity-50"
+            className="px-4 py-2 rounded-lg text-sm font-semibold text-white bg-brand-red hover:bg-[#aa1212] disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {saving ? 'Saving...' : 'Save'}
           </button>
@@ -2596,21 +2634,37 @@ function EditRelatedCustomersModal({
   };
 
   return (
-    <OverlayPortal><div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4" onClick={onClose}>
-      <div className="bg-white rounded-xl w-full max-w-lg max-h-[90vh] flex flex-col shadow-xl" onClick={(e) => e.stopPropagation()}>
-        <div className="p-4 border-b flex items-center justify-between flex-shrink-0">
-          <h3 className="text-lg font-semibold">Edit Related Customers</h3>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-600">
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-            </svg>
-          </button>
+    <OverlayPortal><div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+      onClick={onClose}
+    >
+      <div
+        className="max-w-lg w-full max-h-[90vh] flex flex-col rounded-xl border border-gray-200 bg-gray-100 shadow-xl overflow-hidden"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex-shrink-0 rounded-t-xl border-b border-gray-200 bg-white p-4">
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={onClose}
+              className="p-1 rounded-lg hover:bg-gray-100 text-gray-600"
+            >
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+              </svg>
+            </button>
+            <div>
+              <h2 className="text-sm font-semibold text-gray-900">Edit Related Customers</h2>
+              <p className="text-xs text-gray-500 mt-0.5">Link additional customers to this project</p>
+            </div>
+          </div>
         </div>
-        <div className="p-4 overflow-y-auto flex-1">
+        <div className="flex-1 overflow-y-auto p-4 min-h-0">
+          <div className="rounded-xl border border-gray-200 bg-white p-4 space-y-4">
           <div className="mb-3">
             <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">Search</label>
             <input
-              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:ring-1 focus:ring-gray-300 focus:border-gray-300"
+              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm placeholder:text-gray-400 focus:outline-none focus:ring-1 focus:ring-gray-300 focus:border-gray-300"
               placeholder="Type customer name, city, or address..."
               value={q}
               onChange={(e) => setQ(e.target.value)}
@@ -2658,19 +2712,22 @@ function EditRelatedCustomersModal({
           {!q.trim() && list.length === 0 && (
             <div className="text-center py-6 text-sm text-gray-500">No customers available</div>
           )}
+          </div>
         </div>
-        <div className="p-4 border-t flex justify-end gap-2 flex-shrink-0">
+        <div className="flex-shrink-0 px-4 py-4 border-t border-gray-200 bg-white flex items-center justify-end gap-3 rounded-b-xl">
           <button
+            type="button"
             onClick={onClose}
             disabled={saving}
-            className="px-4 py-2 rounded border bg-white hover:bg-gray-50 text-gray-700 font-medium disabled:opacity-50"
+            className="px-3 py-1.5 rounded-lg text-sm font-medium text-gray-700 border border-gray-200 hover:bg-gray-50 disabled:opacity-50"
           >
             Cancel
           </button>
           <button
+            type="button"
             onClick={handleSave}
             disabled={saving}
-            className="px-4 py-2 rounded bg-brand-red text-white font-medium disabled:opacity-50"
+            className="px-4 py-2 rounded-lg text-sm font-semibold text-white bg-brand-red hover:bg-[#aa1212] disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {saving ? 'Saving...' : `Save (${selectedIds.size} selected)`}
           </button>
@@ -2716,45 +2773,64 @@ function EditLeadSourceModal({ projectId, currentLeadSource, onClose, onSave }: 
   };
 
   return (
-    <OverlayPortal><div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4" onClick={onClose}>
-      <div className="bg-white rounded-xl w-full max-w-md shadow-xl" onClick={(e) => e.stopPropagation()}>
-        <div className="p-4 border-b flex items-center justify-between">
-          <h3 className="text-lg font-semibold">Edit Lead Source</h3>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-600">
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-            </svg>
-          </button>
-        </div>
-        <div className="p-4 space-y-4">
-          <div>
-            <label className="text-sm font-medium text-gray-700 mb-2 block">Lead Source</label>
-            <select
-              value={leadSource || ''}
-              onChange={(e) => setLeadSource(e.target.value)}
-              className="w-full border rounded px-3 py-2"
+    <OverlayPortal><div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+      onClick={onClose}
+    >
+      <div
+        className="max-w-md w-full max-h-[90vh] flex flex-col rounded-xl border border-gray-200 bg-gray-100 shadow-xl overflow-hidden"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex-shrink-0 rounded-t-xl border-b border-gray-200 bg-white p-4">
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={onClose}
+              className="p-1 rounded-lg hover:bg-gray-100 text-gray-600"
             >
-              <option value="">Select...</option>
-              {leadSources.map((ls: any) => {
-                const val = ls?.value ?? ls?.id ?? ls?.label ?? ls?.name ?? String(ls);
-                const label = ls?.label ?? ls?.name ?? String(ls);
-                return <option key={String(val)} value={String(val)}>{label}</option>;
-              })}
-            </select>
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+              </svg>
+            </button>
+            <div>
+              <h2 className="text-sm font-semibold text-gray-900">Edit Lead Source</h2>
+              <p className="text-xs text-gray-500 mt-0.5">Set how this opportunity was sourced</p>
+            </div>
           </div>
         </div>
-        <div className="p-4 border-t flex justify-end gap-2">
+        <div className="flex-1 overflow-y-auto p-4 min-h-0">
+          <div className="rounded-xl border border-gray-200 bg-white p-4 space-y-4">
+            <div>
+              <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">Lead Source</label>
+              <select
+                value={leadSource || ''}
+                onChange={(e) => setLeadSource(e.target.value)}
+                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-gray-300 focus:border-gray-300"
+              >
+                <option value="">Select...</option>
+                {sortByLabel(leadSources, (ls: any) => (ls?.label ?? ls?.name ?? '').toString()).map((ls: any) => {
+                  const val = ls?.value ?? ls?.id ?? ls?.label ?? ls?.name ?? String(ls);
+                  const label = ls?.label ?? ls?.name ?? String(ls);
+                  return <option key={String(val)} value={String(val)}>{label}</option>;
+                })}
+              </select>
+            </div>
+          </div>
+        </div>
+        <div className="flex-shrink-0 px-4 py-4 border-t border-gray-200 bg-white flex items-center justify-end gap-3 rounded-b-xl">
           <button
+            type="button"
             onClick={onClose}
             disabled={saving}
-            className="px-4 py-2 rounded border bg-white hover:bg-gray-50 text-gray-700 font-medium disabled:opacity-50"
+            className="px-3 py-1.5 rounded-lg text-sm font-medium text-gray-700 border border-gray-200 hover:bg-gray-50 disabled:opacity-50"
           >
             Cancel
           </button>
           <button
+            type="button"
             onClick={handleSave}
             disabled={saving}
-            className="px-4 py-2 rounded bg-brand-red text-white font-medium disabled:opacity-50"
+            className="px-4 py-2 rounded-lg text-sm font-semibold text-white bg-brand-red hover:bg-[#aa1212] disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {saving ? 'Saving...' : 'Save'}
           </button>
@@ -2893,7 +2969,7 @@ function ConvertToProjectModal({
       const val = (ls.value ?? ls.label ?? String(ls)).toLowerCase();
       return label.includes(query) || val.includes(query);
     });
-    return [...list].sort((a: any, b: any) => (a.label ?? a.value ?? String(a)).localeCompare(b.label ?? b.value ?? String(b)));
+    return sortByLabel(list, (ls: any) => (ls?.label ?? ls?.name ?? '').toString());
   }, [leadSourcesList, searchQueries]);
 
   useEffect(() => {
@@ -8025,20 +8101,34 @@ function OnSiteLeadsModal({ projectId, originalDivisions, divisionLeads, setting
   }
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4" onClick={() => setOpenDivisionId(null)}>
-      <div className="bg-white rounded-xl max-w-2xl w-full max-h-[90vh] overflow-hidden flex flex-col shadow-xl" onClick={(e) => e.stopPropagation()}>
-        <div className="p-4 bg-[#7f1010] flex items-center justify-between flex-shrink-0">
-          <h3 className="text-lg font-semibold text-white">On-site Leads by Division</h3>
-          <button
-            onClick={onClose}
-            className="text-white hover:text-gray-200 transition-colors"
-          >
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-            </svg>
-          </button>
+    <OverlayPortal>
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+      onClick={onClose}
+    >
+      <div
+        className="max-w-2xl w-full max-h-[90vh] flex flex-col rounded-xl border border-gray-200 bg-gray-100 shadow-xl overflow-hidden"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex-shrink-0 rounded-t-xl border-b border-gray-200 bg-white p-4">
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={onClose}
+              className="p-1 rounded-lg hover:bg-gray-100 text-gray-600"
+            >
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+              </svg>
+            </button>
+            <div>
+              <h2 className="text-sm font-semibold text-gray-900">On-site Leads by Division</h2>
+              <p className="text-xs text-gray-500 mt-0.5">Assign a lead for each project division</p>
+            </div>
+          </div>
         </div>
-        <div className="p-6 overflow-y-auto flex-1 min-h-0">
+        <div className="flex-1 overflow-y-auto p-4 min-h-0">
+          <div className="rounded-xl border border-gray-200 bg-white p-4">
           <div className="flex items-center justify-between mb-4">
             <div className="text-sm text-gray-600">
               {localDivisions.length} division{localDivisions.length !== 1 ? 's' : ''} from Project Divisions
@@ -8264,20 +8354,23 @@ function OnSiteLeadsModal({ projectId, originalDivisions, divisionLeads, setting
           );
         })}
           </div>
+          </div>
         </div>
-        <div className="p-4 border-t flex items-center justify-end gap-2 flex-shrink-0 relative z-0">
+        <div className="flex-shrink-0 px-4 py-4 border-t border-gray-200 bg-white flex items-center justify-end gap-3 rounded-b-xl relative z-0">
           <button
+            type="button"
             onClick={onClose}
             disabled={isSaving}
-            className="px-3 py-1.5 rounded border bg-white hover:bg-gray-50 text-gray-700 font-medium text-sm disabled:opacity-50"
+            className="px-3 py-1.5 rounded-lg text-sm font-medium text-gray-700 border border-gray-200 hover:bg-gray-50 disabled:opacity-50"
           >
             Cancel
           </button>
           {canEdit && (
             <button
+              type="button"
               onClick={handleSave}
               disabled={isSaving}
-              className="px-3 py-1.5 rounded bg-[#7f1010] text-white disabled:opacity-60 disabled:cursor-not-allowed font-medium text-sm"
+              className="px-4 py-2 rounded-lg text-sm font-semibold text-white bg-brand-red hover:bg-[#aa1212] disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {isSaving ? 'Saving...' : 'Save'}
             </button>
@@ -8285,6 +8378,7 @@ function OnSiteLeadsModal({ projectId, originalDivisions, divisionLeads, setting
         </div>
       </div>
     </div>
+    </OverlayPortal>
   );
 }
 
@@ -8705,9 +8799,36 @@ function EditStatusModal({ projectId, currentStatus, currentStatusLabel, setting
   onClose: () => void;
   onSave: () => Promise<void>;
 }) {
+  const queryClient = useQueryClient();
   const [selectedStatusId, setSelectedStatusId] = useState(currentStatus);
+  const [statusNotes, setStatusNotes] = useState('');
   const [saving, setSaving] = useState(false);
   const allProjectStatuses = (settings?.project_statuses || []) as any[];
+  const reportCategories = (settings?.report_categories || []) as any[];
+
+  const commercialGeneralCategoryId = useMemo(() => {
+    const cats = reportCategories;
+    const commercialGeneral = cats.find(
+      (c: any) => c.meta?.group === 'commercial' && String(c.value || '').toLowerCase() === 'general'
+    );
+    if (commercialGeneral?.value != null && commercialGeneral.value !== '') {
+      return String(commercialGeneral.value);
+    }
+    const byValue = cats.find((c: any) => String(c.value || '').toLowerCase() === 'general');
+    if (byValue?.value != null && byValue.value !== '') {
+      return String(byValue.value);
+    }
+    const byLabel = cats.find(
+      (c: any) => c.meta?.group === 'commercial' && String(c.label || '').trim().toLowerCase() === 'general'
+    );
+    if (byLabel?.value != null && byLabel.value !== '') {
+      return String(byLabel.value);
+    }
+    if (import.meta.env.DEV) {
+      console.warn('Commercial General report category not found in settings; using fallback "general"');
+    }
+    return 'general';
+  }, [reportCategories]);
   
   // For opportunities, only show: Prospecting, Sent to Customer, Refused, Conflict, Schedule Conflict
   // For projects, show all statuses except "Prospecting"
@@ -8738,6 +8859,7 @@ function EditStatusModal({ projectId, currentStatus, currentStatusLabel, setting
   }, [allProjectStatuses, isBidding]);
 
   const handleSave = async () => {
+    const noteText = statusNotes.trim();
     try {
       setSaving(true);
       const selectedStatus = projectStatuses.find((s: any) => String(s.id) === String(selectedStatusId));
@@ -8745,7 +8867,24 @@ function EditStatusModal({ projectId, currentStatus, currentStatusLabel, setting
         status_id: selectedStatusId || null,
         status_label: selectedStatus?.label || null
       });
+
+      if (noteText) {
+        try {
+          await api('POST', `/projects/${projectId}/reports`, {
+            title: 'Status Change',
+            category_id: commercialGeneralCategoryId,
+            description: noteText,
+          });
+        } catch (noteErr: any) {
+          toast.error(noteErr?.response?.data?.detail || 'Status updated, but failed to add note');
+          await queryClient.invalidateQueries({ queryKey: ['projectReports', projectId] });
+          await onSave();
+          return;
+        }
+      }
+
       toast.success('Status updated');
+      await queryClient.invalidateQueries({ queryKey: ['projectReports', projectId] });
       await onSave();
     } catch (e: any) {
       toast.error(e?.response?.data?.detail || 'Failed to update status');
@@ -8755,50 +8894,81 @@ function EditStatusModal({ projectId, currentStatus, currentStatusLabel, setting
   };
 
   return (
-    <OverlayPortal><div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4" onClick={onClose}>
-      <div className="bg-white rounded-xl w-full max-w-md shadow-xl" onClick={(e) => e.stopPropagation()}>
-        <div className="p-4 border-b flex items-center justify-between">
-          <h3 className="text-lg font-semibold">Edit Status</h3>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-600">
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-            </svg>
-          </button>
-        </div>
-        <div className="p-4">
-          <label className="text-sm font-medium text-gray-700 mb-2 block">Status</label>
-          {projectStatuses.length === 0 ? (
-            <div className="text-sm text-gray-500 mb-4">
-              No statuses available. Please ensure the following statuses exist in settings: {isBidding ? 'Prospecting, Sent to Customer, Refused, Conflict, Schedule Conflict' : 'All statuses except Prospecting'}
-            </div>
-          ) : (
-            <select
-              value={selectedStatusId}
-              onChange={(e) => setSelectedStatusId(e.target.value)}
-              className="w-full border rounded px-3 py-2 mb-4"
-            >
-              {projectStatuses.map((status: any) => (
-                <option key={status.id} value={status.id}>
-                  {status.label}
-                </option>
-              ))}
-            </select>
-          )}
-          <div className="flex gap-2">
+    <OverlayPortal><div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+      onClick={onClose}
+    >
+      <div
+        className="max-w-md w-full max-h-[90vh] flex flex-col rounded-xl border border-gray-200 bg-gray-100 shadow-xl overflow-hidden"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex-shrink-0 rounded-t-xl border-b border-gray-200 bg-white p-4">
+          <div className="flex items-center gap-2">
             <button
-              onClick={handleSave}
-              disabled={saving}
-              className="flex-1 px-4 py-2 rounded bg-[#7f1010] text-white disabled:opacity-60 font-medium"
-            >
-              {saving ? 'Saving...' : 'Save'}
-            </button>
-            <button
+              type="button"
               onClick={onClose}
-              className="px-4 py-2 rounded border bg-white hover:bg-gray-50 text-gray-700 font-medium"
+              className="p-1 rounded-lg hover:bg-gray-100 text-gray-600"
             >
-              Cancel
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+              </svg>
             </button>
+            <div>
+              <h2 className="text-sm font-semibold text-gray-900">Edit Status</h2>
+              <p className="text-xs text-gray-500 mt-0.5">Update the workflow status for this project</p>
+            </div>
           </div>
+        </div>
+        <div className="flex-1 overflow-y-auto p-4 min-h-0">
+          <div className="rounded-xl border border-gray-200 bg-white p-4 space-y-4">
+            <div>
+              <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">Status</label>
+              {projectStatuses.length === 0 ? (
+                <div className="text-sm text-gray-500">
+                  No statuses available. Please ensure the following statuses exist in settings: {isBidding ? 'Prospecting, Sent to Customer, Refused, Conflict, Schedule Conflict' : 'All statuses except Prospecting'}
+                </div>
+              ) : (
+                <select
+                  value={selectedStatusId}
+                  onChange={(e) => setSelectedStatusId(e.target.value)}
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-gray-300 focus:border-gray-300"
+                >
+                  {projectStatuses.map((status: any) => (
+                    <option key={status.id} value={status.id}>
+                      {status.label}
+                    </option>
+                  ))}
+                </select>
+              )}
+            </div>
+            <div>
+              <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">Notes (optional)</label>
+              <textarea
+                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm placeholder:text-gray-400 focus:outline-none focus:ring-1 focus:ring-gray-300 focus:border-gray-300 min-h-[88px]"
+                placeholder="Explain why the status is changing…"
+                value={statusNotes}
+                onChange={(e) => setStatusNotes(e.target.value)}
+                rows={4}
+              />
+            </div>
+          </div>
+        </div>
+        <div className="flex-shrink-0 px-4 py-4 border-t border-gray-200 bg-white flex items-center justify-end gap-3 rounded-b-xl">
+          <button
+            type="button"
+            onClick={onClose}
+            className="px-3 py-1.5 rounded-lg text-sm font-medium text-gray-700 border border-gray-200 hover:bg-gray-50"
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            onClick={handleSave}
+            disabled={saving || projectStatuses.length === 0}
+            className="px-4 py-2 rounded-lg text-sm font-semibold text-white bg-brand-red hover:bg-[#aa1212] disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {saving ? 'Saving...' : 'Save'}
+          </button>
         </div>
       </div>
     </div></OverlayPortal>
@@ -8845,68 +9015,86 @@ function EditProjectNameModal({ projectId, currentName, onClose, onSave }: {
   };
 
   return (
-    <OverlayPortal><div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4" onClick={onClose}>
-      <div className="bg-white rounded-xl w-full max-w-md shadow-xl" onClick={(e) => e.stopPropagation()}>
-        <div className="p-4 border-b flex items-center justify-between">
-          <h3 className="text-lg font-semibold">Edit Project Name</h3>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-600">
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-            </svg>
-          </button>
-        </div>
-        <div className="p-4 space-y-4">
-          <div>
-            <label className="text-sm font-medium text-gray-700 mb-2 block">Project Name</label>
-            <input
-              type="text"
-              value={projectName}
-              onChange={(e) => setProjectName(e.target.value)}
-              className="w-full border rounded px-3 py-2"
-              placeholder="Enter project name"
-              autoFocus
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') {
-                  handleSave();
-                } else if (e.key === 'Escape') {
-                  onClose();
-                }
-              }}
-            />
-          </div>
-
-          <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
-            <div className="flex items-start gap-2">
-              <svg className="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+    <OverlayPortal><div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+      onClick={onClose}
+    >
+      <div
+        className="max-w-md w-full max-h-[90vh] flex flex-col rounded-xl border border-gray-200 bg-gray-100 shadow-xl overflow-hidden"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex-shrink-0 rounded-t-xl border-b border-gray-200 bg-white p-4">
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={onClose}
+              className="p-1 rounded-lg hover:bg-gray-100 text-gray-600"
+            >
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
               </svg>
-              <div className="text-sm text-blue-800">
-                <div className="font-medium mb-1">Important Information</div>
-                <ul className="list-disc list-inside space-y-1 text-xs">
-                  <li>Changing the project name will automatically update the associated folder name in the file system.</li>
-                  <li>The project code (e.g., MK-00001/00001-2025) cannot be changed and will remain the same.</li>
-                  <li>This change will be reflected across all project views and reports.</li>
-                </ul>
+            </button>
+            <div>
+              <h2 className="text-sm font-semibold text-gray-900">Edit Project Name</h2>
+              <p className="text-xs text-gray-500 mt-0.5">Rename the project as it appears across the app</p>
+            </div>
+          </div>
+        </div>
+        <div className="flex-1 overflow-y-auto p-4 min-h-0">
+          <div className="rounded-xl border border-gray-200 bg-white p-4 space-y-4">
+            <div>
+              <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">Project Name</label>
+              <input
+                type="text"
+                value={projectName}
+                onChange={(e) => setProjectName(e.target.value)}
+                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm placeholder:text-gray-400 focus:outline-none focus:ring-1 focus:ring-gray-300 focus:border-gray-300"
+                placeholder="Enter project name"
+                autoFocus
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    handleSave();
+                  } else if (e.key === 'Escape') {
+                    onClose();
+                  }
+                }}
+              />
+            </div>
+
+            <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
+              <div className="flex items-start gap-2">
+                <svg className="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                <div className="text-sm text-blue-800">
+                  <div className="font-medium mb-1">Important Information</div>
+                  <ul className="list-disc list-inside space-y-1 text-xs">
+                    <li>Changing the project name will automatically update the associated folder name in the file system.</li>
+                    <li>The project code (e.g., MK-00001/00001-2025) cannot be changed and will remain the same.</li>
+                    <li>This change will be reflected across all project views and reports.</li>
+                  </ul>
+                </div>
               </div>
             </div>
           </div>
-
-          <div className="flex gap-2 pt-2">
-            <button
-              onClick={handleSave}
-              disabled={saving || !projectName.trim()}
-              className="flex-1 px-4 py-2 rounded bg-[#7f1010] text-white disabled:opacity-60 font-medium"
-            >
-              {saving ? 'Saving...' : 'Save Changes'}
-            </button>
-            <button
-              onClick={onClose}
-              disabled={saving}
-              className="px-4 py-2 rounded border bg-white hover:bg-gray-50 text-gray-700 font-medium disabled:opacity-50"
-            >
-              Cancel
-            </button>
-          </div>
+        </div>
+        <div className="flex-shrink-0 px-4 py-4 border-t border-gray-200 bg-white flex items-center justify-end gap-3 rounded-b-xl">
+          <button
+            type="button"
+            onClick={onClose}
+            disabled={saving}
+            className="px-3 py-1.5 rounded-lg text-sm font-medium text-gray-700 border border-gray-200 hover:bg-gray-50 disabled:opacity-50"
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            onClick={handleSave}
+            disabled={saving || !projectName.trim()}
+            className="px-4 py-2 rounded-lg text-sm font-semibold text-white bg-brand-red hover:bg-[#aa1212] disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {saving ? 'Saving...' : 'Save'}
+          </button>
         </div>
       </div>
     </div></OverlayPortal>
@@ -8970,26 +9158,42 @@ function EditSiteModal({ projectId, project, onClose, onSave }: {
   };
 
   return (
-    <OverlayPortal><div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4" onClick={onClose}>
-      <div className="bg-white rounded-xl w-full max-w-lg shadow-xl" onClick={(e) => e.stopPropagation()}>
-        <div className="p-4 border-b flex items-center justify-between">
-          <h3 className="text-lg font-semibold">Edit Project Site</h3>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-600">
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-            </svg>
-          </button>
+    <OverlayPortal><div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+      onClick={onClose}
+    >
+      <div
+        className="max-w-lg w-full max-h-[90vh] flex flex-col rounded-xl border border-gray-200 bg-gray-100 shadow-xl overflow-hidden"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex-shrink-0 rounded-t-xl border-b border-gray-200 bg-white p-4">
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={onClose}
+              className="p-1 rounded-lg hover:bg-gray-100 text-gray-600"
+            >
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+              </svg>
+            </button>
+            <div>
+              <h2 className="text-sm font-semibold text-gray-900">Edit Project Site</h2>
+              <p className="text-xs text-gray-500 mt-0.5">Choose the job site linked to this project</p>
+            </div>
+          </div>
         </div>
-        <div className="p-4 space-y-4">
+        <div className="flex-1 overflow-y-auto p-4 min-h-0">
+          <div className="rounded-xl border border-gray-200 bg-white p-4 space-y-4">
           <div>
-            <label className="text-sm font-medium text-gray-700 mb-2 block">Select Site</label>
+            <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">Select Site</label>
             {loadingSites ? (
               <div className="text-sm text-gray-500 py-2">Loading sites...</div>
             ) : (
               <select
                 value={siteId}
                 onChange={(e) => setSiteId(e.target.value)}
-                className="w-full border rounded px-3 py-2"
+                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-gray-300 focus:border-gray-300"
               >
                 <option value="">No Site</option>
                 {sites.map((site: any) => (
@@ -9057,23 +9261,25 @@ function EditSiteModal({ projectId, project, onClose, onSave }: {
               </div>
             </div>
           )}
-
-          <div className="flex gap-2 pt-2">
-            <button
-              onClick={handleSave}
-              disabled={saving}
-              className="flex-1 px-4 py-2 rounded bg-[#7f1010] text-white disabled:opacity-60 font-medium"
-            >
-              {saving ? 'Saving...' : 'Save Changes'}
-            </button>
-            <button
-              onClick={onClose}
-              disabled={saving}
-              className="px-4 py-2 rounded border bg-white hover:bg-gray-50 text-gray-700 font-medium disabled:opacity-50"
-            >
-              Cancel
-            </button>
           </div>
+        </div>
+        <div className="flex-shrink-0 px-4 py-4 border-t border-gray-200 bg-white flex items-center justify-end gap-3 rounded-b-xl">
+          <button
+            type="button"
+            onClick={onClose}
+            disabled={saving}
+            className="px-3 py-1.5 rounded-lg text-sm font-medium text-gray-700 border border-gray-200 hover:bg-gray-50 disabled:opacity-50"
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            onClick={handleSave}
+            disabled={saving}
+            className="px-4 py-2 rounded-lg text-sm font-semibold text-white bg-brand-red hover:bg-[#aa1212] disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {saving ? 'Saving...' : 'Save'}
+          </button>
         </div>
       </div>
     </div></OverlayPortal>
@@ -9153,31 +9359,47 @@ function EditEstimatorModal({ projectId, currentEstimatorIds, employees, onClose
   };
 
   return (
-    <OverlayPortal><div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4">
-      <div className="bg-white rounded-xl w-full max-w-md max-h-[90vh] overflow-hidden flex flex-col shadow-xl">
-        <div className="p-4 bg-[#7f1010] flex items-center justify-between flex-shrink-0">
-          <h3 className="text-lg font-semibold text-white">Edit Estimators</h3>
-          <button onClick={onClose} className="text-white hover:text-gray-200 transition-colors">
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-            </svg>
-          </button>
+    <OverlayPortal><div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+      onClick={onClose}
+    >
+      <div
+        className="max-w-md w-full max-h-[90vh] flex flex-col rounded-xl border border-gray-200 bg-gray-100 shadow-xl overflow-hidden"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex-shrink-0 rounded-t-xl border-b border-gray-200 bg-white p-4">
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={onClose}
+              className="p-1 rounded-lg hover:bg-gray-100 text-gray-600"
+            >
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+              </svg>
+            </button>
+            <div>
+              <h2 className="text-sm font-semibold text-gray-900">Edit Estimators</h2>
+              <p className="text-xs text-gray-500 mt-0.5">Assign estimating team members</p>
+            </div>
+          </div>
         </div>
-        <div className="p-4 space-y-4 overflow-y-auto flex-1 min-h-0">
+        <div className="flex-1 overflow-y-auto p-4 min-h-0">
+          <div className="rounded-xl border border-gray-200 bg-white p-4 space-y-4">
           {/* Search input */}
           <div>
-            <label className="text-sm font-medium text-gray-700 mb-2 block">Search Employees</label>
+            <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">Search Employees</label>
             <input
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               placeholder="Search by name, email, or username..."
-              className="w-full border rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm placeholder:text-gray-400 focus:outline-none focus:ring-1 focus:ring-gray-300 focus:border-gray-300"
             />
           </div>
 
           <div>
-            <label className="text-sm font-medium text-gray-700 mb-2 block">Select Estimators</label>
+            <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">Select Estimators</label>
             <div className="space-y-2 max-h-[300px] overflow-y-auto">
               {filteredEmployees.length === 0 ? (
                 <div className="text-sm text-gray-500 text-center py-4">
@@ -9239,19 +9461,22 @@ function EditEstimatorModal({ projectId, currentEstimatorIds, employees, onClose
               </div>
             </div>
           )}
+          </div>
         </div>
-        <div className="p-4 border-t flex items-center justify-end gap-2 flex-shrink-0">
+        <div className="flex-shrink-0 px-4 py-4 border-t border-gray-200 bg-white flex items-center justify-end gap-3 rounded-b-xl">
           <button
+            type="button"
             onClick={onClose}
             disabled={saving}
-            className="px-3 py-1.5 rounded border bg-white hover:bg-gray-50 text-gray-700 font-medium text-sm disabled:opacity-50"
+            className="px-3 py-1.5 rounded-lg text-sm font-medium text-gray-700 border border-gray-200 hover:bg-gray-50 disabled:opacity-50"
           >
             Cancel
           </button>
           <button
+            type="button"
             onClick={handleSave}
             disabled={saving}
-            className="px-3 py-1.5 rounded bg-[#7f1010] text-white disabled:opacity-60 disabled:cursor-not-allowed font-medium text-sm"
+            className="px-4 py-2 rounded-lg text-sm font-semibold text-white bg-brand-red hover:bg-[#aa1212] disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {saving ? 'Saving...' : 'Save'}
           </button>
@@ -9310,31 +9535,47 @@ function EditProjectAdminModal({ projectId, currentAdminId, employees, onClose, 
   };
 
   return (
-    <OverlayPortal><div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4">
-      <div className="bg-white rounded-xl w-full max-w-md max-h-[90vh] overflow-hidden flex flex-col shadow-xl">
-        <div className="p-4 bg-[#7f1010] flex items-center justify-between flex-shrink-0">
-          <h3 className="text-lg font-semibold text-white">Edit Project Admin</h3>
-          <button onClick={onClose} className="text-white hover:text-gray-200 transition-colors">
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-            </svg>
-          </button>
+    <OverlayPortal><div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+      onClick={onClose}
+    >
+      <div
+        className="max-w-md w-full max-h-[90vh] flex flex-col rounded-xl border border-gray-200 bg-gray-100 shadow-xl overflow-hidden"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex-shrink-0 rounded-t-xl border-b border-gray-200 bg-white p-4">
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={onClose}
+              className="p-1 rounded-lg hover:bg-gray-100 text-gray-600"
+            >
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+              </svg>
+            </button>
+            <div>
+              <h2 className="text-sm font-semibold text-gray-900">Edit Project Admin</h2>
+              <p className="text-xs text-gray-500 mt-0.5">Assign the primary project administrator</p>
+            </div>
+          </div>
         </div>
-        <div className="p-4 space-y-4 overflow-y-auto flex-1 min-h-0">
+        <div className="flex-1 overflow-y-auto p-4 min-h-0">
+          <div className="rounded-xl border border-gray-200 bg-white p-4 space-y-4">
           {/* Search input */}
           <div>
-            <label className="text-sm font-medium text-gray-700 mb-2 block">Search Employees</label>
+            <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">Search Employees</label>
             <input
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               placeholder="Search by name, email, or username..."
-              className="w-full border rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm placeholder:text-gray-400 focus:outline-none focus:ring-1 focus:ring-gray-300 focus:border-gray-300"
             />
           </div>
 
           <div>
-            <label className="text-sm font-medium text-gray-700 mb-2 block">Select Project Admin</label>
+            <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">Select Project Admin</label>
             <div className="space-y-2 max-h-[300px] overflow-y-auto">
               {filteredEmployees.length === 0 ? (
                 <div className="text-sm text-gray-500 text-center py-4">No employees found matching your search.</div>
@@ -9423,19 +9664,22 @@ function EditProjectAdminModal({ projectId, currentAdminId, employees, onClose, 
               </div>
             </div>
           )}
+          </div>
         </div>
-        <div className="p-4 border-t flex items-center justify-end gap-2 flex-shrink-0">
+        <div className="flex-shrink-0 px-4 py-4 border-t border-gray-200 bg-white flex items-center justify-end gap-3 rounded-b-xl">
           <button
+            type="button"
             onClick={onClose}
             disabled={saving}
-            className="px-3 py-1.5 rounded border bg-white hover:bg-gray-50 text-gray-700 font-medium text-sm disabled:opacity-50"
+            className="px-3 py-1.5 rounded-lg text-sm font-medium text-gray-700 border border-gray-200 hover:bg-gray-50 disabled:opacity-50"
           >
             Cancel
           </button>
           <button
+            type="button"
             onClick={handleSave}
             disabled={saving}
-            className="px-3 py-1.5 rounded bg-[#7f1010] text-white disabled:opacity-60 disabled:cursor-not-allowed font-medium text-sm"
+            className="px-4 py-2 rounded-lg text-sm font-semibold text-white bg-brand-red hover:bg-[#aa1212] disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {saving ? 'Saving...' : 'Save'}
           </button>
@@ -9526,58 +9770,80 @@ function EditProgressModal({ projectId, currentProgress, onClose, onSave }: {
   `;
 
   return (
-    <OverlayPortal><div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4">
+    <OverlayPortal><div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+      onClick={onClose}
+    >
       <style>{progressModalSliderStyle}</style>
-      <div className="bg-white rounded-xl w-full max-w-md shadow-xl">
-        <div className="p-4 border-b flex items-center justify-between">
-          <h3 className="text-lg font-semibold">Edit Progress</h3>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-600">
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-            </svg>
-          </button>
-        </div>
-        <div className="p-4">
-          <label className="text-sm font-medium text-gray-700 mb-2 block">Progress (%)</label>
-          <input
-            type="number"
-            min="0"
-            max="100"
-            value={progress}
-            onChange={(e) => setProgress(Number(e.target.value))}
-            className="w-full border rounded px-3 py-2 mb-2"
-          />
-          <div className="mb-4">
-            <div className="edit-progress-slider-container">
-              <input
-                type="range"
-                min={0}
-                max={100}
-                value={progressPct}
-                onChange={(e) => setProgress(Number(e.target.value))}
-                className="edit-progress-slider"
-                style={{
-                  background: `linear-gradient(to right, #7f1010 0%, #7f1010 ${progressPct}%, #e5e7eb ${progressPct}%, #e5e7eb 100%)`
-                }}
-              />
-              <div className="edit-progress-slider-value">{progressPct}%</div>
+      <div
+        className="max-w-md w-full max-h-[90vh] flex flex-col rounded-xl border border-gray-200 bg-gray-100 shadow-xl overflow-hidden"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex-shrink-0 rounded-t-xl border-b border-gray-200 bg-white p-4">
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={onClose}
+              className="p-1 rounded-lg hover:bg-gray-100 text-gray-600"
+            >
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+              </svg>
+            </button>
+            <div>
+              <h2 className="text-sm font-semibold text-gray-900">Edit Progress</h2>
+              <p className="text-xs text-gray-500 mt-0.5">Update completion percentage</p>
             </div>
           </div>
-          <div className="flex gap-2">
-            <button
-              onClick={handleSave}
-              disabled={saving}
-              className="flex-1 px-4 py-2 rounded bg-[#7f1010] text-white disabled:opacity-60 font-medium"
-            >
-              {saving ? 'Saving...' : 'Save'}
-            </button>
-            <button
-              onClick={onClose}
-              className="px-4 py-2 rounded border bg-white hover:bg-gray-50 text-gray-700 font-medium"
-            >
-              Cancel
-            </button>
+        </div>
+        <div className="flex-1 overflow-y-auto p-4 min-h-0">
+          <div className="rounded-xl border border-gray-200 bg-white p-4 space-y-4">
+            <div>
+              <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">Progress (%)</label>
+              <input
+                type="number"
+                min="0"
+                max="100"
+                value={progress}
+                onChange={(e) => setProgress(Number(e.target.value))}
+                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-gray-300 focus:border-gray-300"
+              />
+            </div>
+            <div>
+              <div className="edit-progress-slider-container">
+                <input
+                  type="range"
+                  min={0}
+                  max={100}
+                  value={progressPct}
+                  onChange={(e) => setProgress(Number(e.target.value))}
+                  className="edit-progress-slider"
+                  style={{
+                    background: `linear-gradient(to right, #7f1010 0%, #7f1010 ${progressPct}%, #e5e7eb ${progressPct}%, #e5e7eb 100%)`
+                  }}
+                />
+                <div className="edit-progress-slider-value">{progressPct}%</div>
+              </div>
+            </div>
           </div>
+        </div>
+        <div className="flex-shrink-0 px-4 py-4 border-t border-gray-200 bg-white flex items-center justify-end gap-3 rounded-b-xl">
+          <button
+            type="button"
+            onClick={onClose}
+            disabled={saving}
+            className="px-3 py-1.5 rounded-lg text-sm font-medium text-gray-700 border border-gray-200 hover:bg-gray-50 disabled:opacity-50"
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            onClick={handleSave}
+            disabled={saving}
+            className="px-4 py-2 rounded-lg text-sm font-semibold text-white bg-brand-red hover:bg-[#aa1212] disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {saving ? 'Saving...' : 'Save'}
+          </button>
         </div>
       </div>
     </div></OverlayPortal>

@@ -2,7 +2,7 @@ import uuid
 from typing import Any, Optional
 
 from fastapi import APIRouter, Depends, Query
-from sqlalchemy import or_
+from sqlalchemy import or_, and_
 from sqlalchemy.orm import Session
 
 from ..db import get_db
@@ -48,14 +48,27 @@ def global_search(
         try:
             rows = (
                 db.query(Project, Client)
-                .outerjoin(Client, Project.client_id == Client.id)
-                .filter(Project.is_bidding.is_(False))
+                .outerjoin(
+                    Client,
+                    and_(Project.client_id == Client.id, Client.deleted_at.is_(None)),
+                )
+                .filter(Project.is_bidding.is_(False), Project.deleted_at.is_(None))
                 .filter(
                     or_(
                         Project.name.ilike(like),
                         Project.code.ilike(like),
                         Client.name.ilike(like),
                         Client.display_name.ilike(like),
+                        Project.address.ilike(like),
+                        Project.address_city.ilike(like),
+                        Project.address_province.ilike(like),
+                        Project.address_country.ilike(like),
+                        Client.address_line1.ilike(like),
+                        Client.address_line2.ilike(like),
+                        Client.city.ilike(like),
+                        Client.province.ilike(like),
+                        Client.postal_code.ilike(like),
+                        Client.country.ilike(like),
                     )
                 )
                 .order_by(Project.created_at.desc())
@@ -88,14 +101,27 @@ def global_search(
         try:
             rows = (
                 db.query(Project, Client)
-                .outerjoin(Client, Project.client_id == Client.id)
-                .filter(Project.is_bidding.is_(True))
+                .outerjoin(
+                    Client,
+                    and_(Project.client_id == Client.id, Client.deleted_at.is_(None)),
+                )
+                .filter(Project.is_bidding.is_(True), Project.deleted_at.is_(None))
                 .filter(
                     or_(
                         Project.name.ilike(like),
                         Project.code.ilike(like),
                         Client.name.ilike(like),
                         Client.display_name.ilike(like),
+                        Project.address.ilike(like),
+                        Project.address_city.ilike(like),
+                        Project.address_province.ilike(like),
+                        Project.address_country.ilike(like),
+                        Client.address_line1.ilike(like),
+                        Client.address_line2.ilike(like),
+                        Client.city.ilike(like),
+                        Client.province.ilike(like),
+                        Client.postal_code.ilike(like),
+                        Client.country.ilike(like),
                     )
                 )
                 .order_by(Project.created_at.desc())
@@ -128,13 +154,25 @@ def global_search(
         try:
             rows = (
                 db.query(Client)
+                .filter(Client.deleted_at.is_(None))
+                .filter(Client.is_system.is_(False))
                 .filter(
                     or_(
                         Client.name.ilike(like),
                         Client.display_name.ilike(like),
                         Client.code.ilike(like),
+                        Client.address_line1.ilike(like),
+                        Client.address_line2.ilike(like),
                         Client.city.ilike(like),
                         Client.province.ilike(like),
+                        Client.postal_code.ilike(like),
+                        Client.country.ilike(like),
+                        Client.billing_address_line1.ilike(like),
+                        Client.billing_address_line2.ilike(like),
+                        Client.billing_city.ilike(like),
+                        Client.billing_province.ilike(like),
+                        Client.billing_postal_code.ilike(like),
+                        Client.billing_country.ilike(like),
                     )
                 )
                 .order_by(Client.created_at.desc())
@@ -168,7 +206,11 @@ def global_search(
         try:
             rows = (
                 db.query(Quote, Client)
-                .outerjoin(Client, Quote.client_id == Client.id)
+                .outerjoin(
+                    Client,
+                    and_(Quote.client_id == Client.id, Client.deleted_at.is_(None)),
+                )
+                .filter(Quote.deleted_at.is_(None))
                 .filter(
                     or_(
                         Quote.name.ilike(like),
