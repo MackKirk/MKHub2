@@ -50,6 +50,8 @@ const IMPLEMENTED_PERMISSIONS = new Set([
   "business:access",
   "business:customers:read", "business:customers:write",
   "business:projects:read", "business:projects:write",
+  "business:construction:projects:read", "business:construction:projects:write",
+  "business:rm:projects:read", "business:rm:projects:write",
   "business:projects:reports:read", "business:projects:reports:write",
   "business:projects:workload:read", "business:projects:workload:write",
   "business:projects:timesheet:read", "business:projects:timesheet:write",

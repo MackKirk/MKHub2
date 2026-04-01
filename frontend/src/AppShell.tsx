@@ -297,6 +297,20 @@ export default function AppShell({ children }: PropsWithChildren){
     if (!requiredPermission) return true;
     if (isAdmin) return true;
     const has = permissionsSet.has(requiredPermission);
+    const legacyBizRead = permissionsSet.has('business:projects:read');
+    const legacyBizWrite = permissionsSet.has('business:projects:write');
+    if (requiredPermission === 'business:construction:projects:read' || requiredPermission === 'business:projects:read') {
+      return has || legacyBizRead || permissionsSet.has('business:construction:projects:read');
+    }
+    if (requiredPermission === 'business:rm:projects:read') {
+      return has || legacyBizRead || permissionsSet.has('business:rm:projects:read');
+    }
+    if (requiredPermission === 'business:construction:projects:write' || requiredPermission === 'business:projects:write') {
+      return has || legacyBizWrite || permissionsSet.has('business:construction:projects:write');
+    }
+    if (requiredPermission === 'business:rm:projects:write') {
+      return has || legacyBizWrite || permissionsSet.has('business:rm:projects:write');
+    }
     if (requiredPermission.startsWith('hr:')) {
       const legacyPerm = requiredPermission.replace('hr:', '');
       return has || permissionsSet.has(legacyPerm);
@@ -387,9 +401,19 @@ export default function AppShell({ children }: PropsWithChildren){
       label: 'Sales',
       icon: <IconSales />,
       items: [
-        { id: 'business-dashboard', label: 'Dashboard', path: '/business', icon: <IconDashboard />, requiredPermission: 'business:projects:read' },
-        { id: 'opportunities', label: 'Opportunities', path: '/opportunities', icon: <IconOpportunities />, requiredPermission: 'business:projects:read' },
-        { id: 'projects', label: 'Projects', path: '/projects', icon: <IconProjects />, requiredPermission: 'business:projects:read' },
+        { id: 'business-dashboard', label: 'Dashboard', path: '/business', icon: <IconDashboard />, requiredPermission: 'business:construction:projects:read' },
+        { id: 'opportunities', label: 'Opportunities', path: '/opportunities', icon: <IconOpportunities />, requiredPermission: 'business:construction:projects:read' },
+        { id: 'projects', label: 'Projects', path: '/projects', icon: <IconProjects />, requiredPermission: 'business:construction:projects:read' },
+      ]
+    },
+    {
+      id: 'repairs_maintenance',
+      label: 'Repairs & Maintenance',
+      icon: <IconWrench />,
+      items: [
+        { id: 'rm-business-dashboard', label: 'Dashboard', path: '/rm-business', icon: <IconDashboard />, requiredPermission: 'business:rm:projects:read' },
+        { id: 'rm-opportunities', label: 'Opportunities', path: '/rm-opportunities', icon: <IconOpportunities />, requiredPermission: 'business:rm:projects:read' },
+        { id: 'rm-projects', label: 'Projects', path: '/rm-projects', icon: <IconProjects />, requiredPermission: 'business:rm:projects:read' },
       ]
     },
     {
@@ -516,7 +540,9 @@ export default function AppShell({ children }: PropsWithChildren){
     return (item: GlobalSearchItem) => {
       // Pages already filtered, but keep it safe.
       if (item.type === 'page') return true;
-      if (item.type === 'project' || item.type === 'opportunity') return hasPermission('business:projects:read');
+      if (item.type === 'project' || item.type === 'opportunity') {
+        return hasPermission('business:construction:projects:read') || hasPermission('business:rm:projects:read');
+      }
       if (item.type === 'customer') return hasPermission('business:customers:read');
       if (item.type === 'quote') return hasPermission('sales:quotations:read');
       if (item.type === 'user') return hasPermission('hr:users:read') || hasPermission('users:read');
@@ -527,10 +553,12 @@ export default function AppShell({ children }: PropsWithChildren){
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [permissionsSet, isAdmin]);
 
-  // Check if current route is a project that is an opportunity
+  // Check if current route is a project or opportunity (construction or R&M)
   const projectIdMatch = location.pathname.match(/^\/projects\/([^\/]+)$/);
   const opportunityIdMatch = location.pathname.match(/^\/opportunities\/([^\/]+)$/);
-  const projectId = projectIdMatch?.[1] || opportunityIdMatch?.[1];
+  const rmProjectIdMatch = location.pathname.match(/^\/rm-projects\/([^\/]+)$/);
+  const rmOpportunityIdMatch = location.pathname.match(/^\/rm-opportunities\/([^\/]+)$/);
+  const projectId = projectIdMatch?.[1] || opportunityIdMatch?.[1] || rmProjectIdMatch?.[1] || rmOpportunityIdMatch?.[1];
   const { data: currentProject } = useQuery({
     queryKey: ['project-for-nav', projectId],
     queryFn: () => projectId ? api<{ is_bidding?: boolean }>('GET', `/projects/${projectId}`) : null,
@@ -538,8 +566,11 @@ export default function AppShell({ children }: PropsWithChildren){
     staleTime: 60_000
   });
   
-  // Determine if we're viewing an opportunity (either via /projects/:id or /opportunities/:id)
-  const isViewingOpportunity = (projectIdMatch && currentProject?.is_bidding) || !!opportunityIdMatch;
+  const onConstructionOpp =
+    !!opportunityIdMatch || (!!projectIdMatch && !!currentProject?.is_bidding);
+  const onRmOpp =
+    !!rmOpportunityIdMatch || (!!rmProjectIdMatch && !!currentProject?.is_bidding);
+  const isViewingOpportunity = onConstructionOpp || onRmOpp;
 
   const isCategoryActive = (category: MenuCategory) => {
     // Special handling: exclude Settings category when on /settings/attendance
@@ -550,25 +581,39 @@ export default function AppShell({ children }: PropsWithChildren){
         return false; // Explicitly return false and don't check items
       }
     }
-    // Special handling for Services category: if we're viewing an opportunity,
-    // check against opportunities path instead of projects path
     if (category.id === 'services' && isViewingOpportunity) {
       const opportunitiesItem = category.items.find(item => item.id === 'opportunities');
       const projectsItem = category.items.find(item => item.id === 'projects');
-      if (opportunitiesItem && projectsItem) {
-        // If it's an opportunity, only consider opportunities as active, not projects
-        return location.pathname === opportunitiesItem.path || location.pathname.startsWith(opportunitiesItem.path + '/') || 
-               (location.pathname.startsWith('/projects/') && currentProject?.is_bidding);
+      if (onConstructionOpp && opportunitiesItem && projectsItem) {
+        return (
+          location.pathname === opportunitiesItem.path ||
+          location.pathname.startsWith(opportunitiesItem.path + '/') ||
+          (location.pathname.startsWith('/projects/') && !!currentProject?.is_bidding)
+        );
       }
     }
-    // Special handling for Services category: check if we're on the business dashboard
+    if (category.id === 'repairs_maintenance' && isViewingOpportunity) {
+      const rmOppItem = category.items.find(item => item.id === 'rm-opportunities');
+      const rmProjItem = category.items.find(item => item.id === 'rm-projects');
+      if (onRmOpp && rmOppItem && rmProjItem) {
+        return (
+          location.pathname === rmOppItem.path ||
+          location.pathname.startsWith(rmOppItem.path + '/') ||
+          (location.pathname.startsWith('/rm-projects/') && !!currentProject?.is_bidding)
+        );
+      }
+    }
     if (category.id === 'services' && location.pathname === '/business') {
       return true;
     }
-    // Check if any item in the category is active
+    if (category.id === 'repairs_maintenance' && location.pathname === '/rm-business') {
+      return true;
+    }
     return category.items.some(item => {
-      // If we're viewing an opportunity, don't match projects item
-      if (item.id === 'projects' && isViewingOpportunity) {
+      if (item.id === 'projects' && isViewingOpportunity && onConstructionOpp) {
+        return false;
+      }
+      if (item.id === 'rm-projects' && isViewingOpportunity && onRmOpp) {
         return false;
       }
       // Special handling for system-settings: exclude /settings/attendance
@@ -601,6 +646,9 @@ export default function AppShell({ children }: PropsWithChildren){
       if (item.id === 'business-dashboard' && item.path === '/business') {
         return location.pathname === '/business';
       }
+      if (item.id === 'rm-business-dashboard' && item.path === '/rm-business') {
+        return location.pathname === '/rm-business';
+      }
       // Fleet Assets: also active on /fleet/vehicles, /fleet/heavy-machinery, /fleet/other-assets
       if (item.id === 'fleet-assets') {
         if (['/fleet/assets', '/fleet/vehicles', '/fleet/heavy-machinery', '/fleet/other-assets'].some(p => location.pathname === p || location.pathname.startsWith(p + '/'))) {
@@ -618,7 +666,7 @@ export default function AppShell({ children }: PropsWithChildren){
 
   const activeCategory = useMemo(() => {
     return menuCategories.find(cat => isCategoryActive(cat));
-  }, [location.pathname, menuCategories, currentProject, isViewingOpportunity]);
+  }, [location.pathname, menuCategories, currentProject, isViewingOpportunity, onConstructionOpp, onRmOpp]);
 
   const showHubLoadingGate =
     meLoading ||
@@ -730,9 +778,13 @@ export default function AppShell({ children }: PropsWithChildren){
         <nav className="flex-1 overflow-y-auto p-3 space-y-1 relative z-10">
           {menuCategories
             .filter(category => {
-              // Special handling for Services category: requires projects access
+              // Sales (construction): requires construction projects access
               if (category.id === 'services') {
-                if (!hasPermission('business:projects:read')) return false;
+                if (!hasPermission('business:construction:projects:read')) return false;
+              }
+              // Repairs & Maintenance: requires R&M projects access
+              if (category.id === 'repairs_maintenance') {
+                if (!hasPermission('business:rm:projects:read')) return false;
               }
               // Special handling for Business category: requires customers or inventory access
               if (category.id === 'business') {
@@ -760,6 +812,11 @@ export default function AppShell({ children }: PropsWithChildren){
               return '/business';
             };
 
+            const getRepairsMaintenanceDefaultPath = () => {
+              if (category.id !== 'repairs_maintenance') return category.items[0]?.path || '#';
+              return '/rm-business';
+            };
+
             // Determine the default path for Business category based on permissions
             const getBusinessDefaultPath = () => {
               if (category.id !== 'business') return category.items[0]?.path || '#';
@@ -778,6 +835,7 @@ export default function AppShell({ children }: PropsWithChildren){
             // Get the default path based on category
             const getDefaultPath = () => {
               if (category.id === 'services') return getServicesDefaultPath();
+              if (category.id === 'repairs_maintenance') return getRepairsMaintenanceDefaultPath();
               if (category.id === 'business') return getBusinessDefaultPath();
               if (category.id === 'sales') return getSalesDefaultPath();
               return category.items[0]?.path || '#';
@@ -880,7 +938,7 @@ export default function AppShell({ children }: PropsWithChildren){
                                   to={item.path}
                                   // Dashboards should only be active on the exact route (/fleet, /business),
                                   // otherwise they stay highlighted on sub-routes like /fleet/assets.
-                                  end={item.id === 'fleet-dashboard' || item.id === 'business-dashboard'}
+                                  end={item.id === 'fleet-dashboard' || item.id === 'business-dashboard' || item.id === 'rm-business-dashboard'}
                                   className={({ isActive: navActive }) =>
                                     `relative flex items-center gap-3 px-3 py-2 rounded-lg transition-all duration-200 ${
                                       (isItemOrChildActive || navActive)
@@ -951,7 +1009,7 @@ export default function AppShell({ children }: PropsWithChildren){
                             to={item.path}
                             // Dashboards should only be active on the exact route (/fleet, /business),
                             // otherwise they stay highlighted on sub-routes like /fleet/assets.
-                            end={item.id === 'fleet-dashboard' || item.id === 'business-dashboard'}
+                            end={item.id === 'fleet-dashboard' || item.id === 'business-dashboard' || item.id === 'rm-business-dashboard'}
                             className={({isActive: navActive}) =>
                               `relative flex items-center gap-3 px-3 py-2 rounded-lg transition-all duration-200 ${
                                 (isItemActive || navActive) 

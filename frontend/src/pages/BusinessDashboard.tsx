@@ -6,6 +6,8 @@ import { Link, useNavigate } from 'react-router-dom';
 import LoadingOverlay from '@/components/LoadingOverlay';
 import { DivisionIcon } from '@/components/DivisionIcon';
 import OverlayPortal from '@/components/OverlayPortal';
+import { useBusinessLine } from '@/context/BusinessLineContext';
+import { BUSINESS_LINE_REPAIRS_MAINTENANCE, filterProjectDivisionsForBusinessLine } from '@/lib/businessLine';
 
 // Hook for count-up animation
 function useCountUp(end: number, duration: number = 600, enabled: boolean = true): number {
@@ -257,13 +259,13 @@ const DEFAULT_DASHBOARD_PREFS: BusinessDashboardPrefs = {
   projStatusDisplayMode: 'quantity',
 };
 
-function getDashboardPrefsKey(userId: string | number): string {
-  return `${BUSINESS_DASHBOARD_PREFS_KEY}-${userId}`;
+function getDashboardPrefsKey(userId: string | number, businessLine: string): string {
+  return `${BUSINESS_DASHBOARD_PREFS_KEY}-${userId}-${businessLine}`;
 }
 
-function loadDashboardPrefs(userId: string | number): BusinessDashboardPrefs | null {
+function loadDashboardPrefs(userId: string | number, businessLine: string): BusinessDashboardPrefs | null {
   try {
-    const raw = localStorage.getItem(getDashboardPrefsKey(String(userId)));
+    const raw = localStorage.getItem(getDashboardPrefsKey(String(userId), businessLine));
     if (!raw) return null;
     const parsed = JSON.parse(raw) as Partial<BusinessDashboardPrefs>;
     const dateFilters: DateFilterType[] = ['all', 'last_year', 'last_6_months', 'last_3_months', 'last_month', 'custom'];
@@ -333,8 +335,9 @@ const calculateDateRange = (dateFilter: DateFilterType, customDateStart: string,
 export default function BusinessDashboard() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const businessLine = useBusinessLine();
   const { data: currentUser } = useQuery({ queryKey: ['me'], queryFn: () => api<any>('GET', '/auth/me') });
-  const loadedPrefsForUserRef = useRef<string | null>(null);
+  const loadedPrefsKeyRef = useRef<string | null>(null);
 
   const [selectedDivisionId, setSelectedDivisionId] = useState<string | null>(null);
   const [hasAnimated, setHasAnimated] = useState(false);
@@ -380,11 +383,12 @@ export default function BusinessDashboard() {
   const [pieTooltip, setPieTooltip] = useState<PieTooltipData | null>(null);
   const [pieTooltipPos, setPieTooltipPos] = useState({ x: 0, y: 0 });
 
-  // Load persisted dashboard prefs for this user (once per user)
+  // Load persisted dashboard prefs for this user and business line
   useEffect(() => {
     const userId = currentUser?.id != null ? String(currentUser.id) : null;
-    if (!userId || loadedPrefsForUserRef.current === userId) return;
-    const prefs = loadDashboardPrefs(userId);
+    const prefsKey = userId ? `${userId}:${businessLine}` : null;
+    if (!prefsKey || loadedPrefsKeyRef.current === prefsKey) return;
+    const prefs = loadDashboardPrefs(userId!, businessLine);
     if (prefs) {
       setSelectedDivisionId(prefs.selectedDivisionId);
       setOppDivisionDateFilter(prefs.oppDivisionDateFilter);
@@ -404,13 +408,14 @@ export default function BusinessDashboard() {
       setProjStatusCustomEnd(prefs.projStatusCustomEnd);
       setProjStatusDisplayMode(prefs.projStatusDisplayMode);
     }
-    loadedPrefsForUserRef.current = userId;
-  }, [currentUser?.id]);
+    loadedPrefsKeyRef.current = prefsKey;
+  }, [currentUser?.id, businessLine]);
 
   // Persist dashboard prefs whenever any filter/display state changes
   useEffect(() => {
     const userId = currentUser?.id != null ? String(currentUser.id) : null;
-    if (!userId || loadedPrefsForUserRef.current !== userId) return;
+    const prefsKey = userId ? `${userId}:${businessLine}` : null;
+    if (!userId || !prefsKey || loadedPrefsKeyRef.current !== prefsKey) return;
     const prefs: BusinessDashboardPrefs = {
       selectedDivisionId,
       oppDivisionDateFilter,
@@ -431,12 +436,13 @@ export default function BusinessDashboard() {
       projStatusDisplayMode,
     };
     try {
-      localStorage.setItem(getDashboardPrefsKey(userId), JSON.stringify(prefs));
+      localStorage.setItem(getDashboardPrefsKey(userId, businessLine), JSON.stringify(prefs));
     } catch {
       // ignore quota / private mode
     }
   }, [
     currentUser?.id,
+    businessLine,
     selectedDivisionId,
     oppDivisionDateFilter,
     oppDivisionCustomStart,
@@ -500,10 +506,11 @@ export default function BusinessDashboard() {
 
   // Get division statistics for Opportunities by Division
   const { data: oppDivisionsStats, isLoading: oppDivisionsLoading } = useQuery<DivisionStats[]>({
-    queryKey: ['business-divisions-stats-opp', selectedDivisionId, oppDivisionDateRange.date_from, oppDivisionDateRange.date_to, oppDivisionDisplayMode],
+    queryKey: ['business-divisions-stats-opp', businessLine, selectedDivisionId, oppDivisionDateRange.date_from, oppDivisionDateRange.date_to, oppDivisionDisplayMode],
     queryFn: async () => {
       try {
         const params = new URLSearchParams();
+        params.set('business_line', businessLine);
         if (selectedDivisionId) params.set('division_id', selectedDivisionId);
         if (oppDivisionDateRange.date_from) params.set('date_from', oppDivisionDateRange.date_from);
         if (oppDivisionDateRange.date_to) params.set('date_to', oppDivisionDateRange.date_to);
@@ -520,10 +527,11 @@ export default function BusinessDashboard() {
 
   // Get division statistics for Projects by Division
   const { data: projDivisionsStats, isLoading: projDivisionsLoading } = useQuery<DivisionStats[]>({
-    queryKey: ['business-divisions-stats-proj', selectedDivisionId, projDivisionDateRange.date_from, projDivisionDateRange.date_to, projDivisionDisplayMode],
+    queryKey: ['business-divisions-stats-proj', businessLine, selectedDivisionId, projDivisionDateRange.date_from, projDivisionDateRange.date_to, projDivisionDisplayMode],
     queryFn: async () => {
       try {
         const params = new URLSearchParams();
+        params.set('business_line', businessLine);
         if (selectedDivisionId) params.set('division_id', selectedDivisionId);
         if (projDivisionDateRange.date_from) params.set('date_from', projDivisionDateRange.date_from);
         if (projDivisionDateRange.date_to) params.set('date_to', projDivisionDateRange.date_to);
@@ -540,9 +548,10 @@ export default function BusinessDashboard() {
 
   // Get dashboard stats for Opportunities by Status
   const { data: oppStatusStats, isLoading: oppStatusLoading } = useQuery<DashboardStats>({
-    queryKey: ['business-dashboard-opp-status', selectedDivisionId, oppStatusDateRange.date_from, oppStatusDateRange.date_to, oppStatusDisplayMode],
+    queryKey: ['business-dashboard-opp-status', businessLine, selectedDivisionId, oppStatusDateRange.date_from, oppStatusDateRange.date_to, oppStatusDisplayMode],
     queryFn: () => {
       const params = new URLSearchParams();
+      params.set('business_line', businessLine);
       if (selectedDivisionId) params.set('division_id', selectedDivisionId);
       if (oppStatusDateRange.date_from) params.set('date_from', oppStatusDateRange.date_from);
       if (oppStatusDateRange.date_to) params.set('date_to', oppStatusDateRange.date_to);
@@ -553,9 +562,10 @@ export default function BusinessDashboard() {
 
   // Get dashboard stats for Projects by Status
   const { data: projStatusStats, isLoading: projStatusLoading } = useQuery<DashboardStats>({
-    queryKey: ['business-dashboard-proj-status', selectedDivisionId, projStatusDateRange.date_from, projStatusDateRange.date_to, projStatusDisplayMode],
+    queryKey: ['business-dashboard-proj-status', businessLine, selectedDivisionId, projStatusDateRange.date_from, projStatusDateRange.date_to, projStatusDisplayMode],
     queryFn: () => {
       const params = new URLSearchParams();
+      params.set('business_line', businessLine);
       if (selectedDivisionId) params.set('division_id', selectedDivisionId);
       if (projStatusDateRange.date_from) params.set('date_from', projStatusDateRange.date_from);
       if (projStatusDateRange.date_to) params.set('date_to', projStatusDateRange.date_to);
@@ -564,7 +574,14 @@ export default function BusinessDashboard() {
     },
   });
 
-  const divisions = Array.isArray(divisionsData) ? divisionsData : [];
+  const divisions = useMemo(
+    () =>
+      filterProjectDivisionsForBusinessLine(
+        (Array.isArray(divisionsData) ? divisionsData : []) as Parameters<typeof filterProjectDivisionsForBusinessLine>[0],
+        businessLine
+      ) as ProjectDivision[],
+    [divisionsData, businessLine]
+  );
   const oppStatsByDivision = Array.isArray(oppDivisionsStats) ? oppDivisionsStats : [];
   const projStatsByDivision = Array.isArray(projDivisionsStats) ? projDivisionsStats : [];
   
@@ -577,7 +594,7 @@ export default function BusinessDashboard() {
     queryClient.invalidateQueries({ queryKey: ['business-divisions-stats-proj'] });
     queryClient.invalidateQueries({ queryKey: ['business-dashboard-opp-status'] });
     queryClient.invalidateQueries({ queryKey: ['business-dashboard-proj-status'] });
-  }, [selectedDivisionId, queryClient]);
+  }, [selectedDivisionId, businessLine, queryClient]);
   
   // Check if we're still loading critical initial data (not refetching)
   // Only show overlay on first load, not on background refetches
@@ -593,12 +610,14 @@ export default function BusinessDashboard() {
 
   const handleViewOpportunities = (divisionId?: string) => {
     const params = divisionId ? `?division_id=${encodeURIComponent(divisionId)}` : '';
-    navigate(`/opportunities${params}`);
+    const base = businessLine === BUSINESS_LINE_REPAIRS_MAINTENANCE ? '/rm-opportunities' : '/opportunities';
+    navigate(`${base}${params}`);
   };
 
   const handleViewProjects = (divisionId?: string) => {
     const params = divisionId ? `?division_id=${encodeURIComponent(divisionId)}` : '';
-    navigate(`/projects${params}`);
+    const base = businessLine === BUSINESS_LINE_REPAIRS_MAINTENANCE ? '/rm-projects' : '/projects';
+    navigate(`${base}${params}`);
   };
 
   // Helper function to format currency

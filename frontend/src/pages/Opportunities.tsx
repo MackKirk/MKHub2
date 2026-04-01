@@ -10,6 +10,8 @@ import LoadingOverlay from '@/components/LoadingOverlay';
 import { DivisionIcon } from '@/components/DivisionIcon';
 import { ReportAttachmentAreaMultiple } from '@/components/ReportAttachmentArea';
 import OverlayPortal from '@/components/OverlayPortal';
+import { useBusinessLine } from '@/context/BusinessLineContext';
+import { BUSINESS_LINE_REPAIRS_MAINTENANCE, filterProjectDivisionsForBusinessLine } from '@/lib/businessLine';
 
 // Helper function to get user initials
 function getUserInitials(user: any): string {
@@ -835,6 +837,10 @@ export default function Opportunities(){
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const queryParam = searchParams.get('q') || '';
+  const businessLine = useBusinessLine();
+  const opportunityBasePath = businessLine === BUSINESS_LINE_REPAIRS_MAINTENANCE ? '/rm-opportunities' : '/opportunities';
+  const businessDashboardPath = businessLine === BUSINESS_LINE_REPAIRS_MAINTENANCE ? '/rm-business' : '/business';
+  const newOpportunityPath = `${businessLine === BUSINESS_LINE_REPAIRS_MAINTENANCE ? '/rm-projects' : '/projects'}/new?is_bidding=true`;
   
   const [q, setQ] = useState(queryParam);
   const [isFilterModalOpen, setIsFilterModalOpen] = useState(false);
@@ -904,11 +910,12 @@ export default function Opportunities(){
     const params = new URLSearchParams(searchParams);
     if (!params.has('page')) params.set('page', '1');
     if (!params.has('limit')) params.set('limit', '25');
+    params.set('business_line', businessLine);
     return params.toString() ? '?' + params.toString() : '';
-  }, [searchParams]);
+  }, [searchParams, businessLine]);
   
   const { data, isLoading, refetch } = useQuery({ 
-    queryKey:['opportunities', qs], 
+    queryKey:['opportunities', businessLine, qs], 
     queryFn: ()=> api<{ items: Opportunity[]; total: number; page: number; limit: number } | Opportunity[]>('GET', `/projects/business/opportunities${qs}`)
   });
   
@@ -918,6 +925,10 @@ export default function Opportunities(){
     queryFn: ()=> api<any[]>('GET','/settings/project-divisions'), 
     staleTime: 300_000
   });
+  const divisionsForLine = useMemo(
+    () => filterProjectDivisionsForBusinessLine(projectDivisions, businessLine),
+    [projectDivisions, businessLine]
+  );
   
   // Show loading until both opportunities and divisions are loaded
   const isInitialLoading = (isLoading && !data) || (divisionsLoading && !projectDivisions);
@@ -1032,7 +1043,12 @@ export default function Opportunities(){
 
   // Check permissions
   const { data: me } = useQuery({ queryKey:['me'], queryFn: ()=>api<any>('GET','/auth/me') });
-  const hasEditPermission = (me?.roles||[]).includes('admin') || (me?.permissions||[]).includes('business:projects:write');
+  const hasEditPermission =
+    (me?.roles || []).includes('admin') ||
+    (me?.permissions || []).includes('business:projects:write') ||
+    (businessLine === BUSINESS_LINE_REPAIRS_MAINTENANCE
+      ? (me?.permissions || []).includes('business:rm:projects:write')
+      : (me?.permissions || []).includes('business:construction:projects:write'));
 
   // Check if any structured filters are active (for Clear Filters button and chips)
   const hasActiveFilters = useMemo(() => {
@@ -1127,7 +1143,7 @@ export default function Opportunities(){
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3 flex-1">
             <button
-              onClick={() => navigate('/business')}
+              onClick={() => navigate(businessDashboardPath)}
               className="p-1.5 rounded hover:bg-gray-100 transition-colors flex items-center justify-center"
               title="Back to Business"
             >
@@ -1265,7 +1281,7 @@ export default function Opportunities(){
           >
             {hasEditPermission && (
               <Link
-                to="/projects/new?is_bidding=true"
+                to={newOpportunityPath}
                 state={{ backgroundLocation: location }}
                 className="border-2 border-dashed border-gray-300 rounded-lg p-2.5 hover:border-brand-red hover:bg-gray-50 transition-all text-center bg-white flex items-center justify-center min-h-[200px]"
               >
@@ -1279,6 +1295,7 @@ export default function Opportunities(){
                 opportunity={p} 
                 onOpenReportModal={(projectId) => setReportModalOpen({ open: true, projectId })}
                 projectStatuses={projectStatuses}
+                opportunityBasePath={opportunityBasePath}
               />
             ))}
           </div>
@@ -1293,7 +1310,7 @@ export default function Opportunities(){
           >
             {hasEditPermission && (
               <Link
-                to="/projects/new?is_bidding=true"
+                to={newOpportunityPath}
                 state={{ backgroundLocation: location }}
                 className="border-2 border-dashed border-gray-300 rounded-lg p-2.5 hover:border-brand-red hover:bg-gray-50 transition-all text-center bg-white flex items-center justify-center min-h-[60px] min-w-[680px]"
               >
@@ -1317,6 +1334,7 @@ export default function Opportunities(){
                 opportunity={p}
                 onOpenReportModal={(projectId) => setReportModalOpen({ open: true, projectId })}
                 projectStatuses={projectStatuses}
+                opportunityBasePath={opportunityBasePath}
               />
             ))}
           </div>
@@ -1369,7 +1387,7 @@ export default function Opportunities(){
         onApply={handleApplyFilters}
         initialRules={currentRules}
         projectStatuses={projectStatuses}
-        projectDivisions={projectDivisions || []}
+        projectDivisions={divisionsForLine || []}
         clients={clients}
         employees={employees}
         estimatorOptions={employeesInEstimatingDept}
@@ -1589,11 +1607,12 @@ export function CreateReportModal({ projectId, reportCategories, onClose, onSucc
   );
 }
 
-export function OpportunityListItem({ opportunity, onOpenReportModal, projectStatuses, variant = 'card' }: {
+export function OpportunityListItem({ opportunity, onOpenReportModal, projectStatuses, variant = 'card', opportunityBasePath = '/opportunities' }: {
   opportunity: Opportunity;
   onOpenReportModal: (projectId: string) => void;
   projectStatuses: any[];
   variant?: 'card' | 'row';
+  opportunityBasePath?: string;
 }){
   const navigate = useNavigate();
   const { data:client } = useQuery({
@@ -1716,7 +1735,7 @@ export function OpportunityListItem({ opportunity, onOpenReportModal, projectSta
             if (btn.key === 'reports') {
               onOpenReportModal(String(opportunity.id));
             } else {
-              navigate(`/opportunities/${encodeURIComponent(String(opportunity.id))}?tab=${btn.tab}`);
+              navigate(`${opportunityBasePath}/${encodeURIComponent(String(opportunity.id))}?tab=${btn.tab}`);
             }
           }}
           className="relative group/btn w-8 h-8 rounded-lg bg-gray-100 hover:bg-gray-200 border border-gray-200 hover:border-gray-300 flex items-center justify-center text-sm transition-all hover:scale-[1.05]"
@@ -1735,7 +1754,7 @@ export function OpportunityListItem({ opportunity, onOpenReportModal, projectSta
   if (variant === 'row') {
     return (
       <tr
-        onClick={() => navigate(`/opportunities/${encodeURIComponent(String(opportunity.id))}`)}
+        onClick={() => navigate(`${opportunityBasePath}/${encodeURIComponent(String(opportunity.id))}`)}
         className="group hover:bg-gray-50 cursor-pointer transition-colors"
       >
         <td className="px-3 py-2 align-middle">{col1}</td>
@@ -1749,7 +1768,7 @@ export function OpportunityListItem({ opportunity, onOpenReportModal, projectSta
 
   return (
     <Link
-      to={`/opportunities/${encodeURIComponent(String(opportunity.id))}`}
+      to={`${opportunityBasePath}/${encodeURIComponent(String(opportunity.id))}`}
       className="group border border-gray-200 rounded-xl bg-white p-4 hover:shadow-md hover:border-gray-300 transition-all duration-200 min-w-[680px] block"
     >
       <div className="grid grid-cols-[10fr_5fr_5fr_5fr_auto] gap-2 sm:gap-3 lg:gap-4 items-center overflow-hidden">
@@ -1763,10 +1782,11 @@ export function OpportunityListItem({ opportunity, onOpenReportModal, projectSta
   );
 }
 
-function OpportunityListCard({ opportunity, onOpenReportModal, projectStatuses }: { 
+function OpportunityListCard({ opportunity, onOpenReportModal, projectStatuses, opportunityBasePath = '/opportunities' }: { 
   opportunity: Opportunity;
   onOpenReportModal: (projectId: string) => void;
   projectStatuses: any[];
+  opportunityBasePath?: string;
 }){
   const navigate = useNavigate();
   // Card cover should match General Information: backend now provides cover_image_url with correct priority
@@ -1920,7 +1940,7 @@ function OpportunityListCard({ opportunity, onOpenReportModal, projectStatuses }
 
   return (
     <Link 
-      to={`/opportunities/${encodeURIComponent(String(opportunity.id))}`} 
+      to={`${opportunityBasePath}/${encodeURIComponent(String(opportunity.id))}`} 
       className="group rounded-xl border border-gray-200 bg-white hover:border-gray-300 hover:shadow-md hover:-translate-y-0.5 block h-full transition-all duration-200 relative"
     >
       {/* Pending data alert icon (separate, top-left) */}
@@ -1989,7 +2009,7 @@ function OpportunityListCard({ opportunity, onOpenReportModal, projectStatuses }
                     if (btn.key === 'reports') {
                       onOpenReportModal(String(opportunity.id));
                     } else {
-                      navigate(`/opportunities/${encodeURIComponent(String(opportunity.id))}?tab=${btn.tab}`);
+                      navigate(`${opportunityBasePath}/${encodeURIComponent(String(opportunity.id))}?tab=${btn.tab}`);
                     }
                   }}
                   className="relative group/btn w-8 h-8 rounded-lg bg-gray-100 hover:bg-gray-200 border border-gray-200 hover:border-gray-300 flex items-center justify-center text-sm transition-all hover:scale-[1.05]"

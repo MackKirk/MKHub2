@@ -12,6 +12,8 @@ import FilterBuilderModal from '@/components/FilterBuilder/FilterBuilderModal';
 import FilterChip from '@/components/FilterBuilder/FilterChip';
 import { FilterRule, FieldConfig } from '@/components/FilterBuilder/types';
 import { isRangeOperator } from '@/components/FilterBuilder/utils';
+import { useBusinessLine } from '@/context/BusinessLineContext';
+import { BUSINESS_LINE_REPAIRS_MAINTENANCE, filterProjectDivisionsForBusinessLine } from '@/lib/businessLine';
 
 // Helper function to get user initials
 function getUserInitials(user: any): string {
@@ -473,6 +475,9 @@ export default function Projects(){
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const queryParam = searchParams.get('q') || '';
+  const businessLine = useBusinessLine();
+  const projectBasePath = businessLine === BUSINESS_LINE_REPAIRS_MAINTENANCE ? '/rm-projects' : '/projects';
+  const businessDashboardPath = businessLine === BUSINESS_LINE_REPAIRS_MAINTENANCE ? '/rm-business' : '/business';
   
   const [q, setQ] = useState(queryParam);
   const [isFilterModalOpen, setIsFilterModalOpen] = useState(false);
@@ -531,11 +536,12 @@ export default function Projects(){
     const params = new URLSearchParams(searchParams);
     if (!params.has('page')) params.set('page', '1');
     if (!params.has('limit')) params.set('limit', '25');
+    params.set('business_line', businessLine);
     return params.toString() ? '?' + params.toString() : '';
-  }, [searchParams]);
+  }, [searchParams, businessLine]);
   
   const { data, isLoading, refetch } = useQuery({ 
-    queryKey:['projects', qs], 
+    queryKey:['projects', businessLine, qs], 
     queryFn: ()=> api<{ items: Project[]; total: number; page: number; limit: number } | Project[]>('GET', `/projects/business/projects${qs}`)
   });
   
@@ -545,6 +551,10 @@ export default function Projects(){
     queryFn: ()=> api<any[]>('GET','/settings/project-divisions'), 
     staleTime: 300_000
   });
+  const divisionsForLine = useMemo(
+    () => filterProjectDivisionsForBusinessLine(projectDivisions, businessLine),
+    [projectDivisions, businessLine]
+  );
   
   // Show loading until both projects and divisions are loaded
   const isInitialLoading = (isLoading && !data) || (divisionsLoading && !projectDivisions);
@@ -696,7 +706,7 @@ export default function Projects(){
       operators: ['is', 'is_not'],
       getGroupedOptions: () => {
         const groups: Array<{ label: string; options: Array<{ value: string; label: string }> }> = [];
-        projectDivisions?.forEach((div: any) => {
+        divisionsForLine?.forEach((div: any) => {
           const options: Array<{ value: string; label: string }> = [
             { value: div.id, label: div.label }
           ];
@@ -746,7 +756,7 @@ export default function Projects(){
       type: 'number',
       operators: ['is_equal_to', 'greater_than', 'less_than', 'between'],
     },
-  ], [projectStatuses, projectDivisions, clients, employees, employeesInEstimatingDept]);
+  ], [projectStatuses, divisionsForLine, clients, employees, employeesInEstimatingDept]);
 
   const handleApplyFilters = (rules: FilterRule[]) => {
     const params = convertRulesToParams(rules);
@@ -818,7 +828,7 @@ export default function Projects(){
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3 flex-1">
             <button
-              onClick={() => navigate('/business')}
+              onClick={() => navigate(businessDashboardPath)}
               className="p-1.5 rounded hover:bg-gray-100 transition-colors flex items-center justify-center"
               title="Back to Business"
             >
@@ -961,6 +971,7 @@ export default function Projects(){
                     project={p}
                     projectDivisions={projectDivisions}
                     projectStatuses={projectStatuses}
+                    projectBasePath={projectBasePath}
                   />
                 ))
               ) : null}
@@ -999,6 +1010,7 @@ export default function Projects(){
                   project={p}
                   projectDivisions={projectDivisions}
                   projectStatuses={projectStatuses}
+                  projectBasePath={projectBasePath}
                 />
               ))
             ) : null}
@@ -1053,7 +1065,7 @@ export default function Projects(){
 // Division icons use images from @/icons via DivisionIcon component
 const getDivisionIcon = (label: string, suppressNativeTitle?: boolean) => <DivisionIcon label={label} size={16} suppressNativeTitle={suppressNativeTitle} />;
 
-export function ProjectListItem({ project, projectDivisions, projectStatuses, variant = 'card' }: { project: Project, projectDivisions?: any[], projectStatuses: any[]; variant?: 'card' | 'row' }){
+export function ProjectListItem({ project, projectDivisions, projectStatuses, variant = 'card', projectBasePath = '/projects' }: { project: Project, projectDivisions?: any[], projectStatuses: any[]; variant?: 'card' | 'row'; projectBasePath?: string }){
   const navigate = useNavigate();
 
   const clientName = project.client_display_name || project.client_name || '';
@@ -1163,7 +1175,7 @@ export function ProjectListItem({ project, projectDivisions, projectStatuses, va
           onClick={(e) => {
             e.preventDefault();
             e.stopPropagation();
-            navigate(`/projects/${encodeURIComponent(String(project.id))}?tab=${btn.tab}`);
+            navigate(`${projectBasePath}/${encodeURIComponent(String(project.id))}?tab=${btn.tab}`);
           }}
           className="relative group/btn w-8 h-8 rounded-lg bg-gray-100 hover:bg-gray-200 border border-gray-200 hover:border-gray-300 flex items-center justify-center text-sm transition-all hover:scale-[1.05]"
           title={btn.label}
@@ -1181,7 +1193,7 @@ export function ProjectListItem({ project, projectDivisions, projectStatuses, va
   if (variant === 'row') {
     return (
       <tr
-        onClick={() => navigate(`/projects/${encodeURIComponent(String(project.id))}`)}
+        onClick={() => navigate(`${projectBasePath}/${encodeURIComponent(String(project.id))}`)}
         className="group hover:bg-gray-50 cursor-pointer transition-colors"
       >
         <td className="px-3 py-2 align-middle">{col1}</td>
@@ -1197,7 +1209,7 @@ export function ProjectListItem({ project, projectDivisions, projectStatuses, va
 
   return (
     <Link
-      to={`/projects/${encodeURIComponent(String(project.id))}`}
+      to={`${projectBasePath}/${encodeURIComponent(String(project.id))}`}
       className="group border border-gray-200 rounded-xl bg-white p-4 hover:shadow-md hover:border-gray-300 transition-all duration-200 min-w-[800px] block"
     >
       <div className="grid grid-cols-[10fr_3fr_3fr_4fr_4fr_4fr_auto] gap-2 sm:gap-3 lg:gap-4 items-center overflow-hidden">
@@ -1213,7 +1225,7 @@ export function ProjectListItem({ project, projectDivisions, projectStatuses, va
   );
 }
 
-function ProjectListCard({ project, projectDivisions, projectStatuses }:{ project: Project, projectDivisions?: any[], projectStatuses: any[] }){
+function ProjectListCard({ project, projectDivisions, projectStatuses, projectBasePath = '/projects' }:{ project: Project, projectDivisions?: any[], projectStatuses: any[]; projectBasePath?: string }){
   const navigate = useNavigate();
   
   // Use cover image URL from project data (same image as General Information)
@@ -1363,7 +1375,7 @@ function ProjectListCard({ project, projectDivisions, projectStatuses }:{ projec
 
   return (
     <Link 
-      to={`/projects/${encodeURIComponent(String(project.id))}`} 
+      to={`${projectBasePath}/${encodeURIComponent(String(project.id))}`} 
       className="group rounded-xl border border-gray-200 bg-white hover:border-gray-300 hover:shadow-md hover:-translate-y-0.5 block h-full transition-all duration-200 relative"
     >
       <div className="p-4 flex flex-col gap-3">
@@ -1393,7 +1405,7 @@ function ProjectListCard({ project, projectDivisions, projectStatuses }:{ projec
                   onClick={(e) => {
                     e.preventDefault();
                     e.stopPropagation();
-                    navigate(`/projects/${encodeURIComponent(String(project.id))}?tab=${btn.tab}`);
+                    navigate(`${projectBasePath}/${encodeURIComponent(String(project.id))}?tab=${btn.tab}`);
                   }}
                   className="relative group/btn w-8 h-8 rounded-lg bg-gray-100 hover:bg-gray-200 border border-gray-200 hover:border-gray-300 flex items-center justify-center text-sm transition-all hover:scale-[1.05]"
                   title={btn.label}

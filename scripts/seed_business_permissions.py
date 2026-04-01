@@ -2,6 +2,11 @@
 Script para adicionar permissões de Business com estrutura hierárquica.
 A primeira permissão sempre é a liberação da área (business:access).
 Se bloquear business:access, automaticamente bloqueia todas as sub-permissões.
+
+IMPORTANT (production-safe):
+- Rows are matched by PermissionDefinition.key (unique). Existing rows keep the same primary key (id);
+  only label, description, sort_index, category_id, is_active are updated.
+- Never delete/recreate definitions here, so FKs from roles and templates that reference id stay valid.
 """
 import sys
 import os
@@ -91,6 +96,30 @@ def seed_business_permissions():
                 "label": "Edit Projects & Opportunities",
                 "description": "Allows creating, updating, and deleting projects and opportunities",
                 "sort_index": 5,
+            },
+            {
+                "key": "business:construction:projects:read",
+                "label": "View Projects & Opportunities (Construction)",
+                "description": "Allows viewing construction line projects and opportunities",
+                "sort_index": 22,
+            },
+            {
+                "key": "business:construction:projects:write",
+                "label": "Edit Projects & Opportunities (Construction)",
+                "description": "Allows creating, updating, and deleting construction line projects and opportunities",
+                "sort_index": 23,
+            },
+            {
+                "key": "business:rm:projects:read",
+                "label": "View Projects & Opportunities (Repairs & Maintenance)",
+                "description": "Allows viewing Repairs & Maintenance line projects and opportunities",
+                "sort_index": 24,
+            },
+            {
+                "key": "business:rm:projects:write",
+                "label": "Edit Projects & Opportunities (Repairs & Maintenance)",
+                "description": "Allows creating, updating, and deleting Repairs & Maintenance projects and opportunities",
+                "sort_index": 25,
             },
             # Projects - Sub-permissions
             {

@@ -4,24 +4,31 @@ import FadeInOnMount from '@/components/FadeInOnMount';
 import LoadingOverlay from '@/components/LoadingOverlay';
 import { useAnimationReady } from '@/contexts/AnimationReadyContext';
 import { api } from '@/lib/api';
+import { useBusinessLine } from '@/context/BusinessLineContext';
+import { BUSINESS_LINE_REPAIRS_MAINTENANCE } from '@/lib/businessLine';
 
 type Project = { id: string; code?: string; name?: string; slug?: string; status_label?: string };
 
 type ListProjectsWidgetProps = {
-  config?: { limit?: number; division_id?: string };
+  config?: { limit?: number; division_id?: string; business_line?: string };
 };
 
 export function ListProjectsWidget({ config }: ListProjectsWidgetProps) {
   const { ready } = useAnimationReady();
+  const ctxLine = useBusinessLine();
+  const businessLine = (config?.business_line as string | undefined) ?? ctxLine;
   const limit = Math.min(Math.max(1, config?.limit ?? 5), 20);
   const divisionId = config?.division_id;
 
   const qs = new URLSearchParams();
   qs.set('limit', String(limit));
+  qs.set('business_line', businessLine);
   if (divisionId) qs.set('division_id', divisionId);
 
+  const projectBase = businessLine === BUSINESS_LINE_REPAIRS_MAINTENANCE ? '/rm-projects' : '/projects';
+
   const { data, isLoading, error } = useQuery<Project[]>({
-    queryKey: ['home-list-projects', limit, divisionId],
+    queryKey: ['home-list-projects', businessLine, limit, divisionId],
     queryFn: () => api('GET', `/projects/business/projects?${qs.toString()}`),
     staleTime: 60_000,
   });
@@ -65,7 +72,7 @@ export function ListProjectsWidget({ config }: ListProjectsWidgetProps) {
         list.map((p) => (
           <li key={p.id} className="shrink-0">
             <Link
-              to={`/projects/${p.id}`}
+              to={`${projectBase}/${p.id}`}
               className="block rounded-lg border border-gray-200 bg-white shadow-sm transition-all hover:border-brand-red/30 hover:shadow-md hover:bg-gray-50/50"
               style={itemStyle}
             >
@@ -88,7 +95,7 @@ export function ListProjectsWidget({ config }: ListProjectsWidgetProps) {
       )}
       {list.length > 0 && (
         <li className="pt-0.5 shrink-0">
-          <Link to="/projects" className="inline-block font-medium text-brand-red hover:underline" style={viewAllStyle}>
+          <Link to={projectBase} className="inline-block font-medium text-brand-red hover:underline" style={viewAllStyle}>
             View all projects →
           </Link>
         </li>

@@ -1,14 +1,22 @@
 """
 Seed script for project divisions and subdivisions.
-Creates the 12 main divisions with their subdivisions as specified.
+
+IMPORTANT (production-safe):
+- Never bulk-delete SettingItem rows: project_division_ids on projects and other FKs depend on stable UUIDs.
+- This script UPSERTs by (list_id, parent_id, label): existing rows keep their id; only sort_index/value/meta are refreshed.
+- Rows present in the database but not in PROJECT_DIVISIONS below are left untouched (not deleted).
+
+DEPRECATED (never reintroduce):
+- Older versions deleted all items under project_divisions and re-inserted them, which changed UUIDs.
+  That pattern is documented under scripts/deprecated/ — do not restore it.
 """
 import sys
 import os
+
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from app.db import SessionLocal
 from app.models.models import SettingList, SettingItem
-import uuid
 
 # Structure: division_name -> [subdivision_names]
 PROJECT_DIVISIONS = {
@@ -25,10 +33,10 @@ PROJECT_DIVISIONS = {
     "Green Roofing": [],  # No subdivisions
 }
 
+
 def seed_project_divisions():
     db = SessionLocal()
     try:
-        # Get or create the project_divisions list
         divisions_list = db.query(SettingList).filter(SettingList.name == "project_divisions").first()
         if not divisions_list:
             divisions_list = SettingList(name="project_divisions")
@@ -37,53 +45,68 @@ def seed_project_divisions():
             print("Created 'project_divisions' SettingList")
         else:
             print("'project_divisions' SettingList already exists")
-        
-        # Clear existing items if any (for re-seeding)
-        existing_items = db.query(SettingItem).filter(SettingItem.list_id == divisions_list.id).all()
-        if existing_items:
-            print(f"Clearing {len(existing_items)} existing items...")
-            for item in existing_items:
-                db.delete(item)
-            db.flush()
-        
-        # Create divisions and subdivisions
+
         sort_index = 0
-        division_map = {}  # Store division IDs for creating subdivisions
-        
         for division_name, subdivisions in PROJECT_DIVISIONS.items():
-            # Create main division
-            division = SettingItem(
-                list_id=divisions_list.id,
-                parent_id=None,
-                label=division_name,
-                value=division_name.lower().replace(" ", "_"),
-                sort_index=sort_index,
-                meta=None
+            division = (
+                db.query(SettingItem)
+                .filter(
+                    SettingItem.list_id == divisions_list.id,
+                    SettingItem.parent_id.is_(None),
+                    SettingItem.label == division_name,
+                )
+                .first()
             )
-            db.add(division)
-            db.flush()
-            division_map[division_name] = division.id
-            print(f"Created division: {division_name}")
+            if division:
+                division.sort_index = sort_index
+                division.value = division_name.lower().replace(" ", "_")
+                print(f"Updated division (id preserved): {division_name} [{division.id}]")
+            else:
+                division = SettingItem(
+                    list_id=divisions_list.id,
+                    parent_id=None,
+                    label=division_name,
+                    value=division_name.lower().replace(" ", "_"),
+                    sort_index=sort_index,
+                    meta=None,
+                )
+                db.add(division)
+                db.flush()
+                print(f"Created division: {division_name} [{division.id}]")
             sort_index += 1
-            
-            # Create subdivisions
+
             sub_sort_index = 0
             for sub_name in subdivisions:
-                subdivision = SettingItem(
-                    list_id=divisions_list.id,
-                    parent_id=division.id,
-                    label=sub_name,
-                    value=sub_name.lower().replace(" ", "_"),
-                    sort_index=sub_sort_index,
-                    meta=None
+                subdivision = (
+                    db.query(SettingItem)
+                    .filter(
+                        SettingItem.list_id == divisions_list.id,
+                        SettingItem.parent_id == division.id,
+                        SettingItem.label == sub_name,
+                    )
+                    .first()
                 )
-                db.add(subdivision)
+                if subdivision:
+                    subdivision.sort_index = sub_sort_index
+                    subdivision.value = sub_name.lower().replace(" ", "_")
+                    print(f"  Updated subdivision (id preserved): {sub_name} [{subdivision.id}]")
+                else:
+                    subdivision = SettingItem(
+                        list_id=divisions_list.id,
+                        parent_id=division.id,
+                        label=sub_name,
+                        value=sub_name.lower().replace(" ", "_"),
+                        sort_index=sub_sort_index,
+                        meta=None,
+                    )
+                    db.add(subdivision)
+                    db.flush()
+                    print(f"  Created subdivision: {sub_name} [{subdivision.id}]")
                 sub_sort_index += 1
-                print(f"  Created subdivision: {sub_name}")
-        
+
         db.commit()
-        print(f"\nSuccessfully seeded {len(PROJECT_DIVISIONS)} divisions with their subdivisions")
-        
+        print(f"\nSuccessfully upserted {len(PROJECT_DIVISIONS)} divisions (existing UUIDs preserved).")
+
     except Exception as e:
         db.rollback()
         print(f"Error seeding project divisions: {e}")
@@ -91,6 +114,6 @@ def seed_project_divisions():
     finally:
         db.close()
 
+
 if __name__ == "__main__":
     seed_project_divisions()
-

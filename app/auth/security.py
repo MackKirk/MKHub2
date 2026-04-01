@@ -1,7 +1,7 @@
 import uuid
 import time
 from datetime import datetime, timedelta, timezone
-from typing import Optional, List, Literal
+from typing import Optional, List, Literal, Any
 
 import jwt
 from fastapi import Depends, HTTPException, status
@@ -17,6 +17,11 @@ from sqlalchemy.orm import Session
 from ..config import settings
 from ..db import get_db
 from ..models.models import User
+from ..services.business_line import (
+    BUSINESS_LINE_CONSTRUCTION,
+    BUSINESS_LINE_REPAIRS_MAINTENANCE,
+    normalize_business_line,
+)
 
 
 pwd_context = CryptContext(schemes=["pbkdf2_sha256"], deprecated="auto")
@@ -221,7 +226,12 @@ def _has_permission(user: User, perm: str) -> bool:
             if perm != area_access_key:
                 # Special case: business:customers:* and business:projects:* don't require business:access
                 # They are standalone permissions
-                if area == 'business' and (perm.startswith('business:customers:') or perm.startswith('business:projects:')):
+                if area == 'business' and (
+                    perm.startswith('business:customers:')
+                    or perm.startswith('business:projects:')
+                    or perm.startswith('business:construction:projects:')
+                    or perm.startswith('business:rm:projects:')
+                ):
                     # Skip area access check for business customers/projects permissions
                     pass
                 # Special case: inventory:products:* and inventory:suppliers:* don't require inventory:access
@@ -255,10 +265,56 @@ def _has_permission(user: User, perm: str) -> bool:
     return _perm_matches_map(perm_map, perm)
 
 
+def can_access_business_line(user: User, line: Optional[str]) -> bool:
+    """Whether user may view resources for this business line (Construction vs R&M)."""
+    if any((getattr(r, "name", None) or "").lower() == "admin" for r in user.roles):
+        return True
+    ln = normalize_business_line(line)
+    pm = _get_user_permission_map(user)
+    if pm.get("business:projects:read"):
+        return True
+    if ln == BUSINESS_LINE_CONSTRUCTION:
+        return bool(pm.get("business:construction:projects:read") or pm.get("business:construction:projects:write"))
+    if ln == BUSINESS_LINE_REPAIRS_MAINTENANCE:
+        return bool(pm.get("business:rm:projects:read") or pm.get("business:rm:projects:write"))
+    return False
+
+
+def can_write_business_line(user: User, line: Optional[str]) -> bool:
+    """Whether user may create/update/delete resources for this business line."""
+    if any((getattr(r, "name", None) or "").lower() == "admin" for r in user.roles):
+        return True
+    ln = normalize_business_line(line)
+    pm = _get_user_permission_map(user)
+    if pm.get("business:projects:write"):
+        return True
+    if ln == BUSINESS_LINE_CONSTRUCTION:
+        return bool(pm.get("business:construction:projects:write"))
+    if ln == BUSINESS_LINE_REPAIRS_MAINTENANCE:
+        return bool(pm.get("business:rm:projects:write"))
+    return False
+
+
+def has_project_permission(user: User, project: Any, perm: str) -> bool:
+    """
+    Granular project permission AND business-line access.
+    `project` must have .business_line (Construction vs R&M).
+    """
+    if not _has_permission(user, perm):
+        return False
+    line = getattr(project, "business_line", None)
+    return can_access_business_line(user, line)
+
+
+def has_any_project_permission(user: User, project: Any, *perms: str) -> bool:
+    return any(has_project_permission(user, project, p) for p in perms if p)
+
+
 def has_project_files_category_permission(
     user: User,
     category_id: Optional[str],
     action: Literal["read", "write"] = "read",
+    project: Optional[Any] = None,
 ) -> bool:
     """
     Category-level access control for Project > Files.
@@ -272,7 +328,10 @@ def has_project_files_category_permission(
 
     Notes:
     - Uncategorized files use `None` category; we treat it as "uncategorized" when comparing.
+    - If `project` is passed, business-line access is checked.
     """
+    if project is not None and not can_access_business_line(user, getattr(project, "business_line", None)):
+        return False
     if action not in ("read", "write"):
         return False
 

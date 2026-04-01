@@ -423,6 +423,48 @@ def create_app() -> FastAPI:
                         db.commit()
                         print("[startup] Added project_admin_id column to projects table")
 
+                    # Business line: Construction vs Repairs & Maintenance
+                    rows = db.execute(
+                        text(
+                            """
+                            SELECT 1
+                            FROM information_schema.columns
+                            WHERE table_name = 'projects'
+                              AND column_name = 'business_line'
+                            LIMIT 1
+                            """
+                        )
+                    ).fetchall()
+                    if not rows:
+                        db.execute(text("ALTER TABLE projects ADD COLUMN business_line VARCHAR(50) NULL"))
+                        try:
+                            db.execute(text("CREATE INDEX IF NOT EXISTS idx_projects_business_line ON projects(business_line)"))
+                        except Exception:
+                            pass
+                        db.commit()
+                        print("[startup] Added business_line column to projects table")
+                    try:
+                        from .services.business_line import backfill_business_line_column
+
+                        n_null = db.execute(text("SELECT COUNT(*) FROM projects WHERE business_line IS NULL")).scalar() or 0
+                        if int(n_null) > 0:
+                            backfill_business_line_column(db, do_commit=False)
+                            db.execute(text("UPDATE projects SET business_line = 'construction' WHERE business_line IS NULL"))
+                        db.execute(text("ALTER TABLE projects ALTER COLUMN business_line SET DEFAULT 'construction'"))
+                        try:
+                            db.execute(text("ALTER TABLE projects ALTER COLUMN business_line SET NOT NULL"))
+                        except Exception:
+                            pass
+                        try:
+                            db.execute(text("CREATE INDEX IF NOT EXISTS idx_projects_business_line ON projects(business_line)"))
+                        except Exception:
+                            pass
+                        db.commit()
+                        print("[startup] business_line backfill / constraints OK")
+                    except Exception as e:
+                        print(f"[startup] business_line migration (non-critical): {e}")
+                        db.rollback()
+
                     # Check for project_id column in user_documents
                     rows = db.execute(
                         text(

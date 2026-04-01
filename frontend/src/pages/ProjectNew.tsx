@@ -7,6 +7,8 @@ import toast from 'react-hot-toast';
 import ImagePicker from '@/components/ImagePicker';
 import AddressAutocomplete from '@/components/AddressAutocomplete';
 import OverlayPortal from '@/components/OverlayPortal';
+import { useBusinessLine } from '@/context/BusinessLineContext';
+import { BUSINESS_LINE_REPAIRS_MAINTENANCE, filterProjectDivisionsForBusinessLine } from '@/lib/businessLine';
 
 type Client = { id:string, display_name?:string, name?:string, city?:string, province?:string, address_line1?:string };
 type Site = { id:string, site_name?:string, site_address_line1?:string, site_city?:string, site_province?:string, site_country?:string, site_postal_code?:string, site_address_line2?:string, site_lat?:number, site_lng?:number, site_notes?:string };
@@ -14,6 +16,7 @@ type Site = { id:string, site_name?:string, site_address_line1?:string, site_cit
 export default function ProjectNew(){
   const nav = useNavigate();
   const queryClient = useQueryClient();
+  const businessLine = useBusinessLine();
   const [sp] = useSearchParams();
   const initialClientId = sp.get('client_id')||'';
   const initialIsBidding = sp.get('is_bidding') === 'true';
@@ -95,6 +98,10 @@ export default function ProjectNew(){
   const { data:sites } = useQuery({ queryKey:['clientSites', clientId], queryFn: ()=> clientId? api<Site[]>('GET', `/clients/${encodeURIComponent(clientId)}/sites`) : Promise.resolve([]), enabled: !!clientId });
   const { data:settings } = useQuery({ queryKey:['settings'], queryFn: ()=> api<any>('GET','/settings') });
   const { data:projectDivisions } = useQuery({ queryKey:['project-divisions'], queryFn: ()=> api<any[]>('GET','/settings/project-divisions'), staleTime: 300_000 });
+  const divisionsForPicker = useMemo(
+    () => filterProjectDivisionsForBusinessLine(projectDivisions, businessLine),
+    [projectDivisions, businessLine]
+  );
   const { data:employees } = useQuery({ queryKey:['employees'], queryFn: ()=> api<any[]>('GET','/employees') });
   const { data:contacts } = useQuery({ queryKey:['clientContacts-mini', clientId], queryFn: ()=> clientId? api<any[]>('GET', `/clients/${encodeURIComponent(clientId)}/contacts`) : Promise.resolve([]), enabled: !!clientId });
   
@@ -197,6 +204,7 @@ export default function ProjectNew(){
         contact_id: contactId||null, 
         is_bidding: isBidding,
         related_client_ids: relatedClientIds.length > 0 ? relatedClientIds : null,
+        business_line: businessLine,
       };
       const proj:any = await api('POST','/projects', payload);
       if(coverBlob){
@@ -215,10 +223,12 @@ export default function ProjectNew(){
         queryClient.invalidateQueries({ queryKey: ['project', newId] });
         queryClient.invalidateQueries({ queryKey: ['projectRecentActivity', newId] });
       }
+      const oppPath = businessLine === BUSINESS_LINE_REPAIRS_MAINTENANCE ? '/rm-opportunities' : '/opportunities';
+      const projPath = businessLine === BUSINESS_LINE_REPAIRS_MAINTENANCE ? '/rm-projects' : '/projects';
       if (isBidding) {
-        nav(`/opportunities/${encodeURIComponent(newId)}`);
+        nav(`${oppPath}/${encodeURIComponent(newId)}`);
       } else {
-        nav(`/projects/${encodeURIComponent(newId)}`);
+        nav(`${projPath}/${encodeURIComponent(newId)}`);
       }
       // Don't reset isSubmitting here - let the component unmount handle it
       return; // Exit early to prevent finally from resetting state
@@ -580,7 +590,7 @@ export default function ProjectNew(){
                     <div className="text-[11px] text-red-600 mb-2">Select at least one division for this opportunity</div>
                   )}
                   <div className="space-y-3 mt-1">
-                    {sortByLabel(projectDivisions||[], (div:any)=> (div.label||'').toString()).map((div:any)=>{
+                    {sortByLabel(divisionsForPicker||[], (div:any)=> (div.label||'').toString()).map((div:any)=>{
                       const divId = String(div.id);
                       const divSelected = projectDivisionIds.includes(divId);
                       const subdivisions = sortByLabel(div.subdivisions || [], (sub:any)=> (sub.label||'').toString());
@@ -615,7 +625,7 @@ export default function ProjectNew(){
                         </div>
                       );
                     })}
-                    {(!projectDivisions || projectDivisions.length === 0) && (
+                    {(!divisionsForPicker || divisionsForPicker.length === 0) && (
                       <div className="text-xs text-gray-500">No project divisions available. Please run the seed script.</div>
                     )}
                   </div>

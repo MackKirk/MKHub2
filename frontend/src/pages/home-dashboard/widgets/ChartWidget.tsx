@@ -5,6 +5,7 @@ import FadeInOnMount from '@/components/FadeInOnMount';
 import LoadingOverlay from '@/components/LoadingOverlay';
 import { useAnimationReady } from '@/contexts/AnimationReadyContext';
 import { api } from '@/lib/api';
+import { useBusinessLine } from '@/context/BusinessLineContext';
 import {
   getValue,
   getCount,
@@ -59,6 +60,7 @@ type ChartWidgetProps = {
     mode?: 'quantity' | 'value';
     palette?: ChartPaletteId;
     related_to_me?: boolean;
+    business_line?: string;
   };
 };
 
@@ -69,15 +71,17 @@ function useChartData(
   customerId: string | undefined,
   date_from: string | undefined,
   date_to: string | undefined,
-  relatedToMe: boolean
+  relatedToMe: boolean,
+  businessLine: string
 ): { entries: ChartEntry[]; isLoading: boolean; error: unknown } {
   const isByDivision =
     metric === 'opportunities_by_division' || metric === 'projects_by_division';
 
   const dashboardQuery = useQuery<DashboardStats>({
-    queryKey: ['home-chart-dashboard', metric, divisionId, customerId, mode, date_from, date_to, relatedToMe],
+    queryKey: ['home-chart-dashboard', metric, businessLine, divisionId, customerId, mode, date_from, date_to, relatedToMe],
     queryFn: () => {
       const params = new URLSearchParams();
+      params.set('business_line', businessLine);
       if (divisionId) params.set('division_id', divisionId);
       if (customerId) params.set('customer_id', customerId);
       if (date_from) params.set('date_from', date_from);
@@ -91,9 +95,10 @@ function useChartData(
   });
 
   const divisionsQuery = useQuery<DivisionStatsRow[]>({
-    queryKey: ['home-chart-divisions', metric, divisionId, customerId, mode, date_from, date_to, relatedToMe],
+    queryKey: ['home-chart-divisions', metric, businessLine, divisionId, customerId, mode, date_from, date_to, relatedToMe],
     queryFn: async () => {
       const params = new URLSearchParams();
+      params.set('business_line', businessLine);
       if (divisionId) params.set('division_id', divisionId);
       if (customerId) params.set('customer_id', customerId);
       if (date_from) params.set('date_from', date_from);
@@ -154,12 +159,14 @@ function useChartTimeseries(
   date_from: string | undefined,
   date_to: string | undefined,
   relatedToMe: boolean,
-  enabled: boolean
+  enabled: boolean,
+  businessLine: string
 ): { data: TimeseriesResponse | null; isLoading: boolean; error: unknown } {
   const query = useQuery<TimeseriesResponse>({
-    queryKey: ['home-chart-timeseries', metric, mode, divisionId, customerId, date_from, date_to, relatedToMe],
+    queryKey: ['home-chart-timeseries', metric, businessLine, mode, divisionId, customerId, date_from, date_to, relatedToMe],
     queryFn: () => {
       const params = new URLSearchParams();
+      params.set('business_line', businessLine);
       params.set('metric', metric);
       params.set('mode', mode);
       if (divisionId) params.set('division_id', divisionId);
@@ -180,6 +187,8 @@ function useChartTimeseries(
 }
 
 export function ChartWidget({ config }: ChartWidgetProps) {
+  const ctxBusinessLine = useBusinessLine();
+  const businessLine = (config?.business_line as string | undefined) ?? ctxBusinessLine;
   const metric = (config?.metric ?? 'opportunities_by_status') as ChartMetric;
   const rawChartType = config?.chartType ?? 'bar';
   const chartType = rawChartType === 'donut' ? 'pie' : rawChartType;
@@ -192,7 +201,7 @@ export function ChartWidget({ config }: ChartWidgetProps) {
   const { date_from, date_to } = calculateDateRange(period, config?.customStart ?? '', config?.customEnd ?? '');
 
   const isLineChart = rawChartType === 'line';
-  const timeseries = useChartTimeseries(metric, mode, divisionId, customerId, date_from, date_to, relatedToMe, isLineChart);
+  const timeseries = useChartTimeseries(metric, mode, divisionId, customerId, date_from, date_to, relatedToMe, isLineChart, businessLine);
   const { entries: rawEntries, isLoading, error } = useChartData(
     metric,
     mode,
@@ -200,7 +209,8 @@ export function ChartWidget({ config }: ChartWidgetProps) {
     customerId,
     date_from,
     date_to,
-    relatedToMe
+    relatedToMe,
+    businessLine
   );
 
   const isOpportunities = metric === 'opportunities_by_status' || metric === 'opportunities_by_division';

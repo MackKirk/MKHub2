@@ -4,6 +4,8 @@ import FadeInOnMount from '@/components/FadeInOnMount';
 import LoadingOverlay from '@/components/LoadingOverlay';
 import { useAnimationReady } from '@/contexts/AnimationReadyContext';
 import { api } from '@/lib/api';
+import { useBusinessLine } from '@/context/BusinessLineContext';
+import { BUSINESS_LINE_REPAIRS_MAINTENANCE } from '@/lib/businessLine';
 
 type Opportunity = {
   id: string;
@@ -14,20 +16,25 @@ type Opportunity = {
 };
 
 type ListOpportunitiesWidgetProps = {
-  config?: { limit?: number; division_id?: string };
+  config?: { limit?: number; division_id?: string; business_line?: string };
 };
 
 export function ListOpportunitiesWidget({ config }: ListOpportunitiesWidgetProps) {
   const { ready } = useAnimationReady();
+  const ctxLine = useBusinessLine();
+  const businessLine = (config?.business_line as string | undefined) ?? ctxLine;
   const limit = Math.min(Math.max(1, config?.limit ?? 5), 20);
   const divisionId = config?.division_id;
 
   const qs = new URLSearchParams();
   qs.set('limit', String(limit));
+  qs.set('business_line', businessLine);
   if (divisionId) qs.set('division_id', divisionId);
 
+  const oppBase = businessLine === BUSINESS_LINE_REPAIRS_MAINTENANCE ? '/rm-opportunities' : '/opportunities';
+
   const { data, isLoading, error } = useQuery<Opportunity[]>({
-    queryKey: ['home-list-opportunities', limit, divisionId],
+    queryKey: ['home-list-opportunities', businessLine, limit, divisionId],
     queryFn: () => api('GET', `/projects/business/opportunities?${qs.toString()}`),
     staleTime: 60_000,
   });
@@ -71,7 +78,7 @@ export function ListOpportunitiesWidget({ config }: ListOpportunitiesWidgetProps
         list.map((o) => (
           <li key={o.id} className="shrink-0">
             <Link
-              to={`/opportunities/${o.id}`}
+              to={`${oppBase}/${o.id}`}
               className="block rounded-lg border border-gray-200 bg-white shadow-sm transition-all hover:border-brand-red/30 hover:shadow-md hover:bg-gray-50/50"
               style={itemStyle}
             >
@@ -94,7 +101,7 @@ export function ListOpportunitiesWidget({ config }: ListOpportunitiesWidgetProps
       )}
       {list.length > 0 && (
         <li className="pt-0.5 shrink-0">
-          <Link to="/opportunities" className="inline-block font-medium text-brand-red hover:underline" style={viewAllStyle}>
+          <Link to={oppBase} className="inline-block font-medium text-brand-red hover:underline" style={viewAllStyle}>
             View all opportunities →
           </Link>
         </li>

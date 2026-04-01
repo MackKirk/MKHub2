@@ -15,7 +15,9 @@ import Protected from './lib/protected';
 import OnboardingWizard from './pages/OnboardingWizard';
 import OnboardingDocuments from './pages/OnboardingDocuments';
 const OnboardingAdmin = lazy(() => import('./pages/OnboardingAdmin'));
-const ProjectDetail = lazy(() => import('./pages/ProjectDetail'));
+const ConstructionProjectDetail = lazy(() => import('./pages/ConstructionProjectDetail'));
+const RmProjectDetail = lazy(() => import('./pages/RmProjectDetail'));
+const RmOpportunityDetail = lazy(() => import('./pages/RmOpportunityDetail'));
 const CustomerDetail = lazy(() => import('./pages/CustomerDetail'));
 const DocumentCreator = lazy(() => import('./pages/DocumentCreator'));
 const FleetAssetDetail = lazy(() => import('./pages/FleetAssetDetail'));
@@ -81,6 +83,8 @@ import SystemAdmin from './pages/SystemAdmin';
 import Attendance from './pages/Attendance';
 import Notifications from './pages/Notifications';
 import Install from './pages/Install';
+import { BusinessLineProvider } from './context/BusinessLineContext';
+import { BUSINESS_LINE_REPAIRS_MAINTENANCE } from './lib/businessLine';
 
 const RouteFallback = () => <div className="min-h-[40vh] flex items-center justify-center text-gray-500">Loading...</div>;
 
@@ -153,10 +157,16 @@ export default function App(){
           <Route path="/quotes/:id" element={<AppShell><QuoteDetail/></AppShell>} />
           <Route path="/projects" element={<AppShell><Projects/></AppShell>} />
           <Route path="/projects/new" element={<AppShell><ProjectNew/></AppShell>} />
-          <Route path="/projects/:id" element={<AppShell><ProjectDetail/></AppShell>} />
+          <Route path="/projects/:id" element={<AppShell><ConstructionProjectDetail/></AppShell>} />
           <Route path="/opportunities" element={<AppShell><Opportunities/></AppShell>} />
           <Route path="/opportunities/:id" element={<AppShell><OpportunityDetail/></AppShell>} />
           <Route path="/business" element={<AppShell><BusinessDashboard/></AppShell>} />
+          <Route path="/rm-opportunities" element={<AppShell><BusinessLineProvider line={BUSINESS_LINE_REPAIRS_MAINTENANCE}><Opportunities /></BusinessLineProvider></AppShell>} />
+          <Route path="/rm-opportunities/:id" element={<AppShell><RmOpportunityDetail /></AppShell>} />
+          <Route path="/rm-projects" element={<AppShell><BusinessLineProvider line={BUSINESS_LINE_REPAIRS_MAINTENANCE}><Projects /></BusinessLineProvider></AppShell>} />
+          <Route path="/rm-projects/new" element={<AppShell><BusinessLineProvider line={BUSINESS_LINE_REPAIRS_MAINTENANCE}><ProjectNew /></BusinessLineProvider></AppShell>} />
+          <Route path="/rm-projects/:id" element={<AppShell><RmProjectDetail /></AppShell>} />
+          <Route path="/rm-business" element={<AppShell><BusinessLineProvider line={BUSINESS_LINE_REPAIRS_MAINTENANCE}><BusinessDashboard /></BusinessLineProvider></AppShell>} />
           <Route path="/settings" element={<AppShell><SystemSettings/></AppShell>} />
           <Route path="/company-files" element={<AppShell><CompanyFiles/></AppShell>} />
           <Route path="/documents/create" element={<AppShell><DocumentCreator/></AppShell>} />

@@ -2,8 +2,9 @@ import { useParams, Navigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import ProjectDetail from './ProjectDetail';
+import { BUSINESS_LINE_REPAIRS_MAINTENANCE } from '@/lib/businessLine';
 
-type Project = { id:string, is_bidding?:boolean };
+type Project = { id: string; is_bidding?: boolean; business_line?: string };
 
 // OpportunityDetail renders ProjectDetail directly to maintain /opportunities/:id URL
 // This ensures the sidebar keeps "Opportunities" highlighted instead of switching to "Projects"
@@ -14,6 +15,9 @@ export default function OpportunityDetail(){
   // If project is loaded and it's not an opportunity, redirect to projects
   if (proj && !proj.is_bidding) {
     return <Navigate to={`/projects/${id}`} replace />;
+  }
+  if (proj && proj.business_line === BUSINESS_LINE_REPAIRS_MAINTENANCE) {
+    return <Navigate to={`/rm-opportunities/${id}`} replace />;
   }
   
   // If still loading, show nothing (ProjectDetail will handle loading state)

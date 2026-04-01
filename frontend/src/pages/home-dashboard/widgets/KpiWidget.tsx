@@ -3,6 +3,7 @@ import FadeInOnMount from '@/components/FadeInOnMount';
 import LoadingOverlay from '@/components/LoadingOverlay';
 import { useAnimationReady } from '@/contexts/AnimationReadyContext';
 import { api } from '@/lib/api';
+import { useBusinessLine } from '@/context/BusinessLineContext';
 
 type DashboardResponse = {
   total_opportunities: number;
@@ -58,11 +59,14 @@ type KpiWidgetProps = {
     division_id?: string;
     mode?: 'quantity' | 'value';
     status_labels?: string[];
+    business_line?: string;
   };
 };
 
 export function KpiWidget({ config }: KpiWidgetProps) {
   const { ready } = useAnimationReady();
+  const ctxLine = useBusinessLine();
+  const businessLine = (config?.business_line as string | undefined) ?? ctxLine;
   const metric = config?.metric ?? 'opportunities';
   const period = (config?.period as DateFilter) ?? 'all';
   const divisionId = config?.division_id;
@@ -76,9 +80,10 @@ export function KpiWidget({ config }: KpiWidgetProps) {
     : null;
 
   const { data, isLoading, error } = useQuery<DashboardResponse>({
-    queryKey: ['home-kpi', metric, period, divisionId, date_from, date_to, mode, statusLabels],
+    queryKey: ['home-kpi', businessLine, metric, period, divisionId, date_from, date_to, mode, statusLabels],
     queryFn: async () => {
       const params = new URLSearchParams();
+      params.set('business_line', businessLine);
       if (divisionId) params.set('division_id', divisionId);
       if (date_from) params.set('date_from', date_from);
       if (date_to) params.set('date_to', date_to);

@@ -209,6 +209,8 @@ class Project(Base):
     notes: Mapped[Optional[str]] = mapped_column(String(2000))
     lead_source: Mapped[Optional[str]] = mapped_column(String(100))  # Lead source (same as Client)
     is_bidding: Mapped[bool] = mapped_column(Boolean, default=False)  # True if this is a bidding (quote), False if it's an active project
+    # construction | repairs_maintenance — separates Commercial/Construction vs Repairs & Maintenance workflows
+    business_line: Mapped[str] = mapped_column(String(50), default="construction", index=True)
     status_changed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))  # Timestamp when status was last changed
     image_file_object_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True))  # Image for general information card
     image_manually_set: Mapped[bool] = mapped_column(Boolean, default=False)  # True if user manually set the image (prevents auto-update from proposal)

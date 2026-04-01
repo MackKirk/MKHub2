@@ -18,6 +18,15 @@ import { formatDateLocal, getCurrentMonthLocal } from '@/lib/dateUtils';
 import { DivisionIcon } from '@/components/DivisionIcon';
 import { ReportAttachmentAreaMultiple } from '@/components/ReportAttachmentArea';
 import OverlayPortal from '@/components/OverlayPortal';
+import { BUSINESS_LINE_REPAIRS_MAINTENANCE } from '@/lib/businessLine';
+
+function salesListPaths(project: { business_line?: string; is_bidding?: boolean } | undefined | null) {
+  const rm = project?.business_line === BUSINESS_LINE_REPAIRS_MAINTENANCE;
+  return {
+    opportunities: rm ? '/rm-opportunities' : '/opportunities',
+    projects: rm ? '/rm-projects' : '/projects',
+  };
+}
 
 // Helper function to calculate and format time since status change
 function getTimeSinceStatusChange(project: any): string {
@@ -698,7 +707,7 @@ function UserAvatar({ user, size = 'w-8 h-8', showTooltip = true, tooltipText }:
   );
 }
 
-type Project = { id:string, code?:string, name?:string, client_id?:string, client_display_name?:string, client_name?:string, related_client_ids?:string[], related_client_display_names?:string[], address?:string, address_city?:string, address_province?:string, address_country?:string, address_postal_code?:string, description?:string, status_id?:string, division_id?:string, division_ids?:string[], project_division_ids?:string[], estimator_id?:string, estimator_ids?:string[], project_admin_id?:string, onsite_lead_id?:string, division_onsite_leads?:Record<string, string>, contact_id?:string, contact_name?:string, contact_email?:string, contact_phone?:string, date_start?:string, date_eta?:string, date_end?:string, cost_estimated?:number, cost_actual?:number, service_value?:number, progress?:number, site_id?:string, site_name?:string, site_address_line1?:string, site_address_line2?:string, site_city?:string, site_province?:string, site_country?:string, site_postal_code?:string, status_label?:string, status_changed_at?:string, is_bidding?:boolean, lead_source?:string };
+type Project = { id:string, code?:string, name?:string, client_id?:string, client_display_name?:string, client_name?:string, related_client_ids?:string[], related_client_display_names?:string[], address?:string, address_city?:string, address_province?:string, address_country?:string, address_postal_code?:string, description?:string, status_id?:string, division_id?:string, division_ids?:string[], project_division_ids?:string[], estimator_id?:string, estimator_ids?:string[], project_admin_id?:string, onsite_lead_id?:string, division_onsite_leads?:Record<string, string>, contact_id?:string, contact_name?:string, contact_email?:string, contact_phone?:string, date_start?:string, date_eta?:string, date_end?:string, cost_estimated?:number, cost_actual?:number, service_value?:number, progress?:number, site_id?:string, site_name?:string, site_address_line1?:string, site_address_line2?:string, site_city?:string, site_province?:string, site_country?:string, site_postal_code?:string, status_label?:string, status_changed_at?:string, is_bidding?:boolean, lead_source?:string, business_line?: string };
 type ProjectFile = { id:string, file_object_id:string, is_image?:boolean, content_type?:string, category?:string, folder_id?:string|null, original_name?:string, uploaded_at?:string };
 type Update = { id:string, timestamp?:string, text?:string, images?:any };
 type Report = { id:string, title?:string, category_id?:string, division_id?:string, description?:string, images?:any, status?:string, created_at?:string, created_by?:string, financial_value?:number, financial_type?:string, estimate_data?:any, approval_status?:string, approved_by?:string, approved_at?:string };
@@ -1063,7 +1072,8 @@ export default function ProjectDetail(){
                 if (tab && tab !== 'overview') {
                   handleTabClick(null);
                 } else {
-                  nav(proj?.is_bidding ? '/opportunities' : '/projects');
+                  const sp = salesListPaths(proj);
+                  nav(proj?.is_bidding ? sp.opportunities : sp.projects);
                 }
               }}
               className="p-1.5 rounded hover:bg-gray-100 transition-colors flex items-center justify-center"
@@ -1999,7 +2009,8 @@ export default function ProjectDetail(){
                 if(proj?.client_id){
                   nav(`/customers/${encodeURIComponent(String(proj?.client_id))}`);
                 } else {
-                  nav(proj?.is_bidding ? '/opportunities' : '/projects');
+                  const sp = salesListPaths(proj);
+                  nav(proj?.is_bidding ? sp.opportunities : sp.projects);
                 }
               }catch(_e){ toast.error(proj?.is_bidding ? 'Failed to delete opportunity' : 'Failed to delete project'); }
             }} className="px-4 py-2 rounded bg-red-600 hover:bg-red-700 text-white text-sm font-medium">{proj?.is_bidding ? 'Delete Opportunity' : 'Delete Project'}</button>
@@ -2363,7 +2374,7 @@ export default function ProjectDetail(){
               queryClient.invalidateQueries({ queryKey: ['projectProposals', id] }),
             ]);
             toast.success('Opportunity converted to project');
-            nav(`/projects/${encodeURIComponent(String(id || ''))}`, { replace: true });
+            nav(`${salesListPaths(proj).projects}/${encodeURIComponent(String(id || ''))}`, { replace: true });
           }}
         />
       )}
