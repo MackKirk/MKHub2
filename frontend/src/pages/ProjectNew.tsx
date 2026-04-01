@@ -7,6 +7,7 @@ import toast from 'react-hot-toast';
 import ImagePicker from '@/components/ImagePicker';
 import AddressAutocomplete from '@/components/AddressAutocomplete';
 import OverlayPortal from '@/components/OverlayPortal';
+import { DivisionIcon } from '@/components/DivisionIcon';
 import { useBusinessLine } from '@/context/BusinessLineContext';
 import { BUSINESS_LINE_REPAIRS_MAINTENANCE, filterProjectDivisionsForBusinessLine } from '@/lib/businessLine';
 
@@ -48,6 +49,8 @@ export default function ProjectNew(){
   const [relatedClientModalOpen, setRelatedClientModalOpen] = useState<boolean>(false);
   const [relatedClientDisplayNames, setRelatedClientDisplayNames] = useState<Record<string, string>>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
+  /** Step 2 division picker: expand parents that have subdivisions (same UX as Edit Project Divisions). */
+  const [newOppExpandedDivisions, setNewOppExpandedDivisions] = useState<Set<string>>(new Set());
   const nameValid = useMemo(()=> String(name||'').trim().length>0, [name]);
   const clientValid = useMemo(()=> String(clientId||'').trim().length>0, [clientId]);
   const siteValid = useMemo(()=>{
@@ -257,7 +260,13 @@ export default function ProjectNew(){
               </button>
               <div>
                 <div className="text-sm font-semibold text-gray-900">{isBidding ? 'New Opportunity' : 'New Project'}</div>
-                <div className="text-xs text-gray-500 mt-0.5">{step === 1 ? 'Basic details and site' : 'Options and cover'}</div>
+                <div className="text-xs text-gray-500 mt-0.5">
+                  {step === 1
+                    ? 'Basic details and site'
+                    : isBidding
+                      ? 'Select divisions, then team and cover'
+                      : 'Options and cover'}
+                </div>
               </div>
             </div>
             <div className="inline-flex items-center gap-2 text-[10px] font-medium text-gray-500">
@@ -267,8 +276,12 @@ export default function ProjectNew(){
             </div>
           </div>
         </div>
-        <div className="overflow-y-auto flex-1 p-4">
-          <div className="rounded-xl border bg-white p-4 grid md:grid-cols-2 gap-4 items-start">
+        <div className="overflow-y-auto flex-1 p-4 min-h-0">
+          <div
+            className={`rounded-xl border border-gray-200 bg-white p-4 ${
+              step === 1 ? 'grid md:grid-cols-2 gap-4 items-start' : 'space-y-6'
+            }`}
+          >
             {step===1 ? ( <>
             <div className="md:col-span-2">
               <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">Name *</label>
@@ -573,118 +586,230 @@ export default function ProjectNew(){
             </>
             ) : (
               <>
-                {!isBidding && (
+                <div className="space-y-4">
                   <div>
-                    <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">Status</label>
-                    <select className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" value={statusLabel} onChange={e=> setStatusLabel(e.target.value)}>
-                      <option value="">Select...</option>
-                      {sortByLabel(settings?.project_statuses||[], (s:any)=> (s.label||'').toString()).map((s:any)=> <option key={s.label} value={s.label}>{s.label}</option>)}
-                    </select>
-                  </div>
-                )}
-                <div className="md:col-span-2">
-                  <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-2">
-                    Project Divisions {isBidding ? <span className="text-red-600">*</span> : null}
-                  </label>
-                  {isBidding && projectDivisionIds.length === 0 && (
-                    <div className="text-[11px] text-red-600 mb-2">Select at least one division for this opportunity</div>
-                  )}
-                  <div className="space-y-3 mt-1">
-                    {sortByLabel(divisionsForPicker||[], (div:any)=> (div.label||'').toString()).map((div:any)=>{
-                      const divId = String(div.id);
-                      const divSelected = projectDivisionIds.includes(divId);
-                      const subdivisions = sortByLabel(div.subdivisions || [], (sub:any)=> (sub.label||'').toString());
-                      
-                      return (
-                        <div key={divId} className="border rounded-lg p-2">
-                          <button
-                            type="button"
-                            onClick={()=> setProjectDivisionIds(prev=> prev.includes(divId)? prev.filter(x=>x!==divId) : [...prev, divId])}
-                            className={`w-full text-left px-2 py-1 rounded text-sm font-medium ${divSelected? 'bg-[#7f1010] text-white': 'bg-gray-50 hover:bg-gray-100'}`}
-                          >
-                            {div.label}
-                          </button>
-                          {subdivisions.length > 0 && (
-                            <div className="mt-2 pl-4 space-y-1">
-                              {subdivisions.map((sub:any)=>{
-                                const subId = String(sub.id);
-                                const subSelected = projectDivisionIds.includes(subId);
-                                return (
-                                  <button
-                                    key={subId}
-                                    type="button"
-                                    onClick={()=> setProjectDivisionIds(prev=> prev.includes(subId)? prev.filter(x=>x!==subId) : [...prev, subId])}
-                                    className={`w-full text-left px-2 py-1 rounded text-xs ${subSelected? 'bg-[#a31414] text-white': 'bg-gray-50 hover:bg-gray-100'}`}
-                                  >
-                                    • {sub.label}
-                                  </button>
-                                );
-                              })}
-                            </div>
-                          )}
-                        </div>
-                      );
-                    })}
-                    {(!divisionsForPicker || divisionsForPicker.length === 0) && (
-                      <div className="text-xs text-gray-500">No project divisions available. Please run the seed script.</div>
+                    <label className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide block mb-1">
+                      Project Divisions {isBidding ? <span className="text-red-600">*</span> : null}
+                    </label>
+                    {isBidding && projectDivisionIds.length === 0 && (
+                      <div className="text-[11px] text-red-600 mb-2">Select at least one division for this opportunity</div>
                     )}
-                  </div>
-                  {/* Legacy divisions support (deprecated) */}
-                  {settings?.divisions && settings.divisions.length > 0 && (
-                    <div className="mt-3 pt-3 border-t">
-                      <label className="text-xs text-gray-500">Legacy Divisions (deprecated)</label>
-                      <div className="flex flex-wrap gap-2 mt-1">
-                        {(settings.divisions||[]).map((d:any)=>{
-                          const id = String(d.id||d.label||d.value);
-                          const selected = divisionIds.includes(id);
-                          const bg = d.meta?.color || '#eef2f7';
-                          const ab = d.meta?.abbr || d.label || id;
+                    <div className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
+                      <div className="flex items-center justify-between mb-4">
+                        <div className="text-sm text-gray-600">Available divisions</div>
+                      </div>
+                      <div className="space-y-2">
+                        {sortByLabel(divisionsForPicker || [], (div: any) => (div.label || '').toString()).map((div: any) => {
+                          const divId = String(div.id);
+                          const subdivisions = sortByLabel(div.subdivisions || [], (sub: any) => (sub.label || '').toString());
+                          const hasSubdivisions = subdivisions.length > 0;
+                          const isExpanded = newOppExpandedDivisions.has(divId);
+
                           return (
-                            <button key={id} type="button" onClick={()=> setDivisionIds(prev=> prev.includes(id)? prev.filter(x=>x!==id) : [...prev, id])} className={`px-2 py-1 rounded-full border text-xs ${selected? 'ring-2 ring-brand-red':''}`} style={{ backgroundColor: bg }}>{ab}</button>
+                            <div key={divId} className="border border-gray-200 rounded-lg overflow-hidden bg-white">
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  if (hasSubdivisions) {
+                                    setNewOppExpandedDivisions((prev) => {
+                                      const next = new Set(prev);
+                                      if (next.has(divId)) next.delete(divId);
+                                      else next.add(divId);
+                                      return next;
+                                    });
+                                  } else {
+                                    setProjectDivisionIds((prev) =>
+                                      prev.includes(divId) ? prev.filter((x) => x !== divId) : [...prev, divId]
+                                    );
+                                  }
+                                }}
+                                className={`w-full text-left px-3 py-2.5 text-sm font-medium flex items-center gap-2 transition-colors ${
+                                  hasSubdivisions
+                                    ? 'bg-gray-50 hover:bg-gray-100 text-gray-900'
+                                    : projectDivisionIds.includes(divId)
+                                      ? 'bg-indigo-50 text-gray-900 border-l-2 border-l-indigo-500'
+                                      : 'bg-white hover:bg-gray-50 text-gray-900'
+                                }`}
+                              >
+                                {hasSubdivisions && (
+                                  <span className="text-gray-500 text-xs w-4 flex-shrink-0">
+                                    {isExpanded ? '▼' : '▶'}
+                                  </span>
+                                )}
+                                {!hasSubdivisions && <span className="w-4 flex-shrink-0" aria-hidden />}
+                                <span className="text-lg flex-shrink-0">
+                                  <DivisionIcon label={div.label || ''} size={20} />
+                                </span>
+                                <span className="min-w-0">{div.label}</span>
+                              </button>
+                              {hasSubdivisions && isExpanded && (
+                                <div className="px-2 pb-2 pt-0 space-y-1 border-t border-gray-100 bg-gray-50/80">
+                                  {subdivisions.map((sub: any) => {
+                                    const subId = String(sub.id);
+                                    const subSelected = projectDivisionIds.includes(subId);
+                                    return (
+                                      <button
+                                        key={subId}
+                                        type="button"
+                                        onClick={() =>
+                                          setProjectDivisionIds((prev) =>
+                                            prev.includes(subId) ? prev.filter((x) => x !== subId) : [...prev, subId]
+                                          )
+                                        }
+                                        className={`w-full text-left px-3 py-2 rounded-lg text-xs flex items-center gap-2 transition-colors ${
+                                          subSelected
+                                            ? 'bg-indigo-50 text-gray-900 border border-indigo-200'
+                                            : 'bg-white border border-gray-200 hover:bg-gray-50 text-gray-800'
+                                        }`}
+                                      >
+                                        <span className="text-base flex-shrink-0">
+                                          <DivisionIcon label={div.label || ''} size={18} />
+                                        </span>
+                                        <span className="min-w-0">• {sub.label}</span>
+                                      </button>
+                                    );
+                                  })}
+                                </div>
+                              )}
+                            </div>
                           );
                         })}
+                        {(!divisionsForPicker || divisionsForPicker.length === 0) && (
+                          <div className="text-xs text-gray-500 text-center py-6">
+                            No project divisions available. Please run the seed script.
+                          </div>
+                        )}
                       </div>
                     </div>
-                  )}
-                </div>
-                <div>
-                  <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">Estimator</label>
-                  <select className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" value={estimatorId} onChange={e=> setEstimatorId(e.target.value)}>
-                    <option value="">Select...</option>
-                    {sortByLabel(employees||[], (emp:any)=> (emp.name||emp.username||'').toString()).map((emp:any)=> <option key={emp.id} value={emp.id}>{emp.name||emp.username}</option>)}
-                  </select>
-                </div>
-                {!isBidding && (
-                  <div>
-                    <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">On-site lead</label>
-                    <select className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" value={leadId} onChange={e=> setLeadId(e.target.value)}>
-                      <option value="">Select...</option>
-                      {sortByLabel(employees||[], (emp:any)=> (emp.name||emp.username||'').toString()).map((emp:any)=> <option key={emp.id} value={emp.id}>{emp.name||emp.username}</option>)}
-                    </select>
+                    {settings?.divisions && settings.divisions.length > 0 && (
+                      <div className="mt-3 pt-3 border-t border-gray-200">
+                        <label className="text-xs text-gray-500">Legacy Divisions (deprecated)</label>
+                        <div className="flex flex-wrap gap-2 mt-1">
+                          {(settings.divisions || []).map((d: any) => {
+                            const id = String(d.id || d.label || d.value);
+                            const selected = divisionIds.includes(id);
+                            const bg = d.meta?.color || '#eef2f7';
+                            const ab = d.meta?.abbr || d.label || id;
+                            return (
+                              <button
+                                key={id}
+                                type="button"
+                                onClick={() =>
+                                  setDivisionIds((prev) =>
+                                    prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]
+                                  )
+                                }
+                                className={`px-2 py-1 rounded-full border text-xs ${selected ? 'ring-2 ring-brand-red' : ''}`}
+                                style={{ backgroundColor: bg }}
+                              >
+                                {ab}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
                   </div>
-                )}
-                <div className="md:col-span-2">
-                  <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">Cover <span className="opacity-60">(optional)</span></label>
-                  <div className="mt-1 flex items-center gap-3">
-                    <button onClick={()=> setHiddenPickerOpen(true)} className="px-3 py-1.5 rounded-lg text-sm font-medium bg-gray-900 text-white hover:bg-gray-800">Select Cover</button>
-                    {coverPreview && <img src={coverPreview} className="w-20 h-20 rounded-lg border border-gray-200 object-cover" alt="" />}
-                    {coverPreview && <button onClick={()=>{ setCoverBlob(null); setCoverPreview(''); }} className="px-3 py-1.5 rounded-lg text-sm font-medium border border-gray-200 hover:bg-gray-50">Skip cover</button>}
+
+                  <div className="grid md:grid-cols-2 gap-4 pt-2 border-t border-gray-200">
+                    {!isBidding && (
+                      <div>
+                        <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">Status</label>
+                        <select
+                          className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"
+                          value={statusLabel}
+                          onChange={(e) => setStatusLabel(e.target.value)}
+                        >
+                          <option value="">Select...</option>
+                          {sortByLabel(settings?.project_statuses || [], (s: any) => (s.label || '').toString()).map((s: any) => (
+                            <option key={s.label} value={s.label}>
+                              {s.label}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    )}
+                    <div>
+                      <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">Estimator</label>
+                      <select
+                        className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"
+                        value={estimatorId}
+                        onChange={(e) => setEstimatorId(e.target.value)}
+                      >
+                        <option value="">Select...</option>
+                        {sortByLabel(employees || [], (emp: any) => (emp.name || emp.username || '').toString()).map((emp: any) => (
+                          <option key={emp.id} value={emp.id}>
+                            {emp.name || emp.username}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    {!isBidding && (
+                      <div>
+                        <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">On-site lead</label>
+                        <select
+                          className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"
+                          value={leadId}
+                          onChange={(e) => setLeadId(e.target.value)}
+                        >
+                          <option value="">Select...</option>
+                          {sortByLabel(employees || [], (emp: any) => (emp.name || emp.username || '').toString()).map((emp: any) => (
+                            <option key={emp.id} value={emp.id}>
+                              {emp.name || emp.username}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    )}
+                    <div className="md:col-span-2">
+                      <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">
+                        Cover <span className="opacity-60">(optional)</span>
+                      </label>
+                      <div className="mt-1 flex items-center gap-3 flex-wrap">
+                        <button
+                          type="button"
+                          onClick={() => setHiddenPickerOpen(true)}
+                          className="px-3 py-1.5 rounded-lg text-sm font-medium bg-gray-900 text-white hover:bg-gray-800"
+                        >
+                          Select Cover
+                        </button>
+                        {coverPreview && (
+                          <img
+                            src={coverPreview}
+                            className="w-20 h-20 rounded-lg border border-gray-200 object-cover"
+                            alt=""
+                          />
+                        )}
+                        {coverPreview && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setCoverBlob(null);
+                              setCoverPreview('');
+                            }}
+                            className="px-3 py-1.5 rounded-lg text-sm font-medium border border-gray-200 hover:bg-gray-50"
+                          >
+                            Skip cover
+                          </button>
+                        )}
+                      </div>
+                    </div>
                   </div>
                 </div>
               </>
             )}
           </div>
         </div>
-        <div className="flex-shrink-0 px-4 py-4 border-t border-gray-200 bg-white flex items-center justify-between gap-3 rounded-b-xl">
+        <div className="flex-shrink-0 px-4 py-4 border-t border-gray-200 bg-white flex items-center justify-between gap-3 rounded-b-xl relative z-0">
           <div className="text-xs text-gray-500">{step === 1 ? 'Step 1 of 2' : 'Step 2 of 2'}</div>
-          <div className="flex items-center gap-2">
-            <button onClick={()=> nav(-1)} className="px-3 py-1.5 rounded-lg text-sm font-medium text-gray-700 border border-gray-200 hover:bg-gray-50">Cancel</button>
+          <div className="flex items-center gap-3">
+            <button type="button" onClick={() => nav(-1)} className="px-3 py-1.5 rounded-lg text-sm font-medium text-gray-700 border border-gray-200 hover:bg-gray-50">Cancel</button>
             {step === 1 ? (
-              <button disabled={!canGoToStep2} onClick={()=> setStep(2)} className="px-3 py-1.5 rounded-lg text-sm font-medium bg-brand-red text-white hover:bg-[#aa1212] disabled:opacity-50">Next</button>
+              <button type="button" disabled={!canGoToStep2} onClick={() => setStep(2)} className="px-4 py-2 rounded-lg text-sm font-semibold bg-brand-red text-white hover:bg-[#aa1212] disabled:opacity-50 disabled:cursor-not-allowed">Next</button>
             ) : (
               <>
-                <button onClick={()=> setStep(1)} disabled={isSubmitting} className="px-3 py-1.5 rounded-lg text-sm font-medium border border-gray-200 hover:bg-gray-50 disabled:opacity-50">Back</button>
-                <button onClick={submit} disabled={!canSubmit || isSubmitting} className="px-3 py-1.5 rounded-lg text-sm font-medium bg-brand-red text-white hover:bg-[#aa1212] disabled:opacity-50 disabled:cursor-not-allowed">
+                <button type="button" onClick={() => setStep(1)} disabled={isSubmitting} className="px-3 py-1.5 rounded-lg text-sm font-medium text-gray-700 border border-gray-200 hover:bg-gray-50 disabled:opacity-50">Back</button>
+                <button type="button" onClick={submit} disabled={!canSubmit || isSubmitting} className="px-4 py-2 rounded-lg text-sm font-semibold text-white bg-brand-red hover:bg-[#aa1212] disabled:opacity-50 disabled:cursor-not-allowed">
                   {isSubmitting ? 'Creating...' : 'Create'}
                 </button>
               </>
