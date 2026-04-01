@@ -423,6 +423,23 @@ def create_app() -> FastAPI:
                         db.commit()
                         print("[startup] Added project_admin_id column to projects table")
 
+                    # Awarded date (set on opportunity → project conversion; editable via API)
+                    rows = db.execute(
+                        text(
+                            """
+                            SELECT 1
+                            FROM information_schema.columns
+                            WHERE table_name = 'projects'
+                              AND column_name = 'date_awarded'
+                            LIMIT 1
+                            """
+                        )
+                    ).fetchall()
+                    if not rows:
+                        db.execute(text("ALTER TABLE projects ADD COLUMN date_awarded TIMESTAMPTZ NULL"))
+                        db.commit()
+                        print("[startup] Added date_awarded column to projects table")
+
                     # Business line: Construction vs Repairs & Maintenance
                     rows = db.execute(
                         text(

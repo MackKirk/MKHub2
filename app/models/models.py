@@ -199,6 +199,7 @@ class Project(Base):
     contact_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True))
     date_start: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
     date_eta: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    date_awarded: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
     date_end: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
     # Visual progress percentage 0-100
     progress: Mapped[Optional[int]] = mapped_column(Integer)

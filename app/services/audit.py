@@ -806,7 +806,7 @@ def _resolve_project_field_value(db: Session, field: str, val: Any) -> Optional[
         return str(val)
     if field == 'progress' and val is not None:
         return f"{val}%"
-    if field in ('date_start', 'date_end', 'date_eta') and val:
+    if field in ('date_start', 'date_end', 'date_eta', 'date_awarded') and val:
         return str(val)[:10] if len(str(val)) >= 10 else str(val)
     if field == 'division_onsite_leads' and val and isinstance(val, dict):
         parts = []

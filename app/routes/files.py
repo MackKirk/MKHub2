@@ -827,6 +827,21 @@ def thumbnail(file_id: str, w: int = 200, db: Session = Depends(get_db)):
                 raise HTTPException(status_code=404, detail="File not available in blob storage")
             # Download file from storage
             with httpx.stream("GET", url, timeout=30.0) as r:
+                if r.status_code == 404:
+                    logger.warning(
+                        "Thumbnail: blob missing (404) for file %s (key: %s)",
+                        file_id,
+                        fo.key,
+                    )
+                    raise HTTPException(status_code=404, detail="File not found in storage")
+                if 400 <= r.status_code < 500:
+                    logger.warning(
+                        "Thumbnail: upstream HTTP %s for file %s (key: %s)",
+                        r.status_code,
+                        file_id,
+                        fo.key,
+                    )
+                    raise HTTPException(status_code=404, detail="File not available in storage")
                 r.raise_for_status()
                 # Read all content into bytes
                 file_content = b""

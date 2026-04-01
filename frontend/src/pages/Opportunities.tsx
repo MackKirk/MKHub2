@@ -338,7 +338,7 @@ function convertParamsToRules(params: URLSearchParams): FilterRule[] {
     rules.push({ id: `rule-${idCounter++}`, field: 'start_date', operator: 'is_before', value: dateEnd });
   }
   
-  // ETA range
+  // End date range
   const etaStart = params.get('eta_start');
   const etaEnd = params.get('eta_end');
   if (etaStart && etaEnd) {
@@ -422,7 +422,7 @@ function FilterRuleRow({
     { value: 'client', label: 'Client' },
     { value: 'estimator', label: 'Estimator' },
     { value: 'start_date', label: 'Start Date' },
-    { value: 'eta', label: 'ETA' },
+    { value: 'eta', label: 'End Date' },
     { value: 'value', label: 'Value' },
   ];
 
@@ -1104,7 +1104,7 @@ export default function Opportunities(){
       client: 'Client',
       estimator: 'Estimator',
       start_date: 'Start Date',
-      eta: 'ETA',
+      eta: 'End Date',
       value: 'Value',
     };
     return labels[field] || field;

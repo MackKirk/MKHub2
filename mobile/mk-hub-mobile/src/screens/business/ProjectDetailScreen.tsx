@@ -396,7 +396,7 @@ export const ProjectDetailScreen: React.FC = () => {
               <InfoRow label="Code" value={displayedProject.code || "-"} />
               <InfoRow label="Site" value={project?.site_name || "-"} />
               <InfoRow label="Contact" value={project?.contact_name || "-"} />
-              <InfoRow label="ETA" value={formatDate(project?.date_eta)} />
+              <InfoRow label="End Date" value={formatDate(project?.date_eta)} />
               <InfoRow label="Start date" value={formatDate(displayedProject.date_start)} />
               <InfoRow label="End date" value={formatDate(displayedProject.date_end)} />
               <InfoRow label="Address" value={buildAddress(project)} />
@@ -770,7 +770,7 @@ export const ProjectDetailScreen: React.FC = () => {
             <InfoPill label="Site" value={project?.site_name || "-"} />
             <InfoPill label="Contact" value={project?.contact_name || "-"} />
             <InfoPill label="Start" value={formatDate(displayedProject.date_start)} />
-            <InfoPill label="ETA" value={formatDate(project?.date_eta)} />
+            <InfoPill label="End Date" value={formatDate(project?.date_eta)} />
           </View>
         </MKCard>
 

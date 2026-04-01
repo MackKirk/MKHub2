@@ -162,7 +162,8 @@ const PROJECT_UPDATE_LABELS: Record<string, string> = {
   address: 'Address',
   date_start: 'Start date',
   date_end: 'End date',
-  date_eta: 'ETA',
+  date_eta: 'End Date',
+  date_awarded: 'Awarded Date',
   progress: 'Progress',
   lat: 'Location',
   lng: 'Location',
@@ -280,6 +281,9 @@ function getDisplayValue(
   const val = after[field];
   if (val === null || val === undefined) return '—';
   if (field === 'progress') return `${val}%`;
+  if (['date_start', 'date_end', 'date_eta', 'date_awarded'].includes(field) && typeof val === 'string') {
+    return val.length >= 10 ? val.slice(0, 10) : val;
+  }
   if (field === 'estimator_ids' && Array.isArray(val)) return val.length > 0 ? `${val.length} selected` : '—';
   if (typeof val === 'string' && val.length > 50) return val.slice(0, 47) + '...';
   return String(val);
@@ -303,7 +307,7 @@ function buildRecentActivityLabel(log: { action?: string; entity_type?: string; 
     if (action === 'UPDATE') {
       if (context.conversion) {
         // Show conversion with each updated field and its value: "Field to "value"" (one line per logical field, prefer name over ID)
-        const heroFields = ['status_label', 'status_id', 'estimator_id', 'estimator_ids', 'project_admin_id', 'onsite_lead_id', 'division_onsite_leads', 'contact_id', 'site_id', 'project_division_ids', 'division_ids', 'name', 'address', 'date_start', 'date_end', 'date_eta', 'progress', 'lead_source', 'lat', 'lng'];
+        const heroFields = ['status_label', 'status_id', 'estimator_id', 'estimator_ids', 'project_admin_id', 'onsite_lead_id', 'division_onsite_leads', 'contact_id', 'site_id', 'project_division_ids', 'division_ids', 'name', 'address', 'date_start', 'date_end', 'date_eta', 'date_awarded', 'progress', 'lead_source', 'lat', 'lng'];
         const relevantChanged = changedFields.filter((f: string) => heroFields.includes(f) && f !== 'is_bidding');
         const uuidLike = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
         const byLabel: Record<string, { value: string; isId: boolean }> = {};
@@ -322,7 +326,7 @@ function buildRecentActivityLabel(log: { action?: string; entity_type?: string; 
         }
         return 'Opportunity converted to project';
       }
-      const heroFields = ['status_label', 'status_id', 'estimator_id', 'estimator_ids', 'project_admin_id', 'onsite_lead_id', 'division_onsite_leads', 'contact_id', 'site_id', 'project_division_ids', 'division_ids', 'name', 'address', 'date_start', 'date_end', 'date_eta', 'progress', 'lead_source', 'lat', 'lng'];
+      const heroFields = ['status_label', 'status_id', 'estimator_id', 'estimator_ids', 'project_admin_id', 'onsite_lead_id', 'division_onsite_leads', 'contact_id', 'site_id', 'project_division_ids', 'division_ids', 'name', 'address', 'date_start', 'date_end', 'date_eta', 'date_awarded', 'progress', 'lead_source', 'lat', 'lng'];
       const relevantChanged = changedFields.filter((f: string) => heroFields.includes(f));
       if (relevantChanged.length === 0) {
         // Fallback below
@@ -707,7 +711,7 @@ function UserAvatar({ user, size = 'w-8 h-8', showTooltip = true, tooltipText }:
   );
 }
 
-type Project = { id:string, code?:string, name?:string, client_id?:string, client_display_name?:string, client_name?:string, related_client_ids?:string[], related_client_display_names?:string[], address?:string, address_city?:string, address_province?:string, address_country?:string, address_postal_code?:string, description?:string, status_id?:string, division_id?:string, division_ids?:string[], project_division_ids?:string[], estimator_id?:string, estimator_ids?:string[], project_admin_id?:string, onsite_lead_id?:string, division_onsite_leads?:Record<string, string>, contact_id?:string, contact_name?:string, contact_email?:string, contact_phone?:string, date_start?:string, date_eta?:string, date_end?:string, cost_estimated?:number, cost_actual?:number, service_value?:number, progress?:number, site_id?:string, site_name?:string, site_address_line1?:string, site_address_line2?:string, site_city?:string, site_province?:string, site_country?:string, site_postal_code?:string, status_label?:string, status_changed_at?:string, is_bidding?:boolean, lead_source?:string, business_line?: string };
+type Project = { id:string, code?:string, name?:string, client_id?:string, client_display_name?:string, client_name?:string, related_client_ids?:string[], related_client_display_names?:string[], address?:string, address_city?:string, address_province?:string, address_country?:string, address_postal_code?:string, description?:string, status_id?:string, division_id?:string, division_ids?:string[], project_division_ids?:string[], estimator_id?:string, estimator_ids?:string[], project_admin_id?:string, onsite_lead_id?:string, division_onsite_leads?:Record<string, string>, contact_id?:string, contact_name?:string, contact_email?:string, contact_phone?:string, date_start?:string, date_eta?:string, date_awarded?:string, date_end?:string, cost_estimated?:number, cost_actual?:number, service_value?:number, progress?:number, site_id?:string, site_name?:string, site_address_line1?:string, site_address_line2?:string, site_city?:string, site_province?:string, site_country?:string, site_postal_code?:string, status_label?:string, status_changed_at?:string, is_bidding?:boolean, lead_source?:string, business_line?: string };
 type ProjectFile = { id:string, file_object_id:string, is_image?:boolean, content_type?:string, category?:string, folder_id?:string|null, original_name?:string, uploaded_at?:string };
 type Update = { id:string, timestamp?:string, text?:string, images?:any };
 type Report = { id:string, title?:string, category_id?:string, division_id?:string, description?:string, images?:any, status?:string, created_at?:string, created_by?:string, financial_value?:number, financial_type?:string, estimate_data?:any, approval_status?:string, approved_by?:string, approved_at?:string };
@@ -869,6 +873,7 @@ export default function ProjectDetail(){
   const [editProjectAdminModal, setEditProjectAdminModal] = useState(false);
   const [editEtaModal, setEditEtaModal] = useState(false);
   const [editStartDateModal, setEditStartDateModal] = useState(false);
+  const [editAwardedDateModal, setEditAwardedDateModal] = useState(false);
   const [editLeadSourceModal, setEditLeadSourceModal] = useState(false);
   const [editRelatedCustomersModal, setEditRelatedCustomersModal] = useState(false);
   const [showConvertModal, setShowConvertModal] = useState(false);
@@ -1478,16 +1483,37 @@ export default function ProjectDetail(){
                       </div>
                     )}
 
-                    {/* ETA - only show for projects, not opportunities */}
+                    {/* Awarded Date - only show for projects, not opportunities */}
                     {!proj?.is_bidding && (
                       <div className="mb-4">
                         <div className="flex items-center gap-1.5 mb-1">
-                          <label className="text-xs text-gray-600 block">ETA</label>
+                          <label className="text-xs text-gray-600 block">Awarded Date</label>
+                          {hasEditPermission && (
+                            <button
+                              onClick={() => setEditAwardedDateModal(true)}
+                              className="text-gray-400 hover:text-[#7f1010] transition-colors"
+                              title="Edit Awarded Date"
+                            >
+                              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                              </svg>
+                            </button>
+                          )}
+                        </div>
+                        <div className="text-sm font-medium">{proj?.date_awarded ? proj.date_awarded.slice(0, 10) : '—'}</div>
+                      </div>
+                    )}
+
+                    {/* End date - only show for projects, not opportunities */}
+                    {!proj?.is_bidding && (
+                      <div className="mb-4">
+                        <div className="flex items-center gap-1.5 mb-1">
+                          <label className="text-xs text-gray-600 block">End Date</label>
                           {hasEditPermission && (
                             <button
                               onClick={() => setEditEtaModal(true)}
                               className="text-gray-400 hover:text-[#7f1010] transition-colors"
-                              title="Edit ETA"
+                              title="Edit End Date"
                             >
                               <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
@@ -1496,38 +1522,6 @@ export default function ProjectDetail(){
                           )}
                         </div>
                         <div className="text-sm font-medium">{proj?.date_eta ? proj.date_eta.slice(0, 10) : '—'}</div>
-                      </div>
-                    )}
-
-                    {/* Progress - only show for projects, not opportunities */}
-                    {!proj?.is_bidding && (
-                      <div className="mb-4">
-                        <div className="flex items-center gap-1.5 mb-2">
-                          <label className="text-xs text-gray-600 block">Progress</label>
-                          {hasEditPermission && (
-                            <button
-                              onClick={() => setEditProgressModal(true)}
-                              className="text-gray-400 hover:text-[#7f1010] transition-colors"
-                              title="Edit Progress"
-                            >
-                              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                              </svg>
-                            </button>
-                          )}
-                        </div>
-                        <div className="flex items-center gap-3">
-                          {/* smaller bar */}
-                          <div className="flex-1 max-w-[280px] h-2 bg-gray-200 rounded-full overflow-hidden">
-                            <div
-                              className="h-full bg-brand-red rounded-full transition-all"
-                              style={{ width: String(Math.max(0, Math.min(100, Number(proj?.progress || 0)))) + '%' }}
-                            />
-                          </div>
-                          <span className="text-sm font-semibold text-gray-700 w-12 text-right">
-                            {Math.max(0, Math.min(100, Number(proj?.progress || 0)))}%
-                          </span>
-                        </div>
                       </div>
                     )}
                   </div>
@@ -1760,6 +1754,37 @@ export default function ProjectDetail(){
                             </div>
                           );
                         })()}
+                      </div>
+                    )}
+
+                    {/* Progress - below On-site Leads, projects only */}
+                    {!proj?.is_bidding && (
+                      <div className="mb-4 mt-4">
+                        <div className="flex items-center gap-1.5 mb-2">
+                          <label className="text-xs text-gray-600 block">Progress</label>
+                          {hasEditPermission && (
+                            <button
+                              onClick={() => setEditProgressModal(true)}
+                              className="text-gray-400 hover:text-[#7f1010] transition-colors"
+                              title="Edit Progress"
+                            >
+                              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                              </svg>
+                            </button>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-3">
+                          <div className="flex-1 max-w-[280px] h-2 bg-gray-200 rounded-full overflow-hidden">
+                            <div
+                              className="h-full bg-brand-red rounded-full transition-all"
+                              style={{ width: String(Math.max(0, Math.min(100, Number(proj?.progress || 0)))) + '%' }}
+                            />
+                          </div>
+                          <span className="text-sm font-semibold text-gray-700 w-12 text-right">
+                            {Math.max(0, Math.min(100, Number(proj?.progress || 0)))}%
+                          </span>
+                        </div>
                       </div>
                     )}
 
@@ -2311,7 +2336,20 @@ export default function ProjectDetail(){
         />
       )}
 
-      {/* Edit ETA Modal */}
+      {editAwardedDateModal && (
+        <EditAwardedDateModal
+          projectId={String(id)}
+          currentAwardedDate={proj?.date_awarded ? proj.date_awarded.slice(0, 10) : ''}
+          onClose={() => setEditAwardedDateModal(false)}
+          onSave={async () => {
+            await queryClient.invalidateQueries({ queryKey: ['project', id] });
+            invalidateRecentActivity();
+            setEditAwardedDateModal(false);
+          }}
+        />
+      )}
+
+      {/* Edit End Date Modal */}
       {editEtaModal && (
         <EditEtaModal
           projectId={String(id)}
@@ -2477,21 +2515,21 @@ function EditStartDateModal({ projectId, currentStartDate, onClose, onSave }: {
   );
 }
 
-function EditEtaModal({ projectId, currentEta, onClose, onSave }: {
+function EditAwardedDateModal({ projectId, currentAwardedDate, onClose, onSave }: {
   projectId: string;
-  currentEta: string;
+  currentAwardedDate: string;
   onClose: () => void;
   onSave: () => Promise<void>;
 }) {
-  const [eta, setEta] = useState(currentEta);
+  const [awardedDate, setAwardedDate] = useState(currentAwardedDate);
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
-    setEta(currentEta);
-  }, [currentEta]);
+    setAwardedDate(currentAwardedDate);
+  }, [currentAwardedDate]);
 
   const handleSave = async () => {
-    if (eta === currentEta) {
+    if (awardedDate === currentAwardedDate) {
       onClose();
       return;
     }
@@ -2499,12 +2537,12 @@ function EditEtaModal({ projectId, currentEta, onClose, onSave }: {
     try {
       setSaving(true);
       await api('PATCH', `/projects/${projectId}`, {
-        date_eta: eta || null
+        date_awarded: awardedDate || null
       });
-      toast.success('ETA updated');
+      toast.success('Awarded date updated');
       await onSave();
     } catch (e: any) {
-      toast.error(e?.response?.data?.detail || 'Failed to update ETA');
+      toast.error(e?.response?.data?.detail || 'Failed to update awarded date');
     } finally {
       setSaving(false);
     }
@@ -2531,7 +2569,102 @@ function EditEtaModal({ projectId, currentEta, onClose, onSave }: {
               </svg>
             </button>
             <div>
-              <h2 className="text-sm font-semibold text-gray-900">Edit ETA</h2>
+              <h2 className="text-sm font-semibold text-gray-900">Edit Awarded Date</h2>
+              <p className="text-xs text-gray-500 mt-0.5">Date the opportunity was awarded / converted to a project</p>
+            </div>
+          </div>
+        </div>
+        <div className="flex-1 overflow-y-auto p-4 min-h-0">
+          <div className="rounded-xl border border-gray-200 bg-white p-4 space-y-4">
+            <div>
+              <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">Awarded date</label>
+              <input
+                type="date"
+                value={awardedDate}
+                onChange={(e) => setAwardedDate(e.target.value)}
+                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-gray-300 focus:border-gray-300"
+              />
+            </div>
+          </div>
+        </div>
+        <div className="flex-shrink-0 px-4 py-4 border-t border-gray-200 bg-white flex items-center justify-end gap-3 rounded-b-xl">
+          <button
+            type="button"
+            onClick={onClose}
+            disabled={saving}
+            className="px-3 py-1.5 rounded-lg text-sm font-medium text-gray-700 border border-gray-200 hover:bg-gray-50 disabled:opacity-50"
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            onClick={handleSave}
+            disabled={saving}
+            className="px-4 py-2 rounded-lg text-sm font-semibold text-white bg-brand-red hover:bg-[#aa1212] disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {saving ? 'Saving...' : 'Save'}
+          </button>
+        </div>
+      </div>
+    </div></OverlayPortal>
+  );
+}
+
+function EditEtaModal({ projectId, currentEta, onClose, onSave }: {
+  projectId: string;
+  currentEta: string;
+  onClose: () => void;
+  onSave: () => Promise<void>;
+}) {
+  const [eta, setEta] = useState(currentEta);
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    setEta(currentEta);
+  }, [currentEta]);
+
+  const handleSave = async () => {
+    if (eta === currentEta) {
+      onClose();
+      return;
+    }
+
+    try {
+      setSaving(true);
+      await api('PATCH', `/projects/${projectId}`, {
+        date_eta: eta || null
+      });
+      toast.success('End date updated');
+      await onSave();
+    } catch (e: any) {
+      toast.error(e?.response?.data?.detail || 'Failed to update end date');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <OverlayPortal><div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+      onClick={onClose}
+    >
+      <div
+        className="max-w-md w-full max-h-[90vh] flex flex-col rounded-xl border border-gray-200 bg-gray-100 shadow-xl overflow-hidden"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex-shrink-0 rounded-t-xl border-b border-gray-200 bg-white p-4">
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={onClose}
+              className="p-1 rounded-lg hover:bg-gray-100 text-gray-600"
+            >
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+              </svg>
+            </button>
+            <div>
+              <h2 className="text-sm font-semibold text-gray-900">Edit End Date</h2>
               <p className="text-xs text-gray-500 mt-0.5">Target completion date</p>
             </div>
           </div>
@@ -2539,7 +2672,7 @@ function EditEtaModal({ projectId, currentEta, onClose, onSave }: {
         <div className="flex-1 overflow-y-auto p-4 min-h-0">
           <div className="rounded-xl border border-gray-200 bg-white p-4 space-y-4">
             <div>
-              <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">ETA Date</label>
+              <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">End date</label>
               <input
                 type="date"
                 value={eta}
@@ -3083,66 +3216,66 @@ function ConvertToProjectModal({
                   <svg className={`w-4 h-4 text-gray-400 transition-transform flex-shrink-0 ${openDropdownId === 'projectAdmin' ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
                 </div>
                 {openDropdownId === 'projectAdmin' && dropdownPosition && (
-                  <>
-                    <OverlayPortal>
+                  <OverlayPortal>
+                    <>
                       <div className="fixed inset-0 z-[60]" onClick={closeDropdown} />
-                    </OverlayPortal>
-                    <div
-                      className="fixed z-[70] bg-white border rounded-lg shadow-xl overflow-hidden flex flex-col"
-                      style={{
-                        ...(dropdownPosition.top !== undefined ? { top: `${dropdownPosition.top}px` } : {}),
-                        ...(dropdownPosition.bottom !== undefined ? { bottom: `${dropdownPosition.bottom}px` } : {}),
-                        left: `${dropdownPosition.left}px`,
-                        width: `${dropdownPosition.width}px`,
-                        maxHeight: `${dropdownPosition.maxHeight}px`,
-                      }}
-                      onClick={(e) => e.stopPropagation()}
-                    >
-                      {dropdownPosition.bottom !== undefined ? (
-                        <>
-                          <div className="overflow-y-auto flex-1 p-2">
-                            <div onClick={() => { setProjectAdminId(''); closeDropdown(); }} className="flex items-center gap-3 p-2 cursor-pointer hover:bg-gray-50 rounded">
-                              <div className="w-6 h-6 rounded-full bg-gray-200 flex items-center justify-center text-gray-500 text-xs">—</div>
-                              <span className="text-sm">Clear</span>
-                            </div>
-                            {getFilteredEmployees('projectAdmin').map((emp: any) => (
-                              <div key={emp.id} onClick={() => { setProjectAdminId(String(emp.id)); closeDropdown(); }} className={`flex items-center gap-3 p-2 cursor-pointer rounded ${projectAdminId === String(emp.id) ? 'bg-indigo-50' : 'hover:bg-gray-50'}`}>
-                                <UserAvatar user={emp} size="w-6 h-6" showTooltip={false} />
-                                <div className="flex-1 min-w-0">
-                                  <div className="text-sm font-medium truncate">{getUserDisplayName(emp)}</div>
-                                  {emp.email && <div className="text-xs text-gray-600 truncate">{emp.email}</div>}
-                                </div>
+                      <div
+                        className="fixed z-[70] bg-white border rounded-lg shadow-xl overflow-hidden flex flex-col min-h-0"
+                        style={{
+                          ...(dropdownPosition.top !== undefined ? { top: `${dropdownPosition.top}px` } : {}),
+                          ...(dropdownPosition.bottom !== undefined ? { bottom: `${dropdownPosition.bottom}px` } : {}),
+                          left: `${dropdownPosition.left}px`,
+                          width: `${dropdownPosition.width}px`,
+                          maxHeight: `${dropdownPosition.maxHeight}px`,
+                        }}
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        {dropdownPosition.bottom !== undefined ? (
+                          <>
+                            <div className="overflow-y-auto flex-1 min-h-0 p-2">
+                              <div onClick={() => { setProjectAdminId(''); closeDropdown(); }} className="flex items-center gap-3 p-2 cursor-pointer hover:bg-gray-50 rounded">
+                                <div className="w-6 h-6 rounded-full bg-gray-200 flex items-center justify-center text-gray-500 text-xs">—</div>
+                                <span className="text-sm">Clear</span>
                               </div>
-                            ))}
-                          </div>
-                          <div className="p-2 border-t">
-                            <input type="text" value={searchQueries['projectAdmin'] || ''} onChange={(e) => updateSearchQuery('projectAdmin', e.target.value)} placeholder="Search..." className="w-full border rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" onClick={(e) => e.stopPropagation()} autoFocus />
-                          </div>
-                        </>
-                      ) : (
-                        <>
-                          <div className="p-2 border-b">
-                            <input type="text" value={searchQueries['projectAdmin'] || ''} onChange={(e) => updateSearchQuery('projectAdmin', e.target.value)} placeholder="Search..." className="w-full border rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" onClick={(e) => e.stopPropagation()} autoFocus />
-                          </div>
-                          <div className="overflow-y-auto flex-1 p-2">
-                            <div onClick={() => { setProjectAdminId(''); closeDropdown(); }} className="flex items-center gap-3 p-2 cursor-pointer hover:bg-gray-50 rounded">
-                              <div className="w-6 h-6 rounded-full bg-gray-200 flex items-center justify-center text-gray-500 text-xs">—</div>
-                              <span className="text-sm">Clear</span>
-                            </div>
-                            {getFilteredEmployees('projectAdmin').map((emp: any) => (
-                              <div key={emp.id} onClick={() => { setProjectAdminId(String(emp.id)); closeDropdown(); }} className={`flex items-center gap-3 p-2 cursor-pointer rounded ${projectAdminId === String(emp.id) ? 'bg-indigo-50' : 'hover:bg-gray-50'}`}>
-                                <UserAvatar user={emp} size="w-6 h-6" showTooltip={false} />
-                                <div className="flex-1 min-w-0">
-                                  <div className="text-sm font-medium truncate">{getUserDisplayName(emp)}</div>
-                                  {emp.email && <div className="text-xs text-gray-600 truncate">{emp.email}</div>}
+                              {getFilteredEmployees('projectAdmin').map((emp: any) => (
+                                <div key={emp.id} onClick={() => { setProjectAdminId(String(emp.id)); closeDropdown(); }} className={`flex items-center gap-3 p-2 cursor-pointer rounded ${projectAdminId === String(emp.id) ? 'bg-indigo-50' : 'hover:bg-gray-50'}`}>
+                                  <UserAvatar user={emp} size="w-6 h-6" showTooltip={false} />
+                                  <div className="flex-1 min-w-0">
+                                    <div className="text-sm font-medium truncate">{getUserDisplayName(emp)}</div>
+                                    {emp.email && <div className="text-xs text-gray-600 truncate">{emp.email}</div>}
+                                  </div>
                                 </div>
+                              ))}
+                            </div>
+                            <div className="p-2 border-t flex-shrink-0">
+                              <input type="text" value={searchQueries['projectAdmin'] || ''} onChange={(e) => updateSearchQuery('projectAdmin', e.target.value)} placeholder="Search..." className="w-full border rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" onClick={(e) => e.stopPropagation()} autoFocus />
+                            </div>
+                          </>
+                        ) : (
+                          <>
+                            <div className="p-2 border-b flex-shrink-0">
+                              <input type="text" value={searchQueries['projectAdmin'] || ''} onChange={(e) => updateSearchQuery('projectAdmin', e.target.value)} placeholder="Search..." className="w-full border rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" onClick={(e) => e.stopPropagation()} autoFocus />
+                            </div>
+                            <div className="overflow-y-auto flex-1 min-h-0 p-2">
+                              <div onClick={() => { setProjectAdminId(''); closeDropdown(); }} className="flex items-center gap-3 p-2 cursor-pointer hover:bg-gray-50 rounded">
+                                <div className="w-6 h-6 rounded-full bg-gray-200 flex items-center justify-center text-gray-500 text-xs">—</div>
+                                <span className="text-sm">Clear</span>
                               </div>
-                            ))}
-                          </div>
-                        </>
-                      )}
-                    </div>
-                  </>
+                              {getFilteredEmployees('projectAdmin').map((emp: any) => (
+                                <div key={emp.id} onClick={() => { setProjectAdminId(String(emp.id)); closeDropdown(); }} className={`flex items-center gap-3 p-2 cursor-pointer rounded ${projectAdminId === String(emp.id) ? 'bg-indigo-50' : 'hover:bg-gray-50'}`}>
+                                  <UserAvatar user={emp} size="w-6 h-6" showTooltip={false} />
+                                  <div className="flex-1 min-w-0">
+                                    <div className="text-sm font-medium truncate">{getUserDisplayName(emp)}</div>
+                                    {emp.email && <div className="text-xs text-gray-600 truncate">{emp.email}</div>}
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          </>
+                        )}
+                      </div>
+                    </>
+                  </OverlayPortal>
                 )}
               </div>
             </div>
@@ -3161,56 +3294,56 @@ function ConvertToProjectModal({
                   <svg className={`w-4 h-4 text-gray-400 transition-transform flex-shrink-0 ${openDropdownId === 'leadSource' ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
                 </div>
                 {openDropdownId === 'leadSource' && dropdownPosition && (
-                  <>
-                    <OverlayPortal>
+                  <OverlayPortal>
+                    <>
                       <div className="fixed inset-0 z-[60]" onClick={closeDropdown} />
-                    </OverlayPortal>
-                    <div
-                      className="fixed z-[70] bg-white border rounded-lg shadow-xl overflow-hidden flex flex-col"
-                      style={{
-                        ...(dropdownPosition.top !== undefined ? { top: `${dropdownPosition.top}px` } : {}),
-                        ...(dropdownPosition.bottom !== undefined ? { bottom: `${dropdownPosition.bottom}px` } : {}),
-                        left: `${dropdownPosition.left}px`,
-                        width: `${dropdownPosition.width}px`,
-                        maxHeight: `${dropdownPosition.maxHeight}px`,
-                      }}
-                      onClick={(e) => e.stopPropagation()}
-                    >
-                      {dropdownPosition.bottom !== undefined ? (
-                        <>
-                          <div className="overflow-y-auto flex-1 p-2">
-                            <div onClick={() => { setLeadSource(''); closeDropdown(); }} className="p-2 cursor-pointer hover:bg-gray-50 rounded text-sm">Clear</div>
-                            {getFilteredLeadSources('leadSource').map((ls: any) => {
-                              const val = ls.value ?? ls.label ?? ls;
-                              const lbl = ls.label ?? ls.value ?? ls;
-                              return (
-                                <div key={val} onClick={() => { setLeadSource(val); closeDropdown(); }} className={`p-2 cursor-pointer rounded text-sm ${leadSource === val ? 'bg-indigo-50' : 'hover:bg-gray-50'}`}>{lbl}</div>
-                              );
-                            })}
-                          </div>
-                          <div className="p-2 border-t">
-                            <input type="text" value={searchQueries['leadSource'] || ''} onChange={(e) => updateSearchQuery('leadSource', e.target.value)} placeholder="Search..." className="w-full border rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" onClick={(e) => e.stopPropagation()} autoFocus />
-                          </div>
-                        </>
-                      ) : (
-                        <>
-                          <div className="p-2 border-b">
-                            <input type="text" value={searchQueries['leadSource'] || ''} onChange={(e) => updateSearchQuery('leadSource', e.target.value)} placeholder="Search..." className="w-full border rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" onClick={(e) => e.stopPropagation()} autoFocus />
-                          </div>
-                          <div className="overflow-y-auto flex-1 p-2">
-                            <div onClick={() => { setLeadSource(''); closeDropdown(); }} className="p-2 cursor-pointer hover:bg-gray-50 rounded text-sm">Clear</div>
-                            {getFilteredLeadSources('leadSource').map((ls: any) => {
-                              const val = ls.value ?? ls.label ?? ls;
-                              const lbl = ls.label ?? ls.value ?? ls;
-                              return (
-                                <div key={val} onClick={() => { setLeadSource(val); closeDropdown(); }} className={`p-2 cursor-pointer rounded text-sm ${leadSource === val ? 'bg-indigo-50' : 'hover:bg-gray-50'}`}>{lbl}</div>
-                              );
-                            })}
-                          </div>
-                        </>
-                      )}
-                    </div>
-                  </>
+                      <div
+                        className="fixed z-[70] bg-white border rounded-lg shadow-xl overflow-hidden flex flex-col min-h-0"
+                        style={{
+                          ...(dropdownPosition.top !== undefined ? { top: `${dropdownPosition.top}px` } : {}),
+                          ...(dropdownPosition.bottom !== undefined ? { bottom: `${dropdownPosition.bottom}px` } : {}),
+                          left: `${dropdownPosition.left}px`,
+                          width: `${dropdownPosition.width}px`,
+                          maxHeight: `${dropdownPosition.maxHeight}px`,
+                        }}
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        {dropdownPosition.bottom !== undefined ? (
+                          <>
+                            <div className="overflow-y-auto flex-1 min-h-0 p-2">
+                              <div onClick={() => { setLeadSource(''); closeDropdown(); }} className="p-2 cursor-pointer hover:bg-gray-50 rounded text-sm">Clear</div>
+                              {getFilteredLeadSources('leadSource').map((ls: any) => {
+                                const val = ls.value ?? ls.label ?? ls;
+                                const lbl = ls.label ?? ls.value ?? ls;
+                                return (
+                                  <div key={val} onClick={() => { setLeadSource(val); closeDropdown(); }} className={`p-2 cursor-pointer rounded text-sm ${leadSource === val ? 'bg-indigo-50' : 'hover:bg-gray-50'}`}>{lbl}</div>
+                                );
+                              })}
+                            </div>
+                            <div className="p-2 border-t flex-shrink-0">
+                              <input type="text" value={searchQueries['leadSource'] || ''} onChange={(e) => updateSearchQuery('leadSource', e.target.value)} placeholder="Search..." className="w-full border rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" onClick={(e) => e.stopPropagation()} autoFocus />
+                            </div>
+                          </>
+                        ) : (
+                          <>
+                            <div className="p-2 border-b flex-shrink-0">
+                              <input type="text" value={searchQueries['leadSource'] || ''} onChange={(e) => updateSearchQuery('leadSource', e.target.value)} placeholder="Search..." className="w-full border rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" onClick={(e) => e.stopPropagation()} autoFocus />
+                            </div>
+                            <div className="overflow-y-auto flex-1 min-h-0 p-2">
+                              <div onClick={() => { setLeadSource(''); closeDropdown(); }} className="p-2 cursor-pointer hover:bg-gray-50 rounded text-sm">Clear</div>
+                              {getFilteredLeadSources('leadSource').map((ls: any) => {
+                                const val = ls.value ?? ls.label ?? ls;
+                                const lbl = ls.label ?? ls.value ?? ls;
+                                return (
+                                  <div key={val} onClick={() => { setLeadSource(val); closeDropdown(); }} className={`p-2 cursor-pointer rounded text-sm ${leadSource === val ? 'bg-indigo-50' : 'hover:bg-gray-50'}`}>{lbl}</div>
+                                );
+                              })}
+                            </div>
+                          </>
+                        )}
+                      </div>
+                    </>
+                  </OverlayPortal>
                 )}
               </div>
             </div>
@@ -3250,66 +3383,66 @@ function ConvertToProjectModal({
                             <svg className={`w-4 h-4 text-gray-400 transition-transform shrink-0 ${openDropdownId === divKey ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
                           </div>
                           {openDropdownId === divKey && dropdownPosition && (
-                            <>
-                              <OverlayPortal>
+                            <OverlayPortal>
+                              <>
                                 <div className="fixed inset-0 z-[60]" onClick={closeDropdown} />
-                              </OverlayPortal>
-                              <div
-                                className="fixed z-[70] bg-white border rounded-lg shadow-xl overflow-hidden flex flex-col"
-                                style={{
-                                  ...(dropdownPosition.top !== undefined ? { top: `${dropdownPosition.top}px` } : {}),
-                                  ...(dropdownPosition.bottom !== undefined ? { bottom: `${dropdownPosition.bottom}px` } : {}),
-                                  left: `${dropdownPosition.left}px`,
-                                  width: `${dropdownPosition.width}px`,
-                                  maxHeight: `${dropdownPosition.maxHeight}px`,
-                                }}
-                                onClick={(e) => e.stopPropagation()}
-                              >
-                                {dropdownPosition.bottom !== undefined ? (
-                                  <>
-                                    <div className="overflow-y-auto flex-1 p-2">
-                                      <div onClick={() => { setDivisionLeads(prev => ({ ...prev, [divId]: '' })); closeDropdown(); }} className="flex items-center gap-3 p-2 cursor-pointer hover:bg-gray-50 rounded">
-                                        <div className="w-6 h-6 rounded-full bg-gray-200 flex items-center justify-center text-gray-500 text-xs">—</div>
-                                        <span className="text-sm">Clear</span>
-                                      </div>
-                                      {filteredEmps.map((emp: any) => (
-                                        <div key={emp.id} onClick={() => { setDivisionLeads(prev => ({ ...prev, [divId]: String(emp.id) })); closeDropdown(); }} className={`flex items-center gap-3 p-2 cursor-pointer rounded ${leadId === String(emp.id) ? 'bg-indigo-50' : 'hover:bg-gray-50'}`}>
-                                          <UserAvatar user={emp} size="w-6 h-6" showTooltip={false} />
-                                          <div className="flex-1 min-w-0">
-                                            <div className="text-sm font-medium truncate">{getUserDisplayName(emp)}</div>
-                                            {emp.email && <div className="text-xs text-gray-600 truncate">{emp.email}</div>}
-                                          </div>
+                                <div
+                                  className="fixed z-[70] bg-white border rounded-lg shadow-xl overflow-hidden flex flex-col min-h-0"
+                                  style={{
+                                    ...(dropdownPosition.top !== undefined ? { top: `${dropdownPosition.top}px` } : {}),
+                                    ...(dropdownPosition.bottom !== undefined ? { bottom: `${dropdownPosition.bottom}px` } : {}),
+                                    left: `${dropdownPosition.left}px`,
+                                    width: `${dropdownPosition.width}px`,
+                                    maxHeight: `${dropdownPosition.maxHeight}px`,
+                                  }}
+                                  onClick={(e) => e.stopPropagation()}
+                                >
+                                  {dropdownPosition.bottom !== undefined ? (
+                                    <>
+                                      <div className="overflow-y-auto flex-1 min-h-0 p-2">
+                                        <div onClick={() => { setDivisionLeads(prev => ({ ...prev, [divId]: '' })); closeDropdown(); }} className="flex items-center gap-3 p-2 cursor-pointer hover:bg-gray-50 rounded">
+                                          <div className="w-6 h-6 rounded-full bg-gray-200 flex items-center justify-center text-gray-500 text-xs">—</div>
+                                          <span className="text-sm">Clear</span>
                                         </div>
-                                      ))}
-                                    </div>
-                                    <div className="p-2 border-t">
-                                      <input type="text" value={searchQueries[divKey] || ''} onChange={(e) => updateSearchQuery(divKey, e.target.value)} placeholder="Search..." className="w-full border rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" onClick={(e) => e.stopPropagation()} autoFocus />
-                                    </div>
-                                  </>
-                                ) : (
-                                  <>
-                                    <div className="p-2 border-b">
-                                      <input type="text" value={searchQueries[divKey] || ''} onChange={(e) => updateSearchQuery(divKey, e.target.value)} placeholder="Search..." className="w-full border rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" onClick={(e) => e.stopPropagation()} autoFocus />
-                                    </div>
-                                    <div className="overflow-y-auto flex-1 p-2">
-                                      <div onClick={() => { setDivisionLeads(prev => ({ ...prev, [divId]: '' })); closeDropdown(); }} className="flex items-center gap-3 p-2 cursor-pointer hover:bg-gray-50 rounded">
-                                        <div className="w-6 h-6 rounded-full bg-gray-200 flex items-center justify-center text-gray-500 text-xs">—</div>
-                                        <span className="text-sm">Clear</span>
-                                      </div>
-                                      {filteredEmps.map((emp: any) => (
-                                        <div key={emp.id} onClick={() => { setDivisionLeads(prev => ({ ...prev, [divId]: String(emp.id) })); closeDropdown(); }} className={`flex items-center gap-3 p-2 cursor-pointer rounded ${leadId === String(emp.id) ? 'bg-indigo-50' : 'hover:bg-gray-50'}`}>
-                                          <UserAvatar user={emp} size="w-6 h-6" showTooltip={false} />
-                                          <div className="flex-1 min-w-0">
-                                            <div className="text-sm font-medium truncate">{getUserDisplayName(emp)}</div>
-                                            {emp.email && <div className="text-xs text-gray-600 truncate">{emp.email}</div>}
+                                        {filteredEmps.map((emp: any) => (
+                                          <div key={emp.id} onClick={() => { setDivisionLeads(prev => ({ ...prev, [divId]: String(emp.id) })); closeDropdown(); }} className={`flex items-center gap-3 p-2 cursor-pointer rounded ${leadId === String(emp.id) ? 'bg-indigo-50' : 'hover:bg-gray-50'}`}>
+                                            <UserAvatar user={emp} size="w-6 h-6" showTooltip={false} />
+                                            <div className="flex-1 min-w-0">
+                                              <div className="text-sm font-medium truncate">{getUserDisplayName(emp)}</div>
+                                              {emp.email && <div className="text-xs text-gray-600 truncate">{emp.email}</div>}
+                                            </div>
                                           </div>
+                                        ))}
+                                      </div>
+                                      <div className="p-2 border-t flex-shrink-0">
+                                        <input type="text" value={searchQueries[divKey] || ''} onChange={(e) => updateSearchQuery(divKey, e.target.value)} placeholder="Search..." className="w-full border rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" onClick={(e) => e.stopPropagation()} autoFocus />
+                                      </div>
+                                    </>
+                                  ) : (
+                                    <>
+                                      <div className="p-2 border-b flex-shrink-0">
+                                        <input type="text" value={searchQueries[divKey] || ''} onChange={(e) => updateSearchQuery(divKey, e.target.value)} placeholder="Search..." className="w-full border rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" onClick={(e) => e.stopPropagation()} autoFocus />
+                                      </div>
+                                      <div className="overflow-y-auto flex-1 min-h-0 p-2">
+                                        <div onClick={() => { setDivisionLeads(prev => ({ ...prev, [divId]: '' })); closeDropdown(); }} className="flex items-center gap-3 p-2 cursor-pointer hover:bg-gray-50 rounded">
+                                          <div className="w-6 h-6 rounded-full bg-gray-200 flex items-center justify-center text-gray-500 text-xs">—</div>
+                                          <span className="text-sm">Clear</span>
                                         </div>
-                                      ))}
-                                    </div>
-                                  </>
-                                )}
-                              </div>
-                            </>
+                                        {filteredEmps.map((emp: any) => (
+                                          <div key={emp.id} onClick={() => { setDivisionLeads(prev => ({ ...prev, [divId]: String(emp.id) })); closeDropdown(); }} className={`flex items-center gap-3 p-2 cursor-pointer rounded ${leadId === String(emp.id) ? 'bg-indigo-50' : 'hover:bg-gray-50'}`}>
+                                            <UserAvatar user={emp} size="w-6 h-6" showTooltip={false} />
+                                            <div className="flex-1 min-w-0">
+                                              <div className="text-sm font-medium truncate">{getUserDisplayName(emp)}</div>
+                                              {emp.email && <div className="text-xs text-gray-600 truncate">{emp.email}</div>}
+                                            </div>
+                                          </div>
+                                        ))}
+                                      </div>
+                                    </>
+                                  )}
+                                </div>
+                              </>
+                            </OverlayPortal>
                           )}
                         </div>
                       </div>
@@ -3320,7 +3453,7 @@ function ConvertToProjectModal({
             )}
 
             <div>
-              <label className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide block mb-1">ETA</label>
+              <label className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide block mb-1">End Date</label>
               <input type="date" value={dateEta} onChange={e => setDateEta(e.target.value)} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" />
             </div>
             <div>
@@ -10015,6 +10148,9 @@ function ProjectDivisionsHeroSection({ projectId, proj, hasEditPermission, liveP
           onSave={async () => {
             await queryClient.invalidateQueries({ queryKey: ['project', projectId] });
             queryClient.invalidateQueries({ queryKey: ['projectRecentActivity', projectId] });
+            queryClient.invalidateQueries({ queryKey: ['projectProposals', projectId] });
+            queryClient.invalidateQueries({ queryKey: ['proposal'] });
+            queryClient.removeQueries({ queryKey: ['proposal-pricing-items', projectId] });
             setShowEditModal(false);
           }}
         />
@@ -10123,103 +10259,134 @@ function EditDivisionsModal({ projectId, currentDivisions, currentPercentages, p
   };
 
   return (
-    <OverlayPortal><div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4" onClick={onClose}>
-      <div className="bg-white rounded-xl w-full max-w-5xl max-h-[90vh] overflow-hidden flex flex-col shadow-xl" onClick={(e) => e.stopPropagation()}>
-        <div className="p-4 bg-[#7f1010] flex items-center justify-between">
-          <h3 className="text-lg font-semibold text-white">Edit Project Divisions</h3>
-          <button onClick={onClose} className="text-white hover:text-gray-200 transition-colors">
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-            </svg>
-          </button>
-        </div>
-        <div className="flex-1 flex flex-row overflow-hidden">
-          {/* Divisions List - Full Width */}
-          <div className="w-full overflow-y-auto p-4">
-            <div className="space-y-2">
-              <div className="text-sm font-semibold text-gray-700 mb-3">Available Divisions</div>
-              {projectDivisions.map((div: any) => {
-                const divId = String(div.id);
-                const subdivisions = div.subdivisions || [];
-                const hasSubdivisions = subdivisions.length > 0;
-                const isExpanded = expandedDivisions.has(divId);
-                
-                return (
-                  <div key={divId} className="border rounded p-2 bg-white">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        if (hasSubdivisions) {
-                          // If has subdivisions, only toggle expansion
-                          toggleDivision(divId);
-                        } else {
-                          // If no subdivisions, toggle selection normally
-                          setProjectDivs(prev => prev.includes(divId) ? prev.filter(x => x !== divId) : [...prev, divId]);
-                        }
-                      }}
-                      className={`w-full text-left px-2 py-1 rounded text-sm font-medium flex items-center gap-2 ${
-                        hasSubdivisions 
-                          ? 'bg-gray-50 hover:bg-gray-100 cursor-pointer' 
-                          : projectDivs.includes(divId)
-                            ? 'bg-[#7f1010] text-white'
-                            : 'bg-gray-50 hover:bg-gray-100'
-                      }`}
-                    >
-                      {hasSubdivisions && (
-                        <span className="text-gray-500 text-xs">
-                          {isExpanded ? '▼' : '▶'}
-                        </span>
-                      )}
-                      <span className="text-lg">{getDivisionIcon(div.label)}</span>
-                      <span>{div.label}</span>
-                    </button>
-                    {hasSubdivisions && isExpanded && (
-                      <div className="mt-1 pl-6 space-y-1 transition-all duration-200">
-                        {subdivisions.map((sub: any) => {
-                          const subId = String(sub.id);
-                          const subSelected = projectDivs.includes(subId);
-                          return (
-                            <button
-                              key={subId}
-                              type="button"
-                              onClick={() => setProjectDivs(prev => prev.includes(subId) ? prev.filter(x => x !== subId) : [...prev, subId])}
-                              className={`w-full text-left px-2 py-1 rounded text-xs flex items-center gap-2 transition-colors ${
-                                subSelected ? 'bg-[#a31414] text-white' : 'bg-gray-50 hover:bg-gray-100'
-                              }`}
-                            >
-                              <span className="text-base">{getDivisionIcon(div.label)}</span>
-                              <span>• {sub.label}</span>
-                            </button>
-                          );
-                        })}
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
-              {projectDivisions.length === 0 && (
-                <div className="text-xs text-gray-500 text-center py-4">No project divisions available.</div>
-              )}
+    <OverlayPortal>
+      <div
+        className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+        onClick={onClose}
+      >
+        <div
+          className="max-w-5xl w-full max-h-[90vh] flex flex-col rounded-xl border border-gray-200 bg-gray-100 shadow-xl overflow-hidden"
+          onClick={(e) => e.stopPropagation()}
+        >
+          <div className="flex-shrink-0 rounded-t-xl border-b border-gray-200 bg-white p-4">
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={onClose}
+                className="p-1 rounded-lg hover:bg-gray-100 text-gray-600"
+              >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                </svg>
+              </button>
+              <div>
+                <h2 className="text-sm font-semibold text-gray-900">Edit Project Divisions</h2>
+                <p className="text-xs text-gray-500 mt-0.5">
+                  Select divisions for this project. Expand parents to choose subdivisions.
+                </p>
+              </div>
             </div>
           </div>
-        </div>
-        <div className="p-4 border-t flex items-center justify-end gap-2">
-          <button
-            onClick={onClose}
-            className="px-3 py-1.5 rounded border bg-white hover:bg-gray-50 text-gray-700 font-medium text-sm"
-          >
-            Cancel
-          </button>
-          <button
-            onClick={handleSave}
-            disabled={saving}
-            className="px-3 py-1.5 rounded bg-[#7f1010] text-white disabled:opacity-60 disabled:cursor-not-allowed font-medium text-sm"
-          >
-            {saving ? 'Saving...' : 'Save'}
-          </button>
+          <div className="flex-1 overflow-y-auto p-4 min-h-0">
+            <div className="rounded-xl border border-gray-200 bg-white p-4">
+              <div className="flex items-center justify-between mb-4">
+                <div className="text-sm text-gray-600">Available divisions</div>
+                {saving && <span className="text-xs text-gray-500">Saving...</span>}
+              </div>
+              <div className="space-y-2">
+                {projectDivisions.map((div: any) => {
+                  const divId = String(div.id);
+                  const subdivisions = div.subdivisions || [];
+                  const hasSubdivisions = subdivisions.length > 0;
+                  const isExpanded = expandedDivisions.has(divId);
+
+                  return (
+                    <div key={divId} className="border border-gray-200 rounded-lg overflow-hidden bg-white">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (hasSubdivisions) {
+                            toggleDivision(divId);
+                          } else {
+                            setProjectDivs((prev) =>
+                              prev.includes(divId) ? prev.filter((x) => x !== divId) : [...prev, divId]
+                            );
+                          }
+                        }}
+                        className={`w-full text-left px-3 py-2.5 text-sm font-medium flex items-center gap-2 transition-colors ${
+                          hasSubdivisions
+                            ? 'bg-gray-50 hover:bg-gray-100 text-gray-900'
+                            : projectDivs.includes(divId)
+                              ? 'bg-indigo-50 text-gray-900 border-l-2 border-l-indigo-500'
+                              : 'bg-white hover:bg-gray-50 text-gray-900'
+                        }`}
+                      >
+                        {hasSubdivisions && (
+                          <span className="text-gray-500 text-xs w-4 flex-shrink-0">
+                            {isExpanded ? '▼' : '▶'}
+                          </span>
+                        )}
+                        {!hasSubdivisions && <span className="w-4 flex-shrink-0" aria-hidden />}
+                        <span className="text-lg flex-shrink-0">{getDivisionIcon(div.label)}</span>
+                        <span className="min-w-0">{div.label}</span>
+                      </button>
+                      {hasSubdivisions && isExpanded && (
+                        <div className="px-2 pb-2 pt-0 space-y-1 border-t border-gray-100 bg-gray-50/80">
+                          {subdivisions.map((sub: any) => {
+                            const subId = String(sub.id);
+                            const subSelected = projectDivs.includes(subId);
+                            return (
+                              <button
+                                key={subId}
+                                type="button"
+                                onClick={() =>
+                                  setProjectDivs((prev) =>
+                                    prev.includes(subId) ? prev.filter((x) => x !== subId) : [...prev, subId]
+                                  )
+                                }
+                                className={`w-full text-left px-3 py-2 rounded-lg text-xs flex items-center gap-2 transition-colors ${
+                                  subSelected
+                                    ? 'bg-indigo-50 text-gray-900 border border-indigo-200'
+                                    : 'bg-white border border-gray-200 hover:bg-gray-50 text-gray-800'
+                                }`}
+                              >
+                                <span className="text-base flex-shrink-0">{getDivisionIcon(div.label)}</span>
+                                <span className="min-w-0">• {sub.label}</span>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+                {projectDivisions.length === 0 && (
+                  <div className="text-xs text-gray-500 text-center py-6">No project divisions available.</div>
+                )}
+              </div>
+            </div>
+          </div>
+          <div className="flex-shrink-0 px-4 py-4 border-t border-gray-200 bg-white flex items-center justify-end gap-3 rounded-b-xl relative z-0">
+            <button
+              type="button"
+              onClick={onClose}
+              disabled={saving}
+              className="px-3 py-1.5 rounded-lg text-sm font-medium text-gray-700 border border-gray-200 hover:bg-gray-50 disabled:opacity-50"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={handleSave}
+              disabled={saving}
+              className="px-4 py-2 rounded-lg text-sm font-semibold text-white bg-brand-red hover:bg-[#aa1212] disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {saving ? 'Saving...' : 'Save'}
+            </button>
+          </div>
         </div>
       </div>
-    </div></OverlayPortal>
+    </OverlayPortal>
   );
 }
 
@@ -10256,7 +10423,7 @@ function ProjectGeneralInfoCard({ projectId, proj, files, hasEditPermission }:{ 
       if (editingName && projectName.trim() !== (proj?.name || '')) {
         payload.name = projectName.trim();
       }
-      // Include ETA if it was edited
+      // Include end date if it was edited
       if (editingEta) {
         payload.date_eta = eta || null;
       }
@@ -10264,6 +10431,11 @@ function ProjectGeneralInfoCard({ projectId, proj, files, hasEditPermission }:{ 
       toast.success('Saved');
       queryClient.invalidateQueries({ queryKey: ['project', projectId] });
       queryClient.invalidateQueries({ queryKey: ['projectRecentActivity', projectId] });
+      if ('project_division_ids' in payload) {
+        queryClient.invalidateQueries({ queryKey: ['projectProposals', projectId] });
+        queryClient.invalidateQueries({ queryKey: ['proposal'] });
+        queryClient.removeQueries({ queryKey: ['proposal-pricing-items', projectId] });
+      }
       setEditingDivisions(false);
       setEditingName(false);
       setEditingEta(false);
@@ -10501,15 +10673,15 @@ function ProjectGeneralInfoCard({ projectId, proj, files, hasEditPermission }:{ 
           )}
         </div>
 
-        {/* ETA - Editable */}
+        {/* End date - Editable */}
         <div>
           <div className="flex items-center gap-1.5 mb-1.5">
-            <label className="text-xs font-medium text-gray-600 block">ETA</label>
+            <label className="text-xs font-medium text-gray-600 block">End Date</label>
             {!editingEta && hasEditPermission && (
               <button
                 onClick={() => setEditingEta(true)}
                 className="text-gray-400 hover:text-[#7f1010] transition-colors"
-                title="Edit ETA"
+                title="Edit End Date"
               >
                 <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
@@ -10819,7 +10991,7 @@ function ProjectEtaEdit({ projectId, proj, settings }:{ projectId:string, proj:a
       <div className="flex items-center gap-2">
         <div className="text-sm font-semibold text-gray-900 flex-1">{(proj?.date_eta||'').slice(0,10)||'-'}</div>
         {canEdit && (
-          <button onClick={()=>setIsEditing(true)} className="text-gray-500 hover:text-gray-700" title="Edit ETA">
+          <button onClick={()=>setIsEditing(true)} className="text-gray-500 hover:text-gray-700" title="Edit End Date">
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>
           </button>
         )}
@@ -10835,7 +11007,7 @@ function ProjectEtaEdit({ projectId, proj, settings }:{ projectId:string, proj:a
           await api('PATCH', `/projects/${projectId}`, { date_eta: eta||null });
           queryClient.invalidateQueries({ queryKey:['project', projectId] });
           queryClient.invalidateQueries({ queryKey: ['projectRecentActivity', projectId] });
-          toast.success('ETA updated');
+          toast.success('End date updated');
           setIsEditing(false);
         }catch(_e){ toast.error('Failed to update'); }
       }} className="px-2.5 py-1.5 rounded bg-brand-red text-white text-xs font-medium">Save</button>
