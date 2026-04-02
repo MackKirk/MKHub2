@@ -11,10 +11,8 @@ export function filterProjectDivisionsForBusinessLine<T extends { label?: string
 ): T[] {
   if (!Array.isArray(divisions)) return [];
   if (line === BUSINESS_LINE_REPAIRS_MAINTENANCE) {
-    return divisions.filter((d) => (d.label || '') === RM_LABEL).map((d) => ({
-      ...d,
-      subdivisions: [],
-    }));
+    // Only Repairs & Maintenance and its subdivisions (subcategories)
+    return divisions.filter((d) => (d.label || '') === RM_LABEL);
   }
   return divisions
     .filter((d) => (d.label || '') !== RM_LABEL)

@@ -629,8 +629,8 @@ export default function ProjectNew(){
                       <div className="text-xs text-gray-500">No project divisions available. Please run the seed script.</div>
                     )}
                   </div>
-                  {/* Legacy divisions support (deprecated) */}
-                  {settings?.divisions && settings.divisions.length > 0 && (
+                  {/* Legacy divisions support (deprecated) — not shown for opportunities */}
+                  {!isBidding && settings?.divisions && settings.divisions.length > 0 && (
                     <div className="mt-3 pt-3 border-t">
                       <label className="text-xs text-gray-500">Legacy Divisions (deprecated)</label>
                       <div className="flex flex-wrap gap-2 mt-1">
