@@ -437,7 +437,7 @@ function convertParamsToRules(params: URLSearchParams): FilterRule[] {
     rules.push({ id: `rule-${idCounter++}`, field: 'start_date', operator: 'is_before', value: dateEnd });
   }
   
-  // ETA range (eta)
+  // End date range (eta)
   const etaStart = params.get('eta_start');
   const etaEnd = params.get('eta_end');
   if (etaStart && etaEnd) {
@@ -746,7 +746,7 @@ export default function Projects(){
     },
     {
       id: 'eta',
-      label: 'ETA',
+      label: 'End Date',
       type: 'date',
       operators: ['is', 'is_before', 'is_after', 'is_between'],
     },
@@ -991,7 +991,7 @@ export default function Projects(){
             >
               <button type="button" onClick={() => setListSort('project')} className="min-w-0 text-left flex items-center gap-1 hover:text-gray-900 rounded py-0.5 outline-none focus:outline-none" title="Sort by project name">Project{sortBy === 'project' ? (sortDir === 'asc' ? ' ↑' : ' ↓') : ''}</button>
               <button type="button" onClick={() => setListSort('start')} className="min-w-0 text-left flex items-center gap-1 hover:text-gray-900 rounded py-0.5 outline-none focus:outline-none" title="Sort by start date">Start{sortBy === 'start' ? (sortDir === 'asc' ? ' ↑' : ' ↓') : ''}</button>
-              <button type="button" onClick={() => setListSort('eta')} className="min-w-0 text-left flex items-center gap-1 hover:text-gray-900 rounded py-0.5 outline-none focus:outline-none" title="Sort by ETA">ETA{sortBy === 'eta' ? (sortDir === 'asc' ? ' ↑' : ' ↓') : ''}</button>
+              <button type="button" onClick={() => setListSort('eta')} className="min-w-0 text-left flex items-center gap-1 hover:text-gray-900 rounded py-0.5 outline-none focus:outline-none" title="Sort by End Date">End Date{sortBy === 'eta' ? (sortDir === 'asc' ? ' ↑' : ' ↓') : ''}</button>
               <button type="button" onClick={() => setListSort('admin')} className="min-w-0 text-left flex items-center gap-1 hover:text-gray-900 rounded py-0.5 outline-none focus:outline-none" title="Sort by project admin">Project Admin{sortBy === 'admin' ? (sortDir === 'asc' ? ' ↑' : ' ↓') : ''}</button>
               <button type="button" onClick={() => setListSort('value')} className="min-w-0 text-left flex items-center gap-1 hover:text-gray-900 rounded py-0.5 outline-none focus:outline-none" title="Sort by value">Value{sortBy === 'value' ? (sortDir === 'asc' ? ' ↑' : ' ↓') : ''}</button>
               <button type="button" onClick={() => setListSort('status')} className="min-w-0 text-left flex items-center gap-1 hover:text-gray-900 rounded py-0.5 outline-none focus:outline-none" title="Sort by status">Status{sortBy === 'status' ? (sortDir === 'asc' ? ' ↑' : ' ↓') : ''}</button>
@@ -1440,7 +1440,7 @@ function ProjectListCard({ project, projectDivisions, projectStatuses, projectBa
             <div className="text-xs font-semibold text-gray-900 truncate">{start || '—'}</div>
           </div>
           <div className="min-w-0">
-            <div className="text-[10px] font-medium text-gray-500 uppercase tracking-wide mb-0.5">ETA</div>
+            <div className="text-[10px] font-medium text-gray-500 uppercase tracking-wide mb-0.5">End Date</div>
             <div className="text-xs font-semibold text-gray-900 truncate">{eta || '—'}</div>
           </div>
           <div className="min-w-0">

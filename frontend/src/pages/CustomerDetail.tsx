@@ -2915,7 +2915,7 @@ export default function CustomerDetail(){
                         >
                           <div className="min-w-0" title="Project name, code and client">Project</div>
                           <div className="min-w-0" title="Start date">Start</div>
-                          <div className="min-w-0" title="Estimated completion">ETA</div>
+                          <div className="min-w-0" title="End date">End Date</div>
                           <div className="min-w-0" title="Project administrator">Project Admin</div>
                           <div className="min-w-0" title="Estimated or actual value">Value</div>
                           <div className="min-w-0" title="Current status">Status</div>
@@ -3092,7 +3092,7 @@ function ProjectMiniCard({ project, coverSrc, clientName }:{ project:any, coverS
         </div>
         <div className="mt-1 grid grid-cols-2 gap-2 text-[11px] text-gray-700">
           <div><span className="opacity-70">Start:</span> {start||'—'}</div>
-          <div><span className="opacity-70">ETA:</span> {eta||'—'}</div>
+          <div><span className="opacity-70">End Date:</span> {eta||'—'}</div>
         </div>
         <div className="mt-1 grid grid-cols-2 gap-2 text-[11px] text-gray-700">
           <div className="truncate" title={est}><span className="opacity-70">Estimator:</span> {est? <UserInline id={est} /> : '—'}</div>

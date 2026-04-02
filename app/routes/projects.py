@@ -41,6 +41,51 @@ def _assert_project_line_write(user: User, proj: Project) -> None:
         raise HTTPException(status_code=403, detail="Forbidden")
 
 
+def _unapprove_pricing_items_for_divisions_removed_from_project(db: Session, project: Project) -> None:
+    """
+    When project_division_ids is reduced, pricing rows (additional_costs) tied to a division
+    no longer on the project must be marked not approved so the Pricing tab stays consistent.
+    """
+    prop = (
+        db.query(Proposal)
+        .filter(
+            Proposal.project_id == project.id,
+            Proposal.is_change_order == False,
+            Proposal.deleted_at.is_(None),
+        )
+        .order_by(Proposal.created_at.asc())
+        .first()
+    )
+    if not prop:
+        return
+    allowed = {str(d) for d in (getattr(project, "project_division_ids", None) or [])}
+    raw = prop.data
+    if not isinstance(raw, dict):
+        return
+    ac = raw.get("additional_costs")
+    if not isinstance(ac, list):
+        return
+    changed = False
+    new_ac = []
+    for item in ac:
+        if not isinstance(item, dict):
+            new_ac.append(item)
+            continue
+        nid = copy.deepcopy(item)
+        did = nid.get("division_id")
+        if did is not None and str(did).strip() != "" and str(did) not in allowed:
+            if nid.get("approved", True) is not False:
+                nid["approved"] = False
+                changed = True
+        new_ac.append(nid)
+    if not changed:
+        return
+    new_data = copy.deepcopy(dict(raw))
+    new_data["additional_costs"] = new_ac
+    prop.data = new_data
+    flag_modified(prop, "data")
+
+
 def _business_line_filter_for_user(user: User):
     """SQLAlchemy OR conditions for projects the user may see (by business line)."""
     conds = []
@@ -445,6 +490,7 @@ def list_projects(
             "created_at": p.created_at.isoformat() if getattr(p, 'created_at', None) else None,
             "date_start": p.date_start.isoformat() if getattr(p, 'date_start', None) else None,
             "date_eta": getattr(p, 'date_eta', None).isoformat() if getattr(p, 'date_eta', None) else None,
+            "date_awarded": getattr(p, 'date_awarded', None).isoformat() if getattr(p, 'date_awarded', None) else None,
             "date_end": p.date_end.isoformat() if getattr(p, 'date_end', None) else None,
             "progress": getattr(p, 'progress', None),
             "status_label": getattr(p, 'status_label', None),
@@ -549,6 +595,7 @@ def get_project(project_id: str, db: Session = Depends(get_db), user: User = Dep
         "contact_phone": getattr(contact, 'phone', None) if contact else None,
         "date_start": p.date_start.isoformat() if getattr(p, 'date_start', None) else None,
         "date_eta": getattr(p, 'date_eta', None).isoformat() if getattr(p, 'date_eta', None) else None,
+        "date_awarded": getattr(p, 'date_awarded', None).isoformat() if getattr(p, 'date_awarded', None) else None,
         "date_end": p.date_end.isoformat() if getattr(p, 'date_end', None) else None,
         "progress": getattr(p, 'progress', None),
         "cost_estimated": getattr(p, 'cost_estimated', None),
@@ -591,6 +638,7 @@ def update_project(project_id: str, payload: dict, db: Session = Depends(get_db)
         "date_start": str(getattr(p, 'date_start', None)) if getattr(p, 'date_start', None) else None,
         "date_end": str(getattr(p, 'date_end', None)) if getattr(p, 'date_end', None) else None,
         "date_eta": str(getattr(p, 'date_eta', None)) if getattr(p, 'date_eta', None) else None,
+        "date_awarded": str(getattr(p, 'date_awarded', None)) if getattr(p, 'date_awarded', None) else None,
         "address": getattr(p, 'address', None),
         "lat": str(getattr(p, 'lat', None)) if getattr(p, 'lat', None) else None,
         "lng": str(getattr(p, 'lng', None)) if getattr(p, 'lng', None) else None,
@@ -740,9 +788,29 @@ def update_project(project_id: str, payload: dict, db: Session = Depends(get_db)
         else:
             raise HTTPException(status_code=400, detail="related_client_ids must be a list or null")
     
+    if "date_awarded" in payload:
+        raw_awarded = payload.get("date_awarded")
+        if raw_awarded is None or (isinstance(raw_awarded, str) and not str(raw_awarded).strip()):
+            payload["date_awarded"] = None
+        else:
+            try:
+                s = str(raw_awarded).strip()
+                if "T" in s or " " in s:
+                    payload["date_awarded"] = datetime.fromisoformat(s.replace("Z", "+00:00"))
+                else:
+                    payload["date_awarded"] = datetime.combine(
+                        datetime.strptime(s[:10], "%Y-%m-%d").date(), time.min
+                    ).replace(tzinfo=timezone.utc)
+            except Exception:
+                raise HTTPException(status_code=400, detail="Invalid date_awarded")
+    
     # Update project
     for k, v in payload.items():
         setattr(p, k, v)
+
+    # Edit Project Divisions: items priced under a removed division → not approved (original proposal)
+    if "project_division_ids" in payload:
+        _unapprove_pricing_items_for_divisions_removed_from_project(db, p)
 
     # Enforce invariant: no on-site lead for a division that does not exist in the project
     dol = getattr(p, "division_onsite_leads", None) or {}
@@ -831,6 +899,7 @@ def update_project(project_id: str, payload: dict, db: Session = Depends(get_db)
             "date_start": str(getattr(p, 'date_start', None)) if getattr(p, 'date_start', None) else None,
             "date_end": str(getattr(p, 'date_end', None)) if getattr(p, 'date_end', None) else None,
             "date_eta": str(getattr(p, 'date_eta', None)) if getattr(p, 'date_eta', None) else None,
+            "date_awarded": str(getattr(p, 'date_awarded', None)) if getattr(p, 'date_awarded', None) else None,
             "address": getattr(p, 'address', None),
             "lat": str(getattr(p, 'lat', None)) if getattr(p, 'lat', None) else None,
             "lng": str(getattr(p, 'lng', None)) if getattr(p, 'lng', None) else None,
@@ -3495,7 +3564,7 @@ def convert_to_project(
     payload: Optional[dict] = Body(None),
     user=Depends(get_current_user),
 ):
-    """Convert a bidding to an active project. Optional body: project_admin_id, division_onsite_leads, date_eta, date_start, lead_source, pricing_item_approvals (list of bool per additional_costs index)."""
+    """Convert a bidding to an active project. Sets date_awarded to conversion day (UTC). Optional body: project_admin_id, division_onsite_leads, date_eta, date_start, lead_source, pricing_item_approvals (list of bool per additional_costs index)."""
     p = db.query(Project).filter(Project.id == project_id, Project.deleted_at.is_(None)).first()
     if not p:
         raise HTTPException(status_code=404, detail="Not found")
@@ -3511,6 +3580,7 @@ def convert_to_project(
         "division_onsite_leads": dict(getattr(p, 'division_onsite_leads', None) or {}),
         "date_eta": str(getattr(p, 'date_eta', None))[:10] if getattr(p, 'date_eta', None) else None,
         "date_start": str(getattr(p, 'date_start', None))[:10] if getattr(p, 'date_start', None) else None,
+        "date_awarded": str(getattr(p, 'date_awarded', None))[:10] if getattr(p, 'date_awarded', None) else None,
         "lead_source": getattr(p, 'lead_source', None),
         "project_division_ids": list(getattr(p, 'project_division_ids', None) or []),
         "is_bidding": getattr(p, 'is_bidding', True),
@@ -3622,6 +3692,7 @@ def convert_to_project(
             p.division_onsite_leads = filtered_dol
             flag_modified(p, "division_onsite_leads")
 
+    p.date_awarded = datetime.combine(datetime.now(timezone.utc).date(), time.min).replace(tzinfo=timezone.utc)
     p.is_bidding = False
     db.commit()
 
@@ -3635,6 +3706,7 @@ def convert_to_project(
             "division_onsite_leads": dict(getattr(p, 'division_onsite_leads', None) or {}),
             "date_eta": str(getattr(p, 'date_eta', None))[:10] if getattr(p, 'date_eta', None) else None,
             "date_start": str(getattr(p, 'date_start', None))[:10] if getattr(p, 'date_start', None) else None,
+            "date_awarded": str(getattr(p, 'date_awarded', None))[:10] if getattr(p, 'date_awarded', None) else None,
             "lead_source": getattr(p, 'lead_source', None),
             "project_division_ids": list(getattr(p, 'project_division_ids', None) or []),
             "is_bidding": getattr(p, 'is_bidding', False),
@@ -4712,6 +4784,7 @@ def business_opportunities(
             "created_at": p.created_at.isoformat() if getattr(p, 'created_at', None) else None,
             "date_start": p.date_start.isoformat() if getattr(p, 'date_start', None) else None,
             "date_eta": getattr(p, 'date_eta', None).isoformat() if getattr(p, 'date_eta', None) else None,
+            "date_awarded": getattr(p, 'date_awarded', None).isoformat() if getattr(p, 'date_awarded', None) else None,
             "date_end": p.date_end.isoformat() if getattr(p, 'date_end', None) else None,
             "progress": getattr(p, 'progress', None),
             "status_label": getattr(p, 'status_label', None),
@@ -5246,6 +5319,7 @@ def business_projects(
             "created_at": p.created_at.isoformat() if getattr(p, 'created_at', None) else None,
             "date_start": p.date_start.isoformat() if getattr(p, 'date_start', None) else None,
             "date_eta": getattr(p, 'date_eta', None).isoformat() if getattr(p, 'date_eta', None) else None,
+            "date_awarded": getattr(p, 'date_awarded', None).isoformat() if getattr(p, 'date_awarded', None) else None,
             "date_end": p.date_end.isoformat() if getattr(p, 'date_end', None) else None,
             "progress": getattr(p, 'progress', None),
             "status_label": getattr(p, 'status_label', None),
