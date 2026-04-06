@@ -66,6 +66,42 @@ def _effective_awarded_related_client_ids(p: Project) -> list[str]:
     return []
 
 
+def _build_related_customers_activity_summary(db: Session, before_state: dict, after_state: dict) -> Optional[str]:
+    """Human-readable lines for Recent Activity when related / bid-winner lists change."""
+    from ..services.audit import _resolve_client_name
+
+    br = set(before_state.get("related_client_ids") or [])
+    ar = set(after_state.get("related_client_ids") or [])
+    ba = set(before_state.get("awarded_related_client_ids") or [])
+    aa = set(after_state.get("awarded_related_client_ids") or [])
+
+    if br == ar and ba == aa:
+        return None
+
+    def _label(cid: str) -> str:
+        return _resolve_client_name(db, str(cid)) or str(cid)
+
+    removed_rel = br - ar
+    added_rel = ar - br
+    added_aw = aa - ba
+    removed_aw = ba - aa
+
+    parts: List[str] = []
+    for cid in sorted(removed_rel, key=str):
+        parts.append(f'{_label(cid)} removed from related customers')
+    for cid in sorted(removed_aw, key=str):
+        if cid in removed_rel:
+            continue
+        if cid in ar:
+            parts.append(f'{_label(cid)} no longer a bid winner')
+    for cid in sorted(added_aw, key=str):
+        parts.append(f'{_label(cid)} marked as bid winner')
+    for cid in sorted(added_rel - added_aw, key=str):
+        parts.append(f'{_label(cid)} added to related customers')
+
+    return " · ".join(parts) if parts else None
+
+
 def _unapprove_pricing_items_for_divisions_removed_from_project(db: Session, project: Project) -> None:
     """
     When project_division_ids is reduced, pricing rows (additional_costs) tied to a division
@@ -671,6 +707,11 @@ def update_project(project_id: str, payload: dict, db: Session = Depends(get_db)
         "lat": str(getattr(p, 'lat', None)) if getattr(p, 'lat', None) else None,
         "lng": str(getattr(p, 'lng', None)) if getattr(p, 'lng', None) else None,
         "lead_source": getattr(p, 'lead_source', None),
+        "related_client_ids": sorted(
+            str(x) for x in (getattr(p, "related_client_ids", None) or []) if x
+        )
+        or None,
+        "awarded_related_client_ids": sorted(_effective_awarded_related_client_ids(p)) or None,
     }
     
     # Do not allow changing auto-generated code
@@ -999,9 +1040,22 @@ def update_project(project_id: str, payload: dict, db: Session = Depends(get_db)
             "lat": str(getattr(p, 'lat', None)) if getattr(p, 'lat', None) else None,
             "lng": str(getattr(p, 'lng', None)) if getattr(p, 'lng', None) else None,
             "lead_source": getattr(p, 'lead_source', None),
+            "related_client_ids": sorted(
+                str(x) for x in (getattr(p, "related_client_ids", None) or []) if x
+            )
+            or None,
+            "awarded_related_client_ids": sorted(_effective_awarded_related_client_ids(p)) or None,
         }
         changes = compute_diff(before_state, after_state)
         if changes:  # Only log if there were actual changes
+            audit_context: dict = {
+                "project_id": str(p.id),
+                "changed_fields": list(changes.keys()),
+            }
+            if "related_client_ids" in changes or "awarded_related_client_ids" in changes:
+                rel_summary = _build_related_customers_activity_summary(db, before_state, after_state)
+                if rel_summary:
+                    audit_context["related_customers_summary"] = rel_summary
             create_audit_log(
                 db=db,
                 entity_type="project",
@@ -1011,10 +1065,7 @@ def update_project(project_id: str, payload: dict, db: Session = Depends(get_db)
                 actor_role="user",
                 source="api",
                 changes_json={"before": before_state, "after": after_state},
-                context={
-                    "project_id": str(p.id),
-                    "changed_fields": list(changes.keys()),
-                }
+                context=audit_context,
             )
     except Exception:
         pass  # Don't fail project update if audit log fails

@@ -171,6 +171,8 @@ const PROJECT_UPDATE_LABELS: Record<string, string> = {
   is_bidding: 'Is bidding',
   client_id: 'Client',
   code: 'Code',
+  related_client_ids: 'Related customers',
+  awarded_related_client_ids: 'Awarded related customers',
 };
 
 const REPORT_FIELD_LABELS: Record<string, string> = {
@@ -285,6 +287,12 @@ function getDisplayValue(
     return val.length >= 10 ? val.slice(0, 10) : val;
   }
   if (field === 'estimator_ids' && Array.isArray(val)) return val.length > 0 ? `${val.length} selected` : '—';
+  if (
+    (field === 'related_client_ids' || field === 'awarded_related_client_ids') &&
+    Array.isArray(val)
+  ) {
+    return val.length > 0 ? `${val.length} customer(s)` : '—';
+  }
   if (typeof val === 'string' && val.length > 50) return val.slice(0, 47) + '...';
   return String(val);
 }
@@ -307,7 +315,7 @@ function buildRecentActivityLabel(log: { action?: string; entity_type?: string; 
     if (action === 'UPDATE') {
       if (context.conversion) {
         // Show conversion with each updated field and its value: "Field to "value"" (one line per logical field, prefer name over ID)
-        const heroFields = ['status_label', 'status_id', 'estimator_id', 'estimator_ids', 'project_admin_id', 'onsite_lead_id', 'division_onsite_leads', 'contact_id', 'site_id', 'project_division_ids', 'division_ids', 'name', 'address', 'date_start', 'date_end', 'date_eta', 'date_awarded', 'progress', 'lead_source', 'lat', 'lng'];
+        const heroFields = ['status_label', 'status_id', 'estimator_id', 'estimator_ids', 'project_admin_id', 'onsite_lead_id', 'division_onsite_leads', 'contact_id', 'site_id', 'project_division_ids', 'division_ids', 'name', 'address', 'date_start', 'date_end', 'date_eta', 'date_awarded', 'progress', 'lead_source', 'lat', 'lng', 'related_client_ids', 'awarded_related_client_ids'];
         const relevantChanged = changedFields.filter((f: string) => heroFields.includes(f) && f !== 'is_bidding');
         const uuidLike = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
         const byLabel: Record<string, { value: string; isId: boolean }> = {};
@@ -326,11 +334,29 @@ function buildRecentActivityLabel(log: { action?: string; entity_type?: string; 
         }
         return 'Opportunity converted to project';
       }
-      const heroFields = ['status_label', 'status_id', 'estimator_id', 'estimator_ids', 'project_admin_id', 'onsite_lead_id', 'division_onsite_leads', 'contact_id', 'site_id', 'project_division_ids', 'division_ids', 'name', 'address', 'date_start', 'date_end', 'date_eta', 'date_awarded', 'progress', 'lead_source', 'lat', 'lng'];
+      const heroFields = ['status_label', 'status_id', 'estimator_id', 'estimator_ids', 'project_admin_id', 'onsite_lead_id', 'division_onsite_leads', 'contact_id', 'site_id', 'project_division_ids', 'division_ids', 'name', 'address', 'date_start', 'date_end', 'date_eta', 'date_awarded', 'progress', 'lead_source', 'lat', 'lng', 'related_client_ids', 'awarded_related_client_ids'];
       const relevantChanged = changedFields.filter((f: string) => heroFields.includes(f));
       if (relevantChanged.length === 0) {
         // Fallback below
       } else {
+        const relatedFields = ['related_client_ids', 'awarded_related_client_ids'];
+        const relSummary =
+          typeof context.related_customers_summary === 'string' ? context.related_customers_summary.trim() : '';
+        const hasRelatedChange = relevantChanged.some((f: string) => relatedFields.includes(f));
+        if (hasRelatedChange && relSummary) {
+          const others = relevantChanged.filter((f: string) => !relatedFields.includes(f));
+          if (others.length === 0) return relSummary;
+          const displayField = others[0];
+          const label = PROJECT_UPDATE_LABELS[displayField] || displayField;
+          const displayVal = getDisplayValue(displayField, resolvedValues, after, before);
+          if (displayVal && displayVal !== '—' && displayVal.trim()) {
+            return `${relSummary} · ${label} updated to "${displayVal}"`;
+          }
+          return `${relSummary} · ${label} updated`;
+        }
+        if (hasRelatedChange && relevantChanged.every((f: string) => relatedFields.includes(f))) {
+          return 'Related customers updated';
+        }
         // Group estimator_id + estimator_ids as single "Estimator" (backend updates both together)
         const estimatorFields = ['estimator_id', 'estimator_ids'];
         const isOnlyEstimator = relevantChanged.every((f: string) => estimatorFields.includes(f));
@@ -1148,7 +1174,7 @@ export default function ProjectDetail(){
       <div className={`transition-all ${isHeroCollapsed ? 'duration-[1200ms]' : 'duration-[1800ms]'} ease-in-out ${isHeroCollapsed ? 'mb-2' : 'mb-4'}`}>
       <div className="relative" style={{ minHeight: isHeroCollapsed ? 'auto' : 'auto' }}>
         {/* Expanded View - Full Hero Section (defines container height when expanded) */}
-        <div className={`rounded-xl border bg-white overflow-hidden transition-all ${isHeroCollapsed ? 'duration-[1200ms]' : 'duration-[1800ms]'} ease-in-out ${
+        <div className={`rounded-xl border bg-white transition-all ${isHeroCollapsed ? 'overflow-hidden duration-[1200ms]' : 'overflow-visible duration-[1800ms]'} ease-in-out ${
           isHeroCollapsed 
             ? 'opacity-0 max-h-0 pointer-events-none relative' 
             : 'opacity-100 max-h-[2000px] pointer-events-auto relative'
@@ -1243,14 +1269,14 @@ export default function ProjectDetail(){
                                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                                 </svg>
                               </button>
-                              <div className="absolute left-0 bottom-full mb-2 px-3 py-2 bg-gray-900 text-white text-xs rounded-lg shadow-xl whitespace-normal max-w-xs opacity-0 invisible group-hover/nonAwarded:opacity-100 group-hover/nonAwarded:visible transition-all duration-200 pointer-events-none z-[100]">
-                                <div className="font-semibold mb-1.5 text-white">Not awarded (bid)</div>
+                              <div className="absolute left-1/2 bottom-full z-[100] mb-2 w-max min-w-[22rem] max-w-[min(100vw-1.5rem,40rem)] -translate-x-1/2 px-3 py-2 text-xs text-white whitespace-normal rounded-lg bg-gray-900 shadow-xl opacity-0 invisible pointer-events-none transition-all duration-200 group-hover/nonAwarded:visible group-hover/nonAwarded:opacity-100">
+                                <div className="font-semibold mb-1.5 text-white">Not Awarded (Bid)</div>
                                 <ul className="space-y-1 text-gray-200 leading-snug">
                                   {relatedHero.nonAwardedEntries.map((e) => (
                                     <li key={e.id}>• {e.name}</li>
                                   ))}
                                 </ul>
-                                <div className="absolute -bottom-1 left-2 w-2 h-2 bg-gray-900 rotate-45" />
+                                <div className="absolute -bottom-1 left-1/2 h-2 w-2 -translate-x-1/2 rotate-45 bg-gray-900" />
                               </div>
                             </div>
                           )}
@@ -2777,12 +2803,8 @@ function EditEtaModal({ projectId, currentEta, onClose, onSave }: {
 
 type ClientMini = { id: string; display_name?: string; name?: string; city?: string; province?: string; address_line1?: string };
 
-function buildInitialAwardedIdsSet(relatedIds: string[], awardedFromServer: string[]): Set<string> {
-  const aw = new Set(awardedFromServer.map(String));
-  if (aw.size === 0 && relatedIds.length > 0) {
-    return new Set(relatedIds.map(String));
-  }
-  return aw;
+function buildInitialAwardedIdsSet(awardedFromServer: string[]): Set<string> {
+  return new Set(awardedFromServer.map(String));
 }
 
 function EditRelatedCustomersModal({
@@ -2812,7 +2834,7 @@ function EditRelatedCustomersModal({
   const [awardedIds, setAwardedIds] = useState<Set<string>>(() =>
     isBidding
       ? new Set()
-      : buildInitialAwardedIdsSet(currentRelatedIds.map(String), currentAwardedIdsFromServer.map(String))
+      : buildInitialAwardedIdsSet(currentAwardedIdsFromServer.map(String))
   );
   const [saving, setSaving] = useState(false);
 
@@ -2880,21 +2902,35 @@ function EditRelatedCustomersModal({
     setAwardedIds((prev) => new Set(prev).add(id));
   };
 
-  const promoteToAwarded = (cid: string) => {
+  const setAwardedForRow = (cid: string) => {
     setAwardedIds((prev) => new Set(prev).add(String(cid)));
   };
 
-  const requestDemoteAwarded = async (cid: string) => {
-    const label = nameForId(cid);
-    const res = await confirm({
-      message: `Mark "${label}" as not awarded? They will stay linked as a related customer but will only appear under the info tooltip (not in the main Related Customers list).`,
-      confirmText: 'Mark not awarded',
-      cancelText: 'Cancel',
-    });
-    if (res !== 'confirm') return;
+  const setNotAwardedForRow = (cid: string) => {
     setAwardedIds((prev) => {
       const next = new Set(prev);
       next.delete(String(cid));
+      return next;
+    });
+  };
+
+  const requestRemoveFromRelated = async (cid: string) => {
+    const label = nameForId(cid);
+    const res = await confirm({
+      message: `Remove "${label}" from related customers?`,
+      confirmText: 'Remove',
+      cancelText: 'Cancel',
+    });
+    if (res !== 'confirm') return;
+    const id = String(cid);
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      next.delete(id);
+      return next;
+    });
+    setAwardedIds((prev) => {
+      const next = new Set(prev);
+      next.delete(id);
       return next;
     });
   };
@@ -2948,7 +2984,7 @@ function EditRelatedCustomersModal({
               <p className="text-xs text-gray-500 mt-0.5">
                 {isBidding
                   ? 'Link additional customers to this opportunity'
-                  : 'Awarded customers appear in the header; not awarded stay linked and are listed in the tooltip. Add customers from search — they are saved as awarded.'}
+                  : 'Use green for Awarded (Bid Winner) and red for Not Awarded.'}
               </p>
             </div>
           </div>
@@ -2963,56 +2999,62 @@ function EditRelatedCustomersModal({
               <div className="rounded-xl border border-gray-200 divide-y divide-gray-100 max-h-56 overflow-y-auto">
                 {orderedSelectedIds.map((rid) => {
                   const isAwarded = awardedIds.has(rid);
-                  if (isAwarded) {
-                    return (
-                      <div
-                        key={rid}
-                        className="flex items-center gap-2 px-3 py-2.5 bg-white"
-                      >
-                        <button
-                          type="button"
-                          onClick={() => requestDemoteAwarded(rid)}
-                          className="flex-shrink-0 w-4 h-4 border rounded flex items-center justify-center bg-brand-red border-brand-red hover:opacity-90"
-                          title="Mark as not awarded"
-                        >
-                          <svg className="w-3 h-3 text-white" fill="currentColor" viewBox="0 0 20 20">
-                            <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
-                          </svg>
-                        </button>
-                        <div className="flex-1 min-w-0">
-                          <div className="font-semibold text-gray-900 truncate">{nameForId(rid)}</div>
-                          <div className="text-[10px] text-gray-500">Awarded — click check to mark not awarded</div>
-                        </div>
-                      </div>
-                    );
-                  }
                   return (
                     <div
                       key={rid}
-                      className="flex items-center gap-2 px-3 py-2.5 bg-gray-50 text-gray-500"
+                      className="flex items-center gap-3 px-3 py-2 bg-white hover:bg-gray-50"
                     >
-                      <span
-                        className="flex-shrink-0 w-4 h-4 border rounded flex items-center justify-center border-gray-300 bg-gray-200 cursor-not-allowed"
-                        title="Not awarded — cannot remove from related customers"
-                      >
-                        <svg className="w-3 h-3 text-gray-500" fill="currentColor" viewBox="0 0 20 20">
-                          <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
-                        </svg>
-                      </span>
                       <div className="flex-1 min-w-0">
-                        <div className="font-semibold truncate text-gray-600">{nameForId(rid)}</div>
-                        <div className="text-[10px] text-gray-400">Not awarded</div>
+                        <span className="text-sm font-medium text-gray-900 truncate block">{nameForId(rid)}</span>
                       </div>
-                      <button
-                        type="button"
-                        onClick={() => promoteToAwarded(rid)}
-                        className="flex-shrink-0 p-1.5 rounded-lg border border-green-300 bg-green-50 text-green-700 hover:bg-green-100"
-                        title="Mark as awarded"
-                      >
-                        <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
-                          <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
-                        </svg>
-                      </button>
+                      <div className="flex items-center gap-1 shrink-0">
+                        <button
+                          type="button"
+                          onClick={() => setAwardedForRow(rid)}
+                          title="Awarded"
+                          className={`flex items-center justify-center w-7 h-7 rounded-lg border-2 transition-all ${
+                            isAwarded
+                              ? 'bg-green-100 text-green-700 border-green-400 scale-105 shadow-md'
+                              : 'bg-white text-gray-300 border-gray-200 hover:border-gray-300 hover:text-gray-400'
+                          }`}
+                        >
+                          <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                            <path
+                              fillRule="evenodd"
+                              d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"
+                              clipRule="evenodd"
+                            />
+                          </svg>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setNotAwardedForRow(rid)}
+                          title="Not awarded"
+                          className={`flex items-center justify-center w-7 h-7 rounded-lg border-2 transition-all ${
+                            !isAwarded
+                              ? 'bg-red-100 text-red-700 border-red-400 scale-105 shadow-md'
+                              : 'bg-white text-gray-300 border-gray-200 hover:border-gray-300 hover:text-gray-400'
+                          }`}
+                        >
+                          <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                            <path
+                              fillRule="evenodd"
+                              d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z"
+                              clipRule="evenodd"
+                            />
+                          </svg>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => requestRemoveFromRelated(rid)}
+                          title="Remove from related customers"
+                          className="flex items-center justify-center w-7 h-7 rounded-lg border-2 border-gray-200 bg-white text-gray-500 transition-all hover:border-gray-400 hover:text-gray-700"
+                        >
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                          </svg>
+                        </button>
+                      </div>
                     </div>
                   );
                 })}
@@ -3784,12 +3826,12 @@ function ConvertToProjectModal({
             )}
 
             <div>
-              <label className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide block mb-1">End Date</label>
-              <input type="date" value={dateEta} onChange={e => setDateEta(e.target.value)} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" />
-            </div>
-            <div>
               <label className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide block mb-1">Start Date</label>
               <input type="date" value={dateStart} onChange={e => setDateStart(e.target.value)} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" />
+            </div>
+            <div>
+              <label className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide block mb-1">End Date</label>
+              <input type="date" value={dateEta} onChange={e => setDateEta(e.target.value)} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" />
             </div>
 
             {additionalCosts.length > 0 && (
