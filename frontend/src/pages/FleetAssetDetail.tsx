@@ -117,18 +117,22 @@ type WorkOrder = {
   created_at: string;
 };
 
-type FleetLog = {
+type FleetAssetHistoryItem = {
   id: string;
-  fleet_asset_id: string;
-  log_type: string;
-  log_date: string;
-  user_id?: string;
-  description: string;
-  odometer_snapshot?: number;
-  hours_snapshot?: number;
-  status_snapshot?: string;
-  related_work_order_id?: string;
-  created_at: string;
+  source: 'assignment' | 'audit' | 'fleet_log';
+  kind: string;
+  title: string;
+  subtitle?: string | null;
+  detail?: string | null;
+  occurred_at: string;
+  actor_id?: string | null;
+  actor_name?: string | null;
+  assignment_id?: string | null;
+  log_subtype?: 'assign' | 'return' | null;
+  audit_action?: string | null;
+  changes_json?: Record<string, unknown> | null;
+  odometer_snapshot?: number | null;
+  hours_snapshot?: number | null;
 };
 
 const checklistItems = [
@@ -160,6 +164,7 @@ export default function FleetAssetDetail() {
   const [editingComplianceId, setEditingComplianceId] = useState<string | null>(null);
   const [logDetailAssignment, setLogDetailAssignment] = useState<AssetAssignment | null>(null);
   const [logDetailLogType, setLogDetailLogType] = useState<'assignment' | 'return' | null>(null);
+  const [historyAuditDetail, setHistoryAuditDetail] = useState<Record<string, unknown> | null>(null);
   const [isEditing, setIsEditing] = useState(false);
   const [editForm, setEditForm] = useState<any>({});
   const [initialEditForm, setInitialEditForm] = useState<any>({});
@@ -192,11 +197,12 @@ export default function FleetAssetDetail() {
     enabled: isValidId,
   });
 
-  const { data: logs } = useQuery({
-    queryKey: ['fleetAssetLogs', id],
-    queryFn: () => api<FleetLog[]>('GET', `/fleet/assets/${id}/logs`),
+  const { data: historyResponse } = useQuery({
+    queryKey: ['fleetAssetHistory', id],
+    queryFn: () => api<{ items: FleetAssetHistoryItem[] }>('GET', `/fleet/assets/${id}/history`),
     enabled: isValidId,
   });
+  const historyItems = historyResponse?.items ?? [];
 
   const { data: assignments = [] } = useQuery({
     queryKey: ['fleetAssetAssignments', id],
@@ -211,21 +217,6 @@ export default function FleetAssetDetail() {
   });
 
   const openAssignment = useMemo(() => assignments.find((a) => !a.returned_at), [assignments]);
-
-  const findAssignmentForLog = useCallback((log: FleetLog) => {
-    if (!Array.isArray(assignments) || assignments.length === 0) return null;
-    const logTime = new Date(log.log_date).getTime();
-    if (log.log_type === 'assignment') {
-      return assignments.find((a) => {
-        const t = new Date(a.assigned_at).getTime();
-        return Math.abs(t - logTime) < 5000;
-      }) ?? null;
-    }
-    if (log.log_type === 'return') {
-      return assignments.find((a) => a.returned_at && Math.abs(new Date(a.returned_at).getTime() - logTime) < 5000) ?? null;
-    }
-    return null;
-  }, [assignments]);
 
   const { data: employees = [] } = useQuery({
     queryKey: ['employees'],
@@ -304,6 +295,7 @@ export default function FleetAssetDetail() {
       setIsEditing(false);
       setInitialEditForm({ ...editForm });
       queryClient.invalidateQueries({ queryKey: ['fleetAsset', id] });
+      queryClient.invalidateQueries({ queryKey: ['fleetAssetHistory', id] });
     },
     onError: (error: any) => {
       toast.error(error?.message || 'Failed to update asset');
@@ -316,6 +308,7 @@ export default function FleetAssetDetail() {
       toast.success('Assigned successfully');
       setShowAssignModal(false);
       queryClient.invalidateQueries({ queryKey: ['fleetAssetAssignments', id] });
+      queryClient.invalidateQueries({ queryKey: ['fleetAssetHistory', id] });
     },
     onError: (error: any) => toast.error(error?.message || 'Failed to assign'),
   });
@@ -326,6 +319,7 @@ export default function FleetAssetDetail() {
       toast.success('Return recorded');
       setShowReturnModal(false);
       queryClient.invalidateQueries({ queryKey: ['fleetAssetAssignments', id] });
+      queryClient.invalidateQueries({ queryKey: ['fleetAssetHistory', id] });
     },
     onError: (error: any) => toast.error(error?.message || 'Failed to return'),
   });
@@ -555,7 +549,7 @@ export default function FleetAssetDetail() {
                 tab === t ? 'border-brand-red text-brand-red' : 'border-transparent text-gray-600 hover:text-gray-900'
               }`}
             >
-              {t.replace('-', ' ')}
+              {t === 'logs' ? 'History' : t.replace('-', ' ')}
             </button>
           ))}
         </div>
@@ -885,46 +879,92 @@ export default function FleetAssetDetail() {
 
         {tab === 'logs' && (
           <div className="space-y-4">
-            <h3 className="font-semibold text-lg">Logs & History</h3>
+            <div>
+              <h3 className="font-semibold text-lg">Activity history</h3>
+              <p className="text-sm text-gray-600 mt-1">
+                Check-outs and returns, edits to this asset, and other fleet log entries (newest first).
+              </p>
+            </div>
             <div className="space-y-2">
-              {Array.isArray(logs) && logs.map(log => {
-                const linkedAssignment = (log.log_type === 'assignment' || log.log_type === 'return') ? findAssignmentForLog(log) : null;
-                const isClickable = !!linkedAssignment;
+              {historyItems.map((item) => {
+                const assign =
+                  item.assignment_id && item.log_subtype
+                    ? assignments.find((a) => a.id === item.assignment_id)
+                    : null;
+                const openAssignDetail =
+                  !!assign &&
+                  item.source === 'assignment' &&
+                  (item.log_subtype === 'assign' || item.log_subtype === 'return');
+                const openAuditDetail =
+                  item.source === 'audit' && item.changes_json && Object.keys(item.changes_json).length > 0;
+                const borderClass =
+                  item.source === 'assignment' && item.kind === 'checkout'
+                    ? 'border-brand-red'
+                    : item.source === 'assignment' && item.kind === 'return'
+                      ? 'border-sky-500'
+                      : item.source === 'audit'
+                        ? 'border-amber-500'
+                        : 'border-gray-300';
+                const clickable = openAssignDetail || openAuditDetail;
+                const badge =
+                  item.source === 'assignment' && item.kind === 'checkout'
+                    ? 'Check-out'
+                    : item.source === 'assignment' && item.kind === 'return'
+                      ? 'Return'
+                      : item.source === 'audit'
+                        ? 'Change'
+                        : 'Log';
                 return (
                   <div
-                    key={log.id}
-                    className={`border-l-4 pl-4 py-2 ${isClickable ? 'border-brand-red cursor-pointer hover:bg-gray-50 rounded-r-lg transition-colors' : 'border-gray-300'}`}
-                    onClick={isClickable ? () => { setLogDetailAssignment(linkedAssignment); setLogDetailLogType(log.log_type as 'assignment' | 'return'); } : undefined}
-                    role={isClickable ? 'button' : undefined}
+                    key={item.id}
+                    className={`border-l-4 pl-4 py-2 ${borderClass} ${clickable ? 'cursor-pointer hover:bg-gray-50 rounded-r-lg transition-colors' : ''}`}
+                    onClick={
+                      openAssignDetail && assign && item.log_subtype
+                        ? () => {
+                            setLogDetailAssignment(assign);
+                            setLogDetailLogType(item.log_subtype === 'assign' ? 'assignment' : 'return');
+                          }
+                        : openAuditDetail
+                          ? () => setHistoryAuditDetail(item.changes_json as Record<string, unknown>)
+                          : undefined
+                    }
+                    role={clickable ? 'button' : undefined}
                   >
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <div className="font-medium capitalize">{log.log_type.replace('_', ' ')}</div>
-                        <div className="text-sm text-gray-600">{log.description}</div>
-                        {log.odometer_snapshot != null && (
-                          <div className="text-xs text-gray-500 mt-1">
-                            Odometer: {log.odometer_snapshot.toLocaleString()}
-                          </div>
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="font-medium">{item.title}</span>
+                          <span className="text-[10px] uppercase tracking-wide px-1.5 py-0.5 rounded bg-gray-100 text-gray-600">{badge}</span>
+                        </div>
+                        {item.subtitle && <div className="text-sm text-gray-600 mt-0.5">{item.subtitle}</div>}
+                        {item.detail && <div className="text-sm text-gray-600 mt-1 whitespace-pre-wrap">{item.detail}</div>}
+                        {item.actor_name && (
+                          <div className="text-xs text-gray-500 mt-1">By {item.actor_name}</div>
                         )}
-                        {log.hours_snapshot != null && (
-                          <div className="text-xs text-gray-500 mt-1">
-                            Hours: {log.hours_snapshot.toLocaleString()}
-                          </div>
+                        {item.odometer_snapshot != null && (
+                          <div className="text-xs text-gray-500 mt-1">Odometer: {item.odometer_snapshot.toLocaleString()}</div>
                         )}
-                        {isClickable && (
-                          <div className="text-xs text-brand-red mt-1">Click for full details</div>
+                        {item.hours_snapshot != null && (
+                          <div className="text-xs text-gray-500 mt-1">Hours: {Number(item.hours_snapshot).toLocaleString()}</div>
+                        )}
+                        {clickable && (
+                          <div className="text-xs text-brand-red mt-1">
+                            {openAssignDetail ? 'Click for assignment details' : 'Click to view change details'}
+                          </div>
                         )}
                       </div>
-                      <div className="text-sm text-gray-500">
-                        {new Date(log.log_date).toLocaleDateString()}
+                      <div className="text-sm text-gray-500 shrink-0 text-right">
+                        {item.occurred_at
+                          ? new Date(item.occurred_at).toLocaleString()
+                          : '—'}
                       </div>
                     </div>
                   </div>
                 );
               })}
             </div>
-            {(!logs || logs.length === 0) && (
-              <div className="text-center text-gray-500 py-8">No logs found</div>
+            {historyItems.length === 0 && (
+              <div className="text-center text-gray-500 py-8">No activity recorded yet</div>
             )}
           </div>
         )}
@@ -1085,6 +1125,33 @@ export default function FleetAssetDetail() {
           logType={logDetailLogType}
           onClose={() => { setLogDetailAssignment(null); setLogDetailLogType(null); }}
         />
+      )}
+      {historyAuditDetail !== null && (
+        <OverlayPortal>
+          <div
+            className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4"
+            onClick={() => setHistoryAuditDetail(null)}
+          >
+            <div
+              className="bg-white rounded-xl shadow-lg max-w-2xl w-full max-h-[90vh] overflow-hidden flex flex-col"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="p-4 border-b font-semibold flex items-center justify-between shrink-0">
+                <span>Change details</span>
+                <button
+                  type="button"
+                  onClick={() => setHistoryAuditDetail(null)}
+                  className="p-1 rounded hover:bg-gray-100 text-gray-600"
+                >
+                  ✕
+                </button>
+              </div>
+              <pre className="p-4 text-xs overflow-auto flex-1 bg-gray-50 text-gray-800 font-mono whitespace-pre-wrap break-words">
+                {JSON.stringify(historyAuditDetail, null, 2)}
+              </pre>
+            </div>
+          </div>
+        </OverlayPortal>
       )}
       {/* Compliance create/edit modal - simple inline */}
       {showComplianceModal && (

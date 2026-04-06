@@ -1,11 +1,12 @@
 import json
 from datetime import datetime, timezone
-from fastapi import APIRouter, Depends, HTTPException, Body
+from fastapi import APIRouter, Depends, HTTPException, Body, Query
 from pydantic import BaseModel
 from sqlalchemy import update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
-from typing import Optional, List, Any
+from typing import Optional, List, Any, Tuple
+import math
 import uuid
 
 from ..db import get_db
@@ -20,11 +21,38 @@ from ..models.models import (
     ProjectEvent,
     Client,
     EmployeeNote,
+    SystemLog,
+    AuditLog,
 )
+from ..services.audit_log_entries import audit_rows_to_entry_dicts
 from ..auth.security import require_permissions, require_roles, get_current_user
 
 
 router = APIRouter(prefix="/users", tags=["users"])
+
+
+def _viewer_can_access_user_activity_log(viewer: User, target_user_id: uuid.UUID) -> bool:
+    from ..auth.security import _has_permission
+
+    if any(getattr(r, "name", "").lower() == "admin" for r in (viewer.roles or [])):
+        return True
+    if not _has_permission(viewer, "hr:users:view:activity"):
+        return False
+    if viewer.id == target_user_id:
+        return True
+    return _has_permission(viewer, "hr:users:read") or _has_permission(viewer, "users:read")
+
+
+def _resolve_activity_page(total: int, page: int, page_size: int) -> Tuple[int, int, int]:
+    """Returns (clamped_page, offset, total_pages)."""
+    if page_size <= 0:
+        page_size = 15
+    if total <= 0:
+        return 1, 0, 0
+    total_pages = max(1, math.ceil(total / page_size))
+    p = min(max(1, page), total_pages)
+    offset = (p - 1) * page_size
+    return p, offset, total_pages
 
 
 # ---------- Home dashboard (must be before /{user_id}) ----------
@@ -159,6 +187,122 @@ def list_users(
     }
 
 
+@router.get("/{user_id}/activity-log/audit/{audit_entry_id}")
+def get_user_activity_audit_entry(
+    user_id: str,
+    audit_entry_id: str,
+    db: Session = Depends(get_db),
+    viewer: User = Depends(get_current_user),
+):
+    """Full audit row (with changes/context) for the Activity tab detail modal."""
+    try:
+        uid = uuid.UUID(str(user_id))
+        aid = uuid.UUID(str(audit_entry_id))
+    except ValueError:
+        raise HTTPException(status_code=404, detail="Not found")
+
+    u = db.query(User).filter(User.id == uid).first()
+    if not u:
+        raise HTTPException(status_code=404, detail="Not found")
+
+    if not _viewer_can_access_user_activity_log(viewer, uid):
+        raise HTTPException(status_code=403, detail="Not allowed to view this activity log")
+
+    row = (
+        db.query(AuditLog)
+        .filter(AuditLog.id == aid, AuditLog.actor_id == uid)
+        .first()
+    )
+    if not row:
+        raise HTTPException(status_code=404, detail="Not found")
+
+    full = audit_rows_to_entry_dicts(db, [row])
+    return full[0] if full else {}
+
+
+@router.get("/{user_id}/activity-log")
+def get_user_activity_log(
+    user_id: str,
+    logins_page: int = Query(1, ge=1),
+    logins_page_size: int = Query(15, ge=1, le=50),
+    audit_page: int = Query(1, ge=1),
+    audit_page_size: int = Query(15, ge=1, le=50),
+    db: Session = Depends(get_db),
+    viewer: User = Depends(get_current_user),
+):
+    """
+    Paginated sign-in history (system_logs) and audit summaries (no heavy JSON in list).
+    Requires hr:users:view:activity, except system admin. For other users' profiles, also requires
+    hr:users:read or users:read (same idea as opening employee details).
+    """
+    try:
+        uid = uuid.UUID(str(user_id))
+    except ValueError:
+        raise HTTPException(status_code=404, detail="Not found")
+
+    u = db.query(User).filter(User.id == uid).first()
+    if not u:
+        raise HTTPException(status_code=404, detail="Not found")
+
+    if not _viewer_can_access_user_activity_log(viewer, uid):
+        raise HTTPException(status_code=403, detail="Not allowed to view this activity log")
+
+    login_base = db.query(SystemLog).filter(
+        SystemLog.user_id == uid,
+        SystemLog.category == "auth",
+        SystemLog.message == "Login successful",
+    )
+    login_total = login_base.count()
+    lp, loff, lpages = _resolve_activity_page(login_total, logins_page, logins_page_size)
+    login_rows = (
+        login_base.order_by(SystemLog.timestamp_utc.desc())
+        .offset(loff)
+        .limit(logins_page_size)
+        .all()
+    )
+    login_events = [
+        {
+            "id": str(r.id),
+            "timestamp_utc": r.timestamp_utc.isoformat() if r.timestamp_utc else "",
+            "title": "Sign-in",
+            "path": r.path,
+            "request_id": r.request_id,
+        }
+        for r in login_rows
+    ]
+
+    audit_base = db.query(AuditLog).filter(AuditLog.actor_id == uid)
+    audit_total = audit_base.count()
+    ap, aoff, apages = _resolve_activity_page(audit_total, audit_page, audit_page_size)
+    audit_rows = (
+        audit_base.order_by(AuditLog.timestamp_utc.desc())
+        .offset(aoff)
+        .limit(audit_page_size)
+        .all()
+    )
+    full_audit = audit_rows_to_entry_dicts(db, audit_rows)
+    _omit = frozenset({"changes_json", "context", "actor_id", "actor_name", "actor_role"})
+    audit_entries = [{k: v for k, v in e.items() if k not in _omit} for e in full_audit]
+
+    return {
+        "last_login_at": u.last_login_at.isoformat() if u.last_login_at else None,
+        "logins": {
+            "items": login_events,
+            "total": login_total,
+            "page": lp,
+            "page_size": logins_page_size,
+            "total_pages": lpages,
+        },
+        "audit": {
+            "items": audit_entries,
+            "total": audit_total,
+            "page": ap,
+            "page_size": audit_page_size,
+            "total_pages": apages,
+        },
+    }
+
+
 @router.get("/{user_id}")
 def get_user(user_id: str, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
     """Get user details. All users can view their own data."""
@@ -288,54 +432,95 @@ def sync_all_users_from_bamboohr(
     _=Depends(require_permissions("hr:users:write", "users:write"))
 ):
     """
-    TEMPORARY ENDPOINT - Sync all employees from BambooHR
-    
-    This endpoint will:
-    1. Fetch all employees from BambooHR
-    2. Create or update users in the system
-    3. Sync photos, visas, and emergency contacts
-    
-    This is a temporary endpoint and should be removed in the future.
+    BambooHR bulk sync.
+
+    payload.mode:
+    - "full" (default): create/update users from BambooHR + photos + visas + emergency contacts.
+    - "photos": only profile photos for each directory employee (no profile field updates, no file cabinet).
+    - "documents": only BambooHR file cabinet documents (no profile photos).
+
+    Optional: force_update_photos (bool), force_update_documents (bool) for replacing existing imports.
     """
     import sys
     import importlib.util
     from pathlib import Path
-    
-    # Get the scripts directory
+
     current_file = Path(__file__)
     project_root = current_file.parent.parent.parent
     script_dir = project_root / "scripts"
     sys.path.insert(0, str(script_dir))
-    
+
+    mode = str(payload.get("mode") or "full").strip().lower()
+    if mode not in ("full", "photos", "documents"):
+        mode = "full"
+    force_update_photos = bool(payload.get("force_update_photos", False))
+    force_update_documents = bool(payload.get("force_update_documents", False))
+    limit = payload.get("limit")
+
     try:
-        # Import the sync function
-        spec = importlib.util.spec_from_file_location("sync_bamboohr_employees", script_dir / "sync_bamboohr_employees.py")
+        if mode in ("photos", "documents"):
+            spec = importlib.util.spec_from_file_location(
+                "sync_bamboohr_documents", script_dir / "sync_bamboohr_documents.py"
+            )
+            if spec is None or spec.loader is None:
+                raise HTTPException(status_code=500, detail="Could not load documents sync module")
+            doc_mod = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(doc_mod)
+            sync_all_documents = doc_mod.sync_all_documents
+
+            if mode == "photos":
+                sync_all_documents(
+                    dry_run=False,
+                    employee_id=None,
+                    include_photos=True,
+                    limit=limit,
+                    force_update_photos=force_update_photos,
+                    skip_documents=True,
+                )
+                msg = "BambooHR profile photos sync completed. Check server logs for details."
+            else:
+                sync_all_documents(
+                    dry_run=False,
+                    employee_id=None,
+                    include_photos=False,
+                    limit=limit,
+                    force_update_photos=False,
+                    skip_documents=False,
+                    force_update_documents=force_update_documents,
+                )
+                msg = "BambooHR documents sync completed. Check server logs for details."
+
+            return {"status": "success", "message": msg, "mode": mode}
+
+        # full (default): employee records + photos + visas + contacts
+        spec = importlib.util.spec_from_file_location(
+            "sync_bamboohr_employees", script_dir / "sync_bamboohr_employees.py"
+        )
         if spec is None or spec.loader is None:
             raise HTTPException(status_code=500, detail="Could not load sync module")
         sync_module = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(sync_module)
         sync_employees = sync_module.sync_employees
-        
-        # Get parameters from payload
+
         update_existing = payload.get("update_existing", True)
         include_photos = payload.get("include_photos", True)
-        force_update_photos = payload.get("force_update_photos", False)
-        limit = payload.get("limit")  # Optional limit for testing
-        
-        # Run the sync (this will use its own database session)
+
         sync_employees(
             dry_run=False,
             update_existing=update_existing,
             limit=limit,
             include_photos=include_photos,
-            force_update_photos=force_update_photos
+            force_update_photos=force_update_photos,
         )
-        
+
         return {
             "status": "success",
-            "message": "BambooHR sync completed. Check server logs for details."
+            "message": "BambooHR full sync completed. Check server logs for details.",
+            "mode": "full",
         }
-        
+
+    except HTTPException:
+        raise
     except Exception as e:
         import traceback
         error_msg = str(e)

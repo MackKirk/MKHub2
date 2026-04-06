@@ -33,6 +33,18 @@ from ..models.models import (
     FleetComplianceRecord,
     User,
     EmployeeProfile,
+    AuditLog,
+)
+from ..services.audit import compute_diff
+from ..services.fleet_audit import (
+    audit_fleet,
+    snapshot_fleet_asset,
+    snapshot_equipment,
+    snapshot_work_order,
+    snapshot_work_order_flow,
+    snapshot_inspection_schedule,
+    snapshot_fleet_inspection,
+    snapshot_compliance,
 )
 from ..schemas.fleet import (
     FleetAssetCreate,
@@ -481,6 +493,15 @@ def create_fleet_asset(
     db.add(new_asset)
     db.commit()
     db.refresh(new_asset)
+    audit_fleet(
+        db,
+        user,
+        entity_type="fleet_asset",
+        entity_id=new_asset.id,
+        action="CREATE",
+        changes_json={"after": snapshot_fleet_asset(new_asset)},
+        context={"fleet_asset_id": str(new_asset.id)},
+    )
     return new_asset
 
 
@@ -489,20 +510,34 @@ def update_fleet_asset(
     asset_id: uuid.UUID,
     asset_update: FleetAssetUpdate,
     db: Session = Depends(get_db),
-    _=Depends(require_permissions("fleet:write"))
+    user=Depends(get_current_user),
+    _=Depends(require_permissions("fleet:write")),
 ):
     """Update a fleet asset"""
     asset = db.query(FleetAsset).filter(FleetAsset.id == asset_id).first()
     if not asset:
         raise HTTPException(status_code=404, detail="Fleet asset not found")
-    
+
+    before = snapshot_fleet_asset(asset)
     update_data = asset_update.dict(exclude_unset=True)
     for key, value in update_data.items():
         setattr(asset, key, value)
     asset.updated_at = datetime.now(timezone.utc)
-    
+
     db.commit()
     db.refresh(asset)
+    after = snapshot_fleet_asset(asset)
+    diff = compute_diff(before, after)
+    if diff:
+        audit_fleet(
+            db,
+            user,
+            entity_type="fleet_asset",
+            entity_id=asset.id,
+            action="UPDATE",
+            changes_json={"before": before, "after": after},
+            context={"fleet_asset_id": str(asset.id), "changed_fields": list(diff.keys())},
+        )
     return asset
 
 
@@ -510,16 +545,28 @@ def update_fleet_asset(
 def delete_fleet_asset(
     asset_id: uuid.UUID,
     db: Session = Depends(get_db),
-    _=Depends(require_permissions("fleet:write"))
+    user=Depends(get_current_user),
+    _=Depends(require_permissions("fleet:write")),
 ):
     """Delete a fleet asset (soft delete by setting status to retired)"""
     asset = db.query(FleetAsset).filter(FleetAsset.id == asset_id).first()
     if not asset:
         raise HTTPException(status_code=404, detail="Fleet asset not found")
-    
+
+    before = snapshot_fleet_asset(asset)
     asset.status = "retired"
     asset.updated_at = datetime.now(timezone.utc)
     db.commit()
+    db.refresh(asset)
+    audit_fleet(
+        db,
+        user,
+        entity_type="fleet_asset",
+        entity_id=asset.id,
+        action="UPDATE",
+        changes_json={"before": before, "after": snapshot_fleet_asset(asset), "soft_delete": True},
+        context={"fleet_asset_id": str(asset.id), "note": "status set to retired"},
+    )
     return {"message": "Fleet asset deleted successfully"}
 
 
@@ -562,6 +609,143 @@ def get_asset_logs(
     ).order_by(FleetLog.log_date.desc()).all()
 
 
+@router.get("/assets/{asset_id}/history")
+def get_fleet_asset_history(
+    asset_id: uuid.UUID,
+    limit: int = Query(200, ge=1, le=400),
+    db: Session = Depends(get_db),
+    _=Depends(require_permissions("fleet:read")),
+):
+    """
+    Unified timeline: check-out/return (assignments), audit trail (edits from fleet API),
+    and other fleet_logs. Assignments supersede duplicate assignment/return fleet_logs.
+    """
+    asset = db.query(FleetAsset).filter(FleetAsset.id == asset_id).first()
+    if not asset:
+        raise HTTPException(status_code=404, detail="Fleet asset not found")
+
+    items: List[dict] = []
+
+    assignments = (
+        db.query(AssetAssignment)
+        .filter(
+            AssetAssignment.fleet_asset_id == asset_id,
+            AssetAssignment.target_type == "fleet",
+        )
+        .order_by(AssetAssignment.assigned_at.desc())
+        .all()
+    )
+    has_assignments = len(assignments) > 0
+
+    for a in assignments:
+        assignee = (a.assigned_to_name or "").strip() or (
+            get_user_display(db, a.assigned_to_user_id) if a.assigned_to_user_id else "Unknown"
+        )
+        items.append(
+            {
+                "id": f"assign-out-{a.id}",
+                "source": "assignment",
+                "kind": "checkout",
+                "title": "Checked out",
+                "subtitle": f"Assigned to {assignee}",
+                "detail": None,
+                "occurred_at": a.assigned_at.isoformat() if a.assigned_at else "",
+                "actor_id": None,
+                "actor_name": None,
+                "assignment_id": str(a.id),
+                "log_subtype": "assign",
+                "audit_action": None,
+                "changes_json": None,
+            }
+        )
+        if a.returned_at:
+            items.append(
+                {
+                    "id": f"assign-in-{a.id}",
+                    "source": "assignment",
+                    "kind": "return",
+                    "title": "Returned",
+                    "subtitle": f"Previously with {assignee}",
+                    "detail": None,
+                    "occurred_at": a.returned_at.isoformat() if a.returned_at else "",
+                    "actor_id": None,
+                    "actor_name": None,
+                    "assignment_id": str(a.id),
+                    "log_subtype": "return",
+                    "audit_action": None,
+                    "changes_json": None,
+                }
+            )
+
+    audit_rows = (
+        db.query(AuditLog)
+        .filter(AuditLog.entity_type == "fleet_asset", AuditLog.entity_id == asset_id)
+        .order_by(AuditLog.timestamp_utc.desc())
+        .limit(120)
+        .all()
+    )
+    action_labels = {
+        "CREATE": "Vehicle created",
+        "UPDATE": "Vehicle updated",
+        "DELETE": "Vehicle deleted",
+    }
+    for row in audit_rows:
+        act = (row.action or "").upper()
+        title = action_labels.get(act, f"Audit: {row.action}")
+        cf = (row.context or {}).get("changed_fields") if isinstance(row.context, dict) else None
+        subtitle = f"Fields: {', '.join(cf)}" if isinstance(cf, list) and cf else None
+        items.append(
+            {
+                "id": f"audit-{row.id}",
+                "source": "audit",
+                "kind": act.lower() or "audit",
+                "title": title,
+                "subtitle": subtitle,
+                "detail": None,
+                "occurred_at": row.timestamp_utc.isoformat() if row.timestamp_utc else "",
+                "actor_id": str(row.actor_id) if row.actor_id else None,
+                "actor_name": get_user_display(db, row.actor_id) if row.actor_id else None,
+                "assignment_id": None,
+                "log_subtype": None,
+                "audit_action": row.action,
+                "changes_json": row.changes_json,
+            }
+        )
+
+    fleet_logs = (
+        db.query(FleetLog)
+        .filter(FleetLog.fleet_asset_id == asset_id)
+        .order_by(FleetLog.log_date.desc())
+        .all()
+    )
+    for log in fleet_logs:
+        if has_assignments and log.log_type in ("assignment", "return"):
+            continue
+        actor_uid = log.user_id or log.created_by
+        items.append(
+            {
+                "id": f"log-{log.id}",
+                "source": "fleet_log",
+                "kind": log.log_type,
+                "title": log.log_type.replace("_", " ").title(),
+                "subtitle": None,
+                "detail": log.description,
+                "occurred_at": log.log_date.isoformat() if log.log_date else "",
+                "actor_id": str(actor_uid) if actor_uid else None,
+                "actor_name": get_user_display(db, actor_uid) if actor_uid else None,
+                "assignment_id": None,
+                "log_subtype": None,
+                "audit_action": None,
+                "changes_json": None,
+                "odometer_snapshot": log.odometer_snapshot,
+                "hours_snapshot": float(log.hours_snapshot) if log.hours_snapshot is not None else None,
+            }
+        )
+
+    items.sort(key=lambda x: x.get("occurred_at") or "", reverse=True)
+    return {"items": items[:limit]}
+
+
 # ---------- FLEET COMPLIANCE ----------
 @router.get("/assets/{asset_id}/compliance", response_model=List[FleetComplianceRecordRead])
 def get_asset_compliance(
@@ -583,7 +767,8 @@ def create_asset_compliance(
     asset_id: uuid.UUID,
     payload: FleetComplianceRecordCreate,
     db: Session = Depends(get_db),
-    _=Depends(require_permissions("fleet:write"))
+    user=Depends(get_current_user),
+    _=Depends(require_permissions("fleet:write")),
 ):
     """Create a compliance record for a fleet asset"""
     asset = db.query(FleetAsset).filter(FleetAsset.id == asset_id).first()
@@ -594,6 +779,15 @@ def create_asset_compliance(
     db.add(rec)
     db.commit()
     db.refresh(rec)
+    audit_fleet(
+        db,
+        user,
+        entity_type="fleet_compliance_record",
+        entity_id=rec.id,
+        action="CREATE",
+        changes_json={"after": snapshot_compliance(rec)},
+        context={"fleet_asset_id": str(asset_id), "record_type": rec.record_type},
+    )
     return rec
 
 
@@ -602,17 +796,31 @@ def update_compliance(
     record_id: uuid.UUID,
     payload: FleetComplianceRecordUpdate,
     db: Session = Depends(get_db),
-    _=Depends(require_permissions("fleet:write"))
+    user=Depends(get_current_user),
+    _=Depends(require_permissions("fleet:write")),
 ):
     """Update a compliance record"""
     rec = db.query(FleetComplianceRecord).filter(FleetComplianceRecord.id == record_id).first()
     if not rec:
         raise HTTPException(status_code=404, detail="Compliance record not found")
+    before = snapshot_compliance(rec)
     update_data = payload.dict(exclude_unset=True)
     for key, value in update_data.items():
         setattr(rec, key, value)
     db.commit()
     db.refresh(rec)
+    after = snapshot_compliance(rec)
+    diff = compute_diff(before, after)
+    if diff:
+        audit_fleet(
+            db,
+            user,
+            entity_type="fleet_compliance_record",
+            entity_id=rec.id,
+            action="UPDATE",
+            changes_json={"before": before, "after": after},
+            context={"fleet_asset_id": str(rec.fleet_asset_id), "changed_fields": list(diff.keys())},
+        )
     return rec
 
 
@@ -620,14 +828,26 @@ def update_compliance(
 def delete_compliance(
     record_id: uuid.UUID,
     db: Session = Depends(get_db),
-    _=Depends(require_permissions("fleet:write"))
+    user=Depends(get_current_user),
+    _=Depends(require_permissions("fleet:write")),
 ):
     """Delete a compliance record"""
     rec = db.query(FleetComplianceRecord).filter(FleetComplianceRecord.id == record_id).first()
     if not rec:
         raise HTTPException(status_code=404, detail="Compliance record not found")
+    snap = snapshot_compliance(rec)
+    aid = rec.fleet_asset_id
     db.delete(rec)
     db.commit()
+    audit_fleet(
+        db,
+        user,
+        entity_type="fleet_compliance_record",
+        entity_id=record_id,
+        action="DELETE",
+        changes_json={"deleted": snap},
+        context={"fleet_asset_id": str(aid)},
+    )
     return {"message": "Compliance record deleted"}
 
 
@@ -785,6 +1005,15 @@ def create_equipment(
     db.add(new_equipment)
     db.commit()
     db.refresh(new_equipment)
+    audit_fleet(
+        db,
+        user,
+        entity_type="equipment",
+        entity_id=new_equipment.id,
+        action="CREATE",
+        changes_json={"after": snapshot_equipment(new_equipment)},
+        context={"equipment_id": str(new_equipment.id)},
+    )
     return new_equipment
 
 
@@ -793,20 +1022,34 @@ def update_equipment(
     equipment_id: uuid.UUID,
     equipment_update: EquipmentUpdate,
     db: Session = Depends(get_db),
-    _=Depends(require_permissions("equipment:write"))
+    user=Depends(get_current_user),
+    _=Depends(require_permissions("equipment:write")),
 ):
     """Update equipment"""
     equipment = db.query(Equipment).filter(Equipment.id == equipment_id).first()
     if not equipment:
         raise HTTPException(status_code=404, detail="Equipment not found")
-    
+
+    before = snapshot_equipment(equipment)
     update_data = equipment_update.dict(exclude_unset=True)
     for key, value in update_data.items():
         setattr(equipment, key, value)
     equipment.updated_at = datetime.now(timezone.utc)
-    
+
     db.commit()
     db.refresh(equipment)
+    after = snapshot_equipment(equipment)
+    diff = compute_diff(before, after)
+    if diff:
+        audit_fleet(
+            db,
+            user,
+            entity_type="equipment",
+            entity_id=equipment.id,
+            action="UPDATE",
+            changes_json={"before": before, "after": after},
+            context={"equipment_id": str(equipment.id), "changed_fields": list(diff.keys())},
+        )
     return equipment
 
 
@@ -814,16 +1057,28 @@ def update_equipment(
 def delete_equipment(
     equipment_id: uuid.UUID,
     db: Session = Depends(get_db),
-    _=Depends(require_permissions("equipment:write"))
+    user=Depends(get_current_user),
+    _=Depends(require_permissions("equipment:write")),
 ):
     """Delete equipment (soft delete by setting status to retired)"""
     equipment = db.query(Equipment).filter(Equipment.id == equipment_id).first()
     if not equipment:
         raise HTTPException(status_code=404, detail="Equipment not found")
-    
+
+    before = snapshot_equipment(equipment)
     equipment.status = "retired"
     equipment.updated_at = datetime.now(timezone.utc)
     db.commit()
+    db.refresh(equipment)
+    audit_fleet(
+        db,
+        user,
+        entity_type="equipment",
+        entity_id=equipment.id,
+        action="UPDATE",
+        changes_json={"before": before, "after": snapshot_equipment(equipment), "soft_delete": True},
+        context={"equipment_id": str(equipment.id), "note": "status set to retired"},
+    )
     return {"message": "Equipment deleted successfully"}
 
 
@@ -869,9 +1124,22 @@ def checkout_equipment(
         created_by=user.id,
     )
     db.add(log)
-    
+
     db.commit()
     db.refresh(new_checkout)
+    audit_fleet(
+        db,
+        user,
+        entity_type="equipment_checkout",
+        entity_id=new_checkout.id,
+        action="CREATE",
+        changes_json={
+            "equipment_id": str(equipment_id),
+            "checked_out_by_user_id": str(checkout.checked_out_by_user_id),
+            "status": new_checkout.status,
+        },
+        context={"equipment_id": str(equipment_id)},
+    )
     return new_checkout
 
 
@@ -920,9 +1188,18 @@ def checkin_equipment(
         created_by=user.id,
     )
     db.add(log)
-    
+
     db.commit()
     db.refresh(checkout)
+    audit_fleet(
+        db,
+        user,
+        entity_type="equipment_checkout",
+        entity_id=checkout.id,
+        action="UPDATE",
+        changes_json={"equipment_id": str(equipment_id), "status": checkout.status},
+        context={"equipment_id": str(equipment_id)},
+    )
     return checkout
 
 
@@ -1154,6 +1431,19 @@ def delete_user_assets_history(
         db.delete(a)
     
     db.commit()
+    audit_fleet(
+        db,
+        user,
+        entity_type="fleet_operation",
+        entity_id=user_uuid,
+        action="UPDATE",
+        changes_json={
+            "fleet_history_cleared": True,
+            "deleted_checkouts": len(deleted_checkouts),
+            "deleted_assignments": len(deleted_assignments),
+        },
+        context={"target_user_id": str(user_uuid), "note": "Fleet/equipment checkout and assignment history removed"},
+    )
     return {"message": f"Deleted {len(deleted_checkouts)} checkouts and {len(deleted_assignments)} assignments"}
 
 
@@ -1171,16 +1461,26 @@ def delete_equipment_checkout(
     checkout = db.query(EquipmentCheckout).filter(EquipmentCheckout.id == checkout_id).first()
     if not checkout:
         raise HTTPException(status_code=404, detail="Checkout not found")
-    
+
+    eq_id = checkout.equipment_id
     # Reset equipment status if it was checked out
     if checkout.status == "checked_out":
         equipment = db.query(Equipment).filter(Equipment.id == checkout.equipment_id).first()
         if equipment:
             equipment.status = "available"
             equipment.updated_at = datetime.now(timezone.utc)
-    
+
     db.delete(checkout)
     db.commit()
+    audit_fleet(
+        db,
+        user,
+        entity_type="equipment_checkout",
+        entity_id=checkout_id,
+        action="DELETE",
+        changes_json={"equipment_id": str(eq_id)},
+        context={"equipment_id": str(eq_id)},
+    )
     return {"message": "Checkout deleted"}
 
 
@@ -1198,16 +1498,31 @@ def delete_asset_assignment(
     assignment = db.query(AssetAssignment).filter(AssetAssignment.id == assignment_id).first()
     if not assignment:
         raise HTTPException(status_code=404, detail="Assignment not found")
-    
+
+    snap = {
+        "target_type": assignment.target_type,
+        "fleet_asset_id": str(assignment.fleet_asset_id) if assignment.fleet_asset_id else None,
+        "equipment_id": str(assignment.equipment_id) if assignment.equipment_id else None,
+        "assigned_to_user_id": str(assignment.assigned_to_user_id) if assignment.assigned_to_user_id else None,
+    }
     # Reset fleet asset driver if it was assigned and not returned
     if assignment.fleet_asset_id and assignment.returned_at is None:
         asset = db.query(FleetAsset).filter(FleetAsset.id == assignment.fleet_asset_id).first()
         if asset:
             asset.driver_id = None
             asset.updated_at = datetime.now(timezone.utc)
-    
+
     db.delete(assignment)
     db.commit()
+    audit_fleet(
+        db,
+        user,
+        entity_type="asset_assignment",
+        entity_id=assignment_id,
+        action="DELETE",
+        changes_json={"deleted": snap},
+        context=snap,
+    )
     return {"message": "Assignment deleted"}
 
 
@@ -1239,6 +1554,20 @@ def assign_equipment(
     try:
         result = create_assignment_for_equipment_item(equipment_id, payload, user.id, db)
         db.commit()
+        audit_fleet(
+            db,
+            user,
+            entity_type="asset_assignment",
+            entity_id=result.id,
+            action="CREATE",
+            changes_json={
+                "target_type": "equipment",
+                "equipment_id": str(equipment_id),
+                "assigned_to_user_id": str(payload.assigned_to_user_id) if payload.assigned_to_user_id else None,
+                "assigned_to_name": payload.assigned_to_name,
+            },
+            context={"equipment_id": str(equipment_id)},
+        )
         return result
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
@@ -1256,6 +1585,15 @@ def return_equipment(
     try:
         result = return_assignment_for_equipment_item(equipment_id, payload, user.id, db)
         db.commit()
+        audit_fleet(
+            db,
+            user,
+            entity_type="asset_assignment",
+            entity_id=result.id,
+            action="UPDATE",
+            changes_json={"target_type": "equipment", "equipment_id": str(equipment_id), "returned": True},
+            context={"equipment_id": str(equipment_id)},
+        )
         return result
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
@@ -1294,6 +1632,15 @@ def return_equipment_assignment(
     db.add(log)
     db.commit()
     db.refresh(assignment)
+    audit_fleet(
+        db,
+        user,
+        entity_type="equipment_assignment",
+        entity_id=assignment.id,
+        action="UPDATE",
+        changes_json={"equipment_id": str(assignment.equipment_id), "is_active": assignment.is_active},
+        context={"equipment_id": str(assignment.equipment_id)},
+    )
     return assignment
 
 
@@ -1325,6 +1672,20 @@ def assign_fleet_asset(
     try:
         result = create_assignment_for_fleet_asset(asset_id, payload, user.id, db)
         db.commit()
+        audit_fleet(
+            db,
+            user,
+            entity_type="asset_assignment",
+            entity_id=result.id,
+            action="CREATE",
+            changes_json={
+                "target_type": "fleet",
+                "fleet_asset_id": str(asset_id),
+                "assigned_to_user_id": str(payload.assigned_to_user_id) if payload.assigned_to_user_id else None,
+                "assigned_to_name": payload.assigned_to_name,
+            },
+            context={"fleet_asset_id": str(asset_id)},
+        )
         return result
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
@@ -1342,6 +1703,15 @@ def return_fleet_asset(
     try:
         result = return_assignment_for_fleet_asset(asset_id, payload, user.id, db)
         db.commit()
+        audit_fleet(
+            db,
+            user,
+            entity_type="asset_assignment",
+            entity_id=result.id,
+            action="UPDATE",
+            changes_json={"target_type": "fleet", "fleet_asset_id": str(asset_id), "returned": True},
+            context={"fleet_asset_id": str(asset_id)},
+        )
         return result
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
@@ -1385,6 +1755,15 @@ def return_fleet_asset_assignment(
     db.add(log)
     db.commit()
     db.refresh(assignment)
+    audit_fleet(
+        db,
+        user,
+        entity_type="fleet_asset_assignment",
+        entity_id=assignment.id,
+        action="UPDATE",
+        changes_json={"fleet_asset_id": str(assignment.fleet_asset_id), "is_active": assignment.is_active},
+        context={"fleet_asset_id": str(assignment.fleet_asset_id)},
+    )
     return assignment
 
 
@@ -1447,6 +1826,19 @@ def create_inspection_schedule(
         "body_result": body_insp.result if body_insp else None,
         "mechanical_result": mech_insp.result if mech_insp else None,
     })
+    audit_fleet(
+        db,
+        user,
+        entity_type="inspection_schedule",
+        entity_id=schedule.id,
+        action="CREATE",
+        changes_json={
+            "after": snapshot_inspection_schedule(schedule),
+            "body_inspection_id": str(body_insp.id) if body_insp else None,
+            "mechanical_inspection_id": str(mech_insp.id) if mech_insp else None,
+        },
+        context={"fleet_asset_id": str(schedule.fleet_asset_id)},
+    )
     return out
 
 
@@ -1590,17 +1982,31 @@ def update_inspection_schedule(
     schedule_id: uuid.UUID,
     payload: InspectionScheduleUpdate,
     db: Session = Depends(get_db),
+    user=Depends(get_current_user),
     _=Depends(require_permissions("inspections:write")),
 ):
     """Update an inspection schedule (e.g. reschedule, cancel)."""
     schedule = db.query(InspectionSchedule).options(joinedload(InspectionSchedule.fleet_asset)).filter(InspectionSchedule.id == schedule_id).first()
     if not schedule:
         raise HTTPException(status_code=404, detail="Inspection schedule not found")
+    before = snapshot_inspection_schedule(schedule)
     update_data = payload.model_dump(exclude_unset=True)
     for key, value in update_data.items():
         setattr(schedule, key, value)
     db.commit()
     db.refresh(schedule)
+    after = snapshot_inspection_schedule(schedule)
+    diff = compute_diff(before, after)
+    if diff:
+        audit_fleet(
+            db,
+            user,
+            entity_type="inspection_schedule",
+            entity_id=schedule.id,
+            action="UPDATE",
+            changes_json={"before": before, "after": after},
+            context={"fleet_asset_id": str(schedule.fleet_asset_id), "changed_fields": list(diff.keys())},
+        )
     out = InspectionScheduleResponse.model_validate(schedule)
     return out.model_copy(update={"fleet_asset_name": schedule.fleet_asset.name if schedule.fleet_asset else None})
 
@@ -1609,14 +2015,26 @@ def update_inspection_schedule(
 def delete_inspection_schedule(
     schedule_id: uuid.UUID,
     db: Session = Depends(get_db),
+    user=Depends(get_current_user),
     _=Depends(require_roles("admin")),
 ):
     """Permanently delete an inspection schedule and its linked inspections (admin only)."""
     schedule = db.query(InspectionSchedule).filter(InspectionSchedule.id == schedule_id).first()
     if not schedule:
         raise HTTPException(status_code=404, detail="Inspection schedule not found")
+    snap = snapshot_inspection_schedule(schedule)
+    fid = schedule.fleet_asset_id
     db.delete(schedule)
     db.commit()
+    audit_fleet(
+        db,
+        user,
+        entity_type="inspection_schedule",
+        entity_id=schedule_id,
+        action="DELETE",
+        changes_json={"deleted": snap},
+        context={"fleet_asset_id": str(fid)},
+    )
     return {"message": "Inspection schedule deleted"}
 
 
@@ -1900,6 +2318,27 @@ def create_inspection(
     
     db.commit()
     db.refresh(new_inspection)
+    audit_fleet(
+        db,
+        user,
+        entity_type="fleet_inspection",
+        entity_id=new_inspection.id,
+        action="CREATE",
+        changes_json={"after": snapshot_fleet_inspection(new_inspection)},
+        context={"fleet_asset_id": str(new_inspection.fleet_asset_id)},
+    )
+    if new_inspection.auto_generated_work_order_id:
+        wo = db.query(WorkOrder).filter(WorkOrder.id == new_inspection.auto_generated_work_order_id).first()
+        if wo:
+            audit_fleet(
+                db,
+                user,
+                entity_type="work_order",
+                entity_id=wo.id,
+                action="CREATE",
+                changes_json={"after": snapshot_work_order(wo), "origin": "inspection_fail"},
+                context={"fleet_inspection_id": str(new_inspection.id), "fleet_asset_id": str(new_inspection.fleet_asset_id)},
+            )
     return new_inspection
 
 
@@ -1915,7 +2354,9 @@ def update_inspection(
     inspection = db.query(FleetInspection).filter(FleetInspection.id == inspection_id).first()
     if not inspection:
         raise HTTPException(status_code=404, detail="Inspection not found")
-    
+
+    had_work_order = inspection.auto_generated_work_order_id
+    before = snapshot_fleet_inspection(inspection)
     update_data = inspection_update.model_dump(exclude_unset=True)
     for key, value in update_data.items():
         setattr(inspection, key, value)
@@ -1940,6 +2381,30 @@ def update_inspection(
     
     db.commit()
     db.refresh(inspection)
+    after = snapshot_fleet_inspection(inspection)
+    diff = compute_diff(before, after)
+    if diff:
+        audit_fleet(
+            db,
+            user,
+            entity_type="fleet_inspection",
+            entity_id=inspection.id,
+            action="UPDATE",
+            changes_json={"before": before, "after": after},
+            context={"fleet_asset_id": str(inspection.fleet_asset_id), "changed_fields": list(diff.keys())},
+        )
+    if not had_work_order and inspection.auto_generated_work_order_id:
+        wo = db.query(WorkOrder).filter(WorkOrder.id == inspection.auto_generated_work_order_id).first()
+        if wo:
+            audit_fleet(
+                db,
+                user,
+                entity_type="work_order",
+                entity_id=wo.id,
+                action="CREATE",
+                changes_json={"after": snapshot_work_order(wo), "origin": "inspection_update_fail"},
+                context={"fleet_inspection_id": str(inspection.id), "fleet_asset_id": str(inspection.fleet_asset_id)},
+            )
     return inspection
 
 
@@ -1966,6 +2431,15 @@ def generate_work_order_from_inspection(
     inspection.auto_generated_work_order_id = wo.id
     db.commit()
     db.refresh(wo)
+    audit_fleet(
+        db,
+        user,
+        entity_type="work_order",
+        entity_id=wo.id,
+        action="CREATE",
+        changes_json={"after": snapshot_work_order(wo), "origin": "manual_generate_from_inspection"},
+        context={"fleet_inspection_id": str(inspection_id), "fleet_asset_id": str(inspection.fleet_asset_id)},
+    )
     return wo
 
 
@@ -1973,15 +2447,27 @@ def generate_work_order_from_inspection(
 def delete_inspection(
     inspection_id: uuid.UUID,
     db: Session = Depends(get_db),
+    user=Depends(get_current_user),
     _=Depends(require_roles("admin")),
 ):
     """Permanently delete an inspection (admin only). Unlinks any work orders that originated from it."""
     inspection = db.query(FleetInspection).filter(FleetInspection.id == inspection_id).first()
     if not inspection:
         raise HTTPException(status_code=404, detail="Inspection not found")
+    snap = snapshot_fleet_inspection(inspection)
+    fid = inspection.fleet_asset_id
     db.query(WorkOrder).filter(WorkOrder.origin_id == inspection_id).update({WorkOrder.origin_id: None})
     db.delete(inspection)
     db.commit()
+    audit_fleet(
+        db,
+        user,
+        entity_type="fleet_inspection",
+        entity_id=inspection_id,
+        action="DELETE",
+        changes_json={"deleted": snap},
+        context={"fleet_asset_id": str(fid)},
+    )
     return {"message": "Inspection deleted"}
 
 
@@ -2225,6 +2711,15 @@ def create_work_order(
     
     db.commit()
     db.refresh(wo)
+    audit_fleet(
+        db,
+        user,
+        entity_type="work_order",
+        entity_id=wo.id,
+        action="CREATE",
+        changes_json={"after": snapshot_work_order(wo)},
+        context={"entity_type": wo.entity_type, "entity_id": str(wo.entity_id)},
+    )
     return wo
 
 
@@ -2241,6 +2736,7 @@ def update_work_order(
     if not wo:
         raise HTTPException(status_code=404, detail="Work order not found")
 
+    before_wo = snapshot_work_order(wo)
     old_status = wo.status
     old_costs = (wo.costs or {}).copy()
     if isinstance(old_costs.get("labor"), list):
@@ -2304,6 +2800,18 @@ def update_work_order(
 
     db.commit()
     db.refresh(wo)
+    after_wo = snapshot_work_order(wo)
+    diff_wo = compute_diff(before_wo, after_wo)
+    if diff_wo:
+        audit_fleet(
+            db,
+            user,
+            entity_type="work_order",
+            entity_id=wo.id,
+            action="UPDATE",
+            changes_json={"before": before_wo, "after": after_wo},
+            context={"work_order_number": wo.work_order_number, "changed_fields": list(diff_wo.keys())},
+        )
     return wo
 
 
@@ -2320,6 +2828,7 @@ def update_work_order_status(
     if not wo:
         raise HTTPException(status_code=404, detail="Work order not found")
 
+    before_flow = snapshot_work_order_flow(wo)
     old_status = wo.status
     wo.status = status.value
     if status == WorkOrderStatus.closed and not wo.closed_at:
@@ -2334,6 +2843,18 @@ def update_work_order_status(
 
     db.commit()
     db.refresh(wo)
+    after_flow = snapshot_work_order_flow(wo)
+    diff_st = compute_diff(before_flow, after_flow)
+    if diff_st:
+        audit_fleet(
+            db,
+            user,
+            entity_type="work_order",
+            entity_id=wo.id,
+            action="UPDATE",
+            changes_json={"before": before_flow, "after": after_flow},
+            context={"work_order_number": wo.work_order_number, "via": "status_endpoint"},
+        )
     return wo
 
 
@@ -2349,6 +2870,7 @@ def work_order_check_in(
     wo = db.query(WorkOrder).filter(WorkOrder.id == work_order_id).first()
     if not wo:
         raise HTTPException(status_code=404, detail="Work order not found")
+    before_flow = snapshot_work_order_flow(wo)
     if body.get("estimated_duration_minutes") is not None:
         wo.estimated_duration_minutes = int(body["estimated_duration_minutes"])
     scheduled_end_at = body.get("scheduled_end_at")
@@ -2398,6 +2920,18 @@ def work_order_check_in(
 
     db.commit()
     db.refresh(wo)
+    after_flow = snapshot_work_order_flow(wo)
+    diff_ci = compute_diff(before_flow, after_flow)
+    if diff_ci:
+        audit_fleet(
+            db,
+            user,
+            entity_type="work_order",
+            entity_id=wo.id,
+            action="UPDATE",
+            changes_json={"before": before_flow, "after": after_flow},
+            context={"work_order_number": wo.work_order_number, "via": "check_in"},
+        )
     return wo
 
 
@@ -2413,6 +2947,7 @@ def work_order_check_out(
     wo = db.query(WorkOrder).filter(WorkOrder.id == work_order_id).first()
     if not wo:
         raise HTTPException(status_code=404, detail="Work order not found")
+    before_flow = snapshot_work_order_flow(wo)
     old_status = wo.status
     wo.status = "closed"
     if not wo.closed_at:
@@ -2444,11 +2979,23 @@ def work_order_check_out(
         _log_work_order_activity(
             db, work_order_id, "status_changed",
             details={"old_status": old_status, "new_status": wo.status},
-            created_by=user.id,
-        )
+        created_by=user.id,
+    )
 
     db.commit()
     db.refresh(wo)
+    after_flow = snapshot_work_order_flow(wo)
+    diff_co = compute_diff(before_flow, after_flow)
+    if diff_co:
+        audit_fleet(
+            db,
+            user,
+            entity_type="work_order",
+            entity_id=wo.id,
+            action="UPDATE",
+            changes_json={"before": before_flow, "after": after_flow},
+            context={"work_order_number": wo.work_order_number, "via": "check_out"},
+        )
     return wo
 
 
@@ -2464,13 +3011,26 @@ def assign_work_order(
     wo = db.query(WorkOrder).filter(WorkOrder.id == work_order_id).first()
     if not wo:
         raise HTTPException(status_code=404, detail="Work order not found")
-    
+
+    before_flow = snapshot_work_order_flow(wo)
     wo.assigned_to_user_id = assigned_to
     wo.assigned_by_user_id = user.id
     wo.updated_at = datetime.now(timezone.utc)
-    
+
     db.commit()
     db.refresh(wo)
+    after_flow = snapshot_work_order_flow(wo)
+    diff_as = compute_diff(before_flow, after_flow)
+    if diff_as:
+        audit_fleet(
+            db,
+            user,
+            entity_type="work_order",
+            entity_id=wo.id,
+            action="UPDATE",
+            changes_json={"before": before_flow, "after": after_flow},
+            context={"work_order_number": wo.work_order_number, "via": "assign"},
+        )
     return wo
 
 
@@ -2478,14 +3038,25 @@ def assign_work_order(
 def delete_work_order(
     work_order_id: uuid.UUID,
     db: Session = Depends(get_db),
+    user=Depends(get_current_user),
     _=Depends(require_roles("admin")),
 ):
     """Permanently delete a work order (admin only)."""
     wo = db.query(WorkOrder).filter(WorkOrder.id == work_order_id).first()
     if not wo:
         raise HTTPException(status_code=404, detail="Work order not found")
+    snap = snapshot_work_order(wo)
     db.delete(wo)
     db.commit()
+    audit_fleet(
+        db,
+        user,
+        entity_type="work_order",
+        entity_id=work_order_id,
+        action="DELETE",
+        changes_json={"deleted": snap},
+        context={"work_order_number": snap.get("work_order_number")},
+    )
     return {"message": "Work order deleted"}
 
 
@@ -2634,6 +3205,20 @@ def attach_work_order_file(
     )
     db.commit()
     db.refresh(row)
+    audit_fleet(
+        db,
+        user,
+        entity_type="work_order_file",
+        entity_id=row.id,
+        action="CREATE",
+        changes_json={
+            "work_order_id": str(work_order_id),
+            "category": category,
+            "original_name": original_name or fo.original_name,
+            "file_object_id": str(fo_id),
+        },
+        context={"work_order_id": str(work_order_id)},
+    )
     fo = db.query(FileObject).filter(FileObject.id == fo_id).first()
     return _work_order_file_item(row, fo) if fo else {"id": str(row.id), "file_object_id": file_object_id, "category": category, "original_name": original_name, "is_legacy": False}
 
@@ -2651,6 +3236,7 @@ def update_work_order_file(
     worf = db.query(WorkOrderFile).filter(WorkOrderFile.id == file_id, WorkOrderFile.work_order_id == work_order_id).first()
     if not worf:
         raise HTTPException(status_code=404, detail="File not found")
+    before_f = {"category": worf.category, "original_name": worf.original_name}
     if category is not None and category not in WORK_ORDER_FILE_CATEGORIES:
         raise HTTPException(status_code=400, detail=f"category must be one of: {WORK_ORDER_FILE_CATEGORIES}")
     if category is not None:
@@ -2659,6 +3245,18 @@ def update_work_order_file(
         worf.original_name = original_name
     db.commit()
     db.refresh(worf)
+    after_f = {"category": worf.category, "original_name": worf.original_name}
+    diff_f = compute_diff(before_f, after_f)
+    if diff_f:
+        audit_fleet(
+            db,
+            user,
+            entity_type="work_order_file",
+            entity_id=worf.id,
+            action="UPDATE",
+            changes_json={"before": before_f, "after": after_f},
+            context={"work_order_id": str(work_order_id)},
+        )
     fo = db.query(FileObject).filter(FileObject.id == worf.file_object_id).first()
     return _work_order_file_item(worf, fo) if fo else {"id": str(worf.id), "file_object_id": str(worf.file_object_id), "category": worf.category, "original_name": worf.original_name, "is_legacy": False}
 
@@ -2683,6 +3281,15 @@ def delete_work_order_legacy_file(
             wo.documents = [x for x in wo.documents if str(x) != fid_str]
             _log_work_order_activity(db, work_order_id, "file_removed", details={"category": "outros", "file_object_id": fid_str}, created_by=user.id)
             db.commit()
+            audit_fleet(
+                db,
+                user,
+                entity_type="work_order",
+                entity_id=work_order_id,
+                action="UPDATE",
+                changes_json={"legacy_file_removed": True, "category": "outros", "file_object_id": fid_str},
+                context={"work_order_id": str(work_order_id)},
+            )
             return {"message": "File removed"}
     if category == "photos" and wo.photos:
         if isinstance(wo.photos, list):
@@ -2693,6 +3300,15 @@ def delete_work_order_legacy_file(
             wo.photos = {"before": before, "after": after}
         _log_work_order_activity(db, work_order_id, "file_removed", details={"category": "photos", "file_object_id": fid_str}, created_by=user.id)
         db.commit()
+        audit_fleet(
+            db,
+            user,
+            entity_type="work_order",
+            entity_id=work_order_id,
+            action="UPDATE",
+            changes_json={"legacy_file_removed": True, "category": "photos", "file_object_id": fid_str},
+            context={"work_order_id": str(work_order_id)},
+        )
         return {"message": "File removed"}
     raise HTTPException(status_code=404, detail="File not found")
 
@@ -2709,8 +3325,18 @@ def delete_work_order_file(
     if worf:
         details = {"category": worf.category, "original_name": worf.original_name}
         _log_work_order_activity(db, work_order_id, "file_removed", details=details, created_by=user.id)
+        wid = worf.id
         db.delete(worf)
         db.commit()
+        audit_fleet(
+            db,
+            user,
+            entity_type="work_order_file",
+            entity_id=wid,
+            action="DELETE",
+            changes_json={"deleted": details},
+            context={"work_order_id": str(work_order_id)},
+        )
         return {"message": "File removed"}
     raise HTTPException(status_code=404, detail="File not found")
 

@@ -15,6 +15,8 @@ export default function Users(){
   const limit = 24; // 4 columns * 6 rows = 24 items per page
   const queryClient = useQueryClient();
   const [isSyncing, setIsSyncing] = useState(false);
+  const [bambooSyncModal, setBambooSyncModal] = useState<'photos' | 'documents' | null>(null);
+  const [bambooForceReplace, setBambooForceReplace] = useState(false);
 
   const [viewMode, setViewMode] = useState<'cards' | 'list'>(() => {
     const urlView = searchParams.get('view');
@@ -33,6 +35,15 @@ export default function Users(){
     setSearchParams(params, { replace: true });
     localStorage.setItem('users-view-mode', viewMode);
   }, [viewMode, searchParams, setSearchParams]);
+
+  useEffect(() => {
+    if (!bambooSyncModal) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setBambooSyncModal(null);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [bambooSyncModal]);
   
   // Build query params
   const queryParams = useMemo(() => {
@@ -86,6 +97,7 @@ export default function Users(){
     return perms.includes('hr:users:view:general') || 
            perms.includes('hr:users:view:timesheet') || 
            perms.includes('hr:users:view:permissions') ||
+           perms.includes('hr:users:view:activity') ||
            perms.includes('users:read'); // Legacy permission
   }, [me]);
   
@@ -99,24 +111,65 @@ export default function Users(){
     setPage(1);
   };
 
-  // Sync all from BambooHR (updates everyone)
+  // Full sync: profiles + photos + visas + emergency contacts
   const handleSyncBambooHR = async () => {
-    if (!confirm('Sync all contacts from BambooHR? This may take a few minutes.')) {
+    if (
+      !confirm(
+        'Run full BambooHR sync? This updates every matched user (profile fields, photos, visas, emergency contacts) and may take several minutes.'
+      )
+    ) {
       return;
     }
     setIsSyncing(true);
     try {
-      await api('POST', '/users/sync-bamboohr-all', {
+      const res = await api<{ message?: string }>('POST', '/users/sync-bamboohr-all', {
+        mode: 'full',
         update_existing: true,
         include_photos: true,
-        force_update_photos: false
+        force_update_photos: false,
       });
-      toast.success('Sync started. Check server logs for details.');
+      toast.success(res?.message || 'Full sync completed. Check server logs for details.');
       setTimeout(() => {
         queryClient.invalidateQueries({ queryKey: ['users'] });
       }, 2000);
     } catch (error: any) {
       toast.error(error?.message || 'Failed to sync from BambooHR');
+    } finally {
+      setIsSyncing(false);
+    }
+  };
+
+  const openBambooModal = (kind: 'photos' | 'documents') => {
+    setBambooForceReplace(false);
+    setBambooSyncModal(kind);
+  };
+
+  const confirmBambooSync = async () => {
+    const kind = bambooSyncModal;
+    if (!kind) return;
+    const force = bambooForceReplace;
+    setBambooSyncModal(null);
+    setIsSyncing(true);
+    try {
+      const body =
+        kind === 'photos'
+          ? { mode: 'photos' as const, force_update_photos: force }
+          : { mode: 'documents' as const, force_update_documents: force };
+      const res = await api<{ message?: string }>('POST', '/users/sync-bamboohr-all', body);
+      toast.success(
+        res?.message ||
+          (kind === 'photos'
+            ? 'Photo sync completed. Check server logs for details.'
+            : 'Document sync completed. Check server logs for details.')
+      );
+      setTimeout(() => {
+        queryClient.invalidateQueries({ queryKey: ['users'] });
+      }, 2000);
+    } catch (error: any) {
+      toast.error(
+        error?.message ||
+          (kind === 'photos' ? 'Failed to sync photos from BambooHR' : 'Failed to sync documents from BambooHR')
+      );
     } finally {
       setIsSyncing(false);
     }
@@ -129,12 +182,13 @@ export default function Users(){
     }
     setIsSyncing(true);
     try {
-      await api('POST', '/users/sync-bamboohr-all', {
+      const res = await api<{ message?: string }>('POST', '/users/sync-bamboohr-all', {
+        mode: 'full',
         update_existing: false,
         include_photos: true,
-        force_update_photos: false
+        force_update_photos: false,
       });
-      toast.success('Import started. Check server logs for details.');
+      toast.success(res?.message || 'Import completed. Check server logs for details.');
       setTimeout(() => {
         queryClient.invalidateQueries({ queryKey: ['users'] });
       }, 2000);
@@ -164,24 +218,42 @@ export default function Users(){
           <div className="flex items-center gap-2">
             {/* BambooHR sync buttons - system admin only */}
             {isSystemAdmin && (
-              <>
+              <div className="flex flex-wrap items-center justify-end gap-2">
                 <button
                   onClick={handleImportNewOnly}
                   disabled={isSyncing}
                   className="px-3 py-1.5 text-xs bg-emerald-600 text-white rounded-lg font-medium hover:bg-emerald-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                   title="Import only users that do not exist in MKHub yet"
                 >
-                  {isSyncing ? 'Importing...' : 'Import new only'}
+                  {isSyncing ? 'Working...' : 'Import new only'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => openBambooModal('photos')}
+                  disabled={isSyncing}
+                  className="px-3 py-1.5 text-xs bg-sky-600 text-white rounded-lg font-medium hover:bg-sky-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  title="Profile photos only — walks the BambooHR directory; does not update profile fields or import file cabinet documents"
+                >
+                  {isSyncing ? 'Working...' : 'Sync photos'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => openBambooModal('documents')}
+                  disabled={isSyncing}
+                  className="px-3 py-1.5 text-xs bg-violet-600 text-white rounded-lg font-medium hover:bg-violet-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  title="BambooHR file cabinet documents only — no profile photo or field updates"
+                >
+                  {isSyncing ? 'Working...' : 'Sync documents'}
                 </button>
                 <button
                   onClick={handleSyncBambooHR}
                   disabled={isSyncing}
                   className="px-3 py-1.5 text-xs bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                  title="Sync all contacts from BambooHR (updates everyone)"
+                  title="Full employee sync: profile fields, photos, visas, and emergency contacts"
                 >
-                  {isSyncing ? 'Syncing...' : 'Sync BambooHR'}
+                  {isSyncing ? 'Working...' : 'Sync BambooHR'}
                 </button>
-              </>
+              </div>
             )}
             {canInviteUser && (
               <button
@@ -452,6 +524,73 @@ export default function Users(){
       )}
       
       <InviteUserModal isOpen={showInviteModal} onClose={() => setShowInviteModal(false)} />
+
+      {bambooSyncModal && (
+        <div
+          className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-black/40"
+          role="presentation"
+          onClick={() => setBambooSyncModal(null)}
+        >
+          <div
+            className="bg-white rounded-xl shadow-xl max-w-md w-full p-5 border border-gray-200"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="bamboo-sync-modal-title"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3 id="bamboo-sync-modal-title" className="text-base font-semibold text-gray-900">
+              {bambooSyncModal === 'photos' ? 'Sync photos from BambooHR' : 'Sync documents from BambooHR'}
+            </h3>
+            <p className="text-sm text-gray-600 mt-2 leading-relaxed">
+              {bambooSyncModal === 'photos'
+                ? 'Runs through every employee in the BambooHR directory and updates MKHub profile photos where a user is matched. This can take several minutes.'
+                : 'Imports file cabinet documents from BambooHR for each matched user. New files are added; existing imports are skipped unless you choose to replace them below.'}
+            </p>
+            <label className="flex items-start gap-3 mt-4 cursor-pointer rounded-lg border border-gray-200 bg-gray-50 px-3 py-3">
+              <input
+                type="checkbox"
+                checked={bambooForceReplace}
+                onChange={(e) => setBambooForceReplace(e.target.checked)}
+                className="mt-0.5 rounded border-gray-300 text-sky-600 focus:ring-sky-500"
+              />
+              <span className="text-sm text-gray-800">
+                {bambooSyncModal === 'photos' ? (
+                  <>
+                    <span className="font-medium">Replace existing profile photos</span>
+                    <span className="block text-gray-600 mt-0.5">
+                      When unchecked, users who already have a photo are skipped. When checked, photos are re-downloaded from BambooHR and overwritten.
+                    </span>
+                  </>
+                ) : (
+                  <>
+                    <span className="font-medium">Replace documents already imported</span>
+                    <span className="block text-gray-600 mt-0.5">
+                      When unchecked, each Bamboo file ID is imported at most once. When checked, existing imports are removed and re-downloaded from BambooHR.
+                    </span>
+                  </>
+                )}
+              </span>
+            </label>
+            <div className="flex justify-end gap-2 mt-5">
+              <button
+                type="button"
+                onClick={() => setBambooSyncModal(null)}
+                className="px-3 py-2 text-sm font-medium text-gray-700 rounded-lg border border-gray-200 hover:bg-gray-50"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => void confirmBambooSync()}
+                disabled={isSyncing}
+                className="px-3 py-2 text-sm font-semibold text-white rounded-lg bg-gray-900 hover:bg-gray-800 disabled:opacity-50"
+              >
+                Start sync
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

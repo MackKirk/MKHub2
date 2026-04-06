@@ -28,7 +28,7 @@ const IMPLEMENTED_PERMISSIONS = new Set([
   "hr:access",
   "hr:users:read", "hr:users:write",
   "hr:users:view:general", "hr:users:view:job:compensation", "hr:users:edit:general",
-  "hr:users:view:timesheet", "hr:users:edit:timesheet", "hr:users:view:permissions", "hr:users:edit:permissions",
+  "hr:users:view:timesheet", "hr:users:edit:timesheet", "hr:users:view:permissions", "hr:users:view:activity", "hr:users:edit:permissions",
   "hr:attendance:read", "hr:attendance:write",
   "hr:community:read", "hr:community:write",
   "hr:reviews:admin",
@@ -513,7 +513,7 @@ const UserPermissions = forwardRef<UserPermissionsRef, { userId: string; onDirty
       const newValue = !prev[key];
       
       // Check dependencies for view permissions
-      if (key === 'hr:users:view:general' || key === 'hr:users:view:timesheet' || key === 'hr:users:view:permissions') {
+      if (key === 'hr:users:view:general' || key === 'hr:users:view:timesheet' || key === 'hr:users:view:permissions' || key === 'hr:users:view:activity') {
         // Requires hr:users:read
         if (newValue && !prev['hr:users:read']) {
           toast.error('This permission requires "View Users List" to be enabled first');
@@ -658,6 +658,7 @@ const UserPermissions = forwardRef<UserPermissionsRef, { userId: string; onDirty
           newPerms['hr:users:view:job:compensation'] = false;
           newPerms['hr:users:view:timesheet'] = false;
           newPerms['hr:users:view:permissions'] = false;
+          newPerms['hr:users:view:activity'] = false;
           newPerms['hr:users:edit:general'] = false;
           newPerms['hr:users:edit:timesheet'] = false;
           newPerms['hr:users:edit:permissions'] = false;
@@ -708,7 +709,7 @@ const UserPermissions = forwardRef<UserPermissionsRef, { userId: string; onDirty
   // Helper function to check if a permission can be enabled (for both view and edit permissions)
   const canEnableEditPermission = (permKey: string, permissions: Record<string, boolean>): boolean => {
     // View permissions require hr:users:read
-    if (permKey === 'hr:users:view:general' || permKey === 'hr:users:view:timesheet' || permKey === 'hr:users:view:permissions') {
+    if (permKey === 'hr:users:view:general' || permKey === 'hr:users:view:timesheet' || permKey === 'hr:users:view:permissions' || permKey === 'hr:users:view:activity') {
       return !!permissions['hr:users:read'];
     }
     // Job compensation view requires hr:users:read and hr:users:view:general
@@ -2260,10 +2261,378 @@ function UserLabel({ id, fallback }:{ id:string, fallback:string }){
   return <>{label}</>;
 }
 
+const USER_ACTIVITY_LOG_TZ = 'America/Vancouver';
+
+function parseUtcForUserActivity(iso: string): Date {
+  const s = iso.trim();
+  if (!s) return new Date(NaN);
+  if (/[zZ]$|[+-]\d{2}:?\d{2}$/.test(s)) return new Date(s);
+  const normalized = s.includes('T') ? s : s.replace(' ', 'T');
+  return new Date(normalized.endsWith('Z') ? normalized : `${normalized}Z`);
+}
+
+function formatUserActivityTime(iso: string): string {
+  const d = parseUtcForUserActivity(iso);
+  if (Number.isNaN(d.getTime())) return iso;
+  return new Intl.DateTimeFormat('en-CA', {
+    timeZone: USER_ACTIVITY_LOG_TZ,
+    dateStyle: 'short',
+    timeStyle: 'medium',
+  }).format(d);
+}
+
+type ActivityPaginated<T> = {
+  items: T[];
+  total: number;
+  page: number;
+  page_size: number;
+  total_pages: number;
+};
+
+type UserActivityLogResponse = {
+  last_login_at: string | null;
+  logins: ActivityPaginated<{
+    id: string;
+    timestamp_utc: string;
+    title: string;
+    path: string | null;
+    request_id: string | null;
+  }>;
+  audit: ActivityPaginated<{
+    id: string;
+    timestamp_utc: string;
+    entity_type: string;
+    entity_id: string;
+    entity_display: string | null;
+    action: string;
+    source: string | null;
+  }>;
+};
+
+type LoginActivityRow = UserActivityLogResponse['logins']['items'][number];
+
+type AuditActivityDetail = {
+  id: string;
+  timestamp_utc: string;
+  entity_type: string;
+  entity_id: string;
+  entity_display: string | null;
+  action: string;
+  actor_id: string | null;
+  actor_name: string | null;
+  actor_role: string | null;
+  source: string | null;
+  changes_json: Record<string, unknown> | unknown[] | null;
+  context: Record<string, unknown> | null;
+};
+
+function activityAuditTitle(row: UserActivityLogResponse['audit']['items'][0]): string {
+  const label = row.entity_display || row.entity_type.replace(/_/g, ' ');
+  return `${row.action} · ${label}`;
+}
+
+function ActivityPager({
+  page,
+  totalPages,
+  total,
+  onPrev,
+  onNext,
+}: {
+  page: number;
+  totalPages: number;
+  total: number;
+  onPrev: () => void;
+  onNext: () => void;
+}) {
+  if (total <= 0) return null;
+  return (
+    <div className="flex items-center justify-between gap-2 mt-2 text-[10px] text-gray-500">
+      <span>
+        Page {page} of {Math.max(totalPages, 1)} · {total} total
+      </span>
+      <div className="flex gap-1">
+        <button
+          type="button"
+          disabled={page <= 1}
+          onClick={onPrev}
+          className="px-2 py-0.5 rounded border border-gray-200 bg-white hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed"
+        >
+          Prev
+        </button>
+        <button
+          type="button"
+          disabled={totalPages <= 0 ? true : page >= totalPages}
+          onClick={onNext}
+          className="px-2 py-0.5 rounded border border-gray-200 bg-white hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed"
+        >
+          Next
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function UserActivityLogTab({ userId }: { userId: string }) {
+  const [loginsPage, setLoginsPage] = useState(1);
+  const [auditPage, setAuditPage] = useState(1);
+  const pageSize = 15;
+
+  const [loginModal, setLoginModal] = useState<LoginActivityRow | null>(null);
+  const [auditModalId, setAuditModalId] = useState<string | null>(null);
+
+  const { data, isLoading, error } = useQuery({
+    queryKey: ['user-activity-log', userId, loginsPage, auditPage, pageSize],
+    queryFn: () =>
+      api<UserActivityLogResponse>(
+        'GET',
+        `/users/${encodeURIComponent(userId)}/activity-log?logins_page=${loginsPage}&logins_page_size=${pageSize}&audit_page=${auditPage}&audit_page_size=${pageSize}`,
+      ),
+    enabled: !!userId,
+  });
+
+  useEffect(() => {
+    if (!data) return;
+    if (data.logins.total_pages > 0 && loginsPage > data.logins.total_pages) {
+      setLoginsPage(data.logins.page);
+    }
+    if (data.audit.total_pages > 0 && auditPage > data.audit.total_pages) {
+      setAuditPage(data.audit.page);
+    }
+  }, [data, loginsPage, auditPage]);
+
+  const { data: auditDetail, isLoading: auditDetailLoading } = useQuery({
+    queryKey: ['user-activity-audit-detail', userId, auditModalId],
+    queryFn: () =>
+      api<AuditActivityDetail>(
+        'GET',
+        `/users/${encodeURIComponent(userId)}/activity-log/audit/${encodeURIComponent(auditModalId!)}`,
+      ),
+    enabled: !!userId && !!auditModalId,
+  });
+
+  if (isLoading) {
+    return <div className="h-24 animate-pulse bg-gray-100 rounded-lg" />;
+  }
+  if (error) {
+    return (
+      <div className="text-xs text-red-600 py-4">
+        Could not load activity. Check that you have the &quot;View Activity Tab&quot; permission.
+      </div>
+    );
+  }
+  if (!data) return null;
+
+  const lg = data.logins;
+  const au = data.audit;
+
+  return (
+    <div className="space-y-5 pb-16 max-w-3xl">
+      <div className="rounded-lg border border-gray-200 bg-gray-50/80 px-3 py-2">
+        <div className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide">Last sign-in</div>
+        <div className="text-xs text-gray-900 mt-0.5">{data.last_login_at ? formatUserActivityTime(data.last_login_at) : '—'}</div>
+      </div>
+
+      <section>
+        <h3 className="text-xs font-semibold text-gray-800 mb-2">Sign-ins</h3>
+        {lg.total === 0 ? (
+          <p className="text-[11px] text-gray-500">No sign-in events recorded yet.</p>
+        ) : (
+          <>
+            <div className="rounded border border-gray-200 divide-y divide-gray-100 bg-white" role="list">
+              {lg.items.map((row) => (
+                <button
+                  key={row.id}
+                  type="button"
+                  role="listitem"
+                  onClick={() => setLoginModal(row)}
+                  className="w-full flex items-center px-2 py-1.5 min-h-[2rem] text-left hover:bg-gray-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-brand-red/35"
+                >
+                  <div className="flex-1 min-w-0">
+                    <div className="text-[11px] text-gray-900 truncate">{row.title}</div>
+                    <div className="text-[10px] text-gray-500 truncate">{formatUserActivityTime(row.timestamp_utc)}</div>
+                  </div>
+                </button>
+              ))}
+            </div>
+            <ActivityPager
+              page={lg.page}
+              totalPages={lg.total_pages}
+              total={lg.total}
+              onPrev={() => setLoginsPage((p) => Math.max(1, p - 1))}
+              onNext={() => setLoginsPage((p) => (lg.total_pages ? Math.min(lg.total_pages, p + 1) : p))}
+            />
+          </>
+        )}
+      </section>
+
+      <section>
+        <h3 className="text-xs font-semibold text-gray-800 mb-2">Audit (actions in the system)</h3>
+        {au.total === 0 ? (
+          <p className="text-[11px] text-gray-500">No audit entries for this user.</p>
+        ) : (
+          <>
+            <div className="rounded border border-gray-200 divide-y divide-gray-100 bg-white" role="list">
+              {au.items.map((row) => (
+                <button
+                  key={row.id}
+                  type="button"
+                  role="listitem"
+                  onClick={() => setAuditModalId(row.id)}
+                  className="w-full flex items-center px-2 py-1.5 min-h-[2rem] text-left hover:bg-gray-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-brand-red/35"
+                >
+                  <div className="flex-1 min-w-0">
+                    <div className="text-[11px] text-gray-900 truncate" title={activityAuditTitle(row)}>
+                      {activityAuditTitle(row)}
+                    </div>
+                    <div className="text-[10px] text-gray-500 truncate">{formatUserActivityTime(row.timestamp_utc)}</div>
+                  </div>
+                </button>
+              ))}
+            </div>
+            <ActivityPager
+              page={au.page}
+              totalPages={au.total_pages}
+              total={au.total}
+              onPrev={() => setAuditPage((p) => Math.max(1, p - 1))}
+              onNext={() => setAuditPage((p) => (au.total_pages ? Math.min(au.total_pages, p + 1) : p))}
+            />
+          </>
+        )}
+      </section>
+
+      {loginModal ? (
+        <OverlayPortal>
+          <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
+            <div className="bg-white rounded-lg shadow-lg w-full max-w-md max-h-[85vh] overflow-hidden flex flex-col">
+              <div className="px-3 py-2 border-b flex justify-between items-center">
+                <span className="text-xs font-semibold text-gray-900">Sign-in</span>
+                <button
+                  type="button"
+                  className="text-gray-500 hover:text-gray-800 w-7 h-7 rounded hover:bg-gray-100"
+                  aria-label="Close"
+                  onClick={() => setLoginModal(null)}
+                >
+                  ×
+                </button>
+              </div>
+              <div className="p-3 overflow-y-auto text-[11px] space-y-2 text-gray-700">
+                <div>
+                  <span className="text-gray-500">Time (Vancouver)</span>
+                  <div className="font-mono">{formatUserActivityTime(loginModal.timestamp_utc)}</div>
+                </div>
+                <div>
+                  <span className="text-gray-500">Path</span>
+                  <div className="font-mono break-all">{loginModal.path || '—'}</div>
+                </div>
+                {loginModal.request_id ? (
+                  <div>
+                    <span className="text-gray-500">Request ID</span>
+                    <div className="font-mono break-all">{loginModal.request_id}</div>
+                  </div>
+                ) : null}
+              </div>
+              <div className="px-3 py-2 border-t bg-gray-50 flex justify-end">
+                <button
+                  type="button"
+                  onClick={() => setLoginModal(null)}
+                  className="text-xs px-3 py-1.5 rounded border border-gray-300 bg-white hover:bg-gray-50"
+                >
+                  Close
+                </button>
+              </div>
+            </div>
+          </div>
+        </OverlayPortal>
+      ) : null}
+
+      {auditModalId ? (
+        <OverlayPortal>
+          <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
+            <div className="bg-white rounded-lg shadow-lg w-full max-w-lg max-h-[85vh] overflow-hidden flex flex-col">
+              <div className="px-3 py-2 border-b flex justify-between items-center">
+                <span className="text-xs font-semibold text-gray-900">Audit action</span>
+                <button
+                  type="button"
+                  className="text-gray-500 hover:text-gray-800 w-7 h-7 rounded hover:bg-gray-100"
+                  aria-label="Close"
+                  onClick={() => setAuditModalId(null)}
+                >
+                  ×
+                </button>
+              </div>
+              <div className="p-3 overflow-y-auto text-[11px] space-y-3 text-gray-700 flex-1">
+                {auditDetailLoading ? (
+                  <div className="h-16 animate-pulse bg-gray-100 rounded" />
+                ) : auditDetail ? (
+                  <>
+                    <div className="grid gap-1">
+                      <div>
+                        <span className="text-gray-500">Time</span>
+                        <div>{formatUserActivityTime(auditDetail.timestamp_utc)}</div>
+                      </div>
+                      <div>
+                        <span className="text-gray-500">Action</span>
+                        <div className="font-medium">{auditDetail.action}</div>
+                      </div>
+                      <div>
+                        <span className="text-gray-500">Entity</span>
+                        <div>
+                          {auditDetail.entity_display || auditDetail.entity_type}{' '}
+                          <span className="font-mono text-[10px] text-gray-500">({auditDetail.entity_id})</span>
+                        </div>
+                      </div>
+                      {auditDetail.source ? (
+                        <div>
+                          <span className="text-gray-500">Source</span>
+                          <div>{auditDetail.source}</div>
+                        </div>
+                      ) : null}
+                    </div>
+                    {auditDetail.changes_json != null &&
+                    (Array.isArray(auditDetail.changes_json)
+                      ? auditDetail.changes_json.length > 0
+                      : typeof auditDetail.changes_json === 'object' && Object.keys(auditDetail.changes_json).length > 0) ? (
+                      <div>
+                        <div className="text-[10px] font-semibold text-gray-600 mb-1">Changes</div>
+                        <pre className="text-[10px] p-2 rounded border border-gray-200 bg-gray-50 overflow-x-auto max-h-40">
+                          {JSON.stringify(auditDetail.changes_json, null, 2)}
+                        </pre>
+                      </div>
+                    ) : null}
+                    {auditDetail.context && Object.keys(auditDetail.context).length > 0 ? (
+                      <div>
+                        <div className="text-[10px] font-semibold text-gray-600 mb-1">Context</div>
+                        <pre className="text-[10px] p-2 rounded border border-gray-200 bg-gray-50 overflow-x-auto max-h-32">
+                          {JSON.stringify(auditDetail.context, null, 2)}
+                        </pre>
+                      </div>
+                    ) : null}
+                  </>
+                ) : (
+                  <div className="text-red-600">Could not load details.</div>
+                )}
+              </div>
+              <div className="px-3 py-2 border-t bg-gray-50 flex justify-end">
+                <button
+                  type="button"
+                  onClick={() => setAuditModalId(null)}
+                  className="text-xs px-3 py-1.5 rounded border border-gray-300 bg-white hover:bg-gray-50"
+                >
+                  Close
+                </button>
+              </div>
+            </div>
+          </div>
+        </OverlayPortal>
+      ) : null}
+    </div>
+  );
+}
+
 export default function UserInfo(){
   const { userId } = useParams();
   const [sp] = useSearchParams();
-  const tabParam = sp.get('tab') as ('personal'|'job'|'docs'|'timesheet'|'loans'|'training'|'assets'|'reports'|'permissions') | null;
+  const tabParam = sp.get('tab') as ('personal'|'job'|'docs'|'timesheet'|'loans'|'training'|'assets'|'reports'|'permissions'|'activity') | null;
   const [tab, setTab] = useState<typeof tabParam | 'personal'>(tabParam || 'personal');
   const confirm = useConfirm();
   const queryClient = useQueryClient();
@@ -2386,6 +2755,21 @@ export default function UserInfo(){
       perms.includes('equipment:read')
     );
   }, [me]);
+
+  /** Activity tab: explicit HR permission or system admin (matches backend). */
+  const canViewActivity = useMemo(() => {
+    if (!me) return false;
+    const isAdminRole = (me?.roles || []).some((r: string) => String(r || '').toLowerCase() === 'admin');
+    if (isAdminRole) return true;
+    const perms = me?.permissions || [];
+    return perms.includes('hr:users:view:activity');
+  }, [me]);
+
+  useEffect(() => {
+    if (tab !== 'activity' || canViewActivity) return;
+    if (canViewGeneral || canSelfEdit) setTab('personal');
+  }, [tab, canViewActivity, canViewGeneral, canSelfEdit]);
+
   const canEditAssets = useMemo(() => {
     if (!me) return false;
     const isAdmin = (me?.roles || []).some((r: string) => String(r || '').toLowerCase() === 'admin');
@@ -2510,7 +2894,13 @@ export default function UserInfo(){
     const isTrainingTab = newTab === 'training';
     const isReportsTab = newTab === 'reports';
     const isPermissionsTab = newTab === 'permissions';
-    
+    const isActivityTab = newTab === 'activity';
+
+    if (isActivityTab && !canViewActivity) {
+      toast.error('You do not have permission to view this tab');
+      return;
+    }
+
     if (isGeneralTab && !canViewGeneral) {
       toast.error('You do not have permission to view this tab');
       return;
@@ -2904,7 +3294,8 @@ export default function UserInfo(){
               ...(canViewTraining ? ['training'] : []),
               ...(canViewAssets ? ['assets'] : []),
               ...(canViewReports ? ['reports'] : []),
-              ...(canViewPermissions ? ['permissions'] : [])
+              ...(canViewPermissions ? ['permissions'] : []),
+              ...(canViewActivity ? ['activity'] : [])
             ] as const).map((k)=> (
               <button
                 key={k}
@@ -2915,7 +3306,7 @@ export default function UserInfo(){
                     : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50 hover:border-gray-400'
                 }`}
               >
-                {String(k).replace(/^./,s=>s.toUpperCase())}
+                {k === 'activity' ? 'Activity' : String(k).replace(/^./, (s) => s.toUpperCase())}
               </button>
             ))}
           </div>
@@ -2927,7 +3318,7 @@ export default function UserInfo(){
         <div className="p-5">
           {isLoading? <div className="h-24 animate-pulse bg-gray-100 rounded"/> : (
             <>
-              {!canViewGeneral && !canViewTimesheet && !canViewLoans && !canViewTraining && !canViewAssets && !canViewReports && !canViewPermissions && !canSelfEdit && (
+              {!canViewGeneral && !canViewTimesheet && !canViewLoans && !canViewTraining && !canViewAssets && !canViewReports && !canViewPermissions && !canViewActivity && !canSelfEdit && (
                 <div className="text-center py-12">
                   <div className="text-red-600 font-semibold mb-2">Access Denied</div>
                   <div className="text-gray-600">You do not have permission to view this user's information.</div>
@@ -3028,6 +3419,7 @@ export default function UserInfo(){
               )}
               {tab==='reports' && canViewReports && <UserReports userId={String(userId)} canEdit={canEditGeneral || (me?.roles || []).some((r: string) => String(r || '').toLowerCase() === 'admin') || (me?.permissions || []).includes('hr:users:write') || (me?.permissions || []).includes('users:write')} />}
               {tab==='permissions' && canViewPermissions && <UserPermissions ref={permissionsRef} userId={String(userId)} onDirtyChange={setPermissionsDirty} canEdit={canEditPermissions} />}
+              {tab === 'activity' && canViewActivity && userId && <UserActivityLogTab userId={String(userId)} />}
             </>
           )}
         </div>

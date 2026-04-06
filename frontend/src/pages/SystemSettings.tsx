@@ -649,7 +649,7 @@ const IMPLEMENTED_PERMISSIONS = new Set([
   'hr:access',
   'hr:users:read', 'hr:users:write',
   'hr:users:view:general', 'hr:users:view:job:compensation', 'hr:users:edit:general',
-  'hr:users:view:timesheet', 'hr:users:edit:timesheet', 'hr:users:view:permissions', 'hr:users:edit:permissions',
+  'hr:users:view:timesheet', 'hr:users:edit:timesheet', 'hr:users:view:permissions', 'hr:users:view:activity', 'hr:users:edit:permissions',
   'hr:attendance:read', 'hr:attendance:write',
   'hr:community:read', 'hr:community:write',
   'hr:reviews:admin',
@@ -772,7 +772,7 @@ function PermissionTemplatesSection() {
   // Same as UserInfo: whether this permission can be enabled given current selection (dependencies met)
   const canEnableEditPermission = (permKey: string, selectedKeys: Set<string>): boolean => {
     const has = (k: string) => selectedKeys.has(k);
-    if (permKey === 'hr:users:view:general' || permKey === 'hr:users:view:timesheet' || permKey === 'hr:users:view:permissions') {
+    if (permKey === 'hr:users:view:general' || permKey === 'hr:users:view:timesheet' || permKey === 'hr:users:view:permissions' || permKey === 'hr:users:view:activity') {
       return has('hr:users:read');
     }
     if (permKey === 'hr:users:view:job:compensation') {
@@ -825,6 +825,7 @@ function PermissionTemplatesSection() {
       remove('hr:users:view:job:compensation');
       remove('hr:users:view:timesheet');
       remove('hr:users:view:permissions');
+      remove('hr:users:view:activity');
       remove('hr:users:edit:general');
       remove('hr:users:edit:timesheet');
       remove('hr:users:edit:permissions');

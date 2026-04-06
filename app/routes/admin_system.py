@@ -10,22 +10,12 @@ from sqlalchemy.orm import Session
 from pydantic import BaseModel
 
 from ..db import get_db
-from ..auth.security import get_current_user, require_roles
-from ..models.models import User, AuditLog, SystemLog, Project, Client, Proposal, Quote
+from ..auth.security import require_roles
+from ..models.models import User, AuditLog, SystemLog
+from ..services.audit_log_entries import audit_rows_to_entry_dicts, user_display_for_audit
 
 
 router = APIRouter(prefix="/admin/system", tags=["admin-system"])
-
-
-def _user_display(u: User) -> str:
-    """Display string for a user (username + email for clarity)."""
-    if not u:
-        return "—"
-    part = u.username or ""
-    email = u.email_corporate or u.email_personal or ""
-    if email:
-        part = f"{part} ({email})" if part else email
-    return part or str(u.id)[:8] + "…"
 
 
 # ---- Audit logs (global) ----
@@ -82,55 +72,8 @@ def list_audit_logs(
     query = query.order_by(AuditLog.timestamp_utc.desc())
     query = query.limit(limit).offset(offset)
     rows = query.all()
-
-    actor_ids = list({r.actor_id for r in rows if r.actor_id})
-    actors: Dict[uuid.UUID, User] = {}
-    if actor_ids:
-        for u in db.query(User).filter(User.id.in_(actor_ids)).all():
-            actors[u.id] = u
-
-    entity_keys = [(r.entity_type, str(r.entity_id)) for r in rows if r.entity_id]
-    entity_displays: Dict[tuple, str] = {}
-    for et, eid in entity_keys:
-        if (et, eid) in entity_displays:
-            continue
-        try:
-            uid = uuid.UUID(eid)
-        except ValueError:
-            entity_displays[(et, eid)] = eid[:20] + "…" if len(eid) > 20 else eid
-            continue
-        if et == "project":
-            p = db.query(Project).filter(Project.id == uid, Project.deleted_at.is_(None)).first()
-            entity_displays[(et, eid)] = f"{p.name} ({p.code})" if p and getattr(p, "code", None) else (p.name if p else eid[:8] + "…")
-        elif et == "client":
-            c = db.query(Client).filter(Client.id == uid, Client.deleted_at.is_(None)).first()
-            entity_displays[(et, eid)] = (c.display_name or c.name) if c else eid[:8] + "…"
-        elif et == "proposal":
-            p = db.query(Proposal).filter(Proposal.id == uid, Proposal.deleted_at.is_(None)).first()
-            entity_displays[(et, eid)] = (p.title or f"Proposal {eid[:8]}") if p else eid[:8] + "…"
-        elif et == "quote":
-            q = db.query(Quote).filter(Quote.id == uid, Quote.deleted_at.is_(None)).first()
-            entity_displays[(et, eid)] = (q.title or q.code or f"Quote {eid[:8]}") if q else eid[:8] + "…"
-        else:
-            entity_displays[(et, eid)] = f"{et} {eid[:8]}…"
-
-    return [
-        AuditLogEntry(
-            id=str(r.id),
-            timestamp_utc=r.timestamp_utc.isoformat() if r.timestamp_utc else "",
-            entity_type=r.entity_type,
-            entity_id=str(r.entity_id) if r.entity_id else "",
-            entity_display=entity_displays.get((r.entity_type, str(r.entity_id))) if r.entity_id else None,
-            action=r.action,
-            actor_id=str(r.actor_id) if r.actor_id else None,
-            actor_name=_user_display(actors.get(r.actor_id)) if r.actor_id else None,
-            actor_role=r.actor_role,
-            source=r.source,
-            changes_json=r.changes_json,
-            context=r.context,
-        )
-        for r in rows
-    ]
+    dicts = audit_rows_to_entry_dicts(db, rows)
+    return [AuditLogEntry(**d) for d in dicts]
 
 
 # ---- System logs (app/errors) ----
@@ -206,7 +149,7 @@ def list_system_logs(
             path=r.path,
             method=r.method,
             user_id=str(r.user_id) if r.user_id else None,
-            user_name=_user_display(users.get(r.user_id)) if r.user_id else None,
+            user_name=user_display_for_audit(users.get(r.user_id)) if r.user_id else None,
             status_code=r.status_code,
             detail=r.detail,
             extra=r.extra,

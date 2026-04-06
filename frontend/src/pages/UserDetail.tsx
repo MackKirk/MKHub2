@@ -239,7 +239,7 @@ const IMPLEMENTED_PERMISSIONS = new Set([
   "hr:access",
   "hr:users:read", "hr:users:write",
   "hr:users:view:general", "hr:users:edit:general",
-  "hr:users:view:timesheet", "hr:users:view:permissions", "hr:users:edit:permissions",
+  "hr:users:view:timesheet", "hr:users:view:permissions", "hr:users:view:activity", "hr:users:edit:permissions",
   "hr:attendance:read", "hr:attendance:write",
   "hr:community:read", "hr:community:write",
   "hr:reviews:admin",

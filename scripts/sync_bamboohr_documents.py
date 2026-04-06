@@ -133,7 +133,8 @@ def sync_documents_for_employee(
     client: BambooHRClient,
     storage: StorageProvider,
     employee_id: str,
-    dry_run: bool = False
+    dry_run: bool = False,
+    force_update_documents: bool = False,
 ) -> tuple[int, int]:
     """Sync documents for a specific employee"""
     
@@ -165,9 +166,25 @@ def sync_documents_for_employee(
         ).first()
         
         if existing_doc:
-            print(f"      [SKIP]  Already exists, skipping")
-            skipped_count += 1
-            continue
+            if not force_update_documents:
+                print(f"      [SKIP]  Already exists, skipping")
+                skipped_count += 1
+                continue
+            print(f"      [REPLACE]  Re-downloading and replacing existing import")
+            if dry_run:
+                continue
+            old_file_id = existing_doc.file_id
+            db.delete(existing_doc)
+            db.flush()
+            if old_file_id:
+                old_fo = db.query(FileObject).filter(FileObject.id == old_file_id).first()
+                if old_fo:
+                    try:
+                        storage.delete(old_fo.key)
+                    except Exception as ex:
+                        print(f"      [WARN]  Could not delete old file from storage: {ex}")
+                    db.delete(old_fo)
+                    db.flush()
         
         if dry_run:
             print(f"      [CREATE] Would download and create document")
@@ -290,12 +307,20 @@ def sync_all_documents(
     employee_id: Optional[str] = None,
     include_photos: bool = True,
     limit: Optional[int] = None,
-    force_update_photos: bool = False
+    force_update_photos: bool = False,
+    skip_documents: bool = False,
+    force_update_documents: bool = False,
 ):
-    """Sync documents from BambooHR"""
+    """Sync documents from BambooHR.
+
+    When skip_documents=True and include_photos=True, only profile photos are synced
+    (no file list / EmployeeDocument rows). Use this for a lightweight photo pass.
+    """
     print("[SYNC] Starting BambooHR document synchronization...")
     print(f"   Mode: {'DRY RUN' if dry_run else 'LIVE'}")
     print(f"   Include photos: {include_photos}")
+    print(f"   Skip documents (files only): {skip_documents}")
+    print(f"   Force replace documents: {force_update_documents}")
     
     # Initialize client and storage
     try:
@@ -325,10 +350,13 @@ def sync_all_documents(
             if include_photos:
                 if sync_employee_photo(db, client, storage, employee_id, dry_run, force_update_photos):
                     photos_set += 1
-            
-            created, skipped = sync_documents_for_employee(db, client, storage, employee_id, dry_run)
-            total_created += created
-            total_skipped += skipped
+
+            if not skip_documents:
+                created, skipped = sync_documents_for_employee(
+                    db, client, storage, employee_id, dry_run, force_update_documents
+                )
+                total_created += created
+                total_skipped += skipped
         else:
             # Sync for all employees
             print("\n[FETCH] Fetching employee directory...")
@@ -354,10 +382,13 @@ def sync_all_documents(
                 if include_photos:
                     if sync_employee_photo(db, client, storage, emp_id, dry_run, force_update_photos):
                         photos_set += 1
-                
-                created, skipped = sync_documents_for_employee(db, client, storage, emp_id, dry_run)
-                total_created += created
-                total_skipped += skipped
+
+                if not skip_documents:
+                    created, skipped = sync_documents_for_employee(
+                        db, client, storage, emp_id, dry_run, force_update_documents
+                    )
+                    total_created += created
+                    total_skipped += skipped
         
         if not dry_run:
             db.commit()
@@ -386,15 +417,27 @@ def main():
     parser.add_argument("--no-photos", dest="include_photos", action="store_false", help="Skip profile photos")
     parser.add_argument("--force-update-photos", action="store_true", help="Update profile photos even if they already exist")
     parser.add_argument("--limit", type=int, help="Limit number of employees to process")
-    
+    parser.add_argument(
+        "--photos-only",
+        action="store_true",
+        help="Only sync profile photos from BambooHR, not file cabinet documents",
+    )
+    parser.add_argument(
+        "--force-update-documents",
+        action="store_true",
+        help="Re-download and replace file cabinet documents already imported from BambooHR",
+    )
+
     args = parser.parse_args()
-    
+
     sync_all_documents(
         dry_run=args.dry_run,
         employee_id=args.employee_id,
         include_photos=args.include_photos,
         limit=args.limit,
-        force_update_photos=args.force_update_photos
+        force_update_photos=args.force_update_photos,
+        skip_documents=args.photos_only,
+        force_update_documents=args.force_update_documents,
     )
 
 

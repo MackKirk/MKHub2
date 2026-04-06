@@ -1040,6 +1040,22 @@ def login(req: LoginRequest, request: Request, db: Session = Depends(get_db)):
     refresh = create_refresh_token(str(user.id))
     user.last_login_at = datetime.now(timezone.utc)
     db.commit()
+    try:
+        from ..services.system_log import write_system_log
+
+        write_system_log(
+            db,
+            "info",
+            "auth",
+            "Login successful",
+            request_id=getattr(request.state, "request_id", None),
+            path=request.url.path,
+            method=request.method,
+            user_id=str(user.id),
+            extra={"event": "login"},
+        )
+    except Exception:
+        pass
     return TokenResponse(access_token=access, refresh_token=refresh)
 
 
