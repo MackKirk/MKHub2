@@ -115,6 +115,12 @@ const IconAcademic = () => (
   </svg>
 );
 
+const IconLogs = () => (
+  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 10h16M4 14h16M4 18h11" />
+  </svg>
+);
+
 const IconSettings = () => (
   <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
@@ -492,9 +498,6 @@ export default function AppShell({ children }: PropsWithChildren){
       icon: <IconSettings />,
       items: [
         { id: 'system-settings', label: 'System Settings', path: '/settings', icon: <IconSettings />, requiredPermission: 'settings:access' },
-        ...(((me?.roles||[]).includes('admin')) ? [
-          { id: 'system-admin', label: 'System Admin', path: '/admin/system', icon: <IconSettings /> }
-        ] : []),
       ]
     },
   ];
@@ -526,6 +529,15 @@ export default function AppShell({ children }: PropsWithChildren){
           }
         }
       }
+    }
+    if (isAdmin) {
+      items.push({
+        type: 'page',
+        id: 'audit-log',
+        title: 'Audit log',
+        subtitle: 'System',
+        href: '/logs',
+      });
     }
     const seen = new Set<string>();
     const unique = items.filter((x) => {
@@ -855,7 +867,7 @@ export default function AppShell({ children }: PropsWithChildren){
                       }`
                     }
                     title={category.label}
-                    end={category.id === 'settings'} // Use exact match for Settings to prevent /settings/attendance from matching
+                    end={category.id === 'settings'}
                   >
                     {isActive && (
                       <div className="absolute left-0 top-1/2 -translate-y-1/2 w-0.5 h-6 bg-white rounded-r-full" />
@@ -877,7 +889,7 @@ export default function AppShell({ children }: PropsWithChildren){
                         : 'text-gray-400 hover:text-white hover:bg-gray-700/50'
                     }`
                   }
-                  end={category.id === 'settings'} // Use exact match for Settings to prevent /settings/attendance from matching
+                  end={category.id === 'settings'}
                 >
                   {isActive && (
                     <div className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-6 bg-white rounded-r-full" />
@@ -1032,6 +1044,30 @@ export default function AppShell({ children }: PropsWithChildren){
             );
           })}
         </nav>
+        {isAdmin && (
+          <div className="relative z-10 shrink-0 border-t border-gray-700/60 bg-gray-900/40 backdrop-blur-[2px] p-2">
+            <NavLink
+              to="/logs"
+              end
+              title="Audit log"
+              className={() =>
+                `relative flex items-center gap-3 rounded-lg px-3 py-2.5 transition-all duration-200 ${
+                  location.pathname === '/logs'
+                    ? 'bg-brand-red text-white font-semibold shadow-md shadow-brand-red/20'
+                    : 'text-gray-400 hover:text-white hover:bg-gray-700/60'
+                }`
+              }
+            >
+              {location.pathname === '/logs' && (
+                <div className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-6 bg-white rounded-r-full" />
+              )}
+              <span className={`flex-shrink-0 ${location.pathname === '/logs' ? 'opacity-100' : 'opacity-70'}`}>
+                <IconLogs />
+              </span>
+              {!sidebarCollapsed && <span className="text-sm font-semibold flex-1">Audit log</span>}
+            </NavLink>
+          </div>
+        )}
       </aside>
       <main className={`flex-1 min-w-0 flex flex-col min-h-0 transition-all duration-300 ${sidebarCollapsed ? 'ml-16' : 'ml-64'}`} style={{ height: '100vh' }}>
         <div className="h-14 shrink-0 border-b border-gray-700/40 shadow-sm text-white flex items-center justify-between px-6 bg-gradient-to-r from-gray-700 via-gray-700 to-gray-800">
