@@ -818,6 +818,11 @@ def _resolve_project_field_value(db: Session, field: str, val: Any) -> Optional[
             elif user_name:
                 parts.append(user_name)
         return ", ".join(parts) + (" ..." if len(val) > 5 else "") if parts else "—"
+    if field in ("related_client_ids", "awarded_related_client_ids") and isinstance(val, list):
+        if not val:
+            return "—"
+        names = [_resolve_client_name(db, str(cid)) or str(cid) for cid in val[:8]]
+        return ", ".join(names) + (" ..." if len(val) > 8 else "")
     if isinstance(val, bool):
         return "Yes" if val else "No"
     if isinstance(val, (list, dict)):
