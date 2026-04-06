@@ -595,16 +595,14 @@ export default function ProjectNew(){
                       <div className="text-[11px] text-red-600 mb-2">Select at least one division for this opportunity</div>
                     )}
                   </div>
-                  {/* Legacy divisions support (deprecated) — not shown for opportunities */}
-                  {!isBidding && settings?.divisions && settings.divisions.length > 0 && (
-                    <div className="mt-3 pt-3 border-t">
-                      <label className="text-xs text-gray-500">Legacy Divisions (deprecated)</label>
-                      <div className="flex flex-wrap gap-2 mt-1">
-                        {(settings.divisions||[]).map((d:any)=>{
-                          const id = String(d.id||d.label||d.value);
-                          const selected = divisionIds.includes(id);
-                          const bg = d.meta?.color || '#eef2f7';
-                          const ab = d.meta?.abbr || d.label || id;
+                  <div className="rounded-lg border border-gray-200 bg-white overflow-hidden">
+                    {divisionsForPicker && divisionsForPicker.length > 0 ? (
+                      <div className="divide-y divide-gray-100">
+                        {(divisionsForPicker || []).map((div: any) => {
+                          const divId = String(div.id);
+                          const subdivisions = Array.isArray(div.subdivisions) ? div.subdivisions : [];
+                          const hasSubdivisions = subdivisions.length > 0;
+                          const isExpanded = newOppExpandedDivisions.has(divId);
                           return (
                             <div key={divId} className="border border-gray-200 rounded-lg overflow-hidden bg-white">
                               <button
@@ -674,41 +672,42 @@ export default function ProjectNew(){
                             </div>
                           );
                         })}
-                        {(!divisionsForPicker || divisionsForPicker.length === 0) && (
-                          <div className="text-xs text-gray-500 text-center py-6">
-                            No project divisions available. Please run the seed script.
-                          </div>
-                        )}
                       </div>
-                    </div>
-                    {settings?.divisions && settings.divisions.length > 0 && (
-                      <div className="mt-3 pt-3 border-t border-gray-200">
-                        <label className="text-xs text-gray-500">Legacy Divisions (deprecated)</label>
-                        <div className="flex flex-wrap gap-2 mt-1">
-                          {(settings.divisions || []).map((d: any) => {
-                            const id = String(d.id || d.label || d.value);
-                            const selected = divisionIds.includes(id);
-                            const bg = d.meta?.color || '#eef2f7';
-                            const ab = d.meta?.abbr || d.label || id;
-                            return (
-                              <button
-                                key={id}
-                                type="button"
-                                onClick={() =>
-                                  setDivisionIds((prev) =>
-                                    prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]
-                                  )
-                                }
-                                className={`px-2 py-1 rounded-full border text-xs ${selected ? 'ring-2 ring-brand-red' : ''}`}
-                                style={{ backgroundColor: bg }}
-                              >
-                                {ab}
-                              </button>
-                            );
-                          })}
-                        </div>
+                    ) : (
+                      <div className="text-xs text-gray-500 text-center py-6">
+                        No project divisions available. Please run the seed script.
                       </div>
                     )}
+                  </div>
+                  {/* Legacy divisions support (deprecated) — not shown for opportunities */}
+                  {!isBidding && settings?.divisions && settings.divisions.length > 0 && (
+                    <div className="mt-3 pt-3 border-t border-gray-200">
+                      <label className="text-xs text-gray-500">Legacy Divisions (deprecated)</label>
+                      <div className="flex flex-wrap gap-2 mt-1">
+                        {(settings.divisions || []).map((d: any) => {
+                          const id = String(d.id || d.label || d.value);
+                          const selected = divisionIds.includes(id);
+                          const bg = d.meta?.color || '#eef2f7';
+                          const ab = d.meta?.abbr || d.label || id;
+                          return (
+                            <button
+                              key={id}
+                              type="button"
+                              onClick={() =>
+                                setDivisionIds((prev) =>
+                                  prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]
+                                )
+                              }
+                              className={`px-2 py-1 rounded-full border text-xs ${selected ? 'ring-2 ring-brand-red' : ''}`}
+                              style={{ backgroundColor: bg }}
+                            >
+                              {ab}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
                   </div>
 
                   <div className="grid md:grid-cols-2 gap-4 pt-2 border-t border-gray-200">
@@ -795,7 +794,6 @@ export default function ProjectNew(){
                       </div>
                     </div>
                   </div>
-                </div>
               </>
             )}
           </div>
