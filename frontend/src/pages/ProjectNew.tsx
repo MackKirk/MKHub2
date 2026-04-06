@@ -594,17 +594,17 @@ export default function ProjectNew(){
                     {isBidding && projectDivisionIds.length === 0 && (
                       <div className="text-[11px] text-red-600 mb-2">Select at least one division for this opportunity</div>
                     )}
-                    <div className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
-                      <div className="flex items-center justify-between mb-4">
-                        <div className="text-sm text-gray-600">Available divisions</div>
-                      </div>
-                      <div className="space-y-2">
-                        {sortByLabel(divisionsForPicker || [], (div: any) => (div.label || '').toString()).map((div: any) => {
-                          const divId = String(div.id);
-                          const subdivisions = sortByLabel(div.subdivisions || [], (sub: any) => (sub.label || '').toString());
-                          const hasSubdivisions = subdivisions.length > 0;
-                          const isExpanded = newOppExpandedDivisions.has(divId);
-
+                  </div>
+                  {/* Legacy divisions support (deprecated) — not shown for opportunities */}
+                  {!isBidding && settings?.divisions && settings.divisions.length > 0 && (
+                    <div className="mt-3 pt-3 border-t">
+                      <label className="text-xs text-gray-500">Legacy Divisions (deprecated)</label>
+                      <div className="flex flex-wrap gap-2 mt-1">
+                        {(settings.divisions||[]).map((d:any)=>{
+                          const id = String(d.id||d.label||d.value);
+                          const selected = divisionIds.includes(id);
+                          const bg = d.meta?.color || '#eef2f7';
+                          const ab = d.meta?.abbr || d.label || id;
                           return (
                             <div key={divId} className="border border-gray-200 rounded-lg overflow-hidden bg-white">
                               <button

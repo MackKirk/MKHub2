@@ -7,6 +7,57 @@ import { useConfirm } from '@/components/ConfirmProvider';
 import ImagePicker from '@/components/ImagePicker';
 import AddressAutocomplete from '@/components/AddressAutocomplete';
 import OverlayPortal from '@/components/OverlayPortal';
+import { Link } from 'react-router-dom';
+
+const DUPLICATE_STOP_WORDS = new Set(['the', 'and', 'for', 'ltd', 'inc', 'llc', 'corp', 'co', 'lp', 'llp', 'plc', 'sa', 'bv', 'nv', 'of', 'to', 'in']);
+
+function tokenizeNameText(s: string): string[] {
+  return (String(s).toLowerCase().match(/[a-z0-9]+/g) || []).filter(
+    (t) => t.length >= 2 && !DUPLICATE_STOP_WORDS.has(t)
+  );
+}
+
+/** Fetch clients via search and keep those sharing at least one significant word with display/legal names. */
+async function findSimilarExistingClients(displayName: string, legalName: string): Promise<
+  { id: string; display_name?: string; name?: string; legal_name?: string; city?: string; client_status?: string }[]
+> {
+  const displayT = String(displayName || '').trim();
+  const legalT = String(legalName || '').trim();
+  const inputTokens = [...new Set([...tokenizeNameText(displayT), ...tokenizeNameText(legalT)])];
+  const merged = new Map<
+    string,
+    { id: string; display_name?: string; name?: string; legal_name?: string; city?: string; client_status?: string }
+  >();
+
+  const runQuery = async (q: string) => {
+    const params = new URLSearchParams();
+    params.set('q', q);
+    params.set('limit', '100');
+    params.set('page', '1');
+    const res = await api<any>('GET', `/clients?${params.toString()}`);
+    const items = Array.isArray(res?.items) ? res.items : Array.isArray(res) ? res : [];
+    for (const c of items) {
+      if (c?.id) merged.set(String(c.id), c);
+    }
+  };
+
+  if (inputTokens.length === 0) {
+    if (displayT.length >= 2) await runQuery(displayT.slice(0, 120));
+    else if (legalT.length >= 2) await runQuery(legalT.slice(0, 120));
+  } else {
+    const queries = inputTokens.slice(0, 10);
+    await Promise.all(queries.map((t) => runQuery(t)));
+  }
+
+  const tokensForMatch = inputTokens.length > 0 ? inputTokens : tokenizeNameText(`${displayT} ${legalT}`);
+  if (tokensForMatch.length === 0) return [];
+
+  return Array.from(merged.values()).filter((c) => {
+    const blob = `${c.display_name || ''} ${c.name || ''} ${c.legal_name || ''}`.toLowerCase();
+    const clientTokens = tokenizeNameText(blob);
+    return tokensForMatch.some((t) => clientTokens.includes(t) || blob.includes(t));
+  });
+}
 
 type NewCustomerModalProps = {
   onClose: () => void;
@@ -16,15 +67,13 @@ type NewCustomerModalProps = {
 export default function NewCustomerModal({ onClose, onSuccess }: NewCustomerModalProps) {
   const confirm = useConfirm();
   const { data: settings } = useQuery({ queryKey: ['settings'], queryFn: () => api<any>('GET', '/settings') });
-  const statuses = (settings?.client_statuses || []) as any[];
   const types = (settings?.client_types || []) as any[];
-  const paymentTerms = (settings?.payment_terms || []) as any[];
   const { data: employees } = useQuery({ queryKey: ['employees'], queryFn: () => api<any[]>('GET', '/employees') });
   const leadSources = (settings?.lead_sources || []) as any[];
   const [form, setForm] = useState<any>({
     display_name: '', legal_name: '', name: '', client_status: 'Active', client_type: 'Customer',
-    email: '', phone: '', address_line1: '', address_line2: '', city: '', province: 'British Columbia', country: 'Canada', postal_code: '',
-    payment_terms_id: '', po_required: false, tax_number: '', lead_source: '', estimator_id: '', description: ''
+    phone: '', address_line1: '', address_line2: '', city: '', province: 'British Columbia', country: 'Canada', postal_code: '',
+    lead_source: '', estimator_id: '', description: ''
   });
   useEffect(() => { setForm((s: any) => ({ ...s, name: s.display_name })); }, [form.display_name]);
   // Validate both required fields: display_name and legal_name
@@ -44,8 +93,12 @@ export default function NewCustomerModal({ onClose, onSuccess }: NewCustomerModa
   const [cPickerOpen, setCPickerOpen] = useState(false);
   const [step, setStep] = useState<number>(1);
   const [isCreating, setIsCreating] = useState(false);
-  const next = () => {
-    // Validate required fields before allowing to proceed
+  const [duplicateMatches, setDuplicateMatches] = useState<
+    { id: string; display_name?: string; name?: string; legal_name?: string; city?: string; client_status?: string }[] | null
+  >(null);
+  const [checkingDuplicates, setCheckingDuplicates] = useState(false);
+
+  const goNextFromStep1 = async () => {
     if (!String(form.display_name || '').trim()) {
       toast.error('Display name is required');
       return;
@@ -54,9 +107,36 @@ export default function NewCustomerModal({ onClose, onSuccess }: NewCustomerModa
       toast.error('Legal name is required');
       return;
     }
-    setStep(s => Math.min(2, s + 1));
+    setDuplicateMatches(null);
+    setCheckingDuplicates(true);
+    try {
+      const matches = await findSimilarExistingClients(form.display_name, form.legal_name);
+      if (matches.length > 0) {
+        setDuplicateMatches(matches);
+        return;
+      }
+      setStep(2);
+    } catch (_e) {
+      toast.error('Could not check for similar customers. Try again.');
+    } finally {
+      setCheckingDuplicates(false);
+    }
   };
-  const prev = () => setStep(s => Math.max(1, s - 1));
+
+  const continuePastDuplicates = () => {
+    setDuplicateMatches(null);
+    setStep(2);
+  };
+
+  const goToContactsStep = () => setStep(3);
+
+  const prev = () => {
+    setStep((s) => {
+      const nextS = Math.max(1, s - 1);
+      if (nextS === 1) setDuplicateMatches(null);
+      return nextS;
+    });
+  };
 
   // Geo data for address fields
   const [countries, setCountries] = useState<string[]>([]);
@@ -171,84 +251,6 @@ export default function NewCustomerModal({ onClose, onSuccess }: NewCustomerModa
     return [...cities, ...existing];
   }, [cities, form.city]);
 
-  // Geo data for billing address fields
-  const [billingStates, setBillingStates] = useState<string[]>([]);
-  const [billingCities, setBillingCities] = useState<string[]>([]);
-  const [loadingBillingStates, setLoadingBillingStates] = useState(false);
-  const [loadingBillingCities, setLoadingBillingCities] = useState(false);
-
-  // Load billing states when billing country changes
-  useEffect(() => {
-    let alive = true;
-    if (!form.billing_country) {
-      setBillingStates([]);
-      setBillingCities([]);
-      return;
-    }
-    if (!countriesLoaded) return;
-    setLoadingBillingStates(true);
-    (async () => {
-      try {
-        const res = await fetchJSON(`${API_BASE}/countries/states`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ country: form.billing_country }),
-        });
-        const arr: string[] = res?.data?.states?.map((s: any) => s?.name).filter(Boolean) ?? [];
-        if (alive) setBillingStates(arr);
-      } catch (_e) {
-        if (alive) setBillingStates([]);
-      } finally {
-        if (alive) setLoadingBillingStates(false);
-      }
-    })();
-    return () => { alive = false; };
-  }, [form.billing_country, countriesLoaded]);
-
-  // Load billing cities when billing state changes
-  useEffect(() => {
-    let alive = true;
-    if (!form.billing_country) {
-      setBillingCities([]);
-      return;
-    }
-    if (form.billing_province && loadingBillingStates) return;
-    setLoadingBillingCities(true);
-    (async () => {
-      try {
-        if (form.billing_province) {
-          const res = await fetchJSON(`${API_BASE}/countries/state/cities`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ country: form.billing_country, state: form.billing_province }),
-          });
-          const arr: string[] = res?.data ?? [];
-          if (alive) setBillingCities(arr);
-        } else {
-          const res = await fetchJSON(`${API_BASE}/countries`);
-          const entry = (res?.data ?? []).find((c: any) => c?.country === form.billing_country);
-          const arr: string[] = entry?.cities ?? [];
-          if (alive) setBillingCities(arr);
-        }
-      } catch (_e) {
-        if (alive) setBillingCities([]);
-      } finally {
-        if (alive) setLoadingBillingCities(false);
-      }
-    })();
-    return () => { alive = false; };
-  }, [form.billing_country, form.billing_province, loadingBillingStates]);
-
-  const allBillingStates = useMemo(() => {
-    const existing = form.billing_province && !billingStates.includes(form.billing_province) ? [form.billing_province] : [];
-    return [...billingStates, ...existing];
-  }, [billingStates, form.billing_province]);
-
-  const allBillingCities = useMemo(() => {
-    const existing = form.billing_city && !billingCities.includes(form.billing_city) ? [form.billing_city] : [];
-    return [...billingCities, ...existing];
-  }, [billingCities, form.billing_city]);
-
   const formatPhone = (v: string) => {
     const d = String(v || '').replace(/\D+/g, '').slice(0, 11);
     if (d.length <= 3) return d;
@@ -285,12 +287,17 @@ export default function NewCustomerModal({ onClose, onSuccess }: NewCustomerModa
   const resetForm = () => {
     setForm({
       display_name: '', legal_name: '', name: '', client_status: 'Active', client_type: 'Customer',
-      email: '', phone: '', address_line1: '', address_line2: '', city: '', province: 'British Columbia', country: 'Canada', postal_code: '',
-      payment_terms_id: '', po_required: false, tax_number: '', lead_source: '', estimator_id: '', description: ''
+      phone: '', address_line1: '', address_line2: '', city: '', province: 'British Columbia', country: 'Canada', postal_code: '',
+      lead_source: '', estimator_id: '', description: ''
     });
     setContacts([]);
     setStep(1);
+    setDuplicateMatches(null);
+    setCheckingDuplicates(false);
   };
+
+  const stepSubtitle =
+    step === 1 ? 'Display and legal name' : step === 2 ? 'Company and address' : 'Contacts';
 
   return (
     <OverlayPortal><div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center overflow-y-auto p-4">
@@ -310,13 +317,15 @@ export default function NewCustomerModal({ onClose, onSuccess }: NewCustomerModa
               </button>
               <div>
                 <div className="text-sm font-semibold text-gray-900">New Customer</div>
-                <div className="text-xs text-gray-500 mt-0.5">{step === 1 ? 'Company and address' : 'Contacts'}</div>
+                <div className="text-xs text-gray-500 mt-0.5">{stepSubtitle}</div>
               </div>
             </div>
-            <div className="inline-flex items-center gap-2 text-[10px] font-medium text-gray-500">
-              <span className={step === 1 ? 'px-2 py-1 rounded-full bg-gray-900 text-white' : 'px-2 py-1 rounded-full bg-gray-200 text-gray-600'}>Step 1</span>
+            <div className="inline-flex items-center gap-1.5 text-[10px] font-medium text-gray-500 flex-wrap justify-end">
+              <span className={step === 1 ? 'px-2 py-1 rounded-full bg-gray-900 text-white' : 'px-2 py-1 rounded-full bg-gray-200 text-gray-600'}>1</span>
               <span className="text-gray-400">→</span>
-              <span className={step === 2 ? 'px-2 py-1 rounded-full bg-gray-900 text-white' : 'px-2 py-1 rounded-full bg-gray-200 text-gray-600'}>Step 2</span>
+              <span className={step === 2 ? 'px-2 py-1 rounded-full bg-gray-900 text-white' : 'px-2 py-1 rounded-full bg-gray-200 text-gray-600'}>2</span>
+              <span className="text-gray-400">→</span>
+              <span className={step === 3 ? 'px-2 py-1 rounded-full bg-gray-900 text-white' : 'px-2 py-1 rounded-full bg-gray-200 text-gray-600'}>3</span>
             </div>
           </div>
         </div>
@@ -325,24 +334,48 @@ export default function NewCustomerModal({ onClose, onSuccess }: NewCustomerModa
           {step === 1 && (
             <div className="space-y-4">
               <div>
+                <div className="flex items-center gap-2"><h4 className="text-sm font-semibold text-gray-900">Company name</h4></div>
+                <div className="text-[10px] text-gray-500 mt-0.5 mb-3">Display name and legal name. We check for similar customers before the next step.</div>
+                <div className="grid md:grid-cols-2 gap-3">
+                  <div className="md:col-span-2"><label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">Display name <span className="text-red-600">*</span></label><input className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" value={form.display_name} onChange={e => setForm((s: any) => ({ ...s, display_name: e.target.value }))} autoComplete="organization" /></div>
+                  <div className="md:col-span-2"><label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">Legal name <span className="text-red-600">*</span></label><input className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" value={form.legal_name} onChange={e => setForm((s: any) => ({ ...s, legal_name: e.target.value }))} /></div>
+                </div>
+              </div>
+              {duplicateMatches && duplicateMatches.length > 0 && (
+                <div className="rounded-lg border border-amber-300 bg-amber-50 p-4 space-y-3">
+                  <div className="text-sm font-semibold text-amber-900">Similar customers already in the system</div>
+                  <p className="text-xs text-amber-950/90">At least one existing customer matches a word in the display or legal name. Review the list below. You can go back to change the name, or continue if this is a different company.</p>
+                  <ul className="max-h-48 overflow-y-auto space-y-2 text-sm border border-amber-200/80 rounded-md bg-white p-2">
+                    {duplicateMatches.map((c) => (
+                      <li key={c.id} className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1 py-1.5 border-b border-amber-100 last:border-0">
+                        <div>
+                          <div className="font-medium text-gray-900">{c.display_name || c.name || '—'}</div>
+                          <div className="text-xs text-gray-600">{c.legal_name ? <span>Legal: {c.legal_name}</span> : null}{c.legal_name && c.city ? ' · ' : ''}{c.city ? <span>{c.city}</span> : null}{c.client_status ? <span className="text-gray-500"> · {c.client_status}</span> : null}</div>
+                        </div>
+                        <Link to={`/customers/${encodeURIComponent(c.id)}`} target="_blank" rel="noreferrer" className="text-xs text-brand-red hover:underline shrink-0">View customer</Link>
+                      </li>
+                    ))}
+                  </ul>
+                  <div className="flex flex-wrap gap-2 pt-1">
+                    <button type="button" onClick={() => setDuplicateMatches(null)} className="px-3 py-1.5 rounded-lg text-sm font-medium text-gray-800 border border-amber-400/80 bg-white hover:bg-amber-100/80">Cancel</button>
+                    <button type="button" onClick={continuePastDuplicates} className="px-3 py-1.5 rounded-lg text-sm font-medium bg-brand-red text-white hover:bg-[#aa1212]">Continue anyway</button>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+          {step === 2 && (
+            <div className="space-y-4">
+              <div>
                 <div className="flex items-center gap-2"><h4 className="text-sm font-semibold text-gray-900">Company</h4></div>
                 <div className="text-[10px] text-gray-500 mt-0.5 mb-2">Core company identity details.</div>
                 <div className="grid md:grid-cols-2 gap-3">
-                  <div className="md:col-span-2"><label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">Display name <span className="text-red-600">*</span></label><input className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" value={form.display_name} onChange={e => setForm((s: any) => ({ ...s, display_name: e.target.value }))} /></div>
-                  <div><label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">Legal name <span className="text-red-600">*</span></label><input className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" value={form.legal_name} onChange={e => setForm((s: any) => ({ ...s, legal_name: e.target.value }))} /></div>
-                  <div>
-                    <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">Status</label>
-                    <select className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" value={form.client_status} onChange={e => setForm((s: any) => ({ ...s, client_status: e.target.value }))}>
-                      {sortByLabel(statuses, (s: any) => (s.label || '').toString()).map((s: any) => <option key={s.label} value={s.label}>{s.label}</option>)}
-                    </select>
-                  </div>
                   <div>
                     <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">Type</label>
                     <select className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" value={form.client_type} onChange={e => setForm((s: any) => ({ ...s, client_type: e.target.value }))}>
                       {sortByLabel(types, (t: any) => (t.label || '').toString()).map((t: any) => <option key={t.label} value={t.label}>{t.label}</option>)}
                     </select>
                   </div>
-                  <div><label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">Email</label><input className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" value={form.email} onChange={e => setForm((s: any) => ({ ...s, email: e.target.value }))} /></div>
                   <div><label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">Phone</label><input className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" value={form.phone} onChange={e => setForm((s: any) => ({ ...s, phone: formatPhone(e.target.value) }))} /></div>
                   <div>
                     <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">Lead source</label>
@@ -358,7 +391,6 @@ export default function NewCustomerModal({ onClose, onSuccess }: NewCustomerModa
                       {sortByLabel(employees || [], (emp: any) => (emp.name || emp.username || '').toString()).map((emp: any) => <option key={emp.id} value={emp.id}>{emp.name || emp.username}</option>)}
                     </select>
                   </div>
-                  <div><label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">Tax number</label><input className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" value={form.tax_number} onChange={e => setForm((s: any) => ({ ...s, tax_number: e.target.value }))} /></div>
                 </div>
               </div>
               <div>
@@ -425,85 +457,9 @@ export default function NewCustomerModal({ onClose, onSuccess }: NewCustomerModa
                   </div>
                 </div>
               </div>
-              <div>
-                <div className="flex items-center gap-2"><h4 className="text-sm font-semibold text-gray-900">Billing</h4></div>
-                <div className="text-[10px] text-gray-500 mt-0.5 mb-2">Preferences used for invoices and payments.</div>
-                <div className="grid md:grid-cols-2 gap-3">
-                  <div><label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">Billing email</label><input className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" value={form.billing_email || ''} onChange={e => setForm((s: any) => ({ ...s, billing_email: e.target.value }))} /></div>
-                  <div>
-                    <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">PO required</label>
-                    <select className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" value={form.po_required ? 'true' : 'false'} onChange={e => setForm((s: any) => ({ ...s, po_required: e.target.value === 'true' }))}><option value="false">No</option><option value="true">Yes</option></select>
-                  </div>
-                  <div className="md:col-span-2">
-                    <label className="text-xs text-gray-600 inline-flex items-center gap-2"><input type="checkbox" checked={!!form.use_diff_billing} onChange={e => setForm((s: any) => ({ ...s, use_diff_billing: !!e.target.checked }))} /> Use different address for Billing address</label>
-                  </div>
-                  {form.use_diff_billing && (
-                    <>
-                      <div className="md:col-span-2">
-                        <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">Billing Address 1</label>
-                        <AddressAutocomplete
-                          value={form.billing_address_line1 || ''}
-                          onChange={(value) => setForm((s: any) => ({ ...s, billing_address_line1: value }))}
-                          onAddressSelect={(address) => {
-                            setForm((s: any) => ({
-                              ...s,
-                              billing_address_line1: address.address_line1 || s.billing_address_line1,
-                              billing_address_line2: address.address_line2 !== undefined ? address.address_line2 : s.billing_address_line2,
-                              billing_city: address.city !== undefined ? address.city : s.billing_city,
-                              billing_province: address.province !== undefined ? address.province : s.billing_province,
-                              billing_country: address.country !== undefined ? address.country : s.billing_country,
-                              billing_postal_code: address.postal_code !== undefined ? address.postal_code : s.billing_postal_code,
-                            }));
-                          }}
-                          className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"
-                        />
-                      </div>
-                      <div className="md:col-span-2">
-                        <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">Billing Address 2</label>
-                        <AddressAutocomplete
-                          value={form.billing_address_line2 || ''}
-                          onChange={(value) => setForm((s: any) => ({ ...s, billing_address_line2: value }))}
-                          className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"
-                        />
-                      </div>
-                      <div>
-                        <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">Billing Country</label>
-                        <select className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" value={form.billing_country || ''} onChange={(e) => setForm((s: any) => ({ ...s, billing_country: e.target.value }))} disabled={!countriesLoaded}>
-                          <option value="">{countriesLoaded ? 'Select...' : 'Loading...'}</option>
-                          {allCountries.map((c) => (
-                            <option key={c} value={c}>{c}</option>
-                          ))}
-                        </select>
-                      </div>
-                      <div>
-                        <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">Billing Province/State</label>
-                        <select className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" value={form.billing_province || ''} onChange={(e) => setForm((s: any) => ({ ...s, billing_province: e.target.value }))} disabled={!form.billing_country || loadingBillingStates}>
-                          <option value="">{loadingBillingStates ? 'Loading...' : 'Select...'}</option>
-                          {allBillingStates.map((s) => (
-                            <option key={s} value={s}>{s}</option>
-                          ))}
-                        </select>
-                      </div>
-                      <div>
-                        <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">Billing City</label>
-                        <select className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" value={form.billing_city || ''} onChange={(e) => setForm((s: any) => ({ ...s, billing_city: e.target.value }))} disabled={!form.billing_country || loadingBillingCities}>
-                          <option value="">{loadingBillingCities ? 'Loading...' : 'Select...'}</option>
-                          {allBillingCities.map((ct) => (
-                            <option key={ct} value={ct}>{ct}</option>
-                          ))}
-                        </select>
-                      </div>
-                      <div>
-                        <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">Billing Postal code</label>
-                        <input className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" value={form.billing_postal_code || ''} onChange={e => setForm((s: any) => ({ ...s, billing_postal_code: e.target.value }))} />
-                      </div>
-                    </>
-                  )}
-                </div>
-              </div>
             </div>
           )}
-          {step === 2 && (
+          {step === 3 && (
             <div className="space-y-3">
               <div className="flex items-center justify-between">
                 <div>
@@ -542,7 +498,7 @@ export default function NewCustomerModal({ onClose, onSuccess }: NewCustomerModa
           </div>
         </div>
         <div className="flex-shrink-0 px-4 py-4 border-t border-gray-200 bg-white flex items-center justify-between gap-3 rounded-b-xl">
-          <div className="text-xs text-gray-500">{step === 1 ? 'Step 1 of 2' : 'Step 2 of 2'}</div>
+          <div className="text-xs text-gray-500">{step === 1 ? 'Step 1 of 3' : step === 2 ? 'Step 2 of 3' : 'Step 3 of 3'}</div>
           <div className="flex items-center gap-2">
           <button onClick={async () => {
             const ok = await confirm({ title: 'Cancel', message: 'Discard this customer draft and close?' });
@@ -551,8 +507,20 @@ export default function NewCustomerModal({ onClose, onSuccess }: NewCustomerModa
             onClose();
           }} className="px-3 py-1.5 rounded-lg text-sm font-medium text-gray-700 border border-gray-200 hover:bg-gray-50">Cancel</button>
             {step > 1 && <button className="px-3 py-1.5 rounded-lg text-sm font-medium text-gray-700 border border-gray-200 hover:bg-gray-50" onClick={prev}>Back</button>}
-            {step === 1 && <button disabled={!canSubmit} onClick={next} className="px-3 py-1.5 rounded-lg text-sm font-medium bg-brand-red text-white hover:bg-[#aa1212] disabled:opacity-50">Next</button>}
+            {step === 1 && (
+              <button
+                type="button"
+                disabled={!canSubmit || checkingDuplicates || !!(duplicateMatches && duplicateMatches.length > 0)}
+                onClick={() => void goNextFromStep1()}
+                className="px-3 py-1.5 rounded-lg text-sm font-medium bg-brand-red text-white hover:bg-[#aa1212] disabled:opacity-50"
+              >
+                {checkingDuplicates ? 'Checking…' : 'Next'}
+              </button>
+            )}
             {step === 2 && (
+              <button type="button" onClick={goToContactsStep} className="px-3 py-1.5 rounded-lg text-sm font-medium bg-brand-red text-white hover:bg-[#aa1212]">Next</button>
+            )}
+            {step === 3 && (
               <button onClick={async () => {
                 if (!canSubmit || isCreating) { toast.error('Missing required fields'); return; }
                 if (!contacts.length) {
@@ -572,11 +540,16 @@ export default function NewCustomerModal({ onClose, onSuccess }: NewCustomerModa
                     ...form,
                     name: nameValue,
                     display_name: form.display_name || nameValue,
-                    client_type: form.client_type || 'Customer'
+                    client_type: form.client_type || 'Customer',
+                    client_status: 'Active',
                   };
-                  // Remove fields that aren't in the Client schema
-                  const fieldsToRemove = ['email', 'phone', 'payment_terms_id'];
-                  fieldsToRemove.forEach(field => {
+                  const fieldsToRemove = [
+                    'email', 'phone', 'payment_terms_id',
+                    'tax_number', 'billing_email', 'po_required', 'use_diff_billing',
+                    'billing_address_line1', 'billing_address_line2', 'billing_city', 'billing_province',
+                    'billing_postal_code', 'billing_country',
+                  ];
+                  fieldsToRemove.forEach((field) => {
                     delete payload[field];
                   });
 

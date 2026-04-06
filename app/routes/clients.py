@@ -316,6 +316,7 @@ def list_clients(
         base_query = base_query.filter(
             (Client.name.ilike(search_term)) |
             (Client.display_name.ilike(search_term)) |
+            (Client.legal_name.ilike(search_term)) |
             (Client.code.ilike(search_term)) |
             (Client.address_line1.ilike(search_term)) |
             (Client.address_line2.ilike(search_term)) |

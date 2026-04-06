@@ -219,6 +219,7 @@ export default function App(){
           <Routes>
             <Route path="/customers/:customerId/sites/:siteId" element={<AppShell><SiteDetail/></AppShell>} />
             <Route path="/projects/new" element={<AppShell><ProjectNew/></AppShell>} />
+            <Route path="/rm-projects/new" element={<AppShell><BusinessLineProvider line={BUSINESS_LINE_REPAIRS_MAINTENANCE}><ProjectNew /></BusinessLineProvider></AppShell>} />
             <Route path="/quotes/new" element={<AppShell><QuoteNew/></AppShell>} />
           </Routes>
         </Suspense>
