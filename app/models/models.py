@@ -175,6 +175,8 @@ class Project(Base):
     slug: Mapped[Optional[str]] = mapped_column(String(255), index=True)
     client_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True))
     related_client_ids: Mapped[Optional[list]] = mapped_column(JSON)  # Array of client UUID strings (related customers)
+    awarded_related_client_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True))  # Legacy single winner; prefer awarded_related_client_ids
+    awarded_related_client_ids: Mapped[Optional[list]] = mapped_column(JSON)  # Subset of related_client_ids marked as awarded (0+)
     site_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True))
     address: Mapped[Optional[str]] = mapped_column(String(500))  # Full address for dispatch
     address_city: Mapped[Optional[str]] = mapped_column(String(100))

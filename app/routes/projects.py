@@ -41,6 +41,31 @@ def _assert_project_line_write(user: User, proj: Project) -> None:
         raise HTTPException(status_code=403, detail="Forbidden")
 
 
+def _effective_awarded_related_client_ids(p: Project) -> list[str]:
+    """JSON list of awarded related client IDs, or legacy single UUID column."""
+    out: list[str] = []
+    raw = getattr(p, "awarded_related_client_ids", None)
+    if isinstance(raw, list):
+        for x in raw:
+            if x is None:
+                continue
+            s = str(x).strip()
+            if s:
+                out.append(s)
+    seen: set[str] = set()
+    uniq: list[str] = []
+    for s in out:
+        if s not in seen:
+            seen.add(s)
+            uniq.append(s)
+    if uniq:
+        return uniq
+    leg = getattr(p, "awarded_related_client_id", None)
+    if leg:
+        return [str(leg)]
+    return []
+
+
 def _unapprove_pricing_items_for_divisions_removed_from_project(db: Session, project: Project) -> None:
     """
     When project_division_ids is reduced, pricing rows (additional_costs) tied to a division
@@ -552,6 +577,7 @@ def get_project(project_id: str, db: Session = Depends(get_db), user: User = Dep
             related_display_names.append(name)
     else:
         related_ids = []
+    _awarded_ids = _effective_awarded_related_client_ids(p)
     return {
         "id": str(p.id),
         "code": p.code,
@@ -561,6 +587,8 @@ def get_project(project_id: str, db: Session = Depends(get_db), user: User = Dep
         "client_display_name": getattr(client,'display_name', None) or getattr(client,'name', None),
         "related_client_ids": [str(x) for x in related_ids],
         "related_client_display_names": related_display_names,
+        "awarded_related_client_ids": _awarded_ids,
+        "awarded_related_client_id": _awarded_ids[0] if len(_awarded_ids) == 1 else None,
         "address": getattr(p, 'address', None),
         "address_city": getattr(p, 'address_city', None),
         "address_province": getattr(p, 'address_province', None),
@@ -788,6 +816,70 @@ def update_project(project_id: str, payload: dict, db: Session = Depends(get_db)
         else:
             raise HTTPException(status_code=400, detail="related_client_ids must be a list or null")
     
+    # Final related IDs after this PATCH (for awarded_* validation)
+    if "related_client_ids" in payload:
+        _final_related_set = set(str(x) for x in (payload.get("related_client_ids") or []) if x)
+    else:
+        _final_related_set = set(str(x) for x in (getattr(p, "related_client_ids", None) or []) if x)
+
+    if (
+        "related_client_ids" in payload
+        and "awarded_related_client_ids" not in payload
+        and "awarded_related_client_id" not in payload
+    ):
+        _cur_aw_list = _effective_awarded_related_client_ids(p)
+        _filtered_aw = [x for x in _cur_aw_list if x in _final_related_set]
+        payload["awarded_related_client_ids"] = _filtered_aw if _filtered_aw else None
+        payload["awarded_related_client_id"] = None
+
+    if "awarded_related_client_ids" in payload:
+        _raw_list = payload.get("awarded_related_client_ids")
+        if _raw_list is None:
+            payload["awarded_related_client_ids"] = None
+            payload["awarded_related_client_id"] = None
+        elif isinstance(_raw_list, list):
+            _validated_aw: list[str] = []
+            for cid in _raw_list:
+                if not cid:
+                    continue
+                try:
+                    _cid_uuid = uuid.UUID(str(cid))
+                except (ValueError, TypeError):
+                    raise HTTPException(status_code=400, detail=f"Invalid awarded_related_client_ids entry: {cid}")
+                if str(_cid_uuid) not in _final_related_set:
+                    raise HTTPException(
+                        status_code=400,
+                        detail="Awarded customers must be among related customers",
+                    )
+                if db.query(Client).filter(Client.id == _cid_uuid).first() is None:
+                    raise HTTPException(status_code=400, detail=f"Awarded client not found: {cid}")
+                _s = str(_cid_uuid)
+                if _s not in _validated_aw:
+                    _validated_aw.append(_s)
+            payload["awarded_related_client_ids"] = _validated_aw if _validated_aw else None
+            payload["awarded_related_client_id"] = None
+        else:
+            raise HTTPException(status_code=400, detail="awarded_related_client_ids must be a list or null")
+    elif "awarded_related_client_id" in payload:
+        _raw_aw = payload.get("awarded_related_client_id")
+        if _raw_aw is None or (isinstance(_raw_aw, str) and not str(_raw_aw).strip()):
+            payload["awarded_related_client_ids"] = None
+            payload["awarded_related_client_id"] = None
+        else:
+            try:
+                _aw_uuid = uuid.UUID(str(_raw_aw))
+            except (ValueError, TypeError):
+                raise HTTPException(status_code=400, detail="Invalid awarded_related_client_id")
+            if db.query(Client).filter(Client.id == _aw_uuid).first() is None:
+                raise HTTPException(status_code=400, detail="Awarded client not found")
+            if str(_aw_uuid) not in _final_related_set:
+                raise HTTPException(
+                    status_code=400,
+                    detail="Awarded customer must be one of the related customers",
+                )
+            payload["awarded_related_client_ids"] = [str(_aw_uuid)]
+            payload["awarded_related_client_id"] = None
+
     if "date_awarded" in payload:
         raw_awarded = payload.get("date_awarded")
         if raw_awarded is None or (isinstance(raw_awarded, str) and not str(raw_awarded).strip()):
@@ -807,6 +899,9 @@ def update_project(project_id: str, payload: dict, db: Session = Depends(get_db)
     # Update project
     for k, v in payload.items():
         setattr(p, k, v)
+
+    if "awarded_related_client_ids" in payload:
+        flag_modified(p, "awarded_related_client_ids")
 
     # Edit Project Divisions: items priced under a removed division → not approved (original proposal)
     if "project_division_ids" in payload:
@@ -3564,7 +3659,7 @@ def convert_to_project(
     payload: Optional[dict] = Body(None),
     user=Depends(get_current_user),
 ):
-    """Convert a bidding to an active project. Sets date_awarded to conversion day (UTC). Optional body: project_admin_id, division_onsite_leads, date_eta, date_start, lead_source, pricing_item_approvals (list of bool per additional_costs index)."""
+    """Convert a bidding to an active project. Sets date_awarded to conversion day (UTC). Optional body: project_admin_id, division_onsite_leads, date_eta, date_start, lead_source, pricing_item_approvals, awarded_related_client_ids (subset of related_client_ids; may be empty). Legacy awarded_related_client_id (single) is still accepted."""
     p = db.query(Project).filter(Project.id == project_id, Project.deleted_at.is_(None)).first()
     if not p:
         raise HTTPException(status_code=404, detail="Not found")
@@ -3584,6 +3679,8 @@ def convert_to_project(
         "lead_source": getattr(p, 'lead_source', None),
         "project_division_ids": list(getattr(p, 'project_division_ids', None) or []),
         "is_bidding": getattr(p, 'is_bidding', True),
+        "awarded_related_client_ids": list(_effective_awarded_related_client_ids(p)),
+        "awarded_related_client_id": str(getattr(p, "awarded_related_client_id", None)) if getattr(p, "awarded_related_client_id", None) else None,
     }
     proposal_updated = False
     proposal_id_for_audit = None
@@ -3692,6 +3789,41 @@ def convert_to_project(
             p.division_onsite_leads = filtered_dol
             flag_modified(p, "division_onsite_leads")
 
+    # Awarded related customers: 0+ entries, each must be in related_client_ids (JSON list; legacy single id accepted)
+    _related = [str(x) for x in (getattr(p, "related_client_ids", None) or []) if x]
+    _awarded_payload: list = []
+    if payload:
+        if isinstance(payload.get("awarded_related_client_ids"), list):
+            _awarded_payload = list(payload.get("awarded_related_client_ids") or [])
+        elif payload.get("awarded_related_client_id"):
+            _awarded_payload = [payload.get("awarded_related_client_id")]
+    _validated_awarded: list[str] = []
+    if len(_related) == 0:
+        p.awarded_related_client_ids = None
+        p.awarded_related_client_id = None
+        flag_modified(p, "awarded_related_client_ids")
+    else:
+        for cid in _awarded_payload:
+            if not cid:
+                continue
+            try:
+                _u = uuid.UUID(str(cid))
+            except (ValueError, TypeError):
+                raise HTTPException(status_code=400, detail=f"Invalid awarded_related_client_ids entry: {cid}")
+            if str(_u) not in _related:
+                raise HTTPException(
+                    status_code=400,
+                    detail="Awarded customers must be among related customers",
+                )
+            if db.query(Client).filter(Client.id == _u).first() is None:
+                raise HTTPException(status_code=400, detail=f"Awarded client not found: {cid}")
+            _s = str(_u)
+            if _s not in _validated_awarded:
+                _validated_awarded.append(_s)
+        p.awarded_related_client_ids = _validated_awarded if _validated_awarded else None
+        p.awarded_related_client_id = None
+        flag_modified(p, "awarded_related_client_ids")
+
     p.date_awarded = datetime.combine(datetime.now(timezone.utc).date(), time.min).replace(tzinfo=timezone.utc)
     p.is_bidding = False
     db.commit()
@@ -3710,6 +3842,8 @@ def convert_to_project(
             "lead_source": getattr(p, 'lead_source', None),
             "project_division_ids": list(getattr(p, 'project_division_ids', None) or []),
             "is_bidding": getattr(p, 'is_bidding', False),
+            "awarded_related_client_ids": list(_effective_awarded_related_client_ids(p)),
+            "awarded_related_client_id": str(getattr(p, "awarded_related_client_id", None)) if getattr(p, "awarded_related_client_id", None) else None,
         }
         changes = compute_diff(before_state, after_state)
         if changes:

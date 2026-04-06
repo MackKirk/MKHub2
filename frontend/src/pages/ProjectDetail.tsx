@@ -1,5 +1,5 @@
 import { useParams, Link, useLocation, useNavigate } from 'react-router-dom';
-import { useMemo, useState, useEffect, useCallback, useRef, type MutableRefObject } from 'react';
+import { useMemo, useState, useEffect, useLayoutEffect, useCallback, useRef, type MutableRefObject } from 'react';
 import type { ReactNode } from 'react';
 import { useQuery, useQueryClient, useQueries } from '@tanstack/react-query';
 import { api } from '@/lib/api';
@@ -711,7 +711,44 @@ function UserAvatar({ user, size = 'w-8 h-8', showTooltip = true, tooltipText }:
   );
 }
 
-type Project = { id:string, code?:string, name?:string, client_id?:string, client_display_name?:string, client_name?:string, related_client_ids?:string[], related_client_display_names?:string[], address?:string, address_city?:string, address_province?:string, address_country?:string, address_postal_code?:string, description?:string, status_id?:string, division_id?:string, division_ids?:string[], project_division_ids?:string[], estimator_id?:string, estimator_ids?:string[], project_admin_id?:string, onsite_lead_id?:string, division_onsite_leads?:Record<string, string>, contact_id?:string, contact_name?:string, contact_email?:string, contact_phone?:string, date_start?:string, date_eta?:string, date_awarded?:string, date_end?:string, cost_estimated?:number, cost_actual?:number, service_value?:number, progress?:number, site_id?:string, site_name?:string, site_address_line1?:string, site_address_line2?:string, site_city?:string, site_province?:string, site_country?:string, site_postal_code?:string, status_label?:string, status_changed_at?:string, is_bidding?:boolean, lead_source?:string, business_line?: string };
+type Project = { id:string, code?:string, name?:string, client_id?:string, client_display_name?:string, client_name?:string, related_client_ids?:string[], related_client_display_names?:string[], awarded_related_client_ids?:string[], awarded_related_client_id?:string|null, address?:string, address_city?:string, address_province?:string, address_country?:string, address_postal_code?:string, description?:string, status_id?:string, division_id?:string, division_ids?:string[], project_division_ids?:string[], estimator_id?:string, estimator_ids?:string[], project_admin_id?:string, onsite_lead_id?:string, division_onsite_leads?:Record<string, string>, contact_id?:string, contact_name?:string, contact_email?:string, contact_phone?:string, date_start?:string, date_eta?:string, date_awarded?:string, date_end?:string, cost_estimated?:number, cost_actual?:number, service_value?:number, progress?:number, site_id?:string, site_name?:string, site_address_line1?:string, site_address_line2?:string, site_city?:string, site_province?:string, site_country?:string, site_postal_code?:string, status_label?:string, status_changed_at?:string, is_bidding?:boolean, lead_source?:string, business_line?: string };
+
+function projectAwardedRelatedIdsSet(proj: Project | null | undefined): Set<string> {
+  const raw = proj?.awarded_related_client_ids;
+  if (Array.isArray(raw) && raw.length > 0) return new Set(raw.map(String));
+  const leg = proj?.awarded_related_client_id;
+  if (leg) return new Set([String(leg)]);
+  return new Set();
+}
+
+/** Project hero: which related clients to show (awarded only when award data exists) and who lost the bid. */
+function projectRelatedCustomersHeroSplit(proj: Project | null | undefined): {
+  displayedEntries: { id: string; name: string }[];
+  nonAwardedEntries: { id: string; name: string }[];
+  hasAwardedData: boolean;
+} {
+  const ids = proj?.related_client_ids;
+  const names = proj?.related_client_display_names;
+  if (!Array.isArray(ids) || ids.length === 0) {
+    return { displayedEntries: [], nonAwardedEntries: [], hasAwardedData: false };
+  }
+  const all = ids.map((rid, i) => {
+    const id = String(rid);
+    const name =
+      (Array.isArray(names) && names[i] != null && String(names[i]).trim() !== ''
+        ? String(names[i])
+        : id) || 'View Customer';
+    return { id, name };
+  });
+  const awardedSet = projectAwardedRelatedIdsSet(proj);
+  if (awardedSet.size === 0) {
+    return { displayedEntries: all, nonAwardedEntries: [], hasAwardedData: false };
+  }
+  const displayedEntries = all.filter((e) => awardedSet.has(String(e.id)));
+  const nonAwardedEntries = all.filter((e) => !awardedSet.has(String(e.id)));
+  return { displayedEntries, nonAwardedEntries, hasAwardedData: true };
+}
+
 type ProjectFile = { id:string, file_object_id:string, is_image?:boolean, content_type?:string, category?:string, folder_id?:string|null, original_name?:string, uploaded_at?:string };
 type Update = { id:string, timestamp?:string, text?:string, images?:any };
 type Report = { id:string, title?:string, category_id?:string, division_id?:string, description?:string, images?:any, status?:string, created_at?:string, created_by?:string, financial_value?:number, financial_type?:string, estimate_data?:any, approval_status?:string, approved_by?:string, approved_at?:string };
@@ -1169,16 +1206,16 @@ export default function ProjectDetail(){
                       <div className="text-xs font-semibold text-gray-900 mt-0.5">{proj?.code || '—'}</div>
                     </div>
 
-                    {/* Customer - only show for projects */}
+                    {/* Project Owner / Source - only show for projects */}
                     {!proj?.is_bidding && (
                       <div>
-                        <span className="text-[10px] font-medium text-gray-500 uppercase tracking-wide">Customer</span>
+                        <span className="text-[10px] font-medium text-gray-500 uppercase tracking-wide">Project Owner / Source</span>
                         {proj?.client_id ? (
                           <Link
                             to={`/customers/${encodeURIComponent(String(proj.client_id))}`}
                             className="text-xs font-semibold text-[#7f1010] hover:text-[#a31414] hover:underline break-words mt-0.5 block"
                           >
-                            {proj?.client_display_name || proj?.client_name || 'View Customer'}
+                            {proj?.client_display_name || proj?.client_name || 'Open record'}
                           </Link>
                         ) : (
                           <div className="text-xs font-semibold text-gray-400 mt-0.5">—</div>
@@ -1186,11 +1223,37 @@ export default function ProjectDetail(){
                       </div>
                     )}
 
-                    {/* Related Customers - only show for projects */}
-                    {!proj?.is_bidding && (
+                    {/* Related Customers - only show for projects (after conversion: list awarded only; tooltip for non-awarded) */}
+                    {!proj?.is_bidding && (() => {
+                      const relatedHero = projectRelatedCustomersHeroSplit(proj);
+                      const showInfoTooltip =
+                        relatedHero.hasAwardedData && relatedHero.nonAwardedEntries.length > 0;
+                      return (
                       <div>
                         <div className="flex items-center gap-1.5 mb-1.5">
                           <span className="text-[10px] font-medium text-gray-500 uppercase tracking-wide">Related Customers</span>
+                          {showInfoTooltip && (
+                            <div className="relative group/nonAwarded inline-flex">
+                              <button
+                                type="button"
+                                className="p-0.5 text-gray-400 hover:text-gray-600 rounded"
+                                aria-label="Related customers not awarded this bid"
+                              >
+                                <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                </svg>
+                              </button>
+                              <div className="absolute left-0 bottom-full mb-2 px-3 py-2 bg-gray-900 text-white text-xs rounded-lg shadow-xl whitespace-normal max-w-xs opacity-0 invisible group-hover/nonAwarded:opacity-100 group-hover/nonAwarded:visible transition-all duration-200 pointer-events-none z-[100]">
+                                <div className="font-semibold mb-1.5 text-white">Not awarded (bid)</div>
+                                <ul className="space-y-1 text-gray-200 leading-snug">
+                                  {relatedHero.nonAwardedEntries.map((e) => (
+                                    <li key={e.id}>• {e.name}</li>
+                                  ))}
+                                </ul>
+                                <div className="absolute -bottom-1 left-2 w-2 h-2 bg-gray-900 rotate-45" />
+                              </div>
+                            </div>
+                          )}
                           {hasEditPermission && (
                             <button
                               onClick={() => setEditRelatedCustomersModal(true)}
@@ -1204,24 +1267,29 @@ export default function ProjectDetail(){
                           )}
                         </div>
                         {(proj?.related_client_ids?.length ?? 0) > 0 ? (
-                          <div className="flex flex-wrap gap-x-1 gap-y-0.5 mt-0.5">
-                            {(proj?.related_client_ids ?? []).map((rid, i) => (
-                              <span key={rid}>
+                          relatedHero.displayedEntries.length > 0 ? (
+                          <div className="flex flex-wrap gap-x-1 gap-y-1 mt-0.5">
+                            {relatedHero.displayedEntries.map((e, i) => (
+                              <span key={e.id} className="inline-flex items-center gap-1 flex-wrap">
                                 <Link
-                                  to={`/customers/${encodeURIComponent(String(rid))}`}
+                                  to={`/customers/${encodeURIComponent(String(e.id))}`}
                                   className="text-xs font-semibold text-[#7f1010] hover:text-[#a31414] hover:underline break-words"
                                 >
-                                  {(proj?.related_client_display_names?.[i] ?? rid) || 'View Customer'}
+                                  {e.name}
                                 </Link>
-                                {i < (proj?.related_client_ids?.length ?? 0) - 1 ? ', ' : null}
+                                {i < relatedHero.displayedEntries.length - 1 ? <span className="text-gray-400">,</span> : null}
                               </span>
                             ))}
                           </div>
+                          ) : (
+                            <div className="text-xs font-semibold text-gray-400 mt-0.5">—</div>
+                          )
                         ) : (
                           <div className="text-xs font-semibold text-gray-400 mt-0.5">—</div>
                         )}
                       </div>
-                    )}
+                      );
+                    })()}
 
                     {/* Site - only show for projects */}
                     {!proj?.is_bidding && (
@@ -1307,16 +1375,16 @@ export default function ProjectDetail(){
 
                   {/* Column 2 */}
                   <div className="min-w-0">
-                    {/* Customer - only show for opportunities */}
+                    {/* Project Owner / Source - only show for opportunities */}
                     {proj?.is_bidding && (
                       <div>
-                        <span className="text-[10px] font-medium text-gray-500 uppercase tracking-wide">Customer</span>
+                        <span className="text-[10px] font-medium text-gray-500 uppercase tracking-wide">Project Owner / Source</span>
                         {proj?.client_id ? (
                           <Link
                             to={`/customers/${encodeURIComponent(String(proj.client_id))}`}
                             className="text-xs font-semibold text-[#7f1010] hover:text-[#a31414] hover:underline break-words mt-0.5 block"
                           >
-                            {proj?.client_display_name || proj?.client_name || 'View Customer'}
+                            {proj?.client_display_name || proj?.client_name || 'Open record'}
                           </Link>
                         ) : (
                           <div className="text-xs font-semibold text-gray-400 mt-0.5">—</div>
@@ -1465,8 +1533,8 @@ export default function ProjectDetail(){
                     {/* Start Date - only show for projects, not opportunities */}
                     {!proj?.is_bidding && (
                       <div className="mb-4">
-                        <div className="flex items-center gap-1.5 mb-1">
-                          <label className="text-xs text-gray-600 block">Start Date</label>
+                        <div className="flex items-center gap-1.5 mb-1.5">
+                          <span className="text-[10px] font-medium text-gray-500 uppercase tracking-wide">Start Date</span>
                           {hasEditPermission && (
                             <button
                               onClick={() => setEditStartDateModal(true)}
@@ -1486,8 +1554,8 @@ export default function ProjectDetail(){
                     {/* Awarded Date - only show for projects, not opportunities */}
                     {!proj?.is_bidding && (
                       <div className="mb-4">
-                        <div className="flex items-center gap-1.5 mb-1">
-                          <label className="text-xs text-gray-600 block">Awarded Date</label>
+                        <div className="flex items-center gap-1.5 mb-1.5">
+                          <span className="text-[10px] font-medium text-gray-500 uppercase tracking-wide">Awarded Date</span>
                           {hasEditPermission && (
                             <button
                               onClick={() => setEditAwardedDateModal(true)}
@@ -1507,8 +1575,8 @@ export default function ProjectDetail(){
                     {/* End date - only show for projects, not opportunities */}
                     {!proj?.is_bidding && (
                       <div className="mb-4">
-                        <div className="flex items-center gap-1.5 mb-1">
-                          <label className="text-xs text-gray-600 block">End Date</label>
+                        <div className="flex items-center gap-1.5 mb-1.5">
+                          <span className="text-[10px] font-medium text-gray-500 uppercase tracking-wide">End Date</span>
                           {hasEditPermission && (
                             <button
                               onClick={() => setEditEtaModal(true)}
@@ -1761,7 +1829,7 @@ export default function ProjectDetail(){
                     {!proj?.is_bidding && (
                       <div className="mb-4 mt-4">
                         <div className="flex items-center gap-1.5 mb-2">
-                          <label className="text-xs text-gray-600 block">Progress</label>
+                          <span className="text-[10px] font-medium text-gray-500 uppercase tracking-wide">Progress</span>
                           {hasEditPermission && (
                             <button
                               onClick={() => setEditProgressModal(true)}
@@ -2383,6 +2451,8 @@ export default function ProjectDetail(){
           excludeClientId={proj.client_id || ''}
           currentRelatedIds={proj.related_client_ids ?? []}
           currentDisplayNames={proj.related_client_display_names ?? []}
+          isBidding={!!proj.is_bidding}
+          currentAwardedIdsFromServer={Array.from(projectAwardedRelatedIdsSet(proj))}
           onClose={() => setEditRelatedCustomersModal(false)}
           onSave={async () => {
             await queryClient.invalidateQueries({ queryKey: ['project', id] });
@@ -2707,11 +2777,21 @@ function EditEtaModal({ projectId, currentEta, onClose, onSave }: {
 
 type ClientMini = { id: string; display_name?: string; name?: string; city?: string; province?: string; address_line1?: string };
 
+function buildInitialAwardedIdsSet(relatedIds: string[], awardedFromServer: string[]): Set<string> {
+  const aw = new Set(awardedFromServer.map(String));
+  if (aw.size === 0 && relatedIds.length > 0) {
+    return new Set(relatedIds.map(String));
+  }
+  return aw;
+}
+
 function EditRelatedCustomersModal({
   projectId,
   excludeClientId,
   currentRelatedIds,
   currentDisplayNames,
+  isBidding,
+  currentAwardedIdsFromServer,
   onClose,
   onSave,
 }: {
@@ -2719,12 +2799,21 @@ function EditRelatedCustomersModal({
   excludeClientId: string;
   currentRelatedIds: string[];
   currentDisplayNames: string[];
+  isBidding: boolean;
+  currentAwardedIdsFromServer: string[];
   onClose: () => void;
   onSave: () => Promise<void>;
 }) {
+  const confirm = useConfirm();
   const [q, setQ] = useState('');
   const [displayedCount, setDisplayedCount] = useState(20);
-  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set(currentRelatedIds));
+  const [anchorOrder] = useState(() => currentRelatedIds.map(String));
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set(currentRelatedIds.map(String)));
+  const [awardedIds, setAwardedIds] = useState<Set<string>>(() =>
+    isBidding
+      ? new Set()
+      : buildInitialAwardedIdsSet(currentRelatedIds.map(String), currentAwardedIdsFromServer.map(String))
+  );
   const [saving, setSaving] = useState(false);
 
   const { data: allClients = [] } = useQuery<ClientMini[]>({
@@ -2741,23 +2830,71 @@ function EditRelatedCustomersModal({
     staleTime: 30_000,
   });
 
+  const orderedSelectedIds = useMemo(() => {
+    const head = anchorOrder.filter((id) => selectedIds.has(id));
+    const tail = [...selectedIds]
+      .filter((id) => !anchorOrder.includes(id))
+      .sort((a, b) => a.localeCompare(b));
+    return [...head, ...tail];
+  }, [selectedIds, anchorOrder]);
+
+  const nameForId = useCallback(
+    (cid: string) => {
+      const idx = currentRelatedIds.findIndex((id) => String(id) === String(cid));
+      if (idx >= 0) {
+        const n = currentDisplayNames[idx];
+        if (n != null && String(n).trim() !== '') return String(n);
+      }
+      const c = allClients.find((x) => String(x.id) === String(cid));
+      if (c) return String(c.display_name || c.name || c.id);
+      return cid;
+    },
+    [currentRelatedIds, currentDisplayNames, allClients]
+  );
+
   const filteredClients = useMemo(() => {
     const sorted = sortByLabel(allClients, (c) => (c.display_name || c.name || c.id || '').toString());
-    return sorted.filter((c) => c.id !== excludeClientId);
-  }, [allClients, excludeClientId]);
+    let base = sorted.filter((c) => c.id !== excludeClientId);
+    if (!isBidding) {
+      base = base.filter((c) => !selectedIds.has(String(c.id)));
+    }
+    return base;
+  }, [allClients, excludeClientId, isBidding, selectedIds]);
 
   const list = filteredClients.slice(0, displayedCount);
   const hasMore = filteredClients.length > displayedCount;
 
-  useEffect(() => {
-    setSelectedIds(new Set(currentRelatedIds));
-  }, [currentRelatedIds.join(',')]);
-
-  const toggleClient = (c: ClientMini) => {
+  const toggleClientOpportunity = (c: ClientMini) => {
+    const id = String(c.id);
     setSelectedIds((prev) => {
       const next = new Set(prev);
-      if (next.has(c.id)) next.delete(c.id);
-      else next.add(c.id);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const addClientFromSearchProject = (c: ClientMini) => {
+    const id = String(c.id);
+    setSelectedIds((prev) => new Set(prev).add(id));
+    setAwardedIds((prev) => new Set(prev).add(id));
+  };
+
+  const promoteToAwarded = (cid: string) => {
+    setAwardedIds((prev) => new Set(prev).add(String(cid)));
+  };
+
+  const requestDemoteAwarded = async (cid: string) => {
+    const label = nameForId(cid);
+    const res = await confirm({
+      message: `Mark "${label}" as not awarded? They will stay linked as a related customer but will only appear under the info tooltip (not in the main Related Customers list).`,
+      confirmText: 'Mark not awarded',
+      cancelText: 'Cancel',
+    });
+    if (res !== 'confirm') return;
+    setAwardedIds((prev) => {
+      const next = new Set(prev);
+      next.delete(String(cid));
       return next;
     });
   };
@@ -2765,9 +2902,18 @@ function EditRelatedCustomersModal({
   const handleSave = async () => {
     try {
       setSaving(true);
-      await api('PATCH', `/projects/${projectId}`, {
-        related_client_ids: Array.from(selectedIds),
-      });
+      const related = orderedSelectedIds;
+      if (isBidding) {
+        await api('PATCH', `/projects/${projectId}`, {
+          related_client_ids: related.length ? related : null,
+        });
+      } else {
+        const awarded = related.filter((id) => awardedIds.has(id));
+        await api('PATCH', `/projects/${projectId}`, {
+          related_client_ids: related.length ? related : null,
+          awarded_related_client_ids: awarded.length ? awarded : null,
+        });
+      }
       toast.success('Related customers updated');
       await onSave();
     } catch (e: any) {
@@ -2799,14 +2945,85 @@ function EditRelatedCustomersModal({
             </button>
             <div>
               <h2 className="text-sm font-semibold text-gray-900">Edit Related Customers</h2>
-              <p className="text-xs text-gray-500 mt-0.5">Link additional customers to this project</p>
+              <p className="text-xs text-gray-500 mt-0.5">
+                {isBidding
+                  ? 'Link additional customers to this opportunity'
+                  : 'Awarded customers appear in the header; not awarded stay linked and are listed in the tooltip. Add customers from search — they are saved as awarded.'}
+              </p>
             </div>
           </div>
         </div>
         <div className="flex-1 overflow-y-auto p-4 min-h-0">
           <div className="rounded-xl border border-gray-200 bg-white p-4 space-y-4">
+          {!isBidding && orderedSelectedIds.length > 0 && (
+            <div>
+              <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-2">
+                Related customers on this project
+              </label>
+              <div className="rounded-xl border border-gray-200 divide-y divide-gray-100 max-h-56 overflow-y-auto">
+                {orderedSelectedIds.map((rid) => {
+                  const isAwarded = awardedIds.has(rid);
+                  if (isAwarded) {
+                    return (
+                      <div
+                        key={rid}
+                        className="flex items-center gap-2 px-3 py-2.5 bg-white"
+                      >
+                        <button
+                          type="button"
+                          onClick={() => requestDemoteAwarded(rid)}
+                          className="flex-shrink-0 w-4 h-4 border rounded flex items-center justify-center bg-brand-red border-brand-red hover:opacity-90"
+                          title="Mark as not awarded"
+                        >
+                          <svg className="w-3 h-3 text-white" fill="currentColor" viewBox="0 0 20 20">
+                            <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                          </svg>
+                        </button>
+                        <div className="flex-1 min-w-0">
+                          <div className="font-semibold text-gray-900 truncate">{nameForId(rid)}</div>
+                          <div className="text-[10px] text-gray-500">Awarded — click check to mark not awarded</div>
+                        </div>
+                      </div>
+                    );
+                  }
+                  return (
+                    <div
+                      key={rid}
+                      className="flex items-center gap-2 px-3 py-2.5 bg-gray-50 text-gray-500"
+                    >
+                      <span
+                        className="flex-shrink-0 w-4 h-4 border rounded flex items-center justify-center border-gray-300 bg-gray-200 cursor-not-allowed"
+                        title="Not awarded — cannot remove from related customers"
+                      >
+                        <svg className="w-3 h-3 text-gray-500" fill="currentColor" viewBox="0 0 20 20">
+                          <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                        </svg>
+                      </span>
+                      <div className="flex-1 min-w-0">
+                        <div className="font-semibold truncate text-gray-600">{nameForId(rid)}</div>
+                        <div className="text-[10px] text-gray-400">Not awarded</div>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => promoteToAwarded(rid)}
+                        className="flex-shrink-0 p-1.5 rounded-lg border border-green-300 bg-green-50 text-green-700 hover:bg-green-100"
+                        title="Mark as awarded"
+                      >
+                        <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                          <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                        </svg>
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
           <div className="mb-3">
-            <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">Search</label>
+            <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">
+              {isBidding ? 'Search' : 'Add customers (search)'}
+            </label>
             <input
               className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm placeholder:text-gray-400 focus:outline-none focus:ring-1 focus:ring-gray-300 focus:border-gray-300"
               placeholder="Type customer name, city, or address..."
@@ -2821,13 +3038,18 @@ function EditRelatedCustomersModal({
                 <button
                   key={c.id}
                   type="button"
-                  onClick={() => toggleClient(c)}
-                  className={`w-full text-left px-3 py-2.5 transition-colors text-sm flex items-center gap-2 ${selectedIds.has(c.id) ? 'bg-brand-red/10 hover:bg-brand-red/20' : 'bg-white hover:bg-gray-50'}`}
+                  onClick={() => (isBidding ? toggleClientOpportunity(c) : addClientFromSearchProject(c))}
+                  className="w-full text-left px-3 py-2.5 transition-colors text-sm flex items-center gap-2 bg-white hover:bg-gray-50"
                 >
-                  <span className={`flex-shrink-0 w-4 h-4 border rounded flex items-center justify-center ${selectedIds.has(c.id) ? 'bg-brand-red border-brand-red' : 'border-gray-300'}`}>
-                    {selectedIds.has(c.id) && (
-                      <svg className="w-3 h-3 text-white" fill="currentColor" viewBox="0 0 20 20">
+                  <span className="flex-shrink-0 w-4 h-4 border rounded flex items-center justify-center border-gray-300">
+                    {isBidding && selectedIds.has(String(c.id)) && (
+                      <svg className="w-3 h-3 text-brand-red" fill="currentColor" viewBox="0 0 20 20">
                         <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                      </svg>
+                    )}
+                    {!isBidding && (
+                      <svg className="w-3 h-3 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
                       </svg>
                     )}
                   </span>
@@ -2854,7 +3076,9 @@ function EditRelatedCustomersModal({
             <div className="text-center py-6 text-sm text-gray-500">No customers found matching "{q}"</div>
           )}
           {!q.trim() && list.length === 0 && (
-            <div className="text-center py-6 text-sm text-gray-500">No customers available</div>
+            <div className="text-center py-6 text-sm text-gray-500">
+              {isBidding ? 'No customers available' : 'Type to search and add customers'}
+            </div>
           )}
           </div>
         </div>
@@ -3013,6 +3237,35 @@ function ConvertToProjectModal({
   const [dropdownPosition, setDropdownPosition] = useState<{ top?: number; bottom?: number; left: number; width: number; maxHeight: number } | null>(null);
   const triggerRefs = useRef<Record<string, HTMLDivElement | null>>({});
 
+  const relatedAwardOptions = useMemo(() => {
+    const ids = proj?.related_client_ids;
+    const names = proj?.related_client_display_names;
+    if (!Array.isArray(ids)) return [] as { id: string; label: string }[];
+    return ids
+      .map((id: string, i: number) => ({
+        id: String(id),
+        label: (names?.[i] as string | undefined) || String(id),
+      }))
+      .filter((x) => x.id && x.id !== 'undefined');
+  }, [proj?.related_client_ids, proj?.related_client_display_names]);
+
+  const [awardedRelatedApprovals, setAwardedRelatedApprovals] = useState<boolean[]>([]);
+
+  const relatedAwardIdsKey = useMemo(
+    () => relatedAwardOptions.map((o) => o.id).join('|'),
+    [relatedAwardOptions]
+  );
+
+  // All related start as not awarded (red) before paint to avoid a flash of stale state on reopen.
+  useLayoutEffect(() => {
+    const n = relatedAwardOptions.length;
+    if (n === 0) {
+      setAwardedRelatedApprovals([]);
+      return;
+    }
+    setAwardedRelatedApprovals(Array.from({ length: n }, () => false));
+  }, [projectId, relatedAwardIdsKey, relatedAwardOptions.length]);
+
   const divisionIds = Array.isArray(proj?.project_division_ids) ? proj.project_division_ids : [];
   const { data: proposals } = useQuery({
     queryKey: ['projectProposals', projectId],
@@ -3142,6 +3395,11 @@ function ConvertToProjectModal({
         lead_source: leadSource || null,
         pricing_item_approvals: additionalCosts.length > 0 ? pricingApprovals.slice(0, additionalCosts.length) : [],
       };
+      if (relatedAwardOptions.length > 0) {
+        body.awarded_related_client_ids = relatedAwardOptions
+          .map((o, i) => (i < awardedRelatedApprovals.length && awardedRelatedApprovals[i] ? o.id : null))
+          .filter((id): id is string => Boolean(id));
+      }
       await api('POST', `/projects/${encodeURIComponent(projectId)}/convert-to-project`, body);
       await onSuccess();
       onClose();
@@ -3191,6 +3449,79 @@ function ConvertToProjectModal({
                 Converting &quot;{proj?.name || 'this opportunity'}&quot; to an active project will enable workload and timesheet functionality. <span className="font-medium"> Be careful, this action cannot be undone.</span>
               </p>
             </div>
+
+            {relatedAwardOptions.length > 0 && (
+              <div className="md:col-span-2">
+                <label className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide block mb-2">
+                  Related customers – mark awarded (bid winner(s))
+                </label>
+                <p className="text-xs text-gray-500 mb-2">
+                  Use green for awarded, red for not.
+                </p>
+                <div className="border border-gray-200 rounded-lg divide-y divide-gray-100 max-h-48 overflow-y-auto">
+                  {relatedAwardOptions.map(({ id: rid, label }, i) => {
+                    const approved = i < awardedRelatedApprovals.length ? awardedRelatedApprovals[i] : false;
+                    return (
+                      <div key={rid} className="flex items-center gap-3 px-3 py-2 bg-white hover:bg-gray-50">
+                        <div className="flex-1 min-w-0">
+                          <span className="text-sm font-medium truncate">{label}</span>
+                        </div>
+                        <div className="flex items-center gap-1 shrink-0">
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setAwardedRelatedApprovals((prev) => {
+                                const n = [...prev];
+                                if (i < n.length) n[i] = true;
+                                return n;
+                              })
+                            }
+                            title="Awarded"
+                            className={`flex items-center justify-center w-7 h-7 rounded-lg border-2 transition-all ${
+                              approved
+                                ? 'bg-green-100 text-green-700 border-green-400 scale-105 shadow-md'
+                                : 'bg-white text-gray-300 border-gray-200 hover:border-gray-300 hover:text-gray-400'
+                            }`}
+                          >
+                            <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                              <path
+                                fillRule="evenodd"
+                                d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"
+                                clipRule="evenodd"
+                              />
+                            </svg>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setAwardedRelatedApprovals((prev) => {
+                                const n = [...prev];
+                                if (i < n.length) n[i] = false;
+                                return n;
+                              })
+                            }
+                            title="Not awarded"
+                            className={`flex items-center justify-center w-7 h-7 rounded-lg border-2 transition-all ${
+                              !approved
+                                ? 'bg-red-100 text-red-700 border-red-400 scale-105 shadow-md'
+                                : 'bg-white text-gray-300 border-gray-200 hover:border-gray-300 hover:text-gray-400'
+                            }`}
+                          >
+                            <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                              <path
+                                fillRule="evenodd"
+                                d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z"
+                                clipRule="evenodd"
+                              />
+                            </svg>
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
 
             <div className="space-y-3 min-w-0">
               <label className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide block mb-1">Project Admin</label>
@@ -10096,7 +10427,7 @@ function ProjectDivisionsHeroSection({ projectId, proj, hasEditPermission, liveP
     <>
       <div className="mb-6">
         <div className="flex items-center gap-1.5 mb-2">
-          <label className="text-xs text-gray-600 block">Project Divisions</label>
+          <span className="text-[10px] font-medium text-gray-500 uppercase tracking-wide">Project Divisions</span>
           {hasEditPermission && (
             <button
               onClick={() => setShowEditModal(true)}

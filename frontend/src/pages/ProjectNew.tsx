@@ -290,7 +290,7 @@ export default function ProjectNew(){
             </div>
                 
             <div>
-              <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">Customer *</label>
+              <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">Project Owner / Source *</label>
               {initialClientId ? (
                 <div className="relative">
                   <input 
@@ -384,7 +384,7 @@ export default function ProjectNew(){
               {!clientValid && <div className="text-[11px] text-red-600 mt-1">Required</div>}
             </div>
 
-            {/* Related Customers - optional, multi-select; same row and size as Customer */}
+            {/* Related Customers - optional, multi-select; same row and size as Project Owner / Source */}
             <div>
               <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">Related Customers</label>
               <div className="flex items-center gap-2">
@@ -916,7 +916,7 @@ function ClientSelectModal({ open, onClose, onSelect }: { open: boolean, onClose
       <div className="w-[720px] max-w-[95vw] bg-gray-100 rounded-xl overflow-hidden max-h-[90vh] flex flex-col border border-gray-200 shadow-xl">
         <div className="rounded-t-xl border-b border-gray-200 bg-white p-4 flex items-center justify-between flex-shrink-0">
           <div>
-            <div className="text-sm font-semibold text-gray-900">Select Customer</div>
+            <div className="text-sm font-semibold text-gray-900">Select Project Owner / Source</div>
             <div className="text-xs text-gray-500 mt-0.5">Search by name, city, or address</div>
           </div>
           <button onClick={onClose} className="p-1.5 rounded hover:bg-gray-100" title="Close">

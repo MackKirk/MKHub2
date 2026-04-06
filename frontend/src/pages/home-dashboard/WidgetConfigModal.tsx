@@ -240,20 +240,20 @@ export function WidgetConfigModal({ widget, onClose, onSave }: WidgetConfigModal
                 </span>
               </label>
               <div>
-                <label className="block text-xs font-semibold text-gray-700 mb-1">Customer</label>
+                <label className="block text-xs font-semibold text-gray-700 mb-1">Project Owner / Source</label>
                 <select
                   value={config.customer_id !== undefined && config.customer_id !== '' ? String(config.customer_id) : ''}
                   onChange={(e) => setConfig({ ...config, customer_id: e.target.value || undefined })}
                   className="w-full rounded-lg border border-gray-200 px-3 py-2 text-xs focus:ring-2 focus:ring-brand-red/40 focus:border-brand-red/60"
                 >
-                  <option value="">All customers</option>
+                  <option value="">All project owners / sources</option>
                   {customersList.map((c) => (
                     <option key={c.id} value={c.id}>
                       {c.display_name || c.name || c.id}
                     </option>
                   ))}
                 </select>
-                <p className="text-[10px] text-gray-500 mt-0.5">Filter chart by customer (projects/opportunities for that customer only)</p>
+                <p className="text-[10px] text-gray-500 mt-0.5">Filter chart by project owner / source (projects or opportunities linked to that record only).</p>
               </div>
               <div>
                 <label className="block text-xs font-semibold text-gray-700 mb-1">Data</label>

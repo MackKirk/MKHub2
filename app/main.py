@@ -440,6 +440,39 @@ def create_app() -> FastAPI:
                         db.commit()
                         print("[startup] Added date_awarded column to projects table")
 
+                    # Awarded related customer (bid winner among related_client_ids)
+                    rows = db.execute(
+                        text(
+                            """
+                            SELECT 1
+                            FROM information_schema.columns
+                            WHERE table_name = 'projects'
+                              AND column_name = 'awarded_related_client_id'
+                            LIMIT 1
+                            """
+                        )
+                    ).fetchall()
+                    if not rows:
+                        db.execute(text("ALTER TABLE projects ADD COLUMN awarded_related_client_id UUID NULL"))
+                        db.commit()
+                        print("[startup] Added awarded_related_client_id column to projects table")
+
+                    rows = db.execute(
+                        text(
+                            """
+                            SELECT 1
+                            FROM information_schema.columns
+                            WHERE table_name = 'projects'
+                              AND column_name = 'awarded_related_client_ids'
+                            LIMIT 1
+                            """
+                        )
+                    ).fetchall()
+                    if not rows:
+                        db.execute(text("ALTER TABLE projects ADD COLUMN awarded_related_client_ids JSON NULL"))
+                        db.commit()
+                        print("[startup] Added awarded_related_client_ids column to projects table")
+
                     # Business line: Construction vs Repairs & Maintenance
                     rows = db.execute(
                         text(

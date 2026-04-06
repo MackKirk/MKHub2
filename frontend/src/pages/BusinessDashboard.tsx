@@ -221,6 +221,8 @@ const BUSINESS_DASHBOARD_PREFS_KEY = 'business-dashboard-prefs';
 
 type BusinessDashboardPrefs = {
   selectedDivisionId: string | null;
+  /** Same as widget "Show only … related to me" — API param related_to_me */
+  relatedToMe: boolean;
   oppDivisionDateFilter: DateFilterType;
   oppDivisionCustomStart: string;
   oppDivisionCustomEnd: string;
@@ -241,6 +243,7 @@ type BusinessDashboardPrefs = {
 
 const DEFAULT_DASHBOARD_PREFS: BusinessDashboardPrefs = {
   selectedDivisionId: null,
+  relatedToMe: false,
   oppDivisionDateFilter: 'all',
   oppDivisionCustomStart: '',
   oppDivisionCustomEnd: '',
@@ -273,6 +276,7 @@ function loadDashboardPrefs(userId: string | number, businessLine: string): Busi
     return {
       ...DEFAULT_DASHBOARD_PREFS,
       ...parsed,
+      relatedToMe: typeof parsed.relatedToMe === 'boolean' ? parsed.relatedToMe : DEFAULT_DASHBOARD_PREFS.relatedToMe,
       selectedDivisionId: typeof parsed.selectedDivisionId === 'string' || parsed.selectedDivisionId === null ? parsed.selectedDivisionId : null,
       oppDivisionDateFilter: dateFilters.includes(parsed.oppDivisionDateFilter as DateFilterType) ? parsed.oppDivisionDateFilter! : 'all',
       oppDivisionDisplayMode: displayModes.includes(parsed.oppDivisionDisplayMode!) ? parsed.oppDivisionDisplayMode! : 'quantity',
@@ -340,6 +344,7 @@ export default function BusinessDashboard() {
   const loadedPrefsKeyRef = useRef<string | null>(null);
 
   const [selectedDivisionId, setSelectedDivisionId] = useState<string | null>(null);
+  const [relatedToMe, setRelatedToMe] = useState(false);
   const [hasAnimated, setHasAnimated] = useState(false);
   const [animationComplete, setAnimationComplete] = useState(false);
   
@@ -391,6 +396,7 @@ export default function BusinessDashboard() {
     const prefs = loadDashboardPrefs(userId!, businessLine);
     if (prefs) {
       setSelectedDivisionId(prefs.selectedDivisionId);
+      setRelatedToMe(prefs.relatedToMe);
       setOppDivisionDateFilter(prefs.oppDivisionDateFilter);
       setOppDivisionCustomStart(prefs.oppDivisionCustomStart);
       setOppDivisionCustomEnd(prefs.oppDivisionCustomEnd);
@@ -418,6 +424,7 @@ export default function BusinessDashboard() {
     if (!userId || !prefsKey || loadedPrefsKeyRef.current !== prefsKey) return;
     const prefs: BusinessDashboardPrefs = {
       selectedDivisionId,
+      relatedToMe,
       oppDivisionDateFilter,
       oppDivisionCustomStart,
       oppDivisionCustomEnd,
@@ -444,6 +451,7 @@ export default function BusinessDashboard() {
     currentUser?.id,
     businessLine,
     selectedDivisionId,
+    relatedToMe,
     oppDivisionDateFilter,
     oppDivisionCustomStart,
     oppDivisionCustomEnd,
@@ -506,7 +514,7 @@ export default function BusinessDashboard() {
 
   // Get division statistics for Opportunities by Division
   const { data: oppDivisionsStats, isLoading: oppDivisionsLoading } = useQuery<DivisionStats[]>({
-    queryKey: ['business-divisions-stats-opp', businessLine, selectedDivisionId, oppDivisionDateRange.date_from, oppDivisionDateRange.date_to, oppDivisionDisplayMode],
+    queryKey: ['business-divisions-stats-opp', businessLine, selectedDivisionId, relatedToMe, oppDivisionDateRange.date_from, oppDivisionDateRange.date_to, oppDivisionDisplayMode],
     queryFn: async () => {
       try {
         const params = new URLSearchParams();
@@ -515,6 +523,7 @@ export default function BusinessDashboard() {
         if (oppDivisionDateRange.date_from) params.set('date_from', oppDivisionDateRange.date_from);
         if (oppDivisionDateRange.date_to) params.set('date_to', oppDivisionDateRange.date_to);
         params.set('mode', oppDivisionDisplayMode);
+        if (relatedToMe) params.set('related_to_me', 'true');
         const url = `/projects/business/divisions-stats${params.toString() ? '?' + params.toString() : ''}`;
         return await api('GET', url);
       } catch (e) {
@@ -527,7 +536,7 @@ export default function BusinessDashboard() {
 
   // Get division statistics for Projects by Division
   const { data: projDivisionsStats, isLoading: projDivisionsLoading } = useQuery<DivisionStats[]>({
-    queryKey: ['business-divisions-stats-proj', businessLine, selectedDivisionId, projDivisionDateRange.date_from, projDivisionDateRange.date_to, projDivisionDisplayMode],
+    queryKey: ['business-divisions-stats-proj', businessLine, selectedDivisionId, relatedToMe, projDivisionDateRange.date_from, projDivisionDateRange.date_to, projDivisionDisplayMode],
     queryFn: async () => {
       try {
         const params = new URLSearchParams();
@@ -536,6 +545,7 @@ export default function BusinessDashboard() {
         if (projDivisionDateRange.date_from) params.set('date_from', projDivisionDateRange.date_from);
         if (projDivisionDateRange.date_to) params.set('date_to', projDivisionDateRange.date_to);
         params.set('mode', projDivisionDisplayMode);
+        if (relatedToMe) params.set('related_to_me', 'true');
         const url = `/projects/business/divisions-stats${params.toString() ? '?' + params.toString() : ''}`;
         return await api('GET', url);
       } catch (e) {
@@ -548,7 +558,7 @@ export default function BusinessDashboard() {
 
   // Get dashboard stats for Opportunities by Status
   const { data: oppStatusStats, isLoading: oppStatusLoading } = useQuery<DashboardStats>({
-    queryKey: ['business-dashboard-opp-status', businessLine, selectedDivisionId, oppStatusDateRange.date_from, oppStatusDateRange.date_to, oppStatusDisplayMode],
+    queryKey: ['business-dashboard-opp-status', businessLine, selectedDivisionId, relatedToMe, oppStatusDateRange.date_from, oppStatusDateRange.date_to, oppStatusDisplayMode],
     queryFn: () => {
       const params = new URLSearchParams();
       params.set('business_line', businessLine);
@@ -556,13 +566,14 @@ export default function BusinessDashboard() {
       if (oppStatusDateRange.date_from) params.set('date_from', oppStatusDateRange.date_from);
       if (oppStatusDateRange.date_to) params.set('date_to', oppStatusDateRange.date_to);
       params.set('mode', oppStatusDisplayMode);
+      if (relatedToMe) params.set('related_to_me', 'true');
       return api('GET', `/projects/business/dashboard?${params.toString()}`);
     },
   });
 
   // Get dashboard stats for Projects by Status
   const { data: projStatusStats, isLoading: projStatusLoading } = useQuery<DashboardStats>({
-    queryKey: ['business-dashboard-proj-status', businessLine, selectedDivisionId, projStatusDateRange.date_from, projStatusDateRange.date_to, projStatusDisplayMode],
+    queryKey: ['business-dashboard-proj-status', businessLine, selectedDivisionId, relatedToMe, projStatusDateRange.date_from, projStatusDateRange.date_to, projStatusDisplayMode],
     queryFn: () => {
       const params = new URLSearchParams();
       params.set('business_line', businessLine);
@@ -570,6 +581,7 @@ export default function BusinessDashboard() {
       if (projStatusDateRange.date_from) params.set('date_from', projStatusDateRange.date_from);
       if (projStatusDateRange.date_to) params.set('date_to', projStatusDateRange.date_to);
       params.set('mode', projStatusDisplayMode);
+      if (relatedToMe) params.set('related_to_me', 'true');
       return api('GET', `/projects/business/dashboard?${params.toString()}`);
     },
   });
@@ -697,7 +709,7 @@ export default function BusinessDashboard() {
 
         {/* Filter Bar - same rounded-xl area as Opportunities */}
         <div className="rounded-xl border bg-white p-4 mb-4">
-          <div className="flex items-center gap-4">
+          <div className="flex flex-wrap items-center gap-4">
             <span className="text-[10px] font-medium text-gray-500 uppercase tracking-wide mr-2">Filter by:</span>
             <div className="relative group">
               <button
@@ -740,6 +752,28 @@ export default function BusinessDashboard() {
                 </div>
               );
             })}
+            <label
+              className="flex items-center gap-2.5 cursor-pointer select-none shrink-0 ml-auto"
+              title="Only opportunities and projects where you are estimator, project admin, or onsite lead"
+            >
+              <span className="text-xs text-gray-700">Show me</span>
+              <button
+                type="button"
+                role="switch"
+                aria-checked={relatedToMe}
+                aria-label="Show only opportunities and projects related to me"
+                onClick={() => setRelatedToMe(!relatedToMe)}
+                className={`relative inline-flex h-6 w-11 shrink-0 rounded-full border transition-colors focus:outline-none focus:ring-2 focus:ring-gray-300 focus:ring-offset-1 ${
+                  relatedToMe ? 'bg-gray-900 border-gray-900' : 'bg-gray-200 border-gray-300'
+                }`}
+              >
+                <span
+                  className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow transition-transform mt-0.5 ${
+                    relatedToMe ? 'translate-x-5 ml-0.5' : 'translate-x-0.5'
+                  }`}
+                />
+              </button>
+            </label>
           </div>
         </div>
 
