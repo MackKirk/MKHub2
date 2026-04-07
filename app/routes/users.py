@@ -5,7 +5,7 @@ from pydantic import BaseModel
 from sqlalchemy import update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
-from typing import Optional, List, Any, Tuple
+from typing import Optional, List, Any, Tuple, Literal
 import math
 import uuid
 
@@ -26,6 +26,13 @@ from ..models.models import (
 )
 from ..services.audit_log_entries import audit_rows_to_entry_dicts
 from ..auth.security import require_permissions, require_roles, get_current_user
+from ..services.home_dashboard_policy import sanitize_home_dashboard
+from ..services.home_dashboard_templates import (
+    get_template_for_user,
+    resolve_template_key,
+    template_payload,
+    user_may_apply_named_template,
+)
 
 
 router = APIRouter(prefix="/users", tags=["users"])
@@ -79,15 +86,41 @@ class HomeDashboardUpdate(BaseModel):
     widgets: List[Any] = []
 
 
+class HomeDashboardApplyTemplate(BaseModel):
+    """Request body for POST /users/me/home-dashboard/apply-template."""
+    template: Literal["estimator"]
+
+
+def _home_dashboard_json_equal(a: list, b: list) -> bool:
+    try:
+        return json.dumps(a, sort_keys=True, default=str) == json.dumps(b, sort_keys=True, default=str)
+    except (TypeError, ValueError):
+        return a == b
+
+
 @router.get("/me/home-dashboard")
 def get_my_home_dashboard(db: Session = Depends(get_db), user: User = Depends(get_current_user)):
-    """Get current user's home dashboard layout and widgets. Returns null if not set (frontend uses default)."""
+    """Get home dashboard; creates row from Estimator/Basic template on first access."""
     row = db.query(UserHomeDashboard).filter(UserHomeDashboard.user_id == user.id).first()
+    template_key = resolve_template_key(user)
     if not row:
-        return None
+        _tk, layout, widgets = get_template_for_user(user)
+        layout, widgets = sanitize_home_dashboard(user, layout, widgets)
+        row = UserHomeDashboard(user_id=user.id, layout=layout, widgets=widgets)
+        db.add(row)
+        db.commit()
+        db.refresh(row)
+        return {"layout": layout, "widgets": widgets, "template_key": _tk}
     layout = _ensure_list(row.layout)
     widgets = _ensure_list(row.widgets)
-    return {"layout": layout, "widgets": widgets}
+    slayout, swidgets = sanitize_home_dashboard(user, layout, widgets)
+    if not _home_dashboard_json_equal(layout, slayout) or not _home_dashboard_json_equal(widgets, swidgets):
+        row.layout = slayout
+        row.widgets = swidgets
+        row.updated_at = datetime.now(timezone.utc)
+        db.commit()
+        db.refresh(row)
+    return {"layout": slayout, "widgets": swidgets, "template_key": template_key}
 
 
 @router.put("/me/home-dashboard")
@@ -96,13 +129,14 @@ def put_my_home_dashboard(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    """Create or update current user's home dashboard layout and widgets."""
+    """Create or update home dashboard; widgets not allowed for the user are stripped."""
     layout = payload.layout if payload.layout is not None else []
     widgets = payload.widgets if payload.widgets is not None else []
     if not isinstance(layout, list):
         layout = _ensure_list(layout)
     if not isinstance(widgets, list):
         widgets = _ensure_list(widgets)
+    layout, widgets = sanitize_home_dashboard(user, layout, widgets)
     row = db.query(UserHomeDashboard).filter(UserHomeDashboard.user_id == user.id).first()
     if row:
         row.layout = layout
@@ -113,7 +147,64 @@ def put_my_home_dashboard(
         db.add(row)
     db.commit()
     db.refresh(row)
-    return {"layout": _ensure_list(row.layout), "widgets": _ensure_list(row.widgets)}
+    return {
+        "layout": _ensure_list(row.layout),
+        "widgets": _ensure_list(row.widgets),
+        "template_key": resolve_template_key(user),
+    }
+
+
+@router.post("/me/home-dashboard/reset-template")
+def reset_my_home_dashboard_template(
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Replace dashboard with the server template for this user (Estimator vs Basic)."""
+    template_key, layout, widgets = get_template_for_user(user)
+    layout, widgets = sanitize_home_dashboard(user, layout, widgets)
+    row = db.query(UserHomeDashboard).filter(UserHomeDashboard.user_id == user.id).first()
+    if row:
+        row.layout = layout
+        row.widgets = widgets
+        row.updated_at = datetime.now(timezone.utc)
+    else:
+        row = UserHomeDashboard(user_id=user.id, layout=layout, widgets=widgets)
+        db.add(row)
+    db.commit()
+    db.refresh(row)
+    return {
+        "layout": _ensure_list(row.layout),
+        "widgets": _ensure_list(row.widgets),
+        "template_key": template_key,
+    }
+
+
+@router.post("/me/home-dashboard/apply-template")
+def apply_my_home_dashboard_template(
+    payload: HomeDashboardApplyTemplate,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Apply a named server template (e.g. Estimator). Admin or estimator role only."""
+    if not user_may_apply_named_template(user, payload.template):
+        raise HTTPException(status_code=403, detail="Forbidden")
+    layout, widgets = template_payload(payload.template)
+    layout, widgets = sanitize_home_dashboard(user, layout, widgets)
+    row = db.query(UserHomeDashboard).filter(UserHomeDashboard.user_id == user.id).first()
+    if row:
+        row.layout = layout
+        row.widgets = widgets
+        row.updated_at = datetime.now(timezone.utc)
+    else:
+        row = UserHomeDashboard(user_id=user.id, layout=layout, widgets=widgets)
+        db.add(row)
+    db.commit()
+    db.refresh(row)
+    return {
+        "layout": _ensure_list(row.layout),
+        "widgets": _ensure_list(row.widgets),
+        "template_key": resolve_template_key(user),
+    }
 
 
 def _user_to_dict(u: User, ep: Optional[EmployeeProfile]) -> dict:

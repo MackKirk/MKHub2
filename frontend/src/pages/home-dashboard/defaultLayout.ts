@@ -1,6 +1,9 @@
 import type { HomeDashboardState } from './types';
 
-/** Default dashboard used when user has no saved layout and for "Reset to default". (8-col grid.) */
+/**
+ * Legacy reference: the full Estimator template is defined on the server
+ * (`app/services/home_dashboard_templates.py`). Kept for documentation / diff only.
+ */
 export const DEFAULT_HOME_DASHBOARD: HomeDashboardState = {
   layout: [
     { i: 'c2254934-160b-4070-a028-718a665840e9', x: 0, y: 2, w: 4, h: 3 },
