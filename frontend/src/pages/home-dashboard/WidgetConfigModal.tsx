@@ -1,10 +1,18 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '@/lib/api';
+import { useBusinessLine } from '@/context/BusinessLineContext';
 import type { WidgetDef } from './types';
 import { getWidgetMeta } from './widgetRegistry';
 import { getChartMetricLabel, CHART_PALETTE_OPTIONS, CHART_PALETTES } from './widgets/chartShared';
 import OverlayPortal from '@/components/OverlayPortal';
+import type { MeForHomeWidgets } from './widgetVisibility';
+import {
+  canAccessBusinessLineForHome,
+  canReadCustomersForHome,
+  isShortcutItemAllowed,
+  normalizeBusinessLineForHome,
+} from './widgetVisibility';
 
 const OPPORTUNITY_STATUS_LABELS = ['Prospecting', 'Sent to Customer', 'Refused'];
 
@@ -102,6 +110,21 @@ type WidgetConfigModalProps = {
 export function WidgetConfigModal({ widget, onClose, onSave }: WidgetConfigModalProps) {
   const [config, setConfig] = useState<Record<string, unknown>>({});
   const [title, setTitle] = useState('');
+  const ctxLine = useBusinessLine();
+  const { data: me } = useQuery({
+    queryKey: ['me'],
+    queryFn: () => api<MeForHomeWidgets>('GET', '/auth/me'),
+  });
+
+  const lineForPermissions = useMemo(() => {
+    const bl = widget?.config?.business_line;
+    if (typeof bl === 'string' && bl.trim()) return normalizeBusinessLineForHome(bl);
+    return normalizeBusinessLineForHome(ctxLine);
+  }, [widget?.config?.business_line, ctxLine]);
+
+  const allowServicesWidgets = me !== undefined && canAccessBusinessLineForHome(me, lineForPermissions);
+  const allowCustomersFilter = me !== undefined && canReadCustomersForHome(me);
+
   const { data: settings } = useQuery({
     queryKey: ['settings'],
     queryFn: () => api<Record<string, unknown>>('GET', '/settings'),
@@ -111,7 +134,7 @@ export function WidgetConfigModal({ widget, onClose, onSave }: WidgetConfigModal
   const { data: clientsData } = useQuery({
     queryKey: ['clients', 'widget-chart-customers'],
     queryFn: () => api<{ items: { id: string; name?: string; display_name?: string }[] }>('GET', '/clients?limit=100'),
-    enabled: widget?.type === 'chart',
+    enabled: widget?.type === 'chart' && allowCustomersFilter,
   });
   const customersList = useMemo(() => {
     const items = clientsData?.items ?? [];
@@ -132,6 +155,13 @@ export function WidgetConfigModal({ widget, onClose, onSave }: WidgetConfigModal
       setTitle(widget.title ?? defaultTitle);
     }
   }, [widget]);
+
+  useEffect(() => {
+    if (widget?.type !== 'chart' || me === undefined) return;
+    if (!allowServicesWidgets && String(config.mode ?? 'quantity') === 'value') {
+      setConfig((prev) => ({ ...prev, mode: 'quantity' }));
+    }
+  }, [widget?.type, widget?.id, allowServicesWidgets, me, config.mode]);
 
   if (!widget) return null;
 
@@ -239,6 +269,7 @@ export function WidgetConfigModal({ widget, onClose, onSave }: WidgetConfigModal
                     : 'Show only Projects related to me'}
                 </span>
               </label>
+              {allowCustomersFilter && (
               <div>
                 <label className="block text-xs font-semibold text-gray-700 mb-1">Project Owner / Source</label>
                 <select
@@ -255,6 +286,7 @@ export function WidgetConfigModal({ widget, onClose, onSave }: WidgetConfigModal
                 </select>
                 <p className="text-[10px] text-gray-500 mt-0.5">Filter chart by project owner / source (projects or opportunities linked to that record only).</p>
               </div>
+              )}
               <div>
                 <label className="block text-xs font-semibold text-gray-700 mb-1">Data</label>
                 <select
@@ -320,12 +352,12 @@ export function WidgetConfigModal({ widget, onClose, onSave }: WidgetConfigModal
               <div>
                 <label className="block text-xs font-semibold text-gray-700 mb-1">Display</label>
                 <select
-                  value={String(config.mode ?? 'quantity')}
+                  value={allowServicesWidgets ? String(config.mode ?? 'quantity') : 'quantity'}
                   onChange={(e) => setConfig({ ...config, mode: e.target.value })}
                   className="w-full rounded-lg border border-gray-200 px-3 py-2 text-xs focus:ring-2 focus:ring-brand-red/40 focus:border-brand-red/60"
                 >
                   <option value="quantity">Count</option>
-                  <option value="value">Value</option>
+                  {allowServicesWidgets ? <option value="value">Value</option> : null}
                 </select>
               </div>
               <div>
@@ -384,7 +416,7 @@ export function WidgetConfigModal({ widget, onClose, onSave }: WidgetConfigModal
             <div>
               <label className="block text-xs font-semibold text-gray-700 mb-2">Shortcuts</label>
               <div className="space-y-2">
-                {SHORTCUT_OPTIONS.map((opt) => {
+                {SHORTCUT_OPTIONS.filter((opt) => isShortcutItemAllowed(opt.id, me, lineForPermissions)).map((opt) => {
                   const items = (config.items as string[]) ?? ['tasks', 'projects', 'schedule'];
                   const checked = items.includes(opt.id);
                   return (

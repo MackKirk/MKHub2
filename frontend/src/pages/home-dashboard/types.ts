@@ -19,4 +19,6 @@ export type WidgetDef = {
 export type HomeDashboardState = {
   layout: LayoutItem[];
   widgets: WidgetDef[];
+  /** Server template key: estimator | basic (informational). */
+  template_key?: string;
 };

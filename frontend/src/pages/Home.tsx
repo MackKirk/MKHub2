@@ -10,12 +10,14 @@ import toast from 'react-hot-toast';
 import { useConfirm } from '@/components/ConfirmProvider';
 import LoadingOverlay from '@/components/LoadingOverlay';
 import { AnimationReadyProvider } from '@/contexts/AnimationReadyContext';
-import { DEFAULT_HOME_DASHBOARD } from './home-dashboard/defaultLayout';
+import { useBusinessLine } from '@/context/BusinessLineContext';
 import type { HomeDashboardState, LayoutItem, WidgetDef } from './home-dashboard/types';
 import { WidgetWrapper } from './home-dashboard/WidgetWrapper';
 import { renderWidget } from './home-dashboard/widgetRegistry';
 import { AddWidgetModal } from './home-dashboard/AddWidgetModal';
 import { WidgetConfigModal } from './home-dashboard/WidgetConfigModal';
+import type { MeForHomeWidgets } from './home-dashboard/widgetVisibility';
+import { filterLayoutForWidgets, filterWidgetsForHome } from './home-dashboard/widgetVisibility';
 
 const COLUMNS = 8;
 const ROW_HEIGHT = 100;
@@ -60,15 +62,21 @@ export default function Home() {
     []
   );
 
+  const activeBusinessLine = useBusinessLine();
+  const { data: me } = useQuery({
+    queryKey: ['me'],
+    queryFn: () => api<MeForHomeWidgets>('GET', '/auth/me'),
+  });
+
   const { data: saved, isLoading, isFetched } = useQuery({
     queryKey: ['home-dashboard'],
-    queryFn: () => api<HomeDashboardState | null>('GET', '/users/me/home-dashboard'),
+    queryFn: () => api<HomeDashboardState>('GET', '/users/me/home-dashboard'),
     refetchOnWindowFocus: false,
     staleTime: 2 * 60 * 1000,
   });
 
-  const [layout, setLayout] = useState<LayoutItem[]>(DEFAULT_HOME_DASHBOARD.layout);
-  const [widgets, setWidgets] = useState<WidgetDef[]>(DEFAULT_HOME_DASHBOARD.widgets);
+  const [layout, setLayout] = useState<LayoutItem[]>([]);
+  const [widgets, setWidgets] = useState<WidgetDef[]>([]);
   const [isEditMode, setIsEditMode] = useState(false);
   const [addModalOpen, setAddModalOpen] = useState(false);
   const [configWidgetId, setConfigWidgetId] = useState<string | null>(null);
@@ -79,7 +87,7 @@ export default function Home() {
   useEffect(() => {
     if (!isFetched) return;
     if (!hasResolvedInitial) setHasResolvedInitial(true);
-    if (saved === undefined || saved === null) return;
+    if (saved === undefined) return;
     const rawLayout = saved.layout;
     const rawWidgets = saved.widgets;
     const layoutList = Array.isArray(rawLayout) ? rawLayout : (typeof rawLayout === 'string' ? (() => { try { const p = JSON.parse(rawLayout); return Array.isArray(p) ? p : []; } catch { return []; } })() : []);
@@ -90,11 +98,44 @@ export default function Home() {
     setWidgets(widgetsList as WidgetDef[]);
   }, [saved, isFetched]);
 
+  const visibleWidgets = useMemo(
+    () => filterWidgetsForHome(widgets, me, activeBusinessLine),
+    [widgets, me, activeBusinessLine]
+  );
+  const visibleLayout = useMemo(
+    () => filterLayoutForWidgets(layout, visibleWidgets) as LayoutItem[],
+    [layout, visibleWidgets]
+  );
+
+  const showTemplatesMenu = useMemo(() => {
+    const roles = (me?.roles ?? []).map((r) => String(r).toLowerCase());
+    return roles.includes('admin') || roles.includes('estimator');
+  }, [me]);
+
+  const [templatesMenuOpen, setTemplatesMenuOpen] = useState(false);
+  const templatesMenuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!templatesMenuOpen) return;
+    const onDoc = (e: MouseEvent) => {
+      const el = templatesMenuRef.current;
+      if (el && !el.contains(e.target as Node)) setTemplatesMenuOpen(false);
+    };
+    document.addEventListener('mousedown', onDoc);
+    return () => document.removeEventListener('mousedown', onDoc);
+  }, [templatesMenuOpen]);
+
   const saveDashboard = useCallback(async (nextLayout: LayoutItem[], nextWidgets: WidgetDef[]) => {
     try {
       const safeLayout = sanitizeLayout(nextLayout);
-      await api('PUT', '/users/me/home-dashboard', { layout: safeLayout, widgets: nextWidgets });
-      queryClient.setQueryData(['home-dashboard'], { layout: safeLayout, widgets: nextWidgets });
+      const res = await api<HomeDashboardState>('PUT', '/users/me/home-dashboard', { layout: safeLayout, widgets: nextWidgets });
+      queryClient.setQueryData(['home-dashboard'], res);
+      const rl = res.layout;
+      const rw = res.widgets;
+      const layoutList = Array.isArray(rl) ? rl : [];
+      const widgetsList = Array.isArray(rw) ? rw : [];
+      setLayout(sanitizeLayout(layoutList as LayoutItem[]));
+      setWidgets(widgetsList as WidgetDef[]);
       toast.success('Dashboard saved');
     } catch {
       toast.error('Failed to save dashboard');
@@ -105,7 +146,17 @@ export default function Home() {
   // (compactType="vertical") and fires onLayoutChange, which would overwrite the saved layout.
   const handleLayoutChange = useCallback((newLayout: RGLLayout) => {
     if (!isEditMode) return;
-    setLayout(newLayout.map(({ i, x, y, w, h }) => ({ i, x, y, w, h })));
+    setLayout((prev) => {
+      const idxByI = new Map(prev.map((c, idx) => [c.i, idx]));
+      const next = [...prev];
+      for (const nl of newLayout) {
+        const idx = idxByI.get(nl.i);
+        if (idx !== undefined) {
+          next[idx] = { ...next[idx], x: nl.x, y: nl.y, w: nl.w, h: nl.h };
+        }
+      }
+      return next;
+    });
   }, [isEditMode]);
 
   const handleRemoveWidget = useCallback(async (id: string) => {
@@ -133,10 +184,42 @@ export default function Home() {
       cancelText: 'Cancel',
     });
     if (result !== 'confirm') return;
-    setLayout(DEFAULT_HOME_DASHBOARD.layout);
-    setWidgets(DEFAULT_HOME_DASHBOARD.widgets);
-    saveDashboard(DEFAULT_HOME_DASHBOARD.layout, DEFAULT_HOME_DASHBOARD.widgets);
-  }, [confirm, saveDashboard]);
+    try {
+      const data = await api<HomeDashboardState>('POST', '/users/me/home-dashboard/reset-template');
+      queryClient.setQueryData(['home-dashboard'], data);
+      const layoutList = Array.isArray(data.layout) ? data.layout : [];
+      const widgetsList = Array.isArray(data.widgets) ? data.widgets : [];
+      setLayout(sanitizeLayout(migrateLayoutTo8Col(layoutList as LayoutItem[])));
+      setWidgets(widgetsList as WidgetDef[]);
+      toast.success('Dashboard reset');
+    } catch {
+      toast.error('Failed to reset dashboard');
+    }
+  }, [confirm, queryClient]);
+
+  const handleApplyEstimatorTemplate = useCallback(async () => {
+    setTemplatesMenuOpen(false);
+    const result = await confirm({
+      title: 'Apply Estimator template',
+      message: 'Replace your current dashboard with the Estimator template? This cannot be undone.',
+      confirmText: 'Apply',
+      cancelText: 'Cancel',
+    });
+    if (result !== 'confirm') return;
+    try {
+      const data = await api<HomeDashboardState>('POST', '/users/me/home-dashboard/apply-template', {
+        template: 'estimator',
+      });
+      queryClient.setQueryData(['home-dashboard'], data);
+      const layoutList = Array.isArray(data.layout) ? data.layout : [];
+      const widgetsList = Array.isArray(data.widgets) ? data.widgets : [];
+      setLayout(sanitizeLayout(migrateLayoutTo8Col(layoutList as LayoutItem[])));
+      setWidgets(widgetsList as WidgetDef[]);
+      toast.success('Estimator template applied');
+    } catch {
+      toast.error('Failed to apply template');
+    }
+  }, [confirm, queryClient]);
 
   const handleDoneEdit = useCallback(() => {
     setIsEditMode(false);
@@ -144,8 +227,8 @@ export default function Home() {
   }, [layout, widgets, saveDashboard]);
 
   const handleCancelEdit = useCallback(() => {
-    const saved = queryClient.getQueryData(['home-dashboard']) as HomeDashboardState | null | undefined;
-    if (saved != null) {
+    const saved = queryClient.getQueryData(['home-dashboard']) as HomeDashboardState | undefined;
+    if (saved != null && saved.layout != null && saved.widgets != null) {
       const rawLayout = saved.layout;
       const rawWidgets = saved.widgets;
       const layoutList = Array.isArray(rawLayout) ? rawLayout : (typeof rawLayout === 'string' ? (() => { try { const p = JSON.parse(rawLayout); return Array.isArray(p) ? p : []; } catch { return []; } })() : []);
@@ -201,6 +284,37 @@ export default function Home() {
               >
                 Add Widget
               </button>
+              {showTemplatesMenu && (
+                <div className="relative" ref={templatesMenuRef}>
+                  <button
+                    type="button"
+                    onClick={() => setTemplatesMenuOpen((o) => !o)}
+                    className="px-3 py-2 rounded-lg border border-gray-300 bg-white text-gray-700 hover:bg-gray-50 text-sm font-medium inline-flex items-center gap-1"
+                    aria-expanded={templatesMenuOpen}
+                    aria-haspopup="true"
+                  >
+                    Templates
+                    <svg className="w-4 h-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                    </svg>
+                  </button>
+                  {templatesMenuOpen && (
+                    <div
+                      className="absolute left-0 mt-1 min-w-[10rem] rounded-lg border border-gray-200 bg-white py-1 shadow-lg z-20"
+                      role="menu"
+                    >
+                      <button
+                        type="button"
+                        role="menuitem"
+                        className="w-full text-left px-3 py-2 text-sm text-gray-800 hover:bg-gray-50"
+                        onClick={() => void handleApplyEstimatorTemplate()}
+                      >
+                        Estimator
+                      </button>
+                    </div>
+                  )}
+                </div>
+              )}
               <button
                 type="button"
                 onClick={handleReset}
@@ -234,7 +348,7 @@ export default function Home() {
           )}
       </div>
 
-      {widgets.length === 0 ? (
+      {visibleWidgets.length === 0 ? (
         <div className="rounded-xl border border-dashed border-gray-300 bg-gray-50/50 p-12 text-center">
           <p className="text-gray-500 mb-4">No widgets yet. Add widgets to build your dashboard.</p>
           {isEditMode && (
@@ -250,7 +364,7 @@ export default function Home() {
       ) : (
       <GridLayout
         className="layout"
-        layout={layout}
+        layout={visibleLayout}
         onLayoutChange={handleLayoutChange}
         cols={COLUMNS}
         rowHeight={ROW_HEIGHT}
@@ -261,7 +375,7 @@ export default function Home() {
         compactType="vertical"
         preventCollision={false}
       >
-        {widgets.map((widget) => (
+        {visibleWidgets.map((widget) => (
           <div key={widget.id} className="h-full min-h-0">
             <WidgetWrapper
               widget={widget}
@@ -281,6 +395,8 @@ export default function Home() {
         onClose={() => setAddModalOpen(false)}
         onAdd={handleAddWidget}
         existingLayout={layout}
+        me={me}
+        activeBusinessLine={activeBusinessLine}
       />
 
       <WidgetConfigModal

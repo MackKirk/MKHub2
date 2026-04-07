@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { getWidgetMeta } from './widgetRegistry';
 import { GALLERY_ITEMS, GALLERY_TABS } from './galleryConfig';
 import { getChartMetricLabel } from './widgets/chartShared';
@@ -6,12 +6,16 @@ import type { GalleryItem } from './galleryConfig';
 import type { WidgetDef } from './types';
 import type { LayoutItem } from './types';
 import OverlayPortal from '@/components/OverlayPortal';
+import type { MeForHomeWidgets } from './widgetVisibility';
+import { isGalleryItemAllowed } from './widgetVisibility';
 
 type AddWidgetModalProps = {
   open: boolean;
   onClose: () => void;
   onAdd: (widget: WidgetDef, layoutItem: LayoutItem) => void;
   existingLayout: LayoutItem[];
+  me: MeForHomeWidgets | undefined;
+  activeBusinessLine: string;
 };
 
 const TAB_LABELS: Record<(typeof GALLERY_TABS)[number], string> = {
@@ -196,12 +200,33 @@ function GalleryCard({
   );
 }
 
-export function AddWidgetModal({ open, onClose, onAdd, existingLayout }: AddWidgetModalProps) {
+export function AddWidgetModal({
+  open,
+  onClose,
+  onAdd,
+  existingLayout,
+  me,
+  activeBusinessLine,
+}: AddWidgetModalProps) {
   const [activeTab, setActiveTab] = useState<(typeof GALLERY_TABS)[number]>('KPIs');
 
   const itemsByTab = useMemo(() => {
-    return GALLERY_ITEMS.filter((item) => item.category === activeTab);
-  }, [activeTab]);
+    return GALLERY_ITEMS.filter(
+      (item) => item.category === activeTab && isGalleryItemAllowed(item, me, activeBusinessLine)
+    );
+  }, [activeTab, me, activeBusinessLine]);
+
+  useEffect(() => {
+    if (!open) return;
+    const hasCurrent = GALLERY_ITEMS.some(
+      (it) => it.category === activeTab && isGalleryItemAllowed(it, me, activeBusinessLine)
+    );
+    if (hasCurrent) return;
+    const firstWith = GALLERY_TABS.find((tab) =>
+      GALLERY_ITEMS.some((it) => it.category === tab && isGalleryItemAllowed(it, me, activeBusinessLine))
+    );
+    if (firstWith) setActiveTab(firstWith);
+  }, [open, me, activeBusinessLine, activeTab]);
 
   const chartGroups = useMemo(() => {
     if (activeTab !== 'Charts') return null;
