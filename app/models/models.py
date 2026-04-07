@@ -434,6 +434,9 @@ class ClientFile(Base):
     original_name: Mapped[Optional[str]] = mapped_column(String(255))
     uploaded_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
     uploaded_by: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True))
+    # Soft-delete when removed from project/opportunity files (admin can purge row + storage later)
+    deleted_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True, index=True)
+    deleted_by_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"))
 
 
 # Logical customer folders and documents (parallel to employee folders/docs)

@@ -346,7 +346,8 @@ def list_clients(
         logo_rows = db.query(ClientFile).filter(
             ClientFile.client_id.in_(client_uuids),
             ClientFile.site_id.is_(None),
-            ClientFile.category.ilike('client-logo-derived')
+            ClientFile.category.ilike('client-logo-derived'),
+            ClientFile.deleted_at.is_(None),
         ).all()
         
         # Build a map of client_id (UUID) -> logo file
@@ -815,7 +816,7 @@ def list_files(
     _=Depends(require_permissions("business:customers:read"))
 ):
     q = db.query(ClientFile)
-    q = q.filter(ClientFile.client_id == client_id)
+    q = q.filter(ClientFile.client_id == client_id, ClientFile.deleted_at.is_(None))
     if site_id:
         q = q.filter(ClientFile.site_id == site_id)
     if category:
@@ -919,7 +920,7 @@ def delete_client_file(client_id: str, client_file_id: str, db: Session = Depend
 @router.post("/{client_id}/files/reorder")
 def reorder_client_files(client_id: str, order: list[str], db: Session = Depends(get_db), _=Depends(require_permissions("business:customers:write"))):
     # Persist per-client order using FileObject.tags.client_sort[client_id] = index
-    cfiles = db.query(ClientFile).filter(ClientFile.client_id == client_id).all()
+    cfiles = db.query(ClientFile).filter(ClientFile.client_id == client_id, ClientFile.deleted_at.is_(None)).all()
     index = {str(cid): i for i, cid in enumerate(order or [])}
     for cf in cfiles:
         idx = index.get(str(cf.id))

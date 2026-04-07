@@ -4948,6 +4948,8 @@ function ProjectFilesTabEnhanced({ projectId, files, onRefresh }:{ projectId:str
   const [draggedFolderId, setDraggedFolderId] = useState<string | null>(null);
   const [editingFileNameId, setEditingFileNameId] = useState<string | null>(null);
   const [editingFileNameValue, setEditingFileNameValue] = useState('');
+  /** Admin-only: library vs soft-deleted files pending purge */
+  const [filesSection, setFilesSection] = useState<'active' | 'deleted'>('active');
   
   // Check permissions for files
   const { data: me } = useQuery({ queryKey:['me'], queryFn: ()=>api<any>('GET','/auth/me') });
@@ -4964,6 +4966,17 @@ function ProjectFilesTabEnhanced({ projectId, files, onRefresh }:{ projectId:str
     queryKey: ['project-files-category-perms'],
     queryFn: ()=>api<any>('GET', '/auth/me/project-files-category-permissions'),
   });
+
+  type ProjectDeletedFile = ProjectFile & { deleted_at?: string | null; deleted_by_id?: string | null };
+  const { data: deletedFiles = [], refetch: refetchDeletedFiles } = useQuery({
+    queryKey: ['projectDeletedFiles', projectId],
+    queryFn: () => api<ProjectDeletedFile[]>('GET', `/projects/${encodeURIComponent(projectId)}/files/deleted`),
+    enabled: !!projectId && isAdmin && filesSection === 'deleted',
+  });
+
+  useEffect(() => {
+    if (!isAdmin && filesSection === 'deleted') setFilesSection('active');
+  }, [isAdmin, filesSection]);
 
   const readAllowList: string[] | null = Array.isArray(categoryPerms?.read_categories) ? categoryPerms.read_categories : null;
   const writeAllowList: string[] | null = Array.isArray(categoryPerms?.write_categories) ? categoryPerms.write_categories : null;
@@ -5370,8 +5383,9 @@ function ProjectFilesTabEnhanced({ projectId, files, onRefresh }:{ projectId:str
         return;
       }
       await api('DELETE', `/projects/${projectId}/files/${fileId}`);
+      await queryClient.invalidateQueries({ queryKey: ['projectDeletedFiles', projectId] });
       await onRefresh();
-      toast.success('File deleted');
+      toast.success('Removed from project');
     } catch (_e) {
       toast.error('Failed to delete file');
     }
@@ -5409,19 +5423,104 @@ function ProjectFilesTabEnhanced({ projectId, files, onRefresh }:{ projectId:str
     setEditingFileNameValue(f.original_name || f.file_object_id || '');
   };
 
+  const handlePermanentDeleteFile = async (fileId: string) => {
+    if (!confirm('Permanently delete this file from storage? This cannot be undone.')) return;
+    try {
+      await api('DELETE', `/projects/${encodeURIComponent(projectId)}/files/deleted/${encodeURIComponent(fileId)}`);
+      await refetchDeletedFiles();
+      await onRefresh();
+      toast.success('File permanently deleted');
+    } catch (_e) {
+      toast.error('Failed to delete file');
+    }
+  };
+
   return (
     <div className="space-y-4">
       {/* Main Files Section Card */}
       <div className="rounded-xl border bg-white p-4">
-        <div className="flex items-center gap-2 mb-4">
-          <div className="w-8 h-8 rounded bg-blue-100 flex items-center justify-center">
-            <svg className="w-5 h-5 text-blue-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
-            </svg>
+        <div className="flex flex-wrap items-center justify-between gap-2 mb-4">
+          <div className="flex items-center gap-2">
+            <div className="w-8 h-8 rounded bg-blue-100 flex items-center justify-center">
+              <svg className="w-5 h-5 text-blue-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
+              </svg>
+            </div>
+            <h2 className="text-sm font-semibold text-gray-900">Files</h2>
           </div>
-          <h2 className="text-sm font-semibold text-gray-900">Files</h2>
+          {isAdmin && (
+            <div className="flex rounded-lg border border-gray-200 p-0.5 bg-gray-50" role="tablist" aria-label="File views">
+              <button
+                type="button"
+                role="tab"
+                aria-selected={filesSection === 'active'}
+                onClick={() => setFilesSection('active')}
+                className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${
+                  filesSection === 'active' ? 'bg-white shadow text-gray-900' : 'text-gray-600 hover:text-gray-900'
+                }`}
+              >
+                Library
+              </button>
+              <button
+                type="button"
+                role="tab"
+                aria-selected={filesSection === 'deleted'}
+                onClick={() => setFilesSection('deleted')}
+                className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${
+                  filesSection === 'deleted' ? 'bg-white shadow text-gray-900' : 'text-gray-600 hover:text-gray-900'
+                }`}
+              >
+                Deleted files
+              </button>
+            </div>
+          )}
         </div>
+
+        {isAdmin && filesSection === 'deleted' ? (
+          <div className="rounded-xl border border-amber-100 bg-amber-50/50 overflow-hidden">
+            <p className="text-xs text-amber-900 px-3 py-2 border-b border-amber-100/80">
+              Files removed from the project library are listed here until an admin purges them from storage.
+            </p>
+            <div className="max-h-[calc(100vh-380px)] overflow-y-auto">
+              {Array.isArray(deletedFiles) && deletedFiles.length > 0 ? (
+                <table className="w-full text-sm">
+                  <thead className="bg-gray-50 border-b text-left text-[10px] font-semibold text-gray-600 uppercase tracking-wide">
+                    <tr>
+                      <th className="px-3 py-2">Name</th>
+                      <th className="px-3 py-2">Category</th>
+                      <th className="px-3 py-2">Removed</th>
+                      <th className="px-3 py-2 w-28">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y bg-white">
+                    {deletedFiles.map((df) => (
+                      <tr key={df.id} className="hover:bg-gray-50">
+                        <td className="px-3 py-2 font-medium text-gray-900 truncate max-w-xs">{df.original_name || df.file_object_id}</td>
+                        <td className="px-3 py-2 text-gray-600">{df.category || '—'}</td>
+                        <td className="px-3 py-2 text-gray-600 text-xs">
+                          {df.deleted_at ? new Date(df.deleted_at).toLocaleString() : '—'}
+                        </td>
+                        <td className="px-3 py-2">
+                          <button
+                            type="button"
+                            onClick={() => handlePermanentDeleteFile(df.id)}
+                            className="text-xs font-medium text-red-700 hover:underline"
+                          >
+                            Delete permanently
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              ) : (
+                <div className="px-3 py-10 text-center text-sm text-gray-500">No deleted files for this project.</div>
+              )}
+            </div>
+          </div>
+        ) : null}
         
+        {!(isAdmin && filesSection === 'deleted') && (
         <div className="rounded-xl border bg-white overflow-hidden">
           <div className="flex h-[calc(100vh-400px)]">
             {/* Left Sidebar - Categories */}
@@ -5953,6 +6052,8 @@ function ProjectFilesTabEnhanced({ projectId, files, onRefresh }:{ projectId:str
           </div>
         </div>
       </div>
+        )}
+
       </div>
 
       {/* Upload Modal */}

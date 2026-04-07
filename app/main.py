@@ -973,6 +973,37 @@ def create_app() -> FastAPI:
                     except Exception:
                         pass
 
+                    # Soft-delete columns for project/client file rows (removed from UI but kept until admin purges)
+                    try:
+                        _cf_cols = db.execute(
+                            text(
+                                "SELECT column_name FROM information_schema.columns "
+                                "WHERE table_schema = 'public' AND table_name = 'client_files' "
+                                "AND column_name IN ('deleted_at', 'deleted_by_id')"
+                            )
+                        ).fetchall()
+                        _have = {str(r[0]) for r in _cf_cols}
+                        if "deleted_at" not in _have:
+                            db.execute(text("ALTER TABLE client_files ADD COLUMN deleted_at TIMESTAMPTZ NULL"))
+                            db.commit()
+                            print("[startup] Added client_files.deleted_at")
+                        if "deleted_by_id" not in _have:
+                            db.execute(
+                                text(
+                                    "ALTER TABLE client_files ADD COLUMN deleted_by_id UUID NULL "
+                                    "REFERENCES users(id) ON DELETE SET NULL"
+                                )
+                            )
+                            db.commit()
+                            print("[startup] Added client_files.deleted_by_id")
+                        try:
+                            db.execute(text("CREATE INDEX IF NOT EXISTS idx_client_files_deleted_at ON client_files(deleted_at)"))
+                            db.commit()
+                        except Exception:
+                            pass
+                    except Exception as _e:
+                        print(f"[startup] client_files soft-delete columns (non-critical): {_e}")
+
                     # Ensure permission_templates table exists
                     rows = db.execute(
                         text(

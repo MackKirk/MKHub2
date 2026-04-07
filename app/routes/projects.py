@@ -13,6 +13,7 @@ from datetime import datetime, timezone, time, timedelta
 from ..auth.security import (
     get_current_user,
     require_permissions,
+    require_roles,
     can_approve_timesheet,
     has_project_files_category_permission,
     can_access_business_line,
@@ -39,6 +40,27 @@ def _assert_project_line_read(user: User, proj: Project) -> None:
 def _assert_project_line_write(user: User, proj: Project) -> None:
     if not can_write_business_line(user, getattr(proj, "business_line", None)):
         raise HTTPException(status_code=403, detail="Forbidden")
+
+
+def _try_remove_orphan_file_object(db: Session, file_object_id: uuid.UUID) -> None:
+    """After removing a ClientFile row, delete storage + FileObject if no other rows reference it."""
+    if db.query(ClientFile).filter(ClientFile.file_object_id == file_object_id).count() > 0:
+        return
+    from ..models.models import WorkOrderFile
+
+    if db.query(WorkOrderFile).filter(WorkOrderFile.file_object_id == file_object_id).count() > 0:
+        return
+    fo = db.query(FileObject).filter(FileObject.id == file_object_id).first()
+    if not fo:
+        return
+    try:
+        from ..routes.files import get_storage_for_file
+
+        storage = get_storage_for_file(fo)
+        storage.delete(fo.key)
+    except Exception:
+        pass
+    db.delete(fo)
 
 
 def _effective_awarded_related_client_ids(p: Project) -> list[str]:
@@ -1384,10 +1406,16 @@ def delete_project_folder(
     if subfolders > 0:
         raise HTTPException(status_code=400, detail="Folder has subfolders; remove them first")
     # Check for files (ClientFile with folder_id and FileObject.project_id = project_id)
-    file_count = db.query(ClientFile).join(FileObject, ClientFile.file_object_id == FileObject.id).filter(
-        ClientFile.folder_id == fid,
-        FileObject.project_id == project_id,
-    ).count()
+    file_count = (
+        db.query(ClientFile)
+        .join(FileObject, ClientFile.file_object_id == FileObject.id)
+        .filter(
+            ClientFile.folder_id == fid,
+            FileObject.project_id == project_id,
+            ClientFile.deleted_at.is_(None),
+        )
+        .count()
+    )
     if file_count > 0:
         raise HTTPException(status_code=400, detail="Folder is not empty; move or delete files first")
     folder_info = {
@@ -1431,7 +1459,12 @@ def list_project_files(
     if not proj:
         raise HTTPException(status_code=404, detail="Project not found")
     _assert_project_line_read(user, proj)
-    cfiles = db.query(ClientFile).filter(ClientFile.client_id == proj.client_id).order_by(ClientFile.uploaded_at.desc()).all()
+    cfiles = (
+        db.query(ClientFile)
+        .filter(ClientFile.client_id == proj.client_id, ClientFile.deleted_at.is_(None))
+        .order_by(ClientFile.uploaded_at.desc())
+        .all()
+    )
     out = []
     for cf in cfiles:
         # Category-level permission filter (default allow-all if config not set)
@@ -1459,6 +1492,102 @@ def list_project_files(
             "is_image": is_image,
         })
     return out
+
+
+@router.get("/{project_id}/files/deleted")
+def list_deleted_project_files(
+    project_id: str,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_roles("admin")),
+):
+    """Admin-only: project files soft-deleted from the Files tab (pending permanent purge)."""
+    proj = db.query(Project).filter(Project.id == project_id, Project.deleted_at.is_(None)).first()
+    if not proj:
+        raise HTTPException(status_code=404, detail="Project not found")
+    _assert_project_line_read(user, proj)
+    cfiles = (
+        db.query(ClientFile)
+        .filter(ClientFile.client_id == proj.client_id, ClientFile.deleted_at.isnot(None))
+        .order_by(ClientFile.deleted_at.desc())
+        .all()
+    )
+    out = []
+    for cf in cfiles:
+        fo = db.query(FileObject).filter(FileObject.id == cf.file_object_id).first()
+        if not fo or str(getattr(fo, "project_id", "") or "") != str(project_id):
+            continue
+        ct = getattr(fo, "content_type", None)
+        name = cf.original_name or cf.key or ""
+        ext = (name.rsplit(".", 1)[-1] if "." in name else "").lower()
+        is_img_ext = ext in {"png", "jpg", "jpeg", "webp", "gif", "bmp", "heic", "heif"}
+        is_image = (ct or "").startswith("image/") or is_img_ext
+        out.append(
+            {
+                "id": str(cf.id),
+                "file_object_id": str(cf.file_object_id),
+                "category": cf.category,
+                "folder_id": str(cf.folder_id) if getattr(cf, "folder_id", None) else None,
+                "key": cf.key,
+                "original_name": cf.original_name,
+                "uploaded_at": cf.uploaded_at.isoformat() if cf.uploaded_at else None,
+                "deleted_at": cf.deleted_at.isoformat() if cf.deleted_at else None,
+                "deleted_by_id": str(cf.deleted_by_id) if getattr(cf, "deleted_by_id", None) else None,
+                "content_type": ct,
+                "is_image": is_image,
+            }
+        )
+    return out
+
+
+@router.delete("/{project_id}/files/deleted/{file_id}")
+def permanently_delete_project_file_admin(
+    project_id: str,
+    file_id: str,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_roles("admin")),
+):
+    """Admin-only: remove soft-deleted file row and blob storage when unreferenced."""
+    proj = db.query(Project).filter(Project.id == project_id, Project.deleted_at.is_(None)).first()
+    if not proj:
+        raise HTTPException(status_code=404, detail="Project not found")
+    _assert_project_line_read(user, proj)
+    try:
+        fid = uuid.UUID(str(file_id))
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid file id")
+    cf = db.query(ClientFile).filter(ClientFile.id == fid, ClientFile.client_id == proj.client_id).first()
+    if not cf or cf.deleted_at is None:
+        raise HTTPException(status_code=404, detail="Deleted file not found")
+    fo = db.query(FileObject).filter(FileObject.id == cf.file_object_id).first()
+    if not fo or str(getattr(fo, "project_id", "") or "") != str(project_id):
+        raise HTTPException(status_code=404, detail="Deleted file not found")
+    fo_id = fo.id
+    file_info = {
+        "file_name": getattr(cf, "original_name", None) or getattr(cf, "key", None),
+        "category": getattr(cf, "category", None),
+        "permanent": True,
+    }
+    db.delete(cf)
+    db.flush()
+    _try_remove_orphan_file_object(db, fo_id)
+    db.commit()
+    try:
+        from ..services.audit import create_audit_log
+
+        create_audit_log(
+            db=db,
+            entity_type="project_file",
+            entity_id=file_id,
+            action="DELETE",
+            actor_id=str(user.id) if user else None,
+            actor_role="admin",
+            source="api",
+            changes_json={"deleted_file": file_info, "permanent_purge": True},
+            context={"project_id": project_id, "file_name": file_info.get("file_name")},
+        )
+    except Exception:
+        pass
+    return {"status": "ok"}
 
 
 @router.post("/{project_id}/files")
@@ -1543,6 +1672,8 @@ def update_project_file(
     _assert_project_line_write(user, proj)
     cf = db.query(ClientFile).filter(ClientFile.id == file_id, ClientFile.client_id == proj.client_id).first()
     if not cf:
+        raise HTTPException(status_code=404, detail="File not found")
+    if getattr(cf, "deleted_at", None) is not None:
         raise HTTPException(status_code=404, detail="File not found")
     # Must have write access to the current category
     if not has_project_files_category_permission(user, getattr(cf, "category", None), action="write", project=proj):
@@ -1632,6 +1763,8 @@ def delete_project_file(
     cf = db.query(ClientFile).filter(ClientFile.id == file_id, ClientFile.client_id == proj.client_id).first()
     if not cf:
         raise HTTPException(status_code=404, detail="File not found")
+    if getattr(cf, "deleted_at", None) is not None:
+        raise HTTPException(status_code=404, detail="File not found")
     if not has_project_files_category_permission(user, getattr(cf, "category", None), action="write", project=proj):
         raise HTTPException(status_code=403, detail="Forbidden")
     # Verify file belongs to this project
@@ -1646,10 +1779,11 @@ def delete_project_file(
         "content_type": getattr(fo, "content_type", None) if fo else None,
     }
     
-    db.delete(cf)
+    cf.deleted_at = datetime.now(timezone.utc)
+    cf.deleted_by_id = user.id
     db.commit()
     
-    # Create audit log for file deletion
+    # Create audit log for soft removal from project files
     try:
         from ..services.audit import create_audit_log
         create_audit_log(
@@ -1660,7 +1794,7 @@ def delete_project_file(
             actor_id=str(user.id) if user else None,
             actor_role="user",
             source="api",
-            changes_json={"deleted_file": file_info},
+            changes_json={"deleted_file": file_info, "soft_delete": True},
             context={
                 "project_id": project_id,
                 "file_name": file_info.get("file_name"),
@@ -4858,7 +4992,12 @@ def business_opportunities(
 
     cover_images: dict[str, ClientFile] = {}
     if project_ids and client_ids:
-        cover_files = db.query(ClientFile).filter(ClientFile.client_id.in_(client_ids)).order_by(ClientFile.uploaded_at.desc()).all()
+        cover_files = (
+            db.query(ClientFile)
+            .filter(ClientFile.client_id.in_(client_ids), ClientFile.deleted_at.is_(None))
+            .order_by(ClientFile.uploaded_at.desc())
+            .all()
+        )
         file_object_ids = [cf.file_object_id for cf in cover_files]
         file_objects: dict[str, FileObject] = {}
         if file_object_ids:
@@ -5375,9 +5514,11 @@ def business_projects(
     if project_ids and client_ids:
         from ..models.models import ClientFile, FileObject
         # Find all client files for these clients
-        cover_files = db.query(ClientFile).filter(
-            ClientFile.client_id.in_(client_ids)
-        ).all()
+        cover_files = (
+            db.query(ClientFile)
+            .filter(ClientFile.client_id.in_(client_ids), ClientFile.deleted_at.is_(None))
+            .all()
+        )
         
         # Get file objects for these files to check project_id
         file_object_ids = [cf.file_object_id for cf in cover_files]
