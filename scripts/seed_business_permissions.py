@@ -218,6 +218,18 @@ def seed_business_permissions():
                 "description": "Allows editing the Orders tab in project details",
                 "sort_index": 21,
             },
+            {
+                "key": "business:projects:safety:read",
+                "label": "View Safety",
+                "description": "Allows viewing the Safety tab on awarded projects",
+                "sort_index": 26,
+            },
+            {
+                "key": "business:projects:safety:write",
+                "label": "Edit Safety",
+                "description": "Allows creating and editing safety inspections on awarded projects",
+                "sort_index": 27,
+            },
         ]
         
         for perm_data in business_permissions:

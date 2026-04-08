@@ -14,6 +14,7 @@ import CalendarMock from '@/components/CalendarMock';
 import DispatchTab from '@/components/DispatchTab';
 import OrdersTab from '@/components/OrdersTab';
 import ProjectDocumentsTab from '@/components/ProjectDocumentsTab';
+import ProjectSafetyTab from '@/components/ProjectSafetyTab';
 import { formatDateLocal, getCurrentMonthLocal } from '@/lib/dateUtils';
 import { DivisionIcon } from '@/components/DivisionIcon';
 import { ReportAttachmentAreaMultiple } from '@/components/ReportAttachmentArea';
@@ -798,8 +799,8 @@ export default function ProjectDetail(){
   const { data:employees } = useQuery({ queryKey:['employees'], queryFn: ()=>api<any[]>('GET','/employees') });
   // Check for tab query parameter
   const searchParams = new URLSearchParams(location.search);
-  const initialTab = (searchParams.get('tab') as 'overview'|'general'|'reports'|'dispatch'|'timesheet'|'files'|'photos'|'documents'|'proposal'|'pricing'|'estimate'|'orders'|null) || null;
-  const [tab, setTab] = useState<'overview'|'general'|'reports'|'dispatch'|'timesheet'|'files'|'photos'|'documents'|'proposal'|'pricing'|'estimate'|'orders'|null>(initialTab);
+  const initialTab = (searchParams.get('tab') as 'overview'|'general'|'reports'|'dispatch'|'timesheet'|'files'|'photos'|'documents'|'proposal'|'pricing'|'estimate'|'orders'|'safety'|null) || null;
+  const [tab, setTab] = useState<'overview'|'general'|'reports'|'dispatch'|'timesheet'|'files'|'photos'|'documents'|'proposal'|'pricing'|'estimate'|'orders'|'safety'|null>(initialTab);
   // Live pricing items (from ProposalForm) to update division percentages instantly without reload.
   const [livePricingItems, setLivePricingItems] = useState<any[] | null>(null);
   const [pickerOpen, setPickerOpen] = useState(false);
@@ -831,6 +832,7 @@ export default function ProjectDetail(){
         'pricing': 'business:projects:proposal:read',
         'estimate': 'business:projects:estimate:read',
         'orders': 'business:projects:orders:read',
+        'safety': 'business:projects:safety:read',
       };
       const requiredPerm = permissionMap[tabKey];
       return !requiredPerm || permissions.has(requiredPerm);
@@ -842,8 +844,8 @@ export default function ProjectDetail(){
     if (me === undefined) return;
 
     const searchParams = new URLSearchParams(location.search);
-    const tabParam = searchParams.get('tab') as 'overview'|'general'|'reports'|'dispatch'|'timesheet'|'files'|'photos'|'documents'|'proposal'|'pricing'|'estimate'|'orders'|null;
-    const validTabs = ['overview','general','reports','dispatch','timesheet','files','photos','documents','proposal','pricing','estimate','orders'];
+    const tabParam = searchParams.get('tab') as 'overview'|'general'|'reports'|'dispatch'|'timesheet'|'files'|'photos'|'documents'|'proposal'|'pricing'|'estimate'|'orders'|'safety'|null;
+    const validTabs = ['overview','general','reports','dispatch','timesheet','files','photos','documents','proposal','pricing','estimate','orders','safety'];
     if (tabParam && validTabs.includes(tabParam)) {
       if (tabParam === 'overview' || hasTabPermission(tabParam)) {
         setTab(tabParam === 'overview' ? null : tabParam);
@@ -855,6 +857,15 @@ export default function ProjectDetail(){
       setTab(null);
     }
   }, [location.search, hasTabPermission, me]);
+
+  useEffect(() => {
+    if (isLoading || !proj) return;
+    if (proj.is_bidding && tab === 'safety') {
+      setTab(null);
+      nav(location.pathname, { replace: true });
+      toast.error('Safety inspections are only available for awarded projects.');
+    }
+  }, [isLoading, proj, tab, location.pathname, nav]);
 
   // Auto-collapse hero section when a tab is selected, expand when back to primary page
   useEffect(() => {
@@ -957,7 +968,7 @@ export default function ProjectDetail(){
   // Base available tabs
   const baseAvailableTabs = proj?.is_bidding 
     ? (['overview','reports','files','documents','proposal','pricing'] as const)
-    : (['overview','reports','dispatch','timesheet','files','documents','proposal','pricing','orders'] as const);
+    : (['overview','reports','dispatch','timesheet','files','documents','proposal','pricing','orders','safety'] as const);
   
   // Filter tabs based on permissions (only when user data is loaded)
   const availableTabs = useMemo(() => {
@@ -1016,6 +1027,10 @@ export default function ProjectDetail(){
         queryClient.invalidateQueries({ queryKey: ['timesheetLogsMini'] });
         queryClient.invalidateQueries({ queryKey: ['attendances'] });
         queryClient.invalidateQueries({ queryKey: ['dispatch-shifts-all'] });
+        break;
+      case 'safety':
+        queryClient.invalidateQueries({ queryKey: ['projectSafetyInspections', projectId] });
+        queryClient.invalidateQueries({ queryKey: ['projectSafetyInspection', projectId] });
         break;
       default:
         break;
@@ -1104,6 +1119,7 @@ export default function ProjectDetail(){
       'pricing': 'Pricing',
       'estimate': 'Estimate',
       'orders': 'Orders',
+      'safety': 'Safety',
     };
     const tabTitle = tabTitles[activeTab] || activeTab;
     return `${baseTitle} • ${tabTitle}`;
@@ -1124,6 +1140,7 @@ export default function ProjectDetail(){
       'pricing': 'Project pricing',
       'estimate': 'Cost estimates and budgets',
       'orders': 'Purchase orders and supplies',
+      'safety': 'Site safety inspections',
     };
     return tabDescriptions[activeTab] || '';
   };
@@ -2218,6 +2235,20 @@ export default function ProjectDetail(){
 
               {tab==='orders' && (
                 <OrdersTab projectId={String(id)} project={proj||{id: String(id)}} statusLabel={proj?.status_label||''} />
+              )}
+
+              {tab==='safety' && !proj?.is_bidding && (
+                <ProjectSafetyTab
+                  projectId={String(id)}
+                  proj={{
+                    name: proj?.name,
+                    address: proj?.address,
+                    address_city: proj?.address_city,
+                    address_province: proj?.address_province,
+                  }}
+                  canRead={isAdmin || permissions.has('business:projects:safety:read')}
+                  canWrite={isAdmin || permissions.has('business:projects:safety:write')}
+                />
               )}
             </>
           ) : null}
@@ -9265,10 +9296,10 @@ function ProjectTeamCard({ projectId, employees }: { projectId: string, employee
 }
 
 function ProjectTabCards({ availableTabs, onTabClick, proj, currentTab }: { 
-  availableTabs: readonly ('overview'|'reports'|'dispatch'|'timesheet'|'files'|'documents'|'proposal'|'pricing'|'estimate'|'orders')[], 
+  availableTabs: readonly ('overview'|'reports'|'dispatch'|'timesheet'|'files'|'documents'|'proposal'|'pricing'|'estimate'|'orders'|'safety')[], 
   onTabClick: (tab: typeof availableTabs[number] | 'overview' | null) => void,
   proj: any,
-  currentTab: 'overview'|'general'|'reports'|'dispatch'|'timesheet'|'files'|'photos'|'documents'|'proposal'|'pricing'|'estimate'|'orders'|null
+  currentTab: 'overview'|'general'|'reports'|'dispatch'|'timesheet'|'files'|'photos'|'documents'|'proposal'|'pricing'|'estimate'|'orders'|'safety'|null
 }){
   const tabConfig: Record<string, { label: string, icon: string }> = {
     overview: { label: 'Overview', icon: '📊' },
@@ -9281,6 +9312,7 @@ function ProjectTabCards({ availableTabs, onTabClick, proj, currentTab }: {
     pricing: { label: 'Pricing', icon: '💰' },
     estimate: { label: 'Estimate', icon: '💰' },
     orders: { label: 'Orders', icon: '🛒' },
+    safety: { label: 'Safety', icon: '🦺' },
   };
 
   // Include 'overview' and filter available tabs (hide 'orders' tab from UI)

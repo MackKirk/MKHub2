@@ -8,7 +8,7 @@ from typing import List, Optional
 import uuid
 
 from ..db import get_db
-from ..models.models import Project, ClientFile, FileObject, Proposal, ProjectUpdate, ProjectReport, ProjectEvent, ProjectTimeEntry, ProjectTimeEntryLog, User, EmployeeProfile, Client, ClientSite, ClientFolder, ClientContact, SettingList, SettingItem, Shift, AuditLog, Estimate, EstimateItem, ProjectFolder
+from ..models.models import Project, ClientFile, FileObject, Proposal, ProjectUpdate, ProjectReport, ProjectSafetyInspection, ProjectEvent, ProjectTimeEntry, ProjectTimeEntryLog, User, EmployeeProfile, Client, ClientSite, ClientFolder, ClientContact, SettingList, SettingItem, Shift, AuditLog, Estimate, EstimateItem, ProjectFolder
 from datetime import datetime, timezone, time, timedelta
 from ..auth.security import (
     get_current_user,
@@ -113,6 +113,28 @@ def _assert_project_line_read(user: User, proj: Project) -> None:
 def _assert_project_line_write(user: User, proj: Project) -> None:
     if not can_write_business_line(user, getattr(proj, "business_line", None)):
         raise HTTPException(status_code=403, detail="Forbidden")
+
+
+def _assert_awarded_project_for_safety(p: Project) -> None:
+    if getattr(p, "is_bidding", False):
+        raise HTTPException(
+            status_code=403,
+            detail="Safety inspections are only available for awarded projects",
+        )
+
+
+def _safety_inspection_to_dict(row: ProjectSafetyInspection) -> dict:
+    return {
+        "id": str(row.id),
+        "project_id": str(row.project_id),
+        "inspection_date": row.inspection_date.isoformat() if row.inspection_date else None,
+        "template_version": row.template_version or "mki_safety_v1",
+        "form_payload": row.form_payload if isinstance(row.form_payload, dict) else {},
+        "created_at": row.created_at.isoformat() if row.created_at else None,
+        "created_by": str(row.created_by) if row.created_by else None,
+        "updated_at": row.updated_at.isoformat() if row.updated_at else None,
+        "updated_by": str(row.updated_by) if row.updated_by else None,
+    }
 
 
 def _try_remove_orphan_file_object(db: Session, file_object_id: uuid.UUID) -> None:
@@ -2155,6 +2177,150 @@ def delete_project_report(project_id: str, report_id: str, db: Session = Depends
         pass
     
     return {"status": "ok"}
+
+
+# ---- Project safety inspections (awarded projects only) ----
+@router.get("/{project_id}/safety-inspections")
+def list_project_safety_inspections(
+    project_id: str,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+    _=Depends(require_permissions("business:projects:safety:read")),
+):
+    p = db.query(Project).filter(Project.id == project_id, Project.deleted_at.is_(None)).first()
+    if not p:
+        raise HTTPException(status_code=404, detail="Not found")
+    _assert_project_line_read(user, p)
+    _assert_awarded_project_for_safety(p)
+    rows = (
+        db.query(ProjectSafetyInspection)
+        .filter(ProjectSafetyInspection.project_id == project_id)
+        .order_by(ProjectSafetyInspection.inspection_date.desc())
+        .all()
+    )
+    return [_safety_inspection_to_dict(r) for r in rows]
+
+
+@router.post("/{project_id}/safety-inspections")
+def create_project_safety_inspection(
+    project_id: str,
+    payload: dict = Body(default={}),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+    _=Depends(require_permissions("business:projects:safety:write")),
+):
+    p = db.query(Project).filter(Project.id == project_id, Project.deleted_at.is_(None)).first()
+    if not p:
+        raise HTTPException(status_code=404, detail="Not found")
+    _assert_project_line_write(user, p)
+    _assert_awarded_project_for_safety(p)
+    raw_date = payload.get("inspection_date") if isinstance(payload, dict) else None
+    if raw_date:
+        try:
+            if isinstance(raw_date, str):
+                inspection_date = datetime.fromisoformat(raw_date.replace("Z", "+00:00"))
+            else:
+                inspection_date = datetime.now(timezone.utc)
+        except Exception:
+            inspection_date = datetime.now(timezone.utc)
+    else:
+        inspection_date = datetime.now(timezone.utc)
+    template_version = (payload.get("template_version") if isinstance(payload, dict) else None) or "mki_safety_v1"
+    if not isinstance(template_version, str):
+        template_version = "mki_safety_v1"
+    form_payload = payload.get("form_payload") if isinstance(payload, dict) else None
+    if form_payload is not None and not isinstance(form_payload, dict):
+        raise HTTPException(status_code=400, detail="form_payload must be an object")
+    row = ProjectSafetyInspection(
+        project_id=uuid.UUID(str(project_id)),
+        inspection_date=inspection_date,
+        template_version=template_version[:50],
+        form_payload=form_payload if isinstance(form_payload, dict) else {},
+        created_by=user.id,
+    )
+    db.add(row)
+    db.commit()
+    db.refresh(row)
+    return _safety_inspection_to_dict(row)
+
+
+@router.get("/{project_id}/safety-inspections/{inspection_id}")
+def get_project_safety_inspection(
+    project_id: str,
+    inspection_id: str,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+    _=Depends(require_permissions("business:projects:safety:read")),
+):
+    p = db.query(Project).filter(Project.id == project_id, Project.deleted_at.is_(None)).first()
+    if not p:
+        raise HTTPException(status_code=404, detail="Not found")
+    _assert_project_line_read(user, p)
+    _assert_awarded_project_for_safety(p)
+    row = (
+        db.query(ProjectSafetyInspection)
+        .filter(
+            ProjectSafetyInspection.id == inspection_id,
+            ProjectSafetyInspection.project_id == project_id,
+        )
+        .first()
+    )
+    if not row:
+        raise HTTPException(status_code=404, detail="Inspection not found")
+    return _safety_inspection_to_dict(row)
+
+
+@router.put("/{project_id}/safety-inspections/{inspection_id}")
+def update_project_safety_inspection(
+    project_id: str,
+    inspection_id: str,
+    payload: dict = Body(...),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+    _=Depends(require_permissions("business:projects:safety:write")),
+):
+    p = db.query(Project).filter(Project.id == project_id, Project.deleted_at.is_(None)).first()
+    if not p:
+        raise HTTPException(status_code=404, detail="Not found")
+    _assert_project_line_write(user, p)
+    _assert_awarded_project_for_safety(p)
+    row = (
+        db.query(ProjectSafetyInspection)
+        .filter(
+            ProjectSafetyInspection.id == inspection_id,
+            ProjectSafetyInspection.project_id == project_id,
+        )
+        .first()
+    )
+    if not row:
+        raise HTTPException(status_code=404, detail="Inspection not found")
+    if not isinstance(payload, dict):
+        raise HTTPException(status_code=400, detail="Invalid body")
+    if "inspection_date" in payload and payload["inspection_date"] is not None:
+        try:
+            raw = payload["inspection_date"]
+            if isinstance(raw, str):
+                row.inspection_date = datetime.fromisoformat(raw.replace("Z", "+00:00"))
+        except Exception:
+            pass
+    if "template_version" in payload and payload["template_version"] is not None:
+        tv = payload["template_version"]
+        if isinstance(tv, str) and tv.strip():
+            row.template_version = tv.strip()[:50]
+    if "form_payload" in payload:
+        fp = payload["form_payload"]
+        if fp is not None and not isinstance(fp, dict):
+            raise HTTPException(status_code=400, detail="form_payload must be an object")
+        row.form_payload = fp if isinstance(fp, dict) else {}
+        try:
+            flag_modified(row, "form_payload")
+        except Exception:
+            pass
+    row.updated_by = user.id
+    row.updated_at = datetime.now(timezone.utc)
+    db.commit()
+    db.refresh(row)
+    return _safety_inspection_to_dict(row)
 
 
 @router.post("/{project_id}/reports/{report_id}/approve")

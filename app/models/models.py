@@ -256,6 +256,21 @@ class ProjectReport(Base):
     approved_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
 
 
+class ProjectSafetyInspection(Base):
+    """Site safety inspection for awarded projects only (not opportunities). Form mirrors MKI safety PDF; payload is JSON."""
+    __tablename__ = "project_safety_inspections"
+
+    id: Mapped[uuid.UUID] = uuid_pk()
+    project_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("projects.id", ondelete="CASCADE"), nullable=False, index=True)
+    inspection_date: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, index=True)
+    template_version: Mapped[str] = mapped_column(String(50), default="mki_safety_v1", nullable=False)
+    form_payload: Mapped[Optional[dict]] = mapped_column(JSON)  # header fields + item responses by stable key
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
+    created_by: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"))
+    updated_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    updated_by: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"))
+
+
 class ProjectEvent(Base):
     __tablename__ = "project_events"
 

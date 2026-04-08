@@ -1112,6 +1112,23 @@ def create_app() -> FastAPI:
                         db.commit()
                         print("[startup] Created employee_training_records table")
 
+                    # Project safety inspections (awarded projects only)
+                    rows = db.execute(
+                        text(
+                            """
+                            SELECT 1
+                            FROM information_schema.tables
+                            WHERE table_name = 'project_safety_inspections'
+                            LIMIT 1
+                            """
+                        )
+                    ).fetchall()
+                    if not rows:
+                        from .models.models import ProjectSafetyInspection
+                        Base.metadata.create_all(bind=engine, tables=[ProjectSafetyInspection.__table__])
+                        db.commit()
+                        print("[startup] Created project_safety_inspections table")
+
                     # Soft delete columns (if missing)
                     for table_name, fk_col in [("projects", "deleted_by_id"), ("clients", "deleted_by_id"), ("proposals", "deleted_by_id"), ("quotes", "deleted_by_id")]:
                         try:

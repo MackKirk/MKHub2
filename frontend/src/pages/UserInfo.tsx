@@ -60,6 +60,7 @@ const IMPLEMENTED_PERMISSIONS = new Set([
   "business:projects:proposal:read", "business:projects:proposal:write",
   "business:projects:estimate:read", "business:projects:estimate:write",
   "business:projects:orders:read", "business:projects:orders:write",
+  "business:projects:safety:read", "business:projects:safety:write",
   // Sales permissions
   "sales:access",
   "sales:quotations:read", "sales:quotations:write",
@@ -683,6 +684,7 @@ const UserPermissions = forwardRef<UserPermissionsRef, { userId: string; onDirty
           newPerms['business:projects:proposal:read'] = false;
           newPerms['business:projects:estimate:read'] = false;
           newPerms['business:projects:orders:read'] = false;
+          newPerms['business:projects:safety:read'] = false;
         }
         // If disabling Edit Projects & Opportunities, disable all edit sub-permissions
         else if (key === 'business:projects:write') {
@@ -694,6 +696,7 @@ const UserPermissions = forwardRef<UserPermissionsRef, { userId: string; onDirty
           newPerms['business:projects:proposal:write'] = false;
           newPerms['business:projects:estimate:write'] = false;
           newPerms['business:projects:orders:write'] = false;
+          newPerms['business:projects:safety:write'] = false;
         }
         // If disabling a view sub-permission, also disable the corresponding edit permission
         else if (key.startsWith('business:projects:') && key.endsWith(':read') && key !== 'business:projects:read') {

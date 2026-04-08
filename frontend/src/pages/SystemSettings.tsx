@@ -674,6 +674,7 @@ const IMPLEMENTED_PERMISSIONS = new Set([
   'business:projects:proposal:read', 'business:projects:proposal:write',
   'business:projects:estimate:read', 'business:projects:estimate:write',
   'business:projects:orders:read', 'business:projects:orders:write',
+  'business:projects:safety:read', 'business:projects:safety:write',
   'sales:access',
   'sales:quotations:read', 'sales:quotations:write',
 ]);
@@ -842,6 +843,7 @@ function PermissionTemplatesSection() {
       remove('business:projects:proposal:read');
       remove('business:projects:estimate:read');
       remove('business:projects:orders:read');
+      remove('business:projects:safety:read');
     } else if (uncheckedKey === 'business:projects:write') {
       remove('business:projects:reports:write');
       remove('business:projects:workload:write');
@@ -850,6 +852,7 @@ function PermissionTemplatesSection() {
       remove('business:projects:proposal:write');
       remove('business:projects:estimate:write');
       remove('business:projects:orders:write');
+      remove('business:projects:safety:write');
     } else if (uncheckedKey.startsWith('business:projects:') && uncheckedKey.endsWith(':read') && uncheckedKey !== 'business:projects:read') {
       remove(uncheckedKey.replace(':read', ':write'));
     }
