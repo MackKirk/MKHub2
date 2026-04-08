@@ -468,6 +468,9 @@ export default function AppShell({ children }: PropsWithChildren){
       label: 'Training & Learning',
       icon: <IconAcademic />,
       items: [
+        ...(((me?.roles||[]).includes('admin') || (me?.permissions||[]).includes('users:write') || (me?.permissions||[]).includes('users:read') || (me?.permissions||[]).includes('hr:users:read') || (me?.permissions||[]).includes('hr:users:view:general')) ? [
+          { id: 'training-dashboard', label: 'Dashboard', path: '/training/dashboard', icon: <IconOverview /> },
+        ] : []),
         { id: 'my-training', label: 'My Training', path: '/training', icon: <IconAcademic /> },
         { id: 'certificates', label: 'My Certificates', path: '/training/certificates', icon: <IconDocument /> },
         ...(((me?.roles||[]).includes('admin') || (me?.permissions||[]).includes('users:write')) ? [
