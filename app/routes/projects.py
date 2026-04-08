@@ -1612,6 +1612,54 @@ def list_deleted_project_files(
     return out
 
 
+@router.post("/{project_id}/files/deleted/{file_id}/restore")
+def restore_deleted_project_file(
+    project_id: str,
+    file_id: str,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_roles("admin")),
+):
+    """Admin-only: clear soft-delete so the file appears again in the project library."""
+    proj = db.query(Project).filter(Project.id == project_id, Project.deleted_at.is_(None)).first()
+    if not proj:
+        raise HTTPException(status_code=404, detail="Project not found")
+    _assert_project_line_write(user, proj)
+    try:
+        fid = uuid.UUID(str(file_id))
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid file id")
+    cf = db.query(ClientFile).filter(ClientFile.id == fid, ClientFile.client_id == proj.client_id).first()
+    if not cf or cf.deleted_at is None:
+        raise HTTPException(status_code=404, detail="Deleted file not found")
+    fo = db.query(FileObject).filter(FileObject.id == cf.file_object_id).first()
+    if not fo or str(getattr(fo, "project_id", "") or "") != str(project_id):
+        raise HTTPException(status_code=404, detail="Deleted file not found in project")
+    file_info = {
+        "file_name": getattr(cf, "original_name", None) or getattr(cf, "key", None),
+        "category": getattr(cf, "category", None),
+    }
+    cf.deleted_at = None
+    cf.deleted_by_id = None
+    db.commit()
+    try:
+        from ..services.audit import create_audit_log
+
+        create_audit_log(
+            db=db,
+            entity_type="project_file",
+            entity_id=file_id,
+            action="RESTORE",
+            actor_id=str(user.id) if user else None,
+            actor_role="admin",
+            source="api",
+            changes_json={"restored_file": file_info},
+            context={"project_id": project_id, "file_name": file_info.get("file_name")},
+        )
+    except Exception:
+        pass
+    return {"status": "ok", "id": str(cf.id)}
+
+
 @router.delete("/{project_id}/files/deleted/{file_id}")
 def permanently_delete_project_file_admin(
     project_id: str,
