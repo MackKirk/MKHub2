@@ -5435,6 +5435,17 @@ function ProjectFilesTabEnhanced({ projectId, files, onRefresh }:{ projectId:str
     }
   };
 
+  const handleRestoreDeletedFile = async (fileId: string) => {
+    try {
+      await api('POST', `/projects/${encodeURIComponent(projectId)}/files/deleted/${encodeURIComponent(fileId)}/restore`);
+      await refetchDeletedFiles();
+      await onRefresh();
+      toast.success('File restored to library');
+    } catch (_e) {
+      toast.error('Failed to restore file');
+    }
+  };
+
   return (
     <div className="space-y-4">
       {/* Main Files Section Card */}
@@ -5479,43 +5490,114 @@ function ProjectFilesTabEnhanced({ projectId, files, onRefresh }:{ projectId:str
         {isAdmin && filesSection === 'deleted' ? (
           <div className="rounded-xl border border-amber-100 bg-amber-50/50 overflow-hidden">
             <p className="text-xs text-amber-900 px-3 py-2 border-b border-amber-100/80">
-              Files removed from the project library are listed here until an admin purges them from storage.
+              Same previews and downloads as the library. Restore returns the file to the project, or delete permanently to remove it from storage.
             </p>
-            <div className="max-h-[calc(100vh-380px)] overflow-y-auto">
-              {Array.isArray(deletedFiles) && deletedFiles.length > 0 ? (
-                <table className="w-full text-sm">
-                  <thead className="bg-gray-50 border-b text-left text-[10px] font-semibold text-gray-600 uppercase tracking-wide">
-                    <tr>
-                      <th className="px-3 py-2">Name</th>
-                      <th className="px-3 py-2">Category</th>
-                      <th className="px-3 py-2">Removed</th>
-                      <th className="px-3 py-2 w-28">Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y bg-white">
-                    {deletedFiles.map((df) => (
-                      <tr key={df.id} className="hover:bg-gray-50">
-                        <td className="px-3 py-2 font-medium text-gray-900 truncate max-w-xs">{df.original_name || df.file_object_id}</td>
-                        <td className="px-3 py-2 text-gray-600">{df.category || '—'}</td>
-                        <td className="px-3 py-2 text-gray-600 text-xs">
-                          {df.deleted_at ? new Date(df.deleted_at).toLocaleString() : '—'}
-                        </td>
-                        <td className="px-3 py-2">
-                          <button
-                            type="button"
-                            onClick={() => handlePermanentDeleteFile(df.id)}
-                            className="text-xs font-medium text-red-700 hover:underline"
-                          >
-                            Delete permanently
-                          </button>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              ) : (
-                <div className="px-3 py-10 text-center text-sm text-gray-500">No deleted files for this project.</div>
-              )}
+            <div className="flex h-[calc(100vh-400px)] bg-white">
+              <div className="flex-1 overflow-y-auto p-4">
+                {Array.isArray(deletedFiles) && deletedFiles.length > 0 ? (
+                  <div className="overflow-x-auto rounded-lg border border-gray-200">
+                    <table className="w-full">
+                      <thead className="bg-gray-50 border-b">
+                        <tr>
+                          <th className="px-3 py-2 text-left text-[10px] font-semibold text-gray-700 w-12" aria-hidden />
+                          <th className="px-3 py-2 text-left text-[10px] font-semibold text-gray-700">Name</th>
+                          <th className="px-3 py-2 text-left text-[10px] font-semibold text-gray-700">Type</th>
+                          <th className="px-3 py-2 text-left text-[10px] font-semibold text-gray-700">Category</th>
+                          <th className="px-3 py-2 text-left text-[10px] font-semibold text-gray-700">Removed</th>
+                          <th className="px-3 py-2 text-left text-[10px] font-semibold text-gray-700 w-52">Actions</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y">
+                        {deletedFiles.map((df) => {
+                          const icon = iconFor(df);
+                          const isImg = df.is_image || String(df.content_type || '').startsWith('image/');
+                          const name = df.original_name || df.file_object_id;
+                          const pf = df as ProjectFile;
+                          return (
+                            <tr key={df.id} className="hover:bg-gray-50">
+                              <td className="px-3 py-2">
+                                {isImg ? (
+                                  <button
+                                    type="button"
+                                    className="w-10 h-10 rounded-lg overflow-hidden bg-gray-100 flex-shrink-0 block"
+                                    onClick={() => handleFilePreview(pf)}
+                                    title="Preview"
+                                  >
+                                    <img
+                                      src={`/files/${df.file_object_id}/thumbnail?w=64`}
+                                      alt={name}
+                                      className="w-full h-full object-cover"
+                                    />
+                                  </button>
+                                ) : (
+                                  <button
+                                    type="button"
+                                    className={`w-8 h-10 rounded-lg ${icon.color} text-white flex items-center justify-center text-[10px] font-extrabold`}
+                                    onClick={() => handleFilePreview(pf)}
+                                    title="Open / preview"
+                                  >
+                                    {icon.label}
+                                  </button>
+                                )}
+                              </td>
+                              <td className="px-3 py-2">
+                                <button
+                                  type="button"
+                                  className="text-xs font-semibold text-left text-gray-900 truncate max-w-xs hover:text-brand-red"
+                                  onClick={() => handleFilePreview(pf)}
+                                >
+                                  {name}
+                                </button>
+                              </td>
+                              <td className="px-3 py-2 text-xs text-gray-600">{getFileTypeLabel(df)}</td>
+                              <td className="px-3 py-2 text-xs text-gray-600">{df.category || '—'}</td>
+                              <td className="px-3 py-2 text-xs text-gray-600">
+                                {df.deleted_at ? new Date(df.deleted_at).toLocaleString() : '—'}
+                              </td>
+                              <td className="px-3 py-2">
+                                <div className="flex flex-wrap items-center gap-1">
+                                  <button
+                                    type="button"
+                                    onClick={async () => {
+                                      const url = await fetchDownloadUrl(df.file_object_id);
+                                      if (url) window.open(url, '_blank');
+                                    }}
+                                    title="Download"
+                                    className="p-1 rounded hover:bg-gray-100 text-xs"
+                                  >
+                                    ⬇️
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleRestoreDeletedFile(df.id)}
+                                    title="Restore to library"
+                                    className="px-2 py-1 rounded bg-emerald-600 text-white text-[10px] font-medium hover:bg-emerald-700"
+                                  >
+                                    Restore
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => handlePermanentDeleteFile(df.id)}
+                                    title="Delete permanently"
+                                    className="px-2 py-1 rounded border border-red-200 text-red-700 text-[10px] font-medium hover:bg-red-50"
+                                  >
+                                    Purge
+                                  </button>
+                                </div>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                ) : (
+                  <div className="flex flex-col items-center justify-center py-16 text-gray-500 text-sm">
+                    <div className="text-2xl mb-2">📁</div>
+                    <div>No deleted files for this project.</div>
+                  </div>
+                )}
+              </div>
             </div>
           </div>
         ) : null}
