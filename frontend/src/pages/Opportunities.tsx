@@ -984,41 +984,9 @@ export default function Opportunities(){
     const nextDir = direction ?? (sortBy === column && sortDir === 'asc' ? 'desc' : 'asc');
     params.set('sort', column);
     params.set('dir', nextDir);
+    params.set('page', '1');
     setSearchParams(params, { replace: true });
   };
-
-  const sortedArr = useMemo(() => {
-    const list = [...arr];
-    const cmp = (a: Opportunity, b: Opportunity) => {
-      let aVal: string | number = '';
-      let bVal: string | number = '';
-      switch (sortBy) {
-        case 'opportunity':
-          aVal = `${(a.name || '').toLowerCase()}\t${(a.code || '')}`;
-          bVal = `${(b.name || '').toLowerCase()}\t${(b.code || '')}`;
-          return aVal < bVal ? -1 : aVal > bVal ? 1 : 0;
-        case 'estimator':
-          aVal = ((a as any).estimator_name || '').toLowerCase();
-          bVal = ((b as any).estimator_name || '').toLowerCase();
-          return aVal < bVal ? -1 : aVal > bVal ? 1 : 0;
-        case 'value':
-          aVal = Number((a as any).cost_estimated) || 0;
-          bVal = Number((b as any).cost_estimated) || 0;
-          return aVal - bVal;
-        case 'status':
-          aVal = ((a as any).status_label || '').toLowerCase();
-          bVal = ((b as any).status_label || '').toLowerCase();
-          return aVal < bVal ? -1 : aVal > bVal ? 1 : 0;
-        default:
-          return 0;
-      }
-    };
-    list.sort((a, b) => {
-      const r = cmp(a, b);
-      return sortDir === 'asc' ? r : -r;
-    });
-    return list;
-  }, [arr, sortBy, sortDir]);
 
   // Get employees for estimator filter
   const { data: employeesData } = useQuery({ 
@@ -1328,7 +1296,7 @@ export default function Opportunities(){
               <button type="button" onClick={() => setListSort('status')} className="min-w-0 text-left flex items-center gap-1 hover:text-gray-900 rounded py-0.5 outline-none focus:outline-none" title="Sort by status">Status{sortBy === 'status' ? (sortDir === 'asc' ? ' ↑' : ' ↓') : ''}</button>
               <div className="min-w-0 w-24" aria-hidden />
             </div>
-            {sortedArr.map(p => (
+            {arr.map(p => (
               <OpportunityListItem
                 key={p.id}
                 opportunity={p}

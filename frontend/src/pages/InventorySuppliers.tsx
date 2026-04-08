@@ -5,7 +5,7 @@ import toast from 'react-hot-toast';
 import { useConfirm } from '@/components/ConfirmProvider';
 import ImagePicker from '@/components/ImagePicker';
 import AddressAutocomplete from '@/components/AddressAutocomplete';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import FilterBuilderModal from '@/components/FilterBuilder/FilterBuilderModal';
 import FilterChip from '@/components/FilterBuilder/FilterChip';
 import { FilterRule, FieldConfig } from '@/components/FilterBuilder/types';
@@ -28,6 +28,14 @@ type Supplier = {
   is_active?: boolean;
   created_at?: string;
   image_base64?: string;
+};
+
+type SuppliersPageResponse = {
+  items: Supplier[];
+  total: number;
+  page: number;
+  limit: number;
+  total_pages: number;
 };
 
 // Helper function to format phone numbers
@@ -192,19 +200,12 @@ export default function InventorySuppliers() {
   }, [meLoading, me, canViewSuppliers, navigate]);
   const [isFilterModalOpen, setIsFilterModalOpen] = useState(false);
   
-  // Get filter params from URL
-  const [searchParams, setSearchParams] = useState(() => {
-    const params = new URLSearchParams();
-    // Initialize from current URL if available
-    if (typeof window !== 'undefined') {
-      const urlParams = new URLSearchParams(window.location.search);
-      urlParams.forEach((value, key) => {
-        if (key !== 'q') params.set(key, value);
-      });
-    }
-    return params;
-  });
-  
+  const [searchParams, setSearchParams] = useSearchParams();
+  const sortColumn = searchParams.get('sort') || 'name';
+  const sortDirection = (searchParams.get('dir') === 'desc' ? 'desc' : 'asc') as 'asc' | 'desc';
+  const supplierPage = Math.max(1, parseInt(searchParams.get('page') || '1', 10));
+  const supplierLimit = 25;
+
   // Convert current URL params to rules for modal
   const currentRules = useMemo(() => {
     return convertParamsToRules(searchParams);
@@ -212,8 +213,6 @@ export default function InventorySuppliers() {
   const [open, setOpen] = useState(false);
   const [viewing, setViewing] = useState<Supplier | null>(null);
   const [editing, setEditing] = useState<Supplier | null>(null);
-  const [sortColumn, setSortColumn] = useState<string>('name');
-  const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc');
   
   // Form fields
   const [name, setName] = useState('');
@@ -332,54 +331,62 @@ export default function InventorySuppliers() {
     return () => window.removeEventListener('keydown', onKey);
   }, [open, contactModalOpen, newProductModalOpen, productModalOpen, addRelatedOpen, editProductImagePickerOpen, editingProduct]);
 
-  // Build query params from searchParams
-  const queryParams = useMemo(() => {
-    const params = new URLSearchParams();
-    if (q) params.set('q', q);
-    searchParams.forEach((value, key) => {
-      if (key !== 'q') params.set(key, value);
-    });
-    return params;
-  }, [q, searchParams]);
-  
-  const { data, isLoading, isFetching, refetch: refetchSuppliers } = useQuery({
-    queryKey: ['suppliers', queryParams.toString()],
-    queryFn: async () => {
-      const path = queryParams.toString() ? `/inventory/suppliers?${queryParams.toString()}` : '/inventory/suppliers';
-      return await api<Supplier[]>('GET', path);
-    },
+  const { data: supplierOptions } = useQuery({
+    queryKey: ['invSuppliersOptions-supplier'],
+    queryFn: () => api<Supplier[]>('GET', '/inventory/suppliers'),
+    staleTime: 60_000,
   });
 
-  // Auto-apply filters when they change
-  useEffect(() => {
-    refetchSuppliers();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [queryParams]);
-  
-  // Extract unique countries, provinces, and cities from suppliers data
+  // Extract unique countries, provinces, and cities (from options list — not current page)
   const allCountries = useMemo(() => {
     const countriesSet = new Set<string>();
-    (data || []).forEach((s: Supplier) => {
+    (supplierOptions || []).forEach((s: Supplier) => {
       if (s.country) countriesSet.add(s.country);
     });
     return Array.from(countriesSet).sort();
-  }, [data]);
-  
+  }, [supplierOptions]);
+
   const allProvinces = useMemo(() => {
     const provincesSet = new Set<string>();
-    (data || []).forEach((s: Supplier) => {
+    (supplierOptions || []).forEach((s: Supplier) => {
       if (s.province) provincesSet.add(s.province);
     });
     return Array.from(provincesSet).sort();
-  }, [data]);
-  
+  }, [supplierOptions]);
+
   const allCities = useMemo(() => {
     const citiesSet = new Set<string>();
-    (data || []).forEach((s: Supplier) => {
+    (supplierOptions || []).forEach((s: Supplier) => {
       if (s.city) citiesSet.add(s.city);
     });
     return Array.from(citiesSet).sort();
-  }, [data]);
+  }, [supplierOptions]);
+
+  const listQueryParams = useMemo(() => {
+    const params = new URLSearchParams();
+    params.set('envelope', '1');
+    params.set('page', String(supplierPage));
+    params.set('limit', String(supplierLimit));
+    params.set('sort', sortColumn);
+    params.set('dir', sortDirection);
+    searchParams.forEach((value, key) => {
+      if (['page', 'limit', 'sort', 'dir', 'envelope'].includes(key)) return;
+      params.set(key, value);
+    });
+    if (q) params.set('q', q);
+    return params;
+  }, [q, searchParams, supplierPage, supplierLimit, sortColumn, sortDirection]);
+
+  const { data: suppliersPayload, isLoading, isFetching } = useQuery({
+    queryKey: ['suppliers', listQueryParams.toString()],
+    queryFn: async () => {
+      return await api<SuppliersPageResponse>('GET', `/inventory/suppliers?${listQueryParams.toString()}`);
+    },
+  });
+
+  const rows = suppliersPayload?.items ?? [];
+  const suppliersTotal = suppliersPayload?.total ?? 0;
+  const suppliersTotalPages = Math.max(1, suppliersPayload?.total_pages ?? 1);
   
   // Filter Builder Configuration
   const filterFields: FieldConfig[] = useMemo(() => [
@@ -409,8 +416,10 @@ export default function InventorySuppliers() {
   const handleApplyFilters = (rules: FilterRule[]) => {
     const params = convertRulesToParams(rules);
     if (q) params.set('q', q);
-    setSearchParams(params);
-    refetchSuppliers();
+    params.set('page', '1');
+    params.set('sort', searchParams.get('sort') || 'name');
+    params.set('dir', searchParams.get('dir') === 'desc' ? 'desc' : 'asc');
+    setSearchParams(params, { replace: true });
   };
 
   const hasActiveFilters = currentRules.length > 0;
@@ -433,11 +442,6 @@ export default function InventorySuppliers() {
       return await api<any[]>('GET', `/inventory/suppliers/${viewing.id}/contacts`);
     },
     enabled: !!viewing?.id && supplierTab === 'contacts',
-  });
-
-  const { data: supplierOptions } = useQuery({ 
-    queryKey: ['invSuppliersOptions-supplier'], 
-    queryFn: () => api<any[]>('GET', '/inventory/suppliers') 
   });
 
   const { data: supplierProducts, isLoading: loadingProducts, refetch: refetchSupplierProducts } = useQuery({
@@ -654,6 +658,7 @@ export default function InventorySuppliers() {
     mutationFn: async (data: any) => api('POST', '/inventory/suppliers', data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['suppliers'] });
+      queryClient.invalidateQueries({ queryKey: ['invSuppliersOptions-supplier'] });
       toast.success('Supplier created');
       setOpen(false);
       resetForm();
@@ -665,6 +670,7 @@ export default function InventorySuppliers() {
     mutationFn: async ({ id, data }: { id: string; data: any }) => api('PUT', `/inventory/suppliers/${id}`, data),
     onSuccess: async (updatedSupplier) => {
       queryClient.invalidateQueries({ queryKey: ['suppliers'] });
+      queryClient.invalidateQueries({ queryKey: ['invSuppliersOptions-supplier'] });
       toast.success('Supplier updated');
       // Set the updated supplier as viewing instead of closing
       setViewing(updatedSupplier);
@@ -696,6 +702,7 @@ export default function InventorySuppliers() {
     mutationFn: async (id: string) => api('DELETE', `/inventory/suppliers/${id}`),
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ['suppliers'] });
+      await queryClient.invalidateQueries({ queryKey: ['invSuppliersOptions-supplier'] });
       await queryClient.refetchQueries({ queryKey: ['suppliers'] });
       toast.success('Supplier deleted');
     },
@@ -813,54 +820,29 @@ export default function InventorySuppliers() {
     }
   };
 
-  const sortedRows = useMemo(() => {
-    if (!data) return [];
-    const sorted = [...data];
-    
-    sorted.sort((a, b) => {
-      let aVal: any = a[sortColumn as keyof Supplier];
-      let bVal: any = b[sortColumn as keyof Supplier];
-      
-      // Convert to string for comparison
-      aVal = aVal?.toString() || '';
-      bVal = bVal?.toString() || '';
-      
-      // Primary sort
-      let comparison = aVal.localeCompare(bVal);
-      
-      // If equal, secondary sort by name
-      if (comparison === 0) {
-        const aName = a.name?.toString() || '';
-        const bName = b.name?.toString() || '';
-        comparison = aName.localeCompare(bName);
-      }
-      
-      return sortDirection === 'asc' ? comparison : -comparison;
-    });
-    
-    return sorted;
-  }, [data, sortColumn, sortDirection]);
-
   const handleSort = (column: string) => {
-    if (sortColumn === column) {
-      setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc');
+    const p = new URLSearchParams(searchParams);
+    const cur = p.get('sort') || 'name';
+    const curDir = p.get('dir') === 'desc' ? 'desc' : 'asc';
+    if (cur === column) {
+      p.set('dir', curDir === 'asc' ? 'desc' : 'asc');
     } else {
-      setSortColumn(column);
-      setSortDirection('asc');
+      p.set('sort', column);
+      p.set('dir', 'asc');
     }
+    p.set('page', '1');
+    setSearchParams(p, { replace: true });
   };
-
-  const rows = sortedRows;
 
   // Track if we've loaded data at least once
   useEffect(() => {
-    if (data) {
+    if (suppliersPayload) {
       hasLoadedDataRef.current = true;
     }
-  }, [data]);
+  }, [suppliersPayload]);
 
   // Check if we're still loading initial data (only show overlay if no data yet and we haven't loaded before)
-  const isInitialLoading = (isLoading && !data) && !hasLoadedDataRef.current;
+  const isInitialLoading = (isLoading && !suppliersPayload) && !hasLoadedDataRef.current;
 
   // Track when animation completes to remove inline styles for hover to work
   useEffect(() => {
@@ -932,8 +914,7 @@ export default function InventorySuppliers() {
               <button 
                 onClick={()=>{
                   setQ('');
-                  setSearchParams(new URLSearchParams());
-                  refetchSuppliers();
+                  setSearchParams(new URLSearchParams(), { replace: true });
                 }} 
                 className="px-3 py-2 text-xs font-medium text-gray-600 hover:text-gray-900 transition-colors whitespace-nowrap"
               >
@@ -955,8 +936,10 @@ export default function InventorySuppliers() {
                 const updatedRules = currentRules.filter(r => r.id !== rule.id);
                 const params = convertRulesToParams(updatedRules);
                 if (q) params.set('q', q);
-                setSearchParams(params);
-                refetchSuppliers();
+                params.set('page', '1');
+                params.set('sort', searchParams.get('sort') || 'name');
+                params.set('dir', searchParams.get('dir') === 'desc' ? 'desc' : 'asc');
+                setSearchParams(params, { replace: true });
               }}
               getValueLabel={formatRuleValue}
               getFieldLabel={getFieldLabel}
@@ -1025,6 +1008,43 @@ export default function InventorySuppliers() {
           {!isLoading && (!Array.isArray(rows) || rows.length === 0) && (
             <div className="p-8 text-center text-xs text-gray-500">
               No suppliers found matching your criteria.
+            </div>
+          )}
+
+          {suppliersTotal > 0 && (
+            <div className="p-4 border-t border-gray-200 flex flex-wrap items-center justify-between gap-2 bg-white">
+              <div className="text-xs text-gray-600">
+                Showing {((supplierPage - 1) * supplierLimit) + 1} to {Math.min(supplierPage * supplierLimit, suppliersTotal)} of {suppliersTotal} suppliers
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    const p = new URLSearchParams(searchParams);
+                    p.set('page', String(Math.max(1, supplierPage - 1)));
+                    setSearchParams(p, { replace: true });
+                  }}
+                  disabled={supplierPage <= 1 || isFetching}
+                  className="rounded-lg px-3 py-2 border border-gray-300 text-xs font-medium text-gray-700 bg-white hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                >
+                  Previous
+                </button>
+                <span className="text-xs text-gray-600 tabular-nums">
+                  Page {supplierPage} of {suppliersTotalPages}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const p = new URLSearchParams(searchParams);
+                    p.set('page', String(Math.min(suppliersTotalPages, supplierPage + 1)));
+                    setSearchParams(p, { replace: true });
+                  }}
+                  disabled={supplierPage >= suppliersTotalPages || isFetching}
+                  className="rounded-lg px-3 py-2 border border-gray-300 text-xs font-medium text-gray-700 bg-white hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                >
+                  Next
+                </button>
+              </div>
             </div>
           )}
         </div>

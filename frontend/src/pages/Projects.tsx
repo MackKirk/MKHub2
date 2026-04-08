@@ -628,58 +628,9 @@ export default function Projects(){
     const nextDir = direction ?? (sortBy === column && sortDir === 'asc' ? 'desc' : 'asc');
     params.set('sort', column);
     params.set('dir', nextDir);
+    params.set('page', '1');
     setSearchParams(params, { replace: true });
   };
-
-  const sortedArr = useMemo(() => {
-    const list = [...arr];
-    const getAdminName = (p: Project) => {
-      const listName = (p as any).project_admin_name;
-      if (listName) return listName;
-      const id = p.project_admin_id;
-      if (!id || !employees?.length) return '';
-      const emp = (employees as any[]).find((e: any) => String(e.id) === String(id));
-      if (!emp) return '';
-      return `${emp.first_name || ''} ${emp.last_name || ''}`.trim() || emp.name || emp.username || '';
-    };
-    const cmp = (a: Project, b: Project) => {
-      let aVal: string | number = '';
-      let bVal: string | number = '';
-      switch (sortBy) {
-        case 'project':
-          aVal = `${(a.name || '').toLowerCase()}\t${(a.code || '')}`;
-          bVal = `${(b.name || '').toLowerCase()}\t${(b.code || '')}`;
-          return aVal < bVal ? -1 : aVal > bVal ? 1 : 0;
-        case 'start':
-          aVal = (a.date_start || a.created_at || '').slice(0, 10);
-          bVal = (b.date_start || b.created_at || '').slice(0, 10);
-          return aVal < bVal ? -1 : aVal > bVal ? 1 : 0;
-        case 'eta':
-          aVal = (a.date_eta || '').slice(0, 10);
-          bVal = (b.date_eta || '').slice(0, 10);
-          return aVal < bVal ? -1 : aVal > bVal ? 1 : 0;
-        case 'admin':
-          aVal = getAdminName(a).toLowerCase();
-          bVal = getAdminName(b).toLowerCase();
-          return aVal < bVal ? -1 : aVal > bVal ? 1 : 0;
-        case 'value':
-          aVal = Number(a.service_value) || 0;
-          bVal = Number(b.service_value) || 0;
-          return aVal - bVal;
-        case 'status':
-          aVal = (a.status_label || '').toLowerCase();
-          bVal = (b.status_label || '').toLowerCase();
-          return aVal < bVal ? -1 : aVal > bVal ? 1 : 0;
-        default:
-          return 0;
-      }
-    };
-    list.sort((a, b) => {
-      const r = cmp(a, b);
-      return sortDir === 'asc' ? r : -r;
-    });
-    return list;
-  }, [arr, sortBy, sortDir, employees]);
 
   // Filter Builder Configuration
   const filterFields: FieldConfig[] = useMemo(() => [
@@ -1003,8 +954,8 @@ export default function Projects(){
                   <div key={i} className="h-20 bg-gray-100 animate-pulse rounded-lg min-w-[800px]" />
                 ))}
               </>
-            ) : sortedArr.length > 0 ? (
-              sortedArr.map(p => (
+            ) : arr.length > 0 ? (
+              arr.map(p => (
                 <ProjectListItem
                   key={p.id}
                   project={p}

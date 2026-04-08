@@ -2124,6 +2124,7 @@ export default function ProjectDetail(){
                 await Promise.all([
                   queryClient.invalidateQueries({ queryKey: ['clientOpportunities'] }),
                   queryClient.invalidateQueries({ queryKey: ['clientProjects'] }),
+                  queryClient.invalidateQueries({ queryKey: ['clientProjectParticipations'] }),
                 ]);
                 if(proj?.client_id){
                   nav(`/customers/${encodeURIComponent(String(proj?.client_id))}`);
@@ -2505,6 +2506,7 @@ export default function ProjectDetail(){
               queryClient.invalidateQueries({ queryKey: ['projectRecentActivity', id] }),
               queryClient.invalidateQueries({ queryKey: ['clientProjects'] }),
               queryClient.invalidateQueries({ queryKey: ['clientOpportunities'] }),
+              queryClient.invalidateQueries({ queryKey: ['clientProjectParticipations'] }),
               queryClient.invalidateQueries({ queryKey: ['projectProposals', id] }),
             ]);
             toast.success('Opportunity converted to project');

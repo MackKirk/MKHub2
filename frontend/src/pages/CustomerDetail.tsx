@@ -165,6 +165,244 @@ function DateRangeModal({ open, onClose, onConfirm, initialStartDate = '', initi
   );
 }
 
+type ProjectLinkRow = { id: string; name?: string; code?: string };
+
+function CustomerOverviewProjectListModal({
+  open,
+  onClose,
+  title,
+  subtitle = 'Click an item to open the project page',
+  items,
+  emptyMessage = 'No items',
+}: {
+  open: boolean;
+  onClose: () => void;
+  title: string;
+  subtitle?: string;
+  items: ProjectLinkRow[];
+  emptyMessage?: string;
+}) {
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [open, onClose]);
+
+  if (!open) return null;
+
+  return (
+    <OverlayPortal>
+      <div
+        className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center overflow-y-auto p-4"
+        onClick={onClose}
+        role="presentation"
+      >
+        <div
+          className="w-full max-w-lg max-h-[90vh] bg-gray-100 rounded-xl overflow-hidden flex flex-col border border-gray-200 shadow-xl"
+          onClick={(e) => e.stopPropagation()}
+        >
+          <div className="rounded-t-xl border-b border-gray-200 bg-white p-4 flex-shrink-0">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3 min-w-0">
+                <button
+                  type="button"
+                  onClick={onClose}
+                  className="p-1.5 rounded hover:bg-gray-100 transition-colors flex items-center justify-center shrink-0"
+                  title="Close"
+                >
+                  <svg className="w-4 h-4 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+                  </svg>
+                </button>
+                <div className="min-w-0">
+                  <div className="text-sm font-semibold text-gray-900 truncate">{title}</div>
+                  {subtitle ? (
+                    <div className="text-xs text-gray-500 mt-0.5">{subtitle}</div>
+                  ) : null}
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div className="overflow-y-auto flex-1 p-4 min-h-0">
+            <div className="rounded-xl border border-gray-200 bg-white p-3 min-h-[120px]">
+              <ul className="space-y-0 divide-y divide-gray-100">
+                {items.length === 0 ? (
+                  <li className="text-sm text-gray-500 py-8 text-center">{emptyMessage}</li>
+                ) : (
+                  items.map((p) => (
+                    <li key={p.id}>
+                      <Link
+                        to={`/projects/${encodeURIComponent(p.id)}`}
+                        className="block px-3 py-2.5 text-sm text-[#7f1010] hover:bg-red-50 font-medium"
+                        onClick={onClose}
+                      >
+                        {p.name || p.code || p.id}
+                        {p.code && p.name ? <span className="text-gray-500 font-normal ml-1">({p.code})</span> : null}
+                      </Link>
+                    </li>
+                  ))
+                )}
+              </ul>
+            </div>
+          </div>
+
+          <div className="flex-shrink-0 px-4 py-4 border-t border-gray-200 bg-white flex items-center justify-end gap-3 rounded-b-xl">
+            <button
+              type="button"
+              onClick={onClose}
+              className="px-3 py-1.5 rounded-lg text-sm font-medium border border-gray-200 hover:bg-gray-50 text-gray-700"
+            >
+              Close
+            </button>
+          </div>
+        </div>
+      </div>
+    </OverlayPortal>
+  );
+}
+
+type RelatedMembershipRow = { id: string; code?: string; name?: string; is_bidding: boolean; is_awarded_related: boolean };
+
+type ClientParticipationsResponse = {
+  rollup: (Project & { is_bidding?: boolean; participation?: string })[];
+  related_memberships: RelatedMembershipRow[];
+};
+
+function CustomerOverviewRelatedModal({
+  open,
+  onClose,
+  memberships,
+}: {
+  open: boolean;
+  onClose: () => void;
+  memberships: RelatedMembershipRow[];
+}) {
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [open, onClose]);
+
+  if (!open) return null;
+
+  const projAll = memberships.filter((m) => !m.is_bidding);
+  const oppAll = memberships.filter((m) => m.is_bidding);
+
+  return (
+    <OverlayPortal>
+      <div
+        className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center overflow-y-auto p-4"
+        onClick={onClose}
+        role="presentation"
+      >
+        <div
+          className="w-full max-w-lg max-h-[90vh] bg-gray-100 rounded-xl overflow-hidden flex flex-col border border-gray-200 shadow-xl"
+          onClick={(e) => e.stopPropagation()}
+        >
+          <div className="rounded-t-xl border-b border-gray-200 bg-white p-4 flex-shrink-0">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3 min-w-0">
+                <button
+                  type="button"
+                  onClick={onClose}
+                  className="p-1.5 rounded hover:bg-gray-100 transition-colors flex items-center justify-center shrink-0"
+                  title="Close"
+                >
+                  <svg className="w-4 h-4 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+                  </svg>
+                </button>
+                <div className="min-w-0">
+                  <div className="text-sm font-semibold text-gray-900 truncate">Related customer</div>
+                  <div className="text-xs text-gray-500 mt-0.5">Projects and opportunities where this customer is related (not owner)</div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div className="overflow-y-auto flex-1 p-4 min-h-0 space-y-4">
+            <div className="rounded-xl border border-gray-200 bg-white p-4">
+              <div className="text-[10px] font-medium text-gray-500 uppercase tracking-wide mb-3">Projects</div>
+              {projAll.length === 0 ? (
+                <p className="text-sm text-gray-500 py-2">None</p>
+              ) : (
+                <ul className="border border-gray-100 rounded-lg divide-y divide-gray-100">
+                  {projAll.map((m) => (
+                    <li key={m.id} className="flex items-center gap-2 px-3 py-2 hover:bg-gray-50">
+                      <Link
+                        to={`/projects/${encodeURIComponent(m.id)}`}
+                        className="flex-1 min-w-0 text-sm text-[#7f1010] font-medium truncate"
+                        onClick={onClose}
+                      >
+                        {m.name || m.code || m.id}
+                      </Link>
+                      {m.is_awarded_related ? (
+                        <span className="text-[10px] uppercase font-bold text-green-800 bg-green-50 px-1.5 py-0.5 rounded shrink-0">
+                          Awarded
+                        </span>
+                      ) : (
+                        <span className="text-[10px] uppercase font-bold text-gray-500 bg-gray-100 px-1.5 py-0.5 rounded shrink-0">
+                          Not awarded
+                        </span>
+                      )}
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+            <div className="rounded-xl border border-gray-200 bg-white p-4">
+              <div className="text-[10px] font-medium text-gray-500 uppercase tracking-wide mb-3">Opportunities</div>
+              {oppAll.length === 0 ? (
+                <p className="text-sm text-gray-500 py-2">None</p>
+              ) : (
+                <ul className="border border-gray-100 rounded-lg divide-y divide-gray-100">
+                  {oppAll.map((m) => (
+                    <li key={m.id} className="flex items-center gap-2 px-3 py-2 hover:bg-gray-50">
+                      <Link
+                        to={`/projects/${encodeURIComponent(m.id)}`}
+                        className="flex-1 min-w-0 text-sm text-[#7f1010] font-medium truncate"
+                        onClick={onClose}
+                      >
+                        {m.name || m.code || m.id}
+                      </Link>
+                      {m.is_awarded_related ? (
+                        <span className="text-[10px] uppercase font-bold text-green-800 bg-green-50 px-1.5 py-0.5 rounded shrink-0">
+                          Awarded
+                        </span>
+                      ) : (
+                        <span className="text-[10px] uppercase font-bold text-gray-500 bg-gray-100 px-1.5 py-0.5 rounded shrink-0">
+                          Not awarded
+                        </span>
+                      )}
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          </div>
+
+          <div className="flex-shrink-0 px-4 py-4 border-t border-gray-200 bg-white flex items-center justify-end gap-3 rounded-b-xl">
+            <button
+              type="button"
+              onClick={onClose}
+              className="px-3 py-1.5 rounded-lg text-sm font-medium border border-gray-200 hover:bg-gray-50 text-gray-700"
+            >
+              Close
+            </button>
+          </div>
+        </div>
+      </div>
+    </OverlayPortal>
+  );
+}
+
 type DateFilterType = 'all' | 'last_year' | 'last_6_months' | 'last_3_months' | 'last_month' | 'custom';
 
 // Helper function to format date for display
@@ -504,9 +742,28 @@ export default function CustomerDetail(){
     return () => window.removeEventListener('keydown', onKey);
   }, [newProjectOpen]);
   const leadSources = (settings?.lead_sources||[]) as any[];
-  const { data:projects } = useQuery({ queryKey:['clientProjects', id], queryFn: ()=>api<Project[]>('GET', `/projects?client=${encodeURIComponent(String(id||''))}&is_bidding=false`), enabled: hasProjectsRead });
-  const { data:opportunitiesRaw } = useQuery({ queryKey:['clientOpportunities', id], queryFn: ()=>api<{ items: Project[] } | Project[]>('GET', `/projects/business/opportunities?client_id=${encodeURIComponent(String(id||''))}&limit=100`), enabled: hasProjectsRead });
-  const opportunities = useMemo(() => Array.isArray(opportunitiesRaw) ? opportunitiesRaw : ((opportunitiesRaw as any)?.items ?? []), [opportunitiesRaw]);
+  const { data: participationData, isLoading: participationLoading } = useQuery({
+    queryKey: ['clientProjectParticipations', id],
+    queryFn: () =>
+      api<ClientParticipationsResponse>(
+        'GET',
+        `/clients/${encodeURIComponent(String(id || ''))}/project-participations`
+      ),
+    enabled: hasProjectsRead && !!id,
+    staleTime: 60_000,
+  });
+  const projects = useMemo(
+    () => (participationData?.rollup ?? []).filter((p) => p.is_bidding !== true),
+    [participationData]
+  );
+  const opportunities = useMemo(
+    () => (participationData?.rollup ?? []).filter((p) => p.is_bidding === true),
+    [participationData]
+  );
+  const relatedMemberships = useMemo(
+    () => participationData?.related_memberships ?? [],
+    [participationData]
+  );
   const { data:contacts } = useQuery({ queryKey:['clientContacts', id], queryFn: ()=>api<Contact[]>('GET', `/clients/${id}/contacts`) });
   
   // Dashboard states (must be declared before useMemo that uses them)
@@ -520,6 +777,8 @@ export default function CustomerDetail(){
   type OverviewPieTooltip = { chart: 'opp' | 'proj'; label: string; value: number; percentage: number };
   const [overviewPieTooltip, setOverviewPieTooltip] = useState<OverviewPieTooltip | null>(null);
   const [overviewPieTooltipPos, setOverviewPieTooltipPos] = useState({ x: 0, y: 0 });
+  type OverviewKpiModalKind = 'closed' | 'pipeline' | 'inProgress' | 'onHold' | 'related' | null;
+  const [overviewKpiModal, setOverviewKpiModal] = useState<OverviewKpiModalKind>(null);
   
   // Calculate date range for dashboard
   const globalDateRange = useMemo(() => 
@@ -602,6 +861,49 @@ export default function CustomerDetail(){
     applyDateRange(opportunitiesWithDetails, globalDateRange.date_from, globalDateRange.date_to),
     [opportunitiesWithDetails, globalDateRange]
   );
+
+  const overviewModalItemsClosed = useMemo(
+    () =>
+      filteredProjects
+        .filter((p) => (p.details?.status_label || p.status_label || '').toLowerCase() === 'finished')
+        .map((p) => ({ id: p.id, name: p.name, code: p.code })),
+    [filteredProjects]
+  );
+  const overviewModalItemsInProgress = useMemo(
+    () =>
+      filteredProjects
+        .filter((p) => (p.details?.status_label || p.status_label || '').toLowerCase() === 'in progress')
+        .map((p) => ({ id: p.id, name: p.name, code: p.code })),
+    [filteredProjects]
+  );
+  const overviewModalItemsOnHold = useMemo(
+    () =>
+      filteredProjects
+        .filter((p) => (p.details?.status_label || p.status_label || '').toLowerCase() === 'on hold')
+        .map((p) => ({ id: p.id, name: p.name, code: p.code })),
+    [filteredProjects]
+  );
+  const overviewModalItemsPipeline = useMemo(
+    () =>
+      filteredOpportunities
+        .filter((o) => {
+          const s = (o.details?.status_label || o.status_label || '').toLowerCase();
+          return s === 'prospecting' || s === 'sent to customer';
+        })
+        .map((o) => ({ id: o.id, name: o.name, code: o.code })),
+    [filteredOpportunities]
+  );
+
+  const relatedParticipationStats = useMemo(() => {
+    const proj = relatedMemberships.filter((m) => !m.is_bidding);
+    const opp = relatedMemberships.filter((m) => m.is_bidding);
+    return {
+      projectsTotal: proj.length,
+      projectsAwarded: proj.filter((m) => m.is_awarded_related).length,
+      opportunitiesTotal: opp.length,
+      opportunitiesAwarded: opp.filter((m) => m.is_awarded_related).length,
+    };
+  }, [relatedMemberships]);
 
   // For Revenue & Pipeline chart values we need proposal totals:
   // - Projects: "Costs Summary → Total" (sum of original proposal + change orders) - ALL statuses
@@ -714,6 +1016,7 @@ export default function CustomerDetail(){
   }, [opportunityProposalTotalsQuery.data]);
   
   const isOverviewLoading =
+    participationLoading ||
     projectDetailsQueries.isLoading ||
     opportunityDetailsQueries.isLoading ||
     projectCostsSummaryTotalsQuery.isLoading ||
@@ -1714,81 +2017,164 @@ export default function CustomerDetail(){
                         </select>
                     </div>
 
-                    {/* KPI Snapshot — 4 metrics, Quantity/Value toggle */}
+                    {/* KPI Snapshot — 4 metrics + related card; Quantity/Value toggle */}
                     <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-                      <div
-                        className="rounded-xl border border-gray-200/90 bg-white shadow-md overflow-hidden transition-shadow duration-200 hover:shadow-lg hover:border-gray-300/80 relative"
+                      <button
+                        type="button"
+                        className="rounded-xl border border-gray-200/90 bg-white shadow-md overflow-hidden transition-shadow duration-200 hover:shadow-lg hover:border-gray-300/80 relative text-left w-full cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-[#7f1010]/40"
                         style={{
                           opacity: hasAnimated ? 1 : 0,
                           transform: hasAnimated ? 'translateY(0) scale(1)' : 'translateY(-8px) scale(0.98)',
                           transition: 'opacity 400ms ease-out, transform 400ms ease-out',
                         }}
+                        onClick={() => setOverviewKpiModal('closed')}
                       >
                         <LoadingOverlay isLoading={isOverviewLoading} minHeight="min-h-[80px]">
                         <div className="p-3">
-                        <div className="text-[10px] font-bold text-gray-500 uppercase tracking-wide mb-0.5">Closed</div>
+                        <div className="text-[10px] font-bold text-gray-500 uppercase tracking-wide mb-0.5">Finished Projects</div>
                         <div className="text-lg font-semibold text-gray-900">
                           {globalDisplayMode === 'value' ? formatCurrency(kpis.closed.value) : <CountUp value={kpis.closed.count} enabled={hasAnimated} />}
                         </div>
-                        <div className="text-[11px] text-gray-500 mt-0.5 opacity-70">{globalDisplayMode === 'value' ? 'Closed value' : 'Finished projects'}</div>
                         </div>
                         </LoadingOverlay>
-                      </div>
-                      <div
-                        className="rounded-xl border border-gray-200/90 bg-white shadow-md overflow-hidden transition-shadow duration-200 hover:shadow-lg hover:border-gray-300/80 relative"
+                      </button>
+                      <button
+                        type="button"
+                        className="rounded-xl border border-gray-200/90 bg-white shadow-md overflow-hidden transition-shadow duration-200 hover:shadow-lg hover:border-gray-300/80 relative text-left w-full cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-[#7f1010]/40"
                         style={{
                           opacity: hasAnimated ? 1 : 0,
                           transform: hasAnimated ? 'translateY(0) scale(1)' : 'translateY(-8px) scale(0.98)',
                           transition: 'opacity 400ms ease-out 50ms, transform 400ms ease-out 50ms',
                         }}
+                        onClick={() => setOverviewKpiModal('pipeline')}
                       >
                         <LoadingOverlay isLoading={isOverviewLoading} minHeight="min-h-[80px]">
                         <div className="p-3">
-                        <div className="text-[10px] font-bold text-gray-500 uppercase tracking-wide mb-0.5">Pipeline</div>
+                        <div className="text-[10px] font-bold text-gray-500 uppercase tracking-wide mb-0.5">Open Opportunities</div>
                         <div className="text-lg font-semibold text-gray-900">
                           {globalDisplayMode === 'value' ? formatCurrency(kpis.pipeline.value) : <CountUp value={kpis.pipeline.count} enabled={hasAnimated} />}
                         </div>
-                        <div className="text-[11px] text-gray-500 mt-0.5 opacity-70">{globalDisplayMode === 'value' ? 'Pipeline value' : 'Open opportunities'}</div>
                         </div>
                         </LoadingOverlay>
-                      </div>
-                      <div
-                        className="rounded-xl border border-gray-200/90 bg-white shadow-md overflow-hidden transition-shadow duration-200 hover:shadow-lg hover:border-gray-300/80 relative"
+                      </button>
+                      <button
+                        type="button"
+                        className="rounded-xl border border-gray-200/90 bg-white shadow-md overflow-hidden transition-shadow duration-200 hover:shadow-lg hover:border-gray-300/80 relative text-left w-full cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-[#7f1010]/40"
                         style={{
                           opacity: hasAnimated ? 1 : 0,
                           transform: hasAnimated ? 'translateY(0) scale(1)' : 'translateY(-8px) scale(0.98)',
                           transition: 'opacity 400ms ease-out 100ms, transform 400ms ease-out 100ms',
                         }}
+                        onClick={() => setOverviewKpiModal('inProgress')}
                       >
                         <LoadingOverlay isLoading={isOverviewLoading} minHeight="min-h-[80px]">
                         <div className="p-3">
-                        <div className="text-[10px] font-bold text-gray-500 uppercase tracking-wide mb-0.5">In Progress</div>
+                        <div className="text-[10px] font-bold text-gray-500 uppercase tracking-wide mb-0.5">In Progress Projects</div>
                         <div className="text-lg font-semibold text-gray-900">
                           {globalDisplayMode === 'value' ? formatCurrency(kpis.inProgress.value) : <CountUp value={kpis.inProgress.count} enabled={hasAnimated} />}
                         </div>
-                        <div className="text-[11px] text-gray-500 mt-0.5 opacity-70">{globalDisplayMode === 'value' ? 'In progress value' : 'In progress projects'}</div>
                         </div>
                         </LoadingOverlay>
-                      </div>
-                      <div
-                        className="rounded-xl border border-gray-200/90 bg-white shadow-md overflow-hidden transition-shadow duration-200 hover:shadow-lg hover:border-gray-300/80 relative"
+                      </button>
+                      <button
+                        type="button"
+                        className="rounded-xl border border-gray-200/90 bg-white shadow-md overflow-hidden transition-shadow duration-200 hover:shadow-lg hover:border-gray-300/80 relative text-left w-full cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-[#7f1010]/40"
                         style={{
                           opacity: hasAnimated ? 1 : 0,
                           transform: hasAnimated ? 'translateY(0) scale(1)' : 'translateY(-8px) scale(0.98)',
                           transition: 'opacity 400ms ease-out 150ms, transform 400ms ease-out 150ms',
                         }}
+                        onClick={() => setOverviewKpiModal('onHold')}
                       >
                         <LoadingOverlay isLoading={isOverviewLoading} minHeight="min-h-[80px]">
                         <div className="p-3">
-                        <div className="text-[10px] font-bold text-gray-500 uppercase tracking-wide mb-0.5">On Hold</div>
+                        <div className="text-[10px] font-bold text-gray-500 uppercase tracking-wide mb-0.5">On Hold Projects</div>
                         <div className="text-lg font-semibold text-gray-900">
                           {globalDisplayMode === 'value' ? formatCurrency(kpis.onHold.value) : <CountUp value={kpis.onHold.count} enabled={hasAnimated} />}
                         </div>
-                        <div className="text-[11px] text-gray-500 mt-0.5 opacity-70">{globalDisplayMode === 'value' ? 'On hold value' : 'On hold projects'}</div>
                         </div>
                         </LoadingOverlay>
-                      </div>
+                      </button>
                     </div>
+
+                    <button
+                      type="button"
+                      className="w-full rounded-xl border border-gray-200/90 bg-white shadow-md overflow-hidden transition-shadow duration-200 hover:shadow-lg hover:border-gray-300/80 relative text-left cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-[#7f1010]/40"
+                      style={{
+                        opacity: hasAnimated ? 1 : 0,
+                        transform: hasAnimated ? 'translateY(0) scale(1)' : 'translateY(-8px) scale(0.98)',
+                        transition: 'opacity 400ms ease-out 200ms, transform 400ms ease-out 200ms',
+                      }}
+                      onClick={() => setOverviewKpiModal('related')}
+                    >
+                      <LoadingOverlay isLoading={participationLoading} minHeight="min-h-[72px]">
+                        <div className="p-3">
+                          <div className="text-[10px] font-bold text-gray-500 uppercase tracking-wide mb-2">PROJECTS AND OPPORTUNITIES RELATED TO THIS CUSTOMER</div>
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                            <div>
+                              <div className="text-[11px] font-semibold text-gray-700 mb-1">Projects</div>
+                              <div className="text-lg font-semibold text-gray-900 tabular-nums">
+                                {relatedParticipationStats.projectsTotal}{' '}
+                                <span className="text-sm font-normal text-gray-500">as related</span>
+                              </div>
+                              <div className="text-lg font-semibold text-gray-900 tabular-nums mt-0.5">
+                                {relatedParticipationStats.projectsAwarded}{' '}
+                                <span className="text-sm font-normal text-gray-500">awarded of this total</span>
+                              </div>
+                            </div>
+                            <div>
+                              <div className="text-[11px] font-semibold text-gray-700 mb-1">Opportunities</div>
+                              <div className="text-lg font-semibold text-gray-900 tabular-nums">
+                                {relatedParticipationStats.opportunitiesTotal}{' '}
+                                <span className="text-sm font-normal text-gray-500">as related</span>
+                              </div>
+                              <div className="text-lg font-semibold text-gray-900 tabular-nums mt-0.5">
+                                {relatedParticipationStats.opportunitiesAwarded}{' '}
+                                <span className="text-sm font-normal text-gray-500">awarded of this total</span>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      </LoadingOverlay>
+                    </button>
+
+                    <CustomerOverviewProjectListModal
+                      open={overviewKpiModal === 'closed'}
+                      onClose={() => setOverviewKpiModal(null)}
+                      title="Finished Projects"
+                      subtitle="Finished projects for this customer"
+                      emptyMessage="No finished projects"
+                      items={overviewModalItemsClosed}
+                    />
+                    <CustomerOverviewProjectListModal
+                      open={overviewKpiModal === 'pipeline'}
+                      onClose={() => setOverviewKpiModal(null)}
+                      title="Open Opportunities"
+                      subtitle="Open opportunities for this customer"
+                      emptyMessage="No open opportunities"
+                      items={overviewModalItemsPipeline}
+                    />
+                    <CustomerOverviewProjectListModal
+                      open={overviewKpiModal === 'inProgress'}
+                      onClose={() => setOverviewKpiModal(null)}
+                      title="In Progress Projects"
+                      subtitle="Projects currently in progress"
+                      emptyMessage="No in progress projects"
+                      items={overviewModalItemsInProgress}
+                    />
+                    <CustomerOverviewProjectListModal
+                      open={overviewKpiModal === 'onHold'}
+                      onClose={() => setOverviewKpiModal(null)}
+                      title="On Hold Projects"
+                      subtitle="Projects on hold for this customer"
+                      emptyMessage="No on hold projects"
+                      items={overviewModalItemsOnHold}
+                    />
+                    <CustomerOverviewRelatedModal
+                      open={overviewKpiModal === 'related'}
+                      onClose={() => setOverviewKpiModal(null)}
+                      memberships={relatedMemberships}
+                    />
 
                     {/* Status Overview — Opportunities by Status + Customer Funnel / Health */}
                     <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
@@ -2358,31 +2744,6 @@ export default function CustomerDetail(){
                         </LoadingOverlay>
                       </div>
                     </div>
-
-                    {/* Empty States with CTAs */}
-                    {filteredProjects.length === 0 && filteredOpportunities.length === 0 && (
-                      <div className="rounded-lg border border-gray-200 bg-white p-6 text-center">
-                        <div className="text-gray-500 mb-3">No projects or opportunities found</div>
-                        {hasEditPermission && (
-                          <div className="flex gap-2 justify-center">
-                            <Link
-                              to={`/projects/new?client_id=${encodeURIComponent(String(id||''))}&is_bidding=false`}
-                              state={{ backgroundLocation: location }}
-                              className="px-4 py-2 bg-[#7f1010] text-white rounded-lg hover:bg-[#a31414] transition-colors text-sm"
-                            >
-                              Create Project
-                            </Link>
-                            <Link
-                              to={`/projects/new?client_id=${encodeURIComponent(String(id||''))}&is_bidding=true`}
-                              state={{ backgroundLocation: location }}
-                              className="px-4 py-2 bg-[#7f1010] text-white rounded-lg hover:bg-[#a31414] transition-colors text-sm"
-                            >
-                              Create Opportunity
-                            </Link>
-                          </div>
-                        )}
-                      </div>
-                    )}
                   </div>
               )}
               {tab==='general' && (

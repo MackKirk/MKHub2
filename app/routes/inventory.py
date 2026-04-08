@@ -1,6 +1,6 @@
 import uuid
 from datetime import datetime, timezone
-from typing import List
+from typing import List, Optional, Any
 
 from fastapi import APIRouter, Depends, HTTPException, Body, Query
 from sqlalchemy import or_
@@ -87,7 +87,7 @@ def low_stock_products(db: Session = Depends(get_db), _=Depends(require_permissi
 
 
 # ---------- SUPPLIERS ----------
-@router.get("/suppliers", response_model=List[SupplierResponse])
+@router.get("/suppliers", response_model=None)
 def list_suppliers(
     q: str | None = None,
     country: str | None = None,
@@ -98,8 +98,11 @@ def list_suppliers(
     city_not: str | None = None,
     page: int = Query(1, ge=1),
     limit: int = Query(100, ge=1, le=200),
+    sort: Optional[str] = Query("name"),
+    sort_dir: Optional[str] = Query("asc", alias="dir"),
+    envelope: bool = Query(False),
     db: Session = Depends(get_db),
-):
+) -> Any:
     try:
         query = db.query(Supplier)
         if q:
@@ -140,12 +143,34 @@ def list_suppliers(
         # Filter by city (exclusion)
         if city_not:
             query = query.filter(Supplier.city != city_not)
-        
+
+        sort_key = (sort or "name").lower()
+        asc = (sort_dir or "asc").lower() != "desc"
+        if sort_key == "email":
+            sort_col = Supplier.email
+        elif sort_key == "phone":
+            sort_col = Supplier.phone
+        else:
+            sort_col = Supplier.name
+        if asc:
+            query = query.order_by(sort_col.asc().nulls_last(), Supplier.name.asc())
+        else:
+            query = query.order_by(sort_col.desc().nulls_last(), Supplier.name.asc())
+
+        total = query.count()
         offset = (page - 1) * limit
-        try:
-            return query.order_by(Supplier.created_at.desc()).offset(offset).limit(limit).all()
-        except Exception:
-            return query.offset(offset).limit(limit).all()
+        rows = query.offset(offset).limit(limit).all()
+
+        if envelope:
+            total_pages = (total + limit - 1) // limit if total > 0 else 1
+            return {
+                "items": rows,
+                "total": total,
+                "page": page,
+                "limit": limit,
+                "total_pages": total_pages,
+            }
+        return rows
     except Exception as e:
         # Log and return empty list if there's any error
         return []

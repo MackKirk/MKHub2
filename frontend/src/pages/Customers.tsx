@@ -171,7 +171,7 @@ export default function Customers(){
     setSearchParams(params);
   };
   
-  // List sort (from URL, client-side on current page)
+  // List sort (URL + API; order applies to full result set before pagination)
   const sortBy = (searchParams.get('sort') as 'customer' | 'code' | 'city' | 'status' | 'type') || 'customer';
   const sortDir = (searchParams.get('dir') === 'desc' ? 'desc' : 'asc') as 'asc' | 'desc';
   const setListSort = (column: typeof sortBy, direction?: 'asc' | 'desc') => {
@@ -179,14 +179,16 @@ export default function Customers(){
     const nextDir = direction ?? (sortBy === column && sortDir === 'asc' ? 'desc' : 'asc');
     params.set('sort', column);
     params.set('dir', nextDir);
+    params.set('page', '1');
+    setPage(1);
     setSearchParams(params, { replace: true });
   };
 
   const queryString = useMemo(()=>{
     const p = new URLSearchParams(searchParams);
-    // Remove 'q', 'page', 'sort', 'dir' from params for API query (handled separately or client-side)
     const qParam = p.get('q');
-    const pageParam = p.get('page');
+    const sortParam = p.get('sort') || 'customer';
+    const dirParam = p.get('dir') === 'desc' ? 'desc' : 'asc';
     p.delete('q');
     p.delete('page');
     p.delete('sort');
@@ -202,6 +204,8 @@ export default function Customers(){
     }
     finalParams.set('page', String(page));
     finalParams.set('limit', String(limit));
+    finalParams.set('sort', sortParam);
+    finalParams.set('dir', dirParam);
     return finalParams.toString();
   }, [searchParams, page, limit]);
   
@@ -212,43 +216,8 @@ export default function Customers(){
   
   const { data:settings, isLoading: settingsLoading } = useQuery({ queryKey:['settings'], queryFn: ()=>api<any>('GET','/settings') });
 
-  const sortedItems = useMemo(() => {
-    const list = data?.items ? [...data.items] : [];
-    const cmp = (a: Client, b: Client) => {
-      let aVal: string;
-      let bVal: string;
-      switch (sortBy) {
-        case 'customer':
-          aVal = `${(a.display_name || a.name || '').toLowerCase()}\t${(a.address_line1 || '')}`;
-          bVal = `${(b.display_name || b.name || '').toLowerCase()}\t${(b.address_line1 || '')}`;
-          return aVal < bVal ? -1 : aVal > bVal ? 1 : 0;
-        case 'code':
-          aVal = (a.code || '').toLowerCase();
-          bVal = (b.code || '').toLowerCase();
-          return aVal < bVal ? -1 : aVal > bVal ? 1 : 0;
-        case 'city':
-          aVal = [a.city, a.province].filter(Boolean).join(', ').toLowerCase();
-          bVal = [b.city, b.province].filter(Boolean).join(', ').toLowerCase();
-          return aVal < bVal ? -1 : aVal > bVal ? 1 : 0;
-        case 'status':
-          aVal = (a.client_status || '').toLowerCase();
-          bVal = (b.client_status || '').toLowerCase();
-          return aVal < bVal ? -1 : aVal > bVal ? 1 : 0;
-        case 'type':
-          aVal = (a.client_type || '').toLowerCase();
-          bVal = (b.client_type || '').toLowerCase();
-          return aVal < bVal ? -1 : aVal > bVal ? 1 : 0;
-        default:
-          return 0;
-      }
-    };
-    list.sort((a, b) => {
-      const r = cmp(a, b);
-      return sortDir === 'asc' ? r : -r;
-    });
-    return list;
-  }, [data?.items, sortBy, sortDir]);
-  
+  const listItems = data?.items ?? [];
+
   // Track if we've loaded data at least once
   useEffect(() => {
     if (data) {
@@ -490,7 +459,7 @@ export default function Customers(){
                   <button type="button" onClick={() => setListSort('type')} className="min-w-0 text-left flex items-center gap-1 hover:text-gray-900 rounded py-0.5 outline-none focus:outline-none" title="Sort by type">Type{sortBy === 'type' ? (sortDir === 'asc' ? ' ↑' : ' ↓') : ''}</button>
                 </div>
                 <div className="rounded-b-lg border border-t-0 border-gray-200 overflow-hidden min-w-0">
-                  {sortedItems.map(c => (
+                  {listItems.map(c => (
                     <ClientRow key={c.id} c={c} statusColorMap={statusColorMap} onOpen={()=> nav(`/customers/${encodeURIComponent(c.id)}`)} />
                   ))}
                 </div>

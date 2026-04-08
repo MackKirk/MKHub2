@@ -3,7 +3,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Body
 from sqlalchemy.orm import Session, defer
 from sqlalchemy.orm.attributes import flag_modified
 from sqlalchemy.exc import ProgrammingError
-from sqlalchemy import func, extract
+from sqlalchemy import func, extract, select, literal
 from typing import List, Optional
 import uuid
 
@@ -30,6 +30,79 @@ from sqlalchemy import or_, and_, cast, String, Date
 from ..services.project_utils import sanitize_division_onsite_leads
 
 router = APIRouter(prefix="/projects", tags=["projects"])
+
+
+def _user_display_sort_subq(user_id_column):
+    """Correlated scalar subquery: lower-case display name for ordering (no join row duplication)."""
+    full_name = func.trim(
+        func.concat(
+            func.coalesce(EmployeeProfile.first_name, literal("")),
+            literal(" "),
+            func.coalesce(EmployeeProfile.last_name, literal("")),
+        )
+    )
+    label = func.lower(
+        func.coalesce(
+            EmployeeProfile.preferred_name,
+            func.nullif(full_name, literal("")),
+            User.username,
+            literal(""),
+        )
+    )
+    return (
+        select(label)
+        .select_from(User)
+        .outerjoin(EmployeeProfile, EmployeeProfile.user_id == User.id)
+        .where(User.id == user_id_column)
+        .limit(1)
+        .scalar_subquery()
+    )
+
+
+def _business_project_order_parts(sort: Optional[str], sort_dir: Optional[str], *, opportunities: bool):
+    """ORDER BY columns for business opportunity/project lists (full result set, before OFFSET/LIMIT)."""
+    asc = (sort_dir or "asc").lower() != "desc"
+    s = (sort or "").strip().lower()
+    if not s:
+        s = "opportunity" if opportunities else "project"
+
+    def _str_col(col, secondary=None):
+        if asc:
+            parts = (col.asc().nulls_last(),)
+        else:
+            parts = (col.desc().nulls_last(),)
+        if secondary is not None:
+            parts = parts + ((secondary.asc() if asc else secondary.desc()),)
+        return parts
+
+    if s in ("opportunity", "project"):
+        name_k = func.lower(func.coalesce(Project.name, literal("")))
+        code_k = func.lower(func.coalesce(Project.code, literal("")))
+        if asc:
+            return (name_k.asc(), code_k.asc())
+        return (name_k.desc(), code_k.desc())
+    if s == "start":
+        eff = func.coalesce(Project.date_start, Project.created_at)
+        return (eff.asc().nulls_last(),) if asc else (eff.desc().nulls_last(),)
+    if s == "eta":
+        return (Project.date_eta.asc().nulls_last(),) if asc else (Project.date_eta.desc().nulls_last(),)
+    if s == "value":
+        v = func.coalesce(Project.service_value, Project.cost_estimated, literal(0))
+        return (v.asc().nulls_last(),) if asc else (v.desc().nulls_last(),)
+    if s == "status":
+        st = func.lower(func.coalesce(Project.status_label, literal("")))
+        return _str_col(st)
+    if opportunities and s == "estimator":
+        key = _user_display_sort_subq(Project.estimator_id)
+        if asc:
+            return (key.asc().nulls_last(), Project.code.asc())
+        return (key.desc().nulls_last(), Project.code.desc())
+    if not opportunities and s == "admin":
+        key = _user_display_sort_subq(Project.project_admin_id)
+        if asc:
+            return (key.asc().nulls_last(), Project.code.asc())
+        return (key.desc().nulls_last(), Project.code.desc())
+    return (Project.created_at.desc(),)
 
 
 def _assert_project_line_read(user: User, proj: Project) -> None:
@@ -4678,6 +4751,8 @@ def business_opportunities(
     page: int = Query(1, ge=1),
     limit: int = Query(25, ge=1, le=100),
     business_line: Optional[str] = None,
+    sort: Optional[str] = None,
+    sort_dir: Optional[str] = Query("asc", alias="dir"),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user)
 ):
@@ -4975,7 +5050,8 @@ def business_opportunities(
     
     total = query.count()
     offset = (page - 1) * limit
-    projects = query.order_by(Project.created_at.desc()).offset(offset).limit(limit).all()
+    order_parts = _business_project_order_parts(sort, sort_dir, opportunities=True)
+    projects = query.order_by(*order_parts).offset(offset).limit(limit).all()
 
     # Build cover_image_url for cards (same source priority as General Information)
     project_ids = [p.id for p in projects]
@@ -5171,6 +5247,8 @@ def business_projects(
     page: int = Query(1, ge=1),
     limit: int = Query(25, ge=1, le=100),
     business_line: Optional[str] = None,
+    sort: Optional[str] = None,
+    sort_dir: Optional[str] = Query("asc", alias="dir"),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user)
 ):
@@ -5435,7 +5513,8 @@ def business_projects(
     total_count = query.count()
     offset = (page - 1) * limit
     # Get projects first (before value filtering if needed)
-    projects = query.order_by(Project.created_at.desc()).offset(offset).limit(limit * 2 if min_value else limit).all()
+    order_parts = _business_project_order_parts(sort, sort_dir, opportunities=False)
+    projects = query.order_by(*order_parts).offset(offset).limit(limit * 2 if min_value else limit).all()
     
     # Filter by minimum value (considering Grand Total from estimates)
     if min_value is not None:

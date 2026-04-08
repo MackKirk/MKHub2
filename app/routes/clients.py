@@ -1,8 +1,8 @@
-from fastapi import APIRouter, Depends, HTTPException, Body
+from fastapi import APIRouter, Depends, HTTPException, Body, Query
 import uuid
 from sqlalchemy.orm import Session, defer
 from sqlalchemy.exc import ProgrammingError
-from sqlalchemy import text, or_
+from sqlalchemy import text, or_, and_, exists, select, func, literal
 from typing import Optional, List
 
 from ..db import get_db
@@ -17,6 +17,33 @@ from ..auth.security import require_permissions, get_current_user
 
 
 router = APIRouter(prefix="/clients", tags=["clients"])
+
+
+def _clients_list_order_parts(sort: Optional[str], sort_dir: Optional[str]):
+    asc = (sort_dir or "asc").lower() != "desc"
+    s = (sort or "customer").strip().lower()
+    if s == "customer":
+        cust = func.lower(func.coalesce(Client.display_name, Client.name, literal("")))
+        ad = func.lower(func.coalesce(Client.address_line1, literal("")))
+        if asc:
+            return (cust.asc(), ad.asc())
+        return (cust.desc(), ad.desc())
+    if s == "code":
+        c = func.lower(func.coalesce(Client.code, literal("")))
+        return (c.asc().nulls_last(),) if asc else (c.desc().nulls_last(),)
+    if s == "city":
+        city = func.lower(func.coalesce(Client.city, literal("")))
+        prov = func.lower(func.coalesce(Client.province, literal("")))
+        if asc:
+            return (city.asc().nulls_last(), prov.asc().nulls_last())
+        return (city.desc().nulls_last(), prov.desc().nulls_last())
+    if s == "status":
+        st = func.lower(func.coalesce(Client.client_status, literal("")))
+        return (st.asc().nulls_last(),) if asc else (st.desc().nulls_last(),)
+    if s == "type":
+        t = func.lower(func.coalesce(Client.client_type, literal("")))
+        return (t.asc().nulls_last(),) if asc else (t.desc().nulls_last(),)
+    return (Client.created_at.desc(),)
 
 
 @router.post("", response_model=ClientResponse)
@@ -190,6 +217,8 @@ def list_clients(
     q: Optional[str] = None,
     page: int = 1,
     limit: int = 10,
+    sort: Optional[str] = None,
+    sort_dir: Optional[str] = Query("asc", alias="dir"),
     db: Session = Depends(get_db), 
     _=Depends(require_permissions("business:customers:read"))
 ):
@@ -313,6 +342,20 @@ def list_clients(
     
     if q:
         search_term = f"%{q}%"
+        contact_match = exists(
+            select(ClientContact.id).where(
+                ClientContact.client_id == Client.id,
+                or_(
+                    ClientContact.name.ilike(search_term),
+                    ClientContact.role_title.ilike(search_term),
+                    ClientContact.department.ilike(search_term),
+                    ClientContact.email.ilike(search_term),
+                    ClientContact.phone.ilike(search_term),
+                    ClientContact.mobile_phone.ilike(search_term),
+                    ClientContact.notes.ilike(search_term),
+                ),
+            )
+        )
         base_query = base_query.filter(
             (Client.name.ilike(search_term)) |
             (Client.display_name.ilike(search_term)) |
@@ -329,14 +372,16 @@ def list_clients(
             (Client.billing_city.ilike(search_term)) |
             (Client.billing_province.ilike(search_term)) |
             (Client.billing_postal_code.ilike(search_term)) |
-            (Client.billing_country.ilike(search_term))
+            (Client.billing_country.ilike(search_term)) |
+            contact_match
         )
     
     # Get total count
     total = base_query.count()
     
-    # Get paginated results
-    clients = base_query.order_by(Client.created_at.desc()).offset(offset).limit(limit).all()
+    # Get paginated results (sort applies to full filtered set, then slice page)
+    order_parts = _clients_list_order_parts(sort, sort_dir)
+    clients = base_query.order_by(*order_parts).offset(offset).limit(limit).all()
     
     # Fetch logos for all clients in one efficient query
     client_uuids = [c.id for c in clients]
@@ -443,6 +488,51 @@ def list_file_categories():
         {"id": "photos", "name": "Photos", "icon": "📷"},
         {"id": "other", "name": "Other", "icon": "📦"},
     ]
+
+
+@router.get("/{client_id}/project-participations")
+def get_client_project_participations(
+    client_id: str,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+    _perm=Depends(require_permissions("business:projects:read")),
+    limit: int = Query(400, ge=1, le=500),
+):
+    """
+    Projects for customer overview rollup (owner + awarded related) and related-membership card.
+    Respects business-line visibility like list_projects.
+    """
+    try:
+        client_uuid = uuid.UUID(str(client_id))
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid client_id")
+
+    try:
+        c = db.query(Client).filter(Client.id == client_id, Client.deleted_at.is_(None)).first()
+    except ProgrammingError as e:
+        error_msg = str(e.orig) if hasattr(e, "orig") else str(e)
+        if "is_system" in error_msg and "does not exist" in error_msg:
+            db.rollback()
+            c = (
+                db.query(Client)
+                .options(defer(Client.is_system))
+                .filter(Client.id == client_id, Client.deleted_at.is_(None))
+                .first()
+            )
+        else:
+            raise
+    if not c:
+        raise HTTPException(status_code=404, detail="Not found")
+
+    from ..routes.projects import _business_line_filter_for_user
+    from ..services.project_customer_participation import build_participation_payload
+
+    bl_filter = _business_line_filter_for_user(user)
+    if bl_filter is None:
+        return {"rollup": [], "related_memberships": []}
+
+    rollup, related_memberships = build_participation_payload(db, client_uuid, bl_filter, limit=limit)
+    return {"rollup": rollup, "related_memberships": related_memberships}
 
 
 @router.get("/{client_id}", response_model=ClientResponse)
