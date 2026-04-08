@@ -1,5 +1,5 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { api } from '@/lib/api';
+import { api, withFileAccessToken } from '@/lib/api';
 import { Link, useSearchParams } from 'react-router-dom';
 import { useState, useMemo, useEffect } from 'react';
 import InviteUserModal from '@/components/InviteUserModal';
@@ -366,7 +366,7 @@ export default function Users(){
                     const isAdmin = (u.roles || []).some((r: string) => String(r || '').toLowerCase() === 'admin');
                     const avatar = u.profile_photo_file_id ? (
                       <img
-                        src={`/files/${u.profile_photo_file_id}/thumbnail?w=80`}
+                        src={withFileAccessToken(`/files/${u.profile_photo_file_id}/thumbnail?w=80`)}
                         className="w-10 h-10 rounded-full object-cover border border-gray-200 shrink-0"
                         loading="lazy"
                         alt=""
@@ -441,7 +441,7 @@ export default function Users(){
                   <div className="relative">
                     {u.profile_photo_file_id ? (
                       <img
-                        src={`/files/${u.profile_photo_file_id}/thumbnail?w=120`}
+                        src={withFileAccessToken(`/files/${u.profile_photo_file_id}/thumbnail?w=120`)}
                         className="w-16 h-16 rounded-full object-cover border-2 border-gray-200"
                         loading="lazy"
                         alt=""

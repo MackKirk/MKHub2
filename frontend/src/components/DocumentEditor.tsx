@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { api, getToken } from '@/lib/api';
+import { api, getToken, withFileAccessToken } from '@/lib/api';
 import toast from 'react-hot-toast';
 import DocumentPreview from '@/components/DocumentPreview';
 import DocumentPagesStrip from '@/components/DocumentPagesStrip';
@@ -958,7 +958,7 @@ export default function DocumentEditor(props: DocumentEditorProps) {
     return { width: Math.max(100, w), height: Math.max(100, h) };
   })();
   const backgroundFileId = currentTemplate?.background_file_id;
-  const backgroundUrl = backgroundFileId ? `/files/${backgroundFileId}/thumbnail?w=800` : null;
+  const backgroundUrl = backgroundFileId ? withFileAccessToken(`/files/${backgroundFileId}/thumbnail?w=800`) : null;
   const defaultMargins: PageMargins = { left_pct: 0, right_pct: 0, top_pct: 0, bottom_pct: 0 };
   /** Margins: page overrides template overrides default */
   const effectiveMargins: PageMargins = {
@@ -1438,7 +1438,7 @@ export default function DocumentEditor(props: DocumentEditorProps) {
                   </button>
                   <div className="mt-2 grid grid-cols-2 gap-2">
                     {templates.map((t) => {
-                      const thumb = t.background_file_id ? `/files/${t.background_file_id}/thumbnail?w=260` : null;
+                      const thumb = t.background_file_id ? withFileAccessToken(`/files/${t.background_file_id}/thumbnail?w=260`) : null;
                       const selected = currentTemplateId === t.id;
                       return (
                         <button

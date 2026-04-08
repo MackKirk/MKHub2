@@ -1,5 +1,5 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { api } from '@/lib/api';
+import { api, withFileAccessToken } from '@/lib/api';
 import { sortByLabel } from '@/lib/sortOptions';
 import { queryClient } from '@/lib/queryClient';
 import { useRef, useState, useMemo, useEffect } from 'react';
@@ -257,7 +257,7 @@ export default function Profile(){
             <div className="flex gap-2 items-center pr-8">
               <img
                 className="w-10 h-10 object-cover rounded-lg border border-gray-200"
-                src={p.profile_photo_file_id ? `/files/${p.profile_photo_file_id}/thumbnail?w=80` : '/ui/assets/placeholders/user.png'}
+                src={p.profile_photo_file_id ? withFileAccessToken(`/files/${p.profile_photo_file_id}/thumbnail?w=80`) : '/ui/assets/placeholders/user.png'}
                 alt=""
               />
               <div className="flex-1 min-w-0">
@@ -282,7 +282,7 @@ export default function Profile(){
                 <div className="relative group">
                   <img
                     className="w-24 h-24 object-cover rounded-xl border-2 border-gray-200"
-                    src={p.profile_photo_file_id ? `/files/${p.profile_photo_file_id}/thumbnail?w=240` : '/ui/assets/placeholders/user.png'}
+                    src={p.profile_photo_file_id ? withFileAccessToken(`/files/${p.profile_photo_file_id}/thumbnail?w=240`) : '/ui/assets/placeholders/user.png'}
                     alt=""
                   />
                   <button
@@ -2337,7 +2337,7 @@ function PRCardUploadSection({ userId, canEdit }: { userId: string; canEdit: boo
               <div className="text-xs text-gray-500">Document uploaded</div>
             </div>
             <a
-              href={`/files/${prCardFileId}/download`}
+              href={withFileAccessToken(`/files/${prCardFileId}/download`)}
               target="_blank"
               rel="noopener noreferrer"
               className="px-3 py-1.5 rounded border border-amber-300 text-amber-700 text-sm font-medium hover:bg-amber-50"
@@ -2510,7 +2510,7 @@ function ImmigrationStatusDocumentSection({ userId, canEdit, isRequired }: { use
               <div className="text-xs text-gray-500">Document uploaded</div>
             </div>
             <a
-              href={`/files/${permitFileId}/download`}
+              href={withFileAccessToken(`/files/${permitFileId}/download`)}
               target="_blank"
               rel="noopener noreferrer"
               className="px-3 py-1.5 rounded border border-amber-300 text-amber-700 text-sm font-medium hover:bg-amber-50"
@@ -3035,7 +3035,7 @@ function UserDocuments({ userId, canEdit }:{ userId:string, canEdit:boolean }){
 
   const fetchEmployeeDocDownloadUrl = async (fileId: string) => {
     try {
-      const r: any = await api('GET', `/files/${encodeURIComponent(fileId)}/download`);
+      const r: any = await api('GET', withFileAccessToken(`/files/${encodeURIComponent(fileId)}/download`));
       return String(r.download_url || '');
     } catch {
       toast.error('Download link unavailable');
@@ -3048,7 +3048,7 @@ function UserDocuments({ userId, canEdit }:{ userId:string, canEdit:boolean }){
     if (!fileId) return;
     const name = d.title || 'Document';
     try {
-      const r: any = await api('GET', `/files/${encodeURIComponent(fileId)}/preview`);
+      const r: any = await api('GET', withFileAccessToken(`/files/${encodeURIComponent(fileId)}/preview`));
       const url = String(r.preview_url || r.download_url || '');
       if (!url) {
         toast.error('Preview not available');

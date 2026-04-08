@@ -21,6 +21,7 @@ import { ScreenLayout } from "../../components/ScreenLayout";
 import { MKButton } from "../../components/MKButton";
 import { MKCard } from "../../components/MKCard";
 import { api, toApiError } from "../../services/api";
+import { useAuth } from "../../hooks/useAuth";
 import {
   getProjectDetail,
   getProjectFileCategories,
@@ -86,6 +87,7 @@ export const ProjectDetailScreen: React.FC = () => {
   const navigation = useNavigation<ProjectDetailNav>();
   const route = useRoute<ProjectDetailRoute>();
   const initialProject = route.params.project;
+  const { token } = useAuth();
 
   const [activeTab, setActiveTab] = useState<DetailTabKey>("overview");
   const [project, setProject] = useState<ProjectDetail | null>(null);
@@ -205,10 +207,10 @@ export const ProjectDetailScreen: React.FC = () => {
     );
   }, [displayedProject?.is_bidding, reportCategories]);
 
-  const authHeader = useMemo(() => {
-    const value = api.defaults.headers.common.Authorization;
-    return typeof value === "string" ? value : undefined;
-  }, []);
+  const authHeader = useMemo(
+    () => (token ? `Bearer ${token}` : undefined),
+    [token]
+  );
 
   const fileCategoryLookup = useMemo(() => {
     const base = new Map<string, string>();
@@ -963,10 +965,20 @@ const formatAction = (value?: string | null): string => {
   return value.toLowerCase().replaceAll("_", " ");
 };
 
-const buildFileSource = (file: ProjectFileItem, authHeader?: string) => ({
-  uri: `${api.defaults.baseURL}/files/${file.file_object_id}/${file.is_image ? "thumbnail" : "download"}`,
-  headers: authHeader ? { Authorization: authHeader } : undefined
-});
+const buildFileSource = (file: ProjectFileItem, authHeader?: string) => {
+  const path = file.is_image
+    ? `/files/${file.file_object_id}/thumbnail?w=200`
+    : `/files/${file.file_object_id}/download`;
+  const u = new URL(path, api.defaults.baseURL);
+  if (authHeader?.startsWith("Bearer ")) {
+    const tok = authHeader.slice(7).trim();
+    u.searchParams.set("access_token", tok);
+  }
+  return {
+    uri: u.toString(),
+    headers: authHeader ? { Authorization: authHeader } : undefined
+  };
+};
 
 const styles = StyleSheet.create({
   scrollView: {

@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
-import { api } from '@/lib/api';
+import { api, withFileAccessToken } from '@/lib/api';
 import OverlayPortal from '@/components/OverlayPortal';
 import { useNavigate, useLocation } from 'react-router-dom';
 
@@ -1270,7 +1270,7 @@ function CreateRequestModal({
                               <div className="flex items-center gap-2 flex-1">
                                 {employee?.profile_photo_file_id ? (
                                   <img
-                                    src={`/files/${employee.profile_photo_file_id}/thumbnail?w=64`}
+                                    src={withFileAccessToken(`/files/${employee.profile_photo_file_id}/thumbnail?w=64`)}
                                     className="w-6 h-6 rounded-full object-cover"
                                     alt=""
                                   />
@@ -2345,7 +2345,7 @@ function CreateTaskRequestModal({
                               <div className="flex items-center gap-2 flex-1">
                                 {employee?.profile_photo_file_id ? (
                                   <img
-                                    src={`/files/${employee.profile_photo_file_id}/thumbnail?w=64`}
+                                    src={withFileAccessToken(`/files/${employee.profile_photo_file_id}/thumbnail?w=64`)}
                                     className="w-6 h-6 rounded-full object-cover"
                                     alt=""
                                   />
@@ -2374,7 +2374,7 @@ function CreateTaskRequestModal({
                       <span className="inline-flex items-center gap-1 px-2 py-1 bg-blue-100 text-blue-800 rounded text-sm">
                         {employee?.profile_photo_file_id ? (
                           <img
-                            src={`/files/${employee.profile_photo_file_id}/thumbnail?w=64`}
+                            src={withFileAccessToken(`/files/${employee.profile_photo_file_id}/thumbnail?w=64`)}
                             className="w-4 h-4 rounded-full object-cover"
                             alt=""
                           />

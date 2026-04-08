@@ -19,6 +19,8 @@ from ..schemas.auth import (
     LoginRequest,
     TokenResponse,
     MeResponse,
+    PasswordResetConfirmRequest,
+    RefreshTokenRequest,
 )
 from ..schemas.employee_training import (
     EmployeeTrainingRecordCreate,
@@ -937,6 +939,11 @@ def register(payload: RegisterPayload, db: Session = Depends(get_db)):
 
     access = create_access_token(str(user.id), roles=[r.name for r in user.roles])
     refresh = create_refresh_token(str(user.id))
+    from ..services.refresh_tokens import clear_refresh_tokens_for_user, persist_refresh_token_for_user
+
+    clear_refresh_tokens_for_user(db, user.id)
+    persist_refresh_token_for_user(db, user.id, refresh)
+    db.commit()
     # Send username email if SMTP configured
     try:
         if settings.smtp_host and settings.mail_from and settings.public_base_url:
@@ -1039,6 +1046,10 @@ def login(req: LoginRequest, request: Request, db: Session = Depends(get_db)):
     access = create_access_token(str(user.id), roles=[r.name for r in user.roles])
     refresh = create_refresh_token(str(user.id))
     user.last_login_at = datetime.now(timezone.utc)
+    from ..services.refresh_tokens import clear_refresh_tokens_for_user, persist_refresh_token_for_user
+
+    clear_refresh_tokens_for_user(db, user.id)
+    persist_refresh_token_for_user(db, user.id, refresh)
     db.commit()
     try:
         from ..services.system_log import write_system_log
@@ -1060,17 +1071,19 @@ def login(req: LoginRequest, request: Request, db: Session = Depends(get_db)):
 
 
 @router.post("/refresh", response_model=TokenResponse)
-def refresh(token: str):
-    # Trust refresh token signature and type; for simplicity we do not persist/rotate here initially
-    from .security import decode_token
+def refresh(req: RefreshTokenRequest, db: Session = Depends(get_db)):
+    from ..services.refresh_tokens import validate_and_rotate_refresh
 
-    payload = decode_token(token)
-    if payload.get("type") != "refresh":
-        raise HTTPException(status_code=400, detail="Invalid refresh token")
-    user_id = payload["sub"]
-    access = create_access_token(user_id)
-    refresh = create_refresh_token(user_id)
-    return TokenResponse(access_token=access, refresh_token=refresh)
+    access, new_refresh = validate_and_rotate_refresh(db, req.refresh_token)
+    return TokenResponse(access_token=access, refresh_token=new_refresh)
+
+
+@router.post("/logout")
+def logout(req: RefreshTokenRequest, db: Session = Depends(get_db)):
+    from ..services.refresh_tokens import revoke_refresh_token
+
+    revoke_refresh_token(db, req.refresh_token)
+    return {"status": "ok"}
 
 
 @router.get("/me", response_model=MeResponse)
@@ -2396,9 +2409,9 @@ The {settings.app_name} Team
 
 
 @router.post("/password/reset")
-def password_reset(token: str, new_password: str, db: Session = Depends(get_db)):
+def password_reset(req: PasswordResetConfirmRequest, db: Session = Depends(get_db)):
     from ..models.models import PasswordReset
-    pr = db.query(PasswordReset).filter(PasswordReset.token == token).first()
+    pr = db.query(PasswordReset).filter(PasswordReset.token == req.token).first()
     if not pr:
         raise HTTPException(status_code=400, detail="Invalid or expired token")
     # Normalize datetimes to UTC-aware before comparison
@@ -2414,7 +2427,7 @@ def password_reset(token: str, new_password: str, db: Session = Depends(get_db))
     user = db.query(User).filter(User.id == pr.user_id).first()
     if not user:
         raise HTTPException(status_code=400, detail="Invalid token")
-    user.password_hash = get_password_hash(new_password)
+    user.password_hash = get_password_hash(req.new_password)
     pr.used_at = now_utc
     db.commit()
     return {"status": "ok"}

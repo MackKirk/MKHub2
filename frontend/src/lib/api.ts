@@ -4,6 +4,14 @@ export function getToken(){
   return localStorage.getItem('user_token');
 }
 
+/** Append JWT for GET /files/* (thumbnails, etc.) where <img> cannot send Authorization. */
+export function withFileAccessToken(url: string): string {
+  const t = getToken();
+  if (!t) return url;
+  const sep = url.includes('?') ? '&' : '?';
+  return `${url}${sep}access_token=${encodeURIComponent(t)}`;
+}
+
 export async function api<T=any>(method: HttpMethod, path: string, body?: any, headers?: Record<string,string>): Promise<T>{
   const h: Record<string,string> = { ...(headers||{}) };
   const t = getToken(); if (t) h.Authorization = 'Bearer ' + t;

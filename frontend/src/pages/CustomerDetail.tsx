@@ -1,6 +1,6 @@
 import { useParams, Link, useLocation, useNavigate } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { api } from '@/lib/api';
+import { api, withFileAccessToken } from '@/lib/api';
 import { sortByLabel } from '@/lib/sortOptions';
 import { formatAddressDisplay } from '@/lib/addressUtils';
 import { useEffect, useMemo, useState, ReactNode, useRef } from 'react';
@@ -1625,8 +1625,8 @@ export default function CustomerDetail(){
   const { data:employees } = useQuery({ queryKey:['employees'], queryFn: ()=> api<any[]>('GET','/employees') });
   const primaryContact = (contacts||[]).find(c=>c.is_primary) || (contacts||[])[0];
   const clientLogoRec = (files||[]).find(f=> !f.site_id && String(f.category||'').toLowerCase()==='client-logo-derived');
-  const clientAvatar = clientLogoRec? `/files/${clientLogoRec.file_object_id}/thumbnail?w=96` : '/ui/assets/placeholders/customer.png';
-  const clientAvatarLarge = clientLogoRec? `/files/${clientLogoRec.file_object_id}/thumbnail?w=800` : '/ui/assets/placeholders/customer.png';
+  const clientAvatar = clientLogoRec? withFileAccessToken(`/files/${clientLogoRec.file_object_id}/thumbnail?w=96`) : '/ui/assets/placeholders/customer.png';
+  const clientAvatarLarge = clientLogoRec? withFileAccessToken(`/files/${clientLogoRec.file_object_id}/thumbnail?w=800`) : '/ui/assets/placeholders/customer.png';
   const [form, setForm] = useState<any>({});
   const [dirty, setDirty] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
@@ -3185,7 +3185,7 @@ export default function CustomerDetail(){
                       const filesForSite = (fileBySite[s.id||'']||[]);
                       const cover = filesForSite.find(f=> String(f.category||'')==='site-cover-derived');
                       const img = cover || filesForSite.find(f=> (f.is_image===true) || String(f.content_type||'').startsWith('image/'));
-                      const src = img? `/files/${img.file_object_id}/thumbnail?w=600` : '/ui/assets/login/logo-light.svg';
+                      const src = img? withFileAccessToken(`/files/${img.file_object_id}/thumbnail?w=600`) : '/ui/assets/login/logo-light.svg';
                       const addressLine = formatAddressDisplay({
                         address_line1: s.site_address_line1,
                         city: s.site_city,
@@ -3372,7 +3372,7 @@ function ProjectRow({ project, files, onCoverClick, hasEditPermission }: { proje
   const { data:details } = useQuery({ queryKey:['project-detail-row', project.id], queryFn: ()=> api<any>('GET', `/projects/${encodeURIComponent(String(project.id))}`), staleTime: 60_000 });
   const pfiles = (files||[]).filter(f=> String((f as any).project_id||'')===String(project.id));
   const cover = pfiles.find(f=> String(f.category||'')==='project-cover-derived') || pfiles.find(f=> (f.is_image===true) || String(f.content_type||'').startsWith('image/'));
-  const src = cover? `/files/${cover.file_object_id}/thumbnail?w=192` : '/ui/assets/login/logo-light.svg';
+  const src = cover? withFileAccessToken(`/files/${cover.file_object_id}/thumbnail?w=192`) : '/ui/assets/login/logo-light.svg';
   const status = details?.status_label || '';
   const progress = Math.max(0, Math.min(100, Number(details?.progress ?? 0)));
   const start = (project.date_start || details?.date_start || project.created_at || '').slice(0,10);
@@ -3501,7 +3501,7 @@ function CustomerDocuments({ id, files, sites, onRefresh, hasEditPermission }: {
 
   useEffect(()=>{ if (!previewPdf) return; const onKey = (e: KeyboardEvent)=>{ if(e.key==='Escape') setPreviewPdf(null); }; window.addEventListener('keydown', onKey); return ()=> window.removeEventListener('keydown', onKey); }, [previewPdf]);
 
-  const fetchDownloadUrl = async (fid:string)=>{ try{ const r:any = await api('GET', `/files/${fid}/download`); return String(r.download_url||''); }catch(_e){ toast.error('Download link unavailable'); return ''; } };
+  const fetchDownloadUrl = async (fid:string)=>{ try{ const r:any = await api('GET', withFileAccessToken(`/files/${fid}/download`)); return String(r.download_url||''); }catch(_e){ toast.error('Download link unavailable'); return ''; } };
 
   const upload = async()=>{ try{ if(!fileObj){ toast.error('Select a file'); return; } if(activeFolderId==='all'){ toast.error('Open a folder first'); return; } const name=fileObj.name; const type=fileObj.type||'application/octet-stream'; const up=await api('POST','/files/upload',{ original_name:name, content_type:type, client_id:id, project_id:null, employee_id:null, category_id:'client-docs' }); await fetch(up.upload_url,{ method:'PUT', headers:{ 'Content-Type':type,'x-ms-blob-type':'BlockBlob' }, body:fileObj }); const conf=await api('POST','/files/confirm',{ key:up.key, size_bytes:fileObj.size, checksum_sha256:'na', content_type:type }); await api('POST', `/clients/${encodeURIComponent(id)}/documents`, { folder_id: activeFolderId, title: title||name, file_id: conf.id }); toast.success('Uploaded'); setShowUpload(false); setFileObj(null); setTitle(''); await refetchDocs(); }catch(_e){ toast.error('Upload failed'); } };
   const uploadToFolder = async(folderId:string, file: File)=>{ try{ const name=file.name; const type=file.type||'application/octet-stream'; const up=await api('POST','/files/upload',{ original_name:name, content_type:type, client_id:id, project_id:null, employee_id:null, category_id:'client-docs' }); await fetch(up.upload_url,{ method:'PUT', headers:{ 'Content-Type':type,'x-ms-blob-type':'BlockBlob' }, body:file }); const conf=await api('POST','/files/confirm',{ key:up.key, size_bytes:file.size, checksum_sha256:'na', content_type:type }); await api('POST', `/clients/${encodeURIComponent(id)}/documents`, { folder_id: folderId, title: name, file_id: conf.id }); }catch(_e){} };
@@ -3625,12 +3625,12 @@ function CustomerDocuments({ id, files, sites, onRefresh, hasEditPermission }: {
                       }} />
                     )}
                     <div className={`w-10 h-12 rounded-lg ${s.bg} ${s.txt} flex items-center justify-center text-[10px] font-extrabold select-none`}>{ext||'FILE'}</div>
-                    <div className="flex-1 min-w-0" onClick={async()=>{ if(selectMode) return; try{ const r:any = await api('GET', `/files/${encodeURIComponent(d.file_id)}/download`); const url=r.download_url||''; if(url) { if(ext==='PDF') setPreviewPdf({ url, name: d.title||'Preview' }); else window.open(url,'_blank'); } }catch(_e){ toast.error('Preview not available'); } }}>
+                    <div className="flex-1 min-w-0" onClick={async()=>{ if(selectMode) return; try{ const r:any = await api('GET', withFileAccessToken(`/files/${encodeURIComponent(d.file_id)}/download`)); const url=r.download_url||''; if(url) { if(ext==='PDF') setPreviewPdf({ url, name: d.title||'Preview' }); else window.open(url,'_blank'); } }catch(_e){ toast.error('Preview not available'); } }}>
                       <div className="font-medium truncate cursor-pointer hover:underline">{d.title||'Document'}</div>
                       <div className="text-[11px] text-gray-600 truncate">Uploaded {String(d.created_at||'').slice(0,10)}</div>
                     </div>
                     <div className="ml-auto flex items-center gap-1">
-                      <a title="Download" className="p-2 rounded hover:bg-gray-100" href={`/files/${encodeURIComponent(d.file_id)}/download`} target="_blank">⬇️</a>
+                      <a title="Download" className="p-2 rounded hover:bg-gray-100" href={withFileAccessToken(`/files/${encodeURIComponent(d.file_id)}/download`)} target="_blank">⬇️</a>
                       {hasEditPermission && (
                         <button onClick={(e)=>{ e.stopPropagation(); removeDoc(d.id); }} title="Delete" className="p-2 rounded hover:bg-red-50 text-red-600">🗑️</button>
                       )}
@@ -3648,7 +3648,7 @@ function CustomerDocuments({ id, files, sites, onRefresh, hasEditPermission }: {
       <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-3">
         {(picList||[]).map(f=> { const isSite=!!f.site_id; const s=isSite? siteMap[String(f.site_id||'')] : undefined; const tip=isSite? `${s?.site_name||'Site'} — ${formatAddressDisplay({ address_line1: s?.site_address_line1, city: s?.site_city, province: s?.site_province, country: s?.site_country })}` : 'General Customer image'; return (
           <div key={f.id} className="relative group">
-            <img className="w-full h-24 object-cover rounded border" src={`/files/${f.file_object_id}/thumbnail?w=300`} loading="lazy" />
+            <img className="w-full h-24 object-cover rounded border" src={withFileAccessToken(`/files/${f.file_object_id}/thumbnail?w=300`)} loading="lazy" />
             <div className="absolute right-2 top-2 hidden group-hover:flex gap-1">
               <button onClick={async(e)=>{ e.stopPropagation(); const url = await fetchDownloadUrl(String(f.file_object_id)); if(url) window.open(url,'_blank'); }} className="bg-black/70 hover:bg-black/80 text-white text-[11px] px-2 py-1 rounded" title="Zoom">🔍</button>
               <button onClick={(e)=>{ e.stopPropagation(); setEditingImage({ fileObjectId: f.file_object_id, name: f.original_name || 'image' }); }} className="bg-blue-600 hover:bg-blue-700 text-white text-[11px] px-2 py-1 rounded" title="Edit">✏️</button>
@@ -3781,7 +3781,7 @@ function CustomerDocuments({ id, files, sites, onRefresh, hasEditPermission }: {
         <ImageEditor
           isOpen={!!editingImage}
           onClose={() => setEditingImage(null)}
-          imageUrl={`/files/${editingImage.fileObjectId}/thumbnail?w=1024`}
+          imageUrl={withFileAccessToken(`/files/${editingImage.fileObjectId}/thumbnail?w=1024`)}
           imageName={editingImage.name}
           fileObjectId={editingImage.fileObjectId}
           onSave={async (blob) => {
@@ -3877,7 +3877,7 @@ function ContactsCard({ id, hasEditPermission }: { id: string, hasEditPermission
   };
   const avatarFor = (contactId:string)=>{
     const rec = (files||[]).find((f:any)=> String(f.category||'').toLowerCase()==='contact-photo-'+String(contactId));
-    return rec? `/files/${rec.file_object_id}/thumbnail?w=160` : '';
+    return rec? withFileAccessToken(`/files/${rec.file_object_id}/thumbnail?w=160`) : '';
   };
   const beginEdit = (c:any)=>{ setEditId(c.id); setEName(c.name||''); setEEmail(c.email||''); setEPhone(c.phone||''); setERole(c.role_title||''); setEDept(c.department||''); setEPrimary(c.is_primary? 'true':'false'); };
   const cancelEdit = ()=>{ setEditId(null); };

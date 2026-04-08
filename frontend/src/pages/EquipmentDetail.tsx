@@ -1,7 +1,7 @@
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { api } from '@/lib/api';
+import { api, withFileAccessToken } from '@/lib/api';
 import toast from 'react-hot-toast';
 import AddressAutocomplete from '@/components/AddressAutocomplete';
 import { formatDateLocal } from '@/lib/dateUtils';
@@ -453,7 +453,7 @@ export default function EquipmentDetail() {
                               {photoList.slice(0, 3).map((photoId: string, idx: number) => (
                                 <img
                                   key={idx}
-                                  src={`/files/${photoId}/thumbnail?w=100`}
+                                  src={withFileAccessToken(`/files/${photoId}/thumbnail?w=100`)}
                                   alt={`Photo ${idx + 1}`}
                                   className="w-16 h-16 object-cover rounded border"
                                 />
@@ -760,7 +760,7 @@ function EquipmentWorkOrderFormInline({
             {photos.map((photoId, idx) => (
               <img
                 key={idx}
-                src={`/files/${photoId}/thumbnail?w=100`}
+                src={withFileAccessToken(`/files/${photoId}/thumbnail?w=100`)}
                 alt={`File ${idx + 1}`}
                 className="w-16 h-16 object-cover rounded border"
               />
@@ -1087,7 +1087,7 @@ function EquipmentAssignModal({
                 {photos_out.map((photoId, idx) => (
                   <img
                     key={idx}
-                    src={`/files/${photoId}/thumbnail?w=100`}
+                    src={withFileAccessToken(`/files/${photoId}/thumbnail?w=100`)}
                     alt={`Photo ${idx + 1}`}
                     className="w-16 h-16 object-cover rounded border"
                   />
@@ -1209,7 +1209,7 @@ function EquipmentReturnModal({
                 {photos_in.map((photoId, idx) => (
                   <img
                     key={idx}
-                    src={`/files/${photoId}/thumbnail?w=100`}
+                    src={withFileAccessToken(`/files/${photoId}/thumbnail?w=100`)}
                     alt={`Photo ${idx + 1}`}
                     className="w-16 h-16 object-cover rounded border"
                   />
@@ -1312,7 +1312,7 @@ function EquipmentAssignmentLogDetailModal({
                       {assignment.photos_out.map((photoId: string, idx: number) => (
                         <img
                           key={idx}
-                          src={`/files/${photoId}/thumbnail?w=200`}
+                          src={withFileAccessToken(`/files/${photoId}/thumbnail?w=200`)}
                           alt={`Out ${idx + 1}`}
                           className="w-24 h-24 object-cover rounded border"
                         />
@@ -1346,7 +1346,7 @@ function EquipmentAssignmentLogDetailModal({
                       {assignment.photos_in.map((photoId: string, idx: number) => (
                         <img
                           key={idx}
-                          src={`/files/${photoId}/thumbnail?w=200`}
+                          src={withFileAccessToken(`/files/${photoId}/thumbnail?w=200`)}
                           alt={`In ${idx + 1}`}
                           className="w-24 h-24 object-cover rounded border"
                         />

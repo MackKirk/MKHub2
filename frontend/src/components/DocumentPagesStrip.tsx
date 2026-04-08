@@ -1,3 +1,4 @@
+import { withFileAccessToken } from '@/lib/api';
 import { useEffect, useRef, useState } from 'react';
 import type { DocumentPage, DocElement } from '@/types/documentCreator';
 
@@ -123,7 +124,7 @@ function PageThumbnail({
               ) : (
                 el.content && (
                   <img
-                    src={`/files/${el.content}/thumbnail?w=80`} loading="lazy"
+                    src={withFileAccessToken(`/files/${el.content}/thumbnail?w=80`)} loading="lazy"
                     alt=""
                     className="w-full h-full"
                     style={{
@@ -197,7 +198,7 @@ export default function DocumentPagesStrip({
       {pages.map((page, i) => {
         const template = templates.find((t) => t.id === (page.template_id ?? ''));
         const backgroundUrl = template?.background_file_id
-          ? `/files/${template.background_file_id}/thumbnail?w=200`
+          ? withFileAccessToken(`/files/${template.background_file_id}/thumbnail?w=200`)
           : null;
         const isDragging = dragPageIndex === i;
         const isDropTarget = dragOverIndex === i;

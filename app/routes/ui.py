@@ -103,7 +103,7 @@ def ui_password_reset() -> HTMLResponse:
 <pre id=\"msg\"></pre>
 <script>
 const qp = new URLSearchParams(location.search); document.getElementById('token').value = qp.get('token') || '';
-async function resetpw(ev){ ev.preventDefault(); const t=document.getElementById('token').value; const pw=document.getElementById('pw').value; const r = await fetch('/auth/password/reset?token='+encodeURIComponent(t)+'&new_password='+encodeURIComponent(pw), { method:'POST' }); const txt = await r.text(); document.getElementById('msg').textContent = txt; }
+async function resetpw(ev){ ev.preventDefault(); const t=document.getElementById('token').value; const pw=document.getElementById('pw').value; const r = await fetch('/auth/password/reset', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ token: t, new_password: pw }) }); const txt = await r.text(); document.getElementById('msg').textContent = txt; }
 </script>
 """
     return HTMLResponse(content=html)

@@ -1,7 +1,7 @@
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { api } from '@/lib/api';
+import { api, withFileAccessToken } from '@/lib/api';
 import toast from 'react-hot-toast';
 import InspectionChecklist from '@/components/InspectionChecklist';
 import AddressAutocomplete from '@/components/AddressAutocomplete';
@@ -736,7 +736,7 @@ export default function FleetAssetDetail() {
               <div className="p-4 space-y-4">
                 <div><div className="text-sm text-gray-600 mb-1">Notes</div>{isEditing ? <textarea value={editForm.notes || ''} onChange={(e) => setEditForm({...editForm, notes: e.target.value})} rows={4} className="w-full px-3 py-2 border rounded-lg text-sm" /> : <div className="p-3 bg-gray-50 rounded text-sm">{asset.notes || '-'}</div>}</div>
                 {asset.photos && asset.photos.length > 0 && (
-                  <div><div className="text-sm text-gray-600 mb-2">Photos</div><div className="grid grid-cols-2 sm:grid-cols-4 gap-2">{asset.photos.map((photoId, idx) => <img key={idx} src={`/files/${photoId}/thumbnail?w=300`} alt={`Photo ${idx + 1}`} className="w-full h-24 object-cover rounded border" loading="lazy" />)}</div></div>
+                  <div><div className="text-sm text-gray-600 mb-2">Photos</div><div className="grid grid-cols-2 sm:grid-cols-4 gap-2">{asset.photos.map((photoId, idx) => <img key={idx} src={withFileAccessToken(`/files/${photoId}/thumbnail?w=300`)} alt={`Photo ${idx + 1}`} className="w-full h-24 object-cover rounded border" loading="lazy" />)}</div></div>
                 )}
               </div>
             </div>
@@ -787,7 +787,7 @@ export default function FleetAssetDetail() {
                           {inspection.photos.map((photoId, idx) => (
                             <img
                               key={idx}
-                              src={`/files/${photoId}/thumbnail?w=100`}
+                              src={withFileAccessToken(`/files/${photoId}/thumbnail?w=100`)}
                               alt={`Photo ${idx + 1}`}
                               className="w-16 h-16 object-cover rounded border"
                             />
@@ -855,7 +855,7 @@ export default function FleetAssetDetail() {
                             {photoList.slice(0, 3).map((photoId: string, idx: number) => (
                               <img
                                 key={idx}
-                                src={`/files/${photoId}/thumbnail?w=100`}
+                                src={withFileAccessToken(`/files/${photoId}/thumbnail?w=100`)}
                                 alt={`Photo ${idx + 1}`}
                                 className="w-16 h-16 object-cover rounded border"
                               />
@@ -1325,7 +1325,7 @@ function InspectionFormInline({ assetId, onSuccess, onCancel, employees }: {
               {photos.map((photoId, idx) => (
                 <img
                   key={idx}
-                  src={`/files/${photoId}/thumbnail?w=100`}
+                  src={withFileAccessToken(`/files/${photoId}/thumbnail?w=100`)}
                   alt={`Photo ${idx + 1}`}
                   className="w-16 h-16 object-cover rounded border"
                 />
@@ -1539,7 +1539,7 @@ function WorkOrderFormInline({ assetId, onSuccess, onCancel, employees }: {
               {photos.map((photoId, idx) => (
                 <img
                   key={idx}
-                  src={`/files/${photoId}/thumbnail?w=100`}
+                  src={withFileAccessToken(`/files/${photoId}/thumbnail?w=100`)}
                   alt={`File ${idx + 1}`}
                   className="w-16 h-16 object-cover rounded border"
                   onError={(e) => {
@@ -1901,7 +1901,7 @@ function AssignModal({
             {photos_out.length > 0 && (
               <div className="flex gap-2 mt-2 flex-wrap">
                 {photos_out.map((photoId, idx) => (
-                  <img key={idx} src={`/files/${photoId}/thumbnail?w=100`} alt={`Photo ${idx + 1}`} className="w-16 h-16 object-cover rounded border" loading="lazy" />
+                  <img key={idx} src={withFileAccessToken(`/files/${photoId}/thumbnail?w=100`)} alt={`Photo ${idx + 1}`} className="w-16 h-16 object-cover rounded border" loading="lazy" />
                 ))}
               </div>
             )}
@@ -1957,7 +1957,7 @@ function AssignmentLogDetailModal({
                     <dt className="text-gray-500 mb-1">Images out</dt>
                     <dd className="flex gap-2 flex-wrap mt-1">
                       {assignment.photos_out.map((photoId: string, idx: number) => (
-                        <img key={idx} src={`/files/${photoId}/thumbnail?w=200`} alt={`Out ${idx + 1}`} className="w-24 h-24 object-cover rounded border" />
+                        <img key={idx} src={withFileAccessToken(`/files/${photoId}/thumbnail?w=200`)} alt={`Out ${idx + 1}`} className="w-24 h-24 object-cover rounded border" />
                       ))}
                     </dd>
                   </div>
@@ -1978,7 +1978,7 @@ function AssignmentLogDetailModal({
                     <dt className="text-gray-500 mb-1">Images in</dt>
                     <dd className="flex gap-2 flex-wrap mt-1">
                       {assignment.photos_in.map((photoId: string, idx: number) => (
-                        <img key={idx} src={`/files/${photoId}/thumbnail?w=200`} alt={`In ${idx + 1}`} className="w-24 h-24 object-cover rounded border" />
+                        <img key={idx} src={withFileAccessToken(`/files/${photoId}/thumbnail?w=200`)} alt={`In ${idx + 1}`} className="w-24 h-24 object-cover rounded border" />
                       ))}
                     </dd>
                   </div>
@@ -2090,7 +2090,7 @@ function ReturnModal({
             {photos_in.length > 0 && (
               <div className="flex gap-2 mt-2 flex-wrap">
                 {photos_in.map((photoId, idx) => (
-                  <img key={idx} src={`/files/${photoId}/thumbnail?w=100`} alt={`Photo ${idx + 1}`} className="w-16 h-16 object-cover rounded border" loading="lazy" />
+                  <img key={idx} src={withFileAccessToken(`/files/${photoId}/thumbnail?w=100`)} alt={`Photo ${idx + 1}`} className="w-16 h-16 object-cover rounded border" loading="lazy" />
                 ))}
               </div>
             )}

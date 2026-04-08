@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { api } from '@/lib/api';
+import { api, withFileAccessToken } from '@/lib/api';
 import type { DocumentPage } from '@/types/documentCreator';
 import OverlayPortal from '@/components/OverlayPortal';
 
@@ -246,7 +246,7 @@ export function AddPageModal({
                     >
                       {t.background_file_id ? (
                         <img
-                          src={`/files/${t.background_file_id}/thumbnail?w=200`}
+                          src={withFileAccessToken(`/files/${t.background_file_id}/thumbnail?w=200`)}
                           alt=""
                           className="absolute inset-0 w-full h-full object-cover"
                         />

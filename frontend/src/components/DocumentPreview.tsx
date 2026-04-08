@@ -1,3 +1,4 @@
+import { withFileAccessToken } from '@/lib/api';
 import { useRef, useState, useCallback, useEffect, Fragment } from 'react';
 import type { DocElement } from '@/types/documentCreator';
 import { ElementOptionsPopover } from '@/components/ElementOptionsPopover';
@@ -863,7 +864,7 @@ export default function DocumentPreview({
                 ) : (
                   el.content && (
                     <img
-                      src={`/files/${el.content}/thumbnail?w=400`}
+                      src={withFileAccessToken(`/files/${el.content}/thumbnail?w=400`)}
                       alt=""
                       className="w-full h-full pointer-events-none"
                       style={{

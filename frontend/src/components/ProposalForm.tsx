@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState, useRef, useCallback, type MutableRefObject } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { api } from '@/lib/api';
+import { api, withFileAccessToken } from '@/lib/api';
 import { formatDateLocal, getTodayLocal } from '@/lib/dateUtils';
 import toast from 'react-hot-toast';
 import ImagePicker from '@/components/ImagePicker';
@@ -896,10 +896,10 @@ By signing the accompanying proposal, the Owner agrees to these Terms and Condit
   }, [project?.code, nextCode, mode]);
 
   useEffect(()=>{
-    if (coverFoId) setCoverPreview(`/files/${coverFoId}/thumbnail?w=600`);
+    if (coverFoId) setCoverPreview(withFileAccessToken(`/files/${coverFoId}/thumbnail?w=600`));
     else if (coverBlob) setCoverPreview(URL.createObjectURL(coverBlob));
     else setCoverPreview('');
-    if (page2FoId) setPage2Preview(`/files/${page2FoId}/thumbnail?w=600`);
+    if (page2FoId) setPage2Preview(withFileAccessToken(`/files/${page2FoId}/thumbnail?w=600`));
     else if (page2Blob) setPage2Preview(URL.createObjectURL(page2Blob));
     else setPage2Preview('');
     return ()=>{};
@@ -1932,7 +1932,7 @@ By signing the accompanying proposal, the Owner agrees to these Terms and Condit
                           <div className="w-full">
                             {img.file_object_id? (
                               <img
-                                src={`/files/${img.file_object_id}/thumbnail?w=520`}
+                                src={withFileAccessToken(`/files/${img.file_object_id}/thumbnail?w=520`)}
                                 className="w-full h-auto object-cover rounded"
                               />
                             ) : null}

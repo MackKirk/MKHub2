@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
-import { api } from '@/lib/api';
+import { api, withFileAccessToken } from '@/lib/api';
 import { logoutSession } from '@/lib/logoutSession';
 import toast from 'react-hot-toast';
 import NationalitySelect from '@/components/NationalitySelect';
@@ -1740,7 +1740,7 @@ function PRCardUploadSection({ userId, canEdit }: { userId: string; canEdit: boo
               <div className="text-xs text-gray-500">Document uploaded</div>
             </div>
             <a
-              href={`/files/${prCardFileId}/download`}
+              href={withFileAccessToken(`/files/${prCardFileId}/download`)}
               target="_blank"
               rel="noopener noreferrer"
               className="px-3 py-1.5 rounded border border-amber-300 text-amber-700 text-sm font-medium hover:bg-amber-50"
@@ -1928,7 +1928,7 @@ function ImmigrationStatusDocumentSection({ userId, canEdit, isRequired }: { use
               <div className="text-xs text-gray-500">Document uploaded</div>
             </div>
             <a
-              href={`/files/${permitFileId}/download`}
+              href={withFileAccessToken(`/files/${permitFileId}/download`)}
               target="_blank"
               rel="noopener noreferrer"
               className="px-3 py-1.5 rounded border border-amber-300 text-amber-700 text-sm font-medium hover:bg-amber-50"

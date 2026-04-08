@@ -1,6 +1,6 @@
 import { useParams, Link, useNavigate, useLocation } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { api } from '@/lib/api';
+import { api, withFileAccessToken } from '@/lib/api';
 import { useEffect, useMemo, useState } from 'react';
 import toast from 'react-hot-toast';
 import QuoteForm from '@/components/QuoteForm';
@@ -53,10 +53,10 @@ export default function QuoteDetail(){
   const cover = useMemo(() => {
     const files = (clientFiles || []);
     const override = files.find(f => String(f.category || '') === 'quote-cover-derived');
-    if (override) return `/files/${override.file_object_id}/thumbnail?w=1000`;
+    if (override) return withFileAccessToken(`/files/${override.file_object_id}/thumbnail?w=1000`);
 
     const customerLogo = files.find(f => String(f.category || '') === 'client-logo-derived');
-    if (customerLogo) return `/files/${customerLogo.file_object_id}/thumbnail?w=1000`;
+    if (customerLogo) return withFileAccessToken(`/files/${customerLogo.file_object_id}/thumbnail?w=1000`);
 
     return '/ui/assets/placeholders/customer.png';
   }, [clientFiles]);

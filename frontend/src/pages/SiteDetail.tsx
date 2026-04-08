@@ -1,6 +1,6 @@
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { api } from '@/lib/api';
+import { api, withFileAccessToken } from '@/lib/api';
 import { formatAddressDisplay } from '@/lib/addressUtils';
 import { useEffect, useMemo, useState, useRef, ReactNode } from 'react';
 import toast from 'react-hot-toast';
@@ -74,7 +74,7 @@ export default function SiteDetail(){
     const arr = (files||[]).filter(f=> String(f.site_id||'')===String(siteId));
     const cover = arr.find(f=> String(f.category||'')==='site-cover-derived');
     const img = cover || arr.find(f=> (f.is_image===true) || String(f.content_type||'').startsWith('image/'));
-    return img? `/files/${img.file_object_id}/thumbnail?w=600` : '/ui/assets/login/logo-light.svg';
+    return img? withFileAccessToken(`/files/${img.file_object_id}/thumbnail?w=600`) : '/ui/assets/login/logo-light.svg';
   }, [files, siteId]);
 
   const [coverPickerOpen, setCoverPickerOpen] = useState(false);

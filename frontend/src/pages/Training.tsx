@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
-import { api } from '@/lib/api';
+import { api, withFileAccessToken } from '@/lib/api';
 import { Link } from 'react-router-dom';
 import { useState } from 'react';
 
@@ -105,7 +105,7 @@ export default function Training() {
             >
               {course.thumbnail_file_id ? (
                 <img
-                  src={`/files/${course.thumbnail_file_id}/thumbnail?w=400`}
+                  src={withFileAccessToken(`/files/${course.thumbnail_file_id}/thumbnail?w=400`)}
                   alt={course.title}
                   className="w-full h-40 object-cover"
                 />

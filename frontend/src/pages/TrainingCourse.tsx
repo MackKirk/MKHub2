@@ -1,6 +1,7 @@
 import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { api } from '@/lib/api';
+import DOMPurify from 'dompurify';
+import { api, withFileAccessToken } from '@/lib/api';
 import toast from 'react-hot-toast';
 import { useState, useEffect } from 'react';
 
@@ -248,7 +249,7 @@ export default function TrainingCourse() {
               {selectedLesson.lesson_type === 'pdf' && selectedLesson.content?.pdf_file_id && (
                 <div className="border rounded-lg p-4 mb-4">
                   <iframe
-                    src={`/files/${selectedLesson.content.pdf_file_id}`}
+                    src={withFileAccessToken(`/files/${selectedLesson.content.pdf_file_id}`)}
                     className="w-full h-[600px] rounded"
                   />
                 </div>
@@ -257,7 +258,9 @@ export default function TrainingCourse() {
               {selectedLesson.lesson_type === 'text' && selectedLesson.content?.rich_text_content && (
                 <div
                   className="prose max-w-none mb-4"
-                  dangerouslySetInnerHTML={{ __html: selectedLesson.content.rich_text_content }}
+                  dangerouslySetInnerHTML={{
+                    __html: DOMPurify.sanitize(selectedLesson.content.rich_text_content || ''),
+                  }}
                 />
               )}
 
@@ -266,7 +269,7 @@ export default function TrainingCourse() {
                   {selectedLesson.content.images.map((imgId: string, idx: number) => (
                     <img
                       key={idx}
-                      src={`/files/${imgId}`}
+                      src={withFileAccessToken(`/files/${imgId}`)}
                       alt={`Image ${idx + 1}`}
                       className="rounded-lg"
                     />

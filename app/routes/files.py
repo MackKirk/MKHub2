@@ -19,14 +19,65 @@ except Exception:
 
 from ..config import settings
 from ..db import get_db
-from ..models.models import FileObject
+from ..auth.security import (
+    get_current_user,
+    get_current_user_bearer_or_query_token,
+    http_bearer,
+    decode_token,
+)
+from fastapi.security import HTTPAuthorizationCredentials
+from ..models.models import FileObject, User
 from ..schemas.files import UploadRequest, UploadResponse, ConfirmRequest
+from ..services.file_access_control import (
+    assert_can_initiate_upload,
+    assert_can_read_file_object,
+    assert_can_read_storage_key,
+    file_object_row_fields,
+    infer_scope_from_storage_key,
+    merge_confirm_scope,
+)
 from ..storage.blob_provider import BlobStorageProvider
 from ..storage.local_provider import LocalStorageProvider
 from ..storage.provider import StorageProvider
 
 
 router = APIRouter(prefix="/files", tags=["files"])
+
+
+def _upload_via_backend_local_dev_bypass(request: Request) -> bool:
+    """Browser PUT to upload-via-backend cannot attach Bearer; allow only non-prod + localhost origin."""
+    if (settings.environment or "").lower() in ("prod", "production"):
+        return False
+    return _is_local_origin(request.headers.get("origin"))
+
+
+def _user_for_upload_via_backend(
+    request: Request,
+    db: Session = Depends(get_db),
+    creds: Optional[HTTPAuthorizationCredentials] = Depends(http_bearer),
+):
+    if _upload_via_backend_local_dev_bypass(request):
+        return None
+    if creds is None:
+        from fastapi import HTTPException, status
+
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Not authenticated")
+    import uuid as _uuid
+
+    payload = decode_token(creds.credentials)
+    user_id_raw = payload.get("sub")
+    try:
+        user_uuid = _uuid.UUID(str(user_id_raw))
+    except Exception:
+        from fastapi import HTTPException, status
+
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid subject")
+    u = db.query(User).filter(User.id == user_uuid).first()
+    if u is None or not u.is_active:
+        from fastapi import HTTPException, status
+
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="User not active")
+    return u
 
 
 def get_storage() -> StorageProvider:
@@ -76,6 +127,19 @@ def canonical_key(
     return f"/org/{year}/{proj}{slug_part}/{folder}/{today}_{safe_name}{ext}"
 
 
+def _file_url_with_access_token(base_url: str, request: Request) -> str:
+    """Append JWT for local-inline / img follow-up requests when client used Bearer."""
+    t = (request.query_params.get("access_token") or "").strip()
+    if not t:
+        auth = request.headers.get("authorization") or ""
+        if auth.lower().startswith("bearer "):
+            t = auth[7:].strip()
+    if not t:
+        return base_url
+    sep = "&" if "?" in base_url else "?"
+    return f"{base_url}{sep}access_token={quote(t)}"
+
+
 def _is_local_origin(origin: Optional[str]) -> bool:
     """True if the request is from a local dev origin (avoids CORS when PUTting to Azure)."""
     if not origin:
@@ -88,8 +152,18 @@ def _is_local_origin(origin: Optional[str]) -> bool:
 def upload(
     req: UploadRequest,
     request: Request,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
     storage: StorageProvider = Depends(get_storage),
 ):
+    assert_can_initiate_upload(
+        user,
+        db,
+        project_id=req.project_id,
+        client_id=req.client_id,
+        employee_id=req.employee_id,
+        category_id=req.category_id,
+    )
     # Use project_id OR client_id to partition blob paths so uploads from different
     # entities never overwrite when original_name is stable (e.g., 'client-logo.jpg').
     key = canonical_key(
@@ -120,8 +194,17 @@ async def upload_proxy(
     employee_id: Optional[str] = Form(None),
     category_id: str = Form("files"),
     db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
     storage: StorageProvider = Depends(get_storage)
 ):
+    assert_can_initiate_upload(
+        user,
+        db,
+        project_id=project_id,
+        client_id=client_id,
+        employee_id=employee_id,
+        category_id=category_id,
+    )
     """
     Proxy endpoint for file uploads when direct Azure Blob upload fails due to CORS.
     This endpoint receives the file data and uploads it to Azure Blob Storage on behalf of the client.
@@ -324,6 +407,12 @@ async def upload_proxy(
             provider = "blob"
             container = settings.azure_blob_container or ""
         
+        _fo_kw = file_object_row_fields(
+            user,
+            project_id=project_id,
+            client_id=client_id,
+            employee_id=employee_id,
+        )
         fo = FileObject(
             provider=provider,
             container=container,
@@ -331,6 +420,7 @@ async def upload_proxy(
             size_bytes=len(final_content),
             checksum_sha256="na",
             content_type=final_content_type,
+            **_fo_kw,
         )
         db.add(fo)
         db.commit()
@@ -342,7 +432,29 @@ async def upload_proxy(
 
 
 @router.post("/confirm")
-def confirm(req: ConfirmRequest, db: Session = Depends(get_db), storage: StorageProvider = Depends(get_storage)):
+def confirm(
+    req: ConfirmRequest,
+    db: Session = Depends(get_db),
+    storage: StorageProvider = Depends(get_storage),
+    user: User = Depends(get_current_user),
+):
+    mp, mc, me, mcat = merge_confirm_scope(
+        db,
+        req.key,
+        req.project_id,
+        req.client_id,
+        req.employee_id,
+        req.category_id,
+    )
+    assert_can_initiate_upload(
+        user,
+        db,
+        project_id=mp,
+        client_id=mc,
+        employee_id=me,
+        category_id=mcat,
+    )
+    row_extras = file_object_row_fields(user, project_id=mp, client_id=mc, employee_id=me)
     # Check if this is a HEIC file that needs conversion
     is_heic = False
     content_type = req.content_type or ""
@@ -455,6 +567,7 @@ def confirm(req: ConfirmRequest, db: Session = Depends(get_db), storage: Storage
                         size_bytes=len(jpg_content),
                         checksum_sha256=req.checksum_sha256,
                         content_type="image/jpeg",
+                        **row_extras,
                     )
                     db.add(fo)
                     db.commit()
@@ -558,6 +671,7 @@ def confirm(req: ConfirmRequest, db: Session = Depends(get_db), storage: Storage
                 size_bytes=len(jpg_content),
                 checksum_sha256=req.checksum_sha256,  # Keep original checksum
                 content_type="image/jpeg",  # Changed to JPEG
+                **row_extras,
             )
             db.add(fo)
             db.commit()
@@ -584,6 +698,7 @@ def confirm(req: ConfirmRequest, db: Session = Depends(get_db), storage: Storage
         size_bytes=req.size_bytes,
         checksum_sha256=req.checksum_sha256,
         content_type=req.content_type,
+        **row_extras,
     )
     db.add(fo)
     db.commit()
@@ -594,6 +709,8 @@ def confirm(req: ConfirmRequest, db: Session = Depends(get_db), storage: Storage
 async def upload_via_backend(
     request: Request,
     key: str = "",
+    db: Session = Depends(get_db),
+    user: Optional[User] = Depends(_user_for_upload_via_backend),
     storage: StorageProvider = Depends(get_storage),
 ):
     """
@@ -611,6 +728,17 @@ async def upload_via_backend(
     key_decoded = unquote(key).lstrip("/").replace("..", "").replace("\\", "/")
     if not key_decoded:
         raise HTTPException(status_code=400, detail="Invalid key")
+    sk = key_decoded if key_decoded.startswith("org/") else f"org/{key_decoded}"
+    p, c, e, cat = infer_scope_from_storage_key(db, sk)
+    if user is not None:
+        assert_can_initiate_upload(
+            user,
+            db,
+            project_id=p,
+            client_id=c,
+            employee_id=e,
+            category_id=cat,
+        )
     body = await request.body()
     try:
         import io
@@ -623,13 +751,18 @@ async def upload_via_backend(
 
 
 @router.get("/local/{file_path:path}")
-def serve_local_file(file_path: str):
+def serve_local_file(
+    file_path: str,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user_bearer_or_query_token),
+):
     """Serve files from local storage for development."""
     from pathlib import Path
     from fastapi.responses import FileResponse
     
     # Security: prevent directory traversal
     clean_path = unquote(file_path).lstrip("/").replace("..", "").replace("\\", "/")
+    assert_can_read_storage_key(user, db, clean_path)
     local_storage = LocalStorageProvider()
     file_path_obj = local_storage._get_path(clean_path)
     
@@ -659,11 +792,16 @@ def serve_local_file(file_path: str):
 
 
 @router.get("/local-inline/{file_path:path}")
-def serve_local_file_inline(file_path: str):
+def serve_local_file_inline(
+    file_path: str,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user_bearer_or_query_token),
+):
     """Serve local files inline for preview (no attachment filename)."""
     from fastapi.responses import FileResponse
 
     clean_path = unquote(file_path).lstrip("/").replace("..", "").replace("\\", "/")
+    assert_can_read_storage_key(user, db, clean_path)
     local_storage = LocalStorageProvider()
     file_path_obj = local_storage._get_path(clean_path)
 
@@ -691,18 +829,23 @@ def serve_local_file_inline(file_path: str):
 
 
 @router.get("/{file_id}/download")
-def download(file_id: str, db: Session = Depends(get_db)):
+def download(
+    file_id: str,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user_bearer_or_query_token),
+):
     import logging
     from pathlib import Path
     logger = logging.getLogger(__name__)
-    
+
     fo: Optional[FileObject] = db.query(FileObject).filter(FileObject.id == file_id).first()
     if not fo:
         raise HTTPException(status_code=404, detail="File not found")
-    
+    assert_can_read_file_object(user, db, fo)
+
     # Get the appropriate storage provider for this specific file
     storage = get_storage_for_file(fo)
-    
+
     # Use storage key basename for download filename to avoid extra DB query in this hot path (reduces pool pressure)
     download_filename = Path(fo.key).name
     
@@ -745,18 +888,25 @@ def download(file_id: str, db: Session = Depends(get_db)):
 
 
 @router.get("/{file_id}/preview")
-def preview(file_id: str, db: Session = Depends(get_db)):
+def preview(
+    request: Request,
+    file_id: str,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user_bearer_or_query_token),
+):
     """Return an inline-friendly preview URL for browser viewers."""
     fo: Optional[FileObject] = db.query(FileObject).filter(FileObject.id == file_id).first()
     if not fo:
         raise HTTPException(status_code=404, detail="File not found")
+    assert_can_read_file_object(user, db, fo)
 
     storage = get_storage_for_file(fo)
 
     if isinstance(storage, LocalStorageProvider):
         key = quote(fo.key.lstrip("/"))
         base = (settings.public_base_url or "").rstrip("/")
-        return {"preview_url": f"{base}/files/local-inline/{key}", "expires_in": 300}
+        u = f"{base}/files/local-inline/{key}"
+        return {"preview_url": _file_url_with_access_token(u, request), "expires_in": 300}
 
     # Blob storage: generate SAS URL with inline content disposition.
     try:
@@ -787,14 +937,20 @@ def preview(file_id: str, db: Session = Depends(get_db)):
 
 
 @router.get("/{file_id}/thumbnail")
-def thumbnail(file_id: str, w: int = 200, db: Session = Depends(get_db)):
+def thumbnail(
+    file_id: str,
+    w: int = 200,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user_bearer_or_query_token),
+):
     import logging
     logger = logging.getLogger(__name__)
     
     fo: Optional[FileObject] = db.query(FileObject).filter(FileObject.id == file_id).first()
     if not fo:
         raise HTTPException(status_code=404, detail="File not found")
-    
+    assert_can_read_file_object(user, db, fo)
+
     # Get the appropriate storage provider for this specific file
     storage = get_storage_for_file(fo)
     

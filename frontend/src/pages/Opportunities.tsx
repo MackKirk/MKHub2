@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
-import { api } from '@/lib/api';
+import { api, withFileAccessToken } from '@/lib/api';
 import { useMemo, useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import type { ReactNode } from 'react';
@@ -69,7 +69,7 @@ function UserAvatar({ user, size = 'w-6 h-6', showTooltip = true, tooltipText }:
     >
       {photoFileId && !imageError ? (
         <img
-          src={`/files/${photoFileId}/thumbnail?w=80`}
+          src={withFileAccessToken(`/files/${photoFileId}/thumbnail?w=80`)}
           alt={displayName}
           className={`${size} rounded-full object-cover border border-gray-300`}
           onError={() => setImageError(true)}

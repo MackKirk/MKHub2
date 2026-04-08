@@ -2,7 +2,7 @@ import { useState, useMemo } from 'react';
 import { useMutation, useQueryClient, useQuery } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
-import { api } from '@/lib/api';
+import { api, withFileAccessToken } from '@/lib/api';
 import ImagePicker from '@/components/ImagePicker';
 
 export default function CommunityNewPost() {
@@ -235,7 +235,7 @@ export default function CommunityNewPost() {
                 {photoFileId && (
                   <div className="relative inline-block">
                     <img
-                      src={`/files/${photoFileId}/thumbnail?w=400`}
+                      src={withFileAccessToken(`/files/${photoFileId}/thumbnail?w=400`)}
                       alt="Preview"
                       className="max-w-full h-auto rounded-lg border border-gray-300 max-h-64 object-contain"
                     />

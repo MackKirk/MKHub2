@@ -1,3 +1,4 @@
+import { withFileAccessToken } from '@/lib/api';
 import type { DocumentPage, DocElement } from '@/types/documentCreator';
 
 const A4_ASPECT = 210 / 297;
@@ -84,7 +85,7 @@ function MiniPageThumb({ page, backgroundUrl }: { page: DocumentPage; background
               ) : (
                 el.content && (
                   <img
-                    src={`/files/${el.content}/thumbnail?w=80`}
+                    src={withFileAccessToken(`/files/${el.content}/thumbnail?w=80`)}
                     loading="lazy"
                     alt=""
                     className="w-full h-full object-cover"
@@ -129,7 +130,7 @@ export function DocumentPagePreviewThumbnails({
       {toShow.map((page, i) => {
         const template = templates.find((t) => t.id === (page.template_id ?? ''));
         const backgroundUrl = template?.background_file_id
-          ? `/files/${template.background_file_id}/thumbnail?w=120`
+          ? withFileAccessToken(`/files/${template.background_file_id}/thumbnail?w=120`)
           : null;
         return <MiniPageThumb key={i} page={page as DocumentPage} backgroundUrl={backgroundUrl} />;
       })}

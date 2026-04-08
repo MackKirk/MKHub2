@@ -1,6 +1,6 @@
 import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { api } from '@/lib/api';
+import { api, withFileAccessToken } from '@/lib/api';
 import FleetDetailHeader from '@/components/FleetDetailHeader';
 import { formatDateLocal } from '@/lib/dateUtils';
 import { INSPECTION_RESULT_LABELS, INSPECTION_RESULT_COLORS, SCHEDULE_STATUS_LABELS, CATEGORY_LABELS, URGENCY_LABELS, URGENCY_COLORS } from '@/lib/fleetBadges';
@@ -86,7 +86,7 @@ export default function InspectionScheduleDetail() {
     enabled: !!schedule?.fleet_asset_id,
   });
 
-  const assetPhotoUrl = asset?.photos?.[0] ? `/files/${asset.photos[0]}/thumbnail?w=400` : null;
+  const assetPhotoUrl = asset?.photos?.[0] ? withFileAccessToken(`/files/${asset.photos[0]}/thumbnail?w=400`) : null;
 
   const { data: bodyInspection } = useQuery({
     queryKey: ['inspection', schedule?.body_inspection_id],
@@ -321,12 +321,12 @@ export default function InspectionScheduleDetail() {
                       {bodyInspection.photos.map((photoId) => (
                         <a
                           key={photoId}
-                          href={`/files/${photoId}/thumbnail?w=800`}
+                          href={withFileAccessToken(`/files/${photoId}/thumbnail?w=800`)}
                           target="_blank"
                           rel="noopener noreferrer"
                           className="block w-20 h-20 rounded-lg overflow-hidden border border-gray-200 hover:ring-2 hover:ring-brand-red focus:outline-none focus:ring-2 focus:ring-brand-red"
                         >
-                          <img src={`/files/${photoId}/thumbnail?w=160`} alt="" className="w-full h-full object-cover" />
+                          <img src={withFileAccessToken(`/files/${photoId}/thumbnail?w=160`)} alt="" className="w-full h-full object-cover" />
                         </a>
                       ))}
                     </div>
@@ -412,12 +412,12 @@ export default function InspectionScheduleDetail() {
                       {mechanicalInspection.photos.map((photoId) => (
                         <a
                           key={photoId}
-                          href={`/files/${photoId}/thumbnail?w=800`}
+                          href={withFileAccessToken(`/files/${photoId}/thumbnail?w=800`)}
                           target="_blank"
                           rel="noopener noreferrer"
                           className="block w-20 h-20 rounded-lg overflow-hidden border border-gray-200 hover:ring-2 hover:ring-brand-red focus:outline-none focus:ring-2 focus:ring-brand-red"
                         >
-                          <img src={`/files/${photoId}/thumbnail?w=160`} alt="" className="w-full h-full object-cover" />
+                          <img src={withFileAccessToken(`/files/${photoId}/thumbnail?w=160`)} alt="" className="w-full h-full object-cover" />
                         </a>
                       ))}
                     </div>

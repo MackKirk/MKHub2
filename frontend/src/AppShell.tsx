@@ -1,7 +1,7 @@
 import { PropsWithChildren, useState, useMemo, useEffect } from 'react';
 import { Link, NavLink, useLocation, useNavigate } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { api } from '@/lib/api';
+import { api, withFileAccessToken } from '@/lib/api';
 import {
   computeIsProfileComplete,
   isExemptFromProfileWizardRedirect,
@@ -289,7 +289,7 @@ export default function AppShell({ children }: PropsWithChildren){
   
   const displayName = (meProfile?.profile?.preferred_name) || ([meProfile?.profile?.first_name, meProfile?.profile?.last_name].filter(Boolean).join(' ') || meProfile?.user?.username || 'User');
   const avatarId = meProfile?.profile?.profile_photo_file_id;
-  const avatarUrl = avatarId ? `/files/${avatarId}/thumbnail?w=96` : '/ui/assets/login/logo-light.svg';
+  const avatarUrl = avatarId ? withFileAccessToken(`/files/${avatarId}/thumbnail?w=96`) : '/ui/assets/login/logo-light.svg';
   const [open, setOpen] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   

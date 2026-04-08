@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState, useRef, useCallback } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { api } from '@/lib/api';
+import { api, withFileAccessToken } from '@/lib/api';
 import { formatDateLocal, getTodayLocal } from '@/lib/dateUtils';
 import toast from 'react-hot-toast';
 import ImagePicker from '@/components/ImagePicker';
@@ -744,7 +744,7 @@ export default function QuoteForm({ mode, clientId: clientIdProp, initial, disab
   }, [nextCode, mode, orderNumber]);
 
   useEffect(()=>{
-    if (coverFoId) setCoverPreview(`/files/${coverFoId}/thumbnail?w=600`);
+    if (coverFoId) setCoverPreview(withFileAccessToken(`/files/${coverFoId}/thumbnail?w=600`));
     else if (coverBlob) setCoverPreview(URL.createObjectURL(coverBlob));
     else setCoverPreview('');
     return ()=>{};
@@ -1524,7 +1524,7 @@ export default function QuoteForm({ mode, clientId: clientIdProp, initial, disab
                           </div>
                           {img.file_object_id? (
                             <img
-                              src={`/files/${img.file_object_id}/thumbnail?w=520`}
+                              src={withFileAccessToken(`/files/${img.file_object_id}/thumbnail?w=520`)}
                               className="w-[260px] h-[150px] object-cover rounded"
                             />
                           ) : null}

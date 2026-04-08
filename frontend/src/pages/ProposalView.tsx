@@ -1,14 +1,14 @@
 import { useParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { api } from '@/lib/api';
+import { api, withFileAccessToken } from '@/lib/api';
 import toast from 'react-hot-toast';
 
 export default function ProposalView(){
   const { id } = useParams();
   const { data, isLoading } = useQuery({ queryKey:['proposal', id], queryFn: ()=> api<any>('GET', `/proposals/${id}`) });
   const p = data||{};
-  const coverThumb = p?.data?.cover_file_object_id ? `/files/${p.data.cover_file_object_id}/thumbnail?w=800` : null;
-  const page2Thumb = p?.data?.page2_file_object_id ? `/files/${p.data.page2_file_object_id}/thumbnail?w=800` : null;
+  const coverThumb = p?.data?.cover_file_object_id ? withFileAccessToken(`/files/${p.data.cover_file_object_id}/thumbnail?w=800`) : null;
+  const page2Thumb = p?.data?.page2_file_object_id ? withFileAccessToken(`/files/${p.data.page2_file_object_id}/thumbnail?w=800`) : null;
   return (
     <div>
       <h1 className="text-2xl font-bold mb-3">Proposal</h1>

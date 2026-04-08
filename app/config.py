@@ -5,7 +5,7 @@ from typing import Optional, List, Dict
 
 class Settings(BaseSettings):
     # Core
-    environment: str = Field(default="dev")
+    environment: str = Field(default="dev", alias="ENVIRONMENT")
     app_name: str = Field(default="MK Hub API")
     tz_default: str = Field(default="America/Vancouver", alias="TZ_DEFAULT")
 

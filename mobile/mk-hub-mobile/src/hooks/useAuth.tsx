@@ -93,6 +93,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
   );
 
   const logout = useCallback(async () => {
+    try {
+      const rt = await SecureStore.getItemAsync(REFRESH_TOKEN_KEY);
+      if (rt) {
+        await api.post("/auth/logout", { refresh_token: rt });
+      }
+    } catch {
+      /* best-effort revoke */
+    }
     await SecureStore.deleteItemAsync(ACCESS_TOKEN_KEY);
     await SecureStore.deleteItemAsync(REFRESH_TOKEN_KEY);
     setUser(null);

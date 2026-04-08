@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { api } from '@/lib/api';
+import { api, withFileAccessToken } from '@/lib/api';
 import { useMemo, useState, useEffect, useRef } from 'react';
 import toast from 'react-hot-toast';
 import { useConfirm } from '@/components/ConfirmProvider';
@@ -169,7 +169,7 @@ export default function SystemSettings(){
       const up = await api('POST','/files/upload',{ original_name: heroFile.name, content_type: type, project_id: null, client_id: null, employee_id: null, category_id: 'branding-hero' });
       await fetch(up.upload_url, { method:'PUT', headers:{ 'Content-Type': type, 'x-ms-blob-type':'BlockBlob' }, body: heroFile });
       const conf = await api('POST','/files/confirm',{ key: up.key, size_bytes: heroFile.size, checksum_sha256: 'na', content_type: type });
-      const url = `/files/${conf.id}/download`;
+      const url = withFileAccessToken(`/files/${conf.id}/download`);
       await saveHeroUrl(url);
     }catch(_e){ toast.error('Upload failed'); }
   };
@@ -192,7 +192,7 @@ export default function SystemSettings(){
       const up = await api('POST','/files/upload',{ original_name: overlayFile.name, content_type: type, project_id: null, client_id: null, employee_id: null, category_id: 'branding-hero-overlay' });
       await fetch(up.upload_url, { method:'PUT', headers:{ 'Content-Type': type, 'x-ms-blob-type':'BlockBlob' }, body: overlayFile });
       const conf = await api('POST','/files/confirm',{ key: up.key, size_bytes: overlayFile.size, checksum_sha256: 'na', content_type: type });
-      const url = `/files/${conf.id}/download`;
+      const url = withFileAccessToken(`/files/${conf.id}/download`);
       await saveOverlayUrl(url);
     }catch(_e){ toast.error('Upload failed'); }
   };

@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
-import { api } from '@/lib/api';
+import { api, withFileAccessToken } from '@/lib/api';
 import { Link } from 'react-router-dom';
 import { useMemo } from 'react';
 
@@ -87,7 +87,7 @@ export default function TrainingCertificates() {
                     </div>
                     {cert.certificate_file_id && (
                       <a
-                        href={`/files/${cert.certificate_file_id}`}
+                        href={withFileAccessToken(`/files/${cert.certificate_file_id}`)}
                         download
                         className="block w-full text-center px-4 py-2 bg-[#7f1010] text-white rounded-lg font-semibold hover:bg-[#a31414] transition-colors"
                       >

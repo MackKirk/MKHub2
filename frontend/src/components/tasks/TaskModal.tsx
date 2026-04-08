@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
 import { useNavigate } from 'react-router-dom';
-import { api } from '@/lib/api';
+import { api, withFileAccessToken } from '@/lib/api';
 import OverlayPortal from '@/components/OverlayPortal';
 import BugReportDescription from './BugReportDescription';
 import type { Task, TaskStatus } from './types';
@@ -886,14 +886,14 @@ export default function TaskModal({ open, taskId, onClose, onUpdated }: Props) {
                       {parsed.fileIds.map((fid) => (
                         <a
                           key={fid}
-                          href={`/files/${fid}/download`}
+                          href={withFileAccessToken(`/files/${fid}/download`)}
                           target="_blank"
                           rel="noreferrer"
                           className="block rounded-lg border border-gray-200/60 overflow-hidden bg-gray-50 hover:shadow-sm transition"
                           title="Open image"
                         >
                           <img
-                            src={`/files/${fid}/thumbnail?w=480`}
+                            src={withFileAccessToken(`/files/${fid}/thumbnail?w=480`)}
                             className="w-full h-28 object-cover"
                             alt="Task attachment"
                             loading="lazy"

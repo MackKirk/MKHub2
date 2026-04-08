@@ -1,6 +1,6 @@
 import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { api } from '@/lib/api';
+import { api, withFileAccessToken } from '@/lib/api';
 import toast from 'react-hot-toast';
 import { useMemo, useState, useEffect } from 'react';
 import { INSPECTION_RESULT_LABELS, INSPECTION_RESULT_COLORS } from '@/lib/fleetBadges';
@@ -178,7 +178,7 @@ export default function InspectionDetail() {
     enabled: !!inspection?.fleet_asset_id,
   });
 
-  const assetPhotoUrl = fleetAsset?.photos?.[0] ? `/files/${fleetAsset.photos[0]}/thumbnail?w=400` : null;
+  const assetPhotoUrl = fleetAsset?.photos?.[0] ? withFileAccessToken(`/files/${fleetAsset.photos[0]}/thumbnail?w=400`) : null;
 
   useEffect(() => {
     if (isBody && inspection && checklistTemplate?.areas) {
@@ -572,7 +572,7 @@ export default function InspectionDetail() {
                     {bodyPhotoIds.map((photoId) => (
                       <div key={photoId} className="relative group">
                         <img
-                          src={`/files/${photoId}/thumbnail?w=200`}
+                          src={withFileAccessToken(`/files/${photoId}/thumbnail?w=200`)}
                           alt="Inspection"
                           className="w-24 h-24 object-cover rounded-lg border border-gray-200"
                         />
@@ -835,7 +835,7 @@ export default function InspectionDetail() {
                     {bodyPhotoIds.map((photoId) => (
                       <div key={photoId} className="relative group">
                         <img
-                          src={`/files/${photoId}/thumbnail?w=200`}
+                          src={withFileAccessToken(`/files/${photoId}/thumbnail?w=200`)}
                           alt="Inspection"
                           className="w-24 h-24 object-cover rounded-lg border border-gray-200"
                         />
@@ -1011,7 +1011,7 @@ export default function InspectionDetail() {
               {inspection.photos.map((photoId, idx) => (
                 <img
                   key={idx}
-                  src={`/files/${photoId}/thumbnail?w=300`}
+                  src={withFileAccessToken(`/files/${photoId}/thumbnail?w=300`)}
                   alt={`Photo ${idx + 1}`}
                   className="w-full h-24 object-cover rounded border"
                 />

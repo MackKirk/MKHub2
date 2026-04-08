@@ -1,3 +1,4 @@
+import { withFileAccessToken } from '@/lib/api';
 import OverlayPortal from '@/components/OverlayPortal';
 
 type Template = { id: string; name: string; description?: string; background_file_id?: string };
@@ -68,7 +69,7 @@ export function AddPageTemplateModal({
                 >
                   {t.background_file_id ? (
                     <img
-                      src={`/files/${t.background_file_id}/thumbnail?w=200`}
+                      src={withFileAccessToken(`/files/${t.background_file_id}/thumbnail?w=200`)}
                       alt=""
                       className="absolute inset-0 w-full h-full object-cover"
                     />

@@ -54,6 +54,15 @@ class TokenResponse(BaseModel):
     token_type: str = "bearer"
 
 
+class PasswordResetConfirmRequest(BaseModel):
+    token: str
+    new_password: str = Field(min_length=8)
+
+
+class RefreshTokenRequest(BaseModel):
+    refresh_token: str
+
+
 class MeResponse(BaseModel):
     id: str
     username: str

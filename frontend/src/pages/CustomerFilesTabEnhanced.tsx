@@ -1,7 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { useEffect, useMemo, useState } from 'react';
 import toast from 'react-hot-toast';
-import { api } from '@/lib/api';
+import { api, withFileAccessToken } from '@/lib/api';
 import ImageEditor from '@/components/ImageEditor';
 import OverlayPortal from '@/components/OverlayPortal';
 
@@ -119,7 +119,7 @@ export function CustomerFilesTabEnhanced({ clientId, files, onRefresh, hasEditPe
     const fileType = getFileType(f);
     const name = f.original_name || f.file_object_id;
     try {
-      const r: any = await api('GET', `/files/${f.file_object_id}/download`);
+      const r: any = await api('GET', withFileAccessToken(`/files/${f.file_object_id}/download`));
       const url = r.download_url || '';
       if (!url) {
         toast.error('Preview not available');
@@ -136,7 +136,7 @@ export function CustomerFilesTabEnhanced({ clientId, files, onRefresh, hasEditPe
 
   const fetchDownloadUrl = async (fid: string) => {
     try {
-      const r: any = await api('GET', `/files/${fid}/download`);
+      const r: any = await api('GET', withFileAccessToken(`/files/${fid}/download`));
       return String(r.download_url || '');
     } catch {
       toast.error('Download link unavailable');
@@ -360,7 +360,7 @@ export function CustomerFilesTabEnhanced({ clientId, files, onRefresh, hasEditPe
                               <td className="px-3 py-2">
                                 {isImg ? (
                                   <div className="w-10 h-10 rounded-lg overflow-hidden bg-gray-100 cursor-pointer flex-shrink-0" onClick={() => handleFilePreview(f)}>
-                                    <img src={`/files/${f.file_object_id}/thumbnail?w=64`} alt={name} className="w-full h-full object-cover" loading="lazy" />
+                                    <img src={withFileAccessToken(`/files/${f.file_object_id}/thumbnail?w=64`)} alt={name} className="w-full h-full object-cover" loading="lazy" />
                                   </div>
                                 ) : (
                                   <div className={`w-8 h-10 rounded-lg ${icon.color} text-white flex items-center justify-center text-[10px] font-extrabold select-none flex-shrink-0 cursor-pointer`} onClick={() => handleFilePreview(f)}>
@@ -529,7 +529,7 @@ export function CustomerFilesTabEnhanced({ clientId, files, onRefresh, hasEditPe
         <ImageEditor
           isOpen={!!editingImage}
           onClose={() => setEditingImage(null)}
-          imageUrl={`/files/${editingImage.fileObjectId}/thumbnail?w=1024`}
+          imageUrl={withFileAccessToken(`/files/${editingImage.fileObjectId}/thumbnail?w=1024`)}
           imageName={editingImage.name}
           fileObjectId={editingImage.fileObjectId}
           onSave={async (blob) => {

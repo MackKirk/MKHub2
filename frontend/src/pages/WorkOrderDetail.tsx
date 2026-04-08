@@ -1,7 +1,7 @@
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { useState, useRef, useEffect, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { api } from '@/lib/api';
+import { api, withFileAccessToken } from '@/lib/api';
 import toast from 'react-hot-toast';
 import { WORK_ORDER_STATUS_OPTIONS, WORK_ORDER_STATUS_COLORS, WORK_ORDER_STATUS_LABELS, URGENCY_COLORS } from '@/lib/fleetBadges';
 import FleetDetailHeader from '@/components/FleetDetailHeader';
@@ -82,7 +82,7 @@ export default function WorkOrderDetail() {
     enabled: !!workOrder?.entity_id && workOrder?.entity_type === 'fleet',
   });
 
-  const assetPhotoUrl = asset?.photos?.[0] ? `/files/${asset.photos[0]}/thumbnail?w=400` : null;
+  const assetPhotoUrl = asset?.photos?.[0] ? withFileAccessToken(`/files/${asset.photos[0]}/thumbnail?w=400`) : null;
 
   const { data: me } = useQuery({ queryKey: ['me'], queryFn: () => api<any>('GET', '/auth/me') });
   const isAdmin = (me?.roles || []).includes('admin');
@@ -856,7 +856,7 @@ function WorkOrderFilesTab({ workOrderId }: { workOrderId: string }) {
 
   const fetchDownloadUrl = async (fid: string) => {
     try {
-      const r: any = await api('GET', `/files/${fid}/download`);
+      const r: any = await api('GET', withFileAccessToken(`/files/${fid}/download`));
       return String(r.download_url || '');
     } catch {
       toast.error('Download link unavailable');
@@ -1031,12 +1031,12 @@ function WorkOrderFilesTab({ workOrderId }: { workOrderId: string }) {
                               <td className="px-3 py-2">
                                 {isImg ? (
                                   <a
-                                    href={`/files/${f.file_object_id}/download`}
+                                    href={withFileAccessToken(`/files/${f.file_object_id}/download`)}
                                     target="_blank"
                                     rel="noopener noreferrer"
                                     className="w-10 h-10 rounded-lg overflow-hidden bg-gray-100 flex-shrink-0 block"
                                   >
-                                    <img src={`/files/${f.file_object_id}/thumbnail?w=64`} alt={name} className="w-full h-full object-cover" />
+                                    <img src={withFileAccessToken(`/files/${f.file_object_id}/thumbnail?w=64`)} alt={name} className="w-full h-full object-cover" />
                                   </a>
                                 ) : (
                                   <div className={`w-8 h-10 rounded-lg ${icon.color} text-white flex items-center justify-center text-[10px] font-extrabold select-none`}>
@@ -1046,7 +1046,7 @@ function WorkOrderFilesTab({ workOrderId }: { workOrderId: string }) {
                               </td>
                               <td className="px-3 py-2">
                                 <a
-                                  href={`/files/${f.file_object_id}/download`}
+                                  href={withFileAccessToken(`/files/${f.file_object_id}/download`)}
                                   target="_blank"
                                   rel="noopener noreferrer"
                                   className="text-xs font-semibold truncate max-w-xs block hover:underline"

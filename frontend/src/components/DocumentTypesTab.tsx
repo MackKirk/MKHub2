@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { api } from '@/lib/api';
+import { api, withFileAccessToken } from '@/lib/api';
 import toast from 'react-hot-toast';
 import { useConfirm } from '@/components/ConfirmProvider';
 import type { DocumentTypePreset } from '@/components/ChooseDocumentTypeModal';
@@ -538,7 +538,7 @@ export default function DocumentTypesTab() {
                   {pages.map((p, idx) => {
                     const template = templates.find((t) => t.id === p.template_id);
                     const backgroundUrl = template?.background_file_id
-                      ? `/files/${template.background_file_id}/thumbnail?w=120`
+                      ? withFileAccessToken(`/files/${template.background_file_id}/thumbnail?w=120`)
                       : null;
                     return (
                       <div

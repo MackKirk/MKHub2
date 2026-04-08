@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, useCallback, useMemo } from 'react';
-import { api } from '@/lib/api';
+import { api, withFileAccessToken } from '@/lib/api';
 import OverlayPortal from '@/components/OverlayPortal';
 
 // Custom slider styles and icon rendering improvements
@@ -319,15 +319,15 @@ export default function ImageEditor({ isOpen, onClose, imageUrl, imageName = 'im
       let urlToLoad: string;
       try {
         // Prefer full-resolution image via download URL so saved image keeps original quality
-        const r: any = await api('GET', `/files/${fileObjectId}/download`);
+        const r: any = await api('GET', withFileAccessToken(`/files/${fileObjectId}/download`));
         const downloadUrl = r?.download_url ? String(r.download_url) : '';
         if (downloadUrl) {
           urlToLoad = downloadUrl;
         } else {
-          urlToLoad = `/files/${fileObjectId}/thumbnail?w=1024`;
+          urlToLoad = withFileAccessToken(`/files/${fileObjectId}/thumbnail?w=1024`);
         }
       } catch (_e) {
-        urlToLoad = `/files/${fileObjectId}/thumbnail?w=1024`;
+        urlToLoad = withFileAccessToken(`/files/${fileObjectId}/thumbnail?w=1024`);
       }
       
       const image = new Image();
@@ -370,7 +370,7 @@ export default function ImageEditor({ isOpen, onClose, imageUrl, imageName = 'im
         }
         imageLoaded = false;
         image.crossOrigin = '';
-        image.src = `/files/${fileObjectId}/thumbnail?w=1024`;
+        image.src = withFileAccessToken(`/files/${fileObjectId}/thumbnail?w=1024`);
       };
       
       image.crossOrigin = 'anonymous';

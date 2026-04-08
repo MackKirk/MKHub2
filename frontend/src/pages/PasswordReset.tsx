@@ -43,7 +43,7 @@ export default function PasswordReset(){
     
     setLoading(true);
     try{
-      await api('POST', `/auth/password/reset?token=${encodeURIComponent(token)}&new_password=${encodeURIComponent(password)}`);
+      await api('POST', '/auth/password/reset', { token, new_password: password });
       setSuccess(true);
       toast.success('Password reset successfully');
       setTimeout(() => {

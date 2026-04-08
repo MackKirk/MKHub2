@@ -2,7 +2,7 @@ import { useParams, Link, useLocation, useNavigate } from 'react-router-dom';
 import { useMemo, useState, useEffect, useLayoutEffect, useCallback, useRef, type MutableRefObject } from 'react';
 import type { ReactNode } from 'react';
 import { useQuery, useQueryClient, useQueries } from '@tanstack/react-query';
-import { api } from '@/lib/api';
+import { api, withFileAccessToken } from '@/lib/api';
 import { sortByLabel } from '@/lib/sortOptions';
 import toast from 'react-hot-toast';
 import ImagePicker from '@/components/ImagePicker';
@@ -709,7 +709,7 @@ function UserAvatar({ user, size = 'w-8 h-8', showTooltip = true, tooltipText }:
     return (
       <div className="relative group/avatar">
         <img
-          src={`/files/${photoFileId}/thumbnail?w=80`}
+          src={withFileAccessToken(`/files/${photoFileId}/thumbnail?w=80`)}
           alt={displayName}
           className={`${size} rounded-full object-cover border border-gray-300`}
           onError={() => setImageError(true)}
@@ -878,16 +878,16 @@ export default function ProjectDetail(){
       'opportunity-cover',
     ]);
     const legacy = arr.find(f => legacyPreferredCategories.has(String(f.category||'')) && (f.is_image===true || String(f.content_type||'').startsWith('image/')));
-    if (legacy?.file_object_id) return `/files/${legacy.file_object_id}/thumbnail?w=1000`;
+    if (legacy?.file_object_id) return withFileAccessToken(`/files/${legacy.file_object_id}/thumbnail?w=1000`);
 
     // 2) Manual new field (General Info image picker)
     if ((proj as any)?.image_manually_set && (proj as any)?.image_file_object_id) {
-      return `/files/${(proj as any).image_file_object_id}/thumbnail?w=1000`;
+      return withFileAccessToken(`/files/${(proj as any).image_file_object_id}/thumbnail?w=1000`);
     }
 
     // 3) Synced from proposal (project.image_file_object_id) OR latest proposal cover
     if ((proj as any)?.image_file_object_id) {
-      return `/files/${(proj as any).image_file_object_id}/thumbnail?w=1000`;
+      return withFileAccessToken(`/files/${(proj as any).image_file_object_id}/thumbnail?w=1000`);
     }
     const latest = (proposals||[]).slice().sort((a,b)=>{
       const ad = a.created_at ? new Date(a.created_at).getTime() : 0;
@@ -895,7 +895,7 @@ export default function ProjectDetail(){
       return bd-ad;
     })[0];
     const proposalCoverFo = latest?.data?.cover_file_object_id;
-    if (proposalCoverFo) return `/files/${proposalCoverFo}/thumbnail?w=1000`;
+    if (proposalCoverFo) return withFileAccessToken(`/files/${proposalCoverFo}/thumbnail?w=1000`);
 
     // 4) Default blueprint
     return '/ui/assets/placeholders/project.png';
@@ -4045,7 +4045,7 @@ function ReportsTabEnhanced({ projectId, items, onRefresh }:{ projectId:string, 
     if (!author) return { name: 'Unknown', avatar: '/ui/assets/login/logo-light.svg' };
     return {
       name: author.name || author.username || 'Unknown',
-      avatar: author.profile_photo_file_id ? `/files/${author.profile_photo_file_id}/thumbnail?w=40` : '/ui/assets/login/logo-light.svg'
+      avatar: author.profile_photo_file_id ? withFileAccessToken(`/files/${author.profile_photo_file_id}/thumbnail?w=40`) : '/ui/assets/login/logo-light.svg'
     };
   };
 
@@ -4064,7 +4064,7 @@ function ReportsTabEnhanced({ projectId, items, onRefresh }:{ projectId:string, 
       if (isImage) {
         setPreviewAttachment(attachment);
       } else {
-        const r: any = await api('GET', `/files/${attachment.file_object_id}/download`);
+        const r: any = await api('GET', withFileAccessToken(`/files/${attachment.file_object_id}/download`));
         if (r.download_url) {
           window.open(r.download_url, '_blank');
         }
@@ -4515,7 +4515,7 @@ function ReportsTabEnhanced({ projectId, items, onRefresh }:{ projectId:string, 
                               {isImage ? (
                                 <>
                                   <img
-                                    src={`/files/${a.file_object_id}/thumbnail?w=400`}
+                                    src={withFileAccessToken(`/files/${a.file_object_id}/thumbnail?w=400`)}
                                     alt={a.original_name || 'attachment'}
                                     className="w-full h-32 object-cover"
                                   />
@@ -4579,7 +4579,7 @@ function ReportsTabEnhanced({ projectId, items, onRefresh }:{ projectId:string, 
             </div>
             <div className="p-4 overflow-auto max-h-[calc(90vh-80px)]">
               <img
-                src={`/files/${previewAttachment.file_object_id}/thumbnail?w=1200`}
+                src={withFileAccessToken(`/files/${previewAttachment.file_object_id}/thumbnail?w=1200`)}
                 alt={previewAttachment.original_name}
                 className="max-w-full h-auto"
               />
@@ -4871,7 +4871,7 @@ function ProjectFilesTab({ projectId, files, onRefresh }:{ projectId:string, fil
     return { label: (ext||'FILE').toUpperCase().slice(0,4), color:'bg-gray-600' };
   };
   const fetchDownloadUrl = async (fid:string)=>{
-    try{ const r:any = await api('GET', `/files/${fid}/download`); return String(r.download_url||''); }catch(_e){ toast.error('Download link unavailable'); return ''; }
+    try{ const r:any = await api('GET', withFileAccessToken(`/files/${fid}/download`)); return String(r.download_url||''); }catch(_e){ toast.error('Download link unavailable'); return ''; }
   };
   return (
     <div>
@@ -4916,7 +4916,7 @@ function ProjectFilesTab({ projectId, files, onRefresh }:{ projectId:string, fil
         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-3">
           {pics.length? pics.map(f=> (
             <div key={f.id} className="relative group">
-              <img className="w-full h-24 object-cover rounded border" src={`/files/${f.file_object_id}/thumbnail?w=600`} loading="lazy" />
+              <img className="w-full h-24 object-cover rounded border" src={withFileAccessToken(`/files/${f.file_object_id}/thumbnail?w=600`)} loading="lazy" />
               <div className="absolute right-2 top-2 hidden group-hover:flex gap-1">
                 <button onClick={async()=>{ const url = await fetchDownloadUrl(f.file_object_id); if(url) window.open(url,'_blank'); }} className="bg-black/70 hover:bg-black/80 text-white text-[11px] px-2 py-1 rounded" title="Zoom">🔍</button>
               </div>
@@ -5164,7 +5164,7 @@ function ProjectFilesTabEnhanced({ projectId, files, onRefresh }:{ projectId:str
     const name = f.original_name || f.file_object_id;
     
     try {
-      const r: any = await api('GET', `/files/${f.file_object_id}/download`);
+      const r: any = await api('GET', withFileAccessToken(`/files/${f.file_object_id}/download`));
       const url = r.download_url || '';
       
       if (!url) {
@@ -5189,7 +5189,7 @@ function ProjectFilesTabEnhanced({ projectId, files, onRefresh }:{ projectId:str
   };
 
   const fetchDownloadUrl = async (fid:string)=>{
-    try{ const r:any = await api('GET', `/files/${fid}/download`); return String(r.download_url||''); }catch(_e){ toast.error('Download link unavailable'); return ''; }
+    try{ const r:any = await api('GET', withFileAccessToken(`/files/${fid}/download`)); return String(r.download_url||''); }catch(_e){ toast.error('Download link unavailable'); return ''; }
   };
 
   const uploadMultiple = async (fileList: File[], targetCategory?: string, targetFolderId?: string | null) => {
@@ -5526,7 +5526,7 @@ function ProjectFilesTabEnhanced({ projectId, files, onRefresh }:{ projectId:str
                                     title="Preview"
                                   >
                                     <img
-                                      src={`/files/${df.file_object_id}/thumbnail?w=64`}
+                                      src={withFileAccessToken(`/files/${df.file_object_id}/thumbnail?w=64`)}
                                       alt={name}
                                       className="w-full h-full object-cover"
                                     />
@@ -5983,7 +5983,7 @@ function ProjectFilesTabEnhanced({ projectId, files, onRefresh }:{ projectId:str
                                   onClick={() => handleFilePreview(f)}
                                 >
                                   <img 
-                                    src={`/files/${f.file_object_id}/thumbnail?w=64`}
+                                    src={withFileAccessToken(`/files/${f.file_object_id}/thumbnail?w=64`)}
                                     alt={name}
                                     className="w-full h-full object-cover"
                                   />
@@ -6733,7 +6733,7 @@ function EmployeeSelect({ label, value, onChange, employees }:{ label:string, va
       <label className="text-xs text-gray-600">{label}</label>
       <div className="relative">
         <button onClick={()=>setOpen(v=>!v)} className="w-full border rounded px-2 py-1.5 flex items-center gap-2 bg-white">
-          {current?.profile_photo_file_id ? (<img src={`/files/${current.profile_photo_file_id}/thumbnail?w=64`} className="w-6 h-6 rounded-full object-cover"/>) : (<span className="w-6 h-6 rounded-full bg-gray-200 inline-block" />)}
+          {current?.profile_photo_file_id ? (<img src={withFileAccessToken(`/files/${current.profile_photo_file_id}/thumbnail?w=64`)} className="w-6 h-6 rounded-full object-cover"/>) : (<span className="w-6 h-6 rounded-full bg-gray-200 inline-block" />)}
           <span className="text-sm truncate">{current? (current.name || current.username) : 'Select...'}</span>
         </button>
         {open && (
@@ -6742,7 +6742,7 @@ function EmployeeSelect({ label, value, onChange, employees }:{ label:string, va
             <div className="max-h-60 overflow-auto">
               {filtered.length? filtered.map((e:any)=> (
                 <button key={e.id} onClick={()=>{ onChange(String(e.id)); setOpen(false); setQ(''); }} className="w-full text-left px-2 py-1 rounded flex items-center gap-2 hover:bg-gray-50">
-                  {e.profile_photo_file_id ? (<img src={`/files/${e.profile_photo_file_id}/thumbnail?w=64`} className="w-6 h-6 rounded-full object-cover"/>) : (<span className="w-6 h-6 rounded-full bg-gray-200 inline-block" />)}
+                  {e.profile_photo_file_id ? (<img src={withFileAccessToken(`/files/${e.profile_photo_file_id}/thumbnail?w=64`)} className="w-6 h-6 rounded-full object-cover"/>) : (<span className="w-6 h-6 rounded-full bg-gray-200 inline-block" />)}
                   <span className="text-sm">{e.name || e.username}</span>
                 </button>
               )) : <div className="text-sm text-gray-600 px-2 py-1">No results</div>}
@@ -7787,7 +7787,7 @@ function TimesheetTab({ projectId, statusLabel }:{ projectId:string; statusLabel
             return (
             <div key={e.id} className="px-2.5 py-1.5 text-xs flex items-center justify-between">
               <div className="flex items-center gap-2">
-                {e.user_avatar_file_id? <img src={`/files/${e.user_avatar_file_id}/thumbnail?w=64`} className="w-5 h-5 rounded-full flex-shrink-0"/> : <span className="w-5 h-5 rounded-full bg-gray-200 inline-block flex-shrink-0"/>}
+                {e.user_avatar_file_id? <img src={withFileAccessToken(`/files/${e.user_avatar_file_id}/thumbnail?w=64`)} className="w-5 h-5 rounded-full flex-shrink-0"/> : <span className="w-5 h-5 rounded-full bg-gray-200 inline-block flex-shrink-0"/>}
                 <div className="w-24 text-gray-700 truncate">{e.user_name||''}</div>
                 <div className="w-12 text-gray-600">{String(e.work_date).slice(5,10)}</div>
                 <div className="w-20 text-gray-600">{timeDisplay}</div>
@@ -8407,7 +8407,7 @@ function AuditLogEntry({ log }: { log: any }) {
       <div className="flex items-start gap-3">
         {log.actor_avatar_file_id ? (
           <img 
-            src={`/files/${log.actor_avatar_file_id}/thumbnail?w=64`} 
+            src={withFileAccessToken(`/files/${log.actor_avatar_file_id}/thumbnail?w=64`)} 
             className="w-8 h-8 rounded-full flex-shrink-0"
             alt=""
           />
@@ -11012,16 +11012,16 @@ function ProjectGeneralInfoCard({ projectId, proj, files, hasEditPermission }:{ 
   const imageUrl = useMemo(() => {
     // If project has manually set image, use it
     if (proj?.image_file_object_id && proj?.image_manually_set) {
-      return `/files/${proj.image_file_object_id}/thumbnail?w=800`;
+      return withFileAccessToken(`/files/${proj.image_file_object_id}/thumbnail?w=800`);
     }
     // Legacy: if there is an existing cover image file, treat it as user-selected (manual)
     const legacyCover = (files||[]).find(f=> String(f.category||'') === 'project-cover-derived');
     if (legacyCover?.file_object_id) {
-      return `/files/${legacyCover.file_object_id}/thumbnail?w=800`;
+      return withFileAccessToken(`/files/${legacyCover.file_object_id}/thumbnail?w=800`);
     }
     // If project has image (synced from proposal), use it
     if (proj?.image_file_object_id) {
-      return `/files/${proj.image_file_object_id}/thumbnail?w=800`;
+      return withFileAccessToken(`/files/${proj.image_file_object_id}/thumbnail?w=800`);
     }
     // Try to get from latest proposal
     if (proposals && proposals.length > 0) {
@@ -11033,7 +11033,7 @@ function ProjectGeneralInfoCard({ projectId, proj, files, hasEditPermission }:{ 
       });
       const latestProposal = sortedProposals[0];
       if (latestProposal?.data?.cover_file_object_id) {
-        return `/files/${latestProposal.data.cover_file_object_id}/thumbnail?w=800`;
+        return withFileAccessToken(`/files/${latestProposal.data.cover_file_object_id}/thumbnail?w=800`);
       }
     }
     // Default blueprint image (served by backend static /ui)
@@ -11457,7 +11457,7 @@ function ProjectContactCard({ projectId, proj, clientId, clientFiles }:{ project
   const photoUrl = useMemo(()=>{
     if(!contactId) return '';
     const rec = (clientFiles||[]).find((f:any)=> String(f.category||'').toLowerCase() === `contact-photo-${String(contactId)}`.toLowerCase());
-    return rec ? `/files/${rec.file_object_id}/thumbnail?w=160` : '';
+    return rec ? withFileAccessToken(`/files/${rec.file_object_id}/thumbnail?w=160`) : '';
   }, [clientFiles, contactId]);
   const [saving, setSaving] = useState(false);
   const handleSave = useCallback(async()=>{

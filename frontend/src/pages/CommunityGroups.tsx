@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
-import { api } from '@/lib/api';
+import { api, withFileAccessToken } from '@/lib/api';
 import toast from 'react-hot-toast';
 import ImagePicker from '@/components/ImagePicker';
 import { useConfirm } from '@/components/ConfirmProvider';
@@ -298,7 +298,7 @@ export default function CommunityGroups() {
                   <div className="w-16 h-16 rounded-lg bg-white/20 flex items-center justify-center flex-shrink-0 overflow-hidden">
                     {group.photo_file_id ? (
                       <img
-                        src={`/files/${group.photo_file_id}/thumbnail?w=64`}
+                        src={withFileAccessToken(`/files/${group.photo_file_id}/thumbnail?w=64`)}
                         alt={group.name}
                         className="w-full h-full object-cover"
                       />
@@ -442,7 +442,7 @@ export default function CommunityGroups() {
                     <div className="flex items-center gap-2">
                       {employee.profile_photo_file_id ? (
                         <img
-                          src={`/files/${employee.profile_photo_file_id}/thumbnail?w=40`}
+                          src={withFileAccessToken(`/files/${employee.profile_photo_file_id}/thumbnail?w=40`)}
                           alt={employee.name}
                           className="w-8 h-8 rounded-full object-cover"
                         />
@@ -545,7 +545,7 @@ export default function CommunityGroups() {
                       <div className="w-24 h-24 rounded-lg bg-gray-100 border-2 border-gray-300 flex items-center justify-center overflow-hidden">
                         {editGroupPhotoFileId ? (
                           <img
-                            src={`/files/${editGroupPhotoFileId}/thumbnail?w=96`}
+                            src={withFileAccessToken(`/files/${editGroupPhotoFileId}/thumbnail?w=96`)}
                             alt="Group avatar"
                             className="w-full h-full object-cover"
                           />

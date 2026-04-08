@@ -1,6 +1,6 @@
 import { useState, useMemo, useEffect } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { api } from '@/lib/api';
+import { api, withFileAccessToken } from '@/lib/api';
 import toast from 'react-hot-toast';
 import { useConfirm } from '@/components/ConfirmProvider';
 import OverlayPortal from '@/components/OverlayPortal';
@@ -160,7 +160,7 @@ export default function CompanyFiles(){
 
   const fetchDownloadUrl = async (fid:string)=>{
     try{
-      const r:any = await api('GET', `/files/${fid}/download`);
+      const r:any = await api('GET', withFileAccessToken(`/files/${fid}/download`));
       return String(r.download_url||'');
     }catch(_e){
       toast.error('Download link unavailable');
@@ -806,7 +806,7 @@ export default function CompanyFiles(){
                               return;
                             }
                             try{
-                              const r:any = await api('GET', `/files/${encodeURIComponent(d.file_id||'')}/download`);
+                              const r:any = await api('GET', withFileAccessToken(`/files/${encodeURIComponent(d.file_id||'')}/download`));
                               const url=r.download_url||'';
                               if(url) {
                                 if(ext === 'PDF') {
@@ -833,7 +833,7 @@ export default function CompanyFiles(){
                                     onClick={(e)=>{ e.stopPropagation(); openInSystem(); }}
                                   >
                                     <img
-                                      src={`/files/${encodeURIComponent(d.file_id||'')}/thumbnail?w=64`} loading="lazy"
+                                      src={withFileAccessToken(`/files/${encodeURIComponent(d.file_id||'')}/thumbnail?w=64`)} loading="lazy"
                                       alt={d.title||'Preview'}
                                       className="w-full h-full object-cover"
                                       onError={(e)=>{

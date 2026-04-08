@@ -22,4 +22,9 @@ class ConfirmRequest(BaseModel):
     size_bytes: int
     checksum_sha256: str
     content_type: Optional[str] = None
+    # Optional scope (merged with inference from key path when omitted)
+    project_id: Optional[str] = None
+    client_id: Optional[str] = None
+    employee_id: Optional[str] = None
+    category_id: Optional[str] = None
 

@@ -4,7 +4,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Optional, List, Literal, Any
 
 import jwt
-from fastapi import Depends, HTTPException, status
+from fastapi import Depends, HTTPException, Query, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from passlib.context import CryptContext
 import re
@@ -93,6 +93,27 @@ def get_current_user(
     if creds is None:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Not authenticated")
     payload = decode_token(creds.credentials)
+    user_id_raw = payload.get("sub")
+    try:
+        user_uuid = uuid.UUID(str(user_id_raw))
+    except Exception:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid subject")
+    user = db.query(User).filter(User.id == user_uuid).first()
+    if user is None or not user.is_active:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="User not active")
+    return user
+
+
+def get_current_user_bearer_or_query_token(
+    access_token: Optional[str] = Query(None, description="JWT when Authorization header is unavailable (e.g. img src)"),
+    creds: Optional[HTTPAuthorizationCredentials] = Depends(http_bearer),
+    db: Session = Depends(get_db),
+):
+    """Same as get_current_user but also accepts ?access_token= for <img> and similar."""
+    raw = (creds.credentials if creds else None) or (access_token or "").strip() or None
+    if not raw:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Not authenticated")
+    payload = decode_token(raw)
     user_id_raw = payload.get("sub")
     try:
         user_uuid = uuid.UUID(str(user_id_raw))

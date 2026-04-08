@@ -1,6 +1,6 @@
 import { useState, useMemo, useEffect, useRef } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { api } from '@/lib/api';
+import { api, withFileAccessToken } from '@/lib/api';
 import toast from 'react-hot-toast';
 import { formatDateLocal } from '@/lib/dateUtils';
 import { useConfirm } from '@/components/ConfirmProvider';
@@ -1795,7 +1795,7 @@ function ReportDetailView({
                 {report.attachments.map((att) => (
                   <div key={att.id} className="flex items-center justify-between p-2 bg-gray-50 rounded">
                     <a
-                      href={`/files/${att.file_id}`}
+                      href={withFileAccessToken(`/files/${att.file_id}`)}
                       target="_blank"
                       rel="noopener noreferrer"
                       className="text-sm text-blue-600 hover:underline flex items-center gap-2"

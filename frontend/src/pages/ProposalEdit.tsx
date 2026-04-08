@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { api } from '@/lib/api';
+import { api, withFileAccessToken } from '@/lib/api';
 import toast from 'react-hot-toast';
 import ImagePicker from '@/components/ImagePicker';
 import ProposalForm from '@/components/ProposalForm';
@@ -80,8 +80,8 @@ export default function ProposalEdit(){
   }, [p?.id]);
 
   useEffect(()=>{
-    setCoverPreview(coverFoId? `/files/${coverFoId}/thumbnail?w=600` : '');
-    setPage2Preview(page2FoId? `/files/${page2FoId}/thumbnail?w=600` : '');
+    setCoverPreview(coverFoId? withFileAccessToken(`/files/${coverFoId}/thumbnail?w=600`) : '');
+    setPage2Preview(page2FoId? withFileAccessToken(`/files/${page2FoId}/thumbnail?w=600`) : '');
   }, [coverFoId, page2FoId]);
 
   const save = async()=>{

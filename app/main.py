@@ -52,7 +52,17 @@ def create_app() -> FastAPI:
 
     # Middlewares
     app.add_middleware(RequestIdMiddleware)
-    origins = [o.strip() for o in settings.allowed_origins.split(",")] if settings.allowed_origins.strip() else ["*"]
+    env_lower = (settings.environment or "").lower()
+    _prod = env_lower in ("prod", "production")
+    ao = (settings.allowed_origins or "").strip()
+    if _prod:
+        if not ao or ao == "*":
+            base = (settings.public_base_url or "").strip().rstrip("/")
+            origins = [base] if base else []
+        else:
+            origins = [o.strip() for o in ao.split(",") if o.strip()]
+    else:
+        origins = [o.strip() for o in settings.allowed_origins.split(",")] if ao else ["*"]
     app.add_middleware(
         CORSMiddleware,
         allow_origins=origins,
@@ -116,6 +126,18 @@ def create_app() -> FastAPI:
         response.headers["X-Content-Type-Options"] = "nosniff"
         if settings.public_base_url.strip().lower().startswith("https://"):
             response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
+        if (settings.environment or "").lower() in ("prod", "production"):
+            response.headers["Content-Security-Policy"] = (
+                "default-src 'self'; "
+                "img-src 'self' data: blob: https:; "
+                "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
+                "font-src 'self' https://fonts.gstatic.com data:; "
+                "script-src 'self'; "
+                "worker-src 'self' blob:; "
+                "connect-src 'self'; "
+                "frame-ancestors 'none'; "
+                "base-uri 'self'"
+            )
         return response
 
     # Routers
@@ -176,8 +198,9 @@ def create_app() -> FastAPI:
     # React frontend (SPA) - fallback router that serves index.html for unknown paths
     FRONT_DIST = os.path.join("frontend", "dist")
 
-    # Metrics
-    Instrumentator().instrument(app).expose(app)
+    # Metrics (disabled in production — avoids public /metrics exposure)
+    if (settings.environment or "").lower() not in ("prod", "production"):
+        Instrumentator().instrument(app).expose(app)
 
     # Serve SPA index.html on hard reloads for HTML requests (avoid hitting JSON APIs)
     @app.middleware("http")

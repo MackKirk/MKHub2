@@ -312,15 +312,8 @@ def get_settings_bundle(db: Session = Depends(get_db), user: UserType = Depends(
         out.setdefault("report_categories", [])
         out.setdefault("terms-templates", [])
     
-    # Always add Google Places API key (if configured) - needed for address autocomplete
-    # This should be available to all authenticated users, not just those with settings access
-    if settings.google_places_api_key:
-        out["google_places_api_key"] = settings.google_places_api_key
-    
-    # If user doesn't have access and no API key, return 403
-    if not has_access and not settings.google_places_api_key:
-        raise HTTPException(status_code=403, detail="Forbidden")
-    
+    # Google Places: use server-side proxy (/integrations/places/*); do not expose API key to clients.
+    # Users without settings lists access still get an empty bundle (200) so generic /settings callers do not 403.
     return out
 
 
