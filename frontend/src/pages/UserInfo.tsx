@@ -2773,6 +2773,35 @@ export default function UserInfo(){
     if (canViewGeneral || canSelfEdit) setTab('personal');
   }, [tab, canViewActivity, canViewGeneral, canSelfEdit]);
 
+  useEffect(() => {
+    if (!tabParam) return;
+    const ok: Record<string, boolean> = {
+      personal: !!(canViewGeneral || canSelfEdit),
+      job: !!canViewGeneral,
+      docs: !!canViewGeneral,
+      timesheet: !!canViewTimesheet,
+      loans: !!canViewLoans,
+      training: !!canViewTraining,
+      assets: !!canViewAssets,
+      reports: !!canViewReports,
+      permissions: !!canViewPermissions,
+      activity: !!canViewActivity,
+    };
+    if (ok[tabParam]) setTab(tabParam);
+  }, [
+    userId,
+    tabParam,
+    canViewGeneral,
+    canSelfEdit,
+    canViewTimesheet,
+    canViewLoans,
+    canViewTraining,
+    canViewAssets,
+    canViewReports,
+    canViewPermissions,
+    canViewActivity,
+  ]);
+
   const canEditAssets = useMemo(() => {
     if (!me) return false;
     const isAdmin = (me?.roles || []).some((r: string) => String(r || '').toLowerCase() === 'admin');
@@ -7986,6 +8015,9 @@ function EmployeeTrainingSection({ userId, canEdit }: { userId: string; canEdit:
     certificate_number: '',
     expiry_date: '',
     notes: '',
+    crew: '',
+    location: '',
+    session_time: '',
   });
 
   const resetForm = (defaults?: Partial<typeof form>) => {
@@ -8002,6 +8034,9 @@ function EmployeeTrainingSection({ userId, canEdit }: { userId: string; canEdit:
       certificate_number: '',
       expiry_date: '',
       notes: '',
+      crew: '',
+      location: '',
+      session_time: '',
       ...defaults,
     });
   };
@@ -8027,6 +8062,9 @@ function EmployeeTrainingSection({ userId, canEdit }: { userId: string; canEdit:
       certificate_number: r.certificate_number || '',
       expiry_date: r.expiry_date ? String(r.expiry_date).slice(0, 10) : '',
       notes: r.notes || '',
+      crew: r.crew != null ? String(r.crew) : '',
+      location: r.location != null ? String(r.location) : '',
+      session_time: r.session_time != null ? String(r.session_time) : '',
     });
     setModalOpen(true);
   };
@@ -8042,6 +8080,8 @@ function EmployeeTrainingSection({ userId, canEdit }: { userId: string; canEdit:
     if (form.duration_hours.trim() !== '' && Number.isNaN(duration_hours)) {
       throw new Error('Invalid duration (hours)');
     }
+    const needsCompletion = form.status === 'completed' || form.status === 'expired';
+    const cdTrim = form.completion_date.trim();
     return {
       title: form.title.trim(),
       provider: form.provider.trim() || undefined,
@@ -8049,12 +8089,15 @@ function EmployeeTrainingSection({ userId, canEdit }: { userId: string; canEdit:
       delivery_format: form.delivery_format.trim() || undefined,
       start_date: form.start_date || undefined,
       end_date: form.end_date || undefined,
-      completion_date: form.completion_date,
+      completion_date: (needsCompletion ? cdTrim : cdTrim || null) as string | null,
       duration_hours,
       status: form.status || 'completed',
       certificate_number: form.certificate_number.trim() || undefined,
       expiry_date: form.expiry_date || undefined,
       notes: form.notes.trim() || undefined,
+      crew: form.crew.trim() || undefined,
+      location: form.location.trim() || undefined,
+      session_time: form.session_time.trim() || undefined,
     };
   };
 
@@ -8064,8 +8107,9 @@ function EmployeeTrainingSection({ userId, canEdit }: { userId: string; canEdit:
       toast.error('Title is required');
       return;
     }
-    if (!form.completion_date) {
-      toast.error('Completion date is required');
+    const needsCompletion = form.status === 'completed' || form.status === 'expired';
+    if (needsCompletion && !form.completion_date.trim()) {
+      toast.error('Completion date is required for completed or expired records');
       return;
     }
     let payload: Record<string, unknown>;
@@ -8142,7 +8186,8 @@ function EmployeeTrainingSection({ userId, canEdit }: { userId: string; canEdit:
         )}
       </div>
       <p className="text-sm text-gray-500">
-        Manual training and certification history for this employee (not linked to the LMS).
+        Manual training and certification history for this employee (not linked to the LMS). Use{' '}
+        <strong>Start date</strong> for scheduled or in-progress items so they appear on the team training calendar.
       </p>
 
       {isLoading ? (
@@ -8157,6 +8202,8 @@ function EmployeeTrainingSection({ userId, canEdit }: { userId: string; canEdit:
                 <th className="text-left py-2 px-3 font-semibold text-xs">Title</th>
                 <th className="text-left py-2 px-3 font-semibold text-xs">Provider</th>
                 <th className="text-left py-2 px-3 font-semibold text-xs">Category</th>
+                <th className="text-left py-2 px-3 font-semibold text-xs">Crew</th>
+                <th className="text-left py-2 px-3 font-semibold text-xs">Start</th>
                 <th className="text-left py-2 px-3 font-semibold text-xs">Completed</th>
                 <th className="text-left py-2 px-3 font-semibold text-xs">Hours</th>
                 <th className="text-left py-2 px-3 font-semibold text-xs">Status</th>
@@ -8170,6 +8217,10 @@ function EmployeeTrainingSection({ userId, canEdit }: { userId: string; canEdit:
                   <td className="py-2 px-3 font-medium text-gray-900">{r.title}</td>
                   <td className="py-2 px-3">{r.provider || '—'}</td>
                   <td className="py-2 px-3">{r.category || '—'}</td>
+                  <td className="py-2 px-3 max-w-[100px] truncate" title={r.crew || ''}>
+                    {r.crew || '—'}
+                  </td>
+                  <td className="py-2 px-3">{fmtDate(r.start_date)}</td>
                   <td className="py-2 px-3">{fmtDate(r.completion_date)}</td>
                   <td className="py-2 px-3">{r.duration_hours != null ? r.duration_hours : '—'}</td>
                   <td className="py-2 px-3 capitalize">{r.status || '—'}</td>
@@ -8259,6 +8310,35 @@ function EmployeeTrainingSection({ userId, canEdit }: { userId: string; canEdit:
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Crew</label>
+                  <input
+                    value={form.crew}
+                    onChange={(e) => setForm((f) => ({ ...f, crew: e.target.value }))}
+                    className="w-full border rounded-lg px-3 py-2"
+                    placeholder="e.g. Repairs, Metal, Office"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Location</label>
+                  <input
+                    value={form.location}
+                    onChange={(e) => setForm((f) => ({ ...f, location: e.target.value }))}
+                    className="w-full border rounded-lg px-3 py-2"
+                    placeholder="Address or room"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Time</label>
+                  <input
+                    value={form.session_time}
+                    onChange={(e) => setForm((f) => ({ ...f, session_time: e.target.value }))}
+                    className="w-full border rounded-lg px-3 py-2"
+                    placeholder="e.g. 8:30 AM – 4:30 PM"
+                  />
+                </div>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Start date</label>
                   <input
                     type="date"
@@ -8277,13 +8357,14 @@ function EmployeeTrainingSection({ userId, canEdit }: { userId: string; canEdit:
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Completion date *</label>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Completion date {(form.status === 'completed' || form.status === 'expired') && '*'}
+                  </label>
                   <input
                     type="date"
                     value={form.completion_date}
                     onChange={(e) => setForm((f) => ({ ...f, completion_date: e.target.value }))}
                     className="w-full border rounded-lg px-3 py-2"
-                    required
                   />
                 </div>
               </div>
@@ -8303,7 +8384,18 @@ function EmployeeTrainingSection({ userId, canEdit }: { userId: string; canEdit:
                   <label className="block text-sm font-medium text-gray-700 mb-1">Status</label>
                   <select
                     value={form.status}
-                    onChange={(e) => setForm((f) => ({ ...f, status: e.target.value }))}
+                    onChange={(e) => {
+                      const ns = e.target.value;
+                      setForm((f) => {
+                        let cd = f.completion_date;
+                        if (ns === 'scheduled' || ns === 'in_progress') {
+                          cd = '';
+                        } else if ((ns === 'completed' || ns === 'expired') && !cd) {
+                          cd = new Date().toISOString().slice(0, 10);
+                        }
+                        return { ...f, status: ns, completion_date: cd };
+                      });
+                    }}
                     className="w-full border rounded-lg px-3 py-2"
                   >
                     {TRAINING_STATUSES.map((s) => (

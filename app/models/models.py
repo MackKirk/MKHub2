@@ -897,12 +897,16 @@ class EmployeeTrainingRecord(Base):
     delivery_format: Mapped[Optional[str]] = mapped_column(String(50))  # in_person | online | hybrid
     start_date: Mapped[Optional[Date]] = mapped_column(Date)
     end_date: Mapped[Optional[Date]] = mapped_column(Date)
-    completion_date: Mapped[Date] = mapped_column(Date, nullable=False)
+    completion_date: Mapped[Optional[Date]] = mapped_column(Date)  # required when status is completed/expired
     duration_hours: Mapped[Optional[float]] = mapped_column(Numeric(10, 2))
     status: Mapped[str] = mapped_column(String(50), default="completed")  # completed | in_progress | scheduled | expired
     certificate_number: Mapped[Optional[str]] = mapped_column(String(255))
     expiry_date: Mapped[Optional[Date]] = mapped_column(Date)
     notes: Mapped[Optional[str]] = mapped_column(Text)
+    # Safety / training schedule (spreadsheet-style: crew, location, session time)
+    crew: Mapped[Optional[str]] = mapped_column(String(200))
+    location: Mapped[Optional[str]] = mapped_column(String(500))
+    session_time: Mapped[Optional[str]] = mapped_column(String(120))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
     updated_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
     created_by_user_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"))

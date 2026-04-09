@@ -79,6 +79,7 @@ import TrainingCourse from './pages/TrainingCourse';
 import TrainingCertificates from './pages/TrainingCertificates';
 import TrainingAdmin from './pages/TrainingAdmin';
 import TrainingCourseEdit from './pages/TrainingCourseEdit';
+import TrainingLearningDashboard from './pages/TrainingLearningDashboard';
 import SystemAdmin from './pages/SystemAdmin';
 import Attendance from './pages/Attendance';
 import Notifications from './pages/Notifications';
@@ -205,6 +206,8 @@ export default function App(){
           <Route path="/training" element={<AppShell><Training/></AppShell>} />
           <Route path="/training/:courseId" element={<AppShell><TrainingCourse/></AppShell>} />
           <Route path="/training/certificates" element={<AppShell><TrainingCertificates/></AppShell>} />
+          <Route path="/training/dashboard" element={<AppShell><TrainingLearningDashboard /></AppShell>} />
+          <Route path="/training/hr-records" element={<Navigate to="/training/dashboard" replace />} />
           <Route path="/training/admin" element={<AppShell><TrainingAdmin/></AppShell>} />
           <Route path="/training/admin/new" element={<AppShell><TrainingCourseEdit/></AppShell>} />
           <Route path="/training/admin/:courseId" element={<AppShell><TrainingCourseEdit/></AppShell>} />

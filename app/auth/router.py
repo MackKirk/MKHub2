@@ -1,8 +1,8 @@
 import uuid
-from datetime import datetime, timedelta, timezone
-from typing import Optional
+from datetime import date, datetime, timedelta, timezone
+from typing import Optional, Tuple
 
-from fastapi import APIRouter, Depends, HTTPException, status, Body, Request
+from fastapi import APIRouter, Depends, HTTPException, Query, status, Body, Request
 from sqlalchemy.orm import Session
 from slugify import slugify
 
@@ -43,7 +43,7 @@ from email.mime.multipart import MIMEMultipart
 from email.message import EmailMessage
 import secrets
 import html as html_module
-from sqlalchemy import and_, func
+from sqlalchemy import and_, asc, desc, func, nullslast, or_
 import random
 
 
@@ -2528,10 +2528,53 @@ def _training_row(r):
         "certificate_number": r.certificate_number,
         "expiry_date": r.expiry_date.isoformat() if r.expiry_date else None,
         "notes": r.notes,
+        "crew": getattr(r, "crew", None),
+        "location": getattr(r, "location", None),
+        "session_time": getattr(r, "session_time", None),
         "created_at": r.created_at.isoformat() if r.created_at else None,
         "updated_at": r.updated_at.isoformat() if r.updated_at else None,
         "created_by_user_id": str(r.created_by_user_id) if r.created_by_user_id else None,
     }
+
+
+def _training_hr_aggregate_can_view(user: User) -> bool:
+    return (
+        _has_permission(user, "users:read")
+        or _has_permission(user, "hr:users:read")
+        or _has_permission(user, "hr:users:view:general")
+        or _has_permission(user, "users:write")
+        or _has_permission(user, "hr:users:edit:general")
+    )
+
+
+def _employee_display_name(profile: Optional[EmployeeProfile], user: User) -> str:
+    if profile:
+        pn = (profile.preferred_name or "").strip()
+        ln = (profile.last_name or "").strip()
+        if pn:
+            return f"{pn} {ln}".strip() if ln else pn
+        fn = (profile.first_name or "").strip()
+        if fn or ln:
+            return f"{fn} {ln}".strip()
+    return (user.username or "").strip() or str(user.id)
+
+
+def _training_calendar_span(r) -> Optional[Tuple[date, date]]:
+    st = (r.status or "completed").strip().lower()
+    if st in ("scheduled", "in_progress"):
+        if not r.start_date:
+            return None
+        end_d = r.end_date or r.start_date
+        return (r.start_date, end_d)
+    if st in ("completed", "expired"):
+        if r.start_date and r.end_date:
+            return (r.start_date, r.end_date)
+        if r.completion_date:
+            return (r.completion_date, r.completion_date)
+        if r.start_date:
+            return (r.start_date, r.start_date)
+        return None
+    return None
 
 
 @router.get("/users/{user_id}/training-records")
@@ -2543,7 +2586,7 @@ def list_training_records(user_id: str, db: Session = Depends(get_db), user: Use
     rows = (
         db.query(EmployeeTrainingRecord)
         .filter(EmployeeTrainingRecord.user_id == user_id)
-        .order_by(EmployeeTrainingRecord.completion_date.desc(), EmployeeTrainingRecord.created_at.desc())
+        .order_by(nullslast(desc(EmployeeTrainingRecord.completion_date)), desc(EmployeeTrainingRecord.created_at))
         .all()
     )
     return [_training_row(r) for r in rows]
@@ -2579,6 +2622,9 @@ def create_training_record(
         certificate_number=(payload.certificate_number or "").strip() or None,
         expiry_date=payload.expiry_date,
         notes=payload.notes,
+        crew=(payload.crew or "").strip() or None,
+        location=(payload.location or "").strip() or None,
+        session_time=(payload.session_time or "").strip() or None,
         created_at=now,
         updated_at=now,
         created_by_user_id=user.id,
@@ -2624,6 +2670,9 @@ def update_training_record(
         "certificate_number",
         "expiry_date",
         "notes",
+        "crew",
+        "location",
+        "session_time",
     ):
         if key in data:
             val = data[key]
@@ -2631,17 +2680,312 @@ def update_training_record(
                 val = str(val).strip()
             elif key in ("provider", "category", "delivery_format", "certificate_number") and val is not None:
                 val = str(val).strip() or None
+            elif key in ("crew", "location", "session_time") and val is not None:
+                val = str(val).strip() or None
             setattr(r, key, val)
     sd = r.start_date
     ed = r.end_date
     if sd and ed and ed < sd:
         raise HTTPException(status_code=400, detail="end_date must be on or after start_date")
 
+    fst = (r.status or "completed").strip().lower()
+    if fst in ("completed", "expired") and r.completion_date is None:
+        raise HTTPException(
+            status_code=400, detail="completion_date is required when status is completed or expired"
+        )
+
     r.updated_at = datetime.now(timezone.utc)
     r.updated_by_user_id = user.id
     db.commit()
     db.refresh(r)
     return _training_row(r)
+
+
+@router.get("/training-records/calendar")
+def training_records_calendar(
+    start: str = Query(..., description="Range start YYYY-MM-DD"),
+    end: str = Query(..., description="Range end YYYY-MM-DD"),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    if not _training_hr_aggregate_can_view(user):
+        raise HTTPException(status_code=403, detail="Forbidden")
+    from ..models.models import EmployeeTrainingRecord
+
+    try:
+        start_d = date.fromisoformat(start[:10])
+        end_d = date.fromisoformat(end[:10])
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid start or end date")
+    if end_d < start_d:
+        raise HTTPException(status_code=400, detail="end must be on or after start")
+
+    pending_cond = and_(
+        EmployeeTrainingRecord.status.in_(["scheduled", "in_progress"]),
+        EmployeeTrainingRecord.start_date.isnot(None),
+        EmployeeTrainingRecord.start_date <= end_d,
+        func.coalesce(EmployeeTrainingRecord.end_date, EmployeeTrainingRecord.start_date) >= start_d,
+    )
+    done_cond = and_(
+        EmployeeTrainingRecord.status.in_(["completed", "expired"]),
+        or_(
+            and_(
+                EmployeeTrainingRecord.start_date.isnot(None),
+                EmployeeTrainingRecord.end_date.isnot(None),
+                EmployeeTrainingRecord.start_date <= end_d,
+                EmployeeTrainingRecord.end_date >= start_d,
+            ),
+            and_(
+                EmployeeTrainingRecord.completion_date.isnot(None),
+                EmployeeTrainingRecord.completion_date >= start_d,
+                EmployeeTrainingRecord.completion_date <= end_d,
+            ),
+            and_(
+                EmployeeTrainingRecord.start_date.isnot(None),
+                EmployeeTrainingRecord.end_date.is_(None),
+                EmployeeTrainingRecord.completion_date.is_(None),
+                EmployeeTrainingRecord.start_date >= start_d,
+                EmployeeTrainingRecord.start_date <= end_d,
+            ),
+        ),
+    )
+
+    rows = (
+        db.query(EmployeeTrainingRecord, User, EmployeeProfile)
+        .join(User, User.id == EmployeeTrainingRecord.user_id)
+        .outerjoin(EmployeeProfile, EmployeeProfile.user_id == User.id)
+        .filter(or_(pending_cond, done_cond))
+        .all()
+    )
+
+    out = []
+    for r, u, prof in rows:
+        span = _training_calendar_span(r)
+        if not span:
+            continue
+        rs, re = span
+        if rs > end_d or re < start_d:
+            continue
+        out.append(
+            {
+                "id": str(r.id),
+                "user_id": str(r.user_id),
+                "employee_name": _employee_display_name(prof, u),
+                "title": r.title,
+                "status": r.status or "completed",
+                "event_start": rs.isoformat(),
+                "event_end": re.isoformat(),
+                "provider": r.provider,
+                "category": r.category,
+            }
+        )
+    out.sort(key=lambda x: (x["event_start"], x["employee_name"], x["title"]))
+    return out
+
+
+@router.get("/training-records/summary/by-year")
+def training_records_summary_by_year(
+    year: int = Query(..., ge=1990, le=2100),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    if not _training_hr_aggregate_can_view(user):
+        raise HTTPException(status_code=403, detail="Forbidden")
+    from ..models.models import EmployeeTrainingRecord
+
+    ys = date(year, 1, 1)
+    ye = date(year, 12, 31)
+    cond = or_(
+        and_(
+            EmployeeTrainingRecord.completion_date.isnot(None),
+            EmployeeTrainingRecord.completion_date >= ys,
+            EmployeeTrainingRecord.completion_date <= ye,
+        ),
+        and_(
+            EmployeeTrainingRecord.start_date.isnot(None),
+            EmployeeTrainingRecord.start_date >= ys,
+            EmployeeTrainingRecord.start_date <= ye,
+        ),
+        and_(
+            EmployeeTrainingRecord.end_date.isnot(None),
+            EmployeeTrainingRecord.end_date >= ys,
+            EmployeeTrainingRecord.end_date <= ye,
+        ),
+        and_(
+            EmployeeTrainingRecord.start_date.isnot(None),
+            EmployeeTrainingRecord.end_date.isnot(None),
+            EmployeeTrainingRecord.start_date <= ye,
+            EmployeeTrainingRecord.end_date >= ys,
+        ),
+    )
+
+    rows = (
+        db.query(EmployeeTrainingRecord, User, EmployeeProfile)
+        .join(User, User.id == EmployeeTrainingRecord.user_id)
+        .outerjoin(EmployeeProfile, EmployeeProfile.user_id == User.id)
+        .filter(cond)
+        .order_by(
+            nullslast(desc(EmployeeTrainingRecord.completion_date)),
+            nullslast(desc(EmployeeTrainingRecord.start_date)),
+        )
+        .all()
+    )
+
+    return [
+        {
+            **_training_row(r),
+            "employee_name": _employee_display_name(prof, u),
+        }
+        for r, u, prof in rows
+    ]
+
+
+@router.get("/training-records/summary/recent")
+def training_records_summary_recent(
+    limit: int = Query(25, ge=1, le=100),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Latest training record changes (for dashboard sidebar)."""
+    if not _training_hr_aggregate_can_view(user):
+        raise HTTPException(status_code=403, detail="Forbidden")
+    from ..models.models import EmployeeTrainingRecord
+
+    rows = (
+        db.query(EmployeeTrainingRecord, User, EmployeeProfile)
+        .join(User, User.id == EmployeeTrainingRecord.user_id)
+        .outerjoin(EmployeeProfile, EmployeeProfile.user_id == User.id)
+        .order_by(
+            nullslast(desc(EmployeeTrainingRecord.updated_at)),
+            desc(EmployeeTrainingRecord.created_at),
+        )
+        .limit(limit)
+        .all()
+    )
+
+    return [
+        {
+            **_training_row(r),
+            "employee_name": _employee_display_name(prof, u),
+        }
+        for r, u, prof in rows
+    ]
+
+
+@router.get("/training-records/summary/schedule")
+def training_records_summary_schedule(
+    year: int = Query(..., ge=1990, le=2100),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Full schedule-style list for a year (matches Safety Review / Training Schedule spreadsheet columns)."""
+    if not _training_hr_aggregate_can_view(user):
+        raise HTTPException(status_code=403, detail="Forbidden")
+    from ..models.models import EmployeeTrainingRecord
+
+    ys = date(year, 1, 1)
+    ye = date(year, 12, 31)
+    cond = or_(
+        and_(
+            EmployeeTrainingRecord.completion_date.isnot(None),
+            EmployeeTrainingRecord.completion_date >= ys,
+            EmployeeTrainingRecord.completion_date <= ye,
+        ),
+        and_(
+            EmployeeTrainingRecord.start_date.isnot(None),
+            EmployeeTrainingRecord.start_date >= ys,
+            EmployeeTrainingRecord.start_date <= ye,
+        ),
+        and_(
+            EmployeeTrainingRecord.end_date.isnot(None),
+            EmployeeTrainingRecord.end_date >= ys,
+            EmployeeTrainingRecord.end_date <= ye,
+        ),
+        and_(
+            EmployeeTrainingRecord.start_date.isnot(None),
+            EmployeeTrainingRecord.end_date.isnot(None),
+            EmployeeTrainingRecord.start_date <= ye,
+            EmployeeTrainingRecord.end_date >= ys,
+        ),
+    )
+
+    rows = (
+        db.query(EmployeeTrainingRecord, User, EmployeeProfile)
+        .join(User, User.id == EmployeeTrainingRecord.user_id)
+        .outerjoin(EmployeeProfile, EmployeeProfile.user_id == User.id)
+        .filter(cond)
+        .order_by(
+            nullslast(
+                asc(
+                    func.coalesce(
+                        EmployeeTrainingRecord.start_date,
+                        EmployeeTrainingRecord.completion_date,
+                        EmployeeTrainingRecord.end_date,
+                    )
+                )
+            ),
+            asc(EmployeeTrainingRecord.title),
+            asc(EmployeeTrainingRecord.id),
+        )
+        .all()
+    )
+
+    return [
+        {
+            **_training_row(r),
+            "employee_name": _employee_display_name(prof, u),
+        }
+        for r, u, prof in rows
+    ]
+
+
+@router.get("/training-records/summary/expiring")
+def training_records_summary_expiring(
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    if not _training_hr_aggregate_can_view(user):
+        raise HTTPException(status_code=403, detail="Forbidden")
+    from ..models.models import EmployeeTrainingRecord
+
+    today = datetime.now(timezone.utc).date()
+    rows = (
+        db.query(EmployeeTrainingRecord, User, EmployeeProfile)
+        .join(User, User.id == EmployeeTrainingRecord.user_id)
+        .outerjoin(EmployeeProfile, EmployeeProfile.user_id == User.id)
+        .filter(EmployeeTrainingRecord.expiry_date.isnot(None))
+        .all()
+    )
+
+    alerts = []
+    expired = []
+    for r, u, prof in rows:
+        ex = r.expiry_date
+        if ex is None:
+            continue
+        base = {
+            **_training_row(r),
+            "employee_name": _employee_display_name(prof, u),
+        }
+        if ex < today:
+            days_past = (today - ex).days
+            if days_past <= 365:
+                expired.append({**base, "days_since_expiry": days_past})
+            continue
+        days_until = (ex - today).days
+        if days_until > 90:
+            continue
+        if 61 <= days_until <= 90:
+            urgency = "green"
+        elif 31 <= days_until <= 60:
+            urgency = "yellow"
+        else:
+            urgency = "red"
+        alerts.append({**base, "days_until_expiry": days_until, "urgency": urgency})
+
+    alerts.sort(key=lambda x: (x["expiry_date"], x["employee_name"]))
+    expired.sort(key=lambda x: x["expiry_date"], reverse=True)
+    return {"alerts": alerts, "expired": expired}
 
 
 @router.delete("/users/{user_id}/training-records/{record_id}")
