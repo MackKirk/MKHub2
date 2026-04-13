@@ -2977,7 +2977,7 @@ function UserDocuments({ userId, canEdit }:{ userId:string, canEdit:boolean }){
   useEffect(() => {
     if (!canEdit || !folders || folders.length > 0 || defaultFoldersCreatedRef.current) return;
     defaultFoldersCreatedRef.current = true;
-    const names = ['HR Documents', 'Contracts', 'Training', 'Other'];
+    const names = ['HR Documents', 'Contracts', 'Training', 'Training certificates', 'Other'];
     (async () => {
       for (const name of names) {
         try { await api('POST', `/auth/users/${encodeURIComponent(userId)}/folders`, { name }); } catch (_) { /* ignore */ }
