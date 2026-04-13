@@ -1,14 +1,21 @@
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useMemo, useState } from 'react';
 import toast from 'react-hot-toast';
 import { api, withFileAccessToken } from '@/lib/api';
 import ImageEditor from '@/components/ImageEditor';
 import OverlayPortal from '@/components/OverlayPortal';
+import { useConfirm } from '@/components/ConfirmProvider';
 
 export type ClientFileForFiles = { id: string; file_object_id: string; is_image?: boolean; content_type?: string; category?: string; original_name?: string; uploaded_at?: string; site_id?: string };
 
+type ClientDeletedFile = ClientFileForFiles & { deleted_at?: string | null; deleted_by_id?: string | null };
+
 export function CustomerFilesTabEnhanced({ clientId, files, onRefresh, hasEditPermission }: { clientId: string; files: ClientFileForFiles[]; onRefresh: () => any; hasEditPermission?: boolean }) {
+  const queryClient = useQueryClient();
+  const confirm = useConfirm();
   const canEditFiles = !!hasEditPermission;
+  /** Admin-only: Library vs soft-deleted customer files (same pattern as project Files tab). */
+  const [filesSection, setFilesSection] = useState<'active' | 'deleted'>('active');
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
   const [isDragging, setIsDragging] = useState(false);
   const [draggedFileId, setDraggedFileId] = useState<string | null>(null);
@@ -22,6 +29,21 @@ export function CustomerFilesTabEnhanced({ clientId, files, onRefresh, hasEditPe
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
   const [editingFileNameId, setEditingFileNameId] = useState<string | null>(null);
   const [editingFileNameValue, setEditingFileNameValue] = useState('');
+  const [moveModalFileId, setMoveModalFileId] = useState<string | null>(null);
+  const [moveModalCategory, setMoveModalCategory] = useState<string>('uncategorized');
+
+  const { data: me } = useQuery({ queryKey: ['me'], queryFn: () => api<any>('GET', '/auth/me') });
+  const isAdmin = (me?.roles || []).includes('admin');
+
+  const { data: deletedFiles = [], refetch: refetchDeletedFiles } = useQuery({
+    queryKey: ['clientDeletedFiles', clientId],
+    queryFn: () => api<ClientDeletedFile[]>('GET', `/clients/${encodeURIComponent(clientId)}/files/deleted`),
+    enabled: !!clientId && isAdmin && filesSection === 'deleted',
+  });
+
+  useEffect(() => {
+    if (!isAdmin && filesSection === 'deleted') setFilesSection('active');
+  }, [isAdmin, filesSection]);
 
   const { data: categories } = useQuery({
     queryKey: ['file-categories'],
@@ -195,14 +217,50 @@ export function CustomerFilesTabEnhanced({ clientId, files, onRefresh, hasEditPe
   };
 
   const handleDeleteFile = async (fileId: string) => {
-    if (!confirm('Delete this file?')) return;
+    const result = await confirm({
+      title: 'Delete file',
+      message: 'Are you sure you want to remove this file from the library?',
+      confirmText: 'Delete',
+      cancelText: 'Cancel',
+    });
+    if (result !== 'confirm') return;
     try {
       if (!canEditFiles) return;
       await api('DELETE', `/clients/${clientId}/files/${fileId}`);
+      await queryClient.invalidateQueries({ queryKey: ['clientDeletedFiles', clientId] });
       await onRefresh();
-      toast.success('File deleted');
+      toast.success('Removed from library');
     } catch {
       toast.error('Failed to delete file');
+    }
+  };
+
+  const handlePermanentDeleteFile = async (fileId: string) => {
+    const result = await confirm({
+      title: 'Delete permanently',
+      message: 'Permanently delete this file from storage? This cannot be undone.',
+      confirmText: 'Delete permanently',
+      cancelText: 'Cancel',
+    });
+    if (result !== 'confirm') return;
+    try {
+      await api('DELETE', `/clients/${encodeURIComponent(clientId)}/files/deleted/${encodeURIComponent(fileId)}`);
+      await refetchDeletedFiles();
+      await onRefresh();
+      toast.success('File permanently deleted');
+    } catch {
+      toast.error('Failed to delete file');
+    }
+  };
+
+  const handleRestoreDeletedFile = async (fileId: string) => {
+    try {
+      await api('POST', `/clients/${encodeURIComponent(clientId)}/files/deleted/${encodeURIComponent(fileId)}/restore`);
+      await refetchDeletedFiles();
+      await onRefresh();
+      toast.success('File restored to library');
+    } catch {
+      toast.error('Failed to restore file');
     }
   };
 
@@ -233,17 +291,175 @@ export function CustomerFilesTabEnhanced({ clientId, files, onRefresh, hasEditPe
     setEditingFileNameValue(f.original_name || f.file_object_id || '');
   };
 
+  const openMoveCategoryModal = (fileId: string) => {
+    const f = files.find((x) => x.id === fileId);
+    const cat = f?.category;
+    if (!cat || cat === 'uncategorized') {
+      setMoveModalCategory('uncategorized');
+    } else if (visibleCategories.some((c: any) => c.id === cat)) {
+      setMoveModalCategory(cat);
+    } else {
+      setMoveModalCategory('uncategorized');
+    }
+    setMoveModalFileId(fileId);
+  };
+
   return (
     <div className="space-y-4">
       <div className="rounded-xl border bg-white p-4">
-        <div className="flex items-center gap-2 mb-4">
-          <div className="w-8 h-8 rounded bg-blue-100 flex items-center justify-center">
-            <svg className="w-5 h-5 text-blue-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
-            </svg>
+        <div className="flex flex-wrap items-center justify-between gap-2 mb-4">
+          <div className="flex items-center gap-2">
+            <div className="w-8 h-8 rounded bg-blue-100 flex items-center justify-center">
+              <svg className="w-5 h-5 text-blue-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
+              </svg>
+            </div>
+            <h2 className="text-sm font-semibold text-gray-900">Files</h2>
           </div>
-          <h2 className="text-sm font-semibold text-gray-900">Files</h2>
+          {isAdmin && (
+            <div className="flex rounded-lg border border-gray-200 p-0.5 bg-gray-50" role="tablist" aria-label="File views">
+              <button
+                type="button"
+                role="tab"
+                aria-selected={filesSection === 'active'}
+                onClick={() => setFilesSection('active')}
+                className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${
+                  filesSection === 'active' ? 'bg-white shadow text-gray-900' : 'text-gray-600 hover:text-gray-900'
+                }`}
+              >
+                Library
+              </button>
+              <button
+                type="button"
+                role="tab"
+                aria-selected={filesSection === 'deleted'}
+                onClick={() => setFilesSection('deleted')}
+                className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${
+                  filesSection === 'deleted' ? 'bg-white shadow text-gray-900' : 'text-gray-600 hover:text-gray-900'
+                }`}
+              >
+                Deleted files
+              </button>
+            </div>
+          )}
         </div>
+
+        {isAdmin && filesSection === 'deleted' ? (
+          <div className="rounded-xl border border-amber-100 bg-amber-50/50 overflow-hidden">
+            <p className="text-xs text-amber-900 px-3 py-2 border-b border-amber-100/80">
+              Same previews and downloads as the library. Restore returns the file to the customer library, or delete permanently to remove it from storage.
+            </p>
+            <div className="flex h-[calc(100vh-400px)] bg-white">
+              <div className="flex-1 overflow-y-auto p-4">
+                {Array.isArray(deletedFiles) && deletedFiles.length > 0 ? (
+                  <div className="overflow-x-auto rounded-lg border border-gray-200">
+                    <table className="w-full">
+                      <thead className="bg-gray-50 border-b">
+                        <tr>
+                          <th className="px-3 py-2 text-left text-[10px] font-semibold text-gray-700 w-12" aria-hidden />
+                          <th className="px-3 py-2 text-left text-[10px] font-semibold text-gray-700">Name</th>
+                          <th className="px-3 py-2 text-left text-[10px] font-semibold text-gray-700">Type</th>
+                          <th className="px-3 py-2 text-left text-[10px] font-semibold text-gray-700">Category</th>
+                          <th className="px-3 py-2 text-left text-[10px] font-semibold text-gray-700">Removed</th>
+                          <th className="px-3 py-2 text-left text-[10px] font-semibold text-gray-700 w-52">Actions</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y">
+                        {deletedFiles.map((df) => {
+                          const icon = iconFor(df);
+                          const isImg = df.is_image || String(df.content_type || '').startsWith('image/');
+                          const name = df.original_name || df.file_object_id;
+                          const pf = df as ClientFileForFiles;
+                          return (
+                            <tr key={df.id} className="hover:bg-gray-50">
+                              <td className="px-3 py-2">
+                                {isImg ? (
+                                  <button
+                                    type="button"
+                                    className="w-10 h-10 rounded-lg overflow-hidden bg-gray-100 flex-shrink-0 block"
+                                    onClick={() => handleFilePreview(pf)}
+                                    title="Preview"
+                                  >
+                                    <img
+                                      src={withFileAccessToken(`/files/${df.file_object_id}/thumbnail?w=64`)}
+                                      alt={name}
+                                      className="w-full h-full object-cover"
+                                    />
+                                  </button>
+                                ) : (
+                                  <button
+                                    type="button"
+                                    className={`w-8 h-10 rounded-lg ${icon.color} text-white flex items-center justify-center text-[10px] font-extrabold`}
+                                    onClick={() => handleFilePreview(pf)}
+                                    title="Open / preview"
+                                  >
+                                    {icon.label}
+                                  </button>
+                                )}
+                              </td>
+                              <td className="px-3 py-2">
+                                <button
+                                  type="button"
+                                  className="text-xs font-semibold text-left text-gray-900 truncate max-w-xs hover:text-brand-red"
+                                  onClick={() => handleFilePreview(pf)}
+                                >
+                                  {name}
+                                </button>
+                              </td>
+                              <td className="px-3 py-2 text-xs text-gray-600">{getFileTypeLabel(df)}</td>
+                              <td className="px-3 py-2 text-xs text-gray-600">{df.category || '—'}</td>
+                              <td className="px-3 py-2 text-xs text-gray-600">
+                                {df.deleted_at ? new Date(df.deleted_at).toLocaleString() : '—'}
+                              </td>
+                              <td className="px-3 py-2">
+                                <div className="flex flex-wrap items-center gap-1">
+                                  <button
+                                    type="button"
+                                    onClick={async () => {
+                                      const url = await fetchDownloadUrl(df.file_object_id);
+                                      if (url) window.open(url, '_blank');
+                                    }}
+                                    title="Download"
+                                    className="p-1 rounded hover:bg-gray-100 text-xs"
+                                  >
+                                    ⬇️
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleRestoreDeletedFile(df.id)}
+                                    title="Restore to library"
+                                    className="px-2 py-1 rounded bg-emerald-600 text-white text-[10px] font-medium hover:bg-emerald-700"
+                                  >
+                                    Restore
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => handlePermanentDeleteFile(df.id)}
+                                    title="Delete permanently"
+                                    className="px-2 py-1 rounded border border-red-200 text-red-700 text-[10px] font-medium hover:bg-red-50"
+                                  >
+                                    Purge
+                                  </button>
+                                </div>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                ) : (
+                  <div className="flex flex-col items-center justify-center py-16 text-gray-500 text-sm">
+                    <div className="text-2xl mb-2">📁</div>
+                    <div>No deleted files for this customer.</div>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        ) : null}
+
+        {!(isAdmin && filesSection === 'deleted') && (
         <div className="rounded-xl border bg-white overflow-hidden">
           <div className="flex h-[calc(100vh-400px)]">
             <div className="w-64 border-r bg-gray-50 flex flex-col">
@@ -408,7 +624,7 @@ export function CustomerFilesTabEnhanced({ clientId, files, onRefresh, hasEditPe
                                   )}
                                   {canEditFiles && (
                                     <>
-                                      <button onClick={(e) => { e.stopPropagation(); const newCat = prompt('Move to category (leave empty for uncategorized):'); if (newCat !== null) handleMoveFile(f.id, newCat || 'uncategorized'); }} title="Move to category" className="p-1 rounded hover:bg-gray-100 text-xs">📦</button>
+                                      <button onClick={(e) => { e.stopPropagation(); openMoveCategoryModal(f.id); }} title="Move to category" className="p-1 rounded hover:bg-gray-100 text-xs">📦</button>
                                       <button onClick={(e) => { e.stopPropagation(); handleDeleteFile(f.id); }} title="Delete" className="p-1 rounded hover:bg-red-50 text-red-600 text-xs">🗑️</button>
                                     </>
                                   )}
@@ -431,6 +647,7 @@ export function CustomerFilesTabEnhanced({ clientId, files, onRefresh, hasEditPe
             </div>
           </div>
         </div>
+        )}
       </div>
       {showUpload && (
         <OverlayPortal><div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50" onClick={(e) => e.target === e.currentTarget && setShowUpload(false)}>
@@ -448,6 +665,64 @@ export function CustomerFilesTabEnhanced({ clientId, files, onRefresh, hasEditPe
             </div>
           </div>
         </div></OverlayPortal>
+      )}
+      {moveModalFileId && (
+        <OverlayPortal>
+          <div
+            className="fixed inset-0 z-50 flex items-center justify-center bg-black/40"
+            onClick={(e) => e.target === e.currentTarget && setMoveModalFileId(null)}
+            role="presentation"
+          >
+            <div
+              className="w-[480px] max-w-[95vw] bg-white rounded-xl border border-gray-200 shadow-lg overflow-hidden"
+              onClick={(e) => e.stopPropagation()}
+              role="dialog"
+              aria-labelledby="move-category-title"
+            >
+              <div id="move-category-title" className="px-4 py-3 border-b border-gray-200 text-sm font-semibold text-gray-900">
+                Move to category
+              </div>
+              <div className="p-4 text-xs text-gray-700">
+                <label htmlFor="move-category-select" className="block mb-2 font-medium text-gray-800">
+                  Category
+                </label>
+                <select
+                  id="move-category-select"
+                  value={moveModalCategory}
+                  onChange={(e) => setMoveModalCategory(e.target.value)}
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900 bg-white"
+                >
+                  <option value="uncategorized">Uncategorized</option>
+                  {visibleCategories.map((cat: any) => (
+                    <option key={cat.id} value={cat.id}>
+                      {cat.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="p-4 flex items-center justify-end gap-2 border-t border-gray-200">
+                <button
+                  type="button"
+                  className="rounded-lg px-3 py-2 border border-gray-300 text-xs font-medium text-gray-700 bg-white hover:bg-gray-50 transition-all"
+                  onClick={() => setMoveModalFileId(null)}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  className="rounded-lg px-3 py-2 bg-brand-red text-white text-xs font-medium hover:opacity-90 transition-all"
+                  onClick={async () => {
+                    if (!moveModalFileId) return;
+                    await handleMoveFile(moveModalFileId, moveModalCategory);
+                    setMoveModalFileId(null);
+                  }}
+                >
+                  Move
+                </button>
+              </div>
+            </div>
+          </div>
+        </OverlayPortal>
       )}
       {uploadQueue.length > 0 && (
         <div className="fixed bottom-4 right-4 bg-white rounded-lg shadow-2xl border w-80 max-h-96 overflow-hidden z-50">

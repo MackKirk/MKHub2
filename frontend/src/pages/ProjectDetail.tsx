@@ -4963,6 +4963,7 @@ function ProjectFilesTabEnhanced({ projectId, files, onRefresh }:{ projectId:str
   const location = useLocation();
   const nav = useNavigate();
   const queryClient = useQueryClient();
+  const confirm = useConfirm();
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
   const [isDragging, setIsDragging] = useState(false);
   const [draggedFileId, setDraggedFileId] = useState<string | null>(null);
@@ -4981,6 +4982,8 @@ function ProjectFilesTabEnhanced({ projectId, files, onRefresh }:{ projectId:str
   const [draggedFolderId, setDraggedFolderId] = useState<string | null>(null);
   const [editingFileNameId, setEditingFileNameId] = useState<string | null>(null);
   const [editingFileNameValue, setEditingFileNameValue] = useState('');
+  const [moveModalFileId, setMoveModalFileId] = useState<string | null>(null);
+  const [moveModalCategory, setMoveModalCategory] = useState<string>('uncategorized');
   /** Admin-only: library vs soft-deleted files pending purge */
   const [filesSection, setFilesSection] = useState<'active' | 'deleted'>('active');
   
@@ -5363,7 +5366,13 @@ function ProjectFilesTabEnhanced({ projectId, files, onRefresh }:{ projectId:str
   };
 
   const handleDeleteFolder = async (folderId: string) => {
-    if (!confirm('Delete this folder? It must be empty.')) return;
+    const result = await confirm({
+      title: 'Delete folder',
+      message: 'Delete this folder? It must be empty.',
+      confirmText: 'Delete',
+      cancelText: 'Cancel',
+    });
+    if (result !== 'confirm') return;
     try {
       await api('DELETE', `/projects/${projectId}/folders/${folderId}`);
       if (selectedFolderId === folderId) setSelectedFolderId(null);
@@ -5407,7 +5416,13 @@ function ProjectFilesTabEnhanced({ projectId, files, onRefresh }:{ projectId:str
   };
 
   const handleDeleteFile = async (fileId: string) => {
-    if (!confirm('Delete this file?')) return;
+    const result = await confirm({
+      title: 'Delete file',
+      message: 'Are you sure you want to remove this file from the project library?',
+      confirmText: 'Delete',
+      cancelText: 'Cancel',
+    });
+    if (result !== 'confirm') return;
     try {
       const file = files.find(f => f.id === fileId);
       const cat = (file?.category || 'uncategorized');
@@ -5456,8 +5471,27 @@ function ProjectFilesTabEnhanced({ projectId, files, onRefresh }:{ projectId:str
     setEditingFileNameValue(f.original_name || f.file_object_id || '');
   };
 
+  const openMoveCategoryModal = (fileId: string) => {
+    const f = files.find((x) => x.id === fileId);
+    const cat = f?.category;
+    if (!cat || cat === 'uncategorized') {
+      setMoveModalCategory('uncategorized');
+    } else if (visibleCategories.some((c: any) => c.id === cat)) {
+      setMoveModalCategory(cat);
+    } else {
+      setMoveModalCategory('uncategorized');
+    }
+    setMoveModalFileId(fileId);
+  };
+
   const handlePermanentDeleteFile = async (fileId: string) => {
-    if (!confirm('Permanently delete this file from storage? This cannot be undone.')) return;
+    const result = await confirm({
+      title: 'Delete permanently',
+      message: 'Permanently delete this file from storage? This cannot be undone.',
+      confirmText: 'Delete permanently',
+      cancelText: 'Cancel',
+    });
+    if (result !== 'confirm') return;
     try {
       await api('DELETE', `/projects/${encodeURIComponent(projectId)}/files/deleted/${encodeURIComponent(fileId)}`);
       await refetchDeletedFiles();
@@ -6107,10 +6141,7 @@ function ProjectFilesTabEnhanced({ projectId, files, onRefresh }:{ projectId:str
                                     <button
                                       onClick={(e) => {
                                         e.stopPropagation();
-                                        const newCat = prompt('Move to category (leave empty for uncategorized):');
-                                        if (newCat !== null) {
-                                          handleMoveFile(f.id, newCat || 'uncategorized');
-                                        }
+                                        openMoveCategoryModal(f.id);
                                       }}
                                       title="Move to category"
                                       className="p-1 rounded hover:bg-gray-100 text-xs"
@@ -6206,6 +6237,65 @@ function ProjectFilesTabEnhanced({ projectId, files, onRefresh }:{ projectId:str
             </div>
           </div>
         </div></OverlayPortal>
+      )}
+
+      {moveModalFileId && (
+        <OverlayPortal>
+          <div
+            className="fixed inset-0 z-50 flex items-center justify-center bg-black/40"
+            onClick={(e) => e.target === e.currentTarget && setMoveModalFileId(null)}
+            role="presentation"
+          >
+            <div
+              className="w-[480px] max-w-[95vw] bg-white rounded-xl border border-gray-200 shadow-lg overflow-hidden"
+              onClick={(e) => e.stopPropagation()}
+              role="dialog"
+              aria-labelledby="project-move-category-title"
+            >
+              <div id="project-move-category-title" className="px-4 py-3 border-b border-gray-200 text-sm font-semibold text-gray-900">
+                Move to category
+              </div>
+              <div className="p-4 text-xs text-gray-700">
+                <label htmlFor="project-move-category-select" className="block mb-2 font-medium text-gray-800">
+                  Category
+                </label>
+                <select
+                  id="project-move-category-select"
+                  value={moveModalCategory}
+                  onChange={(e) => setMoveModalCategory(e.target.value)}
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900 bg-white"
+                >
+                  <option value="uncategorized">Uncategorized</option>
+                  {visibleCategories.map((cat: any) => (
+                    <option key={cat.id} value={cat.id}>
+                      {cat.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="p-4 flex items-center justify-end gap-2 border-t border-gray-200">
+                <button
+                  type="button"
+                  className="rounded-lg px-3 py-2 border border-gray-300 text-xs font-medium text-gray-700 bg-white hover:bg-gray-50 transition-all"
+                  onClick={() => setMoveModalFileId(null)}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  className="rounded-lg px-3 py-2 bg-brand-red text-white text-xs font-medium hover:opacity-90 transition-all"
+                  onClick={async () => {
+                    if (!moveModalFileId) return;
+                    await handleMoveFile(moveModalFileId, moveModalCategory);
+                    setMoveModalFileId(null);
+                  }}
+                >
+                  Move
+                </button>
+              </div>
+            </div>
+          </div>
+        </OverlayPortal>
       )}
 
       {/* Upload Progress */}
