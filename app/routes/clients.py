@@ -4,6 +4,7 @@ from sqlalchemy.orm import Session, defer
 from sqlalchemy.exc import ProgrammingError
 from sqlalchemy import text, or_, and_, exists, select, func, literal
 from typing import Optional, List
+from datetime import datetime, timezone
 
 from ..db import get_db
 from ..models.models import Client, ClientContact, ClientSite, ClientFile, FileObject, ClientFolder, ClientDocument, Project, Proposal, User
@@ -13,10 +14,31 @@ from ..schemas.clients import (
     ClientContactCreate, ClientContactResponse,
     ClientSiteCreate, ClientSiteResponse,
 )
-from ..auth.security import require_permissions, get_current_user
+from ..auth.security import require_permissions, get_current_user, require_roles
 
 
 router = APIRouter(prefix="/clients", tags=["clients"])
+
+
+def _try_remove_orphan_file_object(db: Session, file_object_id: uuid.UUID) -> None:
+    """After removing a ClientFile row, delete storage + FileObject if no other rows reference it."""
+    if db.query(ClientFile).filter(ClientFile.file_object_id == file_object_id).count() > 0:
+        return
+    from ..models.models import WorkOrderFile
+
+    if db.query(WorkOrderFile).filter(WorkOrderFile.file_object_id == file_object_id).count() > 0:
+        return
+    fo = db.query(FileObject).filter(FileObject.id == file_object_id).first()
+    if not fo:
+        return
+    try:
+        from ..routes.files import get_storage_for_file
+
+        storage = get_storage_for_file(fo)
+        storage.delete(fo.key)
+    except Exception:
+        pass
+    db.delete(fo)
 
 
 def _clients_list_order_parts(sort: Optional[str], sort_dir: Optional[str]):
@@ -977,6 +999,50 @@ def list_files(
     return out
 
 
+@router.get("/{client_id}/files/deleted")
+def list_deleted_client_files(
+    client_id: str,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_roles("admin")),
+):
+    """Admin-only: customer library files soft-deleted (blobs not owned by a project)."""
+    c = db.query(Client).filter(Client.id == client_id, Client.deleted_at.is_(None)).first()
+    if not c:
+        raise HTTPException(status_code=404, detail="Client not found")
+    rows = (
+        db.query(ClientFile)
+        .filter(ClientFile.client_id == client_id, ClientFile.deleted_at.isnot(None))
+        .order_by(ClientFile.deleted_at.desc())
+        .all()
+    )
+    out = []
+    for cf in rows:
+        fo = db.query(FileObject).filter(FileObject.id == cf.file_object_id).first()
+        if not fo or getattr(fo, "project_id", None) is not None:
+            continue
+        ct = getattr(fo, "content_type", None) if fo else None
+        name = cf.original_name or cf.key or ""
+        ext = (name.rsplit(".", 1)[-1] if "." in name else "").lower()
+        is_img_ext = ext in {"png", "jpg", "jpeg", "webp", "gif", "bmp", "heic", "heif"}
+        is_image = (ct or "").startswith("image/") or is_img_ext
+        out.append(
+            {
+                "id": str(cf.id),
+                "file_object_id": str(cf.file_object_id),
+                "category": cf.category,
+                "key": cf.key,
+                "original_name": cf.original_name,
+                "site_id": str(cf.site_id) if getattr(cf, "site_id", None) else None,
+                "uploaded_at": cf.uploaded_at.isoformat() if cf.uploaded_at else None,
+                "deleted_at": cf.deleted_at.isoformat() if cf.deleted_at else None,
+                "deleted_by_id": str(cf.deleted_by_id) if getattr(cf, "deleted_by_id", None) else None,
+                "content_type": ct,
+                "is_image": is_image,
+            }
+        )
+    return out
+
+
 @router.put("/{client_id}/files/{client_file_id}")
 def update_client_file(
     client_id: str,
@@ -986,8 +1052,14 @@ def update_client_file(
     _=Depends(require_permissions("business:customers:write")),
 ):
     """Update a client file (e.g., change category)."""
-    row = db.query(ClientFile).filter(ClientFile.id == client_file_id, ClientFile.client_id == client_id).first()
+    try:
+        fuid = uuid.UUID(str(client_file_id))
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid file id")
+    row = db.query(ClientFile).filter(ClientFile.id == fuid, ClientFile.client_id == client_id).first()
     if not row:
+        raise HTTPException(status_code=404, detail="File not found")
+    if getattr(row, "deleted_at", None) is not None:
         raise HTTPException(status_code=404, detail="File not found")
     if "category" in payload:
         row.category = payload["category"]
@@ -998,13 +1070,146 @@ def update_client_file(
 
 
 @router.delete("/{client_id}/files/{client_file_id}")
-def delete_client_file(client_id: str, client_file_id: str, db: Session = Depends(get_db), _=Depends(require_permissions("business:customers:write"))):
-    row = db.query(ClientFile).filter(ClientFile.id == client_file_id, ClientFile.client_id == client_id).first()
+def delete_client_file(
+    client_id: str,
+    client_file_id: str,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+    _=Depends(require_permissions("business:customers:write")),
+):
+    """Soft-delete file from customer files (same row as project files; project-owned blobs appear in project Deleted tab)."""
+    try:
+        fid = uuid.UUID(str(client_file_id))
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid file id")
+    row = db.query(ClientFile).filter(ClientFile.id == fid, ClientFile.client_id == client_id).first()
     if not row:
-        return {"status":"ok"}
-    db.delete(row)
+        return {"status": "ok"}
+    if row.deleted_at is not None:
+        return {"status": "ok"}
+    fo = db.query(FileObject).filter(FileObject.id == row.file_object_id).first()
+    file_info = {
+        "file_name": getattr(row, "original_name", None) or getattr(row, "key", None),
+        "category": getattr(row, "category", None),
+        "content_type": getattr(fo, "content_type", None) if fo else None,
+    }
+    row.deleted_at = datetime.now(timezone.utc)
+    row.deleted_by_id = user.id
     db.commit()
-    return {"status":"ok"}
+    try:
+        from ..services.audit import create_audit_log
+
+        create_audit_log(
+            db=db,
+            entity_type="client_file",
+            entity_id=client_file_id,
+            action="DELETE",
+            actor_id=str(user.id) if user else None,
+            actor_role="user",
+            source="api",
+            changes_json={"deleted_file": file_info, "soft_delete": True},
+            context={"client_id": client_id, "file_name": file_info.get("file_name")},
+        )
+    except Exception:
+        pass
+    return {"status": "ok"}
+
+
+@router.post("/{client_id}/files/deleted/{file_id}/restore")
+def restore_deleted_client_file(
+    client_id: str,
+    file_id: str,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_roles("admin")),
+):
+    """Admin-only: clear soft-delete so the file appears again in the customer library."""
+    c = db.query(Client).filter(Client.id == client_id, Client.deleted_at.is_(None)).first()
+    if not c:
+        raise HTTPException(status_code=404, detail="Client not found")
+    try:
+        fid = uuid.UUID(str(file_id))
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid file id")
+    cf = db.query(ClientFile).filter(ClientFile.id == fid, ClientFile.client_id == client_id).first()
+    if not cf or cf.deleted_at is None:
+        raise HTTPException(status_code=404, detail="Deleted file not found")
+    fo = db.query(FileObject).filter(FileObject.id == cf.file_object_id).first()
+    if not fo or getattr(fo, "project_id", None) is not None:
+        raise HTTPException(status_code=404, detail="Deleted file not found")
+    file_info = {
+        "file_name": getattr(cf, "original_name", None) or getattr(cf, "key", None),
+        "category": getattr(cf, "category", None),
+    }
+    cf.deleted_at = None
+    cf.deleted_by_id = None
+    db.commit()
+    try:
+        from ..services.audit import create_audit_log
+
+        create_audit_log(
+            db=db,
+            entity_type="client_file",
+            entity_id=file_id,
+            action="RESTORE",
+            actor_id=str(user.id) if user else None,
+            actor_role="admin",
+            source="api",
+            changes_json={"restored_file": file_info},
+            context={"client_id": client_id, "file_name": file_info.get("file_name")},
+        )
+    except Exception:
+        pass
+    return {"status": "ok", "id": str(cf.id)}
+
+
+@router.delete("/{client_id}/files/deleted/{file_id}")
+def permanently_delete_client_file_admin(
+    client_id: str,
+    file_id: str,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_roles("admin")),
+):
+    """Admin-only: remove soft-deleted customer-library file row and blob storage when unreferenced."""
+    c = db.query(Client).filter(Client.id == client_id, Client.deleted_at.is_(None)).first()
+    if not c:
+        raise HTTPException(status_code=404, detail="Client not found")
+    try:
+        fid = uuid.UUID(str(file_id))
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid file id")
+    cf = db.query(ClientFile).filter(ClientFile.id == fid, ClientFile.client_id == client_id).first()
+    if not cf or cf.deleted_at is None:
+        raise HTTPException(status_code=404, detail="Deleted file not found")
+    fo = db.query(FileObject).filter(FileObject.id == cf.file_object_id).first()
+    if not fo or getattr(fo, "project_id", None) is not None:
+        raise HTTPException(status_code=404, detail="Deleted file not found")
+    fo_id = fo.id
+    file_info = {
+        "file_name": getattr(cf, "original_name", None) or getattr(cf, "key", None),
+        "category": getattr(cf, "category", None),
+        "permanent": True,
+    }
+    db.delete(cf)
+    db.flush()
+    _try_remove_orphan_file_object(db, fo_id)
+    db.commit()
+    try:
+        from ..services.audit import create_audit_log
+
+        create_audit_log(
+            db=db,
+            entity_type="client_file",
+            entity_id=file_id,
+            action="DELETE",
+            actor_id=str(user.id) if user else None,
+            actor_role="admin",
+            source="api",
+            changes_json={"deleted_file": file_info, "permanent_purge": True},
+            context={"client_id": client_id, "file_name": file_info.get("file_name")},
+        )
+    except Exception:
+        pass
+    return {"status": "ok"}
 
 
 @router.post("/{client_id}/files/reorder")

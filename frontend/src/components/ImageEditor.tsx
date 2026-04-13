@@ -2500,11 +2500,37 @@ export default function ImageEditor({ isOpen, onClose, imageUrl, imageName = 'im
         }
         ctx.restore();
       } else if (it.type === 'circle') {
-        const center = dispToImg(it.x, it.y);
-        if (it.rx !== undefined && it.ry !== undefined) {
-          ctx.ellipse(center.xi, center.yi, Math.max(1, (it.rx || 1) * lenScale), Math.max(1, (it.ry || 1) * lenScale), 0, 0, Math.PI * 2);
+        // Must match drawOverlay: new circles use top-left (x,y) + w,h; old ones use center + r or rx/ry.
+        // beginPath() is required — otherwise the canvas connects this arc to the previous subpath (line between circles).
+        ctx.beginPath();
+        let cxi: number;
+        let cyi: number;
+        let rxI: number;
+        let ryI: number;
+        if (it.w !== undefined && it.h !== undefined) {
+          const c = dispToImg(it.x + (it.w || 0) / 2, it.y + (it.h || 0) / 2);
+          cxi = c.xi;
+          cyi = c.yi;
+          rxI = (Math.abs(it.w || 0) / 2) * lenScale;
+          ryI = (Math.abs(it.h || 0) / 2) * lenScale;
+        } else if (it.rx !== undefined && it.ry !== undefined) {
+          const c = dispToImg(it.x, it.y);
+          cxi = c.xi;
+          cyi = c.yi;
+          rxI = Math.max(1, (it.rx || 1) * lenScale);
+          ryI = Math.max(1, (it.ry || 1) * lenScale);
         } else {
-          ctx.arc(center.xi, center.yi, Math.max(1, (it.r || 1) * lenScale), 0, Math.PI * 2);
+          const c = dispToImg(it.x, it.y);
+          cxi = c.xi;
+          cyi = c.yi;
+          const r = Math.max(1, (it.r || 1) * lenScale);
+          rxI = r;
+          ryI = r;
+        }
+        if (Math.abs(rxI - ryI) < 1e-6) {
+          ctx.arc(cxi, cyi, Math.max(1, rxI), 0, Math.PI * 2);
+        } else {
+          ctx.ellipse(cxi, cyi, Math.max(1, rxI), Math.max(1, ryI), 0, 0, Math.PI * 2);
         }
         ctx.stroke();
       } else if (it.type === 'path') {
