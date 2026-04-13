@@ -3440,7 +3440,9 @@ export default function UserInfo(){
               {tab==='timesheet' && canViewTimesheet && <TimesheetBlock userId={String(userId)} canEdit={canEditTimesheet} />}
               {tab==='loans' && canViewLoans && <UserLoans userId={String(userId)} canEdit={canEditGeneral || (me?.roles || []).some((r: string) => String(r || '').toLowerCase() === 'admin') || (me?.permissions || []).includes('hr:users:write') || (me?.permissions || []).includes('users:write')} />}
               {tab==='training' && canViewTraining && (
-                <EmployeeTrainingSection userId={String(userId)} canEdit={canEditTraining} />
+                <div className="space-y-6 pb-24">
+                  <EmployeeTrainingSection userId={String(userId)} canEdit={canEditTraining} />
+                </div>
               )}
               {tab==='assets' && canViewAssets && (
                 <UserAssetsSection
@@ -7992,8 +7994,144 @@ const TRAINING_CATEGORIES = ['', 'Safety', 'Compliance', 'Technical skills', 'So
 const TRAINING_FORMATS = ['', 'in_person', 'online', 'hybrid'];
 const TRAINING_STATUSES = ['completed', 'in_progress', 'scheduled', 'expired'];
 
+const TRAINING_INPUT_CLASS =
+  'w-full rounded-lg border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-brand-red focus:outline-none focus:ring-2 focus:ring-red-500/15';
+
+/** Docs tab folder for certificate files uploaded from Training & courses modal. */
+const TRAINING_CERTIFICATES_FOLDER_NAME = 'Training certificates';
+
+async function getOrCreateTrainingCertificatesFolderId(userId: string): Promise<string> {
+  const folders = await api<any[]>('GET', `/auth/users/${encodeURIComponent(userId)}/folders`);
+  const match = (folders || []).find(
+    (f: any) => !f.parent_id && String(f.name || '').trim() === TRAINING_CERTIFICATES_FOLDER_NAME,
+  );
+  if (match?.id) return String(match.id);
+  try {
+    const res = await api<{ id: string }>('POST', `/auth/users/${encodeURIComponent(userId)}/folders`, {
+      name: TRAINING_CERTIFICATES_FOLDER_NAME,
+    });
+    return String(res.id);
+  } catch {
+    const again = await api<any[]>('GET', `/auth/users/${encodeURIComponent(userId)}/folders`);
+    const m2 = (again || []).find(
+      (f: any) => !f.parent_id && String(f.name || '').trim() === TRAINING_CERTIFICATES_FOLDER_NAME,
+    );
+    if (m2?.id) return String(m2.id);
+    throw new Error('Could not resolve Training certificates folder');
+  }
+}
+
+async function uploadTrainingCertificateToDocs(
+  userId: string,
+  file: File,
+  meta: { docTitle?: string; issuedDate?: string; expiryDate?: string; trainingTitle: string },
+) {
+  const name = file.name;
+  const contentType = file.type || 'application/octet-stream';
+  const folderId = await getOrCreateTrainingCertificatesFolderId(userId);
+  const up = await api<any>('POST', '/files/upload', {
+    original_name: name,
+    content_type: contentType,
+    employee_id: userId,
+    project_id: null,
+    client_id: null,
+    category_id: userId,
+  });
+  const putResp = await fetch(up.upload_url, {
+    method: 'PUT',
+    headers: { 'Content-Type': contentType, 'x-ms-blob-type': 'BlockBlob' },
+    body: file,
+  });
+  if (!putResp.ok) {
+    throw new Error(`Upload failed (${putResp.status})`);
+  }
+  const conf = await api<{ id: string }>('POST', '/files/confirm', {
+    key: up.key,
+    size_bytes: file.size,
+    checksum_sha256: 'na',
+    content_type: contentType,
+  });
+  const title =
+    (meta.docTitle && meta.docTitle.trim()) || `${meta.trainingTitle} — ${name}`;
+  await api('POST', `/auth/users/${encodeURIComponent(userId)}/documents`, {
+    folder_id: folderId,
+    title,
+    file_id: conf.id,
+    issued_date: meta.issuedDate?.trim() || undefined,
+    expiry_date: meta.expiryDate?.trim() || undefined,
+    notes: 'Uploaded from Training & courses (employee HR record).',
+  });
+}
+
+function trainingStatusPill(status: string | null | undefined) {
+  const s = (status || '').toLowerCase().replace(/_/g, ' ');
+  const base = 'inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium border';
+  if (s === 'completed') return <span className={`${base} bg-emerald-50 text-emerald-800 border-emerald-200`}>Completed</span>;
+  if (s === 'expired') return <span className={`${base} bg-gray-100 text-gray-700 border-gray-200`}>Expired</span>;
+  if (s === 'scheduled') return <span className={`${base} bg-sky-50 text-sky-800 border-sky-200`}>Scheduled</span>;
+  if (s === 'in progress') return <span className={`${base} bg-amber-50 text-amber-900 border-amber-200`}>In progress</span>;
+  return <span className={`${base} bg-slate-50 text-slate-700 border-slate-200`}>{status || '—'}</span>;
+}
+
+function _parseYmdLocal(iso: string): Date | null {
+  const s = String(iso || '').trim().slice(0, 10);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(s)) return null;
+  const d = new Date(`${s}T12:00:00`);
+  return Number.isNaN(d.getTime()) ? null : d;
+}
+
+function _calendarInclusiveDays(startIso: string, endIso: string): number {
+  const a = _parseYmdLocal(startIso);
+  const b = _parseYmdLocal(endIso || startIso);
+  if (!a || !b) return 0;
+  if (b < a) return 0;
+  return Math.round((b.getTime() - a.getTime()) / 86400000) + 1;
+}
+
+/** Inclusive range; skips Sat/Sun when includeWeekends is false. Falls back to at least 1 calendar day if no weekdays match. */
+function _workdaysInclusive(startIso: string, endIso: string, includeWeekends: boolean): number {
+  const a = _parseYmdLocal(startIso);
+  const b = _parseYmdLocal(endIso || startIso);
+  if (!a || !b || b < a) return 0;
+  let n = 0;
+  for (let d = new Date(a); d <= b; d.setDate(d.getDate() + 1)) {
+    const w = d.getDay();
+    if (includeWeekends || (w !== 0 && w !== 6)) n++;
+  }
+  if (n === 0) return Math.max(1, _calendarInclusiveDays(startIso, endIso || startIso));
+  return n;
+}
+
+/** Expects HTML time values "HH:mm". If end <= start, assumes same session past midnight. */
+function _dailyHoursFromTimes(timeStart: string, timeEnd: string): number | null {
+  const ts = String(timeStart || '').trim();
+  const te = String(timeEnd || '').trim();
+  if (!ts || !te) return null;
+  const [sh, sm] = ts.split(':').map((x) => parseInt(x, 10));
+  const [eh, em] = te.split(':').map((x) => parseInt(x, 10));
+  if ([sh, sm, eh, em].some((x) => Number.isNaN(x))) return null;
+  let startM = sh * 60 + sm;
+  let endM = eh * 60 + em;
+  let diff = endM - startM;
+  if (diff <= 0) diff += 24 * 60;
+  return diff / 60;
+}
+
+function _parseSessionTimeToHHmm(sessionTime: string): { time_start: string; time_end: string } {
+  const s = String(sessionTime || '').trim();
+  const m = s.match(/(\d{1,2}:\d{2})\s*[–—-]\s*(\d{1,2}:\d{2})/);
+  if (!m) return { time_start: '', time_end: '' };
+  const pad = (t: string) => {
+    const [h, mi] = t.split(':').map((x) => parseInt(x, 10));
+    if (Number.isNaN(h) || Number.isNaN(mi)) return '';
+    return `${String(h).padStart(2, '0')}:${String(mi).padStart(2, '0')}`;
+  };
+  return { time_start: pad(m[1]), time_end: pad(m[2]) };
+}
+
 function EmployeeTrainingSection({ userId, canEdit }: { userId: string; canEdit: boolean }) {
   const confirm = useConfirm();
+  const queryClient = useQueryClient();
   const { data: rows = [], refetch, isLoading } = useQuery({
     queryKey: ['employee-training-records', userId],
     queryFn: () => api<any[]>('GET', `/auth/users/${encodeURIComponent(userId)}/training-records`),
@@ -8002,6 +8140,12 @@ function EmployeeTrainingSection({ userId, canEdit }: { userId: string; canEdit:
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<any | null>(null);
   const [saving, setSaving] = useState(false);
+  const [certificateFile, setCertificateFile] = useState<File | null>(null);
+  const [certificateDocTitle, setCertificateDocTitle] = useState('');
+  const [certificateDragActive, setCertificateDragActive] = useState(false);
+  const certificateFileInputRef = useRef<HTMLInputElement>(null);
+  const [includeWeekends, setIncludeWeekends] = useState(false);
+  const [differentCompletionDate, setDifferentCompletionDate] = useState(false);
   const [form, setForm] = useState({
     title: '',
     provider: '',
@@ -8010,7 +8154,6 @@ function EmployeeTrainingSection({ userId, canEdit }: { userId: string; canEdit:
     start_date: '',
     end_date: '',
     completion_date: '',
-    duration_hours: '',
     status: 'completed',
     certificate_number: '',
     expiry_date: '',
@@ -8018,9 +8161,13 @@ function EmployeeTrainingSection({ userId, canEdit }: { userId: string; canEdit:
     crew: '',
     location: '',
     session_time: '',
+    time_start: '',
+    time_end: '',
   });
 
   const resetForm = (defaults?: Partial<typeof form>) => {
+    setIncludeWeekends(false);
+    setDifferentCompletionDate(false);
     setForm({
       title: '',
       provider: '',
@@ -8028,8 +8175,7 @@ function EmployeeTrainingSection({ userId, canEdit }: { userId: string; canEdit:
       delivery_format: '',
       start_date: '',
       end_date: '',
-      completion_date: new Date().toISOString().slice(0, 10),
-      duration_hours: '',
+      completion_date: '',
       status: 'completed',
       certificate_number: '',
       expiry_date: '',
@@ -8037,6 +8183,8 @@ function EmployeeTrainingSection({ userId, canEdit }: { userId: string; canEdit:
       crew: '',
       location: '',
       session_time: '',
+      time_start: '',
+      time_end: '',
       ...defaults,
     });
   };
@@ -8044,44 +8192,91 @@ function EmployeeTrainingSection({ userId, canEdit }: { userId: string; canEdit:
   const openAdd = () => {
     setEditing(null);
     resetForm();
+    setCertificateFile(null);
+    setCertificateDocTitle('');
+    setCertificateDragActive(false);
     setModalOpen(true);
   };
 
   const openEdit = (r: any) => {
     setEditing(r);
+    const st = r.session_time != null ? String(r.session_time) : '';
+    const parsed = _parseSessionTimeToHHmm(st);
+    const endD = r.end_date ? String(r.end_date).slice(0, 10) : '';
+    const compD = r.completion_date ? String(r.completion_date).slice(0, 10) : '';
+    const useDifferentComp = compD !== '' && compD !== endD;
+    setDifferentCompletionDate(useDifferentComp);
     setForm({
       title: r.title || '',
       provider: r.provider || '',
       category: r.category || '',
       delivery_format: r.delivery_format || '',
       start_date: r.start_date ? String(r.start_date).slice(0, 10) : '',
-      end_date: r.end_date ? String(r.end_date).slice(0, 10) : '',
-      completion_date: r.completion_date ? String(r.completion_date).slice(0, 10) : '',
-      duration_hours: r.duration_hours != null ? String(r.duration_hours) : '',
+      end_date: endD,
+      completion_date: compD,
       status: r.status || 'completed',
       certificate_number: r.certificate_number || '',
       expiry_date: r.expiry_date ? String(r.expiry_date).slice(0, 10) : '',
       notes: r.notes || '',
       crew: r.crew != null ? String(r.crew) : '',
       location: r.location != null ? String(r.location) : '',
-      session_time: r.session_time != null ? String(r.session_time) : '',
+      session_time: st,
+      time_start: parsed.time_start,
+      time_end: parsed.time_end,
     });
+    setCertificateFile(null);
+    setCertificateDocTitle('');
+    setCertificateDragActive(false);
+    setIncludeWeekends(false);
     setModalOpen(true);
   };
 
   const closeModal = () => {
     setModalOpen(false);
     setEditing(null);
+    setCertificateFile(null);
+    setCertificateDocTitle('');
+    setCertificateDragActive(false);
+    setIncludeWeekends(false);
+    setDifferentCompletionDate(false);
+  };
+
+  const trainingDurationHint = useMemo(() => {
+    const startD = form.start_date.trim();
+    const endD = form.end_date.trim() || startD;
+    const ts = form.time_start.trim();
+    const te = form.time_end.trim();
+    if (!startD || !ts || !te) return null;
+    const perDay = _dailyHoursFromTimes(ts, te);
+    if (perDay == null) return null;
+    const days = _workdaysInclusive(startD, endD, includeWeekends);
+    if (days <= 0) return null;
+    return { days, perDay };
+  }, [form.start_date, form.end_date, form.time_start, form.time_end, includeWeekends]);
+
+  const computedDurationHours = useMemo(() => {
+    if (!trainingDurationHint) return null;
+    return Math.round(trainingDurationHint.perDay * trainingDurationHint.days * 100) / 100;
+  }, [trainingDurationHint]);
+
+  const effectiveCompletionDate = (): string => {
+    if (differentCompletionDate) return form.completion_date.trim();
+    return form.end_date.trim() || form.start_date.trim();
   };
 
   const buildPayload = () => {
-    const duration_hours =
-      form.duration_hours.trim() === '' ? undefined : parseFloat(form.duration_hours);
-    if (form.duration_hours.trim() !== '' && Number.isNaN(duration_hours)) {
-      throw new Error('Invalid duration (hours)');
-    }
     const needsCompletion = form.status === 'completed' || form.status === 'expired';
-    const cdTrim = form.completion_date.trim();
+    const cdTrim = effectiveCompletionDate();
+    const duration_hours =
+      computedDurationHours != null
+        ? computedDurationHours
+        : editing?.duration_hours != null && !Number.isNaN(Number(editing.duration_hours))
+          ? Number(editing.duration_hours)
+          : undefined;
+    const ts = form.time_start.trim();
+    const te = form.time_end.trim();
+    const session_time =
+      ts && te ? `${ts}–${te}` : form.session_time.trim() || undefined;
     return {
       title: form.title.trim(),
       provider: form.provider.trim() || undefined,
@@ -8097,7 +8292,7 @@ function EmployeeTrainingSection({ userId, canEdit }: { userId: string; canEdit:
       notes: form.notes.trim() || undefined,
       crew: form.crew.trim() || undefined,
       location: form.location.trim() || undefined,
-      session_time: form.session_time.trim() || undefined,
+      session_time,
     };
   };
 
@@ -8108,8 +8303,12 @@ function EmployeeTrainingSection({ userId, canEdit }: { userId: string; canEdit:
       return;
     }
     const needsCompletion = form.status === 'completed' || form.status === 'expired';
-    if (needsCompletion && !form.completion_date.trim()) {
-      toast.error('Completion date is required for completed or expired records');
+    if (needsCompletion && !effectiveCompletionDate()) {
+      toast.error(
+        differentCompletionDate
+          ? 'Completion date is required when using a different completion date'
+          : 'End date (or start date) is required for completed or expired records',
+      );
       return;
     }
     let payload: Record<string, unknown>;
@@ -8123,11 +8322,33 @@ function EmployeeTrainingSection({ userId, canEdit }: { userId: string; canEdit:
     try {
       if (editing) {
         await api('PATCH', `/auth/users/${encodeURIComponent(userId)}/training-records/${editing.id}`, payload);
-        toast.success('Record updated');
       } else {
         await api('POST', `/auth/users/${encodeURIComponent(userId)}/training-records`, payload);
-        toast.success('Record added');
       }
+      if (certificateFile && canEdit) {
+        try {
+          await uploadTrainingCertificateToDocs(userId, certificateFile, {
+            docTitle: certificateDocTitle,
+            issuedDate: effectiveCompletionDate(),
+            expiryDate: form.expiry_date,
+            trainingTitle: form.title.trim(),
+          });
+          toast.success(
+            editing ? 'Record updated; certificate saved to Docs.' : 'Record added; certificate saved to Docs.',
+          );
+        } catch (upErr: any) {
+          console.error(upErr);
+          toast.error(
+            editing
+              ? 'Record updated, but certificate upload failed. Try again from the Docs tab.'
+              : 'Record added, but certificate upload failed. Try again from the Docs tab.',
+          );
+        }
+      } else {
+        toast.success(editing ? 'Record updated' : 'Record added');
+      }
+      queryClient.invalidateQueries({ queryKey: ['user-docs', userId] });
+      queryClient.invalidateQueries({ queryKey: ['user-folders', userId] });
       closeModal();
       refetch();
     } catch (err: any) {
@@ -8167,288 +8388,588 @@ function EmployeeTrainingSection({ userId, canEdit }: { userId: string; canEdit:
   };
 
   return (
-    <div className="rounded-xl border bg-white p-4 space-y-4 pb-24">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <h5 className="font-semibold text-gray-900 flex items-center gap-2">
-          <svg className="w-5 h-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
-          </svg>
-          Training & courses
-        </h5>
+    <div className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+        <div className="flex min-w-0 items-center gap-2">
+          <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-emerald-100">
+            <svg className="h-4 w-4 text-emerald-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
+            </svg>
+          </div>
+          <div className="min-w-0">
+            <h5 className="text-sm font-semibold text-emerald-950">Training & courses</h5>
+            <p className="mt-0.5 text-xs text-gray-500">
+              HR training history (not the LMS). Use <span className="font-medium text-gray-700">Start date</span> for
+              scheduled or in-progress rows so they show on the team training calendar.
+            </p>
+          </div>
+        </div>
         {canEdit && (
           <button
             type="button"
             onClick={openAdd}
-            className="px-3 py-1.5 rounded-lg border border-brand-red text-brand-red text-xs font-medium hover:bg-red-50"
+            className="inline-flex shrink-0 items-center gap-1.5 rounded-lg bg-brand-red px-3 py-1.5 text-xs font-semibold text-white shadow-sm transition-colors hover:bg-red-800"
           >
+            <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+            </svg>
             Add record
           </button>
         )}
       </div>
-      <p className="text-sm text-gray-500">
-        Manual training and certification history for this employee (not linked to the LMS). Use{' '}
-        <strong>Start date</strong> for scheduled or in-progress items so they appear on the team training calendar.
-      </p>
 
-      {isLoading ? (
-        <div className="h-24 animate-pulse bg-gray-100 rounded" />
-      ) : !rows.length ? (
-        <p className="text-sm text-gray-500">No training records yet.</p>
-      ) : (
-        <div className="overflow-x-auto rounded-lg border">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b bg-gray-50">
-                <th className="text-left py-2 px-3 font-semibold text-xs">Title</th>
-                <th className="text-left py-2 px-3 font-semibold text-xs">Provider</th>
-                <th className="text-left py-2 px-3 font-semibold text-xs">Category</th>
-                <th className="text-left py-2 px-3 font-semibold text-xs">Crew</th>
-                <th className="text-left py-2 px-3 font-semibold text-xs">Start</th>
-                <th className="text-left py-2 px-3 font-semibold text-xs">Completed</th>
-                <th className="text-left py-2 px-3 font-semibold text-xs">Hours</th>
-                <th className="text-left py-2 px-3 font-semibold text-xs">Status</th>
-                <th className="text-left py-2 px-3 font-semibold text-xs">Expires</th>
-                {canEdit && <th className="text-right py-2 px-3 font-semibold text-xs w-28"> </th>}
-              </tr>
-            </thead>
-            <tbody>
-              {(rows as any[]).map((r) => (
-                <tr key={r.id} className="border-b hover:bg-gray-50/80">
-                  <td className="py-2 px-3 font-medium text-gray-900">{r.title}</td>
-                  <td className="py-2 px-3">{r.provider || '—'}</td>
-                  <td className="py-2 px-3">{r.category || '—'}</td>
-                  <td className="py-2 px-3 max-w-[100px] truncate" title={r.crew || ''}>
-                    {r.crew || '—'}
-                  </td>
-                  <td className="py-2 px-3">{fmtDate(r.start_date)}</td>
-                  <td className="py-2 px-3">{fmtDate(r.completion_date)}</td>
-                  <td className="py-2 px-3">{r.duration_hours != null ? r.duration_hours : '—'}</td>
-                  <td className="py-2 px-3 capitalize">{r.status || '—'}</td>
-                  <td className="py-2 px-3">{fmtDate(r.expiry_date)}</td>
+      <div className="space-y-4">
+        {isLoading ? (
+          <div className="h-28 animate-pulse rounded-lg bg-slate-100" />
+        ) : !(rows as any[]).length ? (
+          <div className="rounded-lg border border-dashed border-gray-200 bg-slate-50/60 py-12 text-center">
+            <p className="text-sm font-medium text-gray-600">No training records yet</p>
+            <p className="mx-auto mt-1 max-w-sm text-xs text-gray-500">
+              Add courses, certifications, or renewals here. Use expiry dates for renewals and dashboard alerts.
+            </p>
+            {canEdit && (
+              <button
+                type="button"
+                onClick={openAdd}
+                className="mt-4 inline-flex items-center gap-1.5 rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-xs font-semibold text-gray-700 shadow-sm hover:border-brand-red hover:text-brand-red"
+              >
+                Add first record
+              </button>
+            )}
+          </div>
+        ) : (
+          <div className="overflow-x-auto rounded-lg border border-gray-200 bg-white">
+            <table className="w-full min-w-[720px] text-sm">
+              <thead>
+                <tr className="border-b border-slate-200 bg-slate-50">
+                  <th className="px-4 py-2.5 text-left text-xs font-semibold uppercase tracking-wide text-slate-600">
+                    Type
+                  </th>
+                  <th className="px-4 py-2.5 text-left text-xs font-semibold uppercase tracking-wide text-slate-600">
+                    Title
+                  </th>
+                  <th className="px-4 py-2.5 text-left text-xs font-semibold uppercase tracking-wide text-slate-600">
+                    Provider
+                  </th>
+                  <th className="px-4 py-2.5 text-left text-xs font-semibold uppercase tracking-wide text-slate-600">
+                    Category
+                  </th>
+                  <th className="px-4 py-2.5 text-left text-xs font-semibold uppercase tracking-wide text-slate-600">
+                    Crew
+                  </th>
+                  <th className="px-4 py-2.5 text-left text-xs font-semibold uppercase tracking-wide text-slate-600">
+                    Start
+                  </th>
+                  <th className="px-4 py-2.5 text-left text-xs font-semibold uppercase tracking-wide text-slate-600">
+                    Completed
+                  </th>
+                  <th className="px-4 py-2.5 text-left text-xs font-semibold uppercase tracking-wide text-slate-600">
+                    Hrs
+                  </th>
+                  <th className="px-4 py-2.5 text-left text-xs font-semibold uppercase tracking-wide text-slate-600">
+                    Status
+                  </th>
+                  <th className="px-4 py-2.5 text-left text-xs font-semibold uppercase tracking-wide text-slate-600">
+                    Expires
+                  </th>
                   {canEdit && (
-                    <td className="py-2 px-3 text-right space-x-2 whitespace-nowrap">
-                      <button
-                        type="button"
-                        onClick={() => openEdit(r)}
-                        className="text-xs text-brand-red hover:underline"
-                      >
-                        Edit
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => handleDelete(r)}
-                        className="text-xs text-red-600 hover:underline"
-                      >
-                        Delete
-                      </button>
-                    </td>
+                    <th className="w-28 px-4 py-2.5 text-right text-xs font-semibold uppercase tracking-wide text-slate-600">
+                      Actions
+                    </th>
                   )}
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {(rows as any[]).map((r) => (
+                  <tr key={r.id} className="transition-colors hover:bg-slate-50/80">
+                    <td className="max-w-[140px] truncate px-4 py-2.5 text-xs text-slate-600" title={r.item_type_label || ''}>
+                      {r.item_type_label || '—'}
+                    </td>
+                    <td className="px-4 py-2.5 font-medium text-gray-900">{r.title}</td>
+                    <td className="px-4 py-2.5 text-gray-700">{r.provider || '—'}</td>
+                    <td className="px-4 py-2.5 text-gray-700">{r.category || '—'}</td>
+                    <td className="max-w-[100px] truncate px-4 py-2.5 text-gray-700" title={r.crew || ''}>
+                      {r.crew || '—'}
+                    </td>
+                    <td className="whitespace-nowrap px-4 py-2.5 text-gray-700">{fmtDate(r.start_date)}</td>
+                    <td className="whitespace-nowrap px-4 py-2.5 text-gray-700">{fmtDate(r.completion_date)}</td>
+                    <td className="px-4 py-2.5 text-gray-700">{r.duration_hours != null ? r.duration_hours : '—'}</td>
+                    <td className="px-4 py-2.5">{trainingStatusPill(r.status)}</td>
+                    <td className="whitespace-nowrap px-4 py-2.5 text-gray-700">{fmtDate(r.expiry_date)}</td>
+                    {canEdit && (
+                      <td className="whitespace-nowrap px-4 py-2.5 text-right">
+                        <button
+                          type="button"
+                          onClick={() => openEdit(r)}
+                          className="mr-2 text-xs font-medium text-brand-red hover:text-red-800"
+                        >
+                          Edit
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleDelete(r)}
+                          className="text-xs font-medium text-gray-500 hover:text-red-600"
+                        >
+                          Delete
+                        </button>
+                      </td>
+                    )}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
 
       {modalOpen && (
         <OverlayPortal>
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={closeModal}>
           <div
-            className="bg-white rounded-xl shadow-lg max-w-lg w-full max-h-[90vh] overflow-y-auto"
-            onClick={(e) => e.stopPropagation()}
+            className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-3 sm:p-6"
+            onClick={closeModal}
           >
-            <div className="p-4 border-b font-semibold">{editing ? 'Edit training record' : 'Add training record'}</div>
-            <form onSubmit={handleSubmit} className="p-4 space-y-3">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Title *</label>
-                <input
-                  value={form.title}
-                  onChange={(e) => setForm((f) => ({ ...f, title: e.target.value }))}
-                  className="w-full border rounded-lg px-3 py-2"
-                  required
-                />
+            <div
+              className="flex max-h-[min(92vh,980px)] w-full max-w-5xl flex-col overflow-hidden rounded-xl border border-gray-200 bg-white shadow-2xl"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="shrink-0 border-b border-gray-100 bg-slate-50/90 px-5 py-4 sm:px-8 sm:py-4">
+                <h3 className="text-lg font-semibold text-gray-900">
+                  {editing ? 'Edit training record' : 'Add training record'}
+                </h3>
+                <p className="mt-1 text-sm text-gray-500">
+                  For completed or expired, the end date counts as completion unless you choose a different completion
+                  date. Fields marked * apply when that option is on.
+                </p>
               </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Provider</label>
-                <input
-                  value={form.provider}
-                  onChange={(e) => setForm((f) => ({ ...f, provider: e.target.value }))}
-                  className="w-full border rounded-lg px-3 py-2"
-                  placeholder="Organization or trainer"
-                />
-              </div>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Category</label>
-                  <select
-                    value={form.category}
-                    onChange={(e) => setForm((f) => ({ ...f, category: e.target.value }))}
-                    className="w-full border rounded-lg px-3 py-2"
+              <form onSubmit={handleSubmit} className="flex min-h-0 flex-1 flex-col">
+                <div className="min-h-0 flex-1 overflow-y-auto px-5 py-5 sm:px-8 sm:py-6">
+                  <div className="grid grid-cols-1 gap-6 lg:grid-cols-2 lg:gap-x-10 xl:gap-x-12">
+                    <div className="space-y-4">
+                      <div>
+                        <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-600">
+                          Title *
+                        </label>
+                        <input
+                          value={form.title}
+                          onChange={(e) => setForm((f) => ({ ...f, title: e.target.value }))}
+                          className={TRAINING_INPUT_CLASS}
+                          required
+                        />
+                      </div>
+                      <div>
+                        <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-600">
+                          Provider
+                        </label>
+                        <input
+                          value={form.provider}
+                          onChange={(e) => setForm((f) => ({ ...f, provider: e.target.value }))}
+                          className={TRAINING_INPUT_CLASS}
+                          placeholder="Organization or trainer"
+                        />
+                      </div>
+                      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                        <div>
+                          <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-600">
+                            Category
+                          </label>
+                          <select
+                            value={form.category}
+                            onChange={(e) => setForm((f) => ({ ...f, category: e.target.value }))}
+                            className={TRAINING_INPUT_CLASS}
+                          >
+                            {TRAINING_CATEGORIES.map((c) => (
+                              <option key={c || 'empty'} value={c}>
+                                {c || '— Select —'}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                        <div>
+                          <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-600">
+                            Format
+                          </label>
+                          <select
+                            value={form.delivery_format}
+                            onChange={(e) => setForm((f) => ({ ...f, delivery_format: e.target.value }))}
+                            className={TRAINING_INPUT_CLASS}
+                          >
+                            <option value="">—</option>
+                            {TRAINING_FORMATS.filter(Boolean).map((c) => (
+                              <option key={c} value={c}>
+                                {formatLabel(c)}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                      </div>
+                      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                        <div>
+                          <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-600">
+                            Crew
+                          </label>
+                          <input
+                            value={form.crew}
+                            onChange={(e) => setForm((f) => ({ ...f, crew: e.target.value }))}
+                            className={TRAINING_INPUT_CLASS}
+                            placeholder="e.g. Repairs, Metal, Office"
+                          />
+                        </div>
+                        <div>
+                          <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-600">
+                            Location
+                          </label>
+                          <input
+                            value={form.location}
+                            onChange={(e) => setForm((f) => ({ ...f, location: e.target.value }))}
+                            className={TRAINING_INPUT_CLASS}
+                            placeholder="Address or room"
+                          />
+                        </div>
+                      </div>
+                      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                        <div>
+                          <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-600">
+                            Start date
+                          </label>
+                          <input
+                            type="date"
+                            value={form.start_date}
+                            onChange={(e) => setForm((f) => ({ ...f, start_date: e.target.value }))}
+                            className={TRAINING_INPUT_CLASS}
+                          />
+                        </div>
+                        <div>
+                          <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-600">
+                            End date
+                            {(form.status === 'completed' || form.status === 'expired') &&
+                              !differentCompletionDate &&
+                              ' *'}
+                          </label>
+                          <input
+                            type="date"
+                            value={form.end_date}
+                            onChange={(e) => setForm((f) => ({ ...f, end_date: e.target.value }))}
+                            className={TRAINING_INPUT_CLASS}
+                          />
+                          {!differentCompletionDate &&
+                          (form.status === 'completed' || form.status === 'expired') ? (
+                            <p className="mt-1 text-[11px] text-gray-500">Also used as completion date.</p>
+                          ) : null}
+                        </div>
+                      </div>
+                      <div className="space-y-3">
+                        <label className="inline-flex cursor-pointer items-center gap-2 text-sm text-gray-700">
+                          <input
+                            type="checkbox"
+                            checked={differentCompletionDate}
+                            onChange={(e) => {
+                              const on = e.target.checked;
+                              setDifferentCompletionDate(on);
+                              if (on) {
+                                setForm((f) => ({
+                                  ...f,
+                                  completion_date:
+                                    f.completion_date.trim() ||
+                                    f.end_date.trim() ||
+                                    f.start_date.trim() ||
+                                    new Date().toISOString().slice(0, 10),
+                                }));
+                              }
+                            }}
+                            className="h-4 w-4 rounded border-gray-300 text-brand-red focus:ring-brand-red"
+                          />
+                          <span className="text-xs font-semibold uppercase tracking-wide text-gray-600">
+                            Use different completion date
+                          </span>
+                        </label>
+                        {differentCompletionDate ? (
+                          <div>
+                            <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-600">
+                              Completion date{' '}
+                              {(form.status === 'completed' || form.status === 'expired') && '*'}
+                            </label>
+                            <input
+                              type="date"
+                              value={form.completion_date}
+                              onChange={(e) => setForm((f) => ({ ...f, completion_date: e.target.value }))}
+                              className={TRAINING_INPUT_CLASS}
+                            />
+                          </div>
+                        ) : null}
+                      </div>
+                      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                        <div>
+                          <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-600">
+                            Start time
+                          </label>
+                          <input
+                            type="time"
+                            value={form.time_start}
+                            onChange={(e) =>
+                              setForm((f) => ({ ...f, time_start: e.target.value, session_time: '' }))
+                            }
+                            className={TRAINING_INPUT_CLASS}
+                          />
+                        </div>
+                        <div>
+                          <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-600">
+                            End time
+                          </label>
+                          <input
+                            type="time"
+                            value={form.time_end}
+                            onChange={(e) =>
+                              setForm((f) => ({ ...f, time_end: e.target.value, session_time: '' }))
+                            }
+                            className={TRAINING_INPUT_CLASS}
+                          />
+                        </div>
+                      </div>
+                      <div className="flex flex-wrap items-center gap-4">
+                        <label className="inline-flex cursor-pointer items-center gap-2 text-sm text-gray-700">
+                          <input
+                            type="checkbox"
+                            checked={includeWeekends}
+                            onChange={(e) => setIncludeWeekends(e.target.checked)}
+                            className="h-4 w-4 rounded border-gray-300 text-brand-red focus:ring-brand-red"
+                          />
+                          <span className="text-xs font-semibold uppercase tracking-wide text-gray-600">
+                            Include weekends
+                          </span>
+                        </label>
+                      </div>
+                      <div>
+                        <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-gray-600">
+                          Duration (hours)
+                        </p>
+                        {computedDurationHours != null && trainingDurationHint ? (
+                          <p className="rounded-lg border border-gray-200 bg-gray-50/80 px-3 py-2 text-sm text-gray-800">
+                            <span className="font-semibold tabular-nums">{computedDurationHours}</span>
+                            <span className="text-gray-600">
+                              {' '}
+                              ({trainingDurationHint.days} day(s) × {trainingDurationHint.perDay.toFixed(2)} h/day)
+                            </span>
+                          </p>
+                        ) : (
+                          <p className="rounded-lg border border-dashed border-gray-200 bg-gray-50/50 px-3 py-2 text-sm text-gray-500">
+                            Set start and end dates plus daily start and end times to calculate hours
+                            {includeWeekends ? ' (all days)' : ' (weekdays only unless weekends are included)'}.
+                            {editing?.duration_hours != null
+                              ? ` Saved value: ${editing.duration_hours} h (unchanged until recalculated).`
+                              : ''}
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                    <div className="space-y-4">
+                      <div>
+                        <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-600">
+                          Status
+                        </label>
+                        <select
+                          value={form.status}
+                          onChange={(e) => {
+                            const ns = e.target.value;
+                            setForm((f) => {
+                              let cd = f.completion_date;
+                              if (ns === 'scheduled' || ns === 'in_progress') {
+                                // keep completion_date for when user switches back
+                              } else if (
+                                (ns === 'completed' || ns === 'expired') &&
+                                differentCompletionDate &&
+                                !cd.trim()
+                              ) {
+                                cd =
+                                  f.end_date.trim() ||
+                                  f.start_date.trim() ||
+                                  new Date().toISOString().slice(0, 10);
+                              }
+                              return { ...f, status: ns, completion_date: cd };
+                            });
+                          }}
+                          className={TRAINING_INPUT_CLASS}
+                        >
+                          {TRAINING_STATUSES.map((s) => (
+                            <option key={s} value={s}>
+                              {s.replace('_', ' ')}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                        <div>
+                          <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-600">
+                            Certificate / reference #
+                          </label>
+                          <input
+                            value={form.certificate_number}
+                            onChange={(e) => setForm((f) => ({ ...f, certificate_number: e.target.value }))}
+                            className={TRAINING_INPUT_CLASS}
+                          />
+                        </div>
+                        <div>
+                          <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-600">
+                            Expiry / renewal date
+                          </label>
+                          <input
+                            type="date"
+                            value={form.expiry_date}
+                            onChange={(e) => setForm((f) => ({ ...f, expiry_date: e.target.value }))}
+                            className={TRAINING_INPUT_CLASS}
+                          />
+                        </div>
+                      </div>
+                      {canEdit && (
+                        <div className="space-y-3 rounded-lg border border-dashed border-emerald-200 bg-emerald-50/50 p-4">
+                          <div>
+                            <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-600">
+                              Certificate file (optional)
+                            </label>
+                            <p className="mb-2 text-xs leading-relaxed text-gray-600">
+                              Uploads to{' '}
+                              <span className="font-medium text-gray-800">Docs</span> →{' '}
+                              <span className="font-medium text-emerald-900">{TRAINING_CERTIFICATES_FOLDER_NAME}</span>{' '}
+                              (folder is created automatically if missing).
+                            </p>
+                            <input
+                              ref={certificateFileInputRef}
+                              type="file"
+                              className="hidden"
+                              onChange={(e) => {
+                                setCertificateFile(e.target.files?.[0] ?? null);
+                                e.target.value = '';
+                              }}
+                            />
+                            <div
+                              role="button"
+                              tabIndex={0}
+                              onClick={() => certificateFileInputRef.current?.click()}
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter' || e.key === ' ') {
+                                  e.preventDefault();
+                                  certificateFileInputRef.current?.click();
+                                }
+                              }}
+                              onDragOver={(e) => {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                e.dataTransfer.dropEffect = 'copy';
+                              }}
+                              onDragEnter={(e) => {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                setCertificateDragActive(true);
+                              }}
+                              onDragLeave={(e) => {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                const el = e.currentTarget;
+                                const rel = e.relatedTarget as Node | null;
+                                if (!rel || !el.contains(rel)) setCertificateDragActive(false);
+                              }}
+                              onDrop={(e) => {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                setCertificateDragActive(false);
+                                const f = e.dataTransfer.files?.[0];
+                                if (f) setCertificateFile(f);
+                              }}
+                              className={`flex min-h-[112px] cursor-pointer flex-col items-center justify-center gap-2 rounded-lg border-2 border-dashed px-4 py-5 text-center transition-colors outline-none focus-visible:ring-2 focus-visible:ring-emerald-500/40 ${
+                                certificateDragActive
+                                  ? 'border-emerald-500 bg-emerald-100/90'
+                                  : 'border-emerald-300 bg-white/90 hover:border-emerald-400 hover:bg-emerald-50/90'
+                              }`}
+                            >
+                              <svg
+                                className={`h-8 w-8 shrink-0 ${certificateDragActive ? 'text-emerald-700' : 'text-emerald-600'}`}
+                                fill="none"
+                                stroke="currentColor"
+                                viewBox="0 0 24 24"
+                                aria-hidden
+                              >
+                                <path
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                  strokeWidth={1.5}
+                                  d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"
+                                />
+                              </svg>
+                              <div className="text-xs text-gray-700">
+                                <span className="font-semibold text-emerald-900">Drop file here</span>
+                                <span className="text-gray-500"> or </span>
+                                <span className="font-semibold text-brand-red underline-offset-2 hover:underline">browse</span>
+                              </div>
+                              <p className="text-[11px] text-gray-500">PDF, image, or other — one file per save</p>
+                            </div>
+                            {certificateFile ? (
+                              <div className="mt-2 flex items-start justify-between gap-2 rounded-md border border-emerald-200 bg-white px-3 py-2">
+                                <p className="min-w-0 flex-1 truncate text-xs text-gray-800" title={certificateFile.name}>
+                                  <span className="font-medium text-gray-600">Selected:</span>{' '}
+                                  {certificateFile.name}
+                                </p>
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setCertificateFile(null);
+                                  }}
+                                  className="shrink-0 text-xs font-medium text-gray-500 hover:text-red-600"
+                                >
+                                  Clear
+                                </button>
+                              </div>
+                            ) : null}
+                          </div>
+                          <div>
+                            <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-600">
+                              Document title in Docs (optional)
+                            </label>
+                            <input
+                              value={certificateDocTitle}
+                              onChange={(e) => setCertificateDocTitle(e.target.value)}
+                              className={TRAINING_INPUT_CLASS}
+                              placeholder={
+                                form.title.trim()
+                                  ? `Default: “${form.title.trim()} — file name”`
+                                  : 'Default: training title — file name'
+                              }
+                            />
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                  <div className="mt-6 border-t border-gray-100 pt-6">
+                    <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-600">
+                      Notes
+                    </label>
+                    <textarea
+                      value={form.notes}
+                      onChange={(e) => setForm((f) => ({ ...f, notes: e.target.value }))}
+                      className={`${TRAINING_INPUT_CLASS} min-h-[160px] w-full resize-y sm:min-h-[200px]`}
+                      rows={7}
+                    />
+                  </div>
+                </div>
+                <div className="flex shrink-0 justify-end gap-3 border-t border-gray-200 bg-slate-50/80 px-5 py-4 sm:px-8">
+                  <button
+                    type="button"
+                    onClick={closeModal}
+                    className="rounded-lg border border-gray-300 bg-white px-5 py-2.5 text-sm font-medium text-gray-700 shadow-sm hover:bg-gray-50"
                   >
-                    {TRAINING_CATEGORIES.map((c) => (
-                      <option key={c || 'empty'} value={c}>
-                        {c || '— Select —'}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Format</label>
-                  <select
-                    value={form.delivery_format}
-                    onChange={(e) => setForm((f) => ({ ...f, delivery_format: e.target.value }))}
-                    className="w-full border rounded-lg px-3 py-2"
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={saving}
+                    className="rounded-lg bg-brand-red px-5 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-red-800 disabled:opacity-50"
                   >
-                    <option value="">—</option>
-                    {TRAINING_FORMATS.filter(Boolean).map((c) => (
-                      <option key={c} value={c}>
-                        {formatLabel(c)}
-                      </option>
-                    ))}
-                  </select>
+                    {saving ? 'Saving...' : 'Save'}
+                  </button>
                 </div>
-              </div>
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Crew</label>
-                  <input
-                    value={form.crew}
-                    onChange={(e) => setForm((f) => ({ ...f, crew: e.target.value }))}
-                    className="w-full border rounded-lg px-3 py-2"
-                    placeholder="e.g. Repairs, Metal, Office"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Location</label>
-                  <input
-                    value={form.location}
-                    onChange={(e) => setForm((f) => ({ ...f, location: e.target.value }))}
-                    className="w-full border rounded-lg px-3 py-2"
-                    placeholder="Address or room"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Time</label>
-                  <input
-                    value={form.session_time}
-                    onChange={(e) => setForm((f) => ({ ...f, session_time: e.target.value }))}
-                    className="w-full border rounded-lg px-3 py-2"
-                    placeholder="e.g. 8:30 AM – 4:30 PM"
-                  />
-                </div>
-              </div>
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Start date</label>
-                  <input
-                    type="date"
-                    value={form.start_date}
-                    onChange={(e) => setForm((f) => ({ ...f, start_date: e.target.value }))}
-                    className="w-full border rounded-lg px-3 py-2"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">End date</label>
-                  <input
-                    type="date"
-                    value={form.end_date}
-                    onChange={(e) => setForm((f) => ({ ...f, end_date: e.target.value }))}
-                    className="w-full border rounded-lg px-3 py-2"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Completion date {(form.status === 'completed' || form.status === 'expired') && '*'}
-                  </label>
-                  <input
-                    type="date"
-                    value={form.completion_date}
-                    onChange={(e) => setForm((f) => ({ ...f, completion_date: e.target.value }))}
-                    className="w-full border rounded-lg px-3 py-2"
-                  />
-                </div>
-              </div>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Duration (hours)</label>
-                  <input
-                    type="number"
-                    min={0}
-                    step={0.25}
-                    value={form.duration_hours}
-                    onChange={(e) => setForm((f) => ({ ...f, duration_hours: e.target.value }))}
-                    className="w-full border rounded-lg px-3 py-2"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Status</label>
-                  <select
-                    value={form.status}
-                    onChange={(e) => {
-                      const ns = e.target.value;
-                      setForm((f) => {
-                        let cd = f.completion_date;
-                        if (ns === 'scheduled' || ns === 'in_progress') {
-                          cd = '';
-                        } else if ((ns === 'completed' || ns === 'expired') && !cd) {
-                          cd = new Date().toISOString().slice(0, 10);
-                        }
-                        return { ...f, status: ns, completion_date: cd };
-                      });
-                    }}
-                    className="w-full border rounded-lg px-3 py-2"
-                  >
-                    {TRAINING_STATUSES.map((s) => (
-                      <option key={s} value={s}>
-                        {s.replace('_', ' ')}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              </div>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Certificate / reference #</label>
-                  <input
-                    value={form.certificate_number}
-                    onChange={(e) => setForm((f) => ({ ...f, certificate_number: e.target.value }))}
-                    className="w-full border rounded-lg px-3 py-2"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Expiry / renewal date</label>
-                  <input
-                    type="date"
-                    value={form.expiry_date}
-                    onChange={(e) => setForm((f) => ({ ...f, expiry_date: e.target.value }))}
-                    className="w-full border rounded-lg px-3 py-2"
-                  />
-                </div>
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Notes</label>
-                <textarea
-                  value={form.notes}
-                  onChange={(e) => setForm((f) => ({ ...f, notes: e.target.value }))}
-                  className="w-full border rounded-lg px-3 py-2"
-                  rows={3}
-                />
-              </div>
-              <div className="flex gap-2 justify-end pt-2">
-                <button type="button" onClick={closeModal} className="px-4 py-2 border rounded-lg hover:bg-gray-50">
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={saving}
-                  className="px-4 py-2 bg-brand-red text-white rounded-lg hover:bg-red-700 disabled:opacity-50"
-                >
-                  {saving ? 'Saving...' : 'Save'}
-                </button>
-              </div>
-            </form>
+              </form>
+            </div>
           </div>
-        </div>
         </OverlayPortal>
       )}
     </div>
@@ -9595,7 +10116,7 @@ function UserDocuments({ userId, canEdit }:{ userId:string, canEdit:boolean }){
   useEffect(() => {
     if (!canEdit || !folders || folders.length > 0 || defaultFoldersCreatedRef.current) return;
     defaultFoldersCreatedRef.current = true;
-    const names = ['HR Documents', 'Contracts', 'Training', 'Other'];
+    const names = ['HR Documents', 'Contracts', 'Training', 'Training certificates', 'Other'];
     (async () => {
       for (const name of names) {
         try { await api('POST', `/auth/users/${encodeURIComponent(userId)}/folders`, { name }); } catch (_) { /* ignore */ }
