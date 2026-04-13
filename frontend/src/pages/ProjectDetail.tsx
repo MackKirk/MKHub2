@@ -799,6 +799,7 @@ export default function ProjectDetail(){
   const { data:employees } = useQuery({ queryKey:['employees'], queryFn: ()=>api<any[]>('GET','/employees') });
   // Check for tab query parameter
   const searchParams = new URLSearchParams(location.search);
+  const safetyInspectionFromUrl = searchParams.get('safety_inspection');
   const initialTab = (searchParams.get('tab') as 'overview'|'general'|'reports'|'dispatch'|'timesheet'|'files'|'photos'|'documents'|'proposal'|'pricing'|'estimate'|'orders'|'safety'|null) || null;
   const [tab, setTab] = useState<'overview'|'general'|'reports'|'dispatch'|'timesheet'|'files'|'photos'|'documents'|'proposal'|'pricing'|'estimate'|'orders'|'safety'|null>(initialTab);
   // Live pricing items (from ProposalForm) to update division percentages instantly without reload.
@@ -1031,6 +1032,8 @@ export default function ProjectDetail(){
       case 'safety':
         queryClient.invalidateQueries({ queryKey: ['projectSafetyInspections', projectId] });
         queryClient.invalidateQueries({ queryKey: ['projectSafetyInspection', projectId] });
+        queryClient.invalidateQueries({ queryKey: ['safetyInspections'] });
+        queryClient.invalidateQueries({ queryKey: ['safetyInspectionsCalendar'] });
         break;
       default:
         break;
@@ -2248,6 +2251,7 @@ export default function ProjectDetail(){
                   }}
                   canRead={isAdmin || permissions.has('business:projects:safety:read')}
                   canWrite={isAdmin || permissions.has('business:projects:safety:write')}
+                  initialSafetyInspectionId={safetyInspectionFromUrl}
                 />
               )}
             </>

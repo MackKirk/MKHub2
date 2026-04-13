@@ -75,6 +75,8 @@ import InspectionNew from './pages/InspectionNew';
 import InspectionScheduleDetail from './pages/InspectionScheduleDetail';
 import InspectionDetail from './pages/InspectionDetail';
 import FleetSchedulePage from './pages/FleetSchedulePage';
+import SafetyInspectionsPage from './pages/SafetyInspectionsPage';
+import SafetySchedulePage from './pages/SafetySchedulePage';
 import TrainingCourse from './pages/TrainingCourse';
 import TrainingCertificates from './pages/TrainingCertificates';
 import TrainingAdmin from './pages/TrainingAdmin';
@@ -184,6 +186,8 @@ export default function App(){
           <Route path="/reviews/compare" element={<AppShell><ReviewsCompare/></AppShell>} />
           <Route path="/reviews/my" element={<AppShell><MyReviews/></AppShell>} />
           <Route path="/users/:id" element={<AppShell><UserDetail/></AppShell>} />
+          <Route path="/safety/inspections" element={<AppShell><SafetyInspectionsPage /></AppShell>} />
+          <Route path="/safety/calendar" element={<AppShell><SafetySchedulePage /></AppShell>} />
           <Route path="/fleet" element={<AppShell><FleetDashboard/></AppShell>} />
           <Route path="/fleet/assets" element={<AppShell><FleetAssets/></AppShell>} />
           <Route path="/fleet/vehicles" element={<AppShell><FleetAssets/></AppShell>} />

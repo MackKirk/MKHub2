@@ -1,7 +1,7 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
-import { api } from '@/lib/api';
+import { api, withFileAccessToken } from '@/lib/api';
 import {
   PROJECT_SAFETY_INSPECTION_TEMPLATE,
   SAFETY_TEMPLATE_VERSION,
@@ -14,6 +14,7 @@ type SafetyInspectionRow = {
   project_id: string;
   inspection_date: string;
   template_version: string;
+  status?: string;
   form_payload: Record<string, unknown>;
   created_at?: string | null;
   created_by?: string | null;
@@ -32,7 +33,34 @@ const YNA_OPTIONS: {
   { value: 'na', label: 'NA', title: 'N/A', className: 'bg-gray-100 text-gray-700 border-gray-300 hover:bg-gray-200' },
 ];
 
-function isYesNoEntry(v: unknown): v is { status?: string; comments?: string } {
+const MAX_YN_COMMENT_IMAGES = 12;
+const YN_COMMENT_IMAGE_CATEGORY = 'project-photos';
+
+function guessImageMimeFromName(name: string): string {
+  const lower = name.toLowerCase();
+  if (lower.endsWith('.png')) return 'image/png';
+  if (lower.endsWith('.gif')) return 'image/gif';
+  if (lower.endsWith('.webp')) return 'image/webp';
+  if (lower.endsWith('.heic') || lower.endsWith('.heif')) return 'image/heic';
+  if (lower.endsWith('.bmp')) return 'image/bmp';
+  if (lower.endsWith('.tif') || lower.endsWith('.tiff')) return 'image/tiff';
+  if (lower.endsWith('.jpg') || lower.endsWith('.jpeg')) return 'image/jpeg';
+  return 'image/jpeg';
+}
+
+function isLikelyImageFile(file: File): boolean {
+  const ct = file.type || '';
+  if (ct.startsWith('image/')) return true;
+  return /\.(jpe?g|png|gif|webp|heic|heif|bmp|tiff?)$/i.test(file.name);
+}
+
+function resolveImageContentType(file: File): string {
+  const ct = file.type || '';
+  if (ct.startsWith('image/')) return ct;
+  return guessImageMimeFromName(file.name);
+}
+
+function isYesNoEntry(v: unknown): v is { status?: string; comments?: string; comment_image_ids?: unknown } {
   return v != null && typeof v === 'object' && !Array.isArray(v);
 }
 
@@ -46,12 +74,20 @@ function getCheckboxValues(payload: Record<string, unknown>, key: string): strin
   return Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string') : [];
 }
 
-function getYnEntry(payload: Record<string, unknown>, key: string): { status: YesNoNa | ''; comments: string } {
+function getYnRaw(
+  payload: Record<string, unknown>,
+  key: string
+): { status: YesNoNa | ''; comments: string; comment_image_ids: string[] } {
   const v = payload[key];
-  if (!isYesNoEntry(v)) return { status: '', comments: '' };
+  if (!isYesNoEntry(v)) return { status: '', comments: '', comment_image_ids: [] };
   const s = v.status;
   const status = s === 'yes' || s === 'no' || s === 'na' ? s : '';
-  return { status, comments: typeof v.comments === 'string' ? v.comments : '' };
+  const comments = typeof v.comments === 'string' ? v.comments : '';
+  const raw = v.comment_image_ids;
+  const comment_image_ids = Array.isArray(raw)
+    ? raw.filter((x): x is string => typeof x === 'string' && x.length > 0)
+    : [];
+  return { status, comments, comment_image_ids };
 }
 
 type Props = {
@@ -59,13 +95,168 @@ type Props = {
   proj: { name?: string; address?: string; address_city?: string; address_province?: string };
   canRead: boolean;
   canWrite: boolean;
+  /** From URL ?safety_inspection= — open this inspection when the list loads */
+  initialSafetyInspectionId?: string | null;
 };
 
-export default function ProjectSafetyTab({ projectId, proj, canRead, canWrite }: Props) {
+function YnCommentImageGrid({
+  imageIds,
+  canRemove,
+  onRemove,
+}: {
+  imageIds: string[];
+  canRemove?: boolean;
+  onRemove?: (fileObjectId: string) => void;
+}) {
+  if (imageIds.length === 0) return null;
+  return (
+    <div className="mt-2 flex flex-wrap gap-2">
+      {imageIds.map((id) => (
+        <div key={id} className="relative w-24 h-24 rounded-lg border border-gray-200 overflow-hidden bg-gray-50 shrink-0">
+          <a
+            href={withFileAccessToken(`/files/${encodeURIComponent(id)}/thumbnail?w=1200`)}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="block w-full h-full"
+            title="Open image"
+          >
+            <img
+              src={withFileAccessToken(`/files/${encodeURIComponent(id)}/thumbnail?w=240`)}
+              alt=""
+              className="w-full h-full object-cover"
+            />
+          </a>
+          {canRemove && onRemove && (
+            <button
+              type="button"
+              title="Remove image"
+              onClick={(e) => {
+                e.preventDefault();
+                onRemove(id);
+              }}
+              className="absolute top-1 right-1 w-7 h-7 rounded-full bg-black/60 text-white text-lg leading-none flex items-center justify-center hover:bg-black/80"
+            >
+              ×
+            </button>
+          )}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function ChatBubbleIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
+      <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth={2}
+        d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"
+      />
+    </svg>
+  );
+}
+
+/** Dashed drop zone + hidden file input (same pattern as OnboardingAdmin). One instance per Y/N comment row. */
+function YnCommentPhotoDropzone({
+  disabled,
+  uploading,
+  onFiles,
+}: {
+  disabled: boolean;
+  uploading: boolean;
+  onFiles: (files: File[]) => void;
+}) {
+  const inputRef = useRef<HTMLInputElement>(null);
+  const dragDepth = useRef(0);
+  const [dragActive, setDragActive] = useState(false);
+
+  const pushFiles = (list: FileList | null) => {
+    if (!list?.length || disabled || uploading) return;
+    const picked = Array.from(list);
+    const images = picked.filter((f) => isLikelyImageFile(f));
+    if (images.length < picked.length) {
+      toast.error('Some files were skipped — only images are allowed.');
+    }
+    if (images.length) onFiles(images);
+    if (inputRef.current) inputRef.current.value = '';
+  };
+
+  return (
+    <div
+      className="w-full"
+      onDragEnter={(e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        dragDepth.current += 1;
+        setDragActive(true);
+      }}
+      onDragLeave={(e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        dragDepth.current -= 1;
+        if (dragDepth.current <= 0) {
+          dragDepth.current = 0;
+          setDragActive(false);
+        }
+      }}
+      onDragOver={(e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        const items = [...(e.dataTransfer?.items || [])].filter((i) => i.kind === 'file');
+        const allClearlyNonImage =
+          items.length > 0 &&
+          items.every((i) => {
+            const t = (i.type || '').toLowerCase();
+            return t !== '' && !t.startsWith('image/');
+          });
+        e.dataTransfer.dropEffect = allClearlyNonImage ? 'none' : 'copy';
+      }}
+      onDrop={(e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        dragDepth.current = 0;
+        setDragActive(false);
+        if (disabled || uploading) return;
+        pushFiles(e.dataTransfer.files);
+      }}
+    >
+      <button
+        type="button"
+        disabled={disabled || uploading}
+        onClick={() => inputRef.current?.click()}
+        className={`w-full rounded-xl border-2 border-dashed p-5 text-center transition-colors ${
+          dragActive ? 'border-brand-red bg-red-50/40' : 'border-gray-300 bg-gray-50/30 hover:border-gray-400'
+        } disabled:opacity-50 disabled:cursor-not-allowed`}
+      >
+        <p className="text-sm font-medium text-gray-800">
+          {uploading ? 'Uploading…' : 'Drag photos here or click to choose'}
+        </p>
+        <p className="text-xs text-gray-500 mt-2">Drag-and-drop images here or choose files from your computer.</p>
+      </button>
+      <input
+        ref={inputRef}
+        type="file"
+        accept="image/*"
+        multiple
+        className="hidden"
+        disabled={disabled || uploading}
+        onChange={(e) => pushFiles(e.target.files)}
+      />
+    </div>
+  );
+}
+
+export default function ProjectSafetyTab({ projectId, proj, canRead, canWrite, initialSafetyInspectionId }: Props) {
   const qc = useQueryClient();
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [inspectionDate, setInspectionDate] = useState<string>('');
   const [formPayload, setFormPayload] = useState<Record<string, unknown>>({});
+  /** Y/N item keys whose optional comment field is expanded for editing */
+  const [ynCommentOpen, setYnCommentOpen] = useState<Record<string, boolean>>({});
+  /** Which Y/N row is currently uploading an image (shows inline status). */
+  const [ynImageUploadingFor, setYnImageUploadingFor] = useState<string | null>(null);
 
   const listKey = ['projectSafetyInspections', projectId];
   const { data: list = [], isLoading: listLoading } = useQuery({
@@ -73,6 +264,14 @@ export default function ProjectSafetyTab({ projectId, proj, canRead, canWrite }:
     queryFn: () => api<SafetyInspectionRow[]>('GET', `/projects/${encodeURIComponent(projectId)}/safety-inspections`),
     enabled: canRead && !!projectId,
   });
+
+  useEffect(() => {
+    const sid = initialSafetyInspectionId?.trim();
+    if (!sid || !list.length) return;
+    if (list.some((r) => r.id === sid)) {
+      setSelectedId(sid);
+    }
+  }, [initialSafetyInspectionId, list]);
 
   const detailKey = ['projectSafetyInspection', projectId, selectedId];
   const { data: detail, isLoading: detailLoading } = useQuery({
@@ -96,6 +295,10 @@ export default function ProjectSafetyTab({ projectId, proj, canRead, canWrite }:
         : {}
     );
   }, [detail?.id, detail?.inspection_date, detail?.form_payload]);
+
+  useEffect(() => {
+    setYnCommentOpen({});
+  }, [detail?.id]);
 
   const applyProjectPrefill = useCallback(
     (payload: Record<string, unknown>) => {
@@ -122,6 +325,8 @@ export default function ProjectSafetyTab({ projectId, proj, canRead, canWrite }:
       }),
     onSuccess: (row) => {
       qc.invalidateQueries({ queryKey: listKey });
+      qc.invalidateQueries({ queryKey: ['safetyInspections'] });
+      qc.invalidateQueries({ queryKey: ['safetyInspectionsCalendar'] });
       setSelectedId(row.id);
       toast.success('Inspection created');
     },
@@ -145,7 +350,10 @@ export default function ProjectSafetyTab({ projectId, proj, canRead, canWrite }:
       );
     },
     onSuccess: () => {
+      setYnCommentOpen({});
       qc.invalidateQueries({ queryKey: listKey });
+      qc.invalidateQueries({ queryKey: ['safetyInspections'] });
+      qc.invalidateQueries({ queryKey: ['safetyInspectionsCalendar'] });
       if (selectedId) {
         qc.invalidateQueries({ queryKey: ['projectSafetyInspection', projectId, selectedId] });
       }
@@ -154,23 +362,123 @@ export default function ProjectSafetyTab({ projectId, proj, canRead, canWrite }:
     onError: () => toast.error('Could not save'),
   });
 
+  const finalizeMutation = useMutation({
+    mutationFn: () => {
+      if (!selectedId) throw new Error('no id');
+      return api<SafetyInspectionRow>(
+        'PUT',
+        `/projects/${encodeURIComponent(projectId)}/safety-inspections/${encodeURIComponent(selectedId)}`,
+        { status: 'finalized' }
+      );
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: listKey });
+      qc.invalidateQueries({ queryKey: ['safetyInspections'] });
+      qc.invalidateQueries({ queryKey: ['safetyInspectionsCalendar'] });
+      if (selectedId) {
+        qc.invalidateQueries({ queryKey: ['projectSafetyInspection', projectId, selectedId] });
+      }
+      toast.success('Inspection finalized');
+    },
+    onError: () => toast.error('Could not finalize'),
+  });
+
   const setTextField = (key: string, value: string) => {
     setFormPayload((p) => ({ ...p, [key]: value }));
   };
 
   const setYnStatus = (key: string, status: YesNoNa) => {
     setFormPayload((p) => {
-      const cur = getYnEntry(p, key);
+      const cur = getYnRaw(p, key);
       return { ...p, [key]: { ...cur, status } };
     });
   };
 
   const setYnComments = (key: string, comments: string) => {
     setFormPayload((p) => {
-      const cur = getYnEntry(p, key);
+      const cur = getYnRaw(p, key);
       return { ...p, [key]: { ...cur, comments } };
     });
   };
+
+  const removeYnCommentImage = (key: string, fileObjectId: string) => {
+    setFormPayload((p) => {
+      const cur = getYnRaw(p, key);
+      return {
+        ...p,
+        [key]: {
+          ...cur,
+          comment_image_ids: cur.comment_image_ids.filter((x) => x !== fileObjectId),
+        },
+      };
+    });
+  };
+
+  /** Server-side proxy upload (avoids browser PUT/CORS issues with blob URLs). */
+  const uploadYnCommentImage = useCallback(
+    async (file: File): Promise<string | null> => {
+      if (!isLikelyImageFile(file)) {
+        toast.error('Please choose an image file');
+        return null;
+      }
+      const ct = resolveImageContentType(file);
+      try {
+        const form = new FormData();
+        form.append('file', file);
+        form.append('original_name', file.name);
+        form.append('content_type', ct);
+        form.append('project_id', projectId);
+        form.append('client_id', '');
+        form.append('employee_id', '');
+        form.append('category_id', YN_COMMENT_IMAGE_CATEGORY);
+
+        const res = await api<{ id: string; key: string }>('POST', '/files/upload-proxy', form);
+        await api(
+          'POST',
+          `/projects/${encodeURIComponent(projectId)}/files?file_object_id=${encodeURIComponent(res.id)}&category=${encodeURIComponent(YN_COMMENT_IMAGE_CATEGORY)}&original_name=${encodeURIComponent(file.name)}`
+        );
+        return res.id;
+      } catch {
+        toast.error('Image upload failed');
+        return null;
+      }
+    },
+    [projectId]
+  );
+
+  const processYnCommentImages = useCallback(
+    async (key: string, files: File[]) => {
+      if (!canWrite || !files.length) return;
+      for (const file of files) {
+        let atLimit = false;
+        setFormPayload((p) => {
+          const cur = getYnRaw(p, key);
+          atLimit = cur.comment_image_ids.length >= MAX_YN_COMMENT_IMAGES;
+          return p;
+        });
+        if (atLimit) {
+          toast.error(`You can add at most ${MAX_YN_COMMENT_IMAGES} images per comment.`);
+          break;
+        }
+
+        setYnImageUploadingFor(key);
+        const id = await uploadYnCommentImage(file);
+        setYnImageUploadingFor(null);
+        if (!id) continue;
+
+        setFormPayload((p) => {
+          const cur = getYnRaw(p, key);
+          if (cur.comment_image_ids.length >= MAX_YN_COMMENT_IMAGES) return p;
+          if (cur.comment_image_ids.includes(id)) return p;
+          return {
+            ...p,
+            [key]: { ...cur, comment_image_ids: [...cur.comment_image_ids, id] },
+          };
+        });
+      }
+    },
+    [canWrite, uploadYnCommentImage]
+  );
 
   const toggleCheckbox = (key: string, option: string) => {
     setFormPayload((p) => {
@@ -252,7 +560,15 @@ export default function ProjectSafetyTab({ projectId, proj, canRead, canWrite }:
     if (item.kind !== 'yes_no_na') {
       return null;
     }
-    const yn = getYnEntry(formPayload, item.key);
+    const yn = getYnRaw(formPayload, item.key);
+    const commentExpanded = ynCommentOpen[item.key] === true;
+    const commentText = yn.comments.trim();
+    const hasComment = commentText.length > 0;
+    const hasImages = yn.comment_image_ids.length > 0;
+    const hasCommentOrMedia = hasComment || hasImages;
+    const atImageLimit = yn.comment_image_ids.length >= MAX_YN_COMMENT_IMAGES;
+    const uploadingImages = ynImageUploadingFor === item.key;
+
     return (
       <div key={item.key} className={`p-4 transition-colors ${rowBg}`}>
         <div className="flex flex-wrap items-center gap-4">
@@ -274,17 +590,66 @@ export default function ProjectSafetyTab({ projectId, proj, canRead, canWrite }:
                 {opt.label}
               </button>
             ))}
+            {item.commentsField && canWrite && (
+              <button
+                type="button"
+                title={commentExpanded ? 'Close comment' : hasCommentOrMedia ? 'Edit comment' : 'Add comment'}
+                aria-expanded={commentExpanded}
+                aria-label={commentExpanded ? 'Close comment' : hasCommentOrMedia ? 'Edit comment' : 'Add comment'}
+                onClick={() =>
+                  setYnCommentOpen((prev) => ({
+                    ...prev,
+                    [item.key]: !prev[item.key],
+                  }))
+                }
+                className={`min-w-[2.75rem] min-h-[2.75rem] flex items-center justify-center rounded-xl border-2 transition-all ${
+                  commentExpanded || hasCommentOrMedia
+                    ? 'border-blue-400 bg-blue-50 text-blue-700'
+                    : 'border-gray-200 bg-white text-gray-400 hover:border-gray-300 hover:text-gray-600'
+                }`}
+              >
+                <ChatBubbleIcon className="w-5 h-5" />
+              </button>
+            )}
           </div>
         </div>
-        {item.commentsField && (
-          <textarea
-            value={yn.comments}
-            onChange={(e) => setYnComments(item.key, e.target.value)}
-            disabled={!canWrite}
-            placeholder="Comments / details"
-            rows={2}
-            className="mt-3 w-full px-3 py-2 border border-gray-200 rounded-lg text-sm resize-y disabled:bg-gray-50"
-          />
+        {item.commentsField && canWrite && commentExpanded && (
+          <div className="mt-3 space-y-3">
+            <textarea
+              value={yn.comments}
+              onChange={(e) => setYnComments(item.key, e.target.value)}
+              placeholder="Comments / details"
+              rows={3}
+              className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm resize-y"
+            />
+            <div className="space-y-2">
+              <YnCommentPhotoDropzone
+                disabled={atImageLimit}
+                uploading={uploadingImages}
+                onFiles={(files) => void processYnCommentImages(item.key, files)}
+              />
+              <p className="text-xs text-gray-500 text-center">
+                {yn.comment_image_ids.length}/{MAX_YN_COMMENT_IMAGES} photos
+              </p>
+            </div>
+            <YnCommentImageGrid
+              imageIds={yn.comment_image_ids}
+              canRemove
+              onRemove={(id) => removeYnCommentImage(item.key, id)}
+            />
+          </div>
+        )}
+        {item.commentsField && canWrite && !commentExpanded && hasCommentOrMedia && (
+          <div className="mt-3 space-y-2">
+            {hasComment && <p className="text-sm text-gray-700 whitespace-pre-wrap break-words">{yn.comments}</p>}
+            <YnCommentImageGrid imageIds={yn.comment_image_ids} />
+          </div>
+        )}
+        {item.commentsField && !canWrite && hasCommentOrMedia && (
+          <div className="mt-3 space-y-2">
+            {hasComment && <p className="text-sm text-gray-600 whitespace-pre-wrap break-words">{yn.comments}</p>}
+            <YnCommentImageGrid imageIds={yn.comment_image_ids} />
+          </div>
         )}
       </div>
     );
@@ -319,25 +684,34 @@ export default function ProjectSafetyTab({ projectId, proj, canRead, canWrite }:
             <div className="p-8 text-center text-gray-500 text-sm">No inspections yet. Create one to get started.</div>
           ) : (
             <ul className="divide-y divide-gray-100">
-              {list.map((row) => (
-                <li key={row.id}>
-                  <button
-                    type="button"
-                    onClick={() => setSelectedId(row.id)}
-                    className="w-full text-left px-4 py-3 hover:bg-gray-50 flex items-center justify-between gap-3"
-                  >
-                    <span className="text-sm font-medium text-gray-900">
-                      {row.inspection_date
-                        ? new Date(row.inspection_date).toLocaleString(undefined, {
-                            dateStyle: 'medium',
-                            timeStyle: 'short',
-                          })
-                        : '—'}
-                    </span>
-                    <span className="text-xs text-brand-red font-medium">Open</span>
-                  </button>
-                </li>
-              ))}
+              {list.map((row) => {
+                const st = row.status === 'finalized' ? 'finalized' : 'draft';
+                return (
+                  <li key={row.id}>
+                    <button
+                      type="button"
+                      onClick={() => setSelectedId(row.id)}
+                      className="w-full text-left px-4 py-3 hover:bg-gray-50 flex items-center justify-between gap-3"
+                    >
+                      <span className="text-sm font-medium text-gray-900">
+                        {row.inspection_date
+                          ? new Date(row.inspection_date).toLocaleString(undefined, {
+                              dateStyle: 'medium',
+                              timeStyle: 'short',
+                            })
+                          : '—'}
+                      </span>
+                      <span
+                        className={`text-[10px] font-semibold px-2 py-0.5 rounded-full shrink-0 ${
+                          st === 'finalized' ? 'bg-green-100 text-green-800' : 'bg-amber-100 text-amber-900'
+                        }`}
+                      >
+                        {st === 'finalized' ? 'Finalized' : 'Draft'}
+                      </span>
+                    </button>
+                  </li>
+                );
+              })}
             </ul>
           )}
         </div>
@@ -363,15 +737,29 @@ export default function ProjectSafetyTab({ projectId, proj, canRead, canWrite }:
         <div className="rounded-xl border bg-white p-8 text-center text-gray-500">Loading…</div>
       ) : (
         <>
-          <div className="rounded-xl border border-gray-200 bg-white p-4">
-            <label className="block text-xs font-medium text-gray-500 uppercase tracking-wide mb-1">Inspection date & time</label>
-            <input
-              type="datetime-local"
-              value={inspectionDate}
-              onChange={(e) => setInspectionDate(e.target.value)}
-              disabled={!canWrite}
-              className="px-3 py-2 border border-gray-200 rounded-lg text-sm disabled:bg-gray-50"
-            />
+          <div className="rounded-xl border border-gray-200 bg-white p-4 flex flex-wrap items-end justify-between gap-4">
+            <div className="min-w-[200px] flex-1">
+              <label className="block text-xs font-medium text-gray-500 uppercase tracking-wide mb-1">Inspection date & time</label>
+              <input
+                type="datetime-local"
+                value={inspectionDate}
+                onChange={(e) => setInspectionDate(e.target.value)}
+                disabled={!canWrite}
+                className="px-3 py-2 border border-gray-200 rounded-lg text-sm disabled:bg-gray-50"
+              />
+            </div>
+            {detail && (
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-gray-500">Status</span>
+                <span
+                  className={`text-xs font-semibold px-2.5 py-1 rounded-full ${
+                    detail.status === 'finalized' ? 'bg-green-100 text-green-800' : 'bg-amber-100 text-amber-900'
+                  }`}
+                >
+                  {detail.status === 'finalized' ? 'Finalized' : 'Draft'}
+                </span>
+              </div>
+            )}
           </div>
 
           {formSections.map((section) => (
@@ -387,7 +775,7 @@ export default function ProjectSafetyTab({ projectId, proj, canRead, canWrite }:
           ))}
 
           {canWrite && (
-            <div className="flex flex-wrap gap-3">
+            <div className="flex flex-wrap gap-3 items-center">
               <button
                 type="button"
                 disabled={saveMutation.isPending}
@@ -396,6 +784,16 @@ export default function ProjectSafetyTab({ projectId, proj, canRead, canWrite }:
               >
                 {saveMutation.isPending ? 'Saving…' : 'Save inspection'}
               </button>
+              {detail?.status !== 'finalized' && (
+                <button
+                  type="button"
+                  disabled={finalizeMutation.isPending}
+                  onClick={() => finalizeMutation.mutate()}
+                  className="px-5 py-2.5 border border-green-600 text-green-800 bg-green-50 rounded-lg font-medium text-sm hover:bg-green-100 disabled:opacity-50"
+                >
+                  {finalizeMutation.isPending ? 'Finalizing…' : 'Finalize inspection'}
+                </button>
+              )}
             </div>
           )}
         </>

@@ -264,6 +264,8 @@ class ProjectSafetyInspection(Base):
     project_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("projects.id", ondelete="CASCADE"), nullable=False, index=True)
     inspection_date: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, index=True)
     template_version: Mapped[str] = mapped_column(String(50), default="mki_safety_v1", nullable=False)
+    # draft: in progress; finalized: submitted/closed (shown as complete in hub lists/calendar)
+    status: Mapped[str] = mapped_column(String(20), default="draft", nullable=False)
     form_payload: Mapped[Optional[dict]] = mapped_column(JSON)  # header fields + item responses by stable key
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
     created_by: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"))

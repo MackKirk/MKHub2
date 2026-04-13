@@ -97,6 +97,17 @@ const IconFolder = () => (
   </svg>
 );
 
+const IconHardHat = () => (
+  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <path
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      strokeWidth={2}
+      d="M12 3c-3 0-5.5 2.2-6 5h12c-.5-2.8-3-5-6-5zM5 10v1a7 7 0 0014 0v-1M8 21h8v-2a4 4 0 00-4-4v0a4 4 0 00-4 4v2z"
+    />
+  </svg>
+);
+
 const IconTruck = () => (
   <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
@@ -439,6 +450,15 @@ export default function AppShell({ children }: PropsWithChildren){
       icon: <IconSales />,
       items: [
         { id: 'quotations', label: 'Quotations', path: '/quotes', icon: <IconQuotations />, requiredPermission: 'sales:quotations:read' },
+      ]
+    },
+    {
+      id: 'safety',
+      label: 'Safety',
+      icon: <IconHardHat />,
+      items: [
+        { id: 'safety-inspections', label: 'Inspections', path: '/safety/inspections', icon: <IconClipboardCheck />, requiredPermission: 'business:projects:safety:read' },
+        { id: 'safety-calendar', label: 'Schedule', path: '/safety/calendar', icon: <IconCalendar />, requiredPermission: 'business:projects:safety:read' },
       ]
     },
     {

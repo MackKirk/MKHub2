@@ -124,11 +124,15 @@ def _assert_awarded_project_for_safety(p: Project) -> None:
 
 
 def _safety_inspection_to_dict(row: ProjectSafetyInspection) -> dict:
+    st = getattr(row, "status", None) or "draft"
+    if st not in ("draft", "finalized"):
+        st = "draft"
     return {
         "id": str(row.id),
         "project_id": str(row.project_id),
         "inspection_date": row.inspection_date.isoformat() if row.inspection_date else None,
         "template_version": row.template_version or "mki_safety_v1",
+        "status": st,
         "form_payload": row.form_payload if isinstance(row.form_payload, dict) else {},
         "created_at": row.created_at.isoformat() if row.created_at else None,
         "created_by": str(row.created_by) if row.created_by else None,
@@ -2235,6 +2239,7 @@ def create_project_safety_inspection(
         project_id=uuid.UUID(str(project_id)),
         inspection_date=inspection_date,
         template_version=template_version[:50],
+        status="draft",
         form_payload=form_payload if isinstance(form_payload, dict) else {},
         created_by=user.id,
     )
@@ -2316,6 +2321,11 @@ def update_project_safety_inspection(
             flag_modified(row, "form_payload")
         except Exception:
             pass
+    if "status" in payload and payload["status"] is not None:
+        st = payload["status"]
+        if not isinstance(st, str) or st not in ("draft", "finalized"):
+            raise HTTPException(status_code=400, detail="status must be 'draft' or 'finalized'")
+        row.status = st
     row.updated_by = user.id
     row.updated_at = datetime.now(timezone.utc)
     db.commit()

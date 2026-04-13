@@ -39,6 +39,7 @@ from .routes.community import router as community_router
 from .routes.employee_management import router as employee_management_router
 from .routes.permissions import router as permissions_router
 from .routes.fleet import router as fleet_router
+from .routes.safety import router as safety_router
 from .routes.training import router as training_router
 from .routes.bug_report import router as bug_report_router
 from .routes.search import router as search_router
@@ -166,6 +167,7 @@ def create_app() -> FastAPI:
     app.include_router(employee_management_router)
     app.include_router(permissions_router)
     app.include_router(fleet_router)
+    app.include_router(safety_router)
     app.include_router(training_router)
     app.include_router(bug_report_router)
     app.include_router(search_router)
@@ -311,6 +313,40 @@ def create_app() -> FastAPI:
                         db.commit()
                     except Exception as e:
                         print(f"[startup] task_log_entries schema check error (non-critical): {e}")
+
+                    # project_safety_inspections.status (draft | finalized)
+                    try:
+                        if db.execute(
+                            text(
+                                "SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'project_safety_inspections' LIMIT 1"
+                            )
+                        ).fetchall():
+                            db.execute(
+                                text(
+                                    "ALTER TABLE project_safety_inspections ADD COLUMN IF NOT EXISTS status VARCHAR(20) NULL"
+                                )
+                            )
+                            db.commit()
+                            db.execute(
+                                text(
+                                    "UPDATE project_safety_inspections SET status = 'finalized' WHERE status IS NULL"
+                                )
+                            )
+                            db.commit()
+                            db.execute(
+                                text(
+                                    "ALTER TABLE project_safety_inspections ALTER COLUMN status SET DEFAULT 'draft'"
+                                )
+                            )
+                            db.execute(
+                                text(
+                                    "ALTER TABLE project_safety_inspections ALTER COLUMN status SET NOT NULL"
+                                )
+                            )
+                            db.commit()
+                            print("[startup] Ensured project_safety_inspections.status")
+                    except Exception as e:
+                        print(f"[startup] project_safety_inspections.status migration (non-critical): {e}")
 
                     # Check for source_attendance_id column in project_time_entries
                     rows = db.execute(
