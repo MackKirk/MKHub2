@@ -807,6 +807,15 @@ class EmployeeProfile(Base):
     # Documentos & Legal
     profile_photo_file_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), ForeignKey("file_objects.id", ondelete="SET NULL"))
     sin_number: Mapped[Optional[str]] = mapped_column(String(100))
+    # Canadian driver's licence (and compatible) — stored on employee profile
+    drivers_license_number: Mapped[Optional[str]] = mapped_column(String(100))
+    drivers_license_jurisdiction: Mapped[Optional[str]] = mapped_column(String(10))  # province/territory code, e.g. ON
+    drivers_license_class: Mapped[Optional[str]] = mapped_column(String(100))  # e.g. G, G2, Class 5, Class 1
+    drivers_license_issue_date: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    drivers_license_expiry_date: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    drivers_license_conditions: Mapped[Optional[str]] = mapped_column(String(500))
+    drivers_license_updated_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    drivers_license_last_requested_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
     work_permit_status: Mapped[Optional[str]] = mapped_column(String(100))
     visa_status: Mapped[Optional[str]] = mapped_column(String(100))
     emergency_contact_name: Mapped[Optional[str]] = mapped_column(String(255))

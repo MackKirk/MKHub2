@@ -429,6 +429,32 @@ def create_app() -> FastAPI:
                             )
                         )
 
+                    for _col, _ddl in (
+                        ("drivers_license_number", "VARCHAR(100) NULL"),
+                        ("drivers_license_jurisdiction", "VARCHAR(10) NULL"),
+                        ("drivers_license_class", "VARCHAR(100) NULL"),
+                        ("drivers_license_issue_date", "TIMESTAMPTZ NULL"),
+                        ("drivers_license_expiry_date", "TIMESTAMPTZ NULL"),
+                        ("drivers_license_conditions", "VARCHAR(500) NULL"),
+                        ("drivers_license_updated_at", "TIMESTAMPTZ NULL"),
+                        ("drivers_license_last_requested_at", "TIMESTAMPTZ NULL"),
+                    ):
+                        rows = db.execute(
+                            text(
+                                f"""
+                                SELECT 1
+                                FROM information_schema.columns
+                                WHERE table_name = 'employee_profiles'
+                                  AND column_name = '{_col}'
+                                LIMIT 1
+                                """
+                            )
+                        ).fetchall()
+                        if not rows:
+                            db.execute(
+                                text(f"ALTER TABLE employee_profiles ADD COLUMN {_col} {_ddl}")
+                            )
+
                     db.commit()
 
                     # Check for project_division_percentages column in projects

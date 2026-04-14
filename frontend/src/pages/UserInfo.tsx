@@ -15,6 +15,7 @@ import UserLoans from '@/components/UserLoans';
 import UserReports from '@/components/UserReports';
 import { DivisionIcon } from '@/components/DivisionIcon';
 import OverlayPortal from '@/components/OverlayPortal';
+import { CanadianDriversLicenseSection } from '@/components/CanadianDriversLicenseSection';
 
 // List of implemented permissions (permissions that are actually checked in the codebase)
 const IMPLEMENTED_PERMISSIONS = new Set([
@@ -5870,10 +5871,11 @@ function LegalDocumentsSection({ p, editable, userId, collectChanges, pending, o
           <EditableGrid p={p} editable={isEditable} selfEdit={!!canSelfEdit} userId={userId} collectChanges={collectChanges} inlineSave={false} fields={[['SIN Number','sin_number']]} />
           <EditableGrid p={p} editable={isEditable} selfEdit={!!canSelfEdit} userId={userId} collectChanges={collectChanges} inlineSave={false} fields={[['Work Eligibility Status','work_eligibility_status']]} fieldOptions={{ work_eligibility_status: ['Canadian Citizen', 'Permanent Resident', 'Temporary Resident (with work authorization)', 'Other'] }} />
         </div>
-        <WorkEligibilityDocumentsSection 
-          userId={userId} 
-          canEdit={isEditable} 
-          workEligibilityStatus={isEditable && pending.work_eligibility_status !== undefined ? pending.work_eligibility_status : (p.work_eligibility_status || '')}
+        <WorkEligibilityDocumentsSection
+          userId={userId}
+          canEdit={isEditable}
+          profile={{ ...p, ...pending }}
+          onProfileFieldsChange={collectChanges}
         />
       </div>
     </div>
@@ -9372,13 +9374,34 @@ function EmergencyContactsSection({ userId, canEdit }:{ userId:string, canEdit:b
   );
 }
 
-// Work Eligibility Documents Section - always shows Visa Information and Immigration Status Document
-function WorkEligibilityDocumentsSection({ userId, canEdit, workEligibilityStatus }: { userId: string; canEdit: boolean; workEligibilityStatus?: string }) {
-  // Always show both sections regardless of status
+// Work Eligibility Documents Section — driver's licence; visa & immigration hidden for Canadian citizens
+function WorkEligibilityDocumentsSection({
+  userId,
+  canEdit,
+  profile,
+  onProfileFieldsChange,
+}: {
+  userId: string;
+  canEdit: boolean;
+  profile: Record<string, any>;
+  onProfileFieldsChange: (kv: Record<string, any>) => void;
+}) {
+  const wes = (profile.work_eligibility_status || '').trim();
+  const hideVisaAndImmigration = wes === 'Canadian Citizen';
+
   return (
     <div className="space-y-4">
-      <VisaInformationSection userId={userId} canEdit={canEdit} isRequired={false} showInlineForm={false} />
-      <ImmigrationStatusDocumentSection userId={userId} canEdit={canEdit} isRequired={false} />
+      <CanadianDriversLicenseSection
+        editable={canEdit}
+        profile={profile}
+        onFieldsChange={onProfileFieldsChange}
+      />
+      {!hideVisaAndImmigration ? (
+        <>
+          <VisaInformationSection userId={userId} canEdit={canEdit} isRequired={false} showInlineForm={false} />
+          <ImmigrationStatusDocumentSection userId={userId} canEdit={canEdit} isRequired={false} />
+        </>
+      ) : null}
     </div>
   );
 }
@@ -9621,7 +9644,6 @@ function ImmigrationStatusDocumentSection({ userId, canEdit, isRequired }: { use
         </div>
         <h5 className="font-semibold text-amber-900">Immigration Status Document {isRequired && <span className="text-red-600">*</span>}</h5>
       </div>
-      <div className="text-xs text-gray-500 mb-3">Examples: Work Permit, Study Permit, PGWP, PR Card...</div>
       {permitFileId ? (
         <div className="space-y-3">
           <div className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg">
@@ -9633,12 +9655,13 @@ function ImmigrationStatusDocumentSection({ userId, canEdit, isRequired }: { use
               href={withFileAccessToken(`/files/${permitFileId}/download`)}
               target="_blank"
               rel="noopener noreferrer"
-              className="px-3 py-1.5 rounded border border-amber-300 text-amber-700 text-sm font-medium hover:bg-amber-50"
+              className="rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 shadow-sm hover:bg-gray-50"
             >
               View
             </a>
             {canEdit && (
               <button
+                type="button"
                 onClick={async () => {
                   try {
                     await api('PUT', `/auth/users/${encodeURIComponent(userId)}/profile`, { permit_file_id: null });
@@ -9649,7 +9672,7 @@ function ImmigrationStatusDocumentSection({ userId, canEdit, isRequired }: { use
                     toast.error(e?.message || 'Failed to remove Immigration Status Document');
                   }
                 }}
-                className="px-3 py-1.5 rounded border border-red-300 text-red-700 text-sm font-medium hover:bg-red-50"
+                className="rounded-lg border border-red-200 bg-white px-4 py-2 text-sm font-medium text-red-700 shadow-sm hover:bg-red-50"
               >
                 Remove
               </button>
@@ -9659,9 +9682,10 @@ function ImmigrationStatusDocumentSection({ userId, canEdit, isRequired }: { use
             <div>
               <input ref={fileRef} type="file" accept=".pdf,image/*" className="hidden" onChange={handleUpload} />
               <button
+                type="button"
                 onClick={() => fileRef.current?.click()}
                 disabled={uploading}
-                className="px-3 py-1.5 rounded border border-amber-300 text-amber-700 text-sm font-medium hover:bg-amber-50 disabled:opacity-50"
+                className="rounded-lg bg-brand-red px-5 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-red-800 disabled:opacity-50"
               >
                 {uploading ? 'Uploading...' : 'Replace Document'}
               </button>
@@ -9674,14 +9698,15 @@ function ImmigrationStatusDocumentSection({ userId, canEdit, isRequired }: { use
             <>
               <input ref={fileRef} type="file" accept=".pdf,image/*" className="hidden" onChange={handleUpload} />
               <button
+                type="button"
                 onClick={() => fileRef.current?.click()}
                 disabled={uploading}
-                className="px-3 py-1.5 rounded border border-amber-300 text-amber-700 text-sm font-medium hover:bg-amber-50 disabled:opacity-50"
+                className="rounded-lg bg-brand-red px-5 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-red-800 disabled:opacity-50"
               >
                 {uploading ? 'Uploading...' : 'Upload Document'}
               </button>
               {isRequired && !permitFileId && (
-                <div className="text-xs text-red-600 mt-1">Immigration Status Document is required</div>
+                <div className="mt-2 text-sm text-red-600">Immigration Status Document is required</div>
               )}
             </>
           ) : (
@@ -9845,14 +9870,15 @@ function VisaInformationSection({ userId, canEdit, isRequired = false, showInlin
           </div>
           <h5 className="font-semibold text-amber-900">Visa Information {isRequired && <span className="text-red-600">*</span>}</h5>
         </div>
-        {canEdit && !showInlineForm && (
-          <button 
-            onClick={() => setCreateOpen(true)} 
-            className="px-3 py-1.5 rounded border border-amber-300 text-amber-700 text-sm font-medium hover:bg-amber-50"
+        {canEdit && !showInlineForm && data && data.length > 0 ? (
+          <button
+            type="button"
+            onClick={() => setCreateOpen(true)}
+            className="rounded-lg bg-brand-red px-5 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-red-800"
           >
             Add Entry
           </button>
-        )}
+        ) : null}
       </div>
       
       {data && data.length > 0 ? (
@@ -9976,8 +10002,21 @@ function VisaInformationSection({ userId, canEdit, isRequired = false, showInlin
           </table>
         </div>
       ) : (
-        <div className="text-sm text-gray-600 py-8 text-center">
-          {isRequired ? 'Visa information is required' : 'No visa information. This is optional.'}
+        <div className="py-8">
+          {canEdit ? (
+            <div className="flex flex-col items-center justify-center gap-2">
+              <button
+                type="button"
+                onClick={() => setCreateOpen(true)}
+                className="rounded-lg bg-brand-red px-5 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-red-800"
+              >
+                Add Entry
+              </button>
+              {isRequired ? <p className="text-sm text-red-600">Visa information is required</p> : null}
+            </div>
+          ) : (
+            <p className="text-center text-sm text-gray-500">—</p>
+          )}
         </div>
       )}
       

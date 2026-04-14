@@ -1148,6 +1148,55 @@ def outlook_disconnect(user: User = Depends(get_current_user)):
     return {"status": "not_implemented"}
 
 
+def _parse_optional_profile_ts(val):
+    """Parse ISO datetime or YYYY-MM-DD from API / frontend into timezone-aware datetime."""
+    if val is None:
+        return None
+    if isinstance(val, datetime):
+        return val if val.tzinfo else val.replace(tzinfo=timezone.utc)
+    s = str(val).strip()
+    if not s:
+        return None
+    try:
+        if "T" in s or s.endswith("Z"):
+            s2 = s.replace("Z", "+00:00")
+            dt = datetime.fromisoformat(s2)
+            if dt.tzinfo is None:
+                dt = dt.replace(tzinfo=timezone.utc)
+            return dt
+        return datetime.strptime(s[:10], "%Y-%m-%d").replace(tzinfo=timezone.utc)
+    except Exception:
+        return None
+
+
+def _drivers_license_payload_changed(ep, data: dict) -> bool:
+    """True if any driver's-licence content field in data differs from ep."""
+    keys = (
+        "drivers_license_number",
+        "drivers_license_jurisdiction",
+        "drivers_license_class",
+        "drivers_license_issue_date",
+        "drivers_license_expiry_date",
+        "drivers_license_conditions",
+    )
+    for k in keys:
+        if k not in data:
+            continue
+        old = getattr(ep, k, None)
+        new = data[k]
+        if k in ("drivers_license_issue_date", "drivers_license_expiry_date"):
+            od = old.date() if old is not None and hasattr(old, "date") else None
+            nd = new.date() if new is not None and hasattr(new, "date") else None
+            if od != nd:
+                return True
+        else:
+            o = (old or "").strip() if isinstance(old, str) else old
+            n = (new or "").strip() if isinstance(new, str) else new
+            if o != n:
+                return True
+    return False
+
+
 # Self-profile read/update
 @router.get("/me/profile")
 def my_profile(user: User = Depends(get_current_user), db: Session = Depends(get_db)):
@@ -1207,6 +1256,14 @@ def my_profile(user: User = Depends(get_current_user), db: Session = Depends(get
             "pay_type": ep.pay_type,
             "employment_type": ep.employment_type,
             "sin_number": ep.sin_number,
+            "drivers_license_number": getattr(ep, "drivers_license_number", None),
+            "drivers_license_jurisdiction": getattr(ep, "drivers_license_jurisdiction", None),
+            "drivers_license_class": getattr(ep, "drivers_license_class", None),
+            "drivers_license_issue_date": _dt(getattr(ep, "drivers_license_issue_date", None)),
+            "drivers_license_expiry_date": _dt(getattr(ep, "drivers_license_expiry_date", None)),
+            "drivers_license_conditions": getattr(ep, "drivers_license_conditions", None),
+            "drivers_license_updated_at": _dt(getattr(ep, "drivers_license_updated_at", None)),
+            "drivers_license_last_requested_at": _dt(getattr(ep, "drivers_license_last_requested_at", None)),
             "project_division_ids": list(getattr(ep, "project_division_ids", None) or []),
             # New API field backed by legacy column
             "work_eligibility_status": getattr(ep, "work_permit_status", None),
@@ -1264,6 +1321,13 @@ def update_my_profile(payload: EmployeeProfileInput, user: User = Depends(get_cu
         "emergency_contact_name","emergency_contact_relationship","emergency_contact_phone",
         "profile_photo_file_id",
         "cloth_size",  # cloth_sizes_custom is now managed globally via /cloth-sizes/custom endpoints
+        "drivers_license_number",
+        "drivers_license_jurisdiction",
+        "drivers_license_class",
+        "drivers_license_issue_date",
+        "drivers_license_expiry_date",
+        "drivers_license_conditions",
+        "drivers_license_last_requested_at",
     }
     incoming = payload.dict(exclude_unset=True)
     # Map new API field to legacy column so existing DB schema still works
@@ -1274,6 +1338,14 @@ def update_my_profile(payload: EmployeeProfileInput, user: User = Depends(get_cu
     data = { k: (None if (isinstance(v, str) and v == "") else v) for k, v in data.items() }
     if "date_of_birth" in data and data["date_of_birth"]:
         data["date_of_birth"] = _parse_dt(data.get("date_of_birth"))
+    for dl_key in ("drivers_license_issue_date", "drivers_license_expiry_date"):
+        if dl_key in data and data.get(dl_key):
+            data[dl_key] = _parse_dt(data.get(dl_key))
+    data.pop("drivers_license_updated_at", None)
+    if "drivers_license_last_requested_at" in data:
+        data["drivers_license_last_requested_at"] = _parse_optional_profile_ts(data.get("drivers_license_last_requested_at"))
+    if _drivers_license_payload_changed(ep, data):
+        data["drivers_license_updated_at"] = datetime.now(timezone.utc)
 
     for field, value in data.items():
         setattr(ep, field, value)
@@ -1403,7 +1475,16 @@ def get_user_profile(user_id: str, db: Session = Depends(get_db), me: User = Dep
                 "first_name","last_name","middle_name","preferred_name","gender","date_of_birth","marital_status","nationality",
                 "phone","mobile_phone","address_line1","address_line1_complement","address_line2","address_line2_complement","city","province","postal_code","country",
                 "hire_date","termination_date","job_title","division","work_email","work_phone","manager_user_id",
-                "pay_rate","pay_type","employment_type","sin_number","work_permit_status","visa_status","profile_photo_file_id",
+                "pay_rate","pay_type","employment_type","sin_number",
+                "drivers_license_number",
+                "drivers_license_jurisdiction",
+                "drivers_license_class",
+                "drivers_license_issue_date",
+                "drivers_license_expiry_date",
+                "drivers_license_conditions",
+                "drivers_license_updated_at",
+                "drivers_license_last_requested_at",
+                "work_permit_status","visa_status","profile_photo_file_id",
                 "emergency_contact_name","emergency_contact_relationship","emergency_contact_phone",
                 "cloth_size",
                 "project_division_ids",
@@ -1459,7 +1540,14 @@ def update_user_profile(
     is_admin = any((getattr(r, "name", None) or "").lower() == "admin" for r in me.roles)
     if "bamboo_files_last_sync_at" in data and not is_admin:
         data.pop("bamboo_files_last_sync_at", None)
-    for k in ("date_of_birth", "hire_date", "termination_date", "bamboo_files_last_sync_at"):
+    for k in (
+        "date_of_birth",
+        "hire_date",
+        "termination_date",
+        "bamboo_files_last_sync_at",
+        "drivers_license_issue_date",
+        "drivers_license_expiry_date",
+    ):
         if k in data and isinstance(data[k], str):
             try:
                 dt = datetime.strptime(data[k][:10], "%Y-%m-%d").replace(tzinfo=timezone.utc)
@@ -1468,6 +1556,13 @@ def update_user_profile(
                 data[k] = None
         elif k in data and data[k] is None:
             pass
+    data.pop("drivers_license_updated_at", None)
+    if "drivers_license_last_requested_at" in data:
+        data["drivers_license_last_requested_at"] = _parse_optional_profile_ts(
+            data.get("drivers_license_last_requested_at")
+        )
+    if _drivers_license_payload_changed(ep, data):
+        data["drivers_license_updated_at"] = datetime.now(timezone.utc)
     for k, v in data.items():
         setattr(ep, k, v)
     db.commit()
