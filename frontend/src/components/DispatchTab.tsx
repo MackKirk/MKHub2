@@ -1,7 +1,7 @@
 import { useState, useMemo, useEffect, useRef } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { api } from '@/lib/api';
+import { api, withFileAccessToken } from '@/lib/api';
 import toast from 'react-hot-toast';
 import { useConfirm } from '@/components/ConfirmProvider';
 import EditShiftModal from '@/components/EditShiftModal';
@@ -1197,7 +1197,7 @@ function CreateShiftModal({
                           <div className="flex items-center gap-2 flex-1">
                             {emp.profile_photo_file_id ? (
                               <img
-                                src={'/files/' + emp.profile_photo_file_id + '/thumbnail?w=64'}
+                                src={withFileAccessToken('/files/' + emp.profile_photo_file_id + '/thumbnail?w=64')}
                                 className="w-6 h-6 rounded-full object-cover"
                                 alt=""
                               />

@@ -1,5 +1,5 @@
 import { useQuery, useQueries } from '@tanstack/react-query';
-import { api, withFileAccessToken } from '@/lib/api';
+import { api, withFileAccessToken, withFileAccessTokenIfNeeded } from '@/lib/api';
 import { useMemo, useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import type { ReactNode } from 'react';
@@ -1179,8 +1179,8 @@ export function ProjectListItem({ project, projectDivisions, projectStatuses, va
 function ProjectListCard({ project, projectDivisions, projectStatuses, projectBasePath = '/projects' }:{ project: Project, projectDivisions?: any[], projectStatuses: any[]; projectBasePath?: string }){
   const navigate = useNavigate();
   
-  // Use cover image URL from project data (same image as General Information)
-  const src = project.cover_image_url || '/ui/assets/placeholders/project.png';
+  // Use cover image URL from project data (same image as General Information); API returns /files/... without JWT
+  const src = withFileAccessTokenIfNeeded(project.cover_image_url) || '/ui/assets/placeholders/project.png';
   
   // Use client name from project data
   const clientName = project.client_display_name || project.client_name || '';

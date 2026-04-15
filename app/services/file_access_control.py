@@ -155,6 +155,12 @@ def assert_can_initiate_upload(
 
 def assert_can_read_storage_key(user: User, db: Session, storage_key: str) -> None:
     """Authorize GET /files/local/* using the same rules as FileObject reads (no DB row)."""
+    norm = storage_key.strip().replace("\\", "/").lstrip("/")
+    if norm:
+        for candidate in (norm, f"/{norm}"):
+            fo = db.query(FileObject).filter(FileObject.key == candidate).first()
+            if fo and _is_employee_profile_photo_file(db, fo):
+                return
     p, c, e, cat = infer_scope_from_storage_key(db, storage_key)
     if p:
         try:
@@ -210,8 +216,21 @@ def _resolve_file_scope_from_references(
     return None, None, None
 
 
+def _is_employee_profile_photo_file(db: Session, fo: FileObject) -> bool:
+    """Avatar shown app-wide; /employees is visible to any logged-in user, so reads must not require HR."""
+    return (
+        db.query(EmployeeProfile.id)
+        .filter(EmployeeProfile.profile_photo_file_id == fo.id)
+        .first()
+        is not None
+    )
+
+
 def assert_can_read_file_object(user: User, db: Session, fo: FileObject) -> None:
     """Raise 403 if user may not read/download this file."""
+    if _is_employee_profile_photo_file(db, fo):
+        return
+
     pid, cid, eid = _resolve_file_scope_from_references(db, fo)
 
     if pid:

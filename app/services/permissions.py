@@ -10,11 +10,8 @@ from .project_utils import sanitize_division_onsite_leads
 
 
 def is_admin(user: User, db: Session) -> bool:
-    """Check if user has admin role."""
-    admin_role = db.query(Role).filter(Role.name == "admin").first()
-    if not admin_role:
-        return False
-    return admin_role in user.roles
+    """Check if user has admin role (by name; avoids identity quirks with `role in user.roles`)."""
+    return any((getattr(r, "name", None) or "").lower() == "admin" for r in (user.roles or []))
 
 
 def is_supervisor(user: User, db: Session, project_id: Optional[str] = None) -> bool:
