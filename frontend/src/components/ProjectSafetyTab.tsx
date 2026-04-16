@@ -2,12 +2,21 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
 import { api, withFileAccessToken } from '@/lib/api';
+import OverlayPortal from '@/components/OverlayPortal';
+import {
+  SAFETY_MODAL_BTN_CANCEL,
+  SAFETY_MODAL_BTN_PRIMARY,
+  SAFETY_MODAL_FIELD_LABEL,
+  SafetyFormModalLayout,
+} from '@/components/safety/SafetyModalChrome';
 import {
   PROJECT_SAFETY_INSPECTION_TEMPLATE,
   SAFETY_TEMPLATE_VERSION,
   type SafetyTemplateItem,
   type YesNoNa,
 } from '@/data/projectSafetyInspectionTemplate';
+import DynamicSafetyForm from '@/components/DynamicSafetyForm';
+import { normalizeDefinition, validateDynamicForm, type SafetyFormDefinition } from '@/types/safetyFormTemplate';
 
 type SafetyInspectionRow = {
   id: string;
@@ -16,10 +25,26 @@ type SafetyInspectionRow = {
   template_version: string;
   status?: string;
   form_payload: Record<string, unknown>;
+  form_template_version_id?: string | null;
+  assigned_user_id?: string | null;
+  template_name?: string | null;
+  template_version_number?: number | null;
+  worker_name?: string | null;
   created_at?: string | null;
   created_by?: string | null;
   updated_at?: string | null;
   updated_by?: string | null;
+};
+
+type FormTemplatePick = {
+  id: string;
+  name: string;
+  published_version_id: string | null;
+  published_version_number: number | null;
+};
+
+type FormTemplateVersionResponse = {
+  version: { id: string; definition: SafetyFormDefinition };
 };
 
 const YNA_OPTIONS: {
@@ -253,6 +278,9 @@ export default function ProjectSafetyTab({ projectId, proj, canRead, canWrite, i
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [inspectionDate, setInspectionDate] = useState<string>('');
   const [formPayload, setFormPayload] = useState<Record<string, unknown>>({});
+  const [showCreateModal, setShowCreateModal] = useState(false);
+  const [pickedVersionId, setPickedVersionId] = useState('');
+  const [assignedUserId, setAssignedUserId] = useState('');
   /** Y/N item keys whose optional comment field is expanded for editing */
   const [ynCommentOpen, setYnCommentOpen] = useState<Record<string, boolean>>({});
   /** Which Y/N row is currently uploading an image (shows inline status). */
@@ -273,6 +301,18 @@ export default function ProjectSafetyTab({ projectId, proj, canRead, canWrite, i
     }
   }, [initialSafetyInspectionId, list]);
 
+  const { data: employees = [] } = useQuery({
+    queryKey: ['employees-project-safety-tab'],
+    queryFn: () => api<{ id: string; name: string; username?: string }[]>('GET', '/employees'),
+    enabled: canRead && !!projectId,
+  });
+
+  const { data: schedulableTemplates = [] } = useQuery({
+    queryKey: ['formTemplatesSchedulable', showCreateModal],
+    queryFn: () => api<FormTemplatePick[]>('GET', '/form-templates?schedulable=true'),
+    enabled: showCreateModal && canWrite,
+  });
+
   const detailKey = ['projectSafetyInspection', projectId, selectedId];
   const { data: detail, isLoading: detailLoading } = useQuery({
     queryKey: detailKey,
@@ -284,6 +324,22 @@ export default function ProjectSafetyTab({ projectId, proj, canRead, canWrite, i
     enabled: canRead && !!projectId && !!selectedId,
   });
 
+  const isDynamicInspection = Boolean(detail?.form_template_version_id);
+
+  const { data: dynamicSchema } = useQuery({
+    queryKey: ['formTemplateVersion', detail?.form_template_version_id],
+    queryFn: () =>
+      api<FormTemplateVersionResponse>(
+        'GET',
+        `/form-templates/versions/${encodeURIComponent(detail!.form_template_version_id!)}`
+      ),
+    enabled: canRead && !!detail?.form_template_version_id,
+  });
+
+  const dynamicDefinition: SafetyFormDefinition | null = dynamicSchema?.version?.definition
+    ? normalizeDefinition(dynamicSchema.version.definition)
+    : null;
+
   useEffect(() => {
     if (!detail) return;
     const d = new Date(detail.inspection_date);
@@ -294,7 +350,8 @@ export default function ProjectSafetyTab({ projectId, proj, canRead, canWrite, i
         ? { ...detail.form_payload }
         : {}
     );
-  }, [detail?.id, detail?.inspection_date, detail?.form_payload]);
+    setAssignedUserId(detail.assigned_user_id || '');
+  }, [detail?.id, detail?.inspection_date, detail?.form_payload, detail?.assigned_user_id]);
 
   useEffect(() => {
     setYnCommentOpen({});
@@ -317,7 +374,7 @@ export default function ProjectSafetyTab({ projectId, proj, canRead, canWrite, i
     setFormPayload((p) => applyProjectPrefill(p));
   }, [selectedId, detail, applyProjectPrefill]);
 
-  const createMutation = useMutation({
+  const createLegacyMutation = useMutation({
     mutationFn: () =>
       api<SafetyInspectionRow>('POST', `/projects/${encodeURIComponent(projectId)}/safety-inspections`, {
         template_version: SAFETY_TEMPLATE_VERSION,
@@ -328,6 +385,28 @@ export default function ProjectSafetyTab({ projectId, proj, canRead, canWrite, i
       qc.invalidateQueries({ queryKey: ['safetyInspections'] });
       qc.invalidateQueries({ queryKey: ['safetyInspectionsCalendar'] });
       setSelectedId(row.id);
+      setShowCreateModal(false);
+      toast.success('Inspection created');
+    },
+    onError: () => toast.error('Could not create inspection'),
+  });
+
+  const createFromTemplateMutation = useMutation({
+    mutationFn: () => {
+      if (!pickedVersionId) throw new Error('Pick a template');
+      return api<SafetyInspectionRow>('POST', `/projects/${encodeURIComponent(projectId)}/safety-inspections`, {
+        form_template_version_id: pickedVersionId,
+        form_payload: {},
+        inspection_date: new Date().toISOString(),
+      });
+    },
+    onSuccess: (row) => {
+      qc.invalidateQueries({ queryKey: listKey });
+      qc.invalidateQueries({ queryKey: ['safetyInspections'] });
+      qc.invalidateQueries({ queryKey: ['safetyInspectionsCalendar'] });
+      setSelectedId(row.id);
+      setShowCreateModal(false);
+      setPickedVersionId('');
       toast.success('Inspection created');
     },
     onError: () => toast.error('Could not create inspection'),
@@ -343,10 +422,18 @@ export default function ProjectSafetyTab({ projectId, proj, canRead, canWrite, i
       } else {
         iso = new Date().toISOString();
       }
+      const body: Record<string, unknown> = {
+        inspection_date: iso,
+        form_payload: formPayload,
+        assigned_user_id: assignedUserId || null,
+      };
+      if (!detail?.form_template_version_id) {
+        body.template_version = SAFETY_TEMPLATE_VERSION;
+      }
       return api<SafetyInspectionRow>(
         'PUT',
         `/projects/${encodeURIComponent(projectId)}/safety-inspections/${encodeURIComponent(selectedId)}`,
-        { inspection_date: iso, form_payload: formPayload, template_version: SAFETY_TEMPLATE_VERSION }
+        body
       );
     },
     onSuccess: () => {
@@ -365,6 +452,13 @@ export default function ProjectSafetyTab({ projectId, proj, canRead, canWrite, i
   const finalizeMutation = useMutation({
     mutationFn: () => {
       if (!selectedId) throw new Error('no id');
+      if (detail?.form_template_version_id && dynamicDefinition) {
+        const missing = validateDynamicForm(dynamicDefinition, formPayload);
+        if (missing.length) {
+          toast.error(`Missing required fields: ${missing.slice(0, 5).join(', ')}${missing.length > 5 ? '…' : ''}`);
+          throw new Error('validation');
+        }
+      }
       return api<SafetyInspectionRow>(
         'PUT',
         `/projects/${encodeURIComponent(projectId)}/safety-inspections/${encodeURIComponent(selectedId)}`,
@@ -380,7 +474,10 @@ export default function ProjectSafetyTab({ projectId, proj, canRead, canWrite, i
       }
       toast.success('Inspection finalized');
     },
-    onError: () => toast.error('Could not finalize'),
+    onError: (e: Error) => {
+      if (e?.message === 'validation') return;
+      toast.error('Could not finalize');
+    },
   });
 
   const setTextField = (key: string, value: string) => {
@@ -663,18 +760,28 @@ export default function ProjectSafetyTab({ projectId, proj, canRead, canWrite, i
 
   if (!selectedId) {
     return (
+      <>
       <div className="space-y-4">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <h2 className="text-sm font-semibold text-gray-900">Safety inspections</h2>
           {canWrite && (
-            <button
-              type="button"
-              disabled={createMutation.isPending}
-              onClick={() => createMutation.mutate()}
-              className="px-4 py-2 rounded-lg bg-blue-600 text-white text-sm font-medium hover:bg-blue-700 disabled:opacity-50"
-            >
-              New inspection
-            </button>
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                disabled={createLegacyMutation.isPending}
+                onClick={() => createLegacyMutation.mutate()}
+                className="px-3 py-2 rounded-lg bg-blue-600 text-white text-sm font-medium hover:bg-blue-700 disabled:opacity-50"
+              >
+                New (MKI)
+              </button>
+              <button
+                type="button"
+                onClick={() => setShowCreateModal(true)}
+                className="px-3 py-2 rounded-lg border border-gray-200 bg-white text-sm font-medium text-gray-800 hover:bg-gray-50"
+              >
+                New from template…
+              </button>
+            </div>
           )}
         </div>
         <div className="rounded-xl border border-gray-200 bg-white overflow-hidden">
@@ -686,6 +793,9 @@ export default function ProjectSafetyTab({ projectId, proj, canRead, canWrite, i
             <ul className="divide-y divide-gray-100">
               {list.map((row) => {
                 const st = row.status === 'finalized' ? 'finalized' : 'draft';
+                const tmpl =
+                  row.template_name ||
+                  (row.template_version?.startsWith('mki') ? 'MKI Safety Inspection' : row.template_version || '—');
                 return (
                   <li key={row.id}>
                     <button
@@ -693,14 +803,17 @@ export default function ProjectSafetyTab({ projectId, proj, canRead, canWrite, i
                       onClick={() => setSelectedId(row.id)}
                       className="w-full text-left px-4 py-3 hover:bg-gray-50 flex items-center justify-between gap-3"
                     >
-                      <span className="text-sm font-medium text-gray-900">
-                        {row.inspection_date
-                          ? new Date(row.inspection_date).toLocaleString(undefined, {
-                              dateStyle: 'medium',
-                              timeStyle: 'short',
-                            })
-                          : '—'}
-                      </span>
+                      <div className="min-w-0 text-left">
+                        <div className="text-sm font-medium text-gray-900">
+                          {row.inspection_date
+                            ? new Date(row.inspection_date).toLocaleString(undefined, {
+                                dateStyle: 'medium',
+                                timeStyle: 'short',
+                              })
+                            : '—'}
+                        </div>
+                        <div className="text-[11px] text-gray-500 truncate mt-0.5">{tmpl}</div>
+                      </div>
                       <span
                         className={`text-[10px] font-semibold px-2 py-0.5 rounded-full shrink-0 ${
                           st === 'finalized' ? 'bg-green-100 text-green-800' : 'bg-amber-100 text-amber-900'
@@ -716,6 +829,69 @@ export default function ProjectSafetyTab({ projectId, proj, canRead, canWrite, i
           )}
         </div>
       </div>
+      {showCreateModal && canWrite && (
+        <OverlayPortal>
+          <div
+            className="fixed inset-0 z-[200] bg-black/50 flex items-center justify-center overflow-y-auto p-4"
+            onClick={() => {
+              setShowCreateModal(false);
+              setPickedVersionId('');
+            }}
+            role="presentation"
+          >
+            <SafetyFormModalLayout
+              widthClass="w-full max-w-md"
+              titleId="safety-start-template-title"
+              title="Start from template"
+              subtitle="Choose a published form template for a new inspection."
+              onClose={() => {
+                setShowCreateModal(false);
+                setPickedVersionId('');
+              }}
+              footer={
+                <>
+                  <button
+                    type="button"
+                    className={SAFETY_MODAL_BTN_CANCEL}
+                    onClick={() => {
+                      setShowCreateModal(false);
+                      setPickedVersionId('');
+                    }}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    disabled={!pickedVersionId || createFromTemplateMutation.isPending}
+                    onClick={() => createFromTemplateMutation.mutate()}
+                    className={SAFETY_MODAL_BTN_PRIMARY}
+                  >
+                    {createFromTemplateMutation.isPending ? 'Creating…' : 'Create'}
+                  </button>
+                </>
+              }
+            >
+              <label className={SAFETY_MODAL_FIELD_LABEL}>Form template</label>
+              <select
+                value={pickedVersionId}
+                onChange={(e) => setPickedVersionId(e.target.value)}
+                className="mt-1 w-full px-3 py-2 border border-gray-200 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-brand-red/20 focus:border-brand-red"
+              >
+                <option value="">— Select template —</option>
+                {schedulableTemplates.map((t) =>
+                  t.published_version_id ? (
+                    <option key={t.id} value={t.published_version_id}>
+                      {t.name}
+                      {t.published_version_number != null ? ` (v${t.published_version_number})` : ''}
+                    </option>
+                  ) : null
+                )}
+              </select>
+            </SafetyFormModalLayout>
+          </div>
+        </OverlayPortal>
+      )}
+      </>
     );
   }
 
@@ -749,30 +925,65 @@ export default function ProjectSafetyTab({ projectId, proj, canRead, canWrite, i
               />
             </div>
             {detail && (
-              <div className="flex items-center gap-2">
-                <span className="text-xs text-gray-500">Status</span>
-                <span
-                  className={`text-xs font-semibold px-2.5 py-1 rounded-full ${
-                    detail.status === 'finalized' ? 'bg-green-100 text-green-800' : 'bg-amber-100 text-amber-900'
-                  }`}
-                >
-                  {detail.status === 'finalized' ? 'Finalized' : 'Draft'}
-                </span>
+              <div className="flex flex-col items-end gap-1">
+                <div className="flex items-center gap-2">
+                  <span className="text-xs text-gray-500">Status</span>
+                  <span
+                    className={`text-xs font-semibold px-2.5 py-1 rounded-full ${
+                      detail.status === 'finalized' ? 'bg-green-100 text-green-800' : 'bg-amber-100 text-amber-900'
+                    }`}
+                  >
+                    {detail.status === 'finalized' ? 'Finalized' : 'Draft'}
+                  </span>
+                </div>
+                {detail.template_name && (
+                  <span className="text-[10px] text-gray-500 max-w-[14rem] text-right truncate" title={detail.template_name}>
+                    {detail.template_name}
+                    {detail.template_version_number != null ? ` · v${detail.template_version_number}` : ''}
+                  </span>
+                )}
               </div>
             )}
           </div>
 
-          {formSections.map((section) => (
-            <div key={section.id} className="rounded-xl border border-gray-200 bg-white overflow-hidden">
-              <div className="px-4 py-3 border-b border-gray-100 bg-gray-50/80">
-                <h3 className="text-sm font-semibold text-gray-800">{section.title}</h3>
-                {section.subtitle && <p className="text-xs text-gray-500 mt-1">{section.subtitle}</p>}
+          <div className="rounded-xl border border-gray-200 bg-white p-4">
+            <label className="block text-xs font-medium text-gray-500 uppercase tracking-wide mb-1">Assigned worker</label>
+            <select
+              value={assignedUserId}
+              onChange={(e) => setAssignedUserId(e.target.value)}
+              disabled={!canWrite || detail?.status === 'finalized'}
+              className="w-full max-w-md px-3 py-2 border border-gray-200 rounded-lg text-sm disabled:bg-gray-50"
+            >
+              <option value="">—</option>
+              {employees.map((e) => (
+                <option key={e.id} value={e.id}>
+                  {e.name || e.username}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {isDynamicInspection && dynamicDefinition ? (
+            <DynamicSafetyForm
+              definition={dynamicDefinition}
+              formPayload={formPayload}
+              setFormPayload={setFormPayload}
+              canWrite={canWrite && detail?.status !== 'finalized'}
+              projectId={projectId}
+            />
+          ) : (
+            formSections.map((section) => (
+              <div key={section.id} className="rounded-xl border border-gray-200 bg-white overflow-hidden">
+                <div className="px-4 py-3 border-b border-gray-100 bg-gray-50/80">
+                  <h3 className="text-sm font-semibold text-gray-800">{section.title}</h3>
+                  {section.subtitle && <p className="text-xs text-gray-500 mt-1">{section.subtitle}</p>}
+                </div>
+                <div className="divide-y divide-gray-100">
+                  {section.items.map((item, idx) => renderItem(item, idx, true))}
+                </div>
               </div>
-              <div className="divide-y divide-gray-100">
-                {section.items.map((item, idx) => renderItem(item, idx, true))}
-              </div>
-            </div>
-          ))}
+            ))
+          )}
 
           {canWrite && (
             <div className="flex flex-wrap gap-3 items-center">

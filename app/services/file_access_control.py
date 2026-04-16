@@ -283,6 +283,17 @@ def assert_can_read_file_object(user: User, db: Session, fo: FileObject) -> None
             return
         raise HTTPException(status_code=403, detail="Forbidden")
 
+    _, _, _, cat_slug = infer_scope_from_storage_key(db, fo.key)
+    if cat_slug == "form-template-reference":
+        if (
+            _has_permission(user, "business:projects:read")
+            or _has_permission(user, "business:projects:files:read")
+            or _has_permission(user, "business:projects:files:write")
+            or _has_permission(user, "documents:read")
+            or _has_permission(user, "documents:access")
+        ):
+            return
+
     if fo.created_by and fo.created_by == user.id:
         return
     if is_admin(user, db):

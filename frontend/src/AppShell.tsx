@@ -459,6 +459,8 @@ export default function AppShell({ children }: PropsWithChildren){
       items: [
         { id: 'safety-inspections', label: 'Inspections', path: '/safety/inspections', icon: <IconClipboardCheck />, requiredPermission: 'business:projects:safety:read' },
         { id: 'safety-calendar', label: 'Schedule', path: '/safety/calendar', icon: <IconCalendar />, requiredPermission: 'business:projects:safety:read' },
+        { id: 'safety-form-templates', label: 'Form Templates', path: '/safety/form-templates', icon: <IconDocument />, requiredPermission: 'business:projects:safety:read' },
+        { id: 'safety-form-custom-lists', label: 'Form Custom Lists', path: '/safety/form-custom-lists', icon: <IconDocument />, requiredPermission: 'business:projects:safety:read' },
       ]
     },
     {

@@ -21,7 +21,9 @@ function projectHref(ev: SafetyCalEvent): string {
   return `${base}/${encodeURIComponent(ev.project_id)}?${q.toString()}`;
 }
 
-export default function SafetyServiceCalendar() {
+type SafetyServiceCalendarProps = { embedView?: boolean };
+
+export default function SafetyServiceCalendar({ embedView }: SafetyServiceCalendarProps) {
   const navigate = useNavigate();
   const [currentMonth, setCurrentMonth] = useState<Date>(() => {
     const d = new Date();
@@ -106,16 +108,18 @@ export default function SafetyServiceCalendar() {
   const getDayEvents = (date: Date | null) => (date ? eventsByDay[formatDateLocal(date)] || [] : []);
 
   return (
-    <div className="p-4 max-w-6xl mx-auto space-y-4">
-      <div className="flex flex-wrap items-center justify-between gap-4">
-        <h1 className="text-xl font-bold text-gray-900">Safety schedule</h1>
-        <Link
-          to="/safety/inspections"
-          className="px-4 py-2 rounded-lg border border-gray-300 bg-white text-gray-700 text-sm font-medium hover:bg-gray-50 transition-colors"
-        >
-          Inspections list
-        </Link>
-      </div>
+    <div className={embedView ? 'space-y-4' : 'p-4 max-w-6xl mx-auto space-y-4'}>
+      {!embedView && (
+        <div className="flex flex-wrap items-center justify-between gap-4">
+          <h1 className="text-xl font-bold text-gray-900">Safety schedule</h1>
+          <Link
+            to="/safety/inspections"
+            className="px-4 py-2 rounded-lg border border-gray-300 bg-white text-gray-700 text-sm font-medium hover:bg-gray-50 transition-colors"
+          >
+            Inspections list
+          </Link>
+        </div>
+      )}
 
       <div className="rounded-xl border border-gray-200 bg-white p-4">
         <div className="mb-4 flex items-center justify-between">
@@ -214,7 +218,9 @@ export default function SafetyServiceCalendar() {
         {!isLoading && events.length === 0 && (
           <div className="mt-5 text-center py-5 text-gray-500 border-t border-gray-100">
             <div className="text-sm font-medium mb-1">No safety inspections this month</div>
-            <div className="text-xs text-gray-400">Create inspections from each project&apos;s Safety tab.</div>
+            <div className="text-xs text-gray-400">
+              Use Schedule new inspection on the calendar page, or open a project&apos;s Safety tab.
+            </div>
           </div>
         )}
       </div>

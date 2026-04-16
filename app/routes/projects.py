@@ -8,7 +8,33 @@ from typing import List, Optional
 import uuid
 
 from ..db import get_db
-from ..models.models import Project, ClientFile, FileObject, Proposal, ProjectUpdate, ProjectReport, ProjectSafetyInspection, ProjectEvent, ProjectTimeEntry, ProjectTimeEntryLog, User, EmployeeProfile, Client, ClientSite, ClientFolder, ClientContact, SettingList, SettingItem, Shift, AuditLog, Estimate, EstimateItem, ProjectFolder
+from ..models.models import (
+    Project,
+    ClientFile,
+    FileObject,
+    Proposal,
+    ProjectUpdate,
+    ProjectReport,
+    ProjectSafetyInspection,
+    ProjectEvent,
+    ProjectTimeEntry,
+    ProjectTimeEntryLog,
+    User,
+    EmployeeProfile,
+    Client,
+    ClientSite,
+    ClientFolder,
+    ClientContact,
+    SettingList,
+    SettingItem,
+    Shift,
+    AuditLog,
+    Estimate,
+    EstimateItem,
+    ProjectFolder,
+    FormTemplate,
+    FormTemplateVersion,
+)
 from datetime import datetime, timezone, time, timedelta
 from ..auth.security import (
     get_current_user,
@@ -123,15 +149,50 @@ def _assert_awarded_project_for_safety(p: Project) -> None:
         )
 
 
-def _safety_inspection_to_dict(row: ProjectSafetyInspection) -> dict:
+def _safety_inspection_to_dict(db: Session, row: ProjectSafetyInspection) -> dict:
     st = getattr(row, "status", None) or "draft"
     if st not in ("draft", "finalized"):
         st = "draft"
+    ft_id = getattr(row, "form_template_version_id", None)
+    asg_id = getattr(row, "assigned_user_id", None)
+    template_name = None
+    template_version_number = None
+    if ft_id:
+        ftv = db.query(FormTemplateVersion).filter(FormTemplateVersion.id == ft_id).first()
+        if ftv:
+            template_version_number = ftv.version
+            tpl = db.query(FormTemplate).filter(FormTemplate.id == ftv.form_template_id).first()
+            if tpl:
+                template_name = tpl.name or ""
+    worker_name = None
+    if asg_id:
+        u = db.query(User).filter(User.id == asg_id).first()
+        if u:
+            ep = db.query(EmployeeProfile).filter(EmployeeProfile.user_id == u.id).first()
+            if ep:
+                wn = (getattr(ep, "preferred_name", None) or "").strip()
+                if not wn:
+                    wn = " ".join(
+                        x
+                        for x in [
+                            (getattr(ep, "first_name", None) or "").strip(),
+                            (getattr(ep, "last_name", None) or "").strip(),
+                        ]
+                        if x
+                    )
+                worker_name = wn or u.username
+            else:
+                worker_name = u.username
     return {
         "id": str(row.id),
         "project_id": str(row.project_id),
         "inspection_date": row.inspection_date.isoformat() if row.inspection_date else None,
         "template_version": row.template_version or "mki_safety_v1",
+        "form_template_version_id": str(ft_id) if ft_id else None,
+        "assigned_user_id": str(asg_id) if asg_id else None,
+        "template_name": template_name,
+        "template_version_number": template_version_number,
+        "worker_name": worker_name,
         "status": st,
         "form_payload": row.form_payload if isinstance(row.form_payload, dict) else {},
         "created_at": row.created_at.isoformat() if row.created_at else None,
@@ -2202,7 +2263,7 @@ def list_project_safety_inspections(
         .order_by(ProjectSafetyInspection.inspection_date.desc())
         .all()
     )
-    return [_safety_inspection_to_dict(r) for r in rows]
+    return [_safety_inspection_to_dict(db, r) for r in rows]
 
 
 @router.post("/{project_id}/safety-inspections")
@@ -2229,24 +2290,46 @@ def create_project_safety_inspection(
             inspection_date = datetime.now(timezone.utc)
     else:
         inspection_date = datetime.now(timezone.utc)
-    template_version = (payload.get("template_version") if isinstance(payload, dict) else None) or "mki_safety_v1"
-    if not isinstance(template_version, str):
-        template_version = "mki_safety_v1"
     form_payload = payload.get("form_payload") if isinstance(payload, dict) else None
     if form_payload is not None and not isinstance(form_payload, dict):
         raise HTTPException(status_code=400, detail="form_payload must be an object")
+    raw_ftv = payload.get("form_template_version_id") if isinstance(payload, dict) else None
+    form_template_version_id: Optional[uuid.UUID] = None
+    template_version = (payload.get("template_version") if isinstance(payload, dict) else None) or "mki_safety_v1"
+    if not isinstance(template_version, str):
+        template_version = "mki_safety_v1"
+    if raw_ftv:
+        try:
+            form_template_version_id = uuid.UUID(str(raw_ftv).strip())
+        except Exception:
+            raise HTTPException(status_code=400, detail="Invalid form_template_version_id")
+        ftv = db.query(FormTemplateVersion).filter(FormTemplateVersion.id == form_template_version_id).first()
+        if not ftv or not ftv.is_published:
+            raise HTTPException(status_code=400, detail="form_template_version_id must refer to a published template version")
+        template_version = "form_template"
+    assigned_user_id: Optional[uuid.UUID] = None
+    raw_asg = payload.get("assigned_user_id") if isinstance(payload, dict) else None
+    if raw_asg:
+        try:
+            assigned_user_id = uuid.UUID(str(raw_asg).strip())
+        except Exception:
+            raise HTTPException(status_code=400, detail="Invalid assigned_user_id")
+        if not db.query(User).filter(User.id == assigned_user_id).first():
+            raise HTTPException(status_code=400, detail="assigned_user_id not found")
     row = ProjectSafetyInspection(
         project_id=uuid.UUID(str(project_id)),
         inspection_date=inspection_date,
         template_version=template_version[:50],
         status="draft",
         form_payload=form_payload if isinstance(form_payload, dict) else {},
+        form_template_version_id=form_template_version_id,
+        assigned_user_id=assigned_user_id,
         created_by=user.id,
     )
     db.add(row)
     db.commit()
     db.refresh(row)
-    return _safety_inspection_to_dict(row)
+    return _safety_inspection_to_dict(db, row)
 
 
 @router.get("/{project_id}/safety-inspections/{inspection_id}")
@@ -2272,7 +2355,7 @@ def get_project_safety_inspection(
     )
     if not row:
         raise HTTPException(status_code=404, detail="Inspection not found")
-    return _safety_inspection_to_dict(row)
+    return _safety_inspection_to_dict(db, row)
 
 
 @router.put("/{project_id}/safety-inspections/{inspection_id}")
@@ -2308,10 +2391,26 @@ def update_project_safety_inspection(
                 row.inspection_date = datetime.fromisoformat(raw.replace("Z", "+00:00"))
         except Exception:
             pass
+    if "form_template_version_id" in payload and payload["form_template_version_id"] is not None:
+        raise HTTPException(status_code=400, detail="form_template_version_id cannot be changed after creation")
     if "template_version" in payload and payload["template_version"] is not None:
         tv = payload["template_version"]
         if isinstance(tv, str) and tv.strip():
+            if getattr(row, "form_template_version_id", None):
+                raise HTTPException(status_code=400, detail="template_version is fixed for template-based inspections")
             row.template_version = tv.strip()[:50]
+    if "assigned_user_id" in payload:
+        raw_asg = payload.get("assigned_user_id")
+        if raw_asg is None or raw_asg == "":
+            row.assigned_user_id = None
+        else:
+            try:
+                aid = uuid.UUID(str(raw_asg).strip())
+            except Exception:
+                raise HTTPException(status_code=400, detail="Invalid assigned_user_id")
+            if not db.query(User).filter(User.id == aid).first():
+                raise HTTPException(status_code=400, detail="assigned_user_id not found")
+            row.assigned_user_id = aid
     if "form_payload" in payload:
         fp = payload["form_payload"]
         if fp is not None and not isinstance(fp, dict):
@@ -2330,7 +2429,7 @@ def update_project_safety_inspection(
     row.updated_at = datetime.now(timezone.utc)
     db.commit()
     db.refresh(row)
-    return _safety_inspection_to_dict(row)
+    return _safety_inspection_to_dict(db, row)
 
 
 @router.post("/{project_id}/reports/{report_id}/approve")
@@ -5943,6 +6042,7 @@ def business_projects(
             "id": str(p.id),
             "code": p.code,
             "name": p.name,
+            "business_line": getattr(p, "business_line", None) or BUSINESS_LINE_CONSTRUCTION,
             "slug": p.slug,
             "client_id": str(p.client_id) if getattr(p, 'client_id', None) else None,
             "created_at": p.created_at.isoformat() if getattr(p, 'created_at', None) else None,

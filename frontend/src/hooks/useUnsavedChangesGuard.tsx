@@ -35,11 +35,59 @@ export function useUnsavedChangesGuard(
       : hasUnsavedChanges;
   }, [hasUnsavedChanges]);
 
-  // Update global state
+  // Update global state + ref (ref read synchronously in beforeunload for toolbar/menu Reload)
   useEffect(() => {
     hasUnsavedRef.current = currentHasUnsaved;
     setGlobalUnsavedChanges(currentHasUnsaved);
   }, [currentHasUnsaved, setGlobalUnsavedChanges]);
+
+  // Toolbar / menu Reload, close tab: native beforeunload (keyboard reloads use custom modal below)
+  useEffect(() => {
+    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+      if (!hasUnsavedRef.current) return;
+      e.preventDefault();
+      e.returnValue = '';
+    };
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+  }, []);
+
+  // F5 / Ctrl+F5 / Ctrl+R / Ctrl+Shift+R: in-app modal with Save and Reload
+  useEffect(() => {
+    if (!currentHasUnsaved) return;
+
+    const handleKeyDown = async (e: KeyboardEvent) => {
+      const k = e.key;
+      const mod = e.ctrlKey || e.metaKey;
+      const isReloadShortcut =
+        k === 'F5' || (mod && (k === 'F5' || k === 'f5')) || (mod && (k === 'r' || k === 'R'));
+      if (!isReloadShortcut) return;
+
+      e.preventDefault();
+      e.stopPropagation();
+
+      const result = await confirm({
+        title: 'Reload Site?',
+        message: 'You have unsaved changes. What would you like to do?',
+        confirmText: 'Save and Reload',
+        cancelText: 'Cancel',
+        showDiscard: true,
+        discardText: 'Discard Changes',
+      });
+
+      if (result === 'confirm') {
+        if (onSaveRef.current) {
+          await onSaveRef.current();
+        }
+        window.location.reload();
+      } else if (result === 'discard') {
+        window.location.reload();
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown, true);
+    return () => window.removeEventListener('keydown', handleKeyDown, true);
+  }, [currentHasUnsaved, confirm]);
 
   // Intercept React Router navigation by intercepting link clicks
   useEffect(() => {
@@ -96,40 +144,9 @@ export function useUnsavedChangesGuard(
     };
   }, [currentHasUnsaved, location.pathname, navigate, confirm]);
 
-  // Prevent navigation away from page if there are unsaved changes
+  // Back button: custom modal (popstate).
   useEffect(() => {
     if (!currentHasUnsaved) return;
-    
-    // Intercept keyboard shortcuts for reload
-    const handleKeyDown = async (e: KeyboardEvent) => {
-      if (e.key === 'F5' || (e.ctrlKey && e.key === 'r') || (e.ctrlKey && e.shiftKey && e.key === 'R')) {
-        e.preventDefault();
-        const result = await confirm({
-          title: 'Reload Site?',
-          message: 'You have unsaved changes. What would you like to do?',
-          confirmText: 'Save and Reload',
-          cancelText: 'Cancel',
-          showDiscard: true,
-          discardText: 'Discard Changes'
-        });
-        
-        if (result === 'confirm') {
-          if (onSaveRef.current) {
-            await onSaveRef.current();
-          }
-          window.location.reload();
-        } else if (result === 'discard') {
-          window.location.reload();
-        }
-      }
-    };
-
-    // Handle beforeunload
-    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
-      e.preventDefault();
-      e.returnValue = 'You have unsaved changes. Are you sure you want to leave?';
-      return e.returnValue;
-    };
 
     // Intercept browser back button
     const handlePopState = async (e: PopStateEvent) => {
@@ -161,13 +178,9 @@ export function useUnsavedChangesGuard(
       window.history.pushState(null, '', window.location.href);
     }
 
-    window.addEventListener('keydown', handleKeyDown);
-    window.addEventListener('beforeunload', handleBeforeUnload);
     window.addEventListener('popstate', handlePopState);
     
     return () => {
-      window.removeEventListener('keydown', handleKeyDown);
-      window.removeEventListener('beforeunload', handleBeforeUnload);
       window.removeEventListener('popstate', handlePopState);
     };
   }, [currentHasUnsaved, confirm]);

@@ -77,6 +77,9 @@ import InspectionDetail from './pages/InspectionDetail';
 import FleetSchedulePage from './pages/FleetSchedulePage';
 import SafetyInspectionsPage from './pages/SafetyInspectionsPage';
 import SafetySchedulePage from './pages/SafetySchedulePage';
+import FormTemplatesPage from './pages/FormTemplatesPage';
+import FormTemplateEditorPage from './pages/FormTemplateEditorPage';
+import FormCustomListsPage from './pages/FormCustomListsPage';
 import TrainingCourse from './pages/TrainingCourse';
 import TrainingCertificates from './pages/TrainingCertificates';
 import TrainingAdmin from './pages/TrainingAdmin';
@@ -188,6 +191,9 @@ export default function App(){
           <Route path="/users/:id" element={<AppShell><UserDetail/></AppShell>} />
           <Route path="/safety/inspections" element={<AppShell><SafetyInspectionsPage /></AppShell>} />
           <Route path="/safety/calendar" element={<AppShell><SafetySchedulePage /></AppShell>} />
+          <Route path="/safety/form-templates" element={<AppShell><FormTemplatesPage /></AppShell>} />
+          <Route path="/safety/form-custom-lists" element={<AppShell><FormCustomListsPage /></AppShell>} />
+          <Route path="/safety/form-templates/:id" element={<AppShell><FormTemplateEditorPage /></AppShell>} />
           <Route path="/fleet" element={<AppShell><FleetDashboard/></AppShell>} />
           <Route path="/fleet/assets" element={<AppShell><FleetAssets/></AppShell>} />
           <Route path="/fleet/vehicles" element={<AppShell><FleetAssets/></AppShell>} />

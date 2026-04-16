@@ -40,6 +40,8 @@ from .routes.employee_management import router as employee_management_router
 from .routes.permissions import router as permissions_router
 from .routes.fleet import router as fleet_router
 from .routes.safety import router as safety_router
+from .routes.form_templates import router as form_templates_router
+from .routes.form_custom_lists import router as form_custom_lists_router
 from .routes.training import router as training_router
 from .routes.bug_report import router as bug_report_router
 from .routes.search import router as search_router
@@ -168,6 +170,8 @@ def create_app() -> FastAPI:
     app.include_router(permissions_router)
     app.include_router(fleet_router)
     app.include_router(safety_router)
+    app.include_router(form_custom_lists_router)
+    app.include_router(form_templates_router)
     app.include_router(training_router)
     app.include_router(bug_report_router)
     app.include_router(search_router)
@@ -347,6 +351,102 @@ def create_app() -> FastAPI:
                             print("[startup] Ensured project_safety_inspections.status")
                     except Exception as e:
                         print(f"[startup] project_safety_inspections.status migration (non-critical): {e}")
+
+                    # Form templates (Safety MVP) — tables + inspection FK columns
+                    try:
+                        if db.execute(
+                            text(
+                                "SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'form_templates' LIMIT 1"
+                            )
+                        ).fetchall():
+                            pass
+                        else:
+                            from .models.models import FormTemplate, FormTemplateVersion
+
+                            Base.metadata.create_all(bind=engine, tables=[FormTemplate.__table__, FormTemplateVersion.__table__])
+                            db.commit()
+                            print("[startup] Created form_templates / form_template_versions")
+                        db.execute(
+                            text(
+                                "ALTER TABLE project_safety_inspections ADD COLUMN IF NOT EXISTS form_template_version_id UUID NULL"
+                            )
+                        )
+                        db.execute(
+                            text(
+                                "ALTER TABLE project_safety_inspections ADD COLUMN IF NOT EXISTS assigned_user_id UUID NULL"
+                            )
+                        )
+                        db.commit()
+                        try:
+                            db.execute(
+                                text(
+                                    """
+                                    DO $ff$
+                                    BEGIN
+                                        IF NOT EXISTS (
+                                            SELECT 1 FROM pg_constraint WHERE conname = 'fk_project_safety_inspections_form_template_version'
+                                        ) THEN
+                                            ALTER TABLE project_safety_inspections
+                                                ADD CONSTRAINT fk_project_safety_inspections_form_template_version
+                                                FOREIGN KEY (form_template_version_id)
+                                                REFERENCES form_template_versions(id) ON DELETE SET NULL;
+                                        END IF;
+                                    END $ff$;
+                                    """
+                                )
+                            )
+                            db.commit()
+                        except Exception:
+                            db.rollback()
+                        try:
+                            db.execute(
+                                text(
+                                    """
+                                    DO $ff$
+                                    BEGIN
+                                        IF NOT EXISTS (
+                                            SELECT 1 FROM pg_constraint WHERE conname = 'fk_project_safety_inspections_assigned_user'
+                                        ) THEN
+                                            ALTER TABLE project_safety_inspections
+                                                ADD CONSTRAINT fk_project_safety_inspections_assigned_user
+                                                FOREIGN KEY (assigned_user_id)
+                                                REFERENCES users(id) ON DELETE SET NULL;
+                                        END IF;
+                                    END $ff$;
+                                    """
+                                )
+                            )
+                            db.commit()
+                        except Exception:
+                            db.rollback()
+                        try:
+                            db.execute(
+                                text(
+                                    "CREATE INDEX IF NOT EXISTS ix_project_safety_inspections_template_version ON project_safety_inspections(form_template_version_id)"
+                                )
+                            )
+                            db.execute(
+                                text(
+                                    "CREATE INDEX IF NOT EXISTS ix_project_safety_inspections_assigned_user ON project_safety_inspections(assigned_user_id)"
+                                )
+                            )
+                            db.commit()
+                        except Exception:
+                            db.rollback()
+                        print("[startup] Ensured form_templates schema / inspection FK columns")
+                    except Exception as e:
+                        print(f"[startup] form_templates migration (non-critical): {e}")
+
+                    # Form custom lists (global dropdown options). create_all only; never drops tables or deletes rows.
+                    try:
+                        from .models.models import FormCustomList, FormCustomListItem
+
+                        Base.metadata.create_all(bind=engine, tables=[FormCustomList.__table__, FormCustomListItem.__table__])
+                        db.commit()
+                        print("[startup] Ensured form_custom_lists / form_custom_list_items")
+                    except Exception as e:
+                        db.rollback()
+                        print(f"[startup] form_custom_lists create_all (non-critical): {e}")
 
                     # Check for source_attendance_id column in project_time_entries
                     rows = db.execute(
