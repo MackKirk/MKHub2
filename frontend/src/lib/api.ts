@@ -12,6 +12,16 @@ export function withFileAccessToken(url: string): string {
   return `${url}${sep}access_token=${encodeURIComponent(t)}`;
 }
 
+/**
+ * For JSON fields built by the API (`logo_url`, `cover_image_url`, community avatars, etc.):
+ * same-origin `/files/...` URLs need the query token because `<img>` cannot send Authorization.
+ */
+export function withFileAccessTokenIfNeeded(url: string | null | undefined): string {
+  const u = url ?? '';
+  if (!u.startsWith('/files/')) return u;
+  return withFileAccessToken(u);
+}
+
 export async function api<T=any>(method: HttpMethod, path: string, body?: any, headers?: Record<string,string>): Promise<T>{
   const h: Record<string,string> = { ...(headers||{}) };
   const t = getToken(); if (t) h.Authorization = 'Bearer ' + t;

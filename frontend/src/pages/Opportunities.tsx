@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
-import { api, withFileAccessToken } from '@/lib/api';
+import { api, withFileAccessToken, withFileAccessTokenIfNeeded } from '@/lib/api';
 import { useMemo, useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import type { ReactNode } from 'react';
@@ -1757,8 +1757,8 @@ function OpportunityListCard({ opportunity, onOpenReportModal, projectStatuses, 
   opportunityBasePath?: string;
 }){
   const navigate = useNavigate();
-  // Card cover should match General Information: backend now provides cover_image_url with correct priority
-  const src = opportunity.cover_image_url || '/ui/assets/placeholders/project.png';
+  // Card cover should match General Information; API returns /files/... without JWT
+  const src = withFileAccessTokenIfNeeded(opportunity.cover_image_url) || '/ui/assets/placeholders/project.png';
   const { data:details } = useQuery({ queryKey:['opportunity-detail-card', opportunity.id], queryFn: ()=> api<any>('GET', `/projects/${encodeURIComponent(String(opportunity.id))}`), staleTime: 60_000 });
   const { data:client } = useQuery({ queryKey:['opportunity-client', opportunity.client_id], queryFn: ()=> opportunity.client_id? api<any>('GET', `/clients/${encodeURIComponent(String(opportunity.client_id||''))}`): Promise.resolve(null), enabled: !!opportunity.client_id, staleTime: 300_000 });
   const { data:projectDivisions } = useQuery({ queryKey:['project-divisions'], queryFn: ()=> api<any[]>('GET','/settings/project-divisions'), staleTime: 300_000 });

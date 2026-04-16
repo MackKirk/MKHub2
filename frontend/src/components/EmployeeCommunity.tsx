@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { api } from '@/lib/api';
+import { api, withFileAccessTokenIfNeeded } from '@/lib/api';
 import toast from 'react-hot-toast';
 import OverlayPortal from '@/components/OverlayPortal';
 
@@ -344,7 +344,7 @@ export default function EmployeeCommunity({ expanded = false, feedMode = false }
                   <div className="w-10 h-10 rounded-full bg-gray-200 flex items-center justify-center flex-shrink-0">
                     {post.author_avatar ? (
                       <img
-                        src={post.author_avatar}
+                        src={withFileAccessTokenIfNeeded(post.author_avatar)}
                         alt={post.author_name || 'User'}
                         className="w-full h-full rounded-full object-cover"
                       />
@@ -458,7 +458,7 @@ export default function EmployeeCommunity({ expanded = false, feedMode = false }
                   <div className="w-12 h-12 rounded-full bg-gray-200 flex items-center justify-center flex-shrink-0">
                     {modalPost.author_avatar ? (
                       <img
-                        src={modalPost.author_avatar}
+                        src={withFileAccessTokenIfNeeded(modalPost.author_avatar)}
                         alt={modalPost.author_name || 'User'}
                         className="w-full h-full rounded-full object-cover"
                       />
@@ -497,7 +497,7 @@ export default function EmployeeCommunity({ expanded = false, feedMode = false }
                 {modalPost.photo_url && (
                   <div className="mb-4">
                     <img
-                      src={modalPost.photo_url}
+                      src={withFileAccessTokenIfNeeded(modalPost.photo_url)}
                       alt={modalPost.title}
                       className="w-full h-auto rounded-lg object-contain"
                     />
@@ -513,7 +513,7 @@ export default function EmployeeCommunity({ expanded = false, feedMode = false }
                 {modalPost.document_url && (
                   <div className="mb-4 flex justify-end">
                     <a
-                      href={modalPost.document_url}
+                      href={withFileAccessTokenIfNeeded(modalPost.document_url)}
                       download
                       className="flex items-center gap-2 text-sm text-gray-700 hover:text-gray-900 transition-colors"
                     >
@@ -562,7 +562,7 @@ export default function EmployeeCommunity({ expanded = false, feedMode = false }
                           <div className="w-10 h-10 rounded-full bg-gray-200 flex items-center justify-center flex-shrink-0">
                             {comment.user_avatar ? (
                               <img
-                                src={comment.user_avatar}
+                                src={withFileAccessTokenIfNeeded(comment.user_avatar)}
                                 alt={comment.user_name || 'User'}
                                 className="w-full h-full rounded-full object-cover"
                               />

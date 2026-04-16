@@ -1,5 +1,5 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { api } from '@/lib/api';
+import { api, withFileAccessTokenIfNeeded } from '@/lib/api';
 import { useMemo, useState, useEffect, useRef } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useConfirm } from '@/components/ConfirmProvider';
@@ -547,7 +547,7 @@ export default function Customers(){
 }
 
 function ClientRow({ c, statusColorMap, onOpen }:{ c: Client, statusColorMap: Record<string,string>, onOpen: ()=>void }){
-  const avatarUrl = c.logo_url || '/ui/assets/placeholders/customer.png';
+  const avatarUrl = withFileAccessTokenIfNeeded(c.logo_url) || '/ui/assets/placeholders/customer.png';
   const status = String(c.client_status||'').trim();
   const color = status ? (statusColorMap[status] || '') : '';
   const badgeStyle: any = color ? { backgroundColor: color, borderColor: 'transparent', color: '#000' } : {};
