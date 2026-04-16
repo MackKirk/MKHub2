@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type RefObject } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type RefObject } from 'react';
 import { Link } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
@@ -241,11 +241,24 @@ function ChevronExpandIcon({ className, expanded }: { className?: string; expand
   );
 }
 
+function TrashIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className ?? 'w-5 h-5'} fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2} aria-hidden>
+      <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
+      />
+    </svg>
+  );
+}
+
 export default function FormCustomListsPage() {
   const qc = useQueryClient();
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [createOpen, setCreateOpen] = useState(false);
   const [newName, setNewName] = useState('');
+  const [listsSearch, setListsSearch] = useState('');
 
   const { data: lists, isLoading } = useQuery({
     queryKey: ['formCustomLists'],
@@ -339,7 +352,27 @@ export default function FormCustomListsPage() {
     onError: () => toast.error('Could not remove item'),
   });
 
+  const deleteListMut = useMutation({
+    mutationFn: (listId: string) => api<{ ok: boolean }>('DELETE', `/form-custom-lists/${encodeURIComponent(listId)}`),
+    onSuccess: (_data, listId) => {
+      qc.invalidateQueries({ queryKey: ['formCustomLists'] });
+      qc.removeQueries({ queryKey: ['formCustomList', listId] });
+      if (selectedId === listId) setSelectedId(null);
+      toast.success('List deleted');
+    },
+    onError: (err) => {
+      const msg = err instanceof Error ? err.message : 'Could not delete list';
+      toast.error(msg);
+    },
+  });
+
   const sortedLists = useMemo(() => [...(lists || [])].sort((a, b) => a.name.localeCompare(b.name)), [lists]);
+
+  const filteredLists = useMemo(() => {
+    const q = listsSearch.trim().toLowerCase();
+    if (!q) return sortedLists;
+    return sortedLists.filter((row) => (row.name || '').toLowerCase().includes(q));
+  }, [sortedLists, listsSearch]);
 
   const applyOptimisticItems = useCallback(
     (items: TreeNode[]) => {
@@ -373,7 +406,7 @@ export default function FormCustomListsPage() {
           <div className="px-4 py-3 border-b border-gray-100 bg-gray-50/80">
             <h2 className="text-sm font-semibold text-gray-800">Lists</h2>
           </div>
-          <div className="p-2 border-b border-gray-100">
+          <div className="p-2 border-b border-gray-100 space-y-2">
             <button
               type="button"
               onClick={() => setCreateOpen(true)}
@@ -381,26 +414,75 @@ export default function FormCustomListsPage() {
             >
               + New list
             </button>
+            <label className="sr-only" htmlFor="form-custom-lists-search">
+              Search lists
+            </label>
+            <input
+              id="form-custom-lists-search"
+              type="search"
+              value={listsSearch}
+              onChange={(e) => setListsSearch(e.target.value)}
+              placeholder="Search lists…"
+              autoComplete="off"
+              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-xs text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-brand-red/20 focus:border-brand-red"
+            />
           </div>
           {isLoading ? (
             <div className="p-8 text-center text-sm text-gray-500">Loading…</div>
           ) : sortedLists.length === 0 ? (
             <div className="p-8 text-center text-sm text-gray-500">No custom lists yet. Create one above to use in dropdown fields.</div>
+          ) : filteredLists.length === 0 ? (
+            <div className="p-6 text-center text-xs text-gray-500">No lists match your search.</div>
           ) : (
-            <ul className="divide-y divide-gray-100 max-h-[480px] overflow-y-auto">
-              {sortedLists.map((row) => (
-                <li key={row.id}>
-                  <button
-                    type="button"
-                    onClick={() => setSelectedId(row.id)}
-                    className={`w-full text-left px-4 py-3 hover:bg-gray-50 ${
-                      selectedId === row.id ? 'bg-blue-50/80' : ''
-                    }`}
-                  >
-                    <span className="font-medium text-gray-900">{row.name}</span>
-                  </button>
-                </li>
-              ))}
+            <ul className="max-h-[480px] overflow-y-auto">
+              {filteredLists.map((row) => {
+                const usedCount = row.used_in_form_count ?? 0;
+                const deleteBlocked = usedCount > 0;
+                return (
+                  <li key={row.id} className="flex items-stretch min-w-0">
+                    <button
+                      type="button"
+                      onClick={() => setSelectedId(row.id)}
+                      className={`flex-1 min-w-0 text-left px-4 py-2.5 hover:bg-gray-50 ${
+                        selectedId === row.id ? 'bg-blue-50/80' : ''
+                      }`}
+                    >
+                      <span className="text-[13px] font-bold text-gray-900 truncate block leading-snug">{row.name}</span>
+                    </button>
+                    <div className="flex shrink-0 items-center pr-2">
+                      <button
+                        type="button"
+                        disabled={deleteBlocked || deleteListMut.isPending}
+                        title={
+                          deleteBlocked
+                            ? `Cannot delete: used in ${usedCount} form template(s). Remove references in Form Templates first.`
+                            : 'Delete list'
+                        }
+                        aria-label={deleteBlocked ? 'Delete list (disabled: in use)' : 'Delete list'}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          if (deleteBlocked) return;
+                          if (
+                            !window.confirm(
+                              `Delete list "${row.name}"? All items in this list will be removed. This cannot be undone.`
+                            )
+                          ) {
+                            return;
+                          }
+                          deleteListMut.mutate(row.id);
+                        }}
+                        className={`shrink-0 h-9 w-9 inline-flex items-center justify-center rounded-lg border-0 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-red/25 ${
+                          deleteBlocked
+                            ? 'text-gray-300 cursor-not-allowed'
+                            : 'text-gray-400 hover:text-red-600 cursor-pointer'
+                        } disabled:opacity-50`}
+                      >
+                        <TrashIcon className="w-5 h-5" />
+                      </button>
+                    </div>
+                  </li>
+                );
+              })}
             </ul>
           )}
         </div>
@@ -496,6 +578,7 @@ function ListDetailPanel({
   onDeleteItem: (id: string) => void;
   isSaving: boolean;
 }) {
+  const qc = useQueryClient();
   const [localName, setLocalName] = useState(detail.name);
   const [localStatus, setLocalStatus] = useState(detail.status);
   const [editingListName, setEditingListName] = useState(false);
@@ -517,13 +600,12 @@ function ListDetailPanel({
     setDraftName('');
   }, [detail.id]);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (!editingItemId) return;
-    const t = window.setTimeout(() => {
-      editInputRef.current?.focus();
-      editInputRef.current?.select();
-    }, 0);
-    return () => window.clearTimeout(t);
+    const el = editInputRef.current;
+    if (!el) return;
+    el.focus();
+    el.select();
   }, [editingItemId]);
 
   useEffect(() => {
@@ -607,6 +689,7 @@ function ListDetailPanel({
       parent_id: null,
       name: 'New item',
     });
+    await qc.refetchQueries({ queryKey: ['formCustomList', detail.id] });
     setEditingItemId(row.id);
     setDraftName(row.name);
   };
@@ -617,6 +700,7 @@ function ListDetailPanel({
       parent_id: parentId,
       name: 'New item',
     });
+    await qc.refetchQueries({ queryKey: ['formCustomList', detail.id] });
     setEditingItemId(row.id);
     setDraftName(row.name);
   };
