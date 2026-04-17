@@ -1,10 +1,11 @@
 import { useMemo, useState } from 'react';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Link, useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import { api } from '@/lib/api';
 import PageHeaderBar from '@/components/PageHeaderBar';
 import { useConfirm } from '@/components/ConfirmProvider';
+import { formatDateLocal } from '@/lib/dateUtils';
 
 type TemplateRow = {
   id: string;
@@ -12,8 +13,9 @@ type TemplateRow = {
   description?: string | null;
   category: string;
   status: string;
-  published_version_id?: string | null;
-  published_version_number?: number | null;
+  version_label: string;
+  created_at?: string | null;
+  updated_at?: string | null;
 };
 
 function TrashIcon({ className }: { className?: string }) {
@@ -24,14 +26,45 @@ function TrashIcon({ className }: { className?: string }) {
   );
 }
 
+function DuplicateIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className ?? 'w-4 h-4'} fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2} aria-hidden>
+      <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"
+      />
+    </svg>
+  );
+}
+
+type SortCol = 'name' | 'created_at' | 'updated_at';
+
 export default function FormTemplatesPage() {
   const qc = useQueryClient();
   const nav = useNavigate();
   const confirm = useConfirm();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [searchQuery, setSearchQuery] = useState('');
+
+  const sortBy = (searchParams.get('sort') as SortCol) || 'name';
+  const sortDir = searchParams.get('dir') === 'desc' ? 'desc' : 'asc';
+
+  const setListSort = (column: SortCol, direction?: 'asc' | 'desc') => {
+    const params = new URLSearchParams(searchParams);
+    const nextDir = direction ?? (sortBy === column && sortDir === 'asc' ? 'desc' : 'asc');
+    params.set('sort', column);
+    params.set('dir', nextDir);
+    setSearchParams(params, { replace: true });
+  };
+
   const { data: rows = [], isLoading } = useQuery({
-    queryKey: ['formTemplates'],
-    queryFn: () => api<TemplateRow[]>('GET', '/form-templates'),
+    queryKey: ['formTemplates', sortBy, sortDir],
+    queryFn: () =>
+      api<TemplateRow[]>(
+        'GET',
+        `/form-templates?sort=${encodeURIComponent(sortBy)}&sort_dir=${encodeURIComponent(sortDir)}`
+      ),
   });
 
   const filteredRows = useMemo(() => {
@@ -41,7 +74,8 @@ export default function FormTemplatesPage() {
       const name = (r.name || '').toLowerCase();
       const cat = (r.category || '').toLowerCase();
       const desc = (r.description || '').toLowerCase();
-      return name.includes(s) || cat.includes(s) || desc.includes(s);
+      const ver = (r.version_label || '').toLowerCase();
+      return name.includes(s) || cat.includes(s) || desc.includes(s) || ver.includes(s);
     });
   }, [rows, searchQuery]);
 
@@ -69,6 +103,16 @@ export default function FormTemplatesPage() {
     onError: () => toast.error('Could not delete template'),
   });
 
+  const duplicateMut = useMutation({
+    mutationFn: (id: string) => api<{ id: string }>('POST', `/form-templates/${encodeURIComponent(id)}/duplicate`),
+    onSuccess: (r) => {
+      qc.invalidateQueries({ queryKey: ['formTemplates'] });
+      toast.success('Template duplicated');
+      nav(`/safety/form-templates/${encodeURIComponent(r.id)}`);
+    },
+    onError: () => toast.error('Could not duplicate template'),
+  });
+
   const askDeleteTemplate = async (r: TemplateRow) => {
     const label = r.name.trim() || 'Untitled template';
     const res = await confirm({
@@ -81,11 +125,20 @@ export default function FormTemplatesPage() {
     deleteMut.mutate(r.id);
   };
 
+  const fmtDate = (iso: string | null | undefined) => {
+    if (!iso) return '—';
+    try {
+      return formatDateLocal(new Date(iso));
+    } catch {
+      return '—';
+    }
+  };
+
   return (
     <div className="space-y-4 min-w-0 pb-16">
       <PageHeaderBar
         title="Form Templates"
-        subtitle="Build reusable safety forms. Publish a version before scheduling or starting inspections."
+        subtitle="Build reusable safety forms. Save in the editor updates what users see when starting inspections."
       />
 
       <div className="rounded-xl border border-gray-200 bg-white overflow-hidden">
@@ -113,7 +166,7 @@ export default function FormTemplatesPage() {
                   type="search"
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
-                  placeholder="Search by name, category, or description…"
+                  placeholder="Search by name, category, version, or description…"
                   className="w-full pl-9 pr-3 py-2 text-sm border border-gray-200 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-brand-red/20 focus:border-brand-red"
                   autoComplete="off"
                 />
@@ -134,49 +187,102 @@ export default function FormTemplatesPage() {
             ) : filteredRows.length === 0 ? (
               <div className="p-8 text-center text-sm text-gray-500">No matching templates.</div>
             ) : (
-              <ul className="divide-y divide-gray-100">
-                {filteredRows.map((r) => (
-                  <li key={r.id} className="flex items-center justify-between gap-3 px-4 py-3 hover:bg-gray-50">
-                    <Link
-                      to={`/safety/form-templates/${encodeURIComponent(r.id)}`}
-                      className="flex flex-1 min-w-0 items-center gap-3"
+              <div className="flex flex-col gap-0 overflow-x-auto">
+                <div
+                  className="grid grid-cols-[minmax(0,2.2fr)_minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)_auto_auto] gap-2 sm:gap-3 items-center px-4 py-2 bg-gray-50 border-b border-gray-200 min-w-[720px] text-[10px] font-semibold text-gray-700"
+                  aria-hidden
+                >
+                  <button
+                    type="button"
+                    onClick={() => setListSort('name')}
+                    className="min-w-0 text-left flex items-center gap-1 hover:text-gray-900 rounded py-0.5 outline-none focus:outline-none"
+                    title="Sort by name"
+                  >
+                    Name
+                    {sortBy === 'name' ? (sortDir === 'asc' ? ' ↑' : ' ↓') : ''}
+                  </button>
+                  <span className="min-w-0">Version</span>
+                  <button
+                    type="button"
+                    onClick={() => setListSort('created_at')}
+                    className="min-w-0 text-left flex items-center gap-1 hover:text-gray-900 rounded py-0.5 outline-none focus:outline-none"
+                    title="Sort by created date"
+                  >
+                    Created
+                    {sortBy === 'created_at' ? (sortDir === 'asc' ? ' ↑' : ' ↓') : ''}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setListSort('updated_at')}
+                    className="min-w-0 text-left flex items-center gap-1 hover:text-gray-900 rounded py-0.5 outline-none focus:outline-none"
+                    title="Sort by last update"
+                  >
+                    Last update
+                    {sortBy === 'updated_at' ? (sortDir === 'asc' ? ' ↑' : ' ↓') : ''}
+                  </button>
+                  <span className="text-center">Status</span>
+                  <span className="w-24 text-right pr-1">Actions</span>
+                </div>
+                <ul className="divide-y divide-gray-100 min-w-[720px]">
+                  {filteredRows.map((r) => (
+                    <li
+                      key={r.id}
+                      className="grid grid-cols-[minmax(0,2.2fr)_minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)_auto_auto] gap-2 sm:gap-3 items-center px-4 py-3 hover:bg-gray-50/80"
                     >
-                      <div className="min-w-0 flex-1">
-                        <div className="text-sm font-medium text-gray-900 truncate">{r.name}</div>
-                        <div className="text-[11px] text-gray-500 mt-0.5">
-                          {r.category}
-                          {r.published_version_number != null
-                            ? ` · v${r.published_version_number} published`
-                            : ' · no published version'}
-                        </div>
+                      <Link
+                        to={`/safety/form-templates/${encodeURIComponent(r.id)}`}
+                        className="min-w-0 font-medium text-sm text-gray-900 truncate hover:text-brand-red hover:underline"
+                      >
+                        {r.name}
+                      </Link>
+                      <div className="min-w-0 text-xs text-gray-600 truncate" title={r.version_label || ''}>
+                        {(r.version_label || '').trim() || '—'}
                       </div>
-                    </Link>
-                    <div className="flex items-center gap-2 shrink-0">
-                      <span
-                        className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${
-                          r.status === 'active' ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-600'
-                        }`}
-                      >
-                        {r.status}
-                      </span>
-                      <button
-                        type="button"
-                        aria-label={`Delete template ${r.name.trim() || 'Untitled'}`}
-                        title="Delete template"
-                        disabled={deleteMut.isPending}
-                        onClick={(e) => {
-                          e.preventDefault();
-                          e.stopPropagation();
-                          void askDeleteTemplate(r);
-                        }}
-                        className="shrink-0 h-9 w-9 inline-flex items-center justify-center text-gray-400 hover:text-red-600 rounded-lg bg-transparent border-0 cursor-pointer transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-red/25 disabled:opacity-50"
-                      >
-                        <TrashIcon className="w-[1.125rem] h-[1.125rem]" />
-                      </button>
-                    </div>
-                  </li>
-                ))}
-              </ul>
+                      <div className="text-xs text-gray-600 whitespace-nowrap">{fmtDate(r.created_at)}</div>
+                      <div className="text-xs text-gray-600 whitespace-nowrap">{fmtDate(r.updated_at)}</div>
+                      <div className="flex justify-center">
+                        <span
+                          className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${
+                            r.status === 'active' ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-600'
+                          }`}
+                        >
+                          {r.status}
+                        </span>
+                      </div>
+                      <div className="flex items-center justify-end gap-1 w-24">
+                        <button
+                          type="button"
+                          aria-label={`Duplicate template ${r.name.trim() || 'Untitled'}`}
+                          title="Duplicate"
+                          disabled={duplicateMut.isPending}
+                          onClick={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            duplicateMut.mutate(r.id);
+                          }}
+                          className="shrink-0 h-9 w-9 inline-flex items-center justify-center text-gray-400 hover:text-brand-red rounded-lg bg-transparent border-0 cursor-pointer transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-red/25 disabled:opacity-50"
+                        >
+                          <DuplicateIcon className="w-[1.125rem] h-[1.125rem]" />
+                        </button>
+                        <button
+                          type="button"
+                          aria-label={`Delete template ${r.name.trim() || 'Untitled'}`}
+                          title="Delete"
+                          disabled={deleteMut.isPending}
+                          onClick={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            void askDeleteTemplate(r);
+                          }}
+                          className="shrink-0 h-9 w-9 inline-flex items-center justify-center text-gray-400 hover:text-red-600 rounded-lg bg-transparent border-0 cursor-pointer transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-red/25 disabled:opacity-50"
+                        >
+                          <TrashIcon className="w-[1.125rem] h-[1.125rem]" />
+                        </button>
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              </div>
             )}
           </>
         )}

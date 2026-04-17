@@ -1,19 +1,19 @@
-"""Safety form templates: versioned definitions for dynamic inspections."""
+"""Safety form templates: single editable definition per template (last save wins)."""
 
 from __future__ import annotations
 
 import uuid
 from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional
+from typing import Any, List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
-from sqlalchemy import func, or_
+from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
 from ..auth.security import get_current_user, require_permissions
 from ..db import get_db
-from ..models.models import FormCustomList, FormTemplate, FormTemplateVersion, FleetAsset, User
+from ..models.models import FormCustomList, FormTemplate, FleetAsset, User
 
 router = APIRouter(prefix="/form-templates", tags=["form-templates"])
 
@@ -188,31 +188,21 @@ def _validate_definition_structure(definition: dict) -> None:
                         raise HTTPException(status_code=400, detail="pass_fail_total.settings.mode must be manual or aggregate")
 
 
-def _template_to_dict(t: FormTemplate) -> dict:
-    return {
+def _template_to_dict(t: FormTemplate, *, include_definition: bool = False) -> dict:
+    out = {
         "id": str(t.id),
         "name": t.name or "",
         "description": t.description or "",
         "category": t.category or "inspection",
         "status": t.status or "active",
+        "version_label": (t.version_label or "").strip() if getattr(t, "version_label", None) is not None else "",
         "created_at": t.created_at.isoformat() if t.created_at else None,
         "updated_at": t.updated_at.isoformat() if t.updated_at else None,
         "created_by": str(t.created_by) if t.created_by else None,
     }
-
-
-def _version_to_dict(v: FormTemplateVersion, include_definition: bool = True) -> dict:
-    out = {
-        "id": str(v.id),
-        "form_template_id": str(v.form_template_id),
-        "version": v.version,
-        "is_published": bool(v.is_published),
-        "published_at": v.published_at.isoformat() if v.published_at else None,
-        "created_at": v.created_at.isoformat() if v.created_at else None,
-        "created_by": str(v.created_by) if v.created_by else None,
-    }
     if include_definition:
-        out["definition"] = v.definition if isinstance(v.definition, dict) else default_definition()
+        d = getattr(t, "definition", None)
+        out["definition"] = d if isinstance(d, dict) else default_definition()
     return out
 
 
@@ -228,19 +218,13 @@ class FormTemplateUpdate(BaseModel):
     description: Optional[str] = None
     category: Optional[str] = Field(None, max_length=100)
     status: Optional[str] = Field(None, max_length=20)
+    definition: Optional[dict] = None
+    version_label: Optional[str] = Field(None, max_length=100)
 
 
-class FormTemplateVersionUpdate(BaseModel):
-    definition: dict
-
-
-class PublishBody(BaseModel):
-    version_id: uuid.UUID = Field(..., description="Draft version id to publish")
-
-
-def _next_version_number(db: Session, template_id: uuid.UUID) -> int:
-    m = db.query(func.max(FormTemplateVersion.version)).filter(FormTemplateVersion.form_template_id == template_id).scalar()
-    return (int(m) if m is not None else 0) + 1
+def _definition_has_sections(definition: dict) -> bool:
+    s = definition.get("sections")
+    return isinstance(s, list) and len(s) > 0
 
 
 @router.get("")
@@ -250,37 +234,30 @@ def list_form_templates(
     _=Depends(require_permissions("business:projects:safety:read")),
     category: Optional[str] = Query(None),
     status: Optional[str] = Query(None),
-    schedulable: bool = Query(False, description="If true, only templates with a published version"),
+    schedulable: bool = Query(False, description="If true, only templates usable for new inspections"),
+    sort: str = Query("name", description="name | created_at | updated_at"),
+    sort_dir: str = Query("asc", description="asc | desc"),
 ):
     q = db.query(FormTemplate)
     if category and category.strip():
         q = q.filter(FormTemplate.category == category.strip())
     if status and status.strip():
         q = q.filter(FormTemplate.status == status.strip())
-    q = q.order_by(FormTemplate.name.asc())
     rows: List[FormTemplate] = q.all()
-    out: List[dict] = []
-    for t in rows:
-        pub = (
-            db.query(FormTemplateVersion)
-            .filter(
-                FormTemplateVersion.form_template_id == t.id,
-                FormTemplateVersion.is_published.is_(True),
-            )
-            .order_by(FormTemplateVersion.version.desc())
-            .first()
-        )
-        if schedulable and not pub:
-            continue
-        d = _template_to_dict(t)
-        if pub:
-            d["published_version_id"] = str(pub.id)
-            d["published_version_number"] = pub.version
-        else:
-            d["published_version_id"] = None
-            d["published_version_number"] = None
-        out.append(d)
-    return out
+
+    if schedulable:
+        rows = [t for t in rows if (t.status or "").lower() == "active" and _definition_has_sections(_normalize_definition(t.definition or {}))]
+
+    sort_key = (sort or "name").strip().lower()
+    asc_dir = (sort_dir or "asc").lower() != "desc"
+    if sort_key == "created_at":
+        rows.sort(key=lambda t: t.created_at or datetime.min.replace(tzinfo=timezone.utc), reverse=not asc_dir)
+    elif sort_key == "updated_at":
+        rows.sort(key=lambda t: t.updated_at or t.created_at or datetime.min.replace(tzinfo=timezone.utc), reverse=not asc_dir)
+    else:
+        rows.sort(key=lambda t: (t.name or "").lower(), reverse=not asc_dir)
+
+    return [_template_to_dict(t) for t in rows]
 
 
 @router.post("")
@@ -298,22 +275,14 @@ def create_form_template(
         description=(body.description or "").strip() or None,
         category=(body.category or "inspection").strip() or "inspection",
         status=st,
+        definition=default_definition(),
+        version_label="",
         created_by=user.id,
     )
     db.add(t)
-    db.flush()
-    v = FormTemplateVersion(
-        form_template_id=t.id,
-        version=1,
-        definition=default_definition(),
-        is_published=False,
-        created_by=user.id,
-    )
-    db.add(v)
     db.commit()
     db.refresh(t)
-    db.refresh(v)
-    return {**_template_to_dict(t), "draft_version": _version_to_dict(v)}
+    return _template_to_dict(t, include_definition=True)
 
 
 @router.get("/support/fleet-assets")
@@ -349,6 +318,33 @@ def support_fleet_assets_for_form_templates(
     return out
 
 
+@router.post("/{template_id}/duplicate")
+def duplicate_form_template(
+    template_id: str,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+    _=Depends(require_permissions("business:projects:safety:write")),
+):
+    tid = uuid.UUID(str(template_id))
+    src = db.query(FormTemplate).filter(FormTemplate.id == tid).first()
+    if not src:
+        raise HTTPException(status_code=404, detail="Template not found")
+    base_name = (src.name or "Untitled").strip() or "Untitled"
+    dup = FormTemplate(
+        name=f"{base_name} (copy)",
+        description=src.description,
+        category=src.category or "inspection",
+        status=src.status or "active",
+        definition=_normalize_definition(src.definition or {}),
+        version_label="",
+        created_by=user.id,
+    )
+    db.add(dup)
+    db.commit()
+    db.refresh(dup)
+    return {"id": str(dup.id)}
+
+
 @router.get("/{template_id}")
 def get_form_template(
     template_id: str,
@@ -360,27 +356,11 @@ def get_form_template(
     t = db.query(FormTemplate).filter(FormTemplate.id == tid).first()
     if not t:
         raise HTTPException(status_code=404, detail="Template not found")
-    published = (
-        db.query(FormTemplateVersion)
-        .filter(FormTemplateVersion.form_template_id == tid, FormTemplateVersion.is_published.is_(True))
-        .order_by(FormTemplateVersion.version.desc())
-        .first()
-    )
-    draft = (
-        db.query(FormTemplateVersion)
-        .filter(FormTemplateVersion.form_template_id == tid, FormTemplateVersion.is_published.is_(False))
-        .order_by(FormTemplateVersion.version.desc())
-        .first()
-    )
-    return {
-        **_template_to_dict(t),
-        "published_version": _version_to_dict(published) if published else None,
-        "draft_version": _version_to_dict(draft) if draft else None,
-    }
+    return _template_to_dict(t, include_definition=True)
 
 
 @router.put("/{template_id}")
-def update_form_template_meta(
+def update_form_template(
     template_id: str,
     body: FormTemplateUpdate,
     db: Session = Depends(get_db),
@@ -402,10 +382,17 @@ def update_form_template_meta(
         if st not in ("active", "inactive"):
             raise HTTPException(status_code=400, detail="status must be active or inactive")
         t.status = st
+    if body.version_label is not None:
+        t.version_label = (body.version_label or "")[:100]
+    if body.definition is not None:
+        definition = _normalize_definition(body.definition)
+        _validate_definition_structure(definition)
+        _validate_dropdown_custom_lists(db, definition)
+        t.definition = definition
     t.updated_at = datetime.now(timezone.utc)
     db.commit()
     db.refresh(t)
-    return _template_to_dict(t)
+    return _template_to_dict(t, include_definition=True)
 
 
 @router.delete("/{template_id}")
@@ -422,129 +409,3 @@ def delete_form_template(
     db.delete(t)
     db.commit()
     return {"ok": True}
-
-
-@router.post("/{template_id}/versions")
-def create_form_template_version(
-    template_id: str,
-    db: Session = Depends(get_db),
-    user: User = Depends(get_current_user),
-    _=Depends(require_permissions("business:projects:safety:write")),
-    copy_from_version_id: Optional[str] = Query(None),
-):
-    """Create a new draft version (optionally copy definition from another version)."""
-    tid = uuid.UUID(str(template_id))
-    t = db.query(FormTemplate).filter(FormTemplate.id == tid).first()
-    if not t:
-        raise HTTPException(status_code=404, detail="Template not found")
-    definition = default_definition()
-    if copy_from_version_id:
-        src = db.query(FormTemplateVersion).filter(FormTemplateVersion.id == uuid.UUID(copy_from_version_id)).first()
-        if not src or src.form_template_id != tid:
-            raise HTTPException(status_code=400, detail="copy_from_version_id invalid")
-        definition = _normalize_definition(src.definition)
-    else:
-        pub = (
-            db.query(FormTemplateVersion)
-            .filter(FormTemplateVersion.form_template_id == tid, FormTemplateVersion.is_published.is_(True))
-            .order_by(FormTemplateVersion.version.desc())
-            .first()
-        )
-        if pub:
-            definition = _normalize_definition(pub.definition)
-    nv = _next_version_number(db, tid)
-    v = FormTemplateVersion(
-        form_template_id=tid,
-        version=nv,
-        definition=definition,
-        is_published=False,
-        created_by=user.id,
-    )
-    db.add(v)
-    t.updated_at = datetime.now(timezone.utc)
-    db.commit()
-    db.refresh(v)
-    return _version_to_dict(v)
-
-
-@router.get("/versions/{version_id}")
-def get_form_template_version(
-    version_id: str,
-    db: Session = Depends(get_db),
-    user: User = Depends(get_current_user),
-    _=Depends(require_permissions("business:projects:safety:read")),
-):
-    vid = uuid.UUID(str(version_id))
-    v = db.query(FormTemplateVersion).filter(FormTemplateVersion.id == vid).first()
-    if not v:
-        raise HTTPException(status_code=404, detail="Version not found")
-    t = db.query(FormTemplate).filter(FormTemplate.id == v.form_template_id).first()
-    return {"template": _template_to_dict(t) if t else None, "version": _version_to_dict(v)}
-
-
-@router.put("/versions/{version_id}")
-def update_form_template_version(
-    version_id: str,
-    body: FormTemplateVersionUpdate,
-    db: Session = Depends(get_db),
-    user: User = Depends(get_current_user),
-    _=Depends(require_permissions("business:projects:safety:write")),
-):
-    vid = uuid.UUID(str(version_id))
-    v = db.query(FormTemplateVersion).filter(FormTemplateVersion.id == vid).first()
-    if not v:
-        raise HTTPException(status_code=404, detail="Version not found")
-    definition = _normalize_definition(body.definition)
-    _validate_definition_structure(definition)
-    _validate_dropdown_custom_lists(db, definition)
-    if v.is_published:
-        tid = v.form_template_id
-        nv = _next_version_number(db, tid)
-        new_row = FormTemplateVersion(
-            form_template_id=tid,
-            version=nv,
-            definition=definition,
-            is_published=False,
-            created_by=user.id,
-        )
-        db.add(new_row)
-        tpl = db.query(FormTemplate).filter(FormTemplate.id == tid).first()
-        if tpl:
-            tpl.updated_at = datetime.now(timezone.utc)
-        db.commit()
-        db.refresh(new_row)
-        return {"forked": True, "version": _version_to_dict(new_row)}
-    v.definition = definition
-    tpl = db.query(FormTemplate).filter(FormTemplate.id == v.form_template_id).first()
-    if tpl:
-        tpl.updated_at = datetime.now(timezone.utc)
-    db.commit()
-    db.refresh(v)
-    return {"forked": False, "version": _version_to_dict(v)}
-
-
-@router.post("/{template_id}/publish")
-def publish_form_template_version(
-    template_id: str,
-    body: PublishBody,
-    db: Session = Depends(get_db),
-    user: User = Depends(get_current_user),
-    _=Depends(require_permissions("business:projects:safety:write")),
-):
-    tid = uuid.UUID(str(template_id))
-    t = db.query(FormTemplate).filter(FormTemplate.id == tid).first()
-    if not t:
-        raise HTTPException(status_code=404, detail="Template not found")
-    v = db.query(FormTemplateVersion).filter(FormTemplateVersion.id == body.version_id).first()
-    if not v or v.form_template_id != tid:
-        raise HTTPException(status_code=400, detail="version_id does not belong to this template")
-    now = datetime.now(timezone.utc)
-    db.query(FormTemplateVersion).filter(FormTemplateVersion.form_template_id == tid).update(
-        {FormTemplateVersion.is_published: False}, synchronize_session=False
-    )
-    v.is_published = True
-    v.published_at = now
-    t.updated_at = now
-    db.commit()
-    db.refresh(v)
-    return {"ok": True, "published_version": _version_to_dict(v, include_definition=False)}

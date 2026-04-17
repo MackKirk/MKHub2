@@ -65,6 +65,11 @@ export default function SafetySearchableSingle({
     return () => window.removeEventListener('keydown', onKey);
   }, [open]);
 
+  /** Close panel whenever the controlled value updates (selection committed). */
+  useEffect(() => {
+    setOpen(false);
+  }, [value]);
+
   const filteredRows = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
     if (!q) return sortedRows;
@@ -74,6 +79,12 @@ export default function SafetySearchableSingle({
   const pick = (v: string) => {
     onChange(v);
     setOpen(false);
+  };
+
+  const pickOnMouseDown = (v: string) => (e: React.MouseEvent<HTMLButtonElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
+    pick(v);
   };
 
   return (
@@ -122,7 +133,7 @@ export default function SafetySearchableSingle({
             <button
               type="button"
               className="w-full px-3 py-2 text-left text-sm text-gray-500 hover:bg-gray-50"
-              onClick={() => pick('')}
+              onMouseDown={pickOnMouseDown('')}
             >
               {emptyLabel}
             </button>
@@ -137,7 +148,7 @@ export default function SafetySearchableSingle({
                   type="button"
                   role="option"
                   aria-selected={value === row.value}
-                  onClick={() => pick(row.value)}
+                  onMouseDown={pickOnMouseDown(row.value)}
                   className={`w-full px-3 py-2 text-left text-sm hover:bg-gray-50 ${
                     value === row.value ? 'bg-blue-50 text-blue-900 font-medium' : 'text-gray-800'
                   }`}

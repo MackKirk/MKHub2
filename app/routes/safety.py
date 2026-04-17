@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session
 
 from ..auth.security import get_current_user, require_permissions, can_access_business_line
 from ..db import get_db
-from ..models.models import Project, ProjectSafetyInspection, User, FormTemplate, FormTemplateVersion, EmployeeProfile
+from ..models.models import Project, ProjectSafetyInspection, User, FormTemplate, EmployeeProfile
 
 router = APIRouter(prefix="/safety", tags=["safety"])
 
@@ -84,10 +84,9 @@ def list_safety_inspections(
     if not allowed_ids:
         return []
     q = (
-        db.query(ProjectSafetyInspection, Project, FormTemplate, FormTemplateVersion, User, EmployeeProfile)
+        db.query(ProjectSafetyInspection, Project, FormTemplate, User, EmployeeProfile)
         .join(Project, Project.id == ProjectSafetyInspection.project_id)
-        .outerjoin(FormTemplateVersion, FormTemplateVersion.id == ProjectSafetyInspection.form_template_version_id)
-        .outerjoin(FormTemplate, FormTemplate.id == FormTemplateVersion.form_template_id)
+        .outerjoin(FormTemplate, FormTemplate.id == ProjectSafetyInspection.form_template_id)
         .outerjoin(User, User.id == ProjectSafetyInspection.assigned_user_id)
         .outerjoin(EmployeeProfile, EmployeeProfile.user_id == User.id)
         .filter(ProjectSafetyInspection.project_id.in_(allowed_ids))
@@ -118,14 +117,14 @@ def list_safety_inspections(
 
     rows = q.offset(offset).limit(limit).all()
     out: List[dict] = []
-    for insp, proj, ft, ftv, asg_u, asg_ep in rows:
+    for insp, proj, ft, asg_u, asg_ep in rows:
         st_val = getattr(insp, "status", None) or "draft"
         if st_val not in ("draft", "finalized"):
             st_val = "draft"
         template_name = (ft.name or "") if ft else ""
         if not template_name and (insp.template_version or "").startswith("mki"):
             template_name = "MKI Safety Inspection"
-        template_version_number = int(ftv.version) if ftv else None
+        template_version_label = (getattr(ft, "version_label", None) or "").strip() or None if ft else None
         out.append(
             {
                 "id": str(insp.id),
@@ -136,10 +135,10 @@ def list_safety_inspections(
                 "inspection_date": insp.inspection_date.isoformat() if insp.inspection_date else None,
                 "status": st_val,
                 "template_name": template_name or None,
-                "template_version_number": template_version_number,
+                "template_version_label": template_version_label,
                 "worker_name": _worker_label(asg_u, asg_ep),
                 "assigned_user_id": str(insp.assigned_user_id) if getattr(insp, "assigned_user_id", None) else None,
-                "form_template_version_id": str(insp.form_template_version_id) if getattr(insp, "form_template_version_id", None) else None,
+                "form_template_id": str(insp.form_template_id) if getattr(insp, "form_template_id", None) else None,
                 "created_at": insp.created_at.isoformat() if insp.created_at else None,
                 "updated_at": insp.updated_at.isoformat() if insp.updated_at else None,
             }
@@ -166,10 +165,9 @@ def list_safety_inspections_calendar(
         return []
 
     rows = (
-        db.query(ProjectSafetyInspection, Project, FormTemplate, FormTemplateVersion)
+        db.query(ProjectSafetyInspection, Project, FormTemplate)
         .join(Project, Project.id == ProjectSafetyInspection.project_id)
-        .outerjoin(FormTemplateVersion, FormTemplateVersion.id == ProjectSafetyInspection.form_template_version_id)
-        .outerjoin(FormTemplate, FormTemplate.id == FormTemplateVersion.form_template_id)
+        .outerjoin(FormTemplate, FormTemplate.id == ProjectSafetyInspection.form_template_id)
         .filter(ProjectSafetyInspection.project_id.in_(allowed_ids))
         .filter(ProjectSafetyInspection.inspection_date >= start_dt)
         .filter(ProjectSafetyInspection.inspection_date <= end_dt)
@@ -177,7 +175,7 @@ def list_safety_inspections_calendar(
         .all()
     )
     out: List[dict] = []
-    for insp, proj, ft, ftv in rows:
+    for insp, proj, ft in rows:
         st_val = getattr(insp, "status", None) or "draft"
         if st_val not in ("draft", "finalized"):
             st_val = "draft"

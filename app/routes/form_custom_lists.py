@@ -12,7 +12,7 @@ from sqlalchemy.orm import Session
 
 from ..auth.security import get_current_user, require_permissions
 from ..db import get_db
-from ..models.models import FormCustomList, FormCustomListItem, FormTemplate, FormTemplateVersion, User
+from ..models.models import FormCustomList, FormCustomListItem, FormTemplate, User
 
 router = APIRouter(prefix="/form-custom-lists", tags=["form-custom-lists"])
 
@@ -38,9 +38,9 @@ def _definition_references_custom_list(definition: Any, list_id: uuid.UUID) -> b
 
 def _template_ids_referencing_custom_list(db: Session, list_id: uuid.UUID) -> Set[uuid.UUID]:
     seen: Set[uuid.UUID] = set()
-    for v in db.query(FormTemplateVersion).all():
-        if _definition_references_custom_list(v.definition, list_id):
-            seen.add(v.form_template_id)
+    for t in db.query(FormTemplate).all():
+        if _definition_references_custom_list(getattr(t, "definition", None) or {}, list_id):
+            seen.add(t.id)
     return seen
 
 
@@ -87,6 +87,7 @@ def _list_to_dict(
         "name": lst.name or "",
         "description": lst.description or "",
         "status": lst.status or "active",
+        "include_other": bool(getattr(lst, "include_other", False)),
         "created_at": lst.created_at.isoformat() if lst.created_at else None,
         "updated_at": lst.updated_at.isoformat() if lst.updated_at else None,
         "created_by": str(lst.created_by) if lst.created_by else None,
@@ -168,12 +169,14 @@ class FormCustomListCreate(BaseModel):
     name: str = Field(..., min_length=1, max_length=255)
     description: Optional[str] = None
     status: str = Field(default="active", max_length=20)
+    include_other: bool = False
 
 
 class FormCustomListUpdate(BaseModel):
     name: Optional[str] = Field(None, min_length=1, max_length=255)
     description: Optional[str] = None
     status: Optional[str] = Field(None, max_length=20)
+    include_other: Optional[bool] = None
 
 
 class ItemCreate(BaseModel):
@@ -223,6 +226,7 @@ def create_custom_list(
         name=body.name.strip(),
         description=(body.description or "").strip() or None,
         status=st,
+        include_other=bool(body.include_other),
         created_by=user.id,
     )
     db.add(lst)
@@ -282,6 +286,8 @@ def update_custom_list_meta(
         if st not in ("active", "inactive"):
             raise HTTPException(status_code=400, detail="status must be active or inactive")
         lst.status = st
+    if body.include_other is not None:
+        lst.include_other = bool(body.include_other)
     lst.updated_at = datetime.now(timezone.utc)
     db.commit()
     db.refresh(lst)
