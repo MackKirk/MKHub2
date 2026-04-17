@@ -5,6 +5,12 @@ import { useQuery, useQueryClient, useQueries } from '@tanstack/react-query';
 import { api, withFileAccessToken } from '@/lib/api';
 import { sortByLabel } from '@/lib/sortOptions';
 import toast from 'react-hot-toast';
+import {
+  readAllDirectoryEntries,
+  getWebkitRelativePath,
+  dropLooksLikeFolderTree,
+  dataTransferMayContainDirectory,
+} from '@/lib/projectFolderDrop';
 import ImagePicker from '@/components/ImagePicker';
 import EstimateBuilder, { type EstimateBuilderRef } from '@/components/EstimateBuilder';
 import ProposalForm, { toSqft, fromSqft, formatAreaLabel, type AreaUnit } from '@/components/ProposalForm';
@@ -5212,75 +5218,300 @@ function ProjectFilesTabEnhanced({ projectId, files, onRefresh }:{ projectId:str
     try{ const r:any = await api('GET', withFileAccessToken(`/files/${fid}/download`)); return String(r.download_url||''); }catch(_e){ toast.error('Download link unavailable'); return ''; }
   };
 
-  const uploadMultiple = async (fileList: File[], targetCategory?: string, targetFolderId?: string | null) => {
-    const category = targetCategory !== undefined 
-      ? (targetCategory === 'uncategorized' ? null : targetCategory)
-      : (selectedCategory === 'all' || selectedCategory === 'uncategorized' ? undefined : selectedCategory);
+  const resolveUploadContext = useCallback(
+    (targetCategory?: string | null, targetFolderId?: string | null) => {
+      const category =
+        targetCategory !== undefined
+          ? targetCategory === 'uncategorized'
+            ? null
+            : targetCategory
+          : selectedCategory === 'all' || selectedCategory === 'uncategorized'
+            ? undefined
+            : selectedCategory;
 
-    // Category-level write permission gating (UX; backend also enforces)
-    const categoryIdForCheck = (category === null || category === undefined || category === '') ? 'uncategorized' : String(category);
+      const folderId =
+        targetFolderId !== undefined
+          ? targetFolderId
+          : selectedCategory !== 'all' && selectedCategory !== 'uncategorized'
+            ? selectedFolderId
+            : null;
+
+      return { category, folderId };
+    },
+    [selectedCategory, selectedFolderId]
+  );
+
+  const runQueuedUploads = async (
+    pairs: { file: File; folder_id: string | null }[],
+    category: string | null | undefined
+  ) => {
+    if (pairs.length === 0) return;
+
+    const categoryIdForCheck =
+      category === null || category === undefined || category === ''
+        ? 'uncategorized'
+        : String(category);
     if (!canEditFiles || !isWriteCategoryAllowed(categoryIdForCheck)) {
       toast.error('You do not have permission to upload files to this category');
       return;
     }
 
-    const folderId = targetFolderId !== undefined ? targetFolderId : (selectedCategory !== 'all' && selectedCategory !== 'uncategorized' ? selectedFolderId : null);
-
-    const newQueue = Array.from(fileList).map((file, idx) => ({
-      id: `${Date.now()}-${idx}`,
-      file,
+    const newQueue = pairs.map((pair, idx) => ({
+      id: `${Date.now()}-${idx}-${Math.random().toString(36).slice(2)}`,
+      file: pair.file,
       progress: 0,
-      status: 'pending' as const
+      status: 'pending' as const,
     }));
-    setUploadQueue(prev => [...prev, ...newQueue]);
+    setUploadQueue((prev) => [...prev, ...newQueue]);
 
-    for (const item of newQueue) {
+    for (let i = 0; i < newQueue.length; i++) {
+      const item = newQueue[i];
+      const folderId = pairs[i].folder_id;
       try {
-        setUploadQueue(prev => prev.map(u => u.id === item.id ? { ...u, status: 'uploading' } : u));
-        
+        setUploadQueue((prev) =>
+          prev.map((u) => (u.id === item.id ? { ...u, status: 'uploading' } : u))
+        );
+
         const up: any = await api('POST', '/files/upload', {
           project_id: projectId,
           client_id: project?.client_id || null,
           employee_id: null,
           category_id: 'project-files',
           original_name: item.file.name,
-          content_type: item.file.type || 'application/octet-stream'
+          content_type: item.file.type || 'application/octet-stream',
         });
-        
+
         await fetch(up.upload_url, {
           method: 'PUT',
           headers: {
             'Content-Type': item.file.type || 'application/octet-stream',
-            'x-ms-blob-type': 'BlockBlob'
+            'x-ms-blob-type': 'BlockBlob',
           },
-          body: item.file
+          body: item.file,
         });
-        
+
         const conf: any = await api('POST', '/files/confirm', {
           key: up.key,
           size_bytes: item.file.size,
           checksum_sha256: 'na',
-          content_type: item.file.type || 'application/octet-stream'
+          content_type: item.file.type || 'application/octet-stream',
         });
-        
+
         const params = new URLSearchParams({
           file_object_id: conf.id,
           category: category || '',
-          original_name: item.file.name
+          original_name: item.file.name,
         });
         if (folderId) params.set('folder_id', folderId);
         await api('POST', `/projects/${projectId}/files?${params.toString()}`);
-        
-        setUploadQueue(prev => prev.map(u => u.id === item.id ? { ...u, status: 'success', progress: 100 } : u));
+
+        setUploadQueue((prev) =>
+          prev.map((u) =>
+            u.id === item.id ? { ...u, status: 'success', progress: 100 } : u
+          )
+        );
       } catch (e: any) {
-        setUploadQueue(prev => prev.map(u => u.id === item.id ? { ...u, status: 'error', error: e.message || 'Upload failed' } : u));
+        setUploadQueue((prev) =>
+          prev.map((u) =>
+            u.id === item.id
+              ? { ...u, status: 'error', error: e.message || 'Upload failed' }
+              : u
+          )
+        );
       }
     }
-    
+
     await onRefresh();
     setTimeout(() => {
-      setUploadQueue(prev => prev.filter(u => !newQueue.find(nq => nq.id === u.id)));
+      setUploadQueue((prev) => prev.filter((u) => !newQueue.find((nq) => nq.id === u.id)));
     }, 2000);
+  };
+
+  const uploadMultiple = async (
+    fileList: File[],
+    targetCategory?: string | null,
+    targetFolderId?: string | null
+  ) => {
+    const { category, folderId } = resolveUploadContext(targetCategory, targetFolderId);
+
+    const categoryIdForCheck =
+      category === null || category === undefined || category === ''
+        ? 'uncategorized'
+        : String(category);
+    if (!canEditFiles || !isWriteCategoryAllowed(categoryIdForCheck)) {
+      toast.error('You do not have permission to upload files to this category');
+      return;
+    }
+
+    const pairs = fileList.map((file) => ({ file, folder_id: folderId }));
+    await runQueuedUploads(pairs, category);
+  };
+
+  const uploadFolderTreeFromDrop = async (
+    dt: DataTransfer,
+    targetCategory?: string | null,
+    targetFolderId?: string | null
+  ) => {
+    const { category, folderId: baseFolderId } = resolveUploadContext(targetCategory, targetFolderId);
+
+    const categoryIdForCheck =
+      category === null || category === undefined || category === ''
+        ? 'uncategorized'
+        : String(category);
+    if (!canEditFiles || !isWriteCategoryAllowed(categoryIdForCheck)) {
+      toast.error('You do not have permission to upload files to this category');
+      return;
+    }
+
+    if (!category || category === 'uncategorized') {
+      toast.error('Choose a single file category (not “All files”) to import folders');
+      return;
+    }
+
+    const folderCache = new Map<string, string>();
+    const cacheKey = (parentId: string | null, name: string) =>
+      `${parentId ?? '__root__'}\n${name.trim()}`;
+
+    for (const f of projectFolders) {
+      if (f.category !== category) continue;
+      folderCache.set(cacheKey(f.parent_id || null, f.name), f.id);
+    }
+
+    let createdDirCount = 0;
+
+    const ensureFolder = async (rawName: string, parentId: string | null): Promise<string> => {
+      const trimmed = rawName.trim();
+      if (!trimmed) throw new Error('Invalid folder name');
+      const key = cacheKey(parentId, trimmed);
+      const existing = folderCache.get(key);
+      if (existing) return existing;
+
+      const res = await api<{ id: string }>('POST', `/projects/${projectId}/folders`, {
+        name: trimmed,
+        category,
+        ...(parentId ? { parent_id: parentId } : {}),
+      });
+      createdDirCount++;
+      folderCache.set(key, res.id);
+      return res.id;
+    };
+
+    const pairs: { file: File; folder_id: string | null }[] = [];
+
+    const walkDirectory = async (
+      dir: FileSystemDirectoryEntry,
+      parentFolderId: string | null
+    ) => {
+      const myId = await ensureFolder(dir.name, parentFolderId);
+      const reader = dir.createReader();
+      const entries = await readAllDirectoryEntries(reader);
+      for (const ent of entries) {
+        if (ent.isFile) {
+          await new Promise<void>((resolve, reject) => {
+            (ent as FileSystemFileEntry).file(
+              (file) => {
+                pairs.push({ file, folder_id: myId });
+                resolve();
+              },
+              reject
+            );
+          });
+        } else if (ent.isDirectory) {
+          await walkDirectory(ent as FileSystemDirectoryEntry, myId);
+        }
+      }
+    };
+
+    const items = Array.from(dt.items || []);
+    const hasWebkitEntry =
+      items.length > 0 &&
+      typeof (items[0] as DataTransferItem & { webkitGetAsEntry?: () => unknown }).webkitGetAsEntry ===
+        'function';
+
+    if (hasWebkitEntry) {
+      try {
+        for (const item of items) {
+          const entry = (
+            item as DataTransferItem & { webkitGetAsEntry?: () => FileSystemEntry | null }
+          ).webkitGetAsEntry?.();
+          if (!entry) continue;
+          if (entry.isFile) {
+            await new Promise<void>((resolve, reject) => {
+              (entry as FileSystemFileEntry).file(
+                (file) => {
+                  pairs.push({ file, folder_id: baseFolderId });
+                  resolve();
+                },
+                reject
+              );
+            });
+          } else if (entry.isDirectory) {
+            await walkDirectory(entry as FileSystemDirectoryEntry, baseFolderId);
+          }
+        }
+      } catch (e) {
+        console.warn('Folder entry walk failed, falling back to path list if available', e);
+      }
+    }
+
+    if (pairs.length === 0) {
+      const files = Array.from(dt.files || []);
+      const sorted = [...files].sort((a, b) => {
+        const pa = getWebkitRelativePath(a).split('/').filter(Boolean).length;
+        const pb = getWebkitRelativePath(b).split('/').filter(Boolean).length;
+        return pa - pb;
+      });
+      for (const file of sorted) {
+        const rel = getWebkitRelativePath(file);
+        if (!rel.includes('/')) {
+          pairs.push({ file, folder_id: baseFolderId });
+          continue;
+        }
+        const segments = rel.split('/').filter(Boolean);
+        const fileName = segments.pop()!;
+        let pid = baseFolderId;
+        for (const seg of segments) {
+          pid = await ensureFolder(seg, pid);
+        }
+        pairs.push({ file, folder_id: pid });
+      }
+    }
+
+    if (pairs.length === 0 && createdDirCount === 0) {
+      toast.error('Nothing to import');
+      return;
+    }
+
+    if (pairs.length === 0 && createdDirCount > 0) {
+      queryClient.invalidateQueries({ queryKey: ['project-folders', projectId] });
+      await onRefresh();
+      toast.success(createdDirCount === 1 ? 'Folder created' : `${createdDirCount} folders created`);
+      return;
+    }
+
+    await runQueuedUploads(pairs, category);
+    queryClient.invalidateQueries({ queryKey: ['project-folders', projectId] });
+    const n = pairs.length;
+    toast.success(n === 1 ? '1 file imported' : `${n} files imported`);
+  };
+
+  const uploadFromDrop = async (
+    dt: DataTransfer,
+    targetCategory?: string | null,
+    targetFolderId?: string | null
+  ) => {
+    const tree = dropLooksLikeFolderTree(dt);
+    const hasFiles = (dt.files?.length || 0) > 0;
+    const emptyDirOnly = dataTransferMayContainDirectory(dt) && !hasFiles;
+
+    if (tree || emptyDirOnly) {
+      await uploadFolderTreeFromDrop(dt, targetCategory, targetFolderId);
+      return;
+    }
+
+    if (hasFiles) {
+      await uploadMultiple(Array.from(dt.files || []), targetCategory, targetFolderId);
+    }
   };
 
   const handleMoveFile = async (fileId: string, newCategory: string) => {
@@ -5333,7 +5564,11 @@ function ProjectFilesTabEnhanced({ projectId, files, onRefresh }:{ projectId:str
       return;
     }
     try {
-      await api('POST', `/projects/${projectId}/folders`, { name, category });
+      await api('POST', `/projects/${projectId}/folders`, {
+        name,
+        category,
+        ...(selectedFolderId ? { parent_id: selectedFolderId } : {}),
+      });
       setNewFolderName('');
       setNewFolderCategory('');
       setShowNewFolderModal(false);
@@ -5698,9 +5933,10 @@ function ProjectFilesTabEnhanced({ projectId, files, onRefresh }:{ projectId:str
                       e.stopPropagation();
                       setIsDragging(false);
                       
-                      // Check if dropping files from system (upload)
-                      if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
-                        await uploadMultiple(Array.from(e.dataTransfer.files), cat.id);
+                      // OS file / folder drop (folder tree → create project folders + upload)
+                      const dtCat = e.dataTransfer;
+                      if (dropLooksLikeFolderTree(dtCat) || (dtCat.files?.length || 0) > 0) {
+                        await uploadFromDrop(dtCat, cat.id, undefined);
                         return;
                       }
                       
@@ -5738,8 +5974,9 @@ function ProjectFilesTabEnhanced({ projectId, files, onRefresh }:{ projectId:str
                     e.preventDefault();
                     e.stopPropagation();
                     setIsDragging(false);
-                    if (e.dataTransfer.files?.length) {
-                      await uploadMultiple(Array.from(e.dataTransfer.files), 'uncategorized');
+                    const dtUnc = e.dataTransfer;
+                    if (dropLooksLikeFolderTree(dtUnc) || (dtUnc.files?.length || 0) > 0) {
+                      await uploadFromDrop(dtUnc, 'uncategorized', undefined);
                       return;
                     }
                     const folderId = e.dataTransfer.getData('application/x-project-folder-id');
@@ -5784,10 +6021,15 @@ function ProjectFilesTabEnhanced({ projectId, files, onRefresh }:{ projectId:str
               e.stopPropagation();
               setIsDragging(false);
               
-              // Check if dropping files from system (upload)
-              if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
-                const category = selectedCategory === 'all' ? undefined : (selectedCategory === 'uncategorized' ? null : selectedCategory);
-                await uploadMultiple(Array.from(e.dataTransfer.files), category);
+              const dtMain = e.dataTransfer;
+              if (dropLooksLikeFolderTree(dtMain) || (dtMain.files?.length || 0) > 0) {
+                const category =
+                  selectedCategory === 'all'
+                    ? undefined
+                    : selectedCategory === 'uncategorized'
+                      ? null
+                      : selectedCategory;
+                await uploadFromDrop(dtMain, category, undefined);
                 return;
               }
               
@@ -5834,10 +6076,14 @@ function ProjectFilesTabEnhanced({ projectId, files, onRefresh }:{ projectId:str
                   <button
                     onClick={openNewFolderModal}
                     className="px-2 py-1.5 rounded border border-gray-300 bg-white text-gray-700 text-xs font-medium hover:bg-gray-50 flex items-center gap-1"
-                    title={selectedCategory !== 'all' && selectedCategory !== 'uncategorized' ? 'Create subfolder in this category' : 'Create subfolder (choose category in modal)'}
+                    title={
+                      selectedCategory !== 'all' && selectedCategory !== 'uncategorized'
+                        ? (selectedFolderId ? 'Create a subfolder inside the current folder' : 'Create a folder at the category root')
+                        : 'Create subfolder (choose category in modal)'
+                    }
                   >
                     <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 13h6m-3-3v6m-10 1V7a2 2 0 012-2h6l2 2h6a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2z" /></svg>
-                    Add folder
+                    {selectedFolderId ? 'Add subfolder' : 'Add folder'}
                   </button>
                   <button
                     onClick={() => setShowUpload(true)}
@@ -5871,7 +6117,15 @@ function ProjectFilesTabEnhanced({ projectId, files, onRefresh }:{ projectId:str
             {showNewFolderModal && (
               <OverlayPortal><div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={() => setShowNewFolderModal(false)}>
                 <div className="bg-white rounded-lg shadow-xl p-4 max-w-sm w-full mx-4" onClick={e => e.stopPropagation()}>
-                  <h3 className="text-sm font-semibold mb-2">New folder</h3>
+                  <h3 className="text-sm font-semibold mb-2">{selectedFolderId ? 'New subfolder' : 'New folder'}</h3>
+                  {selectedFolderId && selectedCategory !== 'all' && selectedCategory !== 'uncategorized' && (
+                    <p className="text-xs text-gray-600 mb-3">
+                      Creating inside{' '}
+                      <span className="font-medium text-gray-900">
+                        {projectFolders.find((f: ProjectFolderItem) => f.id === selectedFolderId)?.name ?? 'folder'}
+                      </span>
+                    </p>
+                  )}
                   {(selectedCategory === 'all' || selectedCategory === 'uncategorized') && (
                     <div className="mb-3">
                       <label className="block text-xs font-medium text-gray-700 mb-1">Category</label>
