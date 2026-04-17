@@ -15,11 +15,12 @@
 <<<RELEASE>>>
 id: 2026-04-17-1
 date: 2026-04-17
-title: Changelog panel and folder imports
+title: Update 1.25
 
 ### New
 - News panel in the header with product updates (next to notifications).
 - Drag-and-drop folder trees from Windows Explorer into project file categories.
+- “Add new contact” button, to new opportunity without leaving the page. 
 
 ### Improved
 - Creating subfolders while browsing inside a folder now keeps the correct parent.

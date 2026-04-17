@@ -15,6 +15,7 @@ import { CustomerFilesTabEnhanced } from './CustomerFilesTabEnhanced';
 import { OpportunityListItem, CreateReportModal } from './Opportunities';
 import { ProjectListItem } from './Projects';
 import OverlayPortal from '@/components/OverlayPortal';
+import NewContactModal from '@/components/NewContactModal';
 
 type Client = { id:string, name?:string, display_name?:string, code?:string, city?:string, province?:string, postal_code?:string, country?:string, address_line1?:string, address_line2?:string, created_at?:string };
 type Site = { id:string, site_name?:string, site_address_line1?:string, site_city?:string, site_province?:string, site_country?:string };
@@ -3144,7 +3145,11 @@ export default function CustomerDetail(){
                 <CustomerFilesTabEnhanced clientId={String(id)} files={files||[]} onRefresh={refetchFiles} hasEditPermission={hasFilesWrite} />
               )}
               {tab==='contacts' && (
-                <ContactsCard id={String(id)} hasEditPermission={hasEditPermission} />
+                <ContactsCard
+                  id={String(id)}
+                  hasEditPermission={hasEditPermission}
+                  clientDisplayName={client?.display_name || client?.name || ''}
+                />
               )}
               {tab==='sites' && (
                 <div>
@@ -3817,18 +3822,12 @@ function CustomerDocuments({ id, files, sites, onRefresh, hasEditPermission }: {
   );
 }
 
-function ContactsCard({ id, hasEditPermission }: { id: string, hasEditPermission?: boolean }){
+function ContactsCard({ id, hasEditPermission, clientDisplayName }: { id: string, hasEditPermission?: boolean, clientDisplayName?: string }){
   const confirm = useConfirm();
   const { data, refetch } = useQuery({ queryKey:['clientContacts', id], queryFn: ()=>api<any[]>('GET', `/clients/${id}/contacts`) });
   const { data:files } = useQuery({ queryKey:['clientFilesForContacts', id], queryFn: ()=>api<any[]>('GET', `/clients/${id}/files`) });
   const [list, setList] = useState<any[]>([]);
   useEffect(()=>{ setList(data||[]); }, [data]);
-  const [name, setName] = useState('');
-  const [email, setEmail] = useState('');
-  const [phone, setPhone] = useState('');
-  const [primary, setPrimary] = useState('false');
-  const [role, setRole] = useState('');
-  const [dept, setDept] = useState('');
   const [editId, setEditId] = useState<string|null>(null);
   const [eName, setEName] = useState('');
   const [eEmail, setEEmail] = useState('');
@@ -3838,13 +3837,10 @@ function ContactsCard({ id, hasEditPermission }: { id: string, hasEditPermission
   const [ePrimary, setEPrimary] = useState<'true'|'false'>('false');
   const [pickerForContact, setPickerForContact] = useState<string|null>(null);
   const [createOpen, setCreateOpen] = useState(false);
-  const [createPhotoBlob, setCreatePhotoBlob] = useState<Blob|null>(null);
-  const [isCreatingContact, setIsCreatingContact] = useState(false);
-  const [nameError, setNameError] = useState(false);
 
   useEffect(() => {
     if (!createOpen) return;
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') { setCreateOpen(false); setCreatePhotoBlob(null); setNameError(false); } };
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') { setCreateOpen(false); } };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [createOpen]);
@@ -3986,120 +3982,22 @@ function ContactsCard({ id, hasEditPermission }: { id: string, hasEditPermission
         ))}
         {(!data || !data.length) && <div className="text-sm text-gray-600">No contacts</div>}
       </div>
-      {createOpen && (
-        <OverlayPortal><div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center overflow-y-auto p-4">
-          <div className="w-[900px] max-w-[95vw] max-h-[90vh] bg-gray-100 rounded-xl overflow-hidden flex flex-col border border-gray-200 shadow-xl">
-            {/* Title bar - same style as New Site (SiteDetail) */}
-            <div className="rounded-t-xl border-b border-gray-200 bg-white p-4 flex-shrink-0">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <button
-                    type="button"
-                    onClick={()=>{ setCreateOpen(false); setIsCreatingContact(false); setCreatePhotoBlob(null); setNameError(false); }}
-                    className="p-1.5 rounded hover:bg-gray-100 transition-colors flex items-center justify-center"
-                    title="Close"
-                  >
-                    <svg className="w-4 h-4 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
-                    </svg>
-                  </button>
-                  <div>
-                    <div className="text-sm font-semibold text-gray-900">New Contact</div>
-                    <div className="text-xs text-gray-500 mt-0.5">Name, role and contact details</div>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <div className="overflow-y-auto flex-1 p-4">
-              <div className="rounded-xl border bg-white p-4 grid md:grid-cols-5 gap-4 items-start">
-                <div className="md:col-span-2">
-                  <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">Contact Photo <span className="opacity-60">(optional)</span></label>
-                  <button type="button" onClick={()=>{ setCreatePhotoBlob(new Blob()); setPickerForContact('__new__'); }} className="w-full h-40 border border-gray-200 rounded-lg grid place-items-center bg-gray-50 hover:bg-gray-100 text-sm text-gray-600">Select Photo</button>
-                </div>
-                <div className="md:col-span-3 grid grid-cols-2 gap-4">
-                  <div className="col-span-2">
-                    <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">Name <span className="text-red-600">*</span></label>
-                    <input
-                      className={`w-full border rounded-lg px-3 py-2 text-sm ${nameError && !name.trim() ? 'border-red-500 focus:ring-red-500' : 'border-gray-200 focus:ring-gray-300 focus:border-gray-300'}`}
-                      value={name}
-                      onChange={e=>{ setName(e.target.value); if(nameError) setNameError(false); }}
-                    />
-                    {nameError && !name.trim() && <div className="text-[11px] text-red-600 mt-1">This field is required</div>}
-                  </div>
-                  <div>
-                    <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">Role/Title</label>
-                    <input className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" value={role} onChange={e=>setRole(e.target.value)} />
-                  </div>
-                  <div>
-                    <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">Department</label>
-                    <input className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" value={dept} onChange={e=>setDept(e.target.value)} />
-                  </div>
-                  <div>
-                    <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">Email</label>
-                    <input className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" value={email} onChange={e=>setEmail(e.target.value)} />
-                  </div>
-                  <div>
-                    <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">Phone</label>
-                    <input className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" value={phone} onChange={e=>setPhone(formatPhone(e.target.value))} />
-                  </div>
-                  <div>
-                    <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">Primary</label>
-                    <select className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" value={primary} onChange={e=>setPrimary(e.target.value)}>
-                      <option value="false">No</option>
-                      <option value="true">Yes</option>
-                    </select>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <div className="flex-shrink-0 px-4 py-4 border-t border-gray-200 bg-white flex items-center justify-end gap-3 rounded-b-xl">
-              <button type="button" onClick={()=>{ setCreateOpen(false); setIsCreatingContact(false); setCreatePhotoBlob(null); setNameError(false); }} className="px-3 py-1.5 rounded-lg text-sm font-medium border border-gray-200 hover:bg-gray-50 text-gray-700">Cancel</button>
-              <button
-                type="button"
-                onClick={async()=>{
-                  if (isCreatingContact) return;
-                  if (!name.trim()) {
-                    setNameError(true);
-                    toast.error('Name is required');
-                    return;
-                  }
-                  try {
-                    setIsCreatingContact(true);
-                    const payload:any = { name, email, phone, role_title: role, department: dept, is_primary: primary==='true' };
-                    await api('POST', `/clients/${id}/contacts`, payload);
-                    setIsCreatingContact(false);
-                    setName(''); setEmail(''); setPhone(''); setRole(''); setDept(''); setPrimary('false'); setNameError(false); setCreateOpen(false); refetch();
-                  } catch (e) {
-                    toast.error('Failed to create contact');
-                    setIsCreatingContact(false);
-                  }
-                }}
-                disabled={isCreatingContact}
-                className="px-4 py-2 rounded-lg text-sm font-semibold bg-brand-red text-white hover:bg-[#c41e1e] disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                {isCreatingContact ? 'Creating...' : 'Create'}
-              </button>
-            </div>
-          </div>
-        </div></OverlayPortal>
-      )}
+      <NewContactModal
+        open={createOpen}
+        onClose={() => setCreateOpen(false)}
+        clientId={id}
+        clientDisplayName={clientDisplayName}
+        onCreated={() => refetch()}
+      />
       {pickerForContact && (
         <ImagePicker isOpen={true} onClose={()=>setPickerForContact(null)} clientId={String(id)} targetWidth={400} targetHeight={400} allowEdit={true} onConfirm={async(blob)=>{
           try{
-            if (pickerForContact==='__new__'){
-              // We don't yet have the new contact id here; the simple flow is to upload the photo now and let user reassign later.
-              // For now, just keep it in memory not supported; instead, we will upload after contact is created via another round.
-            }
-            else {
-              const up:any = await api('POST','/files/upload',{ project_id:null, client_id:id, employee_id:null, category_id:'contact-photo', original_name:`contact-${pickerForContact}.jpg`, content_type:'image/jpeg' });
-              await fetch(up.upload_url, { method:'PUT', headers:{ 'Content-Type':'image/jpeg', 'x-ms-blob-type':'BlockBlob' }, body: blob });
-              const conf:any = await api('POST','/files/confirm',{ key: up.key, size_bytes: blob.size, checksum_sha256:'na', content_type:'image/jpeg' });
-              await api('POST', `/clients/${id}/files?file_object_id=${encodeURIComponent(conf.id)}&category=${encodeURIComponent('contact-photo-'+pickerForContact)}&original_name=${encodeURIComponent('contact-'+pickerForContact+'.jpg')}`);
-              toast.success('Contact photo updated');
-              refetch();
-            }
+            const up:any = await api('POST','/files/upload',{ project_id:null, client_id:id, employee_id:null, category_id:'contact-photo', original_name:`contact-${pickerForContact}.jpg`, content_type:'image/jpeg' });
+            await fetch(up.upload_url, { method:'PUT', headers:{ 'Content-Type':'image/jpeg', 'x-ms-blob-type':'BlockBlob' }, body: blob });
+            const conf:any = await api('POST','/files/confirm',{ key: up.key, size_bytes: blob.size, checksum_sha256:'na', content_type:'image/jpeg' });
+            await api('POST', `/clients/${id}/files?file_object_id=${encodeURIComponent(conf.id)}&category=${encodeURIComponent('contact-photo-'+pickerForContact)}&original_name=${encodeURIComponent('contact-'+pickerForContact+'.jpg')}`);
+            toast.success('Contact photo updated');
+            refetch();
           }catch(e){ toast.error('Failed to update contact photo'); }
           finally{ setPickerForContact(null); }
         }} />

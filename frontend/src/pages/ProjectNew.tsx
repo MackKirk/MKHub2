@@ -7,6 +7,7 @@ import toast from 'react-hot-toast';
 import ImagePicker from '@/components/ImagePicker';
 import AddressAutocomplete from '@/components/AddressAutocomplete';
 import OverlayPortal from '@/components/OverlayPortal';
+import NewContactModal from '@/components/NewContactModal';
 import { DivisionIcon } from '@/components/DivisionIcon';
 import { useBusinessLine } from '@/context/BusinessLineContext';
 import { BUSINESS_LINE_REPAIRS_MAINTENANCE, filterProjectDivisionsForBusinessLine } from '@/lib/businessLine';
@@ -50,6 +51,7 @@ export default function ProjectNew(){
   const [relatedClientModalOpen, setRelatedClientModalOpen] = useState<boolean>(false);
   const [relatedClientDisplayNames, setRelatedClientDisplayNames] = useState<Record<string, string>>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [newContactModalOpen, setNewContactModalOpen] = useState(false);
   /** Step 2 division picker: expand parents that have subdivisions (same UX as Edit Project Divisions). */
   const [newOppExpandedDivisions, setNewOppExpandedDivisions] = useState<Set<string>>(new Set());
   const nameValid = useMemo(()=> String(name||'').trim().length>0, [name]);
@@ -478,10 +480,28 @@ export default function ProjectNew(){
             {!!clientId && (
               <div className="md:col-span-2">
                 <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">Customer contact</label>
-                <select className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" value={contactId} onChange={e=> setContactId(e.target.value)}>
-                  <option value="">Select...</option>
-                  {sortByLabel(contacts||[], (c:any)=> (c.name||c.email||c.phone||c.id||'').toString()).map((c:any)=> <option key={c.id} value={c.id}>{c.name||c.email||c.phone||c.id}</option>)}
-                </select>
+                <div className="flex items-center gap-2">
+                  <select
+                    className="flex-1 min-w-0 border border-gray-200 rounded-lg px-3 py-2 text-sm"
+                    value={contactId}
+                    onChange={e => setContactId(e.target.value)}
+                  >
+                    <option value="">Select...</option>
+                    {sortByLabel(contacts || [], (c: any) => (c.name || c.email || c.phone || c.id || '').toString()).map((c: any) => (
+                      <option key={c.id} value={c.id}>
+                        {c.name || c.email || c.phone || c.id}
+                      </option>
+                    ))}
+                  </select>
+                  <button
+                    type="button"
+                    onClick={() => setNewContactModalOpen(true)}
+                    className="px-3 py-2 rounded-lg border border-gray-200 text-sm text-gray-600 hover:bg-gray-50 flex-shrink-0 whitespace-nowrap"
+                    title="Add a new contact for this customer"
+                  >
+                    Add new contact
+                  </button>
+                </div>
               </div>
             )}
             <div className="md:col-span-2">
@@ -852,6 +872,17 @@ export default function ProjectNew(){
         }}
       />
     )}
+    <NewContactModal
+      open={newContactModalOpen}
+      onClose={() => setNewContactModalOpen(false)}
+      clientId={clientId}
+      clientDisplayName={selectedClient?.display_name || selectedClient?.name || ''}
+      stackOnTop
+      onCreated={(c) => {
+        queryClient.invalidateQueries({ queryKey: ['clientContacts-mini', clientId] });
+        setContactId(c.id);
+      }}
+    />
     </>
   );
 }
