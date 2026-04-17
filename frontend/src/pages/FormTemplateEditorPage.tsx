@@ -10,6 +10,8 @@ import {
   useSensor,
   useSensors,
   type DragEndEvent,
+  type DraggableAttributes,
+  type DraggableSyntheticListeners,
 } from '@dnd-kit/core';
 import { arrayMove, SortableContext, sortableKeyboardCoordinates, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
@@ -30,6 +32,7 @@ import {
 } from '@/components/safety/SafetyModalChrome';
 import PageHeaderBar from '@/components/PageHeaderBar';
 import SafetyFieldTypeIcon from '@/components/SafetyFieldTypeIcon';
+import SafetySearchableSingle from '@/components/SafetySearchableSingle';
 import DynamicSafetyForm from '@/components/DynamicSafetyForm';
 import {
   DEFAULT_DEFINITION,
@@ -45,14 +48,7 @@ type CustomListPickerRow = {
   id: string;
   name: string;
   status: string;
-};
-
-type VersionRow = {
-  id: string;
-  form_template_id: string;
-  version: number;
-  is_published: boolean;
-  definition: SafetyFormDefinition;
+  include_other?: boolean;
 };
 
 type TemplateDetail = {
@@ -61,8 +57,8 @@ type TemplateDetail = {
   description?: string | null;
   category: string;
   status: string;
-  published_version: VersionRow | null;
-  draft_version: VersionRow | null;
+  version_label: string;
+  definition: SafetyFormDefinition;
 };
 
 function buildPersistedDefinition(def: SafetyFormDefinition, sigRequired: boolean): SafetyFormDefinition {
@@ -85,7 +81,8 @@ function serializePersistedFormState(
   name: string,
   description: string,
   category: string,
-  status: string
+  status: string,
+  versionLabel: string
 ): string {
   return JSON.stringify({
     definition: buildPersistedDefinition(def, sigRequired),
@@ -93,18 +90,26 @@ function serializePersistedFormState(
     description: (description || '').trim() || null,
     category: (category || '').trim() || 'inspection',
     status,
+    version_label: (versionLabel || '').trim(),
   });
 }
 
 function snapshotFormFromTmpl(t: TemplateDetail): string | null {
-  const draft = t.draft_version;
-  if (!draft?.definition) return null;
-  const d = normalizeDefinition(draft.definition);
-  const wr = draft.definition?.signature_policy?.worker;
+  if (!t.definition) return null;
+  const d = normalizeDefinition(t.definition);
+  const wr = t.definition?.signature_policy?.worker;
   const descRaw = t.description;
   const desc = descRaw != null && String(descRaw).trim() !== '' ? String(descRaw).trim() : null;
   const st = (t.status || 'active').toLowerCase() === 'inactive' ? 'inactive' : 'active';
-  return serializePersistedFormState(d, Boolean(wr?.required), t.name || '', desc ?? '', t.category || 'inspection', st);
+  return serializePersistedFormState(
+    d,
+    Boolean(wr?.required),
+    t.name || '',
+    desc ?? '',
+    t.category || 'inspection',
+    st,
+    t.version_label || ''
+  );
 }
 
 function displayLabelForFieldType(type: SafetyFormFieldType): string {
@@ -170,18 +175,57 @@ function newField(type: SafetyFormFieldType, order: number): SafetyFormField {
   return base;
 }
 
-function SortableSectionCard({
-  id,
-  children,
-}: {
-  id: string;
-  children: (drag: { setActivatorNodeRef: (el: HTMLElement | null) => void; listeners: Record<string, unknown>; attributes: Record<string, unknown> }) => ReactNode;
-}) {
-  const { attributes, listeners, setNodeRef, setActivatorNodeRef, transform, transition, isDragging } = useSortable({ id });
-  const style = { transform: CSS.Transform.toString(transform), transition, opacity: isDragging ? 0.7 : 1 };
+/** Static shell for a section in the main builder column (section reorder happens in the left rail). */
+function BuilderSectionCard({ children }: { children: ReactNode }) {
+  return <div className="rounded-xl border border-gray-200 bg-white overflow-hidden mb-4 last:mb-0">{children}</div>;
+}
+
+function HamburgerDragIcon({ className }: { className?: string }) {
   return (
-    <div ref={setNodeRef} style={style} className="rounded-xl border border-gray-200 bg-white overflow-hidden mb-4 last:mb-0">
-      {children({ setActivatorNodeRef, listeners, attributes })}
+    <svg className={className ?? 'w-4 h-4'} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} aria-hidden>
+      <path strokeLinecap="round" d="M4 7h16M4 12h16M4 17h16" />
+    </svg>
+  );
+}
+
+function SortableSectionsSidebarItem({
+  sectionId,
+  titleText,
+  onNavigate,
+}: {
+  sectionId: string;
+  titleText: string;
+  onNavigate: () => void;
+}) {
+  const { attributes, listeners, setNodeRef, setActivatorNodeRef, transform, transition, isDragging } = useSortable({
+    id: sectionId,
+  });
+  const style = { transform: CSS.Transform.toString(transform), transition, opacity: isDragging ? 0.65 : 1 };
+  const display = titleText.trim() || 'Section title';
+  return (
+    <div
+      ref={setNodeRef}
+      style={style}
+      className="flex items-start gap-1.5 rounded-lg border border-gray-200/90 bg-white px-2 py-2 shadow-sm"
+    >
+      <button
+        type="button"
+        ref={setActivatorNodeRef}
+        className="cursor-grab active:cursor-grabbing touch-none text-gray-400 hover:text-gray-600 p-1 shrink-0 mt-0.5 rounded"
+        aria-label="Drag to reorder section"
+        {...listeners}
+        {...attributes}
+      >
+        <HamburgerDragIcon className="w-4 h-4" />
+      </button>
+      <button
+        type="button"
+        className="flex-1 min-w-0 text-left text-xs font-medium text-gray-800 leading-snug hover:text-brand-red"
+        title={display}
+        onClick={onNavigate}
+      >
+        {display}
+      </button>
     </div>
   );
 }
@@ -191,7 +235,11 @@ function SortableFieldRow({
   children,
 }: {
   id: string;
-  children: (drag: { setActivatorNodeRef: (el: HTMLElement | null) => void; listeners: Record<string, unknown>; attributes: Record<string, unknown> }) => ReactNode;
+  children: (drag: {
+    setActivatorNodeRef: (el: HTMLElement | null) => void;
+    listeners: DraggableSyntheticListeners;
+    attributes: DraggableAttributes;
+  }) => ReactNode;
 }) {
   const { attributes, listeners, setNodeRef, setActivatorNodeRef, transform, transition, isDragging } = useSortable({ id });
   const style = { transform: CSS.Transform.toString(transform), transition, opacity: isDragging ? 0.7 : 1 };
@@ -208,11 +256,12 @@ export default function FormTemplateEditorPage() {
   const confirm = useConfirm();
   const [localName, setLocalName] = useState('');
   const [editingTemplateName, setEditingTemplateName] = useState(false);
+  const [editingVersionLabel, setEditingVersionLabel] = useState(false);
   const [description, setDescription] = useState('');
   const [category, setCategory] = useState('inspection');
   const [status, setStatus] = useState('active');
   const [definition, setDefinition] = useState<SafetyFormDefinition>(DEFAULT_DEFINITION);
-  const [editingVersionId, setEditingVersionId] = useState<string | null>(null);
+  const [versionLabel, setVersionLabel] = useState('');
   const [previewPayload, setPreviewPayload] = useState<Record<string, unknown>>({});
   const [tab, setTab] = useState<'build' | 'preview'>('build');
   const [showTypeModal, setShowTypeModal] = useState(false);
@@ -220,6 +269,7 @@ export default function FormTemplateEditorPage() {
   const [modalSelectedType, setModalSelectedType] = useState<SafetyFormFieldType | null>(null);
   const [modalItemName, setModalItemName] = useState('');
   const [modalCustomListId, setModalCustomListId] = useState('');
+  const [modalCustomListSearch, setModalCustomListSearch] = useState('');
   const [sigRequired, setSigRequired] = useState(false);
   const [customListEdit, setCustomListEdit] = useState<{ sectionId: string; fieldId: string } | null>(null);
   const [customListEditDraft, setCustomListEditDraft] = useState('');
@@ -234,13 +284,13 @@ export default function FormTemplateEditorPage() {
   const [pdfBuilderPreview, setPdfBuilderPreview] = useState<{ url: string; name: string } | null>(null);
   const pdfModalFileRef = useRef<HTMLInputElement | null>(null);
   const templateNameInputRef = useRef<HTMLInputElement | null>(null);
+  const versionLabelInputRef = useRef<HTMLInputElement | null>(null);
   const sectionTitleInputRef = useRef<HTMLInputElement | null>(null);
   const fieldLabelInputRef = useRef<HTMLInputElement | null>(null);
   const [editingSectionId, setEditingSectionId] = useState<string | null>(null);
   const [editingField, setEditingField] = useState<{ sectionId: string; fieldId: string } | null>(null);
   const skipTemplateNameCommitRef = useRef(false);
-  const initVersionRef = useRef<string | null>(null);
-
+  const skipVersionLabelCommitRef = useRef(false);
   const { data: tmpl, isLoading } = useQuery({
     queryKey: ['formTemplate', templateId],
     queryFn: () => api<TemplateDetail>('GET', `/form-templates/${encodeURIComponent(templateId!)}`),
@@ -256,57 +306,27 @@ export default function FormTemplateEditorPage() {
     [customListsForPicker]
   );
 
+  const modalFilteredCustomLists = useMemo(() => {
+    const q = modalCustomListSearch.trim().toLowerCase();
+    if (!q) return activeCustomLists;
+    return activeCustomLists.filter((L) => (L.name || '').toLowerCase().includes(q));
+  }, [activeCustomLists, modalCustomListSearch]);
+
   useEffect(() => {
     if (!tmpl) return;
     setLocalName(tmpl.name || '');
+    setVersionLabel(tmpl.version_label || '');
     setDescription(tmpl.description || '');
     setCategory(tmpl.category || 'inspection');
     setStatus((tmpl.status || 'active').toLowerCase() === 'inactive' ? 'inactive' : 'active');
-    const wr = tmpl.draft_version?.definition?.signature_policy?.worker;
+    setDefinition(normalizeDefinition(tmpl.definition || DEFAULT_DEFINITION));
+    const wr = tmpl.definition?.signature_policy?.worker;
     setSigRequired(Boolean(wr?.required));
-  }, [tmpl?.id, tmpl?.name, tmpl?.description, tmpl?.category, tmpl?.status, tmpl?.draft_version?.id]);
+  }, [tmpl?.id, tmpl?.name, tmpl?.version_label, tmpl?.description, tmpl?.category, tmpl?.status, tmpl?.definition]);
 
-  useEffect(() => {
-    initVersionRef.current = null;
-  }, [templateId]);
-
-  useEffect(() => {
-    if (!tmpl) return;
-    if (editingVersionId) return;
-    if (initVersionRef.current === tmpl.id) return;
-    if (tmpl.draft_version?.id) {
-      initVersionRef.current = tmpl.id;
-      setEditingVersionId(tmpl.draft_version.id);
-      setDefinition(normalizeDefinition(tmpl.draft_version.definition));
-      const wr = tmpl.draft_version.definition?.signature_policy?.worker;
-      setSigRequired(Boolean(wr?.required));
-      return;
-    }
-    if (tmpl.published_version && !tmpl.draft_version) {
-      let cancelled = false;
-      (async () => {
-        try {
-          const v = await api<VersionRow>('POST', `/form-templates/${encodeURIComponent(templateId!)}/versions`);
-          if (cancelled) return;
-          initVersionRef.current = tmpl.id;
-          setEditingVersionId(v.id);
-          setDefinition(normalizeDefinition(v.definition));
-          const wr = v.definition?.signature_policy?.worker;
-          setSigRequired(Boolean(wr?.required));
-          qc.invalidateQueries({ queryKey: ['formTemplate', templateId] });
-        } catch {
-          if (!cancelled) toast.error('Could not create draft from published version');
-        }
-      })();
-      return () => {
-        cancelled = true;
-      };
-    }
-  }, [tmpl, editingVersionId, templateId, qc]);
-
-  const saveDefMut = useMutation({
+  const saveFormMut = useMutation({
     mutationFn: async () => {
-      if (!editingVersionId) throw new Error('No version');
+      if (!templateId) throw new Error('No template');
       const def: SafetyFormDefinition = {
         ...definition,
         signature_policy: {
@@ -318,25 +338,33 @@ export default function FormTemplateEditorPage() {
           },
         },
       };
-      return api<{ forked: boolean; version: VersionRow }>('PUT', `/form-templates/versions/${encodeURIComponent(editingVersionId)}`, {
+      return api<TemplateDetail>('PUT', `/form-templates/${encodeURIComponent(templateId)}`, {
         definition: def,
+        version_label: versionLabel.trim(),
+        name: localName.trim() || 'Untitled',
+        description: description.trim() || null,
+        category: category.trim() || 'inspection',
+        status,
       });
     },
-    onSuccess: (res) => {
-      if (res.forked && res.version?.id) setEditingVersionId(res.version.id);
+    onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['formTemplate', templateId] });
+      qc.invalidateQueries({ queryKey: ['formTemplates'] });
       toast.success('Saved');
     },
     onError: () => toast.error('Could not save'),
   });
 
   const saveMetaMut = useMutation({
-    mutationFn: (patch?: Partial<{ name: string; description: string | null; category: string; status: string }>) =>
+    mutationFn: (
+      patch?: Partial<{ name: string; description: string | null; category: string; status: string; version_label: string }>
+    ) =>
       api('PUT', `/form-templates/${encodeURIComponent(templateId!)}`, {
         name: patch?.name !== undefined ? patch.name.trim() || 'Untitled' : localName.trim() || 'Untitled',
         description: patch?.description !== undefined ? patch.description : description.trim() || null,
         category: patch?.category !== undefined ? patch.category : category.trim() || 'inspection',
         status: patch?.status !== undefined ? patch.status : status,
+        version_label: patch?.version_label !== undefined ? patch.version_label : versionLabel.trim(),
       }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['formTemplate', templateId] });
@@ -354,6 +382,15 @@ export default function FormTemplateEditorPage() {
     }, 0);
     return () => window.clearTimeout(t);
   }, [editingTemplateName]);
+
+  useEffect(() => {
+    if (!editingVersionLabel) return;
+    const t = window.setTimeout(() => {
+      versionLabelInputRef.current?.focus();
+      versionLabelInputRef.current?.select();
+    }, 0);
+    return () => window.clearTimeout(t);
+  }, [editingVersionLabel]);
 
   useEffect(() => {
     if (!editingSectionId) return;
@@ -400,64 +437,90 @@ export default function FormTemplateEditorPage() {
     setEditingTemplateName(false);
   };
 
+  const commitVersionLabel = () => {
+    if (skipVersionLabelCommitRef.current) {
+      skipVersionLabelCommitRef.current = false;
+      return;
+    }
+    setEditingVersionLabel(false);
+    const trimmed = versionLabel.trim();
+    if (tmpl && trimmed !== (tmpl.version_label || '').trim()) {
+      saveMetaMut.mutate({ version_label: trimmed });
+    }
+  };
+
+  const cancelVersionLabelEdit = () => {
+    skipVersionLabelCommitRef.current = true;
+    setVersionLabel(tmpl?.version_label || '');
+    setEditingVersionLabel(false);
+  };
+
+  const beginEditVersionLabel = () => {
+    skipVersionLabelCommitRef.current = false;
+    setVersionLabel(tmpl?.version_label || '');
+    setEditingTemplateName(false);
+    setEditingSectionId(null);
+    setEditingField(null);
+    setEditingVersionLabel(true);
+  };
+
   const beginEditTemplateName = () => {
     skipTemplateNameCommitRef.current = false;
     setLocalName(tmpl?.name || '');
+    setEditingVersionLabel(false);
     setEditingSectionId(null);
     setEditingField(null);
     setEditingTemplateName(true);
   };
 
   const beginEditSectionTitle = (secId: string) => {
+    setEditingTemplateName(false);
+    setEditingVersionLabel(false);
     setEditingField(null);
     setEditingSectionId(secId);
   };
 
   const beginEditFieldLabel = (sectionId: string, fieldId: string) => {
+    setEditingTemplateName(false);
+    setEditingVersionLabel(false);
     setEditingSectionId(null);
     setEditingField({ sectionId, fieldId });
   };
 
-  const publishMut = useMutation({
-    mutationFn: async () => {
-      if (!templateId || !editingVersionId) throw new Error('missing');
-      return api('POST', `/form-templates/${encodeURIComponent(templateId)}/publish`, {
-        version_id: editingVersionId,
-      });
-    },
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['formTemplate', templateId] });
-      qc.invalidateQueries({ queryKey: ['formTemplates'] });
-      toast.success('Published');
-    },
-    onError: () => toast.error('Publish failed'),
-  });
-
   const hasUnsavedChanges = useMemo(() => {
-    if (!tmpl?.draft_version || !editingVersionId) return false;
-    if (tmpl.draft_version.id !== editingVersionId) return true;
+    if (!tmpl?.definition) return false;
     const remote = snapshotFormFromTmpl(tmpl);
     if (remote === null) return false;
-    const local = serializePersistedFormState(definition, sigRequired, localName, description, category, status);
+    const local = serializePersistedFormState(
+      definition,
+      sigRequired,
+      localName,
+      description,
+      category,
+      status,
+      versionLabel
+    );
     return local !== remote;
-  }, [tmpl, editingVersionId, definition, sigRequired, localName, description, category, status]);
+  }, [tmpl, definition, sigRequired, localName, description, category, status, versionLabel]);
 
   const flushSaveAll = useCallback(async () => {
-    if (!templateId || !editingVersionId) throw new Error('Cannot save');
-    await saveDefMut.mutateAsync();
-    await saveMetaMut.mutateAsync(undefined);
+    if (!templateId) throw new Error('Cannot save');
+    await saveFormMut.mutateAsync();
     await qc.refetchQueries({ queryKey: ['formTemplate', templateId] });
-  }, [templateId, editingVersionId, qc, saveDefMut, saveMetaMut]);
+  }, [templateId, qc, saveFormMut]);
 
   const handleGuardDiscard = useCallback(() => {
-    if (!tmpl?.draft_version?.definition) return;
+    if (!tmpl?.definition) return;
+    setEditingTemplateName(false);
+    setEditingVersionLabel(false);
     setLocalName(tmpl.name || '');
+    setVersionLabel(tmpl.version_label || '');
     const td = tmpl.description;
     setDescription(td != null && String(td).trim() !== '' ? String(td) : '');
     setCategory(tmpl.category || 'inspection');
     setStatus((tmpl.status || 'active').toLowerCase() === 'inactive' ? 'inactive' : 'active');
-    setDefinition(normalizeDefinition(tmpl.draft_version.definition));
-    const wr = tmpl.draft_version.definition?.signature_policy?.worker;
+    setDefinition(normalizeDefinition(tmpl.definition));
+    const wr = tmpl.definition?.signature_policy?.worker;
     setSigRequired(Boolean(wr?.required));
   }, [tmpl]);
 
@@ -514,6 +577,7 @@ export default function FormTemplateEditorPage() {
     setModalSelectedType(null);
     setModalItemName('');
     setModalCustomListId('');
+    setModalCustomListSearch('');
     setShowTypeModal(true);
   };
 
@@ -521,6 +585,7 @@ export default function FormTemplateEditorPage() {
     setModalSelectedType(type);
     setModalItemName('');
     setModalCustomListId('');
+    setModalCustomListSearch('');
   };
 
   const commitNewField = () => {
@@ -531,19 +596,27 @@ export default function FormTemplateEditorPage() {
       if (!modalCustomListId.trim()) return;
       const finalLabel = modalItemName.trim();
       if (!finalLabel) return;
+      const listRow = customListsForPicker.find((L) => L.id === modalCustomListId.trim());
+      const addOtherField = Boolean(listRow?.include_other);
       setDefinition((d) => ({
         ...d,
         sections: d.sections.map((sec) => {
           if (sec.id !== addFieldSectionId) return sec;
           const maxO = sec.fields.reduce((m, f) => Math.max(m, f.order), -1);
-          const f = newField(type, maxO + 1);
+          const baseOrder = maxO + 1;
+          const f = newField(type, baseOrder);
           const next: SafetyFormField = {
             ...f,
             label: finalLabel,
             optionsSource: { type: 'custom_list', customListId: modalCustomListId.trim() },
             options: undefined,
           };
-          return { ...sec, fields: [...sec.fields, next] };
+          const fields = [...sec.fields, next];
+          if (addOtherField) {
+            const other = newField('long_text', baseOrder + 1);
+            fields.push({ ...other, label: 'Other:' });
+          }
+          return { ...sec, fields };
         }),
       }));
     } else {
@@ -564,6 +637,7 @@ export default function FormTemplateEditorPage() {
     setModalSelectedType(null);
     setModalItemName('');
     setModalCustomListId('');
+    setModalCustomListSearch('');
   };
 
   const closeTypeModal = useCallback(() => {
@@ -572,6 +646,7 @@ export default function FormTemplateEditorPage() {
     setModalSelectedType(null);
     setModalItemName('');
     setModalCustomListId('');
+    setModalCustomListSearch('');
   }, []);
 
   useEffect(() => {
@@ -770,6 +845,10 @@ export default function FormTemplateEditorPage() {
     });
   }, []);
 
+  const scrollToFormSection = useCallback((sectionId: string) => {
+    document.getElementById(`form-builder-section-${sectionId}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }, []);
+
   const onFieldDragEnd = useCallback((sectionId: string, e: DragEndEvent) => {
     const { active, over } = e;
     if (!over || active.id === over.id) return;
@@ -789,8 +868,6 @@ export default function FormTemplateEditorPage() {
       }),
     }));
   }, []);
-
-  const editingIsPublished = Boolean(tmpl?.published_version?.id && editingVersionId === tmpl.published_version.id);
 
   if (!templateId) {
     return <div className="p-6 text-sm text-gray-600">Missing template id.</div>;
@@ -816,90 +893,134 @@ export default function FormTemplateEditorPage() {
               </Link>
             }
             title="Form Templates"
-            subtitle="Build sections in the Builder tab, and publish a version when ready."
+            subtitle="Build sections in the Builder tab. Save Form stores the current definition for inspections."
           />
           <div className="rounded-xl border bg-white overflow-hidden">
-            <div className="px-4 py-3 border-b border-gray-100">
-              <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between sm:gap-4 min-w-0">
-                <div className="flex-1 min-w-0">
-                  {editingTemplateName ? (
-                    <input
-                      ref={templateNameInputRef}
-                      value={localName}
-                      onChange={(e) => setLocalName(e.target.value)}
-                      onBlur={() => commitTemplateName()}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter') {
-                          e.preventDefault();
-                          (e.target as HTMLInputElement).blur();
-                        }
-                        if (e.key === 'Escape') {
-                          e.preventDefault();
-                          cancelTemplateNameEdit();
-                        }
-                      }}
-                      className="w-full text-lg font-semibold text-gray-900 border border-gray-200 rounded-lg px-2 py-1.5 focus:outline-none focus:ring-2 focus:ring-brand-red/20 focus:border-brand-red"
-                    />
-                  ) : (
-                    <button
-                      type="button"
-                      onClick={beginEditTemplateName}
-                      className="text-left w-full text-lg font-semibold text-gray-900 truncate rounded-lg px-1 py-1 -mx-1 hover:bg-gray-100/80"
-                    >
-                      {localName.trim() || tmpl.name}
-                    </button>
-                  )}
-                  <div className="flex items-center gap-2 text-sm text-gray-800 mt-2">
-                    <span className="text-red-600 shrink-0 inline-flex" aria-hidden>
-                      <RequiredAsteriskIcon className="w-4 h-4" />
-                    </span>
-                    <span>Indicate Required Fields</span>
+              <div className="px-4 py-3 border-b border-gray-100">
+                <div className="flex flex-col gap-2 min-w-0">
+                  {/* Row 1: name (left) | Version + value (right, same line) */}
+                  <div className="flex flex-row items-center justify-between gap-4 min-w-0">
+                    <div className="flex-1 min-w-0">
+                      {editingTemplateName ? (
+                        <input
+                          ref={templateNameInputRef}
+                          value={localName}
+                          onChange={(e) => setLocalName(e.target.value)}
+                          onBlur={() => commitTemplateName()}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') {
+                              e.preventDefault();
+                              (e.target as HTMLInputElement).blur();
+                            }
+                            if (e.key === 'Escape') {
+                              e.preventDefault();
+                              cancelTemplateNameEdit();
+                            }
+                          }}
+                          className="w-full text-lg font-semibold text-gray-900 border border-gray-200 rounded-lg px-2 py-1.5 focus:outline-none focus:ring-2 focus:ring-brand-red/20 focus:border-brand-red"
+                        />
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={beginEditTemplateName}
+                          className="text-left w-full min-w-0 text-lg font-semibold text-gray-900 truncate rounded-lg px-1 py-1 -mx-1 hover:bg-gray-100/80"
+                        >
+                          {localName.trim() || tmpl.name}
+                        </button>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-2 shrink-0 max-w-[50%] sm:max-w-none">
+                      <span className="text-[10px] font-medium text-gray-500 uppercase tracking-wide whitespace-nowrap">Version</span>
+                      {editingVersionLabel ? (
+                        <input
+                          ref={versionLabelInputRef}
+                          type="text"
+                          value={versionLabel}
+                          onChange={(e) => setVersionLabel(e.target.value)}
+                          onBlur={() => commitVersionLabel()}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') {
+                              e.preventDefault();
+                              (e.target as HTMLInputElement).blur();
+                            }
+                            if (e.key === 'Escape') {
+                              e.preventDefault();
+                              cancelVersionLabelEdit();
+                            }
+                          }}
+                          placeholder="1.0"
+                          maxLength={100}
+                          aria-label="Version label"
+                          className="w-28 sm:w-32 text-right text-sm font-semibold text-gray-900 border border-gray-200 rounded-lg px-2 py-1.5 focus:outline-none focus:ring-2 focus:ring-brand-red/20 focus:border-brand-red"
+                        />
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={beginEditVersionLabel}
+                          className="text-sm font-semibold text-gray-900 truncate rounded-lg px-2 py-1.5 -mx-0 border border-transparent hover:bg-gray-100/80 tabular-nums min-w-[2.5rem] text-right"
+                        >
+                          {versionLabel.trim() ? (
+                            versionLabel.trim()
+                          ) : (
+                            <span className="text-gray-400 font-normal">—</span>
+                          )}
+                        </button>
+                      )}
+                    </div>
                   </div>
-                </div>
-                <div className="flex shrink-0 items-center gap-2.5 self-end sm:self-auto">
-                  <label
-                    className="flex items-center gap-2.5 cursor-pointer select-none"
-                    onClick={(e) => {
-                      if ((e.target as HTMLElement).closest('button')) return;
-                      if (saveMetaMut.isPending) return;
-                      const st = (status || '').toLowerCase();
-                      const next = st === 'active' ? 'inactive' : 'active';
-                      setStatus(next);
-                      saveMetaMut.mutate({ status: next });
-                    }}
-                  >
-                    <span className="text-xs text-gray-700">{status === 'active' ? 'Active' : 'Inactive'}</span>
-                    <button
-                      type="button"
-                      role="switch"
-                      aria-checked={status === 'active'}
-                      disabled={saveMetaMut.isPending}
-                      title={status === 'active' ? 'Active' : 'Inactive'}
-                      aria-label={
-                        status === 'active' ? 'Template is active. Click to deactivate.' : 'Template is inactive. Click to activate.'
-                      }
-                      onClick={() => {
-                        const st = (status || '').toLowerCase();
-                        const next = st === 'active' ? 'inactive' : 'active';
-                        setStatus(next);
-                        saveMetaMut.mutate({ status: next });
-                      }}
-                      className={`relative inline-flex h-6 w-11 shrink-0 rounded-full border transition-colors focus:outline-none focus:ring-2 focus:ring-gray-300 focus:ring-offset-1 disabled:opacity-50 ${
-                        status === 'active' ? 'bg-gray-900 border-gray-900' : 'bg-gray-200 border-gray-300'
-                      }`}
-                    >
-                      <span
-                        className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow transition-transform mt-0.5 ${
-                          status === 'active' ? 'translate-x-5 ml-0.5' : 'translate-x-0.5'
-                        }`}
-                      />
-                    </button>
-                  </label>
-                  {saveMetaMut.isPending && <span className="text-xs text-gray-400 whitespace-nowrap">Saving…</span>}
+                  {/* Row 2: required hint (left) | Active (right) */}
+                  <div className="flex flex-row items-center justify-between gap-4 min-w-0">
+                    <div className="flex items-center gap-2 text-sm text-gray-800 min-w-0 flex-1">
+                      <span className="text-red-600 shrink-0 inline-flex" aria-hidden>
+                        <RequiredAsteriskIcon className="w-4 h-4" />
+                      </span>
+                      <span>Indicate Required Fields</span>
+                    </div>
+                    <div className="flex shrink-0 items-center gap-2.5">
+                      <label
+                        className="flex items-center gap-2.5 cursor-pointer select-none"
+                        onClick={(e) => {
+                          if ((e.target as HTMLElement).closest('button')) return;
+                          if (saveMetaMut.isPending) return;
+                          const st = (status || '').toLowerCase();
+                          const next = st === 'active' ? 'inactive' : 'active';
+                          setStatus(next);
+                          saveMetaMut.mutate({ status: next });
+                        }}
+                      >
+                        <span className="text-xs text-gray-700">{status === 'active' ? 'Active' : 'Inactive'}</span>
+                        <button
+                          type="button"
+                          role="switch"
+                          aria-checked={status === 'active'}
+                          disabled={saveMetaMut.isPending}
+                          title={status === 'active' ? 'Active' : 'Inactive'}
+                          aria-label={
+                            status === 'active' ? 'Template is active. Click to deactivate.' : 'Template is inactive. Click to activate.'
+                          }
+                          onClick={() => {
+                            const st = (status || '').toLowerCase();
+                            const next = st === 'active' ? 'inactive' : 'active';
+                            setStatus(next);
+                            saveMetaMut.mutate({ status: next });
+                          }}
+                          className={`relative inline-flex h-6 w-11 shrink-0 rounded-full border transition-colors focus:outline-none focus:ring-2 focus:ring-gray-300 focus:ring-offset-1 disabled:opacity-50 ${
+                            status === 'active' ? 'bg-gray-900 border-gray-900' : 'bg-gray-200 border-gray-300'
+                          }`}
+                        >
+                          <span
+                            className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow transition-transform mt-0.5 ${
+                              status === 'active' ? 'translate-x-5 ml-0.5' : 'translate-x-0.5'
+                            }`}
+                          />
+                        </button>
+                      </label>
+                      {saveMetaMut.isPending && <span className="text-xs text-gray-400 whitespace-nowrap">Saving…</span>}
+                    </div>
+                  </div>
                 </div>
               </div>
             </div>
-          </div>
 
           <div className="flex gap-2 border-b border-gray-200">
             <button
@@ -968,22 +1089,12 @@ export default function FormTemplateEditorPage() {
               </div>
 
               <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={onSectionDragEnd}>
-                <SortableContext items={sorted.map((s) => s.id)} strategy={verticalListSortingStrategy}>
-                  {sorted.map((sec) => (
-                    <SortableSectionCard key={sec.id} id={sec.id}>
-                      {({ setActivatorNodeRef, listeners, attributes }) => (
-                        <>
+                <div className="flex flex-col xl:flex-row gap-4 xl:gap-5 items-start">
+                  <div className="flex-1 min-w-0 w-full space-y-4">
+                    {sorted.map((sec) => (
+                      <BuilderSectionCard key={sec.id}>
+                        <div id={`form-builder-section-${sec.id}`} className="scroll-mt-6">
                           <div className="px-3 py-2 bg-gray-200 flex flex-wrap items-center gap-2 border-b border-gray-200">
-                            <button
-                              type="button"
-                              ref={setActivatorNodeRef}
-                              className="cursor-grab active:cursor-grabbing text-gray-400 hover:text-gray-700 px-1 shrink-0 touch-none"
-                              aria-label="Drag section"
-                              {...listeners}
-                              {...attributes}
-                            >
-                              ⋮⋮
-                            </button>
                             {editingSectionId === sec.id ? (
                               <input
                                 ref={sectionTitleInputRef}
@@ -1208,39 +1319,58 @@ export default function FormTemplateEditorPage() {
                               + Add field
                             </button>
                           </div>
-                        </>
-                      )}
-                    </SortableSectionCard>
-                  ))}
-                </SortableContext>
-              </DndContext>
+                        </div>
+                      </BuilderSectionCard>
+                    ))}
+                    <button
+                      type="button"
+                      onClick={addSection}
+                      className="w-full px-4 py-2 text-sm border border-dashed border-gray-300 rounded-lg text-gray-600 hover:bg-gray-50"
+                    >
+                      + Add section
+                    </button>
+                  </div>
 
-              <button
-                type="button"
-                onClick={addSection}
-                className="px-4 py-2 text-sm border border-dashed border-gray-300 rounded-lg text-gray-600 hover:bg-gray-50 w-full"
-              >
-                + Add section
-              </button>
+                  <aside
+                    className="w-full xl:w-[15rem] shrink-0 xl:sticky xl:top-2 z-[5] rounded-xl border border-gray-200 bg-gray-50/90 p-3 space-y-2 xl:max-h-[min(78vh,calc(100dvh-10rem))] xl:overflow-y-auto"
+                    aria-label="Form sections"
+                  >
+                    <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide leading-snug px-0.5 break-words">
+                      {(localName.trim() || tmpl.name).toUpperCase()} — SECTIONS
+                    </p>
+                    <button
+                      type="button"
+                      onClick={addSection}
+                      className="w-full px-3 py-2 text-sm font-medium border border-dashed border-gray-300 rounded-lg text-gray-700 hover:bg-white/80"
+                    >
+                      + Add section
+                    </button>
+                    <div className="border-t border-gray-200 pt-2 space-y-1.5">
+                      <SortableContext items={sorted.map((s) => s.id)} strategy={verticalListSortingStrategy}>
+                        {sorted.map((sec) => (
+                          <SortableSectionsSidebarItem
+                            key={sec.id}
+                            sectionId={sec.id}
+                            titleText={sec.title}
+                            onNavigate={() => scrollToFormSection(sec.id)}
+                          />
+                        ))}
+                      </SortableContext>
+                    </div>
+                  </aside>
+                </div>
+              </DndContext>
             </div>
           )}
 
           <div className="fixed bottom-0 left-0 right-0 z-30 border-t border-gray-200 bg-white/95 backdrop-blur pl-4 pr-[3.75rem] py-3 sm:pr-[4.25rem] flex flex-wrap gap-3 justify-end md:pl-[var(--sidebar-width,0px)]">
             <button
               type="button"
-              disabled={!editingVersionId || saveDefMut.isPending}
-              onClick={() => saveDefMut.mutate()}
+              disabled={saveFormMut.isPending}
+              onClick={() => saveFormMut.mutate()}
               className="px-4 py-2 rounded-lg bg-blue-600 text-white text-sm font-medium disabled:opacity-50"
             >
               Save form
-            </button>
-            <button
-              type="button"
-              disabled={!editingVersionId || publishMut.isPending || editingIsPublished}
-              onClick={() => publishMut.mutate()}
-              className="px-4 py-2 rounded-lg bg-gray-900 text-white text-sm font-medium disabled:opacity-50"
-            >
-              Publish version
             </button>
           </div>
         </>
@@ -1254,6 +1384,8 @@ export default function FormTemplateEditorPage() {
               titleId="custom-list-modal-title"
               title="Custom list"
               subtitle="Choose which reusable list supplies options for this dropdown."
+              shellOverflow="visible"
+              bodyClassName="overflow-visible flex-1 p-4 min-h-0"
               onClose={closeCustomListModal}
               footer={
                 <>
@@ -1268,18 +1400,17 @@ export default function FormTemplateEditorPage() {
             >
               <label className="block">
                 <span className={SAFETY_MODAL_FIELD_LABEL}>List</span>
-                <select
-                  value={customListEditDraft}
-                  onChange={(e) => setCustomListEditDraft(e.target.value)}
-                  className="mt-1 w-full border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-brand-red/20 focus:border-brand-red"
-                >
-                  <option value="">None (clear)</option>
-                  {activeCustomLists.map((L) => (
-                    <option key={L.id} value={L.id}>
-                      {L.name}
-                    </option>
-                  ))}
-                </select>
+                <div className="mt-1">
+                  <SafetySearchableSingle
+                    label=""
+                    hideLabel
+                    value={customListEditDraft}
+                    onChange={setCustomListEditDraft}
+                    rows={activeCustomLists.map((L) => ({ value: L.id, label: L.name }))}
+                    emptyLabel="None (clear)"
+                    searchPlaceholder="Search lists…"
+                  />
+                </div>
               </label>
               <p className="text-[10px] text-gray-500 mt-3">
                 Create or edit lists under{' '}
@@ -1571,19 +1702,53 @@ export default function FormTemplateEditorPage() {
                           </div>
                           {(opt.type === 'dropdown_single' || opt.type === 'dropdown_multi') && (
                             <>
-                              <div className="flex items-center gap-2 min-w-0 pl-12">
-                                <select
-                                  value={modalCustomListId}
-                                  onChange={(e) => setModalCustomListId(e.target.value)}
-                                  className="flex-1 min-w-0 border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-brand-red/20 focus:border-brand-red"
-                                >
-                                  <option value="">Select custom list…</option>
-                                  {activeCustomLists.map((L) => (
-                                    <option key={L.id} value={L.id}>
-                                      {L.name}
-                                    </option>
-                                  ))}
-                                </select>
+                              <div className="flex flex-col gap-2 min-w-0 pl-12 w-full">
+                                <label htmlFor="modal-custom-list-search" className="sr-only">
+                                  Search custom lists
+                                </label>
+                                <input
+                                  id="modal-custom-list-search"
+                                  type="search"
+                                  value={modalCustomListSearch}
+                                  onChange={(e) => setModalCustomListSearch(e.target.value)}
+                                  placeholder="Search lists…"
+                                  autoComplete="off"
+                                  onKeyDown={(e) => e.stopPropagation()}
+                                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-brand-red/20 focus:border-brand-red"
+                                />
+                                <div className="max-h-44 overflow-y-auto rounded-lg border border-gray-200 bg-white divide-y divide-gray-100">
+                                  <button
+                                    type="button"
+                                    onClick={() => setModalCustomListId('')}
+                                    className={`w-full px-3 py-2.5 text-left text-sm ${
+                                      !modalCustomListId.trim()
+                                        ? 'bg-blue-50 text-blue-900 font-medium'
+                                        : 'text-gray-500 hover:bg-gray-50'
+                                    }`}
+                                  >
+                                    Select custom list…
+                                  </button>
+                                  {activeCustomLists.length === 0 ? (
+                                    <div className="px-3 py-2 text-xs text-gray-500">No active lists yet.</div>
+                                  ) : modalFilteredCustomLists.length === 0 ? (
+                                    <div className="px-3 py-2 text-xs text-gray-500">No lists match your search.</div>
+                                  ) : (
+                                    modalFilteredCustomLists.map((L) => (
+                                      <button
+                                        key={L.id}
+                                        type="button"
+                                        onClick={() => setModalCustomListId(L.id)}
+                                        className={`w-full px-3 py-2.5 text-left text-sm truncate ${
+                                          modalCustomListId === L.id
+                                            ? 'bg-blue-50 text-blue-900 font-medium'
+                                            : 'text-gray-800 hover:bg-gray-50'
+                                        }`}
+                                      >
+                                        {L.name}
+                                      </button>
+                                    ))
+                                  )}
+                                </div>
                               </div>
                               <p className="text-[10px] text-gray-500 pl-12">
                                 Create lists under{' '}

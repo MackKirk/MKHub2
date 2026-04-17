@@ -25,10 +25,11 @@ type SafetyInspectionRow = {
   template_version: string;
   status?: string;
   form_payload: Record<string, unknown>;
-  form_template_version_id?: string | null;
+  form_template_id?: string | null;
+  form_definition_snapshot?: SafetyFormDefinition | Record<string, unknown> | null;
   assigned_user_id?: string | null;
   template_name?: string | null;
-  template_version_number?: number | null;
+  template_version_label?: string | null;
   worker_name?: string | null;
   created_at?: string | null;
   created_by?: string | null;
@@ -39,12 +40,7 @@ type SafetyInspectionRow = {
 type FormTemplatePick = {
   id: string;
   name: string;
-  published_version_id: string | null;
-  published_version_number: number | null;
-};
-
-type FormTemplateVersionResponse = {
-  version: { id: string; definition: SafetyFormDefinition };
+  version_label: string;
 };
 
 const YNA_OPTIONS: {
@@ -279,7 +275,7 @@ export default function ProjectSafetyTab({ projectId, proj, canRead, canWrite, i
   const [inspectionDate, setInspectionDate] = useState<string>('');
   const [formPayload, setFormPayload] = useState<Record<string, unknown>>({});
   const [showCreateModal, setShowCreateModal] = useState(false);
-  const [pickedVersionId, setPickedVersionId] = useState('');
+  const [pickedTemplateId, setPickedTemplateId] = useState('');
   const [assignedUserId, setAssignedUserId] = useState('');
   /** Y/N item keys whose optional comment field is expanded for editing */
   const [ynCommentOpen, setYnCommentOpen] = useState<Record<string, boolean>>({});
@@ -324,21 +320,32 @@ export default function ProjectSafetyTab({ projectId, proj, canRead, canWrite, i
     enabled: canRead && !!projectId && !!selectedId,
   });
 
-  const isDynamicInspection = Boolean(detail?.form_template_version_id);
+  const isDynamicInspection = Boolean(detail?.form_template_id);
 
-  const { data: dynamicSchema } = useQuery({
-    queryKey: ['formTemplateVersion', detail?.form_template_version_id],
+  const { data: templateFallback } = useQuery({
+    queryKey: ['formTemplate', detail?.form_template_id],
     queryFn: () =>
-      api<FormTemplateVersionResponse>(
-        'GET',
-        `/form-templates/versions/${encodeURIComponent(detail!.form_template_version_id!)}`
-      ),
-    enabled: canRead && !!detail?.form_template_version_id,
+      api<{ definition: SafetyFormDefinition }>('GET', `/form-templates/${encodeURIComponent(detail!.form_template_id!)}`),
+    enabled:
+      canRead &&
+      !!detail?.form_template_id &&
+      (!detail?.form_definition_snapshot ||
+        (typeof detail.form_definition_snapshot === 'object' &&
+          !Array.isArray(detail.form_definition_snapshot) &&
+          !('sections' in (detail.form_definition_snapshot as object)))),
   });
 
-  const dynamicDefinition: SafetyFormDefinition | null = dynamicSchema?.version?.definition
-    ? normalizeDefinition(dynamicSchema.version.definition)
-    : null;
+  const dynamicDefinition: SafetyFormDefinition | null = useMemo(() => {
+    const snap = detail?.form_definition_snapshot;
+    if (snap && typeof snap === 'object' && !Array.isArray(snap) && 'sections' in snap) {
+      return normalizeDefinition(snap as SafetyFormDefinition);
+    }
+    const fd = templateFallback?.definition;
+    if (fd && typeof fd === 'object' && !Array.isArray(fd) && 'sections' in fd) {
+      return normalizeDefinition(fd as SafetyFormDefinition);
+    }
+    return null;
+  }, [detail?.form_definition_snapshot, templateFallback?.definition]);
 
   useEffect(() => {
     if (!detail) return;
@@ -393,9 +400,9 @@ export default function ProjectSafetyTab({ projectId, proj, canRead, canWrite, i
 
   const createFromTemplateMutation = useMutation({
     mutationFn: () => {
-      if (!pickedVersionId) throw new Error('Pick a template');
+      if (!pickedTemplateId) throw new Error('Pick a template');
       return api<SafetyInspectionRow>('POST', `/projects/${encodeURIComponent(projectId)}/safety-inspections`, {
-        form_template_version_id: pickedVersionId,
+        form_template_id: pickedTemplateId,
         form_payload: {},
         inspection_date: new Date().toISOString(),
       });
@@ -406,7 +413,7 @@ export default function ProjectSafetyTab({ projectId, proj, canRead, canWrite, i
       qc.invalidateQueries({ queryKey: ['safetyInspectionsCalendar'] });
       setSelectedId(row.id);
       setShowCreateModal(false);
-      setPickedVersionId('');
+      setPickedTemplateId('');
       toast.success('Inspection created');
     },
     onError: () => toast.error('Could not create inspection'),
@@ -427,7 +434,7 @@ export default function ProjectSafetyTab({ projectId, proj, canRead, canWrite, i
         form_payload: formPayload,
         assigned_user_id: assignedUserId || null,
       };
-      if (!detail?.form_template_version_id) {
+      if (!detail?.form_template_id) {
         body.template_version = SAFETY_TEMPLATE_VERSION;
       }
       return api<SafetyInspectionRow>(
@@ -452,7 +459,7 @@ export default function ProjectSafetyTab({ projectId, proj, canRead, canWrite, i
   const finalizeMutation = useMutation({
     mutationFn: () => {
       if (!selectedId) throw new Error('no id');
-      if (detail?.form_template_version_id && dynamicDefinition) {
+      if (detail?.form_template_id && dynamicDefinition) {
         const missing = validateDynamicForm(dynamicDefinition, formPayload);
         if (missing.length) {
           toast.error(`Missing required fields: ${missing.slice(0, 5).join(', ')}${missing.length > 5 ? '…' : ''}`);
@@ -835,7 +842,7 @@ export default function ProjectSafetyTab({ projectId, proj, canRead, canWrite, i
             className="fixed inset-0 z-[200] bg-black/50 flex items-center justify-center overflow-y-auto p-4"
             onClick={() => {
               setShowCreateModal(false);
-              setPickedVersionId('');
+              setPickedTemplateId('');
             }}
             role="presentation"
           >
@@ -843,10 +850,10 @@ export default function ProjectSafetyTab({ projectId, proj, canRead, canWrite, i
               widthClass="w-full max-w-md"
               titleId="safety-start-template-title"
               title="Start from template"
-              subtitle="Choose a published form template for a new inspection."
+              subtitle="Choose an active form template for a new inspection."
               onClose={() => {
                 setShowCreateModal(false);
-                setPickedVersionId('');
+                setPickedTemplateId('');
               }}
               footer={
                 <>
@@ -855,14 +862,14 @@ export default function ProjectSafetyTab({ projectId, proj, canRead, canWrite, i
                     className={SAFETY_MODAL_BTN_CANCEL}
                     onClick={() => {
                       setShowCreateModal(false);
-                      setPickedVersionId('');
+                      setPickedTemplateId('');
                     }}
                   >
                     Cancel
                   </button>
                   <button
                     type="button"
-                    disabled={!pickedVersionId || createFromTemplateMutation.isPending}
+                    disabled={!pickedTemplateId || createFromTemplateMutation.isPending}
                     onClick={() => createFromTemplateMutation.mutate()}
                     className={SAFETY_MODAL_BTN_PRIMARY}
                   >
@@ -873,19 +880,17 @@ export default function ProjectSafetyTab({ projectId, proj, canRead, canWrite, i
             >
               <label className={SAFETY_MODAL_FIELD_LABEL}>Form template</label>
               <select
-                value={pickedVersionId}
-                onChange={(e) => setPickedVersionId(e.target.value)}
+                value={pickedTemplateId}
+                onChange={(e) => setPickedTemplateId(e.target.value)}
                 className="mt-1 w-full px-3 py-2 border border-gray-200 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-brand-red/20 focus:border-brand-red"
               >
                 <option value="">— Select template —</option>
-                {schedulableTemplates.map((t) =>
-                  t.published_version_id ? (
-                    <option key={t.id} value={t.published_version_id}>
-                      {t.name}
-                      {t.published_version_number != null ? ` (v${t.published_version_number})` : ''}
-                    </option>
-                  ) : null
-                )}
+                {schedulableTemplates.map((t) => (
+                  <option key={t.id} value={t.id}>
+                    {t.name}
+                    {(t.version_label || '').trim() ? ` (${(t.version_label || '').trim()})` : ''}
+                  </option>
+                ))}
               </select>
             </SafetyFormModalLayout>
           </div>
@@ -939,7 +944,9 @@ export default function ProjectSafetyTab({ projectId, proj, canRead, canWrite, i
                 {detail.template_name && (
                   <span className="text-[10px] text-gray-500 max-w-[14rem] text-right truncate" title={detail.template_name}>
                     {detail.template_name}
-                    {detail.template_version_number != null ? ` · v${detail.template_version_number}` : ''}
+                    {(detail.template_version_label || '').trim()
+                      ? ` · ${(detail.template_version_label || '').trim()}`
+                      : ''}
                   </span>
                 )}
               </div>

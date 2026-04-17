@@ -33,7 +33,6 @@ from ..models.models import (
     EstimateItem,
     ProjectFolder,
     FormTemplate,
-    FormTemplateVersion,
 )
 from datetime import datetime, timezone, time, timedelta
 from ..auth.security import (
@@ -54,6 +53,7 @@ from sqlalchemy import or_, and_, cast, String, Date
 
 
 from ..services.project_utils import sanitize_division_onsite_leads
+from ..routes.form_templates import _normalize_definition
 
 router = APIRouter(prefix="/projects", tags=["projects"])
 
@@ -153,17 +153,15 @@ def _safety_inspection_to_dict(db: Session, row: ProjectSafetyInspection) -> dic
     st = getattr(row, "status", None) or "draft"
     if st not in ("draft", "finalized"):
         st = "draft"
-    ft_id = getattr(row, "form_template_version_id", None)
+    ft_tid = getattr(row, "form_template_id", None)
     asg_id = getattr(row, "assigned_user_id", None)
     template_name = None
-    template_version_number = None
-    if ft_id:
-        ftv = db.query(FormTemplateVersion).filter(FormTemplateVersion.id == ft_id).first()
-        if ftv:
-            template_version_number = ftv.version
-            tpl = db.query(FormTemplate).filter(FormTemplate.id == ftv.form_template_id).first()
-            if tpl:
-                template_name = tpl.name or ""
+    template_version_label = None
+    if ft_tid:
+        tpl = db.query(FormTemplate).filter(FormTemplate.id == ft_tid).first()
+        if tpl:
+            template_name = tpl.name or ""
+            template_version_label = (getattr(tpl, "version_label", None) or "").strip() or None
     worker_name = None
     if asg_id:
         u = db.query(User).filter(User.id == asg_id).first()
@@ -183,15 +181,17 @@ def _safety_inspection_to_dict(db: Session, row: ProjectSafetyInspection) -> dic
                 worker_name = wn or u.username
             else:
                 worker_name = u.username
+    snap = getattr(row, "form_definition_snapshot", None)
     return {
         "id": str(row.id),
         "project_id": str(row.project_id),
         "inspection_date": row.inspection_date.isoformat() if row.inspection_date else None,
         "template_version": row.template_version or "mki_safety_v1",
-        "form_template_version_id": str(ft_id) if ft_id else None,
+        "form_template_id": str(ft_tid) if ft_tid else None,
+        "form_definition_snapshot": snap if isinstance(snap, dict) else None,
         "assigned_user_id": str(asg_id) if asg_id else None,
         "template_name": template_name,
-        "template_version_number": template_version_number,
+        "template_version_label": template_version_label,
         "worker_name": worker_name,
         "status": st,
         "form_payload": row.form_payload if isinstance(row.form_payload, dict) else {},
@@ -2293,19 +2293,26 @@ def create_project_safety_inspection(
     form_payload = payload.get("form_payload") if isinstance(payload, dict) else None
     if form_payload is not None and not isinstance(form_payload, dict):
         raise HTTPException(status_code=400, detail="form_payload must be an object")
-    raw_ftv = payload.get("form_template_version_id") if isinstance(payload, dict) else None
-    form_template_version_id: Optional[uuid.UUID] = None
+    raw_ft = payload.get("form_template_id") if isinstance(payload, dict) else None
+    form_template_id: Optional[uuid.UUID] = None
+    form_definition_snapshot: Optional[dict] = None
     template_version = (payload.get("template_version") if isinstance(payload, dict) else None) or "mki_safety_v1"
     if not isinstance(template_version, str):
         template_version = "mki_safety_v1"
-    if raw_ftv:
+    if raw_ft:
         try:
-            form_template_version_id = uuid.UUID(str(raw_ftv).strip())
+            form_template_id = uuid.UUID(str(raw_ft).strip())
         except Exception:
-            raise HTTPException(status_code=400, detail="Invalid form_template_version_id")
-        ftv = db.query(FormTemplateVersion).filter(FormTemplateVersion.id == form_template_version_id).first()
-        if not ftv or not ftv.is_published:
-            raise HTTPException(status_code=400, detail="form_template_version_id must refer to a published template version")
+            raise HTTPException(status_code=400, detail="Invalid form_template_id")
+        tpl = db.query(FormTemplate).filter(FormTemplate.id == form_template_id).first()
+        if not tpl:
+            raise HTTPException(status_code=400, detail="Form template not found")
+        if (tpl.status or "").lower() != "active":
+            raise HTTPException(status_code=400, detail="Form template must be active")
+        form_definition_snapshot = _normalize_definition(getattr(tpl, "definition", None) or {})
+        secs = form_definition_snapshot.get("sections")
+        if not isinstance(secs, list) or len(secs) == 0:
+            raise HTTPException(status_code=400, detail="Form template has no sections")
         template_version = "form_template"
     assigned_user_id: Optional[uuid.UUID] = None
     raw_asg = payload.get("assigned_user_id") if isinstance(payload, dict) else None
@@ -2322,7 +2329,8 @@ def create_project_safety_inspection(
         template_version=template_version[:50],
         status="draft",
         form_payload=form_payload if isinstance(form_payload, dict) else {},
-        form_template_version_id=form_template_version_id,
+        form_template_id=form_template_id,
+        form_definition_snapshot=form_definition_snapshot,
         assigned_user_id=assigned_user_id,
         created_by=user.id,
     )
@@ -2391,12 +2399,14 @@ def update_project_safety_inspection(
                 row.inspection_date = datetime.fromisoformat(raw.replace("Z", "+00:00"))
         except Exception:
             pass
+    if "form_template_id" in payload and payload["form_template_id"] is not None:
+        raise HTTPException(status_code=400, detail="form_template_id cannot be changed after creation")
     if "form_template_version_id" in payload and payload["form_template_version_id"] is not None:
-        raise HTTPException(status_code=400, detail="form_template_version_id cannot be changed after creation")
+        raise HTTPException(status_code=400, detail="form_template_version_id is no longer supported; use form_template_id")
     if "template_version" in payload and payload["template_version"] is not None:
         tv = payload["template_version"]
         if isinstance(tv, str) and tv.strip():
-            if getattr(row, "form_template_version_id", None):
+            if getattr(row, "form_template_id", None):
                 raise HTTPException(status_code=400, detail="template_version is fixed for template-based inspections")
             row.template_version = tv.strip()[:50]
     if "assigned_user_id" in payload:

@@ -1,5 +1,5 @@
 """
-Optional seed: publish a form_template version with an MKI-aligned safety definition (subset).
+Optional seed: form template with an MKI-aligned safety definition (subset).
 Skips if a template named 'MKI Safety Inspection (seed)' already exists.
 
 Run from repo root with PYTHONPATH set (same pattern as other scripts):
@@ -10,7 +10,6 @@ from __future__ import annotations
 import os
 import sys
 import uuid
-from datetime import datetime, timezone
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -23,7 +22,7 @@ except Exception:
 
 try:
     from app.db import SessionLocal
-    from app.models.models import FormTemplate, FormTemplateVersion, User
+    from app.models.models import FormTemplate, User
 except ImportError as e:
     print(f"ERROR: {e}")
     sys.exit(1)
@@ -122,23 +121,14 @@ def seed() -> None:
             description="Seeded subset aligned with legacy MKI safety topics; extend in Form Templates editor.",
             category="inspection",
             status="active",
+            definition=mki_definition(),
+            version_label="seed",
             created_by=uid,
         )
         db.add(t)
-        db.flush()
-
-        now = datetime.now(timezone.utc)
-        v = FormTemplateVersion(
-            form_template_id=t.id,
-            version=1,
-            definition=mki_definition(),
-            is_published=True,
-            published_at=now,
-            created_by=uid,
-        )
-        db.add(v)
         db.commit()
-        print(f"Created published template '{SEED_NAME}' (template_id={t.id}, version_id={v.id}).")
+        db.refresh(t)
+        print(f"Created template '{SEED_NAME}' (id={t.id}).")
     finally:
         db.close()
 

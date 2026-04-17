@@ -20,8 +20,7 @@ type BizProject = { id: string; name: string; code?: string; business_line?: str
 type FormTemplatePick = {
   id: string;
   name: string;
-  published_version_id: string | null;
-  published_version_number: number | null;
+  version_label: string;
 };
 
 function formatProjectLabel(p: BizProject): string {
@@ -45,7 +44,7 @@ export default function SafetySchedulePage() {
   const [selectedProjectId, setSelectedProjectId] = useState('');
   const [projectDropdownOpen, setProjectDropdownOpen] = useState(false);
   const projectComboRef = useRef<HTMLDivElement>(null);
-  const [selectedTemplateVersionId, setSelectedTemplateVersionId] = useState('');
+  const [selectedTemplateId, setSelectedTemplateId] = useState('');
   const [scheduledLocal, setScheduledLocal] = useState(() => {
     const d = new Date();
     d.setMinutes(0, 0, 0);
@@ -96,11 +95,11 @@ export default function SafetySchedulePage() {
   const scheduleMutation = useMutation({
     mutationFn: async () => {
       if (!selectedProjectId) throw new Error('Select a project');
-      if (!selectedTemplateVersionId) throw new Error('Select a template');
+      if (!selectedTemplateId) throw new Error('Select a template');
       const t = new Date(scheduledLocal);
       if (Number.isNaN(t.getTime())) throw new Error('Invalid date');
       return api<SafetyInspectionCreated>('POST', `/projects/${encodeURIComponent(selectedProjectId)}/safety-inspections`, {
-        form_template_version_id: selectedTemplateVersionId,
+        form_template_id: selectedTemplateId,
         form_payload: {},
         inspection_date: t.toISOString(),
       });
@@ -117,7 +116,7 @@ export default function SafetySchedulePage() {
       setShowModal(false);
       setSelectedProjectId('');
       setProjectInput('');
-      setSelectedTemplateVersionId('');
+      setSelectedTemplateId('');
       navigate(`${base}/${encodeURIComponent(row.project_id)}?${q.toString()}`);
     },
     onError: () => toast.error('Could not schedule inspection'),
@@ -139,10 +138,10 @@ export default function SafetySchedulePage() {
   const canSubmit = useMemo(
     () =>
       !!selectedProjectId &&
-      !!selectedTemplateVersionId &&
+      !!selectedTemplateId &&
       !!scheduledLocal &&
       !scheduleMutation.isPending,
-    [selectedProjectId, selectedTemplateVersionId, scheduledLocal, scheduleMutation.isPending]
+    [selectedProjectId, selectedTemplateId, scheduledLocal, scheduleMutation.isPending]
   );
 
   return (
@@ -166,7 +165,7 @@ export default function SafetySchedulePage() {
                   setSelectedProjectId('');
                   setDebouncedQ('');
                   setProjectDropdownOpen(false);
-                  setSelectedTemplateVersionId('');
+                  setSelectedTemplateId('');
                   setShowModal(true);
                 }}
                 className="px-3 py-2 rounded-lg bg-brand-red text-white text-xs font-medium hover:bg-[#aa1212] transition-colors"
@@ -187,7 +186,7 @@ export default function SafetySchedulePage() {
               widthClass="w-full max-w-lg"
               titleId="schedule-safety-inspection-title"
               title="Schedule site safety inspection"
-              subtitle="Pick a published template, an awarded project, and a planned date. Complete the form on the project Safety tab."
+              subtitle="Pick an active form template, an awarded project, and a planned date. Complete the form on the project Safety tab."
               onClose={() => setShowModal(false)}
               shellOverflow="visible"
               bodyClassName="overflow-visible flex-1 p-4 min-h-0 relative z-20"
@@ -214,19 +213,17 @@ export default function SafetySchedulePage() {
                     Form template <span className="text-red-600">*</span>
                   </label>
                   <select
-                    value={selectedTemplateVersionId}
-                    onChange={(e) => setSelectedTemplateVersionId(e.target.value)}
+                    value={selectedTemplateId}
+                    onChange={(e) => setSelectedTemplateId(e.target.value)}
                     className="mt-1 w-full border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-brand-red/20 focus:border-brand-red"
                   >
                     <option value="">— Select template —</option>
-                    {schedulableTemplates.map((t) =>
-                      t.published_version_id ? (
-                        <option key={t.id} value={t.published_version_id}>
-                          {t.name}
-                          {t.published_version_number != null ? ` (v${t.published_version_number})` : ''}
-                        </option>
-                      ) : null
-                    )}
+                    {schedulableTemplates.map((t) => (
+                      <option key={t.id} value={t.id}>
+                        {t.name}
+                        {(t.version_label || '').trim() ? ` (${(t.version_label || '').trim()})` : ''}
+                      </option>
+                    ))}
                   </select>
                 </div>
                 <div ref={projectComboRef} className="relative z-30">

@@ -18,6 +18,7 @@ import {
 import { arrayMove, SortableContext, sortableKeyboardCoordinates, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { api } from '@/lib/api';
+import { useConfirm } from '@/components/ConfirmProvider';
 import OverlayPortal from '@/components/OverlayPortal';
 import PageHeaderBar from '@/components/PageHeaderBar';
 import {
@@ -33,6 +34,8 @@ type CustomListRow = {
   name: string;
   description?: string | null;
   status: string;
+  /** When true, adding this list to a dropdown in a form template also adds a Long Answer field "Other:" below. */
+  include_other?: boolean;
   created_at?: string | null;
   updated_at?: string | null;
   created_by?: string | null;
@@ -254,6 +257,7 @@ function TrashIcon({ className }: { className?: string }) {
 }
 
 export default function FormCustomListsPage() {
+  const confirm = useConfirm();
   const qc = useQueryClient();
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [createOpen, setCreateOpen] = useState(false);
@@ -290,10 +294,11 @@ export default function FormCustomListsPage() {
   });
 
   const patchMut = useMutation({
-    mutationFn: (body: { id: string; name?: string; status?: string }) =>
+    mutationFn: (body: { id: string; name?: string; status?: string; include_other?: boolean }) =>
       api('PATCH', `/form-custom-lists/${encodeURIComponent(body.id)}`, {
         name: body.name,
         status: body.status,
+        include_other: body.include_other,
       }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['formCustomLists'] });
@@ -388,7 +393,7 @@ export default function FormCustomListsPage() {
   }, [qc, selectedId]);
 
   return (
-    <div className="space-y-4 min-w-0 pb-16">
+    <div className="flex flex-col gap-4 min-w-0 min-h-0 h-[calc(100dvh-6rem)] max-h-[calc(100dvh-6rem)] overflow-hidden">
       <PageHeaderBar
         title="Form Custom Lists"
         subtitle={
@@ -399,14 +404,15 @@ export default function FormCustomListsPage() {
             </Link>
           </>
         }
+        className="shrink-0 !mb-0"
       />
 
-      <div className="grid gap-6 grid-cols-1 lg:grid-cols-4">
-        <div className="rounded-xl border border-gray-200 bg-white overflow-hidden min-w-0 lg:col-span-1">
-          <div className="px-4 py-3 border-b border-gray-100 bg-gray-50/80">
+      <div className="flex-1 min-h-0 grid grid-cols-1 gap-6 overflow-hidden grid-rows-[minmax(0,1fr)_minmax(0,1fr)] lg:grid-rows-1 lg:grid-cols-4 lg:items-stretch">
+        <div className="rounded-xl border border-gray-200 bg-white overflow-hidden min-w-0 min-h-0 lg:col-span-1 flex flex-col h-full max-h-full">
+          <div className="px-4 py-3 border-b border-gray-100 bg-gray-50/80 shrink-0">
             <h2 className="text-sm font-semibold text-gray-800">Lists</h2>
           </div>
-          <div className="p-2 border-b border-gray-100 space-y-2">
+          <div className="p-2 border-b border-gray-100 space-y-2 shrink-0">
             <button
               type="button"
               onClick={() => setCreateOpen(true)}
@@ -428,13 +434,15 @@ export default function FormCustomListsPage() {
             />
           </div>
           {isLoading ? (
-            <div className="p-8 text-center text-sm text-gray-500">Loading…</div>
+            <div className="flex-1 flex items-center justify-center p-8 text-sm text-gray-500 min-h-0">Loading…</div>
           ) : sortedLists.length === 0 ? (
-            <div className="p-8 text-center text-sm text-gray-500">No custom lists yet. Create one above to use in dropdown fields.</div>
+            <div className="flex-1 flex items-center justify-center p-8 text-center text-sm text-gray-500 min-h-0">
+              No custom lists yet. Create one above to use in dropdown fields.
+            </div>
           ) : filteredLists.length === 0 ? (
-            <div className="p-6 text-center text-xs text-gray-500">No lists match your search.</div>
+            <div className="flex-1 flex items-center justify-center p-6 text-xs text-gray-500 min-h-0">No lists match your search.</div>
           ) : (
-            <ul className="max-h-[480px] overflow-y-auto">
+            <ul className="flex-1 min-h-0 overflow-y-auto overscroll-contain">
               {filteredLists.map((row) => {
                 const usedCount = row.used_in_form_count ?? 0;
                 const deleteBlocked = usedCount > 0;
@@ -462,14 +470,16 @@ export default function FormCustomListsPage() {
                         onClick={(e) => {
                           e.stopPropagation();
                           if (deleteBlocked) return;
-                          if (
-                            !window.confirm(
-                              `Delete list "${row.name}"? All items in this list will be removed. This cannot be undone.`
-                            )
-                          ) {
-                            return;
-                          }
-                          deleteListMut.mutate(row.id);
+                          void (async () => {
+                            const r = await confirm({
+                              title: 'Delete list?',
+                              message: `Delete list "${row.name}"? All items in this list will be removed. This cannot be undone.`,
+                              confirmText: 'Delete',
+                              cancelText: 'Cancel',
+                            });
+                            if (r !== 'confirm') return;
+                            deleteListMut.mutate(row.id);
+                          })();
                         }}
                         className={`shrink-0 h-9 w-9 inline-flex items-center justify-center rounded-lg border-0 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-red/25 ${
                           deleteBlocked
@@ -487,11 +497,13 @@ export default function FormCustomListsPage() {
           )}
         </div>
 
-        <div className="rounded-xl border border-gray-200 bg-white overflow-hidden min-h-[320px] min-w-0 lg:col-span-3">
+        <div className="rounded-xl border border-gray-200 bg-white overflow-hidden min-w-0 min-h-0 lg:col-span-3 flex flex-col h-full max-h-full">
           {!selectedId ? (
-            <div className="p-8 text-center text-sm text-gray-500">Select a list to edit items and hierarchy.</div>
+            <div className="flex-1 flex items-center justify-center p-8 text-center text-sm text-gray-500 min-h-0">
+              Select a list to edit items and hierarchy.
+            </div>
           ) : detailLoading || !detail ? (
-            <div className="p-8 text-center text-sm text-gray-500">Loading…</div>
+            <div className="flex-1 flex items-center justify-center p-8 text-sm text-gray-500 min-h-0">Loading…</div>
           ) : (
             <ListDetailPanel
               detail={detail}
@@ -560,7 +572,7 @@ function ListDetailPanel({
   isSaving,
 }: {
   detail: CustomListRow & { items: TreeNode[]; leaf_options?: { value: string; label: string }[] };
-  onPatch: (p: { name?: string; status?: string }) => void;
+  onPatch: (p: { name?: string; status?: string; include_other?: boolean }) => void;
   addItemMut: {
     mutateAsync: (body: { listId: string; parent_id: string | null; name: string }) => Promise<FormCustomListItemApi>;
     isPending: boolean;
@@ -578,9 +590,11 @@ function ListDetailPanel({
   onDeleteItem: (id: string) => void;
   isSaving: boolean;
 }) {
+  const confirm = useConfirm();
   const qc = useQueryClient();
   const [localName, setLocalName] = useState(detail.name);
   const [localStatus, setLocalStatus] = useState(detail.status);
+  const [localIncludeOther, setLocalIncludeOther] = useState(Boolean(detail.include_other));
   const [editingListName, setEditingListName] = useState(false);
   const [editingItemId, setEditingItemId] = useState<string | null>(null);
   const [draftName, setDraftName] = useState('');
@@ -592,7 +606,8 @@ function ListDetailPanel({
   useEffect(() => {
     setLocalName(detail.name);
     setLocalStatus(detail.status);
-  }, [detail.id, detail.name, detail.status]);
+    setLocalIncludeOther(Boolean(detail.include_other));
+  }, [detail.id, detail.name, detail.status, detail.include_other]);
 
   useEffect(() => {
     setEditingListName(false);
@@ -706,9 +721,18 @@ function ListDetailPanel({
   };
 
   const handleDeleteItem = (id: string) => {
-    if (!window.confirm('Remove this item? Child items will be removed too.')) return;
-    if (editingItemId === id) setEditingItemId(null);
-    onDeleteItem(id);
+    void (async () => {
+      const itemName = findItemNameInTree(detail.items, id) ?? 'this item';
+      const r = await confirm({
+        title: 'Remove item?',
+        message: `Remove "${itemName}"? Child items will be removed too. This cannot be undone.`,
+        confirmText: 'Remove',
+        cancelText: 'Cancel',
+      });
+      if (r !== 'confirm') return;
+      if (editingItemId === id) setEditingItemId(null);
+      onDeleteItem(id);
+    })();
   };
 
   const sensors = useSensors(
@@ -794,8 +818,8 @@ function ListDetailPanel({
   );
 
   return (
-    <div key={detail.id}>
-      <div className="px-4 py-3 border-b border-gray-100">
+    <div key={detail.id} className="flex flex-col h-full min-h-0 flex-1">
+      <div className="px-4 py-3 border-b border-gray-100 shrink-0">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between sm:gap-4 min-w-0">
           <div className="flex-1 min-w-0">
             {editingListName ? (
@@ -835,7 +859,21 @@ function ListDetailPanel({
               )}
             </p>
           </div>
-          <div className="flex shrink-0 items-center gap-2.5 self-end sm:self-auto">
+          <div className="flex shrink-0 items-center gap-4 self-end sm:self-auto flex-wrap justify-end">
+            <label className="flex items-center gap-2 cursor-pointer select-none text-xs text-gray-700">
+              <input
+                type="checkbox"
+                className="rounded border-gray-300 text-brand-red focus:ring-brand-red/30"
+                checked={localIncludeOther}
+                disabled={isSaving}
+                onChange={(e) => {
+                  const next = e.target.checked;
+                  setLocalIncludeOther(next);
+                  onPatch({ include_other: next });
+                }}
+              />
+              <span>Include &quot;Other&quot;</span>
+            </label>
             <label
               className="flex items-center gap-2.5 cursor-pointer select-none"
               onClick={(e) => {
@@ -874,7 +912,7 @@ function ListDetailPanel({
           </div>
         </div>
       </div>
-      <div className="p-2 border-b border-gray-50">
+      <div className="p-2 border-b border-gray-50 shrink-0">
         <button
           type="button"
           onClick={() => void handleAddRoot()}
@@ -884,7 +922,7 @@ function ListDetailPanel({
           + Add Item
         </button>
       </div>
-      <div className="p-4 max-h-[420px] overflow-y-auto">
+      <div className="p-4 flex-1 min-h-0 overflow-y-auto overscroll-contain">
         {detail.items.length === 0 ? (
           <p className="text-sm text-gray-500">No items yet. Use + Add Item above to start.</p>
         ) : (

@@ -14,10 +14,10 @@ type SafetyListRow = {
   inspection_date: string | null;
   status: string;
   template_name?: string | null;
-  template_version_number?: number | null;
+  template_version_label?: string | null;
   worker_name?: string | null;
   assigned_user_id?: string | null;
-  form_template_version_id?: string | null;
+  form_template_id?: string | null;
   created_at?: string | null;
   updated_at?: string | null;
 };

@@ -361,11 +361,11 @@ def create_app() -> FastAPI:
                         ).fetchall():
                             pass
                         else:
-                            from .models.models import FormTemplate, FormTemplateVersion
+                            from .models.models import FormTemplate
 
-                            Base.metadata.create_all(bind=engine, tables=[FormTemplate.__table__, FormTemplateVersion.__table__])
+                            Base.metadata.create_all(bind=engine, tables=[FormTemplate.__table__])
                             db.commit()
-                            print("[startup] Created form_templates / form_template_versions")
+                            print("[startup] Created form_templates")
                         db.execute(
                             text(
                                 "ALTER TABLE project_safety_inspections ADD COLUMN IF NOT EXISTS form_template_version_id UUID NULL"
@@ -437,6 +437,139 @@ def create_app() -> FastAPI:
                     except Exception as e:
                         print(f"[startup] form_templates migration (non-critical): {e}")
 
+                    # Single-definition form templates: migrate from form_template_versions then drop that table
+                    try:
+                        if db.execute(
+                            text(
+                                "SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'form_templates' LIMIT 1"
+                            )
+                        ).fetchall():
+                            db.execute(
+                                text(
+                                    "ALTER TABLE form_templates ADD COLUMN IF NOT EXISTS definition JSONB DEFAULT '{}'::jsonb"
+                                )
+                            )
+                            db.execute(
+                                text(
+                                    "ALTER TABLE form_templates ADD COLUMN IF NOT EXISTS version_label VARCHAR(100) DEFAULT ''"
+                                )
+                            )
+                            db.execute(text("UPDATE form_templates SET definition = '{}'::jsonb WHERE definition IS NULL"))
+                            db.execute(text("ALTER TABLE form_templates ALTER COLUMN definition SET NOT NULL"))
+                            db.execute(text("UPDATE form_templates SET version_label = COALESCE(version_label, '')"))
+                            db.execute(text("ALTER TABLE form_templates ALTER COLUMN version_label SET NOT NULL"))
+                            db.commit()
+                            db.execute(
+                                text(
+                                    "ALTER TABLE project_safety_inspections ADD COLUMN IF NOT EXISTS form_template_id UUID NULL"
+                                )
+                            )
+                            db.execute(
+                                text(
+                                    "ALTER TABLE project_safety_inspections ADD COLUMN IF NOT EXISTS form_definition_snapshot JSONB NULL"
+                                )
+                            )
+                            db.commit()
+                            ftv_rows = db.execute(
+                                text(
+                                    "SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'form_template_versions' LIMIT 1"
+                                )
+                            ).fetchall()
+                            if ftv_rows:
+                                db.execute(
+                                    text(
+                                        """
+                                        UPDATE form_templates ft SET definition = v.definition
+                                        FROM (
+                                            SELECT DISTINCT ON (form_template_id) form_template_id, definition
+                                            FROM form_template_versions
+                                            ORDER BY form_template_id, is_published DESC, version DESC
+                                        ) v
+                                        WHERE ft.id = v.form_template_id
+                                        """
+                                    )
+                                )
+                                db.execute(
+                                    text(
+                                        """
+                                        UPDATE project_safety_inspections psi
+                                        SET form_template_id = ftv.form_template_id,
+                                            form_definition_snapshot = ftv.definition
+                                        FROM form_template_versions ftv
+                                        WHERE psi.form_template_version_id IS NOT NULL
+                                          AND psi.form_template_version_id = ftv.id
+                                        """
+                                    )
+                                )
+                                db.commit()
+                                try:
+                                    db.execute(
+                                        text(
+                                            "ALTER TABLE project_safety_inspections DROP CONSTRAINT IF EXISTS fk_project_safety_inspections_form_template_version"
+                                        )
+                                    )
+                                except Exception:
+                                    db.rollback()
+                                try:
+                                    db.execute(text("DROP INDEX IF EXISTS ix_project_safety_inspections_template_version"))
+                                except Exception:
+                                    db.rollback()
+                                try:
+                                    db.execute(
+                                        text(
+                                            "ALTER TABLE project_safety_inspections DROP COLUMN IF EXISTS form_template_version_id"
+                                        )
+                                    )
+                                    db.commit()
+                                except Exception:
+                                    db.rollback()
+                                try:
+                                    db.execute(text("DROP TABLE IF EXISTS form_template_versions CASCADE"))
+                                    db.commit()
+                                except Exception:
+                                    db.rollback()
+                            try:
+                                db.execute(
+                                    text(
+                                        "ALTER TABLE project_safety_inspections DROP COLUMN IF EXISTS form_template_version_id"
+                                    )
+                                )
+                                db.commit()
+                            except Exception:
+                                db.rollback()
+                            try:
+                                db.execute(
+                                    text(
+                                        """
+                                        DO $ff$
+                                        BEGIN
+                                            IF NOT EXISTS (
+                                                SELECT 1 FROM pg_constraint WHERE conname = 'fk_project_safety_inspections_form_template'
+                                            ) THEN
+                                                ALTER TABLE project_safety_inspections
+                                                    ADD CONSTRAINT fk_project_safety_inspections_form_template
+                                                    FOREIGN KEY (form_template_id) REFERENCES form_templates(id) ON DELETE SET NULL;
+                                            END IF;
+                                        END $ff$;
+                                        """
+                                    )
+                                )
+                                db.commit()
+                            except Exception:
+                                db.rollback()
+                            try:
+                                db.execute(
+                                    text(
+                                        "CREATE INDEX IF NOT EXISTS ix_project_safety_inspections_form_template ON project_safety_inspections(form_template_id)"
+                                    )
+                                )
+                                db.commit()
+                            except Exception:
+                                db.rollback()
+                            print("[startup] Form templates unversioned migration (if needed)")
+                    except Exception as e:
+                        print(f"[startup] form_templates unversioned migration (non-critical): {e}")
+
                     # Form custom lists (global dropdown options). create_all only; never drops tables or deletes rows.
                     try:
                         from .models.models import FormCustomList, FormCustomListItem
@@ -447,6 +580,29 @@ def create_app() -> FastAPI:
                     except Exception as e:
                         db.rollback()
                         print(f"[startup] form_custom_lists create_all (non-critical): {e}")
+
+                    try:
+                        rows_io = db.execute(
+                            text(
+                                """
+                                SELECT 1 FROM information_schema.columns
+                                WHERE table_schema = 'public' AND table_name = 'form_custom_lists'
+                                  AND column_name = 'include_other'
+                                LIMIT 1
+                                """
+                            )
+                        ).fetchall()
+                        if not rows_io:
+                            db.execute(
+                                text(
+                                    "ALTER TABLE form_custom_lists ADD COLUMN include_other BOOLEAN NOT NULL DEFAULT false"
+                                )
+                            )
+                            db.commit()
+                            print("[startup] Added form_custom_lists.include_other")
+                    except Exception as e:
+                        db.rollback()
+                        print(f"[startup] form_custom_lists include_other migration (non-critical): {e}")
 
                     # Check for source_attendance_id column in project_time_entries
                     rows = db.execute(

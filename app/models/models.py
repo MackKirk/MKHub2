@@ -258,7 +258,7 @@ class ProjectReport(Base):
 
 
 class FormTemplate(Base):
-    """Configurable safety (or other) form definition; mutable metadata; content lives in versions."""
+    """Configurable safety (or other) form; single editable definition (last save wins)."""
     __tablename__ = "form_templates"
 
     id: Mapped[uuid.UUID] = uuid_pk()
@@ -266,37 +266,13 @@ class FormTemplate(Base):
     description: Mapped[Optional[str]] = mapped_column(Text)
     category: Mapped[str] = mapped_column(String(100), default="inspection", nullable=False, index=True)
     status: Mapped[str] = mapped_column(String(20), default="active", nullable=False, index=True)  # active | inactive
+    definition: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+    version_label: Mapped[str] = mapped_column(String(100), default="", nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
     updated_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
     created_by: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"))
 
-    versions = relationship(
-        "FormTemplateVersion",
-        back_populates="template",
-        cascade="all, delete-orphan",
-        order_by="FormTemplateVersion.version.desc()",
-    )
-
-
-class FormTemplateVersion(Base):
-    """Immutable snapshot of form structure when published; drafts editable until publish."""
-    __tablename__ = "form_template_versions"
-
-    id: Mapped[uuid.UUID] = uuid_pk()
-    form_template_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("form_templates.id", ondelete="CASCADE"), nullable=False, index=True
-    )
-    version: Mapped[int] = mapped_column(Integer, nullable=False)
-    definition: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
-    is_published: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False, index=True)
-    published_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
-    created_by: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"))
-
-    template = relationship("FormTemplate", back_populates="versions")
-    inspections = relationship("ProjectSafetyInspection", back_populates="form_template_version")
-
-    __table_args__ = (UniqueConstraint("form_template_id", "version", name="uq_form_template_version"),)
+    inspections = relationship("ProjectSafetyInspection", back_populates="form_template")
 
 
 class FormCustomList(Base):
@@ -308,6 +284,8 @@ class FormCustomList(Base):
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     description: Mapped[Optional[str]] = mapped_column(Text)
     status: Mapped[str] = mapped_column(String(20), default="active", nullable=False, index=True)
+    # When True, adding this list to a dropdown field auto-adds a Long Answer field labeled "Other:" below it.
+    include_other: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
     updated_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
     created_by: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"))
@@ -353,9 +331,10 @@ class ProjectSafetyInspection(Base):
     # draft: in progress; finalized: submitted/closed (shown as complete in hub lists/calendar)
     status: Mapped[str] = mapped_column(String(20), default="draft", nullable=False)
     form_payload: Mapped[Optional[dict]] = mapped_column(JSON)  # header fields + item responses by stable key
-    form_template_version_id: Mapped[Optional[uuid.UUID]] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("form_template_versions.id", ondelete="SET NULL"), nullable=True, index=True
+    form_template_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("form_templates.id", ondelete="SET NULL"), nullable=True, index=True
     )
+    form_definition_snapshot: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
     assigned_user_id: Mapped[Optional[uuid.UUID]] = mapped_column(
         UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True
     )
@@ -364,7 +343,7 @@ class ProjectSafetyInspection(Base):
     updated_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
     updated_by: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"))
 
-    form_template_version = relationship("FormTemplateVersion", back_populates="inspections")
+    form_template = relationship("FormTemplate", back_populates="inspections")
 
 
 class ProjectEvent(Base):
