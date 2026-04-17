@@ -2,7 +2,7 @@ import Calendar from '@/components/Calendar';
 import EmployeeCommunity from '@/components/EmployeeCommunity';
 import { useState, useEffect, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { Link, useLocation } from 'react-router-dom';
+import { Link } from 'react-router-dom';
 import { api } from '@/lib/api';
 import toast from 'react-hot-toast';
 import { ReportAttachmentAreaSingle } from '@/components/ReportAttachmentArea';
@@ -18,15 +18,10 @@ function getTimeBasedGreeting(): string {
 }
 
 export default function Overview(){
-  const location = useLocation();
   const [showReportModal, setShowReportModal] = useState(false);
   const { data: meProfile } = useQuery({ 
     queryKey: ['me-profile'], 
     queryFn: () => api<any>('GET', '/auth/me/profile') 
-  });
-  const { data: settings } = useQuery({ 
-    queryKey: ['settings'], 
-    queryFn: () => api<any>('GET', '/settings') 
   });
   
   const profile = meProfile?.profile || {};
@@ -46,37 +41,6 @@ export default function Overview(){
       day: 'numeric',
     });
   }, []);
-  
-  // Overlay image from settings (same as Project hero overlay)
-  const overlayUrl = useMemo(() => {
-    const branding = Array.isArray(settings?.branding) ? settings.branding : [];
-    const row = branding.find((i: any) => 
-      ['project_hero_overlay_url', 'hero_overlay_url', 'project hero overlay', 'hero overlay'].includes(
-        String(i.label || '').toLowerCase()
-      )
-    );
-    return row?.value || '';
-  }, [settings]);
-  
-  const [overlayResolved, setOverlayResolved] = useState<string>('');
-  useEffect(() => {
-    (async () => {
-      try {
-        if (!overlayUrl) {
-          setOverlayResolved('');
-          return;
-        }
-        if (overlayUrl.startsWith('/files/')) {
-          const r: any = await api('GET', overlayUrl);
-          setOverlayResolved(r.download_url || '');
-        } else {
-          setOverlayResolved(overlayUrl);
-        }
-      } catch {
-        setOverlayResolved('');
-      }
-    })();
-  }, [overlayUrl]);
   
   return (
     <div className="space-y-4 min-h-screen">

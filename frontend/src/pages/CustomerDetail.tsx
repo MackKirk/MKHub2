@@ -687,25 +687,6 @@ export default function CustomerDetail(){
     (list||[]).forEach(it=>{ const k = String(it.label||'').trim(); const v = String(it.value||'').trim(); if(k){ m[k] = v || ''; } });
     return m;
   }, [settings]);
-  const overlayUrl = useMemo(()=>{
-    const branding = (settings?.branding||[]) as any[];
-    const row = branding.find((i:any)=> ['customer_hero_overlay_url','hero_overlay_url','customer hero overlay','hero overlay'].includes(String(i.label||'').toLowerCase()));
-    return row?.value || '';
-  }, [settings]);
-  const [overlayResolved, setOverlayResolved] = useState<string>('');
-  useEffect(()=>{
-    (async()=>{
-      try{
-        if(!overlayUrl){ setOverlayResolved(''); return; }
-        if(overlayUrl.startsWith('/files/')){
-          const r:any = await api('GET', overlayUrl);
-          setOverlayResolved(r.download_url||'');
-        } else {
-          setOverlayResolved(overlayUrl);
-        }
-      }catch{ setOverlayResolved(''); }
-    })();
-  }, [overlayUrl]);
 
   const handleCreateProject = async () => {
     if (!newProjectName.trim()) {

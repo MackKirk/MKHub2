@@ -20,6 +20,7 @@ import { DivisionIcon } from '@/components/DivisionIcon';
 import { ReportAttachmentAreaMultiple } from '@/components/ReportAttachmentArea';
 import OverlayPortal from '@/components/OverlayPortal';
 import { BUSINESS_LINE_REPAIRS_MAINTENANCE } from '@/lib/businessLine';
+import { filterStatusesForOpportunity, filterStatusesForProject } from '@/lib/projectStatusVisibility';
 
 function salesListPaths(project: { business_line?: string; is_bidding?: boolean } | undefined | null) {
   const rm = project?.business_line === BUSINESS_LINE_REPAIRS_MAINTENANCE;
@@ -932,12 +933,6 @@ export default function ProjectDetail(){
     if (proposalCoverFo) return proposalCoverFo;
     return undefined;
   }, [files, proj, proposals]);
-  const overlayUrl = useMemo(()=>{
-    const branding = (settings?.branding||[]) as any[];
-    const row = branding.find((i:any)=> ['project_hero_overlay_url','hero_overlay_url','project hero overlay','hero overlay'].includes(String(i.label||'').toLowerCase()));
-    return row?.value || '';
-  }, [settings]);
-  const [overlayResolved, setOverlayResolved] = useState<string>('');
   const [showAuditLogModal, setShowAuditLogModal] = useState(false);
   const [auditLogSection, setAuditLogSection] = useState<'general' | 'timesheet' | 'reports' | 'workload' | 'files' | 'proposal' | 'pricing' | 'estimate' | 'orders'>('general');
   const [editStatusModal, setEditStatusModal] = useState(false);
@@ -952,19 +947,6 @@ export default function ProjectDetail(){
   const [editLeadSourceModal, setEditLeadSourceModal] = useState(false);
   const [editRelatedCustomersModal, setEditRelatedCustomersModal] = useState(false);
   const [showConvertModal, setShowConvertModal] = useState(false);
-  useEffect(()=>{
-    (async()=>{
-      try{
-        if(!overlayUrl){ setOverlayResolved(''); return; }
-        if(overlayUrl.startsWith('/files/')){
-          const r:any = await api('GET', overlayUrl);
-          setOverlayResolved(r.download_url||'');
-        } else {
-          setOverlayResolved(overlayUrl);
-        }
-      }catch{ setOverlayResolved(''); }
-    })();
-  }, [overlayUrl]);
 
   // Base available tabs
   const baseAvailableTabs = proj?.is_bidding 
@@ -9658,32 +9640,11 @@ function EditStatusModal({ projectId, currentStatus, currentStatusLabel, setting
     return 'general';
   }, [reportCategories]);
   
-  // For opportunities, only show: Prospecting, Sent to Customer, Refused, Conflict, Schedule Conflict
-  // For projects, show all statuses except "Prospecting"
   const projectStatuses = useMemo(() => {
     if (isBidding) {
-      // Filter to only show the allowed statuses for opportunities (Conflict = same as in projects)
-      // Use case-insensitive comparison and trim to handle variations
-      const allowedLabels = ['Prospecting', 'Sent to Customer', 'Refused', 'Conflict', 'Schedule Conflict'].map(l => l.toLowerCase().trim());
-      const filtered = allProjectStatuses.filter((status: any) => {
-        const statusLabel = String(status.label || '').toLowerCase().trim();
-        return allowedLabels.includes(statusLabel);
-      });
-      
-      // If no statuses found, log for debugging
-      if (filtered.length === 0 && allProjectStatuses.length > 0) {
-        console.warn('No matching opportunity statuses found. Available statuses:', allProjectStatuses.map((s: any) => s.label));
-      }
-      
-      return filtered;
-    } else {
-      // For projects, hide "Prospecting", "Sent to Customer", and "Refused"
-      const excludedLabels = ['prospecting', 'sent to customer', 'refused'].map(l => l.toLowerCase().trim());
-      return allProjectStatuses.filter((status: any) => {
-        const statusLabel = String(status.label || '').toLowerCase().trim();
-        return !excludedLabels.includes(statusLabel);
-      });
+      return filterStatusesForOpportunity(allProjectStatuses);
     }
+    return filterStatusesForProject(allProjectStatuses);
   }, [allProjectStatuses, isBidding]);
 
   const handleSave = async () => {
@@ -9753,7 +9714,7 @@ function EditStatusModal({ projectId, currentStatus, currentStatusLabel, setting
               <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">Status</label>
               {projectStatuses.length === 0 ? (
                 <div className="text-sm text-gray-500">
-                  No statuses available. Please ensure the following statuses exist in settings: {isBidding ? 'Prospecting, Sent to Customer, Refused, Conflict, Schedule Conflict' : 'All statuses except Prospecting'}
+                  No statuses available. In System Settings → project statuses, enable &quot;Show in {isBidding ? 'opportunities' : 'projects'}&quot; for at least one status.
                 </div>
               ) : (
                 <select

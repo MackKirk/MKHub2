@@ -8,10 +8,12 @@ import uuid
 
 from ..db import get_db
 from ..models.models import SettingList, SettingItem, Client, Attendance, User, Shift, Project, EmployeeProfile, AuditLog
+from ..services.standard_file_categories import ensure_standard_file_categories
 from ..auth.security import require_permissions, get_current_user
 from ..auth.security import User as UserType
 from ..config import settings
 import json
+import re
 
 router = APIRouter(prefix="/settings", tags=["settings"])
 
@@ -297,6 +299,7 @@ def get_settings_bundle(db: Session = Depends(get_db), user: UserType = Depends(
     
     # Only include setting lists if user has access
     if has_access:
+        ensure_standard_file_categories(db)
         rows = db.query(SettingList).all()
         for lst in rows:
             items = db.query(SettingItem).filter(SettingItem.list_id == lst.id).order_by(SettingItem.sort_index.asc()).all()
@@ -405,7 +408,23 @@ def list_settings(list_name: str, db: Session = Depends(get_db), _=Depends(requi
 
 
 @router.post("/{list_name}")
-def create_setting_item(list_name: str, label: str, value: str = "", sort_index: Optional[int] = None, abbr: Optional[str] = None, color: Optional[str] = None, description: Optional[str] = None, db: Session = Depends(get_db), user: UserType = Depends(get_current_user)):
+def create_setting_item(
+    list_name: str,
+    label: str,
+    value: str = "",
+    sort_index: Optional[int] = None,
+    abbr: Optional[str] = None,
+    color: Optional[str] = None,
+    description: Optional[str] = None,
+    icon: Optional[str] = None,
+    show_in_project: Optional[str] = None,
+    show_in_opportunity: Optional[str] = None,
+    allow_edit_proposal: Optional[str] = None,
+    sets_start_date: Optional[str] = None,
+    sets_end_date: Optional[str] = None,
+    db: Session = Depends(get_db),
+    user: UserType = Depends(get_current_user),
+):
     from ..auth.security import _has_permission
     
     # Check permissions: settings:access OR users:write OR (for break_eligible_employees in timesheet, also allow hr:users:edit:timesheet)
@@ -415,12 +434,25 @@ def create_setting_item(list_name: str, label: str, value: str = "", sort_index:
     
     if not has_permission:
         raise HTTPException(status_code=403, detail="Forbidden")
+
+    if list_name == "standard_file_categories":
+        slug = (label or "").strip()
+        if not re.match(r"^[a-z0-9]+(?:-[a-z0-9]+)*$", slug):
+            raise HTTPException(
+                status_code=400,
+                detail="Category id must use lowercase letters, numbers and hyphens only (e.g. bid-documents).",
+            )
+        label = slug
     
     lst = db.query(SettingList).filter(SettingList.name == list_name).first()
     if not lst:
         lst = SettingList(name=list_name)
         db.add(lst)
         db.flush()
+    if list_name == "standard_file_categories":
+        dup = db.query(SettingItem).filter(SettingItem.list_id == lst.id, SettingItem.label == label).first()
+        if dup:
+            raise HTTPException(status_code=400, detail="A category with this id already exists.")
     # Auto-assign sort_index if not provided to keep stable ordering and avoid renumbering
     if sort_index is None:
         last = db.query(SettingItem).filter(SettingItem.list_id == lst.id).order_by(SettingItem.sort_index.desc()).first()
@@ -433,6 +465,25 @@ def create_setting_item(list_name: str, label: str, value: str = "", sort_index:
     # For terms-templates, store description in meta.description
     if list_name == "terms-templates" and description is not None:
         meta["description"] = description
+    if list_name == "standard_file_categories":
+        if description is not None:
+            meta["description"] = description
+        meta["icon"] = ((icon or "").strip() or "📁")
+    if list_name == "project_statuses":
+        if show_in_project is not None:
+            meta["show_in_project"] = show_in_project.lower() in ("true", "1", "yes")
+        else:
+            meta["show_in_project"] = True
+        if show_in_opportunity is not None:
+            meta["show_in_opportunity"] = show_in_opportunity.lower() in ("true", "1", "yes")
+        else:
+            meta["show_in_opportunity"] = True
+        if allow_edit_proposal is not None:
+            meta["allow_edit_proposal"] = allow_edit_proposal.lower() in ("true", "1", "yes")
+        if sets_start_date is not None:
+            meta["sets_start_date"] = sets_start_date.lower() in ("true", "1", "yes")
+        if sets_end_date is not None:
+            meta["sets_end_date"] = sets_end_date.lower() in ("true", "1", "yes")
     it = SettingItem(list_id=lst.id, label=label, value=value, sort_index=sort_index, meta=meta or None)
     db.add(it)
     db.commit()
@@ -711,7 +762,7 @@ def update_attendance(
 
 
 @router.put("/{list_name}/{item_id}")
-def update_setting_item(list_name: str, item_id: str, label: str = None, value: str = None, sort_index: int | None = None, abbr: Optional[str] = None, color: Optional[str] = None, allow_edit_proposal: Optional[str] = None, sets_start_date: Optional[str] = None, sets_end_date: Optional[str] = None, description: Optional[str] = None, db: Session = Depends(get_db), user: UserType = Depends(get_current_user)):
+def update_setting_item(list_name: str, item_id: str, label: str = None, value: str = None, sort_index: int | None = None, abbr: Optional[str] = None, color: Optional[str] = None, allow_edit_proposal: Optional[str] = None, sets_start_date: Optional[str] = None, sets_end_date: Optional[str] = None, description: Optional[str] = None, icon: Optional[str] = None, show_in_project: Optional[str] = None, show_in_opportunity: Optional[str] = None, db: Session = Depends(get_db), user: UserType = Depends(get_current_user)):
     from ..auth.security import _has_permission
     
     lst = db.query(SettingList).filter(SettingList.name == list_name).first()
@@ -751,10 +802,19 @@ def update_setting_item(list_name: str, item_id: str, label: str = None, value: 
     if sets_end_date is not None:
         # Convert string to boolean
         meta["sets_end_date"] = sets_end_date.lower() in ('true', '1', 'yes')
+    if show_in_project is not None:
+        meta["show_in_project"] = show_in_project.lower() in ('true', '1', 'yes')
+    if show_in_opportunity is not None:
+        meta["show_in_opportunity"] = show_in_opportunity.lower() in ('true', '1', 'yes')
     # For terms-templates, update description in meta.description
     if list_name == "terms-templates":
         if description is not None:
             meta["description"] = description
+    if list_name == "standard_file_categories":
+        if description is not None:
+            meta["description"] = description
+        if icon is not None:
+            meta["icon"] = ((icon or "").strip() or "📁")
     # Always set meta (even if empty dict) to ensure meta fields are preserved
     it.meta = meta
     db.commit()

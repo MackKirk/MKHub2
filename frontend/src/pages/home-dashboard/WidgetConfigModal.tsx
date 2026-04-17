@@ -13,8 +13,7 @@ import {
   isShortcutItemAllowed,
   normalizeBusinessLineForHome,
 } from './widgetVisibility';
-
-const OPPORTUNITY_STATUS_LABELS = ['Prospecting', 'Sent to Customer', 'Refused'];
+import { filterStatusesForOpportunity, filterStatusesForProject } from '@/lib/projectStatusVisibility';
 
 function KpiStatusSelector({
   config,
@@ -29,16 +28,8 @@ function KpiStatusSelector({
 }) {
   const isOpportunityMetric = metric === 'opportunities' || metric === 'estimated_value';
   const statusOptions = useMemo(() => {
-    const all = (settings?.project_statuses as { id: string; label: string }[]) ?? [];
-    let filtered: { id: string; label: string }[];
-    if (isOpportunityMetric) {
-      const allowed = OPPORTUNITY_STATUS_LABELS.map((l) => l.toLowerCase().trim());
-      filtered = all.filter((s) => allowed.includes(String(s.label || '').toLowerCase().trim()));
-    } else {
-      const excluded = OPPORTUNITY_STATUS_LABELS.map((l) => l.toLowerCase().trim());
-      filtered = all.filter((s) => !excluded.includes(String(s.label || '').toLowerCase().trim()));
-    }
-    return filtered;
+    const all = (settings?.project_statuses as { id: string; label: string; meta?: Record<string, unknown> }[]) ?? [];
+    return isOpportunityMetric ? filterStatusesForOpportunity(all) : filterStatusesForProject(all);
   }, [settings?.project_statuses, isOpportunityMetric]);
 
   const selectedLabels = (config.status_labels as string[]) ?? [];

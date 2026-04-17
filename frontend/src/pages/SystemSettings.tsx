@@ -1,8 +1,9 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { api, withFileAccessToken } from '@/lib/api';
+import { api } from '@/lib/api';
 import { useMemo, useState, useEffect, useRef } from 'react';
 import toast from 'react-hot-toast';
 import { useConfirm } from '@/components/ConfirmProvider';
+import { effectiveShowInProject, effectiveShowInOpportunity } from '@/lib/projectStatusVisibility';
 
 type Item = { id:string, label:string, value?:string, sort_index?:number, meta?: any };
 
@@ -12,19 +13,23 @@ export default function SystemSettings(){
   const { data, refetch, isLoading } = useQuery({ queryKey:['settings-bundle'], queryFn: ()=>api<Record<string, Item[]>>('GET','/settings') });
   // Filter out non-list settings (like google_places_api_key) and lists with dedicated sections (like terms-templates)
   const lists = Object.entries(data||{})
-    .filter(([name]) => !['google_places_api_key', 'terms-templates'].includes(name))
+    .filter(([name]) => !['google_places_api_key', 'terms-templates', 'branding', 'standard_file_categories'].includes(name))
     .sort(([a],[b])=> a.localeCompare(b));
   const [sel, setSel] = useState<string>('client_statuses');
   const items = (data||{})[sel]||[];
   const [label, setLabel] = useState('');
   const [value, setValue] = useState('');
   const [description, setDescription] = useState('');
+  const [newShowInProject, setNewShowInProject] = useState(true);
+  const [newShowInOpportunity, setNewShowInOpportunity] = useState(true);
   
   // Reset form fields when selection changes
   useEffect(() => {
     setLabel('');
     setValue('');
     setDescription('');
+    setNewShowInProject(true);
+    setNewShowInOpportunity(true);
     setEdits({});
   }, [sel]);
   const [edits, setEdits] = useState<Record<string, Item>>({});
@@ -102,100 +107,6 @@ export default function SystemSettings(){
       document.removeEventListener('mousedown', handleClickOutside);
     };
   }, [breakEmployeeDropdownOpen]);
-  const brandingList = (data?.branding||[]) as Item[];
-  const heroItem = brandingList.find(i=> ['user_hero_background_url','hero_background_url','user hero background','hero background'].includes(String(i.label||'').toLowerCase()));
-  const overlayItem = brandingList.find(i=> ['customer_hero_overlay_url','hero_overlay_url','customer hero overlay','hero overlay'].includes(String(i.label||'').toLowerCase()));
-  const [heroUrlDraft, setHeroUrlDraft] = useState<string>('');
-  const [heroFile, setHeroFile] = useState<File|null>(null);
-  const [heroPreviewUrl, setHeroPreviewUrl] = useState<string>('');
-  const [heroDims, setHeroDims] = useState<{w:number,h:number}|null>(null);
-  const [overlayUrlDraft, setOverlayUrlDraft] = useState<string>('');
-  const [overlayFile, setOverlayFile] = useState<File|null>(null);
-  const [overlayPreviewUrl, setOverlayPreviewUrl] = useState<string>('');
-  // Resolve preview URL: if it's a files endpoint, fetch the signed download_url
-  useEffect(()=>{
-    const val = heroItem?.value||'';
-    (async()=>{
-      try{
-        if(!val){ setHeroPreviewUrl('/ui/assets/login/background.jpg'); return; }
-        if(val.startsWith('/files/')){
-          const r:any = await api('GET', val);
-          setHeroPreviewUrl(r.download_url||'/ui/assets/login/background.jpg');
-        } else {
-          setHeroPreviewUrl(val);
-        }
-      }catch{ setHeroPreviewUrl('/ui/assets/login/background.jpg'); }
-    })();
-  }, [heroItem?.value]);
-  useEffect(()=>{
-    const val = overlayItem?.value||'';
-    (async()=>{
-      try{
-        if(!val){ setOverlayPreviewUrl(''); return; }
-        if(val.startsWith('/files/')){
-          const r:any = await api('GET', val);
-          setOverlayPreviewUrl(r.download_url||'');
-        } else {
-          setOverlayPreviewUrl(val);
-        }
-      }catch{ setOverlayPreviewUrl(''); }
-    })();
-  }, [overlayItem?.value]);
-  useEffect(()=>{
-    if(!heroPreviewUrl){ setHeroDims(null); return; }
-    try{
-      const im = new Image();
-      im.onload = ()=> setHeroDims({ w: im.naturalWidth||0, h: im.naturalHeight||0 });
-      im.onerror = ()=> setHeroDims(null);
-      im.src = heroPreviewUrl;
-    }catch{ setHeroDims(null); }
-  }, [heroPreviewUrl]);
-  const saveHeroUrl = async(url:string)=>{
-    try{
-      if(heroItem){
-        await api('PUT', `/settings/branding/${encodeURIComponent(heroItem.id)}?label=user_hero_background_url&value=${encodeURIComponent(url)}`);
-      } else {
-        await api('POST', `/settings/branding?label=user_hero_background_url&value=${encodeURIComponent(url)}`);
-      }
-      toast.success('Brand image updated');
-      setHeroFile(null); setHeroUrlDraft('');
-      await refetch();
-    }catch(_e){ toast.error('Failed to update'); }
-  };
-  const uploadHero = async()=>{
-    try{
-      if(!heroFile){ toast.error('Select an image'); return; }
-      const type = heroFile.type || 'image/jpeg';
-      const up = await api('POST','/files/upload',{ original_name: heroFile.name, content_type: type, project_id: null, client_id: null, employee_id: null, category_id: 'branding-hero' });
-      await fetch(up.upload_url, { method:'PUT', headers:{ 'Content-Type': type, 'x-ms-blob-type':'BlockBlob' }, body: heroFile });
-      const conf = await api('POST','/files/confirm',{ key: up.key, size_bytes: heroFile.size, checksum_sha256: 'na', content_type: type });
-      const url = withFileAccessToken(`/files/${conf.id}/download`);
-      await saveHeroUrl(url);
-    }catch(_e){ toast.error('Upload failed'); }
-  };
-  const saveOverlayUrl = async(url:string)=>{
-    try{
-      if(overlayItem){
-        await api('PUT', `/settings/branding/${encodeURIComponent(overlayItem.id)}?label=customer_hero_overlay_url&value=${encodeURIComponent(url)}`);
-      } else {
-        await api('POST', `/settings/branding?label=customer_hero_overlay_url&value=${encodeURIComponent(url)}`);
-      }
-      toast.success('Overlay updated');
-      setOverlayFile(null); setOverlayUrlDraft('');
-      await refetch();
-    }catch(_e){ toast.error('Failed to update'); }
-  };
-  const uploadOverlay = async()=>{
-    try{
-      if(!overlayFile){ toast.error('Select an overlay image'); return; }
-      const type = overlayFile.type || 'image/png';
-      const up = await api('POST','/files/upload',{ original_name: overlayFile.name, content_type: type, project_id: null, client_id: null, employee_id: null, category_id: 'branding-hero-overlay' });
-      await fetch(up.upload_url, { method:'PUT', headers:{ 'Content-Type': type, 'x-ms-blob-type':'BlockBlob' }, body: overlayFile });
-      const conf = await api('POST','/files/confirm',{ key: up.key, size_bytes: overlayFile.size, checksum_sha256: 'na', content_type: type });
-      const url = withFileAccessToken(`/files/${conf.id}/download`);
-      await saveOverlayUrl(url);
-    }catch(_e){ toast.error('Upload failed'); }
-  };
   const todayLabel = useMemo(() => {
     return new Date().toLocaleDateString('en-CA', {
       weekday: 'long',
@@ -215,76 +126,6 @@ export default function SystemSettings(){
         <div className="text-right">
           <div className="text-xs text-gray-400 mb-1.5 font-medium uppercase tracking-wide">Today</div>
           <div className="text-sm font-semibold text-gray-700">{todayLabel}</div>
-        </div>
-      </div>
-      <div className="rounded-xl border bg-white p-3">
-        <div className="flex items-center justify-between mb-3">
-          <div>
-            <h4 className="font-semibold">Branding</h4>
-            <div className="text-xs text-gray-600">User hero background image for user pages and banners.</div>
-          </div>
-        </div>
-        <div className="grid md:grid-cols-3 gap-3 items-start">
-          <div className="md:col-span-2">
-            <div className="text-xs text-gray-600 mb-1">Current image</div>
-            <div className="rounded-lg border overflow-hidden bg-gray-50">
-              <img src={heroPreviewUrl||'/ui/assets/login/background.jpg'} className="w-full h-40 object-cover" />
-            </div>
-            <div className="mt-1 text-[11px] text-gray-600">
-              Recommended: at least 2400×1200 px (landscape).{heroDims? ` Current: ${heroDims.w}×${heroDims.h}px.`:''}
-            </div>
-          </div>
-          <div className="space-y-2">
-            <div>
-              <div className="text-xs text-gray-600 mb-1">User hero background (URL)</div>
-              <div className="flex gap-2">
-                <input className="border rounded px-2 py-1 text-sm flex-1" placeholder="https://..." value={heroUrlDraft} onChange={e=>setHeroUrlDraft(e.target.value)} />
-                <button onClick={()=> heroUrlDraft.trim() && saveHeroUrl(heroUrlDraft.trim())} className="px-3 py-1.5 rounded bg-brand-red text-white">Save</button>
-              </div>
-            </div>
-            <div>
-              <div className="text-xs text-gray-600 mb-1">Or upload user hero background</div>
-              <input type="file" accept="image/*" onChange={e=> setHeroFile(e.target.files?.[0]||null)} />
-              <div className="text-[11px] text-gray-500 mt-1">Prefer high-resolution JPG/PNG; avoid small images to prevent pixelation.</div>
-              <div className="mt-2 text-right">
-                <button onClick={uploadHero} className="px-3 py-1.5 rounded border">Upload</button>
-              </div>
-            </div>
-          </div>
-        </div>
-        <div className="mt-6 border-t pt-4">
-          <div className="flex items-center justify-between mb-3">
-            <div>
-              <h4 className="font-semibold">Customer hero overlay</h4>
-              <div className="text-xs text-gray-600">Optional overlay placed on the right side to blend the client image (Customer page only).</div>
-            </div>
-          </div>
-          <div className="grid md:grid-cols-3 gap-3 items-start">
-            <div className="md:col-span-2">
-              <div className="text-xs text-gray-600 mb-1">Current customer hero overlay</div>
-              <div className="rounded-lg border overflow-hidden bg-gray-50">
-                {overlayPreviewUrl? <img src={overlayPreviewUrl} className="w-full h-32 object-cover" /> : <div className="h-32 grid place-items-center text-xs text-gray-500">No overlay</div>}
-              </div>
-              <div className="mt-1 text-[11px] text-gray-600">Suggested: 2400×600 px PNG with transparency/gradient on the left.</div>
-            </div>
-            <div className="space-y-2">
-              <div>
-                <div className="text-xs text-gray-600 mb-1">Customer hero overlay (URL)</div>
-                <div className="flex gap-2">
-                  <input className="border rounded px-2 py-1 text-sm flex-1" placeholder="https://..." value={overlayUrlDraft} onChange={e=>setOverlayUrlDraft(e.target.value)} />
-                  <button onClick={()=> overlayUrlDraft.trim() && saveOverlayUrl(overlayUrlDraft.trim())} className="px-3 py-1.5 rounded bg-brand-red text-white">Save</button>
-                </div>
-              </div>
-              <div>
-                <div className="text-xs text-gray-600 mb-1">Or upload customer hero overlay</div>
-                <input type="file" accept="image/*" onChange={e=> setOverlayFile(e.target.files?.[0]||null)} />
-                <div className="text-[11px] text-gray-500 mt-1">PNG preferred for transparency.</div>
-                <div className="mt-2 text-right">
-                  <button onClick={uploadOverlay} className="px-3 py-1.5 rounded border">Upload</button>
-                </div>
-              </div>
-            </div>
-          </div>
         </div>
       </div>
       {/* Company Files Configuration */}
@@ -307,8 +148,8 @@ export default function SystemSettings(){
           <div>
             <h4 className="font-semibold mb-2 text-sm">Standard File Categories</h4>
             <p className="text-xs text-gray-500 mb-3">
-              These categories are used for all file uploads to standardize organization.
-              They are automatically created as subfolders in new projects.
+              Edit display name, description and icon: these drive project upload categories and the names of
+              subfolders created when initializing default project folders.
             </p>
             <StandardFileCategories />
           </div>
@@ -556,7 +397,7 @@ export default function SystemSettings(){
               ) : (
                 <div className="flex items-center justify-between mb-2">
                   <h4 className="font-semibold">{sel}</h4>
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2 flex-wrap">
                     <input className="border rounded px-2 py-1 text-sm" placeholder="Label" value={label} onChange={e=>setLabel(e.target.value)} />
                     {isDivisionList ? (
                       <>
@@ -568,7 +409,19 @@ export default function SystemSettings(){
                     ) : (
                       <input className="border rounded px-2 py-1 text-sm" placeholder="Value" value={value} onChange={e=>setValue(e.target.value)} />
                     )}
-                    <button onClick={async()=>{ if(!label){ toast.error('Label required'); return; } try{ await api('POST', `/settings/${encodeURIComponent(sel)}`, undefined, { 'Content-Type':'application/x-www-form-urlencoded' }); }catch{} try{ let url = `/settings/${encodeURIComponent(sel)}?label=${encodeURIComponent(label)}`; if(isDivisionList){ const [abbr, color] = (value||'').split('|'); url += `&abbr=${encodeURIComponent(abbr||'')}&color=${encodeURIComponent(color||'#cccccc')}`; } else if (isColorList){ url += `&value=${encodeURIComponent(value||'#cccccc')}`; } else { url += `&value=${encodeURIComponent(value||'')}`; } await api('POST', url); setLabel(''); setValue(''); await refetch(); toast.success('Added'); }catch(_e){ toast.error('Failed'); } }} className="px-3 py-1.5 rounded bg-brand-red text-white">Add</button>
+                    {sel === 'project_statuses' && (
+                      <span className="flex items-center gap-3 text-xs text-gray-700">
+                        <label className="flex items-center gap-1 whitespace-nowrap">
+                          <input type="checkbox" checked={newShowInProject} onChange={e=> setNewShowInProject(e.target.checked)} />
+                          Project
+                        </label>
+                        <label className="flex items-center gap-1 whitespace-nowrap">
+                          <input type="checkbox" checked={newShowInOpportunity} onChange={e=> setNewShowInOpportunity(e.target.checked)} />
+                          Opportunity
+                        </label>
+                      </span>
+                    )}
+                    <button onClick={async()=>{ if(!label){ toast.error('Label required'); return; } try{ await api('POST', `/settings/${encodeURIComponent(sel)}`, undefined, { 'Content-Type':'application/x-www-form-urlencoded' }); }catch{} try{ let url = `/settings/${encodeURIComponent(sel)}?label=${encodeURIComponent(label)}`; if(isDivisionList){ const [abbr, color] = (value||'').split('|'); url += `&abbr=${encodeURIComponent(abbr||'')}&color=${encodeURIComponent(color||'#cccccc')}`; } else if (isColorList){ url += `&value=${encodeURIComponent(value||'#cccccc')}`; if (sel === 'project_statuses'){ url += `&show_in_project=${newShowInProject ? 'true' : 'false'}&show_in_opportunity=${newShowInOpportunity ? 'true' : 'false'}`; } } else { url += `&value=${encodeURIComponent(value||'')}`; } await api('POST', url); setLabel(''); setValue(''); await refetch(); toast.success('Added'); }catch(_e){ toast.error('Failed'); } }} className="px-3 py-1.5 rounded bg-brand-red text-white">Add</button>
                   </div>
                 </div>
               )}
@@ -597,7 +450,15 @@ export default function SystemSettings(){
                             <input type="color" title="Color" className="border rounded w-10 h-8 p-0" value={e.value||'#cccccc'} onChange={ev=> setEdits(s=>({ ...s, [it.id]: { ...(s[it.id]||it), value: ev.target.value } }))} />
                             <span className="text-[11px] text-gray-500">{e.value}</span>
                             {sel === 'project_statuses' && (
-                              <div className="flex items-center gap-3 ml-2">
+                              <div className="flex flex-wrap items-center gap-x-3 gap-y-2 ml-2">
+                                <label className="flex items-center gap-1 text-xs text-gray-700 whitespace-nowrap">
+                                  <input type="checkbox" checked={typeof e.meta?.show_in_project === 'boolean' ? e.meta.show_in_project : effectiveShowInProject(it)} onChange={ev=> setEdits(s=>({ ...s, [it.id]: { ...(s[it.id]||it), meta: { ...(s[it.id]?.meta||it.meta||{}), show_in_project: ev.target.checked } } }))} />
+                                  Show in projects
+                                </label>
+                                <label className="flex items-center gap-1 text-xs text-gray-700 whitespace-nowrap">
+                                  <input type="checkbox" checked={typeof e.meta?.show_in_opportunity === 'boolean' ? e.meta.show_in_opportunity : effectiveShowInOpportunity(it)} onChange={ev=> setEdits(s=>({ ...s, [it.id]: { ...(s[it.id]||it), meta: { ...(s[it.id]?.meta||it.meta||{}), show_in_opportunity: ev.target.checked } } }))} />
+                                  Show in opportunities
+                                </label>
                                 <label className="flex items-center gap-1 text-xs text-gray-700">
                                   <input type="checkbox" checked={!!e.meta?.allow_edit_proposal} onChange={ev=> setEdits(s=>({ ...s, [it.id]: { ...(s[it.id]||it), meta: { ...(s[it.id]?.meta||it.meta||{}), allow_edit_proposal: ev.target.checked } } }))} />
                                   Allow edit proposal/estimate
@@ -619,7 +480,7 @@ export default function SystemSettings(){
                         {/* sort index is now auto-assigned and not user-editable */}
                       </div>
                       <div className="flex items-center gap-2">
-                        <button onClick={async()=>{ try{ let url = `/settings/${encodeURIComponent(sel)}/${encodeURIComponent(it.id)}?label=${encodeURIComponent(e.label||'')}`; if (isTermsTemplates){ url += `&description=${encodeURIComponent(e.meta?.description||'')}`; } else if (isDivisionList){ url += `&abbr=${encodeURIComponent(e.meta?.abbr||'')}&color=${encodeURIComponent(e.meta?.color||'')}`; } else if (isColorList){ url += `&value=${encodeURIComponent(e.value||'')}`; if (sel === 'project_statuses'){ const allowEdit = e.meta?.allow_edit_proposal; const setsStart = e.meta?.sets_start_date; const setsEnd = e.meta?.sets_end_date; url += `&allow_edit_proposal=${(allowEdit === true || allowEdit === 'true' || allowEdit === 1) ? 'true' : 'false'}`; url += `&sets_start_date=${(setsStart === true || setsStart === 'true' || setsStart === 1) ? 'true' : 'false'}`; url += `&sets_end_date=${(setsEnd === true || setsEnd === 'true' || setsEnd === 1) ? 'true' : 'false'}`; } } else { url += `&value=${encodeURIComponent(e.value||'')}`; } await api('PUT', url); await refetch(); toast.success('Saved'); }catch(_e){ toast.error('Failed'); } }} className="px-2 py-1 rounded bg-black text-white">Save</button>
+                        <button onClick={async()=>{ try{ let url = `/settings/${encodeURIComponent(sel)}/${encodeURIComponent(it.id)}?label=${encodeURIComponent(e.label||'')}`; if (isTermsTemplates){ url += `&description=${encodeURIComponent(e.meta?.description||'')}`; } else if (isDivisionList){ url += `&abbr=${encodeURIComponent(e.meta?.abbr||'')}&color=${encodeURIComponent(e.meta?.color||'')}`; } else if (isColorList){ url += `&value=${encodeURIComponent(e.value||'')}`; if (sel === 'project_statuses'){ const allowEdit = e.meta?.allow_edit_proposal; const setsStart = e.meta?.sets_start_date; const setsEnd = e.meta?.sets_end_date; const sip = typeof e.meta?.show_in_project === 'boolean' ? e.meta.show_in_project : effectiveShowInProject(it); const sio = typeof e.meta?.show_in_opportunity === 'boolean' ? e.meta.show_in_opportunity : effectiveShowInOpportunity(it); url += `&allow_edit_proposal=${(allowEdit === true || allowEdit === 'true' || allowEdit === 1) ? 'true' : 'false'}`; url += `&sets_start_date=${(setsStart === true || setsStart === 'true' || setsStart === 1) ? 'true' : 'false'}`; url += `&sets_end_date=${(setsEnd === true || setsEnd === 'true' || setsEnd === 1) ? 'true' : 'false'}`; url += `&show_in_project=${sip ? 'true' : 'false'}&show_in_opportunity=${sio ? 'true' : 'false'}`; } } else { url += `&value=${encodeURIComponent(e.value||'')}`; } await api('PUT', url); await refetch(); toast.success('Saved'); }catch(_e){ toast.error('Failed'); } }} className="px-2 py-1 rounded bg-black text-white">Save</button>
                         <button onClick={async()=>{ if(!(await confirm({ title: 'Delete item?', description: 'This action cannot be undone.' }))) return; try{ await api('DELETE', `/settings/${encodeURIComponent(sel)}/${encodeURIComponent(it.id)}`); await refetch(); toast.success('Deleted'); }catch(_e){ toast.error('Failed'); } }} className="px-2 py-1 rounded bg-gray-100">Delete</button>
                       </div>
                     </div>
@@ -1608,32 +1469,194 @@ function CompanyFilesDepartments(){
   );
 }
 
-// Standard File Categories Component
+// Standard File Categories — stored as settings list `standard_file_categories` (slug, name, meta.icon, meta.description)
 function StandardFileCategories(){
+  const confirmDlg = useConfirm();
+  const qc = useQueryClient();
   const { data: categories, isLoading } = useQuery({
     queryKey: ['file-categories'],
     queryFn: ()=>api<any[]>('GET', '/clients/file-categories')
   });
+  const [edits, setEdits] = useState<Record<string, { name?: string; icon?: string; description?: string }>>({});
+  const [newSlug, setNewSlug] = useState('');
+  const [newName, setNewName] = useState('');
+  const [newIcon, setNewIcon] = useState('📁');
+  const [newDesc, setNewDesc] = useState('');
+
+  const sorted = useMemo(()=>{
+    return (categories||[]).slice().sort((a:any,b:any)=>(a.sortIndex??0)-(b.sortIndex??0));
+  }, [categories]);
+
+  const getEdit = (row: any) => edits[row.itemId] || {};
+
+  const updateMutation = useMutation({
+    mutationFn: (payload: { itemId: string; value?: string; icon?: string; description?: string; sort_index?: number })=>{
+      const params = new URLSearchParams();
+      if (payload.value !== undefined) params.set('value', payload.value);
+      if (payload.icon !== undefined) params.set('icon', payload.icon);
+      if (payload.description !== undefined) params.set('description', payload.description);
+      if (payload.sort_index !== undefined) params.set('sort_index', String(payload.sort_index));
+      return api('PUT', `/settings/standard_file_categories/${encodeURIComponent(payload.itemId)}?${params.toString()}`);
+    },
+    onSuccess: ()=>{
+      qc.invalidateQueries({ queryKey: ['file-categories'] });
+      qc.invalidateQueries({ queryKey: ['settings-bundle'] });
+      toast.success('Saved');
+    },
+    onError: ()=> toast.error('Failed to save'),
+  });
+
+  const createMutation = useMutation({
+    mutationFn: (vars: { slug: string; name: string; icon: string; desc: string })=>{
+      const slug = vars.slug.trim().toLowerCase();
+      if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(slug)){
+        throw new Error('Invalid id: use lowercase letters, numbers and hyphens only.');
+      }
+      const params = new URLSearchParams({
+        label: slug,
+        value: (vars.name.trim() || slug),
+      });
+      if (vars.icon.trim()) params.set('icon', vars.icon.trim());
+      if (vars.desc.trim()) params.set('description', vars.desc.trim());
+      return api('POST', `/settings/standard_file_categories?${params.toString()}`);
+    },
+    onSuccess: ()=>{
+      qc.invalidateQueries({ queryKey: ['file-categories'] });
+      qc.invalidateQueries({ queryKey: ['settings-bundle'] });
+      setNewSlug(''); setNewName(''); setNewIcon('📁'); setNewDesc('');
+      toast.success('Category added');
+    },
+    onError: (e: any)=> toast.error(e?.message || 'Failed to add'),
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: (itemId: string)=> api('DELETE', `/settings/standard_file_categories/${encodeURIComponent(itemId)}`),
+    onSuccess: ()=>{
+      qc.invalidateQueries({ queryKey: ['file-categories'] });
+      qc.invalidateQueries({ queryKey: ['settings-bundle'] });
+      toast.success('Deleted');
+    },
+    onError: ()=> toast.error('Failed to delete'),
+  });
+
+  const move = (idx: number, dir: -1|1)=>{
+    if (!sorted.length) return;
+    const j = idx + dir;
+    if (j < 0 || j >= sorted.length) return;
+    const a = sorted[idx], b = sorted[j];
+    updateMutation.mutate({ itemId: a.itemId, sort_index: (b.sortIndex ?? 0) });
+    updateMutation.mutate({ itemId: b.itemId, sort_index: (a.sortIndex ?? 0) });
+  };
+
+  const saveRow = (row: any)=>{
+    const e = getEdit(row);
+    const name = e.name !== undefined ? e.name : row.name;
+    const icon = e.icon !== undefined ? e.icon : row.icon;
+    const description = e.description !== undefined ? e.description : (row.description || '');
+    updateMutation.mutate({
+      itemId: row.itemId,
+      value: String(name ?? '').trim() || row.id,
+      icon: String(icon ?? '').trim() || '📁',
+      description,
+    }, {
+      onSuccess: ()=> setEdits(s=>{ const { [row.itemId]: _, ...rest } = s; return rest; }),
+    });
+  };
 
   return (
-    <div>
+    <div className="space-y-2">
+      <div className="border rounded p-2 space-y-2 bg-gray-50/80">
+        <div className="text-[11px] font-medium text-gray-600">New category</div>
+        <div className="grid grid-cols-2 gap-2">
+          <input className="border rounded px-2 py-1 text-xs" placeholder="Id (e.g. as-built)" value={newSlug} onChange={e=>setNewSlug(e.target.value)} />
+          <input className="border rounded px-2 py-1 text-xs" placeholder="Display / folder name" value={newName} onChange={e=>setNewName(e.target.value)} />
+        </div>
+        <div className="flex gap-2 flex-wrap items-center">
+          <input className="border rounded px-2 py-1 text-xs w-16 text-center" title="Icon (emoji)" value={newIcon} onChange={e=>setNewIcon(e.target.value)} />
+          <input className="border rounded px-2 py-1 text-xs flex-1 min-w-[120px]" placeholder="Description (optional)" value={newDesc} onChange={e=>setNewDesc(e.target.value)} />
+          <button
+            type="button"
+            className="px-2 py-1 rounded bg-brand-red text-white text-xs shrink-0"
+            disabled={createMutation.isPending || !newSlug.trim()}
+            onClick={()=> createMutation.mutate({ slug: newSlug, name: newName, icon: newIcon, desc: newDesc })}
+          >
+            Add
+          </button>
+        </div>
+      </div>
+
       {isLoading ? (
         <div className="text-sm text-gray-500">Loading...</div>
       ) : (
-        <div className="grid grid-cols-2 gap-2 border rounded p-2 max-h-64 overflow-y-auto">
-          {(categories||[]).map((c:any)=>(
-            <div key={c.id} className="flex items-center gap-2 p-2 border rounded bg-gray-50">
-              <span className="text-lg">{c.icon}</span>
-              <div className="flex-1 min-w-0">
-                <div className="font-medium text-xs">{c.name}</div>
-                <div className="text-[10px] text-gray-500 truncate">{c.id}</div>
+        <div className="border rounded divide-y max-h-80 overflow-y-auto">
+          {sorted.map((row: any, i: number)=>{
+            const e = getEdit(row);
+            const name = e.name !== undefined ? e.name : row.name;
+            const icon = e.icon !== undefined ? e.icon : row.icon;
+            const description = e.description !== undefined ? e.description : (row.description || '');
+            return (
+              <div key={row.itemId} className="p-2 flex flex-col gap-2 bg-white">
+                <div className="flex items-start gap-2">
+                  <div className="flex flex-col gap-0.5 shrink-0">
+                    <button type="button" className="px-1 border rounded text-[10px] disabled:opacity-30" disabled={i===0} onClick={()=>move(i,-1)} title="Move up">↑</button>
+                    <button type="button" className="px-1 border rounded text-[10px] disabled:opacity-30" disabled={i===sorted.length-1} onClick={()=>move(i,1)} title="Move down">↓</button>
+                  </div>
+                  <input
+                    className="border rounded px-1.5 py-0.5 text-sm w-10 text-center shrink-0"
+                    value={icon}
+                    onChange={ev=> setEdits(s=>({ ...s, [row.itemId]: { ...getEdit(row), icon: ev.target.value } }))}
+                  />
+                  <div className="flex-1 min-w-0 space-y-1">
+                    <input
+                      className="border rounded px-2 py-1 text-sm w-full"
+                      value={name}
+                      onChange={ev=> setEdits(s=>({ ...s, [row.itemId]: { ...getEdit(row), name: ev.target.value } }))}
+                    />
+                    <textarea
+                      className="border rounded px-2 py-1 text-xs w-full resize-none"
+                      rows={2}
+                      placeholder="Description"
+                      value={description}
+                      onChange={ev=> setEdits(s=>({ ...s, [row.itemId]: { ...getEdit(row), description: ev.target.value } }))}
+                    />
+                    <div className="text-[10px] text-gray-400 font-mono truncate" title="Stored on files as category id — do not change in DB without migration">
+                      id: {row.id}
+                    </div>
+                  </div>
+                  <div className="flex flex-col gap-1 shrink-0">
+                    <button
+                      type="button"
+                      className="px-2 py-1 rounded bg-black text-white text-xs"
+                      disabled={updateMutation.isPending}
+                      onClick={()=> saveRow(row)}
+                    >
+                      Save
+                    </button>
+                    <button
+                      type="button"
+                      className="px-2 py-1 text-xs text-red-600 hover:underline"
+                      disabled={deleteMutation.isPending}
+                      onClick={async ()=>{
+                        const result = await confirmDlg({
+                          title: 'Delete category?',
+                          message: `Remove "${row.name}" (${row.id}) from the list? Existing files still reference this category id.`,
+                          confirmText: 'Delete',
+                          cancelText: 'Cancel',
+                        });
+                        if (result === 'confirm') deleteMutation.mutate(row.itemId);
+                      }}
+                    >
+                      Delete
+                    </button>
+                  </div>
+                </div>
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
-      <p className="text-xs text-gray-500 mt-2">
-        These categories are automatically created as subfolders when new projects are created.
+      <p className="text-[11px] text-gray-500">
+        The id is stored on uploaded files; renaming display name or folders does not rewrite existing file rows.
       </p>
     </div>
   );
