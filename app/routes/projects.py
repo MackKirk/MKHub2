@@ -5084,6 +5084,7 @@ def business_opportunities(
     page: int = Query(1, ge=1),
     limit: int = Query(25, ge=1, le=100),
     business_line: Optional[str] = None,
+    related_to_me: Optional[bool] = False,
     sort: Optional[str] = None,
     sort_dir: Optional[str] = Query("asc", alias="dir"),
     db: Session = Depends(get_db),
@@ -5094,7 +5095,9 @@ def business_opportunities(
     if bl_clause is None:
         return {"items": [], "total": 0, "page": page, "limit": limit}
     query = db.query(Project).filter(Project.is_bidding == True, Project.deleted_at.is_(None)).filter(bl_clause)
-    
+    if related_to_me:
+        query = query.filter(_project_related_to_user_filter(user.id))
+
     # Filter by client
     if client_id:
         try:
@@ -5580,6 +5583,7 @@ def business_projects(
     page: int = Query(1, ge=1),
     limit: int = Query(25, ge=1, le=100),
     business_line: Optional[str] = None,
+    related_to_me: Optional[bool] = False,
     sort: Optional[str] = None,
     sort_dir: Optional[str] = Query("asc", alias="dir"),
     db: Session = Depends(get_db),
@@ -5590,7 +5594,9 @@ def business_projects(
     if bl_clause is None:
         return {"items": [], "total": 0, "page": page, "limit": limit}
     query = db.query(Project).filter(Project.is_bidding == False, Project.deleted_at.is_(None)).filter(bl_clause)
-    
+    if related_to_me:
+        query = query.filter(_project_related_to_user_filter(user.id))
+
     # Filter by client
     if client_id:
         try:

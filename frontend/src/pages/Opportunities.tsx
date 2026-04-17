@@ -372,6 +372,17 @@ function convertParamsToRules(params: URLSearchParams): FilterRule[] {
   return rules;
 }
 
+function statusIdByLabel(statuses: unknown[] | undefined, label: string): string | undefined {
+  const t = label.toLowerCase().trim();
+  for (const s of statuses || []) {
+    const row = s as { id?: unknown; label?: unknown };
+    if (String(row.label || '').toLowerCase().trim() === t && row.id != null) {
+      return String(row.id);
+    }
+  }
+  return undefined;
+}
+
 // Filter Chip Component - same rounded-full / text-sm as employee tabs area
 function FilterChip({ label, value, onRemove }: { label: string; value: string; onRemove: () => void }) {
   return (
@@ -1018,15 +1029,46 @@ export default function Opportunities(){
       ? (me?.permissions || []).includes('business:rm:projects:write')
       : (me?.permissions || []).includes('business:construction:projects:write'));
 
-  // Check if any structured filters are active (for Clear Filters button and chips)
+  const hasRuleFilters = currentRules.length > 0;
   const hasActiveFilters = useMemo(() => {
-    return currentRules.length > 0;
-  }, [currentRules]);
-  
+    return hasRuleFilters || searchParams.get('related_to_me') === '1';
+  }, [hasRuleFilters, searchParams]);
+
+  const quickStatusIds = useMemo(
+    () => ({
+      prospecting: statusIdByLabel(projectStatuses, 'prospecting'),
+      refused: statusIdByLabel(projectStatuses, 'refused'),
+      sentToCustomer: statusIdByLabel(projectStatuses, 'sent to customer'),
+    }),
+    [projectStatuses]
+  );
+
+  const toggleStatusQuickFilter = (statusId: string | undefined) => {
+    if (!statusId) return;
+    const params = new URLSearchParams(searchParams);
+    const cur = params.get('status');
+    if (cur === statusId) {
+      params.delete('status');
+    } else {
+      params.delete('status_not');
+      params.set('status', statusId);
+    }
+    params.set('page', '1');
+    setSearchParams(params, { replace: true });
+  };
+
+  const quickFilterBtnClass = (active: boolean) =>
+    `px-2 py-0.5 rounded-full text-[11px] font-medium leading-tight transition-colors duration-150 whitespace-nowrap border ${
+      active
+        ? 'bg-gray-900 text-white border-gray-900'
+        : 'text-gray-600 hover:text-gray-900 bg-white border-gray-200 hover:border-gray-300'
+    }`;
+
   // Handle applying filters from modal
   const handleApplyFilters = (rules: FilterRule[]) => {
     const params = convertRulesToParams(rules);
     if (q) params.set('q', q);
+    if (searchParams.get('related_to_me') === '1') params.set('related_to_me', '1');
     params.set('page', '1');
     setSearchParams(params);
     refetch();
@@ -1207,11 +1249,57 @@ export default function Opportunities(){
               </button>
             )}
           </div>
+
+          <div className="mt-3 pt-3 border-t border-gray-100">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="text-[10px] font-medium text-gray-500 uppercase tracking-wide shrink-0">Quick filters:</span>
+              <button
+                type="button"
+                onClick={() => {
+                  const params = new URLSearchParams(searchParams);
+                  if (params.get('related_to_me') === '1') params.delete('related_to_me');
+                  else params.set('related_to_me', '1');
+                  params.set('page', '1');
+                  setSearchParams(params, { replace: true });
+                }}
+                className={quickFilterBtnClass(searchParams.get('related_to_me') === '1')}
+              >
+                Related to Me
+              </button>
+              {quickStatusIds.prospecting && (
+                <button
+                  type="button"
+                  onClick={() => toggleStatusQuickFilter(quickStatusIds.prospecting)}
+                  className={quickFilterBtnClass(searchParams.get('status') === quickStatusIds.prospecting)}
+                >
+                  Prospecting
+                </button>
+              )}
+              {quickStatusIds.refused && (
+                <button
+                  type="button"
+                  onClick={() => toggleStatusQuickFilter(quickStatusIds.refused)}
+                  className={quickFilterBtnClass(searchParams.get('status') === quickStatusIds.refused)}
+                >
+                  Refused
+                </button>
+              )}
+              {quickStatusIds.sentToCustomer && (
+                <button
+                  type="button"
+                  onClick={() => toggleStatusQuickFilter(quickStatusIds.sentToCustomer)}
+                  className={quickFilterBtnClass(searchParams.get('status') === quickStatusIds.sentToCustomer)}
+                >
+                  Sent to Customer
+                </button>
+              )}
+            </div>
+          </div>
         </div>
       </div>
 
       {/* Filter Chips */}
-      {hasActiveFilters && (
+      {hasRuleFilters && (
         <div className="mb-4 flex items-center gap-2 flex-wrap">
           {currentRules.map((rule) => {
             const fieldLabel = getFieldLabel(rule.field);
@@ -1226,6 +1314,7 @@ export default function Opportunities(){
                   const updatedRules = currentRules.filter(r => r.id !== rule.id);
                   const params = convertRulesToParams(updatedRules);
                   if (q) params.set('q', q);
+                  if (searchParams.get('related_to_me') === '1') params.set('related_to_me', '1');
                   setSearchParams(params);
                   refetch();
                 }}
