@@ -7,6 +7,7 @@ import {
   isExemptFromProfileWizardRedirect,
   matchesOnboardingDocumentsRedirectExempt,
 } from '@/lib/profileCompleteness';
+import ChangelogNewsPanel from '@/components/ChangelogNewsPanel';
 import NotificationBell from '@/components/NotificationBell';
 import { useUnsavedChanges } from '@/components/UnsavedChangesProvider';
 import { useConfirm } from '@/components/ConfirmProvider';
@@ -1103,6 +1104,7 @@ export default function AppShell({ children }: PropsWithChildren){
             getLocalSections={() => globalSearchLocalSections}
           />
           <div className="flex items-center gap-4">
+            <ChangelogNewsPanel />
             <NotificationBell />
             <div className="relative flex items-center gap-3">
               <button onClick={()=>setOpen(v=>!v)} className="flex items-center gap-3 hover:opacity-90 transition-opacity duration-200">
