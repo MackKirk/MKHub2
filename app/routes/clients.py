@@ -15,6 +15,7 @@ from ..schemas.clients import (
     ClientSiteCreate, ClientSiteResponse,
 )
 from ..auth.security import require_permissions, get_current_user, require_roles
+from ..services.standard_file_categories import get_categories_for_client_api, get_default_folder_rows
 
 
 router = APIRouter(prefix="/clients", tags=["clients"])
@@ -486,30 +487,12 @@ def list_clients(
 
 # ===== File Categories (must be before /{client_id} route) =====
 @router.get("/file-categories")
-def list_file_categories():
+def list_file_categories(db: Session = Depends(get_db)):
     """
-    Returns standard file categories that can be used for organizing files.
-    These categories can be used for both client and project files.
-    Based on company standard folder structure.
+    Returns standard file categories for organizing files (project/client uploads and UI).
+    Items are editable under System Settings (list standard_file_categories).
     """
-    return [
-        {"id": "bid-documents", "name": "BidDocuments", "icon": "📁"},
-        {"id": "drawings", "name": "Drawings", "icon": "📐"},
-        {"id": "pictures", "name": "Pictures", "icon": "🖼️"},
-        {"id": "specs", "name": "Specs", "icon": "📋"},
-        {"id": "contract", "name": "Contract", "icon": "📄"},
-        {"id": "accounting", "name": "Accounting", "icon": "💰"},
-        {"id": "hse", "name": "Hse", "icon": "🛡️"},
-        {"id": "submittals", "name": "Submittals", "icon": "📤"},
-        {"id": "purchasing", "name": "Purchasing", "icon": "🛒"},
-        {"id": "changes", "name": "Changes", "icon": "🔄"},
-        {"id": "schedules", "name": "Schedules", "icon": "📅"},
-        {"id": "reports", "name": "Reports", "icon": "📊"},
-        {"id": "sub-contractors", "name": "SubContractors", "icon": "👷"},
-        {"id": "closeout", "name": "Closeout", "icon": "✅"},
-        {"id": "photos", "name": "Photos", "icon": "📷"},
-        {"id": "other", "name": "Other", "icon": "📦"},
-    ]
+    return get_categories_for_client_api(db)
 
 
 @router.get("/{client_id}/project-participations")
@@ -1246,32 +1229,6 @@ def attach_file(client_id: str, file_object_id: str, category: Optional[str] = N
 
 
 
-def get_default_folder_structure():
-    """
-    Returns the default folder structure that can be created for projects or clients.
-    Returns a list of folder names with their sort order.
-    Based on company standard folder structure.
-    """
-    return [
-        {"name": "BidDocuments", "sort_index": 0},
-        {"name": "Drawings", "sort_index": 1},
-        {"name": "Pictures", "sort_index": 2},
-        {"name": "Specs", "sort_index": 3},
-        {"name": "Contract", "sort_index": 4},
-        {"name": "Accounting", "sort_index": 5},
-        {"name": "Hse", "sort_index": 6},
-        {"name": "Submittals", "sort_index": 7},
-        {"name": "Purchasing", "sort_index": 8},
-        {"name": "Changes", "sort_index": 9},
-        {"name": "Schedules", "sort_index": 10},
-        {"name": "Reports", "sort_index": 11},
-        {"name": "SubContractors", "sort_index": 12},
-        {"name": "Closeout", "sort_index": 13},
-        {"name": "Photos", "sort_index": 14},
-        {"name": "Other", "sort_index": 15},
-    ]
-
-
 def create_default_folders_for_parent(
     db: Session, 
     client_id,  # Can be str or UUID
@@ -1291,7 +1248,7 @@ def create_default_folders_for_parent(
     except Exception:
         raise ValueError(f"Invalid client_id: {client_id}")
     
-    default_folders = get_default_folder_structure()
+    default_folders = get_default_folder_rows(db)
     created_folders = []
     
     for folder_def in default_folders:

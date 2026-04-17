@@ -10,6 +10,7 @@ import OverlayPortal from '@/components/OverlayPortal';
 import { DivisionIcon } from '@/components/DivisionIcon';
 import { useBusinessLine } from '@/context/BusinessLineContext';
 import { BUSINESS_LINE_REPAIRS_MAINTENANCE, filterProjectDivisionsForBusinessLine } from '@/lib/businessLine';
+import { filterStatusesForProject } from '@/lib/projectStatusVisibility';
 
 type Client = { id:string, display_name?:string, name?:string, city?:string, province?:string, address_line1?:string };
 type Site = { id:string, site_name?:string, site_address_line1?:string, site_city?:string, site_province?:string, site_country?:string, site_postal_code?:string, site_address_line2?:string, site_lat?:number, site_lng?:number, site_notes?:string };
@@ -720,7 +721,7 @@ export default function ProjectNew(){
                           onChange={(e) => setStatusLabel(e.target.value)}
                         >
                           <option value="">Select...</option>
-                          {sortByLabel(settings?.project_statuses || [], (s: any) => (s.label || '').toString()).map((s: any) => (
+                          {sortByLabel(filterStatusesForProject(settings?.project_statuses || []), (s: any) => (s.label || '').toString()).map((s: any) => (
                             <option key={s.label} value={s.label}>
                               {s.label}
                             </option>

@@ -2876,28 +2876,6 @@ export default function UserInfo(){
     return row? (row.username || row.email) : '';
   }, [usersOptions, p?.manager_user_id, supervisorProfile]);
 
-  const heroBgUrl = (()=>{
-    const branding = (settings?.branding||[]) as any[];
-    const hero = branding.find((i:any)=> ['user_hero_background_url','hero_background_url','user hero background','hero background'].includes(String(i.label||'').toLowerCase()));
-    return hero?.value || '/ui/assets/login/background.jpg';
-  })();
-  const [heroResolvedUrl, setHeroResolvedUrl] = useState<string>('');
-  useEffect(()=>{
-    (async()=>{
-      try{
-        if(!heroBgUrl){ setHeroResolvedUrl('/ui/assets/login/background.jpg'); return; }
-        if(heroBgUrl.startsWith('/files/')){
-          const r:any = await api('GET', heroBgUrl);
-          setHeroResolvedUrl(r.download_url||'/ui/assets/login/background.jpg');
-        } else {
-          setHeroResolvedUrl(heroBgUrl);
-        }
-      }catch{ setHeroResolvedUrl('/ui/assets/login/background.jpg'); }
-    })();
-  }, [heroBgUrl]);
-
-  
-
   function calcAge(dob?: string){
     if(!dob) return '';
     try{ const d = new Date(dob); const now = new Date(); let a = now.getFullYear()-d.getFullYear(); const m = now.getMonth()-d.getMonth(); if(m<0 || (m===0 && now.getDate()<d.getDate())) a--; return a>0? `${a}y` : '—'; }catch{ return ''; }

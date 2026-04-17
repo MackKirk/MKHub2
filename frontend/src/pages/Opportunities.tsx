@@ -12,6 +12,7 @@ import { ReportAttachmentAreaMultiple } from '@/components/ReportAttachmentArea'
 import OverlayPortal from '@/components/OverlayPortal';
 import { useBusinessLine } from '@/context/BusinessLineContext';
 import { BUSINESS_LINE_REPAIRS_MAINTENANCE, filterProjectDivisionsForBusinessLine } from '@/lib/businessLine';
+import { filterStatusesForOpportunity } from '@/lib/projectStatusVisibility';
 
 // Helper function to get user initials
 function getUserInitials(user: any): string {
@@ -478,8 +479,7 @@ function FilterRuleRow({
 
     if (textSelectFields.includes(rule.field)) {
       if (rule.field === 'status') {
-        const statusList = projectStatuses
-          .filter((status: any) => ['Prospecting', 'Sent to Customer', 'Refused', 'Schedule Conflict'].includes(status.label))
+        const statusList = filterStatusesForOpportunity(projectStatuses)
           .sort((a: any, b: any) => (a.label || '').localeCompare(b.label || '', undefined, { sensitivity: 'base' }));
         return (
           <select

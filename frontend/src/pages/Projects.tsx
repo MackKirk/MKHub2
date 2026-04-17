@@ -14,6 +14,7 @@ import { FilterRule, FieldConfig } from '@/components/FilterBuilder/types';
 import { isRangeOperator } from '@/components/FilterBuilder/utils';
 import { useBusinessLine } from '@/context/BusinessLineContext';
 import { BUSINESS_LINE_REPAIRS_MAINTENANCE, filterProjectDivisionsForBusinessLine } from '@/lib/businessLine';
+import { effectiveShowInProject } from '@/lib/projectStatusVisibility';
 
 // Helper function to get user initials
 function getUserInitials(user: any): string {
@@ -644,6 +645,7 @@ export default function Projects(){
         const allowedStatuses = ['in progress', 'on progress', 'on hold', 'finished'];
         return projectStatuses
           .filter((s: any) => {
+            if (!effectiveShowInProject(s)) return false;
             const label = (s.label || '').trim().toLowerCase();
             return allowedStatuses.includes(label);
           })
