@@ -7,6 +7,16 @@ import { effectiveShowInProject, effectiveShowInOpportunity } from '@/lib/projec
 
 type Item = { id:string, label:string, value?:string, sort_index?:number, meta?: any };
 
+type SettingsSection = 'files' | 'templates' | 'lists';
+
+/** Human-readable label for setting list keys (sidebar + headers). */
+function formatSettingsListTitle(name: string): string {
+  if (name === 'terms-templates') return 'Terms Templates';
+  return name
+    .replace(/_/g, ' ')
+    .replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
 export default function SystemSettings(){
   const confirm = useConfirm();
   const queryClient = useQueryClient();
@@ -116,102 +126,155 @@ export default function SystemSettings(){
     });
   }, []);
 
+  const [section, setSection] = useState<SettingsSection>('lists');
+
+  const sectionTabs: { id: SettingsSection; label: string }[] = [
+    { id: 'lists', label: 'Lookup lists' },
+    { id: 'files', label: 'Files & categories' },
+    { id: 'templates', label: 'Templates' },
+  ];
+
   return (
     <div className="space-y-4">
-      <div className="bg-slate-200/50 rounded-[12px] border border-slate-200 flex items-center justify-between py-4 px-6 mb-6">
-        <div>
-          <div className="text-xl font-bold text-gray-900 tracking-tight mb-0.5">System Settings</div>
-          <div className="text-sm text-gray-500 font-medium">Manage application lists, statuses, and divisions.</div>
-        </div>
-        <div className="text-right">
-          <div className="text-xs text-gray-400 mb-1.5 font-medium uppercase tracking-wide">Today</div>
-          <div className="text-sm font-semibold text-gray-700">{todayLabel}</div>
-        </div>
-      </div>
-      {/* Company Files Configuration */}
+      {/* Page header — same rhythm & typography as User Information (/users/:id) */}
       <div className="rounded-xl border bg-white p-4">
-        <h3 className="font-semibold mb-3">Company Files Organization</h3>
-        <p className="text-sm text-gray-600 mb-4">
-          Configure file categories and standard file categories to standardize file organization across the system.
-        </p>
-        <div className="grid md:grid-cols-2 gap-6">
-          {/* File Categories Section */}
-          <div>
-            <h4 className="font-semibold mb-2 text-sm">File Categories</h4>
-            <p className="text-xs text-gray-500 mb-3">
-              File categories are top-level folders for company-wide files (e.g., HR, Finance, Operations, Marketing).
-              Each category can have its own folder structure.
-            </p>
-            <CompanyFilesDepartments />
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="flex items-center gap-3 flex-1 min-w-0">
+            <div className="w-8 h-8 rounded bg-blue-100 flex items-center justify-center shrink-0">
+              <svg className="w-5 h-5 text-blue-700" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+              </svg>
+            </div>
+            <div className="min-w-0">
+              <h5 className="text-sm font-semibold text-blue-900">System settings</h5>
+              <p className="text-xs text-gray-600 mt-0.5">
+                Lists, file organization, and templates used across the app.
+              </p>
+            </div>
           </div>
-          {/* Standard Categories Section */}
-          <div>
-            <h4 className="font-semibold mb-2 text-sm">Standard File Categories</h4>
-            <p className="text-xs text-gray-500 mb-3">
-              Edit display name, description and icon: these drive project upload categories and the names of
-              subfolders created when initializing default project folders.
-            </p>
-            <StandardFileCategories />
+          <div className="text-right shrink-0">
+            <div className="text-[10px] text-gray-400 mb-1 font-medium uppercase tracking-wide">Today</div>
+            <div className="text-xs font-semibold text-gray-700">{todayLabel}</div>
           </div>
         </div>
       </div>
 
-      {/* Permission Templates Section */}
-      <div className="rounded-xl border bg-white p-4">
-        <h3 className="font-semibold mb-3">Permission Templates</h3>
-        <p className="text-sm text-gray-600 mb-4">
-          Create and manage permission templates (gabaritos) that reuse existing permissions. Apply a template in a user&apos;s Permissions tab to quickly set multiple permissions at once. Templates do not create new permissions—they only reference existing ones.
-        </p>
-        <PermissionTemplatesSection />
+      {/* Section tabs — match User Information pill buttons */}
+      <div className="rounded-xl border bg-white p-3">
+        <div className="flex flex-wrap gap-2">
+          {sectionTabs.map((t) => (
+            <button
+              key={t.id}
+              type="button"
+              onClick={() => setSection(t.id)}
+              className={`px-3 py-1.5 text-xs font-medium rounded-lg border transition-colors ${
+                section === t.id
+                  ? 'bg-brand-red text-white border-brand-red'
+                  : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50 hover:border-gray-400'
+              }`}
+            >
+              {t.label}
+            </button>
+          ))}
+        </div>
       </div>
 
-      {/* Terms Templates Section */}
-      <div className="rounded-xl border bg-white p-4">
-        <h3 className="font-semibold mb-3">Terms Templates</h3>
-        <p className="text-sm text-gray-600 mb-4">
-          Create and manage Terms templates for use in Proposals and Quotes. Select a template from the dropdown in proposal/quote forms to automatically populate the Terms section.
-        </p>
-        <TermsTemplatesSection />
-      </div>
-
-      <div className="grid md:grid-cols-3 gap-4">
-        <div className="rounded-xl border bg-white p-3">
-          <h4 className="font-semibold mb-2">Lists</h4>
-          <div className="space-y-1">
-            {lists.map(([name])=> {
-              // Format display name for better readability
-              const displayName = name === 'terms-templates' ? 'Terms Templates' : name;
-              return (
-                <button key={name} onClick={()=>setSel(name)} className={`w-full text-left px-3 py-2 rounded ${sel===name? 'bg-black text-white':'hover:bg-gray-50'}`}>{displayName}</button>
-              );
-            })}
+      {/* ——— Lookup lists ——— */}
+      {section === 'lists' && (
+      <div className="rounded-xl border bg-white overflow-hidden">
+      <div className="grid lg:grid-cols-[minmax(260px,320px)_minmax(0,1fr)] lg:items-stretch min-h-[min(520px,70vh)]">
+        <div className="border-b lg:border-b-0 lg:border-r border-gray-100 bg-gray-50/50 flex flex-col lg:sticky lg:top-4 lg:self-start lg:max-h-[calc(100vh-8rem)]">
+          <div className="border-b border-gray-100 px-4 py-3 bg-white/80">
+            <h2 className="text-sm font-semibold text-gray-900">Lists</h2>
+            <p className="mt-0.5 text-xs text-gray-600">Pick a dataset to edit.</p>
+          </div>
+          <div className="overflow-y-auto flex-1 min-h-0">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-gray-100 bg-white text-left">
+                  <th className="px-3 py-2 text-[10px] font-medium text-gray-500 uppercase tracking-wide">Name</th>
+                  <th className="px-3 py-2 w-16 text-right text-[10px] font-medium text-gray-500 uppercase tracking-wide">#</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100">
+                {lists.map(([name]) => {
+                  const count = ((data || {})[name] || []).length;
+                  return (
+                    <tr
+                      key={name}
+                      className={`cursor-pointer transition-colors ${
+                        sel === name ? 'bg-red-50/90' : 'hover:bg-gray-50'
+                      }`}
+                      onClick={() => setSel(name)}
+                    >
+                      <td className={`px-3 py-2.5 font-medium ${sel === name ? 'text-brand-red' : 'text-gray-900'}`}>
+                        {formatSettingsListTitle(name)}
+                      </td>
+                      <td className="px-3 py-2.5 text-right tabular-nums text-gray-500">{count}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
           </div>
         </div>
-        <div className="md:col-span-2 rounded-xl border bg-white p-3">
+
+        <div className="flex min-h-[min(520px,70vh)] flex-col bg-white">
+          <div className="flex flex-wrap items-end justify-between gap-2 border-b border-gray-100 px-5 py-4">
+            <div>
+              <div className="text-[10px] font-medium uppercase tracking-wide text-gray-500">Editing</div>
+              <h2 className="text-sm font-semibold text-gray-900">{formatSettingsListTitle(sel)}</h2>
+            </div>
+            <div className="text-xs text-gray-600">
+              <span className="tabular-nums font-semibold text-gray-900">{items.length}</span> items
+            </div>
+          </div>
+          <div className="flex-1 min-h-0 overflow-y-auto p-5">
           {isTimesheetConfig ? (
-            <div className="space-y-4">
+            <div className="rounded-lg border border-gray-200 bg-gray-50/40 p-4 space-y-5">
               <div>
-                <h4 className="font-semibold mb-2">Timesheet Configuration</h4>
-                <div className="text-sm text-gray-600 mb-4">Configure default values for shift creation.</div>
+                <h4 className="text-sm font-semibold text-gray-900">Timesheet defaults</h4>
+                <p className="mt-1 text-xs text-gray-500">Used when creating shifts and calculating attendance.</p>
               </div>
-              
-              <div className="space-y-4">
+
+              <div className="grid gap-5 sm:grid-cols-2">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Default Break for Shifts of 5 Hours or More (minutes)</label>
+                  <label className="block text-xs font-medium text-gray-700 mb-1">
+                    Default break for shifts of 5+ hours (minutes)
+                  </label>
                   <input
                     type="number"
                     value={breakMin}
                     onChange={(e) => setBreakMin(e.target.value)}
                     min="0"
-                    className="w-full border rounded px-3 py-2"
+                    className="w-full rounded border border-gray-300 px-3 py-2 text-sm bg-white"
                     placeholder="30"
                   />
-                  <div className="text-xs text-gray-500 mt-1">Break duration in minutes that will be deducted from attendance records of 5 hours or more for selected employees.</div>
+                  <p className="mt-1 text-xs text-gray-500">
+                    Break duration deducted from attendance for eligible employees on long shifts.
+                  </p>
                 </div>
-                
+
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Employees Eligible for Break {selectedBreakEmployees.length > 0 && `(${selectedBreakEmployees.length} selected)`}
+                  <label className="block text-xs font-medium text-gray-700 mb-1">Default geofence radius (meters)</label>
+                  <input
+                    type="number"
+                    value={geofenceRadius}
+                    onChange={(e) => setGeofenceRadius(e.target.value)}
+                    min="0"
+                    className="w-full rounded border border-gray-300 px-3 py-2 text-sm bg-white"
+                    placeholder="150"
+                  />
+                  <p className="mt-1 text-xs text-gray-500">Default radius for new shifts.</p>
+                </div>
+
+                <div className="sm:col-span-2">
+                  <label className="block text-xs font-medium text-gray-700 mb-1">
+                    Employees eligible for break deduction
+                    {selectedBreakEmployees.length > 0
+                      ? ` (${selectedBreakEmployees.length} selected)`
+                      : ''}
                   </label>
                   <div className="relative" ref={breakEmployeeDropdownRef}>
                     <button
@@ -322,21 +385,8 @@ export default function SystemSettings(){
                   )}
                   <div className="text-xs text-gray-500 mt-1">Select employees who are eligible for break deduction when their attendance is 5 hours or more.</div>
                 </div>
-                
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Default Geofence Radius (meters)</label>
-                  <input
-                    type="number"
-                    value={geofenceRadius}
-                    onChange={(e) => setGeofenceRadius(e.target.value)}
-                    min="0"
-                    className="w-full border rounded px-3 py-2"
-                    placeholder="150"
-                  />
-                  <div className="text-xs text-gray-500 mt-1">Default geofence radius in meters for new shifts.</div>
-                </div>
-                
-                <div className="flex justify-end">
+
+                <div className="sm:col-span-2 flex justify-end pt-1">
                   <button
                     onClick={async () => {
                       try {
@@ -370,7 +420,7 @@ export default function SystemSettings(){
                         toast.error('Failed to save');
                       }
                     }}
-                    className="px-4 py-2 rounded bg-brand-red text-white"
+                    className="rounded-lg px-4 py-2 text-xs font-semibold text-white bg-brand-red hover:opacity-95"
                   >
                     Save Settings
                   </button>
@@ -391,14 +441,14 @@ export default function SystemSettings(){
                       onChange={e=>setDescription(e.target.value)}
                       rows={8}
                     />
-                    <button onClick={async()=>{ if(!label){ toast.error('Template name required'); return; } try{ const url = `/settings/${encodeURIComponent(sel)}?label=${encodeURIComponent(label)}&description=${encodeURIComponent(description||'')}`; await api('POST', url); setLabel(''); setDescription(''); await refetch(); toast.success('Added'); }catch(_e){ toast.error('Failed'); } }} className="px-3 py-1.5 rounded bg-brand-red text-white">Add</button>
+                    <button onClick={async()=>{ if(!label){ toast.error('Template name required'); return; } try{ const url = `/settings/${encodeURIComponent(sel)}?label=${encodeURIComponent(label)}&description=${encodeURIComponent(description||'')}`; await api('POST', url); setLabel(''); setDescription(''); await refetch(); toast.success('Added'); }catch(_e){ toast.error('Failed'); } }} className="rounded-lg px-3 py-1.5 text-xs font-semibold text-white bg-brand-red hover:opacity-95">Add</button>
                   </div>
                 </div>
               ) : (
-                <div className="flex items-center justify-between mb-2">
-                  <h4 className="font-semibold">{sel}</h4>
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <input className="border rounded px-2 py-1 text-sm" placeholder="Label" value={label} onChange={e=>setLabel(e.target.value)} />
+                <div className="mb-4 rounded-lg border border-dashed border-gray-200 bg-gray-50/70 p-4">
+                  <div className="text-xs font-semibold uppercase tracking-wide text-gray-500 mb-3">Add entry</div>
+                  <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-end">
+                    <input className="border rounded px-2 py-1 text-sm sm:min-w-[12rem]" placeholder="Label" value={label} onChange={e=>setLabel(e.target.value)} />
                     {isDivisionList ? (
                       <>
                         <input className="border rounded px-2 py-1 text-sm w-28" placeholder="Abbr" value={(value||'').split('|')[0]||''} onChange={e=>{ const parts = (value||'').split('|'); parts[0] = e.target.value; setValue(parts.join('|')); }} />
@@ -421,15 +471,15 @@ export default function SystemSettings(){
                         </label>
                       </span>
                     )}
-                    <button onClick={async()=>{ if(!label){ toast.error('Label required'); return; } try{ await api('POST', `/settings/${encodeURIComponent(sel)}`, undefined, { 'Content-Type':'application/x-www-form-urlencoded' }); }catch{} try{ let url = `/settings/${encodeURIComponent(sel)}?label=${encodeURIComponent(label)}`; if(isDivisionList){ const [abbr, color] = (value||'').split('|'); url += `&abbr=${encodeURIComponent(abbr||'')}&color=${encodeURIComponent(color||'#cccccc')}`; } else if (isColorList){ url += `&value=${encodeURIComponent(value||'#cccccc')}`; if (sel === 'project_statuses'){ url += `&show_in_project=${newShowInProject ? 'true' : 'false'}&show_in_opportunity=${newShowInOpportunity ? 'true' : 'false'}`; } } else { url += `&value=${encodeURIComponent(value||'')}`; } await api('POST', url); setLabel(''); setValue(''); await refetch(); toast.success('Added'); }catch(_e){ toast.error('Failed'); } }} className="px-3 py-1.5 rounded bg-brand-red text-white">Add</button>
+                    <button onClick={async()=>{ if(!label){ toast.error('Label required'); return; } try{ await api('POST', `/settings/${encodeURIComponent(sel)}`, undefined, { 'Content-Type':'application/x-www-form-urlencoded' }); }catch{} try{ let url = `/settings/${encodeURIComponent(sel)}?label=${encodeURIComponent(label)}`; if(isDivisionList){ const [abbr, color] = (value||'').split('|'); url += `&abbr=${encodeURIComponent(abbr||'')}&color=${encodeURIComponent(color||'#cccccc')}`; } else if (isColorList){ url += `&value=${encodeURIComponent(value||'#cccccc')}`; if (sel === 'project_statuses'){ url += `&show_in_project=${newShowInProject ? 'true' : 'false'}&show_in_opportunity=${newShowInOpportunity ? 'true' : 'false'}`; } } else { url += `&value=${encodeURIComponent(value||'')}`; } await api('POST', url); setLabel(''); setValue(''); await refetch(); toast.success('Added'); }catch(_e){ toast.error('Failed'); } }} className="rounded-lg px-3 py-1.5 text-xs font-semibold text-white bg-brand-red hover:opacity-95">Add</button>
                   </div>
                 </div>
               )}
-              <div className="rounded border overflow-hidden divide-y">
+              <div className="overflow-hidden rounded-lg border border-gray-100 bg-gray-50/40">
                 {isLoading? <div className="p-3"><div className="h-6 bg-gray-100 animate-pulse rounded"/></div> : items.length? items.map(it=> {
                   const e = getEdit(it);
                   return (
-                    <div key={it.id} className={`px-3 py-2 text-sm ${isTermsTemplates ? 'flex flex-col gap-2' : 'flex items-center justify-between gap-3'}`}>
+                    <div key={it.id} className={`border-b border-gray-100 px-3 py-2.5 text-sm last:border-b-0 odd:bg-gray-50/50 ${isTermsTemplates ? 'flex flex-col gap-2' : 'flex items-center justify-between gap-3'}`}>
                       <div className={`${isTermsTemplates ? 'space-y-2' : 'flex items-center gap-2 flex-1 min-w-0'}`}>
                         <input className="border rounded px-2 py-1 text-sm w-48" value={e.label} onChange={ev=> setEdits(s=>({ ...s, [it.id]: { ...(s[it.id]||it), label: ev.target.value } }))} />
                         {isTermsTemplates ? (
@@ -480,8 +530,8 @@ export default function SystemSettings(){
                         {/* sort index is now auto-assigned and not user-editable */}
                       </div>
                       <div className="flex items-center gap-2">
-                        <button onClick={async()=>{ try{ let url = `/settings/${encodeURIComponent(sel)}/${encodeURIComponent(it.id)}?label=${encodeURIComponent(e.label||'')}`; if (isTermsTemplates){ url += `&description=${encodeURIComponent(e.meta?.description||'')}`; } else if (isDivisionList){ url += `&abbr=${encodeURIComponent(e.meta?.abbr||'')}&color=${encodeURIComponent(e.meta?.color||'')}`; } else if (isColorList){ url += `&value=${encodeURIComponent(e.value||'')}`; if (sel === 'project_statuses'){ const allowEdit = e.meta?.allow_edit_proposal; const setsStart = e.meta?.sets_start_date; const setsEnd = e.meta?.sets_end_date; const sip = typeof e.meta?.show_in_project === 'boolean' ? e.meta.show_in_project : effectiveShowInProject(it); const sio = typeof e.meta?.show_in_opportunity === 'boolean' ? e.meta.show_in_opportunity : effectiveShowInOpportunity(it); url += `&allow_edit_proposal=${(allowEdit === true || allowEdit === 'true' || allowEdit === 1) ? 'true' : 'false'}`; url += `&sets_start_date=${(setsStart === true || setsStart === 'true' || setsStart === 1) ? 'true' : 'false'}`; url += `&sets_end_date=${(setsEnd === true || setsEnd === 'true' || setsEnd === 1) ? 'true' : 'false'}`; url += `&show_in_project=${sip ? 'true' : 'false'}&show_in_opportunity=${sio ? 'true' : 'false'}`; } } else { url += `&value=${encodeURIComponent(e.value||'')}`; } await api('PUT', url); await refetch(); toast.success('Saved'); }catch(_e){ toast.error('Failed'); } }} className="px-2 py-1 rounded bg-black text-white">Save</button>
-                        <button onClick={async()=>{ if(!(await confirm({ title: 'Delete item?', description: 'This action cannot be undone.' }))) return; try{ await api('DELETE', `/settings/${encodeURIComponent(sel)}/${encodeURIComponent(it.id)}`); await refetch(); toast.success('Deleted'); }catch(_e){ toast.error('Failed'); } }} className="px-2 py-1 rounded bg-gray-100">Delete</button>
+                        <button onClick={async()=>{ try{ let url = `/settings/${encodeURIComponent(sel)}/${encodeURIComponent(it.id)}?label=${encodeURIComponent(e.label||'')}`; if (isTermsTemplates){ url += `&description=${encodeURIComponent(e.meta?.description||'')}`; } else if (isDivisionList){ url += `&abbr=${encodeURIComponent(e.meta?.abbr||'')}&color=${encodeURIComponent(e.meta?.color||'')}`; } else if (isColorList){ url += `&value=${encodeURIComponent(e.value||'')}`; if (sel === 'project_statuses'){ const allowEdit = e.meta?.allow_edit_proposal; const setsStart = e.meta?.sets_start_date; const setsEnd = e.meta?.sets_end_date; const sip = typeof e.meta?.show_in_project === 'boolean' ? e.meta.show_in_project : effectiveShowInProject(it); const sio = typeof e.meta?.show_in_opportunity === 'boolean' ? e.meta.show_in_opportunity : effectiveShowInOpportunity(it); url += `&allow_edit_proposal=${(allowEdit === true || allowEdit === 'true' || allowEdit === 1) ? 'true' : 'false'}`; url += `&sets_start_date=${(setsStart === true || setsStart === 'true' || setsStart === 1) ? 'true' : 'false'}`; url += `&sets_end_date=${(setsEnd === true || setsEnd === 'true' || setsEnd === 1) ? 'true' : 'false'}`; url += `&show_in_project=${sip ? 'true' : 'false'}&show_in_opportunity=${sio ? 'true' : 'false'}`; } } else { url += `&value=${encodeURIComponent(e.value||'')}`; } await api('PUT', url); await refetch(); toast.success('Saved'); }catch(_e){ toast.error('Failed'); } }} className="rounded-lg px-3 py-1.5 text-xs font-semibold text-white bg-brand-red hover:opacity-95">Save</button>
+                        <button onClick={async()=>{ if(!(await confirm({ title: 'Delete item?', description: 'This action cannot be undone.' }))) return; try{ await api('DELETE', `/settings/${encodeURIComponent(sel)}/${encodeURIComponent(it.id)}`); await refetch(); toast.success('Deleted'); }catch(_e){ toast.error('Failed'); } }} className="rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50">Delete</button>
                       </div>
                     </div>
                   );
@@ -489,8 +539,57 @@ export default function SystemSettings(){
               </div>
             </>
           )}
+          </div>
         </div>
       </div>
+      </div>
+      )}
+
+      {section === 'files' && (
+        <div className="rounded-xl border bg-white p-5">
+          <div className="mb-5 border-b border-gray-100 pb-4">
+            <h2 className="text-sm font-semibold text-gray-900">Files &amp; categories</h2>
+            <p className="mt-1 text-xs text-gray-600">
+              Company-wide folders and standard upload categories used across projects.
+            </p>
+          </div>
+          <div className="grid gap-10 xl:grid-cols-2">
+            <div className="min-w-0">
+              <h3 className="text-sm font-semibold text-gray-900">Company file categories</h3>
+              <p className="mt-1 text-xs text-gray-600 mb-4">
+                Top-level areas in Company Files (e.g. HR, Operations).
+              </p>
+              <CompanyFilesDepartments />
+            </div>
+            <div className="min-w-0">
+              <h3 className="text-sm font-semibold text-gray-900">Standard file categories</h3>
+              <p className="mt-1 text-xs text-gray-600 mb-4">
+                Labels for uploads and names of default project subfolders.
+              </p>
+              <StandardFileCategories />
+            </div>
+          </div>
+        </div>
+      )}
+
+      {section === 'templates' && (
+        <div className="grid gap-4 xl:grid-cols-2 xl:items-start">
+          <div className="rounded-xl border bg-white p-5 min-w-0">
+            <div className="mb-4 border-b border-gray-100 pb-3">
+              <h2 className="text-sm font-semibold text-gray-900">Permission templates</h2>
+              <p className="mt-1 text-xs text-gray-600">Apply bundles of permissions from a user&apos;s Permissions tab.</p>
+            </div>
+            <PermissionTemplatesSection />
+          </div>
+          <div className="rounded-xl border bg-white p-5 min-w-0">
+            <div className="mb-4 border-b border-gray-100 pb-3">
+              <h2 className="text-sm font-semibold text-gray-900">Terms templates</h2>
+              <p className="mt-1 text-xs text-gray-600">Preset terms for proposals and quotes.</p>
+            </div>
+            <TermsTemplatesSection />
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -1396,74 +1495,96 @@ function CompanyFilesDepartments(){
   const getEdit = (it: Item): Item => edits[it.id] || it;
 
   return (
-    <div className="space-y-2">
-      <div className="flex gap-2">
+    <div className="space-y-3">
+      <div className="flex flex-wrap gap-2">
         <input
           value={newDept}
           onChange={e=>setNewDept(e.target.value)}
-          placeholder="File category name"
-          className="border rounded px-2 py-1 text-sm flex-1"
+          placeholder="New category name"
+          className="min-w-[200px] flex-1 rounded-md border border-gray-200 px-3 py-2 text-sm shadow-sm focus:border-gray-400 focus:outline-none focus:ring-1 focus:ring-gray-400"
           onKeyDown={e=>{ if(e.key==='Enter' && newDept.trim()){ createMutation.mutate(newDept.trim()); } }}
         />
         <button
           onClick={()=>newDept.trim() && createMutation.mutate(newDept.trim())}
-          className="px-3 py-1 rounded bg-brand-red text-white text-sm"
+          className="rounded-md bg-brand-red px-4 py-2 text-sm font-medium text-white shadow-sm hover:opacity-95 disabled:opacity-50"
           disabled={createMutation.isPending}
         >
           Add
         </button>
       </div>
-      <div className="border rounded divide-y max-h-64 overflow-y-auto">
-        {isLoading ? (
-          <div className="p-3 text-sm text-gray-500">Loading...</div>
-        ) : sortedDepartments.length === 0 ? (
-          <div className="p-3 text-sm text-gray-500">No file categories yet</div>
-        ) : (
-          sortedDepartments.map((d, i)=> {
-            const e = getEdit(d);
-            return (
-              <div key={d.id} className="px-2 py-2 flex items-center justify-between gap-2">
-                <div className="flex items-center gap-1 flex-1 min-w-0">
-                  <button
-                    className="px-1.5 py-0.5 border rounded text-xs disabled:opacity-30"
-                    disabled={i===0}
-                    onClick={()=>move(i,-1)}
-                    title="Move up"
-                  >↑</button>
-                  <button
-                    className="px-1.5 py-0.5 border rounded text-xs disabled:opacity-30"
-                    disabled={i===sortedDepartments.length-1}
-                    onClick={()=>move(i,1)}
-                    title="Move down"
-                  >↓</button>
-                  <input
-                    value={e.label}
-                    onChange={ev=> setEdits(s=>({ ...s, [d.id]: { ...(s[d.id]||d), label: ev.target.value } }))}
-                    onBlur={()=>{
-                      const v = edits[d.id]?.label?.trim();
-                      if(v && v !== d.label){
-                        updateMutation.mutate({ id: d.id, label: v });
-                        setEdits(s=>{ const {[d.id]:_, ...rest} = s; return rest; });
-                      }
-                    }}
-                    className="border rounded px-2 py-1 text-sm flex-1 min-w-0"
-                  />
-                </div>
-                <button
-                  onClick={()=>{
-                    if(confirm(`Delete file category "${d.label}"?`)){
-                      deleteMutation.mutate(d.id);
-                    }
-                  }}
-                  className="px-2 py-1 text-xs text-red-600 hover:underline"
-                  disabled={deleteMutation.isPending}
-                >
-                  Delete
-                </button>
-              </div>
-            );
-          })
-        )}
+      <div className="overflow-hidden rounded-lg border border-gray-200">
+        <div className="max-h-72 overflow-y-auto">
+          <table className="w-full text-sm">
+            <thead className="sticky top-0 z-[1] border-b border-gray-200 bg-gray-50 text-left text-[11px] font-semibold uppercase tracking-wide text-gray-500">
+              <tr>
+                <th className="w-10 px-2 py-2.5">Order</th>
+                <th className="px-3 py-2.5">Name</th>
+                <th className="w-24 px-3 py-2.5 text-right">Actions</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-100">
+              {isLoading ? (
+                <tr><td colSpan={3} className="px-3 py-8 text-center text-gray-500">Loading…</td></tr>
+              ) : sortedDepartments.length === 0 ? (
+                <tr><td colSpan={3} className="px-3 py-8 text-center text-gray-500">No categories yet.</td></tr>
+              ) : (
+                sortedDepartments.map((d, i)=> {
+                  const e = getEdit(d);
+                  return (
+                    <tr key={d.id} className="bg-white hover:bg-gray-50/80">
+                      <td className="whitespace-nowrap px-2 py-2 align-middle">
+                        <div className="flex flex-col gap-0.5">
+                          <button
+                            type="button"
+                            className="rounded border border-gray-200 px-1 text-[10px] leading-none disabled:opacity-30"
+                            disabled={i===0}
+                            onClick={()=>move(i,-1)}
+                            title="Move up"
+                          >↑</button>
+                          <button
+                            type="button"
+                            className="rounded border border-gray-200 px-1 text-[10px] leading-none disabled:opacity-30"
+                            disabled={i===sortedDepartments.length-1}
+                            onClick={()=>move(i,1)}
+                            title="Move down"
+                          >↓</button>
+                        </div>
+                      </td>
+                      <td className="px-2 py-2 align-middle">
+                        <input
+                          value={e.label}
+                          onChange={ev=> setEdits(s=>({ ...s, [d.id]: { ...(s[d.id]||d), label: ev.target.value } }))}
+                          onBlur={()=>{
+                            const v = edits[d.id]?.label?.trim();
+                            if(v && v !== d.label){
+                              updateMutation.mutate({ id: d.id, label: v });
+                              setEdits(s=>{ const {[d.id]:_, ...rest} = s; return rest; });
+                            }
+                          }}
+                          className="w-full min-w-0 rounded-md border border-gray-200 px-2 py-1.5 text-sm"
+                        />
+                      </td>
+                      <td className="px-3 py-2 text-right align-middle">
+                        <button
+                          type="button"
+                          onClick={()=>{
+                            if(confirm(`Delete file category "${d.label}"?`)){
+                              deleteMutation.mutate(d.id);
+                            }
+                          }}
+                          className="text-xs font-medium text-red-600 hover:underline"
+                          disabled={deleteMutation.isPending}
+                        >
+                          Delete
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })
+              )}
+            </tbody>
+          </table>
+        </div>
       </div>
     </div>
   );
@@ -1564,99 +1685,133 @@ function StandardFileCategories(){
   };
 
   return (
-    <div className="space-y-2">
-      <div className="border rounded p-2 space-y-2 bg-gray-50/80">
-        <div className="text-[11px] font-medium text-gray-600">New category</div>
-        <div className="grid grid-cols-2 gap-2">
-          <input className="border rounded px-2 py-1 text-xs" placeholder="Id (e.g. as-built)" value={newSlug} onChange={e=>setNewSlug(e.target.value)} />
-          <input className="border rounded px-2 py-1 text-xs" placeholder="Display / folder name" value={newName} onChange={e=>setNewName(e.target.value)} />
+    <div className="space-y-4">
+      <div className="rounded-lg border border-gray-200 bg-gray-50/80 p-4">
+        <div className="text-xs font-semibold text-gray-700">Add category</div>
+        <div className="mt-3 grid gap-3 sm:grid-cols-2">
+          <div>
+            <label className="block text-[11px] font-medium text-gray-500 mb-1">Id (slug)</label>
+            <input className="w-full rounded-md border border-gray-200 px-3 py-2 text-sm" placeholder="e.g. as-built-docs" value={newSlug} onChange={e=>setNewSlug(e.target.value)} />
+          </div>
+          <div>
+            <label className="block text-[11px] font-medium text-gray-500 mb-1">Display / folder name</label>
+            <input className="w-full rounded-md border border-gray-200 px-3 py-2 text-sm" placeholder="Shown in UI and folder name" value={newName} onChange={e=>setNewName(e.target.value)} />
+          </div>
         </div>
-        <div className="flex gap-2 flex-wrap items-center">
-          <input className="border rounded px-2 py-1 text-xs w-16 text-center" title="Icon (emoji)" value={newIcon} onChange={e=>setNewIcon(e.target.value)} />
-          <input className="border rounded px-2 py-1 text-xs flex-1 min-w-[120px]" placeholder="Description (optional)" value={newDesc} onChange={e=>setNewDesc(e.target.value)} />
+        <div className="mt-3 flex flex-wrap gap-3 items-end">
+          <div>
+            <label className="block text-[11px] font-medium text-gray-500 mb-1">Icon</label>
+            <input className="w-14 rounded-md border border-gray-200 px-2 py-2 text-center text-sm" title="Emoji" value={newIcon} onChange={e=>setNewIcon(e.target.value)} />
+          </div>
+          <div className="min-w-[180px] flex-1">
+            <label className="block text-[11px] font-medium text-gray-500 mb-1">Description (optional)</label>
+            <input className="w-full rounded-md border border-gray-200 px-3 py-2 text-sm" value={newDesc} onChange={e=>setNewDesc(e.target.value)} />
+          </div>
           <button
             type="button"
-            className="px-2 py-1 rounded bg-brand-red text-white text-xs shrink-0"
+            className="rounded-md bg-brand-red px-4 py-2 text-sm font-medium text-white shadow-sm hover:opacity-95 disabled:opacity-50"
             disabled={createMutation.isPending || !newSlug.trim()}
             onClick={()=> createMutation.mutate({ slug: newSlug, name: newName, icon: newIcon, desc: newDesc })}
           >
-            Add
+            Add category
           </button>
         </div>
       </div>
 
-      {isLoading ? (
-        <div className="text-sm text-gray-500">Loading...</div>
-      ) : (
-        <div className="border rounded divide-y max-h-80 overflow-y-auto">
-          {sorted.map((row: any, i: number)=>{
-            const e = getEdit(row);
-            const name = e.name !== undefined ? e.name : row.name;
-            const icon = e.icon !== undefined ? e.icon : row.icon;
-            const description = e.description !== undefined ? e.description : (row.description || '');
-            return (
-              <div key={row.itemId} className="p-2 flex flex-col gap-2 bg-white">
-                <div className="flex items-start gap-2">
-                  <div className="flex flex-col gap-0.5 shrink-0">
-                    <button type="button" className="px-1 border rounded text-[10px] disabled:opacity-30" disabled={i===0} onClick={()=>move(i,-1)} title="Move up">↑</button>
-                    <button type="button" className="px-1 border rounded text-[10px] disabled:opacity-30" disabled={i===sorted.length-1} onClick={()=>move(i,1)} title="Move down">↓</button>
-                  </div>
-                  <input
-                    className="border rounded px-1.5 py-0.5 text-sm w-10 text-center shrink-0"
-                    value={icon}
-                    onChange={ev=> setEdits(s=>({ ...s, [row.itemId]: { ...getEdit(row), icon: ev.target.value } }))}
-                  />
-                  <div className="flex-1 min-w-0 space-y-1">
-                    <input
-                      className="border rounded px-2 py-1 text-sm w-full"
-                      value={name}
-                      onChange={ev=> setEdits(s=>({ ...s, [row.itemId]: { ...getEdit(row), name: ev.target.value } }))}
-                    />
-                    <textarea
-                      className="border rounded px-2 py-1 text-xs w-full resize-none"
-                      rows={2}
-                      placeholder="Description"
-                      value={description}
-                      onChange={ev=> setEdits(s=>({ ...s, [row.itemId]: { ...getEdit(row), description: ev.target.value } }))}
-                    />
-                    <div className="text-[10px] text-gray-400 font-mono truncate" title="Stored on files as category id — do not change in DB without migration">
-                      id: {row.id}
-                    </div>
-                  </div>
-                  <div className="flex flex-col gap-1 shrink-0">
-                    <button
-                      type="button"
-                      className="px-2 py-1 rounded bg-black text-white text-xs"
-                      disabled={updateMutation.isPending}
-                      onClick={()=> saveRow(row)}
-                    >
-                      Save
-                    </button>
-                    <button
-                      type="button"
-                      className="px-2 py-1 text-xs text-red-600 hover:underline"
-                      disabled={deleteMutation.isPending}
-                      onClick={async ()=>{
-                        const result = await confirmDlg({
-                          title: 'Delete category?',
-                          message: `Remove "${row.name}" (${row.id}) from the list? Existing files still reference this category id.`,
-                          confirmText: 'Delete',
-                          cancelText: 'Cancel',
-                        });
-                        if (result === 'confirm') deleteMutation.mutate(row.itemId);
-                      }}
-                    >
-                      Delete
-                    </button>
-                  </div>
-                </div>
-              </div>
-            );
-          })}
+      <div className="overflow-hidden rounded-lg border border-gray-200">
+        <div className="max-h-[28rem] overflow-x-auto overflow-y-auto">
+          <table className="w-full min-w-[720px] text-sm">
+            <thead className="sticky top-0 z-[1] border-b border-gray-200 bg-gray-50 text-left text-[11px] font-semibold uppercase tracking-wide text-gray-500">
+              <tr>
+                <th className="w-10 px-2 py-2.5"> </th>
+                <th className="w-12 px-2 py-2.5">Icon</th>
+                <th className="min-w-[140px] px-3 py-2.5">Name</th>
+                <th className="min-w-[100px] px-3 py-2.5">Id</th>
+                <th className="min-w-[180px] px-3 py-2.5">Description</th>
+                <th className="w-28 px-3 py-2.5 text-right">Actions</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-100 bg-white">
+              {isLoading ? (
+                <tr><td colSpan={6} className="px-3 py-8 text-center text-gray-500">Loading…</td></tr>
+              ) : sorted.length === 0 ? (
+                <tr><td colSpan={6} className="px-3 py-8 text-center text-gray-500">No categories.</td></tr>
+              ) : (
+                sorted.map((row: any, i: number)=>{
+                  const e = getEdit(row);
+                  const name = e.name !== undefined ? e.name : row.name;
+                  const icon = e.icon !== undefined ? e.icon : row.icon;
+                  const description = e.description !== undefined ? e.description : (row.description || '');
+                  return (
+                    <tr key={row.itemId} className="align-top hover:bg-gray-50/50">
+                      <td className="whitespace-nowrap px-2 py-2">
+                        <div className="flex flex-col gap-0.5">
+                          <button type="button" className="rounded border border-gray-200 px-1 text-[10px] leading-none disabled:opacity-30" disabled={i===0} onClick={()=>move(i,-1)} title="Move up">↑</button>
+                          <button type="button" className="rounded border border-gray-200 px-1 text-[10px] leading-none disabled:opacity-30" disabled={i===sorted.length-1} onClick={()=>move(i,1)} title="Move down">↓</button>
+                        </div>
+                      </td>
+                      <td className="px-2 py-2">
+                        <input
+                          className="w-11 rounded-md border border-gray-200 px-1 py-1.5 text-center text-sm"
+                          value={icon}
+                          onChange={ev=> setEdits(s=>({ ...s, [row.itemId]: { ...getEdit(row), icon: ev.target.value } }))}
+                        />
+                      </td>
+                      <td className="px-3 py-2">
+                        <input
+                          className="w-full rounded-md border border-gray-200 px-2 py-1.5 text-sm"
+                          value={name}
+                          onChange={ev=> setEdits(s=>({ ...s, [row.itemId]: { ...getEdit(row), name: ev.target.value } }))}
+                        />
+                      </td>
+                      <td className="px-3 py-2">
+                        <span className="font-mono text-[11px] text-gray-500 break-all">{row.id}</span>
+                      </td>
+                      <td className="px-3 py-2">
+                        <textarea
+                          className="w-full resize-y rounded-md border border-gray-200 px-2 py-1.5 text-xs min-h-[2.5rem]"
+                          rows={2}
+                          placeholder="—"
+                          value={description}
+                          onChange={ev=> setEdits(s=>({ ...s, [row.itemId]: { ...getEdit(row), description: ev.target.value } }))}
+                        />
+                      </td>
+                      <td className="px-3 py-2 text-right whitespace-nowrap">
+                        <button
+                          type="button"
+                          className="mr-2 rounded-md bg-gray-900 px-2.5 py-1.5 text-xs font-medium text-white disabled:opacity-50"
+                          disabled={updateMutation.isPending}
+                          onClick={()=> saveRow(row)}
+                        >
+                          Save
+                        </button>
+                        <button
+                          type="button"
+                          className="text-xs font-medium text-red-600 hover:underline disabled:opacity-50"
+                          disabled={deleteMutation.isPending}
+                          onClick={async ()=>{
+                            const result = await confirmDlg({
+                              title: 'Delete category?',
+                              message: `Remove "${row.name}" (${row.id}) from the list? Existing files still reference this category id.`,
+                              confirmText: 'Delete',
+                              cancelText: 'Cancel',
+                            });
+                            if (result === 'confirm') deleteMutation.mutate(row.itemId);
+                          }}
+                        >
+                          Delete
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })
+              )}
+            </tbody>
+          </table>
         </div>
-      )}
+      </div>
       <p className="text-[11px] text-gray-500">
-        The id is stored on uploaded files; renaming display name or folders does not rewrite existing file rows.
+        The id is stored on uploaded files; changing display name does not rewrite existing file rows.
       </p>
     </div>
   );
