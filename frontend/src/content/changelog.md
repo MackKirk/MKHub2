@@ -55,7 +55,7 @@ title: Update 1.1.025 - Week 16
 - (none this release)
 
 ### Known issues
-- Chat is not working properly
+- (none this release)
 
 <<<RELEASE>>>
 id: 2026-04-01-1
