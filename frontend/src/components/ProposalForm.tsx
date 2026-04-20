@@ -9,6 +9,14 @@ import { useConfirm } from '@/components/ConfirmProvider';
 import { useUnsavedChanges } from '@/components/UnsavedChangesProvider';
 import { DivisionIcon } from '@/components/DivisionIcon';
 import OverlayPortal from '@/components/OverlayPortal';
+import {
+  PROPOSAL_SECTION_IMAGE_EXPORT_SCALE,
+  PROPOSAL_SECTION_IMAGE_MAX_EXPORT_LONG_SIDE,
+  PROPOSAL_SECTION_IMAGE_TARGET_HEIGHT,
+  PROPOSAL_SECTION_IMAGE_TARGET_WIDTH,
+  SECTION_IMAGE_GRID_THUMB_W,
+  SECTION_IMAGE_LIGHTBOX_THUMB_W,
+} from '@/constants/proposalSectionImage';
 // EstimateBuilder removed - now using simple pricing items
 
 export type AreaUnit = 'sqft' | 'm2' | 'sqs';
@@ -300,6 +308,7 @@ By signing the accompanying proposal, the Owner agrees to these Terms and Condit
   const [page2FoId, setPage2FoId] = useState<string|undefined>(undefined);
   const [pickerFor, setPickerFor] = useState<null|'cover'|'page2'>(null);
   const [sectionPicker, setSectionPicker] = useState<{ secId:string, index?: number, fileObjectId?: string }|null>(null);
+  const [sectionImageLightboxId, setSectionImageLightboxId] = useState<string | null>(null);
   const [draggingImage, setDraggingImage] = useState<{ secIdx: number, imgIdx: number }|null>(null);
   const [dragOverImage, setDragOverImage] = useState<{ secIdx: number, imgIdx: number }|null>(null);
   const [dragImageInsertPosition, setDragImageInsertPosition] = useState<'before'|'after'|null>(null);
@@ -1931,10 +1940,19 @@ By signing the accompanying proposal, the Owner agrees to these Terms and Condit
                           )}
                           <div className="w-full">
                             {img.file_object_id? (
-                              <img
-                                src={withFileAccessToken(`/files/${img.file_object_id}/thumbnail?w=520`)}
-                                className="w-full h-auto object-cover rounded"
-                              />
+                              <button
+                                type="button"
+                                className="w-full p-0 border-0 bg-transparent cursor-zoom-in rounded block text-left"
+                                title="View larger"
+                                onClick={() => setSectionImageLightboxId(String(img.file_object_id))}
+                              >
+                                <img
+                                  src={withFileAccessToken(`/files/${img.file_object_id}/thumbnail?w=${SECTION_IMAGE_GRID_THUMB_W}`)}
+                                  className="w-full h-auto object-cover rounded pointer-events-none"
+                                  loading="lazy"
+                                  alt=""
+                                />
+                              </button>
                             ) : null}
                           </div>
                           <input 
@@ -2728,7 +2746,7 @@ By signing the accompanying proposal, the Owner agrees to these Terms and Condit
         }} />
       )}
       {sectionPicker && (
-        <ImagePicker isOpen={true} onClose={()=>setSectionPicker(null)} clientId={clientId||undefined} targetWidth={260} targetHeight={150} allowEdit={true} exportScale={2} fileObjectId={sectionPicker.fileObjectId} editorScaleFactor={3} onConfirm={async(blob)=>{ 
+        <ImagePicker isOpen={true} onClose={()=>setSectionPicker(null)} clientId={clientId||undefined} targetWidth={PROPOSAL_SECTION_IMAGE_TARGET_WIDTH} targetHeight={PROPOSAL_SECTION_IMAGE_TARGET_HEIGHT} allowEdit={true} exportScale={PROPOSAL_SECTION_IMAGE_EXPORT_SCALE} maxExportLongSide={PROPOSAL_SECTION_IMAGE_MAX_EXPORT_LONG_SIDE} fileObjectId={sectionPicker.fileObjectId} editorScaleFactor={3} onConfirm={async(blob)=>{ 
           try{
             if (!blob){ toast.error('No image'); return; }
             const uniqueName = `section_${Date.now()}_${Math.random().toString(36).slice(2)}.jpg`;
@@ -3019,6 +3037,28 @@ By signing the accompanying proposal, the Owner agrees to these Terms and Condit
           }}
           onClose={() => setShowDivisionModal(false)}
         />
+      )}
+
+      {sectionImageLightboxId && (
+        <div
+          className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 p-4"
+          onClick={() => setSectionImageLightboxId(null)}
+          role="presentation"
+        >
+          <button
+            type="button"
+            className="absolute top-4 right-4 rounded-lg bg-white/10 px-3 py-1.5 text-sm text-white hover:bg-white/20"
+            onClick={() => setSectionImageLightboxId(null)}
+          >
+            Close
+          </button>
+          <img
+            src={withFileAccessToken(`/files/${sectionImageLightboxId}/thumbnail?w=${SECTION_IMAGE_LIGHTBOX_THUMB_W}`)}
+            className="max-h-[92vh] max-w-[95vw] object-contain"
+            alt=""
+            onClick={(e) => e.stopPropagation()}
+          />
+        </div>
       )}
 
       {/* Section Type Selection Modal */}

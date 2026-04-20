@@ -11,6 +11,14 @@ import EstimateBuilder, { EstimateBuilderRef } from '@/components/EstimateBuilde
 import SupplierSelect from '@/components/SupplierSelect';
 import NewSupplierModal from '@/components/NewSupplierModal';
 import OverlayPortal from '@/components/OverlayPortal';
+import {
+  PROPOSAL_SECTION_IMAGE_EXPORT_SCALE,
+  PROPOSAL_SECTION_IMAGE_MAX_EXPORT_LONG_SIDE,
+  PROPOSAL_SECTION_IMAGE_TARGET_HEIGHT,
+  PROPOSAL_SECTION_IMAGE_TARGET_WIDTH,
+  SECTION_IMAGE_GRID_THUMB_W,
+  SECTION_IMAGE_LIGHTBOX_THUMB_W,
+} from '@/constants/proposalSectionImage';
 type Client = { id:string, name?:string, display_name?:string, address_line1?:string, city?:string, province?:string, country?:string };
 type Material = { id:number, name:string, supplier_name?:string, category?:string, unit?:string, price?:number, last_updated?:string, unit_type?:string, units_per_package?:number, coverage_sqs?:number, coverage_ft2?:number, coverage_m2?:number, description?:string, image_base64?:string, technical_manual_url?:string };
 
@@ -79,6 +87,7 @@ export default function QuoteForm({ mode, clientId: clientIdProp, initial, disab
   const [coverFoId, setCoverFoId] = useState<string|undefined>(undefined);
   const [pickerFor, setPickerFor] = useState<null|'cover'>(null);
   const [sectionPicker, setSectionPicker] = useState<{ secId:string, index?: number, fileObjectId?: string }|null>(null);
+  const [sectionImageLightboxId, setSectionImageLightboxId] = useState<string | null>(null);
   const [coverPreview, setCoverPreview] = useState<string>('');
   const newImageId = ()=> 'img_'+Math.random().toString(36).slice(2);
   const formatPhone = (v:string)=>{
@@ -1523,10 +1532,19 @@ export default function QuoteForm({ mode, clientId: clientIdProp, initial, disab
                             )}
                           </div>
                           {img.file_object_id? (
-                            <img
-                              src={withFileAccessToken(`/files/${img.file_object_id}/thumbnail?w=520`)}
-                              className="w-[260px] h-[150px] object-cover rounded"
-                            />
+                            <button
+                              type="button"
+                              className="w-[260px] h-[150px] p-0 border-0 bg-transparent cursor-zoom-in rounded block overflow-hidden"
+                              title="View larger"
+                              onClick={() => setSectionImageLightboxId(String(img.file_object_id))}
+                            >
+                              <img
+                                src={withFileAccessToken(`/files/${img.file_object_id}/thumbnail?w=${SECTION_IMAGE_GRID_THUMB_W}`)}
+                                className="w-[260px] h-[150px] object-cover rounded pointer-events-none"
+                                loading="lazy"
+                                alt=""
+                              />
+                            </button>
                           ) : null}
                           <input data-role="img-caption" data-sec={idx} data-img={j} className={`mt-2 w-full border rounded px-2 py-1 text-sm ${disabled ? 'bg-gray-100 cursor-not-allowed' : ''}`} placeholder="Caption" value={img.caption||''} onChange={e=> setSections(arr=> arr.map((x,i)=> i===idx? { ...x, images: (x.images||[]).map((it:any,k:number)=> k===j? { ...it, caption: e.target.value }: it) }: x))} disabled={disabled} readOnly={disabled} />
                         </div>
@@ -2174,7 +2192,7 @@ export default function QuoteForm({ mode, clientId: clientIdProp, initial, disab
         }} />
       )}
       {sectionPicker && (
-        <ImagePicker isOpen={true} onClose={()=>setSectionPicker(null)} clientId={clientId||undefined} targetWidth={260} targetHeight={150} allowEdit={true} exportScale={2} fileObjectId={sectionPicker.fileObjectId} editorScaleFactor={3} onConfirm={async(blob)=>{ 
+        <ImagePicker isOpen={true} onClose={()=>setSectionPicker(null)} clientId={clientId||undefined} targetWidth={PROPOSAL_SECTION_IMAGE_TARGET_WIDTH} targetHeight={PROPOSAL_SECTION_IMAGE_TARGET_HEIGHT} allowEdit={true} exportScale={PROPOSAL_SECTION_IMAGE_EXPORT_SCALE} maxExportLongSide={PROPOSAL_SECTION_IMAGE_MAX_EXPORT_LONG_SIDE} fileObjectId={sectionPicker.fileObjectId} editorScaleFactor={3} onConfirm={async(blob)=>{ 
           try{
             if (!blob){ toast.error('No image'); return; }
             const uniqueName = `section_${Date.now()}_${Math.random().toString(36).slice(2)}.jpg`;
@@ -2514,6 +2532,28 @@ export default function QuoteForm({ mode, clientId: clientIdProp, initial, disab
             setProductSearchModalOpen(null);
           }}
         />
+      )}
+
+      {sectionImageLightboxId && (
+        <div
+          className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 p-4"
+          onClick={() => setSectionImageLightboxId(null)}
+          role="presentation"
+        >
+          <button
+            type="button"
+            className="absolute top-4 right-4 rounded-lg bg-white/10 px-3 py-1.5 text-sm text-white hover:bg-white/20"
+            onClick={() => setSectionImageLightboxId(null)}
+          >
+            Close
+          </button>
+          <img
+            src={withFileAccessToken(`/files/${sectionImageLightboxId}/thumbnail?w=${SECTION_IMAGE_LIGHTBOX_THUMB_W}`)}
+            className="max-h-[92vh] max-w-[95vw] object-contain"
+            alt=""
+            onClick={(e) => e.stopPropagation()}
+          />
+        </div>
       )}
 
     </div>

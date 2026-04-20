@@ -6,6 +6,26 @@ import OverlayPortal from '@/components/OverlayPortal';
 
 type LibraryFile = { id:string, file_object_id:string, is_image?:boolean, content_type?:string, category?:string };
 
+function computeExportDimensions(
+  targetWidth: number,
+  targetHeight: number,
+  exportScale: number | undefined,
+  maxExportLongSide: number | undefined,
+) {
+  const scaleOut = Math.max(1, Number(exportScale || 1));
+  let outW = Math.round(targetWidth * scaleOut);
+  let outH = Math.round(targetHeight * scaleOut);
+  if (maxExportLongSide && maxExportLongSide > 0) {
+    const m = Math.max(outW, outH);
+    if (m > maxExportLongSide) {
+      const r = maxExportLongSide / m;
+      outW = Math.max(1, Math.round(outW * r));
+      outH = Math.max(1, Math.round(outH * r));
+    }
+  }
+  return { outW, outH };
+}
+
 export default function ImagePicker({
   isOpen,
   onClose,
@@ -18,7 +38,9 @@ export default function ImagePicker({
   exportScale = 2,
   fileObjectId,
   editorScaleFactor = 2.5,
-  hideEditButton = false
+  hideEditButton = false,
+  /** If set, scales export down so max(width,height) does not exceed this (px). */
+  maxExportLongSide,
 }:{
   isOpen:boolean,
   onClose:()=>void,
@@ -31,8 +53,13 @@ export default function ImagePicker({
   exportScale?: number,
   fileObjectId?:string,
   editorScaleFactor?: number,
-  hideEditButton?: boolean
+  hideEditButton?: boolean,
+  maxExportLongSide?: number,
 }){
+  const exportDimensions = useMemo(
+    () => computeExportDimensions(targetWidth, targetHeight, exportScale, maxExportLongSide),
+    [targetWidth, targetHeight, exportScale, maxExportLongSide],
+  );
   const hasLibrary = !!(clientId || projectId);
   const [tab, setTab] = useState<'upload'|'library'>('upload');
   const [filesOriginals, setFilesOriginals] = useState<LibraryFile[]>([]);
@@ -531,8 +558,9 @@ export default function ImagePicker({
     setIsConfirming(true);
     try {
       const canvas = document.createElement('canvas');
-      const scaleOut = Math.max(1, Number(exportScale||1));
-      canvas.width = Math.round(targetWidth * scaleOut); canvas.height = Math.round(targetHeight * scaleOut);
+      const { outW, outH } = computeExportDimensions(targetWidth, targetHeight, exportScale, maxExportLongSide);
+      canvas.width = outW;
+      canvas.height = outH;
       const ctx = canvas.getContext('2d')!;
       
       // Use white background instead of blur
@@ -857,7 +885,9 @@ export default function ImagePicker({
           </div>
           <div className="col-span-2 min-w-0 overflow-y-auto">
             <div className="p-4">
-              <div className="mb-3 text-sm text-gray-600">Target: {targetWidth}×{targetHeight}px</div>
+              <div className="mb-3 text-sm text-gray-600">
+                Target: {targetWidth}×{targetHeight}px · JPEG export {exportDimensions.outW}×{exportDimensions.outH}px
+              </div>
               <div ref={containerRef} className="relative bg-white overflow-hidden" style={{ width: cw, height: ch, userSelect:'none', cursor: (img && isPanning)? (dragging.current? 'grabbing':'grab') : 'default', touchAction:'none' as any }} onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={onPointerUp}>
                 {img && (
                   <img src={img.src} draggable={false} onDragStart={(e)=>e.preventDefault()} style={{ position:'absolute', left: tx, top: ty, width: img.naturalWidth*coverScale*zoom, height: img.naturalHeight*coverScale*zoom, maxWidth:'none', maxHeight:'none', userSelect:'none', zIndex: 1 }} />

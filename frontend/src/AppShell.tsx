@@ -14,6 +14,7 @@ import { useConfirm } from '@/components/ConfirmProvider';
 import FixedBugReportButton from '@/components/FixedBugReportButton';
 import InstallPrompt from '@/components/InstallPrompt';
 import GlobalSearch, { GlobalSearchSection, GlobalSearchItem } from '@/components/GlobalSearch';
+import HubChatLauncher from '@/components/HubChatLauncher';
 
 type MenuItem = {
   id: string;
@@ -1070,8 +1071,10 @@ export default function AppShell({ children }: PropsWithChildren){
             );
           })}
         </nav>
-        {isAdmin && (
-          <div className="relative z-10 shrink-0 border-t border-gray-700/60 bg-gray-900/40 backdrop-blur-[2px] p-2">
+        <div className="relative z-10 shrink-0 border-t border-gray-700/60 bg-gray-900/40 backdrop-blur-[2px] p-2 space-y-1">
+          <div id="hub-chat-fab-host" className="w-full min-h-0" />
+          <HubChatLauncher sidebarCollapsed={sidebarCollapsed} />
+          {isAdmin && (
             <NavLink
               to="/logs"
               end
@@ -1092,8 +1095,8 @@ export default function AppShell({ children }: PropsWithChildren){
               </span>
               {!sidebarCollapsed && <span className="text-sm font-semibold flex-1">Audit log</span>}
             </NavLink>
-          </div>
-        )}
+          )}
+        </div>
       </aside>
       <main className={`flex-1 min-w-0 flex flex-col min-h-0 transition-all duration-300 ${sidebarCollapsed ? 'ml-16' : 'ml-64'}`} style={{ height: '100vh' }}>
         <div className="h-14 shrink-0 border-b border-gray-700/40 shadow-sm text-white flex items-center justify-between px-6 bg-gradient-to-r from-gray-700 via-gray-700 to-gray-800">
