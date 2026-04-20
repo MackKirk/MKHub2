@@ -76,6 +76,7 @@ import InspectionScheduleDetail from './pages/InspectionScheduleDetail';
 import InspectionDetail from './pages/InspectionDetail';
 import FleetSchedulePage from './pages/FleetSchedulePage';
 import SafetyInspectionsPage from './pages/SafetyInspectionsPage';
+import SafetyInspectionSignPage from './pages/SafetyInspectionSignPage';
 import SafetySchedulePage from './pages/SafetySchedulePage';
 import FormTemplatesPage from './pages/FormTemplatesPage';
 import FormTemplateEditorPage from './pages/FormTemplateEditorPage';
@@ -190,6 +191,7 @@ export default function App(){
           <Route path="/reviews/my" element={<AppShell><MyReviews/></AppShell>} />
           <Route path="/users/:id" element={<AppShell><UserDetail/></AppShell>} />
           <Route path="/safety/inspections" element={<AppShell><SafetyInspectionsPage /></AppShell>} />
+          <Route path="/safety/sign/:projectId/:inspectionId" element={<AppShell><SafetyInspectionSignPage /></AppShell>} />
           <Route path="/safety/calendar" element={<AppShell><SafetySchedulePage /></AppShell>} />
           <Route path="/safety/form-templates" element={<AppShell><FormTemplatesPage /></AppShell>} />
           <Route path="/safety/form-custom-lists" element={<AppShell><FormCustomListsPage /></AppShell>} />

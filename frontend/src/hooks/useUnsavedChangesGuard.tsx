@@ -39,6 +39,10 @@ export function useUnsavedChangesGuard(
   useEffect(() => {
     hasUnsavedRef.current = currentHasUnsaved;
     setGlobalUnsavedChanges(currentHasUnsaved);
+    return () => {
+      hasUnsavedRef.current = false;
+      setGlobalUnsavedChanges(false);
+    };
   }, [currentHasUnsaved, setGlobalUnsavedChanges]);
 
   // Toolbar / menu Reload, close tab: native beforeunload (keyboard reloads use custom modal below)

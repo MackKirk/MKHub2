@@ -30,9 +30,40 @@ DEFAULT_STANDARD_FILE_CATEGORIES: List[Dict[str, Any]] = [
     {"label": "closeout", "value": "Closeout", "sort_index": 13, "meta": {"icon": "✅", "description": ""}},
     {"label": "photos", "value": "Photos", "sort_index": 14, "meta": {"icon": "📷", "description": ""}},
     {"label": "other", "value": "Other", "sort_index": 15, "meta": {"icon": "📦", "description": ""}},
+    {"label": "safety", "value": "Safety", "sort_index": 16, "meta": {"icon": "⚠️", "description": "Site safety inspection PDFs"}},
 ]
 
 LIST_NAME = "standard_file_categories"
+
+# Merged on every GET if missing (DBs seeded before `safety` existed).
+_MERGE_CATEGORY_SPECS: List[Dict[str, Any]] = [
+    {"label": "safety", "value": "Safety", "sort_index": 16, "meta": {"icon": "⚠️", "description": "Site safety inspection PDFs"}},
+]
+
+
+def merge_missing_standard_category_items(db: "Session") -> None:
+    """Insert known category slugs when absent (idempotent)."""
+    lst = db.query(SettingList).filter(SettingList.name == LIST_NAME).first()
+    if not lst:
+        return
+    existing = {str(it.label) for it in db.query(SettingItem).filter(SettingItem.list_id == lst.id).all()}
+    added = False
+    for spec in _MERGE_CATEGORY_SPECS:
+        lab = str(spec.get("label") or "").strip()
+        if not lab or lab in existing:
+            continue
+        db.add(
+            SettingItem(
+                list_id=lst.id,
+                label=lab,
+                value=spec.get("value") or lab,
+                sort_index=int(spec.get("sort_index") or 0),
+                meta=spec.get("meta"),
+            )
+        )
+        added = True
+    if added:
+        db.commit()
 
 
 def ensure_standard_file_categories(db: "Session") -> None:
@@ -60,6 +91,7 @@ def ensure_standard_file_categories(db: "Session") -> None:
 def get_categories_for_client_api(db: "Session") -> List[Dict[str, Any]]:
     """Shape expected by GET /clients/file-categories and UIs."""
     ensure_standard_file_categories(db)
+    merge_missing_standard_category_items(db)
     lst = db.query(SettingList).filter(SettingList.name == LIST_NAME).first()
     if not lst:
         return []
@@ -88,6 +120,7 @@ def get_categories_for_client_api(db: "Session") -> List[Dict[str, Any]]:
 def get_default_folder_rows(db: "Session") -> List[Dict[str, Any]]:
     """For create_default_folders_for_parent: name + sort_index from settings."""
     ensure_standard_file_categories(db)
+    merge_missing_standard_category_items(db)
     lst = db.query(SettingList).filter(SettingList.name == LIST_NAME).first()
     if not lst:
         return [

@@ -1,7 +1,7 @@
 import { useMemo, useEffect, useCallback, useState } from 'react';
 import { useQuery, useQueries } from '@tanstack/react-query';
-import { api } from '@/lib/api';
-import SafetySignaturePad from '@/components/SafetySignaturePad';
+import { api, withFileAccessToken } from '@/lib/api';
+import SafetySignaturePad, { type SavedSignatureMeta } from '@/components/SafetySignaturePad';
 import SafetyDynamicFileField from '@/components/SafetyDynamicFileField';
 import SafetyPdfViewReferenceField from '@/components/SafetyPdfViewReferenceField';
 import { SafetyFieldQuestionLabel as FieldQuestionLabel } from '@/components/SafetyFieldQuestionLabel';
@@ -214,6 +214,9 @@ type Props = {
   readOnly?: boolean;
   /** Required for file uploads / signature */
   projectId?: string;
+  /** Shown on saved signature + embedded in PDF metadata */
+  signerDisplayName?: string;
+  signerUserId?: string;
 };
 
 function PassFailTotalAggregateSync({
@@ -252,6 +255,8 @@ export default function DynamicSafetyForm({
   canWrite,
   readOnly,
   projectId = '',
+  signerDisplayName = 'Preview user',
+  signerUserId,
 }: Props) {
   const disabled = !canWrite || readOnly;
   const [commentOpen, setCommentOpen] = useState<Record<string, boolean>>({});
@@ -365,6 +370,43 @@ export default function DynamicSafetyForm({
     setFormPayload((prev) => ({ ...prev, [key]: val }));
   };
 
+  const applyWorkerSignatureSaved = useCallback(
+    (fileId: string, meta: SavedSignatureMeta) => {
+      setFormPayload((prev) => ({
+        ...prev,
+        _worker_signature_file_id: fileId,
+        _worker_signature_signed_at: meta.signedAt,
+        _worker_signature_signer_name: meta.signerName,
+        ...(meta.signerUserId ? { _worker_signature_signer_user_id: meta.signerUserId } : {}),
+        ...(meta.lat != null && meta.lng != null
+          ? {
+              _worker_signature_lat: meta.lat,
+              _worker_signature_lng: meta.lng,
+              ...(meta.locationLabel ? { _worker_signature_location_label: meta.locationLabel } : {}),
+            }
+          : {}),
+      }));
+    },
+    [setFormPayload]
+  );
+
+  const clearWorkerSignaturePersisted = useCallback(() => {
+    setFormPayload((prev) => {
+      const next = { ...prev };
+      const keys = [
+        '_worker_signature_file_id',
+        '_worker_signature_signed_at',
+        '_worker_signature_signer_name',
+        '_worker_signature_signer_user_id',
+        '_worker_signature_lat',
+        '_worker_signature_lng',
+        '_worker_signature_location_label',
+      ];
+      for (const k of keys) delete next[k];
+      return next;
+    });
+  }, [setFormPayload]);
+
   const uploadFile = useCallback(
     async (file: File): Promise<string | null> => {
       if (!projectId) return null;
@@ -379,10 +421,7 @@ export default function DynamicSafetyForm({
         form.append('employee_id', '');
         form.append('category_id', FILE_CAT);
         const res = await api<{ id: string }>('POST', '/files/upload-proxy', form);
-        await api(
-          'POST',
-          `/projects/${encodeURIComponent(projectId)}/files?file_object_id=${encodeURIComponent(res.id)}&category=${encodeURIComponent(FILE_CAT)}&original_name=${encodeURIComponent(file.name)}`
-        );
+        // Keep file_object on storage for form/PDF only — not listed under Project > Files.
         return res.id;
       } catch {
         return null;
@@ -1219,6 +1258,14 @@ export default function DynamicSafetyForm({
 
   const workerSig = definition.signature_policy?.worker;
   const sigMode = workerSig?.mode || 'drawn';
+  const workerSigFileId = getStr(formPayload, '_worker_signature_file_id') || null;
+  const workerSignedAt = getStr(formPayload, '_worker_signature_signed_at');
+  const workerSignerName = getStr(formPayload, '_worker_signature_signer_name');
+  const workerLocationLabel = getStr(formPayload, '_worker_signature_location_label');
+  const workerSignedDisplay =
+    workerSignedAt && !Number.isNaN(Date.parse(workerSignedAt))
+      ? new Date(workerSignedAt).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })
+      : '';
 
   return (
     <div className="space-y-4">
@@ -1251,12 +1298,51 @@ export default function DynamicSafetyForm({
             />
           )}
           {(sigMode === 'drawn' || sigMode === 'any') && projectId && (
-            <SafetySignaturePad
-              projectId={projectId}
-              disabled={disabled}
-              fileObjectId={getStr(formPayload, '_worker_signature_file_id') || null}
-              onFileObjectId={(id) => setKey('_worker_signature_file_id', id || '')}
-            />
+            <>
+              {workerSigFileId && (
+                <div className="rounded-lg border border-gray-200 bg-gray-50/80 p-3 space-y-2 mb-1">
+                  <div className="text-xs font-semibold text-gray-600 uppercase tracking-wide">Saved signature</div>
+                  <div className="flex flex-wrap gap-4 items-start">
+                    <a
+                      href={withFileAccessToken(`/files/${encodeURIComponent(workerSigFileId)}/thumbnail?w=640`)}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="shrink-0 block rounded border border-gray-200 bg-white overflow-hidden"
+                    >
+                      <img
+                        src={withFileAccessToken(`/files/${encodeURIComponent(workerSigFileId)}/thumbnail?w=320`)}
+                        alt="Signature"
+                        className="max-h-28 w-auto max-w-[200px] object-contain"
+                      />
+                    </a>
+                    <div className="text-sm text-gray-800 space-y-1 min-w-0 flex-1">
+                      <div>
+                        <span className="text-gray-500">Signed by: </span>
+                        <span className="font-medium">{workerSignerName || '—'}</span>
+                      </div>
+                      <div>
+                        <span className="text-gray-500">Time: </span>
+                        <span>{workerSignedDisplay || '—'}</span>
+                      </div>
+                      <div>
+                        <span className="text-gray-500">Location: </span>
+                        <span>{workerLocationLabel || 'Not captured'}</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+              <SafetySignaturePad
+                projectId={projectId}
+                disabled={disabled}
+                fileObjectId={workerSigFileId}
+                onFileObjectId={(id) => setKey('_worker_signature_file_id', id || '')}
+                signerDisplayName={signerDisplayName}
+                signerUserId={signerUserId}
+                onSignatureSaved={applyWorkerSignatureSaved}
+                onSignatureClear={clearWorkerSignaturePersisted}
+              />
+            </>
           )}
         </div>
       )}

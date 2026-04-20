@@ -65,3 +65,42 @@ def save_pdf_bytes_as_file_object(
     db.add(fo)
     db.flush()
     return fo
+
+
+def save_project_pdf_bytes_as_file_object(
+    db: Session,
+    pdf_bytes: bytes,
+    *,
+    project_id: UUID,
+    project_code: str,
+    original_name: str,
+    created_by_id: Optional[UUID] = None,
+) -> FileObject:
+    """Store a project-scoped PDF (e.g. finalized safety inspection) and return FileObject."""
+    storage = get_storage()
+    key = canonical_key(
+        project_code=project_code or "misc",
+        slug=str(project_id)[:8],
+        category="safety",
+        original_name=original_name or "inspection.pdf",
+    )
+    bio = io.BytesIO(pdf_bytes)
+    bio.seek(0)
+    storage.copy_in(bio, key)
+    if isinstance(storage, LocalStorageProvider):
+        provider, container = "local", "local"
+    else:
+        provider, container = "blob", settings.azure_blob_container or ""
+    fo = FileObject(
+        provider=provider,
+        container=container,
+        key=key,
+        size_bytes=len(pdf_bytes),
+        checksum_sha256="na",
+        content_type="application/pdf",
+        project_id=project_id,
+        created_by=created_by_id,
+    )
+    db.add(fo)
+    db.flush()
+    return fo

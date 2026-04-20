@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type MutableRefObject } from 'react';
+import { Link } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
 import { api, withFileAccessToken } from '@/lib/api';
@@ -16,6 +17,8 @@ import {
   type YesNoNa,
 } from '@/data/projectSafetyInspectionTemplate';
 import DynamicSafetyForm from '@/components/DynamicSafetyForm';
+import { useConfirm } from '@/components/ConfirmProvider';
+import { useUnsavedChangesGuard } from '@/hooks/useUnsavedChangesGuard';
 import { normalizeDefinition, validateDynamicForm, type SafetyFormDefinition } from '@/types/safetyFormTemplate';
 
 type SafetyInspectionRow = {
@@ -27,14 +30,25 @@ type SafetyInspectionRow = {
   form_payload: Record<string, unknown>;
   form_template_id?: string | null;
   form_definition_snapshot?: SafetyFormDefinition | Record<string, unknown> | null;
-  assigned_user_id?: string | null;
   template_name?: string | null;
   template_version_label?: string | null;
-  worker_name?: string | null;
   created_at?: string | null;
   created_by?: string | null;
   updated_at?: string | null;
   updated_by?: string | null;
+  pdf_attachment_error?: string | null;
+  finalized_pdf_file_object_id?: string | null;
+  interim_pdf_attachment_error?: string | null;
+  interim_pdf_file_object_id?: string | null;
+  sign_requests?: Array<{
+    id: string;
+    signer_user_id: string;
+    status: string;
+    signed_at?: string | null;
+    signer_display_name_snapshot?: string | null;
+  }>;
+  interim_pdf_client_file_id?: string | null;
+  final_pdf_client_file_id?: string | null;
 };
 
 type FormTemplatePick = {
@@ -118,6 +132,8 @@ type Props = {
   canWrite: boolean;
   /** From URL ?safety_inspection= — open this inspection when the list loads */
   initialSafetyInspectionId?: string | null;
+  /** Parent (e.g. ProjectDetail) calls this before switching away from the Safety tab */
+  flushSaveRef?: MutableRefObject<(() => Promise<void>) | undefined>;
 };
 
 function YnCommentImageGrid({
@@ -269,18 +285,29 @@ function YnCommentPhotoDropzone({
   );
 }
 
-export default function ProjectSafetyTab({ projectId, proj, canRead, canWrite, initialSafetyInspectionId }: Props) {
+export default function ProjectSafetyTab({
+  projectId,
+  proj,
+  canRead,
+  canWrite,
+  initialSafetyInspectionId,
+  flushSaveRef,
+}: Props) {
   const qc = useQueryClient();
+  const confirm = useConfirm();
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [inspectionDate, setInspectionDate] = useState<string>('');
   const [formPayload, setFormPayload] = useState<Record<string, unknown>>({});
+  /** JSON snapshot of last committed form_payload (server or after save); null = no baseline yet */
+  const [committedJson, setCommittedJson] = useState<string | null>(null);
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [pickedTemplateId, setPickedTemplateId] = useState('');
-  const [assignedUserId, setAssignedUserId] = useState('');
   /** Y/N item keys whose optional comment field is expanded for editing */
   const [ynCommentOpen, setYnCommentOpen] = useState<Record<string, boolean>>({});
   /** Which Y/N row is currently uploading an image (shows inline status). */
   const [ynImageUploadingFor, setYnImageUploadingFor] = useState<string | null>(null);
+  const [finalizeModalOpen, setFinalizeModalOpen] = useState(false);
+  const [extraSignerQuery, setExtraSignerQuery] = useState('');
+  const [extraSignerIds, setExtraSignerIds] = useState<string[]>([]);
 
   const listKey = ['projectSafetyInspections', projectId];
   const { data: list = [], isLoading: listLoading } = useQuery({
@@ -297,17 +324,27 @@ export default function ProjectSafetyTab({ projectId, proj, canRead, canWrite, i
     }
   }, [initialSafetyInspectionId, list]);
 
-  const { data: employees = [] } = useQuery({
-    queryKey: ['employees-project-safety-tab'],
-    queryFn: () => api<{ id: string; name: string; username?: string }[]>('GET', '/employees'),
-    enabled: canRead && !!projectId,
-  });
-
   const { data: schedulableTemplates = [] } = useQuery({
     queryKey: ['formTemplatesSchedulable', showCreateModal],
     queryFn: () => api<FormTemplatePick[]>('GET', '/form-templates?schedulable=true'),
     enabled: showCreateModal && canWrite,
   });
+
+  const { data: me } = useQuery({
+    queryKey: ['me'],
+    queryFn: () => api<{ id?: string; username?: string; profile?: { first_name?: string; last_name?: string } }>('GET', '/auth/me'),
+    enabled: canRead && !!selectedId,
+  });
+
+  const signerDisplayName = useMemo(() => {
+    const p = me?.profile;
+    if (p && ((p.first_name || '').trim() || (p.last_name || '').trim())) {
+      return `${(p.first_name || '').trim()} ${(p.last_name || '').trim()}`.trim();
+    }
+    return (me?.username || '').trim() || 'User';
+  }, [me]);
+
+  const signerUserId = me?.id != null ? String(me.id) : undefined;
 
   const detailKey = ['projectSafetyInspection', projectId, selectedId];
   const { data: detail, isLoading: detailLoading } = useQuery({
@@ -347,18 +384,46 @@ export default function ProjectSafetyTab({ projectId, proj, canRead, canWrite, i
     return null;
   }, [detail?.form_definition_snapshot, templateFallback?.definition]);
 
+  const inspectionImmutable =
+    detail?.status === 'finalized' || detail?.status === 'pending_signatures';
+  const formEditable = !!(canWrite && detail && !inspectionImmutable);
+
+  const inspectionDisplayName = useMemo(() => {
+    if (!detail) return '';
+    const name = (detail.template_name || '').trim();
+    if (name) {
+      const vl = (detail.template_version_label || '').trim();
+      return vl ? `${name} (${vl})` : name;
+    }
+    const tv = detail.template_version || '';
+    if (tv.startsWith('mki')) return 'MKI Safety Inspection';
+    return tv || 'Safety inspection';
+  }, [detail]);
+
+  const formPayloadRef = useRef(formPayload);
+  const inspectionUsesTemplateRef = useRef(false);
   useEffect(() => {
-    if (!detail) return;
-    const d = new Date(detail.inspection_date);
-    const local = Number.isNaN(d.getTime()) ? '' : d.toISOString().slice(0, 16);
-    setInspectionDate(local);
-    setFormPayload(
+    formPayloadRef.current = formPayload;
+  }, [formPayload]);
+  useEffect(() => {
+    inspectionUsesTemplateRef.current = Boolean(detail?.form_template_id);
+  }, [detail?.form_template_id]);
+
+  useEffect(() => {
+    if (!selectedId) {
+      setCommittedJson(null);
+    }
+  }, [selectedId]);
+
+  useEffect(() => {
+    if (!detail?.id) return;
+    const raw =
       detail.form_payload && typeof detail.form_payload === 'object' && !Array.isArray(detail.form_payload)
         ? { ...detail.form_payload }
-        : {}
-    );
-    setAssignedUserId(detail.assigned_user_id || '');
-  }, [detail?.id, detail?.inspection_date, detail?.form_payload, detail?.assigned_user_id]);
+        : {};
+    setFormPayload(raw);
+    setCommittedJson(JSON.stringify(raw));
+  }, [detail?.id]);
 
   useEffect(() => {
     setYnCommentOpen({});
@@ -376,27 +441,14 @@ export default function ProjectSafetyTab({ projectId, proj, canRead, canWrite, i
   );
 
   useEffect(() => {
-    if (!selectedId || !detail) return;
+    if (!selectedId || !detail?.id) return;
     if (detail.form_payload && Object.keys(detail.form_payload).length > 0) return;
-    setFormPayload((p) => applyProjectPrefill(p));
-  }, [selectedId, detail, applyProjectPrefill]);
-
-  const createLegacyMutation = useMutation({
-    mutationFn: () =>
-      api<SafetyInspectionRow>('POST', `/projects/${encodeURIComponent(projectId)}/safety-inspections`, {
-        template_version: SAFETY_TEMPLATE_VERSION,
-        form_payload: applyProjectPrefill({}),
-      }),
-    onSuccess: (row) => {
-      qc.invalidateQueries({ queryKey: listKey });
-      qc.invalidateQueries({ queryKey: ['safetyInspections'] });
-      qc.invalidateQueries({ queryKey: ['safetyInspectionsCalendar'] });
-      setSelectedId(row.id);
-      setShowCreateModal(false);
-      toast.success('Inspection created');
-    },
-    onError: () => toast.error('Could not create inspection'),
-  });
+    setFormPayload((p) => {
+      const next = applyProjectPrefill(p);
+      setCommittedJson(JSON.stringify(next));
+      return next;
+    });
+  }, [selectedId, detail?.id, detail?.form_payload, applyProjectPrefill]);
 
   const createFromTemplateMutation = useMutation({
     mutationFn: () => {
@@ -420,72 +472,145 @@ export default function ProjectSafetyTab({ projectId, proj, canRead, canWrite, i
   });
 
   const saveMutation = useMutation({
-    mutationFn: () => {
-      if (!selectedId) throw new Error('no id');
-      let iso: string;
-      if (inspectionDate) {
-        const t = new Date(inspectionDate);
-        iso = Number.isNaN(t.getTime()) ? new Date().toISOString() : t.toISOString();
-      } else {
-        iso = new Date().toISOString();
-      }
+    mutationFn: async () => {
+      const sid = selectedId;
+      if (!sid) throw new Error('no id');
+      const fp = formPayloadRef.current;
       const body: Record<string, unknown> = {
-        inspection_date: iso,
-        form_payload: formPayload,
-        assigned_user_id: assignedUserId || null,
+        form_payload: fp,
       };
-      if (!detail?.form_template_id) {
+      if (!inspectionUsesTemplateRef.current) {
         body.template_version = SAFETY_TEMPLATE_VERSION;
       }
       return api<SafetyInspectionRow>(
         'PUT',
-        `/projects/${encodeURIComponent(projectId)}/safety-inspections/${encodeURIComponent(selectedId)}`,
+        `/projects/${encodeURIComponent(projectId)}/safety-inspections/${encodeURIComponent(sid)}`,
         body
       );
     },
     onSuccess: () => {
       setYnCommentOpen({});
+      setCommittedJson(JSON.stringify(formPayloadRef.current));
       qc.invalidateQueries({ queryKey: listKey });
       qc.invalidateQueries({ queryKey: ['safetyInspections'] });
       qc.invalidateQueries({ queryKey: ['safetyInspectionsCalendar'] });
       if (selectedId) {
         qc.invalidateQueries({ queryKey: ['projectSafetyInspection', projectId, selectedId] });
       }
-      toast.success('Saved');
     },
     onError: () => toast.error('Could not save'),
   });
 
+  const flushSaveInspection = useCallback(async () => {
+    await saveMutation.mutateAsync();
+  }, [saveMutation]);
+
+  const { data: userPickOptions = [] } = useQuery({
+    queryKey: ['authUsersOptions', extraSignerQuery, finalizeModalOpen],
+    queryFn: () =>
+      api<Array<{ id: string; name: string; username: string }>>(
+        'GET',
+        `/auth/users/options?q=${encodeURIComponent(extraSignerQuery)}&limit=80`
+      ),
+    enabled: finalizeModalOpen,
+  });
+
   const finalizeMutation = useMutation({
-    mutationFn: () => {
-      if (!selectedId) throw new Error('no id');
+    mutationFn: async (additionalSignerUserIds: string[]) => {
+      const sid = selectedId;
+      if (!sid) throw new Error('no id');
+      const fp = formPayloadRef.current;
       if (detail?.form_template_id && dynamicDefinition) {
-        const missing = validateDynamicForm(dynamicDefinition, formPayload);
+        const missing = validateDynamicForm(dynamicDefinition, fp);
         if (missing.length) {
           toast.error(`Missing required fields: ${missing.slice(0, 5).join(', ')}${missing.length > 5 ? '…' : ''}`);
           throw new Error('validation');
         }
       }
+      const body: Record<string, unknown> = {
+        status: 'finalized',
+        form_payload: fp,
+        additional_signer_user_ids: additionalSignerUserIds,
+      };
+      if (!inspectionUsesTemplateRef.current) {
+        body.template_version = SAFETY_TEMPLATE_VERSION;
+      }
       return api<SafetyInspectionRow>(
         'PUT',
-        `/projects/${encodeURIComponent(projectId)}/safety-inspections/${encodeURIComponent(selectedId)}`,
-        { status: 'finalized' }
+        `/projects/${encodeURIComponent(projectId)}/safety-inspections/${encodeURIComponent(sid)}`,
+        body
       );
     },
-    onSuccess: () => {
+    onSuccess: (data) => {
+      setFinalizeModalOpen(false);
+      setExtraSignerIds([]);
+      setExtraSignerQuery('');
+      setCommittedJson(JSON.stringify(formPayloadRef.current));
       qc.invalidateQueries({ queryKey: listKey });
       qc.invalidateQueries({ queryKey: ['safetyInspections'] });
       qc.invalidateQueries({ queryKey: ['safetyInspectionsCalendar'] });
+      qc.invalidateQueries({ queryKey: ['projectFiles', projectId] });
       if (selectedId) {
         qc.invalidateQueries({ queryKey: ['projectSafetyInspection', projectId, selectedId] });
       }
-      toast.success('Inspection finalized');
+      if (data?.status === 'pending_signatures') {
+        toast.success('Inspection submitted; additional signatures requested.');
+      } else {
+        toast.success('Inspection finalized');
+      }
+      if (data?.pdf_attachment_error) {
+        const code = data.pdf_attachment_error;
+        toast.error(
+          code === 'missing_files_write_or_safety_category'
+            ? 'The inspection PDF was not added to Project files (missing write access or the Safety category is not allowed for your role).'
+            : code === 'project_missing_client'
+              ? 'The inspection PDF was not saved because this project has no client record.'
+              : 'The inspection PDF could not be generated or saved to Project files.'
+        );
+      }
+      if (data?.interim_pdf_attachment_error) {
+        toast.error(
+          'The interim PDF could not be saved to Project files. Signers were still notified if notifications are enabled.'
+        );
+      }
     },
     onError: (e: Error) => {
       if (e?.message === 'validation') return;
       toast.error('Could not finalize');
     },
   });
+
+  const hasUnsavedChanges = useMemo(() => {
+    if (!canWrite || !selectedId || !detail || inspectionImmutable || committedJson === null) return false;
+    try {
+      return JSON.stringify(formPayload) !== committedJson;
+    } catch {
+      return true;
+    }
+  }, [canWrite, selectedId, detail, formPayload, committedJson, inspectionImmutable]);
+
+  const handleGuardDiscard = useCallback(() => {
+    try {
+      const parsed = committedJson ? (JSON.parse(committedJson) as unknown) : {};
+      const obj =
+        parsed && typeof parsed === 'object' && !Array.isArray(parsed)
+          ? (parsed as Record<string, unknown>)
+          : {};
+      setFormPayload({ ...obj });
+    } catch {
+      setFormPayload({});
+    }
+  }, [committedJson]);
+
+  useUnsavedChangesGuard(hasUnsavedChanges, flushSaveInspection, handleGuardDiscard);
+
+  useEffect(() => {
+    if (!flushSaveRef) return;
+    flushSaveRef.current = flushSaveInspection;
+    return () => {
+      flushSaveRef.current = undefined;
+    };
+  }, [flushSaveRef, flushSaveInspection]);
 
   const setTextField = (key: string, value: string) => {
     setFormPayload((p) => ({ ...p, [key]: value }));
@@ -594,6 +719,7 @@ export default function ProjectSafetyTab({ projectId, proj, canRead, canWrite, i
   };
 
   const renderItem = (item: SafetyTemplateItem, idx: number, zebra: boolean) => {
+    const w = formEditable;
     const rowBg = zebra ? (idx % 2 === 0 ? 'bg-white' : 'bg-gray-50/80') : '';
     if (item.kind === 'subheading') {
       return (
@@ -617,7 +743,7 @@ export default function ProjectSafetyTab({ projectId, proj, canRead, canWrite, i
             type="text"
             value={getTextValue(formPayload, item.key)}
             onChange={(e) => setTextField(item.key, e.target.value)}
-            disabled={!canWrite}
+            disabled={!w}
             placeholder={item.placeholder}
             className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm disabled:bg-gray-50 disabled:text-gray-500"
           />
@@ -631,7 +757,7 @@ export default function ProjectSafetyTab({ projectId, proj, canRead, canWrite, i
           <textarea
             value={getTextValue(formPayload, item.key)}
             onChange={(e) => setTextField(item.key, e.target.value)}
-            disabled={!canWrite}
+            disabled={!w}
             placeholder={item.placeholder}
             rows={3}
             className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm resize-y disabled:bg-gray-50 disabled:text-gray-500"
@@ -650,7 +776,7 @@ export default function ProjectSafetyTab({ projectId, proj, canRead, canWrite, i
                 <input
                   type="checkbox"
                   checked={selected.includes(opt)}
-                  disabled={!canWrite}
+                  disabled={!w}
                   onChange={() => toggleCheckbox(item.key, opt)}
                   className="rounded border-gray-300"
                 />
@@ -685,7 +811,7 @@ export default function ProjectSafetyTab({ projectId, proj, canRead, canWrite, i
                 key={opt.value}
                 type="button"
                 title={opt.title}
-                disabled={!canWrite}
+                disabled={!w}
                 onClick={() => setYnStatus(item.key, opt.value)}
                 className={`min-w-[3.25rem] min-h-[3.25rem] flex items-center justify-center rounded-xl text-sm font-bold border-2 transition-all disabled:opacity-50 ${
                   yn.status === opt.value ? opt.className + ' scale-105 shadow-md' : 'bg-white text-gray-300 border-gray-200 hover:border-gray-300'
@@ -694,7 +820,7 @@ export default function ProjectSafetyTab({ projectId, proj, canRead, canWrite, i
                 {opt.label}
               </button>
             ))}
-            {item.commentsField && canWrite && (
+            {item.commentsField && w && (
               <button
                 type="button"
                 title={commentExpanded ? 'Close comment' : hasCommentOrMedia ? 'Edit comment' : 'Add comment'}
@@ -717,7 +843,7 @@ export default function ProjectSafetyTab({ projectId, proj, canRead, canWrite, i
             )}
           </div>
         </div>
-        {item.commentsField && canWrite && commentExpanded && (
+        {item.commentsField && w && commentExpanded && (
           <div className="mt-3 space-y-3">
             <textarea
               value={yn.comments}
@@ -743,13 +869,13 @@ export default function ProjectSafetyTab({ projectId, proj, canRead, canWrite, i
             />
           </div>
         )}
-        {item.commentsField && canWrite && !commentExpanded && hasCommentOrMedia && (
+        {item.commentsField && w && !commentExpanded && hasCommentOrMedia && (
           <div className="mt-3 space-y-2">
             {hasComment && <p className="text-sm text-gray-700 whitespace-pre-wrap break-words">{yn.comments}</p>}
             <YnCommentImageGrid imageIds={yn.comment_image_ids} />
           </div>
         )}
-        {item.commentsField && !canWrite && hasCommentOrMedia && (
+        {item.commentsField && !w && hasCommentOrMedia && (
           <div className="mt-3 space-y-2">
             {hasComment && <p className="text-sm text-gray-600 whitespace-pre-wrap break-words">{yn.comments}</p>}
             <YnCommentImageGrid imageIds={yn.comment_image_ids} />
@@ -771,35 +897,38 @@ export default function ProjectSafetyTab({ projectId, proj, canRead, canWrite, i
       <div className="space-y-4">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <h2 className="text-sm font-semibold text-gray-900">Safety inspections</h2>
-          {canWrite && (
-            <div className="flex flex-wrap gap-2">
-              <button
-                type="button"
-                disabled={createLegacyMutation.isPending}
-                onClick={() => createLegacyMutation.mutate()}
-                className="px-3 py-2 rounded-lg bg-blue-600 text-white text-sm font-medium hover:bg-blue-700 disabled:opacity-50"
-              >
-                New (MKI)
-              </button>
-              <button
-                type="button"
-                onClick={() => setShowCreateModal(true)}
-                className="px-3 py-2 rounded-lg border border-gray-200 bg-white text-sm font-medium text-gray-800 hover:bg-gray-50"
-              >
-                New from template…
-              </button>
-            </div>
-          )}
         </div>
         <div className="rounded-xl border border-gray-200 bg-white overflow-hidden">
+          {canWrite && (
+            <button
+              type="button"
+              onClick={() => setShowCreateModal(true)}
+              className="w-full border-2 border-dashed border-gray-300 rounded-t-xl p-2.5 hover:border-brand-red hover:bg-gray-50 transition-all text-center bg-white flex items-center justify-center min-h-[60px] min-w-0"
+            >
+              <span className="font-medium text-xs text-gray-700">+ New Form</span>
+            </button>
+          )}
           {listLoading ? (
-            <div className="p-8 text-center text-gray-500 text-sm">Loading…</div>
+            <div
+              className={`p-8 text-center text-gray-500 text-sm ${canWrite ? 'border-t border-gray-100' : ''}`}
+            >
+              Loading…
+            </div>
           ) : list.length === 0 ? (
-            <div className="p-8 text-center text-gray-500 text-sm">No inspections yet. Create one to get started.</div>
+            <div
+              className={`p-8 text-center text-gray-500 text-sm ${canWrite ? 'border-t border-gray-100' : ''}`}
+            >
+              No inspections yet. Create one to get started.
+            </div>
           ) : (
-            <ul className="divide-y divide-gray-100">
+            <ul className={`divide-y divide-gray-100 ${canWrite ? 'border-t border-gray-100' : ''}`}>
               {list.map((row) => {
-                const st = row.status === 'finalized' ? 'finalized' : 'draft';
+                const st =
+                  row.status === 'finalized'
+                    ? 'finalized'
+                    : row.status === 'pending_signatures'
+                      ? 'pending_signatures'
+                      : 'draft';
                 const tmpl =
                   row.template_name ||
                   (row.template_version?.startsWith('mki') ? 'MKI Safety Inspection' : row.template_version || '—');
@@ -823,10 +952,14 @@ export default function ProjectSafetyTab({ projectId, proj, canRead, canWrite, i
                       </div>
                       <span
                         className={`text-[10px] font-semibold px-2 py-0.5 rounded-full shrink-0 ${
-                          st === 'finalized' ? 'bg-green-100 text-green-800' : 'bg-amber-100 text-amber-900'
+                          st === 'finalized'
+                            ? 'bg-green-100 text-green-800'
+                            : st === 'pending_signatures'
+                              ? 'bg-sky-100 text-sky-900'
+                              : 'bg-amber-100 text-amber-900'
                         }`}
                       >
-                        {st === 'finalized' ? 'Finalized' : 'Draft'}
+                        {st === 'finalized' ? 'Finalized' : st === 'pending_signatures' ? 'Signatures' : 'Draft'}
                       </span>
                     </button>
                   </li>
@@ -906,7 +1039,29 @@ export default function ProjectSafetyTab({ projectId, proj, canRead, canWrite, i
         <button
           type="button"
           onClick={() => {
-            setSelectedId(null);
+            void (async () => {
+              if (!hasUnsavedChanges) {
+                setSelectedId(null);
+                return;
+              }
+              const result = await confirm({
+                title: 'Unsaved Changes',
+                message: 'You have unsaved changes. What would you like to do?',
+                confirmText: 'Save and Continue',
+                cancelText: 'Cancel',
+                showDiscard: true,
+                discardText: 'Continue without saving',
+              });
+              if (result === 'cancel') return;
+              if (result === 'confirm') {
+                try {
+                  await flushSaveInspection();
+                } catch {
+                  return;
+                }
+              }
+              setSelectedId(null);
+            })();
           }}
           className="text-sm text-brand-red hover:underline font-medium"
         >
@@ -918,65 +1073,58 @@ export default function ProjectSafetyTab({ projectId, proj, canRead, canWrite, i
         <div className="rounded-xl border bg-white p-8 text-center text-gray-500">Loading…</div>
       ) : (
         <>
-          <div className="rounded-xl border border-gray-200 bg-white p-4 flex flex-wrap items-end justify-between gap-4">
-            <div className="min-w-[200px] flex-1">
-              <label className="block text-xs font-medium text-gray-500 uppercase tracking-wide mb-1">Inspection date & time</label>
-              <input
-                type="datetime-local"
-                value={inspectionDate}
-                onChange={(e) => setInspectionDate(e.target.value)}
-                disabled={!canWrite}
-                className="px-3 py-2 border border-gray-200 rounded-lg text-sm disabled:bg-gray-50"
-              />
+          <div className="rounded-xl border border-gray-200 bg-white p-4 flex flex-wrap items-center justify-between gap-4">
+            <div className="min-w-0 flex-1">
+              <div className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-1">Inspection</div>
+              <h2 className="text-base sm:text-lg font-semibold text-gray-900 truncate" title={inspectionDisplayName}>
+                {inspectionDisplayName || 'Safety inspection'}
+              </h2>
             </div>
             {detail && (
-              <div className="flex flex-col items-end gap-1">
-                <div className="flex items-center gap-2">
-                  <span className="text-xs text-gray-500">Status</span>
-                  <span
-                    className={`text-xs font-semibold px-2.5 py-1 rounded-full ${
-                      detail.status === 'finalized' ? 'bg-green-100 text-green-800' : 'bg-amber-100 text-amber-900'
-                    }`}
-                  >
-                    {detail.status === 'finalized' ? 'Finalized' : 'Draft'}
-                  </span>
-                </div>
-                {detail.template_name && (
-                  <span className="text-[10px] text-gray-500 max-w-[14rem] text-right truncate" title={detail.template_name}>
-                    {detail.template_name}
-                    {(detail.template_version_label || '').trim()
-                      ? ` · ${(detail.template_version_label || '').trim()}`
-                      : ''}
-                  </span>
-                )}
+              <div className="flex items-center gap-2 shrink-0">
+                <span className="text-xs text-gray-500">Status</span>
+                <span
+                  className={`text-xs font-semibold px-2.5 py-1 rounded-full ${
+                    detail.status === 'finalized'
+                      ? 'bg-green-100 text-green-800'
+                      : detail.status === 'pending_signatures'
+                        ? 'bg-sky-100 text-sky-900'
+                        : 'bg-amber-100 text-amber-900'
+                  }`}
+                >
+                  {detail.status === 'finalized'
+                    ? 'Finalized'
+                    : detail.status === 'pending_signatures'
+                      ? 'Awaiting signatures'
+                      : 'Draft'}
+                </span>
               </div>
             )}
           </div>
 
-          <div className="rounded-xl border border-gray-200 bg-white p-4">
-            <label className="block text-xs font-medium text-gray-500 uppercase tracking-wide mb-1">Assigned worker</label>
-            <select
-              value={assignedUserId}
-              onChange={(e) => setAssignedUserId(e.target.value)}
-              disabled={!canWrite || detail?.status === 'finalized'}
-              className="w-full max-w-md px-3 py-2 border border-gray-200 rounded-lg text-sm disabled:bg-gray-50"
-            >
-              <option value="">—</option>
-              {employees.map((e) => (
-                <option key={e.id} value={e.id}>
-                  {e.name || e.username}
-                </option>
-              ))}
-            </select>
-          </div>
+          {detail?.status === 'pending_signatures' && (
+            <div className="rounded-xl border border-sky-200 bg-sky-50/80 px-4 py-3 text-sm text-sky-900">
+              This inspection is waiting for additional signers. The form is read-only.{' '}
+              {detail.sign_requests?.some((r) => r.signer_user_id === signerUserId && r.status === 'pending') ? (
+                <Link
+                  className="font-medium text-brand-red hover:underline"
+                  to={`/safety/sign/${encodeURIComponent(projectId)}/${encodeURIComponent(detail.id)}`}
+                >
+                  Open signing page
+                </Link>
+              ) : null}
+            </div>
+          )}
 
           {isDynamicInspection && dynamicDefinition ? (
             <DynamicSafetyForm
               definition={dynamicDefinition}
               formPayload={formPayload}
               setFormPayload={setFormPayload}
-              canWrite={canWrite && detail?.status !== 'finalized'}
+              canWrite={formEditable}
               projectId={projectId}
+              signerDisplayName={signerDisplayName}
+              signerUserId={signerUserId}
             />
           ) : (
             formSections.map((section) => (
@@ -992,27 +1140,94 @@ export default function ProjectSafetyTab({ projectId, proj, canRead, canWrite, i
             ))
           )}
 
-          {canWrite && (
+          {formEditable && (
             <div className="flex flex-wrap gap-3 items-center">
               <button
                 type="button"
-                disabled={saveMutation.isPending}
-                onClick={() => saveMutation.mutate()}
-                className="px-5 py-2.5 bg-blue-600 text-white rounded-lg font-medium text-sm hover:bg-blue-700 disabled:opacity-50"
+                disabled={finalizeMutation.isPending || saveMutation.isPending}
+                onClick={() => {
+                  setExtraSignerIds([]);
+                  setExtraSignerQuery('');
+                  setFinalizeModalOpen(true);
+                }}
+                className="px-5 py-2.5 border border-green-600 text-green-800 bg-green-50 rounded-lg font-medium text-sm hover:bg-green-100 disabled:opacity-50"
               >
-                {saveMutation.isPending ? 'Saving…' : 'Save inspection'}
+                {finalizeMutation.isPending ? 'Finalizing…' : saveMutation.isPending ? 'Saving…' : 'Finalize inspection'}
               </button>
-              {detail?.status !== 'finalized' && (
-                <button
-                  type="button"
-                  disabled={finalizeMutation.isPending}
-                  onClick={() => finalizeMutation.mutate()}
-                  className="px-5 py-2.5 border border-green-600 text-green-800 bg-green-50 rounded-lg font-medium text-sm hover:bg-green-100 disabled:opacity-50"
-                >
-                  {finalizeMutation.isPending ? 'Finalizing…' : 'Finalize inspection'}
-                </button>
-              )}
             </div>
+          )}
+
+          {finalizeModalOpen && (
+            <OverlayPortal>
+              <div
+                className="fixed inset-0 z-[200] bg-black/50 flex items-center justify-center overflow-y-auto p-4"
+                onClick={() => setFinalizeModalOpen(false)}
+                role="presentation"
+              >
+                <SafetyFormModalLayout
+                  widthClass="w-full max-w-lg"
+                  titleId="safety-finalize-signers-title"
+                  title="Finalize inspection"
+                  subtitle="Optional: select users who must sign. If none are selected, a final PDF is generated immediately."
+                  onClose={() => setFinalizeModalOpen(false)}
+                  footer={
+                    <>
+                      <button type="button" className={SAFETY_MODAL_BTN_CANCEL} onClick={() => setFinalizeModalOpen(false)}>
+                        Cancel
+                      </button>
+                      <button
+                        type="button"
+                        disabled={finalizeMutation.isPending}
+                        onClick={() => finalizeMutation.mutate(extraSignerIds)}
+                        className={SAFETY_MODAL_BTN_PRIMARY}
+                      >
+                        {finalizeMutation.isPending ? 'Submitting…' : 'Submit'}
+                      </button>
+                    </>
+                  }
+                >
+                  <label className={SAFETY_MODAL_FIELD_LABEL}>Search users</label>
+                  <input
+                    type="search"
+                    value={extraSignerQuery}
+                    onChange={(e) => setExtraSignerQuery(e.target.value)}
+                    placeholder="Name or email"
+                    className="mt-1 w-full px-3 py-2 border border-gray-200 rounded-lg text-sm"
+                  />
+                  <div className="mt-3 max-h-48 overflow-y-auto border border-gray-100 rounded-lg divide-y divide-gray-100">
+                    {userPickOptions.map((u) => {
+                      const checked = extraSignerIds.includes(u.id);
+                      return (
+                        <label
+                          key={u.id}
+                          className="flex items-center gap-3 px-3 py-2 text-sm cursor-pointer hover:bg-gray-50"
+                        >
+                          <input
+                            type="checkbox"
+                            checked={checked}
+                            onChange={() => {
+                              setExtraSignerIds((prev) =>
+                                checked ? prev.filter((x) => x !== u.id) : [...prev, u.id]
+                              );
+                            }}
+                          />
+                          <span className="min-w-0">
+                            <span className="font-medium text-gray-900">{u.name}</span>
+                            <span className="text-xs text-gray-500 block truncate">{u.username}</span>
+                          </span>
+                        </label>
+                      );
+                    })}
+                    {userPickOptions.length === 0 && (
+                      <div className="px-3 py-4 text-xs text-gray-500 text-center">Type to search users.</div>
+                    )}
+                  </div>
+                  {extraSignerIds.length > 0 && (
+                    <p className="mt-2 text-xs text-gray-600">{extraSignerIds.length} additional signer(s) selected.</p>
+                  )}
+                </SafetyFormModalLayout>
+              </div>
+            </OverlayPortal>
           )}
         </>
       )}

@@ -816,6 +816,7 @@ export default function ProjectDetail(){
   const [isHeroCollapsed, setIsHeroCollapsed] = useState(false);
   const estimateBuilderRef = useRef<EstimateBuilderRef>(null);
   const proposalFormSaveRef = useRef<(() => Promise<void>) | undefined>(undefined);
+  const safetyTabSaveRef = useRef<(() => Promise<void>) | undefined>(undefined);
   const { hasUnsavedChanges, getHasUnsavedChanges } = useUnsavedChanges();
   
   // Check user permissions (moved before useEffect that uses them)
@@ -1052,9 +1053,17 @@ export default function ProjectDetail(){
     const leavingEstimateWithUnsaved = tab === 'estimate' && newTab !== 'estimate' && estimateBuilderRef.current?.hasUnsavedChanges();
     // Show confirmation when leaving Proposal or Pricing (including switching between Proposal ↔ Pricing) with unsaved changes
     const leavingProposalPricingWithUnsaved = (tab === 'proposal' || tab === 'pricing') && newTab !== tab && proposalPricingUnsaved;
+    const leavingSafetyWithUnsaved = tab === 'safety' && newTab !== 'safety' && proposalPricingUnsaved;
 
-    if (leavingEstimateWithUnsaved || leavingProposalPricingWithUnsaved) {
-      const tabLabel = tab === 'estimate' ? 'Estimate' : tab === 'pricing' ? 'Pricing' : 'Proposal';
+    if (leavingEstimateWithUnsaved || leavingProposalPricingWithUnsaved || leavingSafetyWithUnsaved) {
+      const tabLabel =
+        tab === 'estimate'
+          ? 'Estimate'
+          : tab === 'safety'
+            ? 'Safety'
+            : tab === 'pricing'
+              ? 'Pricing'
+              : 'Proposal';
       const result = await confirm({
         title: 'Unsaved Changes',
         message: `You have unsaved changes in the ${tabLabel} tab. What would you like to do?`,
@@ -1068,6 +1077,13 @@ export default function ProjectDetail(){
         if (leavingEstimateWithUnsaved) {
           const saved = await estimateBuilderRef.current?.save();
           if (saved) doTabSwitch(newTab);
+        } else if (leavingSafetyWithUnsaved) {
+          try {
+            await safetyTabSaveRef.current?.();
+          } catch {
+            return;
+          }
+          doTabSwitch(newTab);
         } else {
           await proposalFormSaveRef.current?.();
           doTabSwitch(newTab);
@@ -2240,6 +2256,7 @@ export default function ProjectDetail(){
                   canRead={isAdmin || permissions.has('business:projects:safety:read')}
                   canWrite={isAdmin || permissions.has('business:projects:safety:write')}
                   initialSafetyInspectionId={safetyInspectionFromUrl}
+                  flushSaveRef={safetyTabSaveRef}
                 />
               )}
             </>
@@ -4087,9 +4104,10 @@ function ReportsTabEnhanced({ projectId, items, onRefresh }:{ projectId:string, 
       if (isImage) {
         setPreviewAttachment(attachment);
       } else {
-        const r: any = await api('GET', withFileAccessToken(`/files/${attachment.file_object_id}/download`));
-        if (r.download_url) {
-          window.open(r.download_url, '_blank');
+        const r: any = await api('GET', withFileAccessToken(`/files/${attachment.file_object_id}/preview`));
+        const url = String(r.preview_url || r.download_url || '');
+        if (url) {
+          window.open(url, '_blank');
         }
       }
     } catch (e: any) {
@@ -5190,8 +5208,9 @@ function ProjectFilesTabEnhanced({ projectId, files, onRefresh }:{ projectId:str
     const name = f.original_name || f.file_object_id;
     
     try {
-      const r: any = await api('GET', withFileAccessToken(`/files/${f.file_object_id}/download`));
-      const url = r.download_url || '';
+      // Prefer /preview (inline SAS / local-inline) so PDFs open in the viewer instead of forcing download.
+      const r: any = await api('GET', withFileAccessToken(`/files/${f.file_object_id}/preview`));
+      const url = String(r.preview_url || r.download_url || '');
       
       if (!url) {
         toast.error('Preview not available');

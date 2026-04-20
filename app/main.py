@@ -352,6 +352,66 @@ def create_app() -> FastAPI:
                     except Exception as e:
                         print(f"[startup] project_safety_inspections.status migration (non-critical): {e}")
 
+                    # Safety inspection: pending_signatures + sign requests + PDF client_file refs
+                    try:
+                        if db.execute(
+                            text(
+                                "SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'project_safety_inspections' LIMIT 1"
+                            )
+                        ).fetchall():
+                            db.execute(
+                                text(
+                                    """
+                                    ALTER TABLE project_safety_inspections
+                                    ADD COLUMN IF NOT EXISTS interim_pdf_client_file_id UUID NULL
+                                    """
+                                )
+                            )
+                            db.execute(
+                                text(
+                                    """
+                                    ALTER TABLE project_safety_inspections
+                                    ADD COLUMN IF NOT EXISTS final_pdf_client_file_id UUID NULL
+                                    """
+                                )
+                            )
+                            db.commit()
+                        if db.execute(
+                            text(
+                                "SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'project_safety_inspection_sign_requests' LIMIT 1"
+                            )
+                        ).fetchall():
+                            pass
+                        else:
+                            db.execute(
+                                text(
+                                    """
+                                    CREATE TABLE project_safety_inspection_sign_requests (
+                                        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                                        inspection_id UUID NOT NULL REFERENCES project_safety_inspections(id) ON DELETE CASCADE,
+                                        signer_user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                                        status VARCHAR(20) NOT NULL DEFAULT 'pending',
+                                        signature_file_object_id UUID NULL REFERENCES file_objects(id) ON DELETE SET NULL,
+                                        signed_at TIMESTAMPTZ NULL,
+                                        signer_display_name_snapshot VARCHAR(255) NULL,
+                                        signature_meta_signed_at VARCHAR(64) NULL,
+                                        signature_location_label VARCHAR(500) NULL,
+                                        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                                        CONSTRAINT uq_inspection_signer UNIQUE (inspection_id, signer_user_id)
+                                    )
+                                    """
+                                )
+                            )
+                            db.execute(
+                                text(
+                                    "CREATE INDEX IF NOT EXISTS idx_sign_req_inspection_status ON project_safety_inspection_sign_requests (inspection_id, status)"
+                                )
+                            )
+                            db.commit()
+                            print("[startup] Created project_safety_inspection_sign_requests")
+                    except Exception as e:
+                        print(f"[startup] safety inspection sign requests migration (non-critical): {e}")
+
                     # Form templates (Safety MVP) — tables + inspection FK columns
                     try:
                         if db.execute(
