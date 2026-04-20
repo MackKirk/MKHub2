@@ -282,7 +282,7 @@ export default function EquipmentDetail() {
               key={t}
               onClick={() => {
                 setTab(t);
-                nav(`/fleet/equipment/${id}?tab=${t}`, { replace: true });
+                nav(`/company-assets/equipment/${id}?tab=${t}`, { replace: true });
               }}
               className={`px-3 py-2 text-xs font-medium transition-colors border-b-2 -mb-[1px] capitalize ${
                 tab === t ? 'border-brand-red text-brand-red' : 'border-transparent text-gray-600 hover:text-gray-900'

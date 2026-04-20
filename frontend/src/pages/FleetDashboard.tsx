@@ -47,7 +47,7 @@ function buildAssetLink(id: string): string {
 }
 
 function buildEquipmentLink(id: string): string {
-  return `/fleet/equipment/${id}`;
+  return `/company-assets/equipment/${id}`;
 }
 
 // --- Icons (inline SVGs) ---
@@ -914,7 +914,7 @@ export default function FleetDashboard() {
             subtitle="Manage tools and equipment"
             statsLine={`Equipment • tools, generators, safety`}
             manageLabel="Manage"
-            onManage={() => nav('/fleet/equipment')}
+            onManage={() => nav('/company-assets/equipment')}
             onAddNew={() => setNewEquipmentModalOpen(true)}
             icon={IconWrench}
           />
@@ -1004,7 +1004,7 @@ export default function FleetDashboard() {
                   setNewEquipmentModalOpen(false);
                   queryClient.invalidateQueries({ queryKey: ['fleetDashboard'] });
                   queryClient.invalidateQueries({ queryKey: ['equipment'] });
-                  nav(`/fleet/equipment/${data.id}`);
+                  nav(`/company-assets/equipment/${data.id}`);
                 }}
                 onCancel={() => setNewEquipmentModalOpen(false)}
               />

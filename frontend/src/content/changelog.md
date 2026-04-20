@@ -20,11 +20,14 @@ title: Update 1.1.026 - Week 17
 ### New
 - New Form Templates and For Custom Lists areas.
 - New Safety Tab inside Projects, allowing to create Inspections from created Form Templates.
+- Corporate cards: inventory (last four + expiry), custody assign/return, PCI-safe fields only.
+- Company assets area in the sidebar (equipment + corporate cards), split from Fleet.
 
 ### Improved
 - Header bar: shortcuts grouped in one toolbar (What’s new, notifications, report bug) with consistent icon buttons;
 - Global search field styling aligned with the top bar.
 - What’s new opens as a large centered modal (backdrop, larger content area, close button, Escape to close) instead of a small dropdown.
+- Corporate card detail page: clearer layout, Details/Custody tabs, header card preview.
 
 ### Fixed
 - (none this release)

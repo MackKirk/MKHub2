@@ -16,6 +16,7 @@ from ..models.models import (
     FleetAsset,
     Equipment,
     WorkOrder,
+    CompanyCreditCard,
 )
 
 
@@ -287,7 +288,7 @@ def global_search(
                 eid = str(e.id)
                 title = (getattr(e, "name", None) or "").strip() or eid
                 subtitle = (getattr(e, "asset_number", None) or "").strip() or None
-                items.append({"type": "equipment", "id": eid, "title": title, "subtitle": subtitle, "href": f"/fleet/equipment/{eid}"})
+                items.append({"type": "equipment", "id": eid, "title": title, "subtitle": subtitle, "href": f"/company-assets/equipment/{eid}"})
             if items:
                 sections.append({"id": "equipment", "label": "Equipment", "items": items})
         except Exception:
@@ -316,6 +317,43 @@ def global_search(
                 items.append({"type": "work_order", "id": wid, "title": title, "subtitle": desc[:120] or None, "href": f"/fleet/work-orders/{wid}"})
             if items:
                 sections.append({"id": "work_orders", "label": "Work Orders", "items": items})
+        except Exception:
+            pass
+
+    # ----- Corporate cards -----
+    if _has_permission(user, "company_cards:read"):
+        try:
+            rows = (
+                db.query(CompanyCreditCard)
+                .filter(
+                    or_(
+                        CompanyCreditCard.label.ilike(like),
+                        CompanyCreditCard.last_four.ilike(like),
+                        CompanyCreditCard.cardholder_name.ilike(like),
+                        CompanyCreditCard.issuer.ilike(like),
+                    )
+                )
+                .order_by(CompanyCreditCard.created_at.desc())
+                .limit(limit)
+                .all()
+            )
+            items = []
+            for c in rows:
+                cid = str(c.id)
+                title = (getattr(c, "label", None) or "").strip() or cid
+                lf = (getattr(c, "last_four", None) or "").strip()
+                subtitle = f"•••• {lf}" if lf else None
+                items.append(
+                    {
+                        "type": "company_credit_card",
+                        "id": cid,
+                        "title": title,
+                        "subtitle": subtitle,
+                        "href": f"/company-assets/credit-cards/{cid}",
+                    }
+                )
+            if items:
+                sections.append({"id": "company_credit_cards", "label": "Corporate cards", "items": items})
         except Exception:
             pass
 

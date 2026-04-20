@@ -2675,6 +2675,65 @@ class AssetAssignment(Base):
     )
 
 
+class CompanyCreditCard(Base):
+    """Corporate payment cards — inventory only; never store full PAN/CVV (PCI)."""
+
+    __tablename__ = "company_credit_cards"
+
+    id: Mapped[uuid.UUID] = uuid_pk()
+    label: Mapped[str] = mapped_column(String(255), nullable=False)
+    network: Mapped[str] = mapped_column(String(50), nullable=False, index=True)  # visa|mastercard|amex|other
+    last_four: Mapped[str] = mapped_column(String(4), nullable=False, index=True)
+    expiry_month: Mapped[int] = mapped_column(Integer, nullable=False)
+    expiry_year: Mapped[int] = mapped_column(Integer, nullable=False, index=True)
+    cardholder_name: Mapped[Optional[str]] = mapped_column(String(255))
+    issuer: Mapped[Optional[str]] = mapped_column(String(255))
+    billing_entity: Mapped[Optional[str]] = mapped_column(String(255))
+    status: Mapped[str] = mapped_column(String(50), default="active", nullable=False, index=True)  # active|cancelled|replaced|lost
+    notes: Mapped[Optional[str]] = mapped_column(Text)
+    documents: Mapped[Optional[list]] = mapped_column(JSON)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
+    updated_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    created_by: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"))
+
+    assignments = relationship(
+        "CompanyCreditCardAssignment",
+        back_populates="credit_card",
+        cascade="all, delete-orphan",
+        order_by="CompanyCreditCardAssignment.assigned_at.desc()",
+    )
+
+    __table_args__ = (Index("idx_company_credit_cards_status_expiry", "status", "expiry_year", "expiry_month"),)
+
+
+class CompanyCreditCardAssignment(Base):
+    """Custody history for corporate cards (who holds the physical card)."""
+
+    __tablename__ = "company_credit_card_assignments"
+
+    id: Mapped[uuid.UUID] = uuid_pk()
+    company_credit_card_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("company_credit_cards.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    assigned_to_user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    assigned_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, index=True)
+    returned_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), index=True)
+    returned_to_user_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"))
+    notes: Mapped[Optional[str]] = mapped_column(Text)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False, index=True)
+    created_by: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
+
+    credit_card = relationship("CompanyCreditCard", back_populates="assignments")
+    assigned_to_user = relationship("User", foreign_keys=[assigned_to_user_id])
+    returned_to_user = relationship("User", foreign_keys=[returned_to_user_id])
+
+    __table_args__ = (
+        Index("idx_cc_card_assignment_active", "company_credit_card_id", "is_active"),
+        Index("idx_cc_assignment_user_active", "assigned_to_user_id", "is_active"),
+    )
+
+
 # =====================
 # Training & Certification domain
 # =====================

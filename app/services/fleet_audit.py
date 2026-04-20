@@ -155,3 +155,15 @@ def snapshot_compliance(rec: "FleetComplianceRecord") -> Dict[str, Any]:
         "expiry_date": _dt(getattr(rec, "expiry_date", None)),
         "file_reference_number": getattr(rec, "file_reference_number", None),
     }
+
+
+def snapshot_company_credit_card(card: Any) -> Dict[str, Any]:
+    """Minimal fields for audit (never log full PAN — not stored)."""
+    return {
+        "label": getattr(card, "label", None),
+        "network": getattr(card, "network", None),
+        "last_four": getattr(card, "last_four", None),
+        "expiry_month": getattr(card, "expiry_month", None),
+        "expiry_year": getattr(card, "expiry_year", None),
+        "status": getattr(card, "status", None),
+    }

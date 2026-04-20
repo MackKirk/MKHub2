@@ -223,6 +223,10 @@ def _perm_matches_map(perm_map: dict, perm: str) -> bool:
             or perm_map.get("fleet:vehicles:write")
             or perm_map.get("fleet:equipment:write")
         )
+    if perm == "company_cards:read":
+        return bool(perm_map.get("company_cards:read"))
+    if perm == "company_cards:write":
+        return bool(perm_map.get("company_cards:write"))
     return False
 
 
@@ -268,6 +272,8 @@ def _has_permission(user: User, perm: str) -> bool:
                         return False
                 # Equipment API uses equipment:read/write; those are granted via fleet:equipment:* + fleet area
                 elif area == 'equipment' and perm in ('equipment:read', 'equipment:write'):
+                    pass
+                elif area == 'company_cards' and perm in ('company_cards:read', 'company_cards:write'):
                     pass
                 # No work_orders:access / inspections:access in product; rules are in _perm_matches_map
                 elif area == 'work_orders':
