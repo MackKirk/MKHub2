@@ -1,4 +1,5 @@
 import copy
+import logging
 from fastapi import APIRouter, Depends, HTTPException, Query, Body
 from sqlalchemy.orm import Session, defer
 from sqlalchemy.orm.attributes import flag_modified
@@ -16,6 +17,7 @@ from ..models.models import (
     ProjectUpdate,
     ProjectReport,
     ProjectSafetyInspection,
+    ProjectSafetyInspectionSignRequest,
     ProjectEvent,
     ProjectTimeEntry,
     ProjectTimeEntryLog,
@@ -151,7 +153,7 @@ def _assert_awarded_project_for_safety(p: Project) -> None:
 
 def _safety_inspection_to_dict(db: Session, row: ProjectSafetyInspection) -> dict:
     st = getattr(row, "status", None) or "draft"
-    if st not in ("draft", "finalized"):
+    if st not in ("draft", "finalized", "pending_signatures"):
         st = "draft"
     ft_tid = getattr(row, "form_template_id", None)
     asg_id = getattr(row, "assigned_user_id", None)
@@ -182,6 +184,24 @@ def _safety_inspection_to_dict(db: Session, row: ProjectSafetyInspection) -> dic
             else:
                 worker_name = u.username
     snap = getattr(row, "form_definition_snapshot", None)
+    req_rows = (
+        db.query(ProjectSafetyInspectionSignRequest)
+        .filter(ProjectSafetyInspectionSignRequest.inspection_id == row.id)
+        .order_by(ProjectSafetyInspectionSignRequest.created_at.asc())
+        .all()
+    )
+    sign_requests_out = [
+        {
+            "id": str(r.id),
+            "signer_user_id": str(r.signer_user_id),
+            "status": r.status or "pending",
+            "signed_at": r.signed_at.isoformat() if r.signed_at else None,
+            "signer_display_name_snapshot": r.signer_display_name_snapshot,
+        }
+        for r in req_rows
+    ]
+    interim_cf = getattr(row, "interim_pdf_client_file_id", None)
+    final_cf = getattr(row, "final_pdf_client_file_id", None)
     return {
         "id": str(row.id),
         "project_id": str(row.project_id),
@@ -195,11 +215,200 @@ def _safety_inspection_to_dict(db: Session, row: ProjectSafetyInspection) -> dic
         "worker_name": worker_name,
         "status": st,
         "form_payload": row.form_payload if isinstance(row.form_payload, dict) else {},
+        "sign_requests": sign_requests_out,
+        "interim_pdf_client_file_id": str(interim_cf) if interim_cf else None,
+        "final_pdf_client_file_id": str(final_cf) if final_cf else None,
         "created_at": row.created_at.isoformat() if row.created_at else None,
         "created_by": str(row.created_by) if row.created_by else None,
         "updated_at": row.updated_at.isoformat() if row.updated_at else None,
         "updated_by": str(row.updated_by) if row.updated_by else None,
     }
+
+
+def _safety_inspection_user_display_name(db: Session, u: User) -> str:
+    ep = db.query(EmployeeProfile).filter(EmployeeProfile.user_id == u.id).first()
+    if ep:
+        wn = (getattr(ep, "preferred_name", None) or "").strip()
+        if not wn:
+            wn = " ".join(
+                x
+                for x in [
+                    (getattr(ep, "first_name", None) or "").strip(),
+                    (getattr(ep, "last_name", None) or "").strip(),
+                ]
+                if x
+            )
+        if wn:
+            return wn
+    return (u.username or str(u.id)).strip()
+
+
+def _parse_additional_signer_user_ids(payload: dict) -> List[uuid.UUID]:
+    raw = payload.get("additional_signer_user_ids")
+    if raw is None:
+        return []
+    if not isinstance(raw, list):
+        raise HTTPException(status_code=400, detail="additional_signer_user_ids must be a list")
+    out: List[uuid.UUID] = []
+    seen: set[str] = set()
+    for item in raw:
+        if not isinstance(item, str) or not item.strip():
+            continue
+        try:
+            u = uuid.UUID(str(item).strip())
+        except Exception:
+            raise HTTPException(status_code=400, detail="Invalid user id in additional_signer_user_ids")
+        s = str(u)
+        if s not in seen:
+            seen.add(s)
+            out.append(u)
+    return out
+
+
+def _extra_signers_pdf_payload(db: Session, inspection_id: uuid.UUID) -> List[dict]:
+    rows = (
+        db.query(ProjectSafetyInspectionSignRequest)
+        .filter(ProjectSafetyInspectionSignRequest.inspection_id == inspection_id)
+        .order_by(ProjectSafetyInspectionSignRequest.created_at.asc())
+        .all()
+    )
+    out: List[dict] = []
+    for r in rows:
+        su = db.query(User).filter(User.id == r.signer_user_id).first()
+        disp = (r.signer_display_name_snapshot or "").strip()
+        if not disp and su:
+            disp = _safety_inspection_user_display_name(db, su)
+        if not disp:
+            disp = str(r.signer_user_id)
+        st = (r.status or "").lower()
+        pending = st != "signed"
+        fid = str(r.signature_file_object_id) if r.signature_file_object_id else None
+        meta_ts = (r.signature_meta_signed_at or "").strip()
+        if not meta_ts and r.signed_at:
+            meta_ts = r.signed_at.isoformat()
+        out.append(
+            {
+                "display_name": disp,
+                "pending": pending,
+                "signature_file_object_id": fid,
+                "signed_at_utc": meta_ts,
+                "location_label": (r.signature_location_label or "").strip(),
+            }
+        )
+    return out
+
+
+def _soft_delete_client_file_row(db: Session, cf_id: uuid.UUID, actor_id: uuid.UUID) -> None:
+    cf = db.query(ClientFile).filter(ClientFile.id == cf_id).first()
+    if cf and getattr(cf, "deleted_at", None) is None:
+        cf.deleted_at = datetime.now(timezone.utc)
+        cf.deleted_by_id = actor_id
+
+
+def _attach_safety_inspection_pdf(
+    db: Session,
+    p: Project,
+    row: ProjectSafetyInspection,
+    user: User,
+    *,
+    document_kind: str,
+    log: logging.Logger,
+    name_suffix: str,
+    audit_source: str,
+) -> tuple[Optional[str], Optional[str], Optional[uuid.UUID]]:
+    """Returns (pdf_attachment_error, file_object_id_str for API, client_file_id)."""
+    from slugify import slugify
+
+    from ..services.onboarding_storage import save_project_pdf_bytes_as_file_object
+    from ..services.safety_inspection_pdf import build_safety_inspection_pdf_bytes
+
+    fp = row.form_payload if isinstance(row.form_payload, dict) else {}
+    defn = row.form_definition_snapshot
+    tpl = db.query(FormTemplate).filter(FormTemplate.id == row.form_template_id).first()
+    template_name = (tpl.name if tpl else None) or "Safety inspection"
+    tv_label = ""
+    if tpl and getattr(tpl, "version_label", None):
+        tv_label = str(tpl.version_label).strip()
+    finalizer = _safety_inspection_user_display_name(db, user)
+    project_address = (getattr(p, "address", None) or "").strip()
+    extra = _extra_signers_pdf_payload(db, row.id)
+    try:
+        pdf_bytes = build_safety_inspection_pdf_bytes(
+            db,
+            definition=defn,
+            form_payload=fp,
+            project_name=str(p.name or ""),
+            project_code=str(p.code or ""),
+            project_address=project_address,
+            template_name=str(template_name),
+            template_version_label=tv_label,
+            inspection_id=str(row.id),
+            inspection_date=row.inspection_date,
+            finalized_by_name=finalizer,
+            document_kind=document_kind,
+            extra_signers=extra,
+        )
+    except Exception:
+        log.exception("Safety inspection PDF generation failed inspection_id=%s", row.id)
+        return "pdf_build_failed", None, None
+    if not getattr(p, "client_id", None):
+        return "project_missing_client", None, None
+    if not has_project_files_category_permission(user, "safety", action="write", project=p):
+        return "missing_files_write_or_safety_category", None, None
+    date_part = (
+        row.inspection_date.strftime("%Y-%m-%d")
+        if row.inspection_date
+        else datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    )
+    slug_base = f"{template_name} {date_part} {str(row.id)[:8]}{name_suffix}"
+    safe_stem = slugify(slug_base, allow_unicode=True) or "safety-inspection"
+    original_name = f"{safe_stem[:170]}.pdf"
+    try:
+        fo = save_project_pdf_bytes_as_file_object(
+            db,
+            pdf_bytes,
+            project_id=p.id,
+            project_code=str(p.code or "misc"),
+            original_name=original_name,
+            created_by_id=user.id,
+        )
+        cf = ClientFile(
+            client_id=p.client_id,
+            site_id=None,
+            file_object_id=fo.id,
+            category="safety",
+            folder_id=None,
+            key=fo.key,
+            original_name=original_name,
+        )
+        db.add(cf)
+        db.commit()
+        try:
+            from ..services.audit import create_audit_log
+
+            create_audit_log(
+                db=db,
+                entity_type="project_file",
+                entity_id=str(cf.id),
+                action="UPLOAD",
+                actor_id=str(user.id) if user else None,
+                actor_role="user",
+                source="api",
+                changes_json={
+                    "file_name": original_name,
+                    "category": "safety",
+                    "content_type": "application/pdf",
+                    "source": audit_source,
+                },
+                context={"project_id": str(p.id), "file_object_id": str(fo.id)},
+            )
+        except Exception:
+            pass
+        return None, str(fo.id), cf.id
+    except Exception:
+        log.exception("Safety inspection PDF attach failed inspection_id=%s", row.id)
+        db.rollback()
+        return "pdf_attach_failed", None, None
 
 
 def _try_remove_orphan_file_object(db: Session, file_object_id: uuid.UUID) -> None:
@@ -2390,8 +2599,30 @@ def update_project_safety_inspection(
     )
     if not row:
         raise HTTPException(status_code=404, detail="Inspection not found")
+    prev_status = (getattr(row, "status", None) or "draft").strip().lower()
+    if prev_status not in ("draft", "finalized", "pending_signatures"):
+        prev_status = "draft"
+    if prev_status == "pending_signatures":
+        raise HTTPException(
+            status_code=400,
+            detail="This inspection is awaiting additional signatures; it cannot be edited here.",
+        )
     if not isinstance(payload, dict):
         raise HTTPException(status_code=400, detail="Invalid body")
+    additional_signer_ids = [u for u in _parse_additional_signer_user_ids(payload) if str(u) != str(user.id)]
+    if (
+        additional_signer_ids
+        and isinstance(payload.get("status"), str)
+        and payload["status"].strip().lower() == "finalized"
+        and prev_status == "draft"
+    ):
+        if not getattr(row, "form_template_id", None) or not isinstance(
+            getattr(row, "form_definition_snapshot", None), dict
+        ):
+            raise HTTPException(
+                status_code=400,
+                detail="Additional signers are only supported for template-based inspections.",
+            )
     if "inspection_date" in payload and payload["inspection_date"] is not None:
         try:
             raw = payload["inspection_date"]
@@ -2434,12 +2665,238 @@ def update_project_safety_inspection(
         st = payload["status"]
         if not isinstance(st, str) or st not in ("draft", "finalized"):
             raise HTTPException(status_code=400, detail="status must be 'draft' or 'finalized'")
-        row.status = st
+        if prev_status == "draft" and st == "finalized":
+            if additional_signer_ids:
+                row.status = "pending_signatures"
+            else:
+                row.status = "finalized"
+        else:
+            row.status = st
     row.updated_by = user.id
     row.updated_at = datetime.now(timezone.utc)
+
+    if getattr(row, "status", None) == "pending_signatures" and prev_status == "draft" and additional_signer_ids:
+        for uid in additional_signer_ids:
+            su = db.query(User).filter(User.id == uid).first()
+            if not su:
+                raise HTTPException(status_code=400, detail=f"Signer user not found: {uid}")
+            snap = _safety_inspection_user_display_name(db, su)
+            db.add(
+                ProjectSafetyInspectionSignRequest(
+                    inspection_id=row.id,
+                    signer_user_id=uid,
+                    status="pending",
+                    signer_display_name_snapshot=snap[:255] if snap else None,
+                )
+            )
+
     db.commit()
     db.refresh(row)
-    return _safety_inspection_to_dict(db, row)
+
+    pdf_attachment_error: Optional[str] = None
+    finalized_pdf_file_object_id: Optional[str] = None
+    interim_pdf_file_object_id: Optional[str] = None
+    interim_pdf_attachment_error: Optional[str] = None
+    log = logging.getLogger(__name__)
+    new_status = (getattr(row, "status", None) or "draft").strip().lower()
+
+    if (
+        prev_status == "draft"
+        and new_status == "finalized"
+        and getattr(row, "form_template_id", None)
+        and isinstance(getattr(row, "form_definition_snapshot", None), dict)
+    ):
+        err, fo_id, cf_id = _attach_safety_inspection_pdf(
+            db,
+            p,
+            row,
+            user,
+            document_kind="final",
+            log=log,
+            name_suffix="",
+            audit_source="safety_inspection_finalize",
+        )
+        pdf_attachment_error = err
+        finalized_pdf_file_object_id = fo_id
+        if not err and cf_id:
+            row.final_pdf_client_file_id = cf_id
+            db.add(row)
+            db.commit()
+            db.refresh(row)
+
+    elif (
+        prev_status == "draft"
+        and new_status == "pending_signatures"
+        and getattr(row, "form_template_id", None)
+        and isinstance(getattr(row, "form_definition_snapshot", None), dict)
+    ):
+        err, fo_id, cf_id = _attach_safety_inspection_pdf(
+            db,
+            p,
+            row,
+            user,
+            document_kind="interim",
+            log=log,
+            name_suffix="-interim",
+            audit_source="safety_inspection_interim",
+        )
+        interim_pdf_attachment_error = err
+        if not err and fo_id:
+            interim_pdf_file_object_id = fo_id
+        if not err and cf_id:
+            row.interim_pdf_client_file_id = cf_id
+            db.add(row)
+            db.commit()
+            db.refresh(row)
+        if not interim_pdf_attachment_error:
+            try:
+                from ..services.notifications import create_notification
+
+                proj_label = str(p.name or p.code or "Project")
+                for uid in additional_signer_ids:
+                    link = f"/safety/sign/{project_id}/{row.id}"
+                    create_notification(
+                        db,
+                        str(uid),
+                        "push",
+                        template_key="safety_inspection_sign_request",
+                        payload_json={
+                            "title": "Safety inspection signature requested",
+                            "message": f"You were asked to sign a safety inspection on {proj_label}.",
+                            "link": link,
+                            "read": False,
+                            "type": "safety_sign",
+                            "metadata": {
+                                "project_id": str(project_id),
+                                "inspection_id": str(row.id),
+                            },
+                        },
+                    )
+            except Exception:
+                log.exception("Safety sign request notifications failed inspection_id=%s", row.id)
+
+    out = _safety_inspection_to_dict(db, row)
+    if pdf_attachment_error:
+        out["pdf_attachment_error"] = pdf_attachment_error
+    if interim_pdf_attachment_error:
+        out["interim_pdf_attachment_error"] = interim_pdf_attachment_error
+    if interim_pdf_file_object_id:
+        out["interim_pdf_file_object_id"] = interim_pdf_file_object_id
+    if finalized_pdf_file_object_id:
+        out["finalized_pdf_file_object_id"] = finalized_pdf_file_object_id
+    return out
+
+
+@router.post("/{project_id}/safety-inspections/{inspection_id}/signatures/complete")
+def complete_safety_inspection_signer_signature(
+    project_id: str,
+    inspection_id: str,
+    payload: dict = Body(...),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+    _=Depends(require_permissions("business:projects:safety:read")),
+):
+    """Record an additional signer's signature; auto-finalizes and attaches final PDF when all are signed."""
+    if not isinstance(payload, dict):
+        raise HTTPException(status_code=400, detail="Invalid body")
+    p = db.query(Project).filter(Project.id == project_id, Project.deleted_at.is_(None)).first()
+    if not p:
+        raise HTTPException(status_code=404, detail="Not found")
+    _assert_project_line_read(user, p)
+    _assert_awarded_project_for_safety(p)
+    row = (
+        db.query(ProjectSafetyInspection)
+        .filter(
+            ProjectSafetyInspection.id == inspection_id,
+            ProjectSafetyInspection.project_id == project_id,
+        )
+        .first()
+    )
+    if not row:
+        raise HTTPException(status_code=404, detail="Inspection not found")
+    st = (getattr(row, "status", None) or "").strip().lower()
+    if st != "pending_signatures":
+        raise HTTPException(status_code=400, detail="Inspection is not awaiting additional signatures")
+    try:
+        req_id = uuid.UUID(str(payload.get("sign_request_id") or "").strip())
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid sign_request_id")
+    try:
+        sig_fo_id = uuid.UUID(str(payload.get("signature_file_object_id") or "").strip())
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid signature_file_object_id")
+    req = (
+        db.query(ProjectSafetyInspectionSignRequest)
+        .filter(
+            ProjectSafetyInspectionSignRequest.id == req_id,
+            ProjectSafetyInspectionSignRequest.inspection_id == row.id,
+        )
+        .first()
+    )
+    if not req:
+        raise HTTPException(status_code=404, detail="Sign request not found")
+    if str(req.signer_user_id) != str(user.id):
+        raise HTTPException(status_code=403, detail="You are not the assigned signer for this request")
+    if (req.status or "").lower() == "signed":
+        return _safety_inspection_to_dict(db, row)
+    fo_sig = db.query(FileObject).filter(FileObject.id == sig_fo_id).first()
+    if not fo_sig:
+        raise HTTPException(status_code=404, detail="Signature file not found")
+    req.signature_file_object_id = sig_fo_id
+    req.status = "signed"
+    req.signed_at = datetime.now(timezone.utc)
+    raw_meta = payload.get("signed_at")
+    if isinstance(raw_meta, str) and raw_meta.strip():
+        req.signature_meta_signed_at = raw_meta.strip()[:64]
+    loc = payload.get("location_label")
+    if isinstance(loc, str) and loc.strip():
+        req.signature_location_label = loc.strip()[:500]
+    db.commit()
+    db.refresh(row)
+
+    n_pending = (
+        db.query(ProjectSafetyInspectionSignRequest)
+        .filter(
+            ProjectSafetyInspectionSignRequest.inspection_id == row.id,
+            ProjectSafetyInspectionSignRequest.status == "pending",
+        )
+        .count()
+    )
+    pdf_attachment_error: Optional[str] = None
+    finalized_pdf_file_object_id: Optional[str] = None
+    if n_pending == 0:
+        submitter = db.query(User).filter(User.id == row.created_by).first() if getattr(row, "created_by", None) else user
+        if row.interim_pdf_client_file_id:
+            _soft_delete_client_file_row(db, row.interim_pdf_client_file_id, user.id)
+            row.interim_pdf_client_file_id = None
+        row.status = "finalized"
+        db.add(row)
+        db.commit()
+        db.refresh(row)
+        log = logging.getLogger(__name__)
+        err, fo_id, cf_id = _attach_safety_inspection_pdf(
+            db,
+            p,
+            row,
+            submitter,
+            document_kind="final",
+            log=log,
+            name_suffix="",
+            audit_source="safety_inspection_finalize",
+        )
+        pdf_attachment_error = err
+        finalized_pdf_file_object_id = fo_id
+        if not err and cf_id:
+            row.final_pdf_client_file_id = cf_id
+            db.add(row)
+            db.commit()
+            db.refresh(row)
+    out = _safety_inspection_to_dict(db, row)
+    if pdf_attachment_error:
+        out["pdf_attachment_error"] = pdf_attachment_error
+    if finalized_pdf_file_object_id:
+        out["finalized_pdf_file_object_id"] = finalized_pdf_file_object_id
+    return out
 
 
 @router.post("/{project_id}/reports/{report_id}/approve")

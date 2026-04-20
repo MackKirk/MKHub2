@@ -342,8 +342,49 @@ class ProjectSafetyInspection(Base):
     created_by: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"))
     updated_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
     updated_by: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"))
+    interim_pdf_client_file_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("client_files.id", ondelete="SET NULL"), nullable=True
+    )
+    final_pdf_client_file_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("client_files.id", ondelete="SET NULL"), nullable=True
+    )
 
     form_template = relationship("FormTemplate", back_populates="inspections")
+    sign_requests = relationship(
+        "ProjectSafetyInspectionSignRequest",
+        back_populates="inspection",
+        cascade="all, delete-orphan",
+    )
+
+
+class ProjectSafetyInspectionSignRequest(Base):
+    """Additional signers after the worker submits an inspection for multi-party sign-off."""
+
+    __tablename__ = "project_safety_inspection_sign_requests"
+    __table_args__ = (
+        UniqueConstraint("inspection_id", "signer_user_id", name="uq_inspection_signer"),
+        Index("idx_sign_req_inspection_status", "inspection_id", "status"),
+    )
+
+    id: Mapped[uuid.UUID] = uuid_pk()
+    inspection_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("project_safety_inspections.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    signer_user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    status: Mapped[str] = mapped_column(String(20), default="pending", nullable=False)  # pending | signed
+    signature_file_object_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("file_objects.id", ondelete="SET NULL"), nullable=True
+    )
+    signed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    signer_display_name_snapshot: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    signature_meta_signed_at: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+    signature_location_label: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
+
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
+
+    inspection = relationship("ProjectSafetyInspection", back_populates="sign_requests")
 
 
 class ProjectEvent(Base):

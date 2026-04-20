@@ -29,7 +29,7 @@ def _normalize_status(raw: Optional[str]) -> Optional[str]:
     if not raw:
         return None
     v = str(raw).strip().lower()
-    if v in ("draft", "finalized"):
+    if v in ("draft", "finalized", "pending_signatures"):
         return v
     return None
 
@@ -73,7 +73,7 @@ def list_safety_inspections(
     user: User = Depends(get_current_user),
     _=Depends(require_permissions("business:projects:safety:read")),
     search: Optional[str] = Query(None, description="Filter by project name or code"),
-    status: Optional[str] = Query(None, description="draft or finalized"),
+    status: Optional[str] = Query(None, description="draft, finalized, or pending_signatures"),
     sort: str = Query("inspection_date", description="inspection_date | project"),
     dir: str = Query("desc", description="asc or desc"),
     limit: int = Query(100, ge=1, le=500),
@@ -119,7 +119,7 @@ def list_safety_inspections(
     out: List[dict] = []
     for insp, proj, ft, asg_u, asg_ep in rows:
         st_val = getattr(insp, "status", None) or "draft"
-        if st_val not in ("draft", "finalized"):
+        if st_val not in ("draft", "finalized", "pending_signatures"):
             st_val = "draft"
         template_name = (ft.name or "") if ft else ""
         if not template_name and (insp.template_version or "").startswith("mki"):
@@ -177,7 +177,7 @@ def list_safety_inspections_calendar(
     out: List[dict] = []
     for insp, proj, ft in rows:
         st_val = getattr(insp, "status", None) or "draft"
-        if st_val not in ("draft", "finalized"):
+        if st_val not in ("draft", "finalized", "pending_signatures"):
             st_val = "draft"
         template_name = (ft.name or "") if ft else ""
         if not template_name and (insp.template_version or "").startswith("mki"):

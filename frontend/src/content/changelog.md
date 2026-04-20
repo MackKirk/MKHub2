@@ -12,6 +12,23 @@
   - Keep section headings exactly: ### New / ### Improved / ### Fixed / ### Known issues
 -->
 
+<<<RELEASE>>>
+id: 2026-04-20-1
+date: 2026-04-20
+title: Update 1.1.026 - Week 17
+
+### New
+- New Form Templates and For Custom Lists areas.
+- New Safety Tab inside Projects, allowing to create Inspections from created Form Templates.
+
+### Improved
+- (none this release)
+
+### Fixed
+- (none this release)
+
+### Known issues
+- (none this release)
 
 <<<RELEASE>>>
 id: 2026-04-17-1
