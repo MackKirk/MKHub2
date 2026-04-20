@@ -24,8 +24,8 @@ body{font-family:theme(fontFamily.sans);background:#f6f7f9}
   cursor: pointer;
 }
 
-/* Floating Chat Button - Visual Integration Refinement */
-.mkchat-fab {
+/* Legacy floating chat FAB only (not sidebar dock — widget owns dock styles). */
+.mkchat-fab:not(.mkchat-fab--dock) {
   width: 48px !important;
   height: 48px !important;
   border-radius: 24px !important;
@@ -33,7 +33,7 @@ body{font-family:theme(fontFamily.sans);background:#f6f7f9}
   transition: all 0.2s ease !important;
 }
 
-.mkchat-fab:hover {
+.mkchat-fab:not(.mkchat-fab--dock):hover {
   transform: translateY(-2px) scale(1.02) !important;
   box-shadow: 0 6px 16px rgba(209, 22, 22, 0.25) !important;
 }

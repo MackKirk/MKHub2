@@ -21,13 +21,21 @@
     };
 
     const css = `
-  .mkchat-fab{position:fixed;right:18px;bottom:18px;width:56px;height:56px;border-radius:28px;background:linear-gradient(90deg,#d11616,#ee2b2b);color:#fff;display:flex;align-items:center;justify-content:center;box-shadow:0 6px 18px rgba(209,22,22,.25);cursor:pointer;z-index:2147483000;transition:transform .2s}
-  .mkchat-fab.mkchat-fab--dock{position:relative;right:auto;bottom:auto;width:100%;min-height:44px;height:auto;border-radius:8px;padding:10px 12px;justify-content:flex-start;gap:10px}
-  .mkchat-fab.mkchat-fab--dock .mkchat-fab-label{font-size:14px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-  .mkchat-fab.mkchat-fab--dock .mkchat-fab-label.is-hidden{display:none}
-  .mkchat-fab:hover{transform:scale(1.02)}
-  .mkchat-fab .badge{position:absolute;top:-4px;right:-4px;background:#ef4444;color:#fff;border-radius:10px;padding:2px 6px;font-size:11px;font-weight:600;display:none}
-  .mkchat-fab.mkchat-fab--dock .badge{top:4px;right:8px}
+  .mkchat-fab{position:fixed;right:18px;bottom:18px;width:56px;height:56px;border-radius:28px;background:linear-gradient(90deg,#d11616,#ee2b2b);color:#fff;display:flex;align-items:center;justify-content:center;box-shadow:0 6px 18px rgba(209,22,22,.25);cursor:pointer;z-index:2147483000;transition:transform .2s,border-color .2s,box-shadow .2s}
+  .mkchat-fab.mkchat-fab--dock{position:relative;right:auto;bottom:auto;width:100%;min-height:48px;height:auto;border-radius:10px;padding:0;border:1px solid rgba(156,163,175,.35);background:linear-gradient(180deg,rgba(55,65,81,.78),rgba(30,41,59,.92));box-shadow:0 1px 3px rgba(0,0,0,.22);justify-content:stretch;align-items:stretch;overflow:visible}
+  .mkchat-fab.mkchat-fab--dock:hover{border-color:rgba(209,22,22,.55);background:linear-gradient(180deg,rgba(75,85,99,.88),rgba(30,41,59,.96));box-shadow:0 2px 10px rgba(209,22,22,.18);transform:none}
+  .mkchat-fab.mkchat-fab--dock:focus-visible{outline:2px solid rgba(209,22,22,.75);outline-offset:2px}
+  .mkchat-fab-inner{display:flex;align-items:center;gap:10px;width:100%;padding:10px 12px;box-sizing:border-box;text-align:left}
+  .mkchat-fab.mkchat-fab--dock.mkchat-fab--collapsed .mkchat-fab-inner{justify-content:center;padding:10px 8px}
+  .mkchat-fab-icon-wrap{flex-shrink:0;width:36px;height:36px;border-radius:10px;background:linear-gradient(135deg,#d11616,#ee2b2b);display:flex;align-items:center;justify-content:center;color:#fff;box-shadow:0 2px 8px rgba(209,22,22,.4)}
+  .mkchat-fab-icon-wrap svg{flex-shrink:0}
+  .mkchat-fab-text{display:flex;flex-direction:column;gap:2px;min-width:0;flex:1}
+  .mkchat-fab-text.is-hidden{display:none!important}
+  .mkchat-fab-brand{font-size:14px;font-weight:700;letter-spacing:.03em;color:#f9fafb;line-height:1.15;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .mkchat-fab-sub{font-size:11px;font-weight:500;color:rgba(209,213,219,.88);line-height:1.2;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .mkchat-fab .badge{position:absolute;top:-4px;right:-4px;background:#ef4444;color:#fff;border-radius:10px;padding:2px 6px;font-size:11px;font-weight:600;display:none;min-width:1.1em;text-align:center;box-shadow:0 1px 4px rgba(0,0,0,.25)}
+  .mkchat-fab.mkchat-fab--dock .badge{top:2px;right:2px}
+  .mkchat-fab.mkchat-fab--dock.mkchat-fab--collapsed .badge{top:-2px;right:-2px}
   .mkchat-panel{position:fixed;left:12px;bottom:12px;right:auto;width:min(720px,calc(100vw - 24px));height:min(580px,calc(100vh - 24px));max-height:calc(100vh - 24px);max-width:calc(100vw - 24px);background:#fff;border:1px solid #e5e7eb;border-radius:12px;box-shadow:0 12px 40px rgba(0,0,0,.2);overflow:hidden;display:none;z-index:2147483000;font-family:Montserrat,Segoe UI,Roboto,Helvetica,Arial,sans-serif}
   .mkchat-panel.open{display:flex;flex-direction:column}
   .mkchat-header{display:flex;align-items:center;justify-content:space-between;padding:12px 16px;border-bottom:1px solid #e5e7eb;background:#fff;min-height:56px;flex-shrink:0}
@@ -116,9 +124,17 @@
     const fab = document.createElement('button');
     fab.type = 'button';
     fab.className = 'mkchat-fab mkchat-fab--dock';
-    fab.setAttribute('aria-label', 'Open messages');
+    fab.setAttribute('aria-label', 'Open MK Chat');
     fab.innerHTML =
-      '<svg width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true"><path d="M21 15a4 4 0 0 1-4 4H7l-4 4V7a4 4 0 0 1 4-4h10a4 4 0 0 1 4 4z"/></svg><span class="mkchat-fab-label">Messages</span><span class="badge" id="mkchatBadge">0</span>';
+      '<span class="mkchat-fab-inner">' +
+      '<span class="mkchat-fab-icon-wrap" aria-hidden="true">' +
+      '<svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"/></svg>' +
+      '</span>' +
+      '<span class="mkchat-fab-text">' +
+      '<span class="mkchat-fab-brand">MK Chat</span>' +
+      '<span class="mkchat-fab-sub">Team messages</span>' +
+      '</span></span>' +
+      '<span class="badge" id="mkchatBadge">0</span>';
 
     if (hostEl) hostEl.appendChild(fab);
     else document.body.appendChild(fab);
@@ -885,8 +901,9 @@
     };
 
     function setFabLabelCollapsed(collapsed) {
-      const lbl = fab.querySelector('.mkchat-fab-label');
-      if (lbl) lbl.classList.toggle('is-hidden', !!collapsed);
+      fab.classList.toggle('mkchat-fab--collapsed', !!collapsed);
+      const textCol = fab.querySelector('.mkchat-fab-text');
+      if (textCol) textCol.classList.toggle('is-hidden', !!collapsed);
     }
 
     function onSidebarCollapsed(ev) {

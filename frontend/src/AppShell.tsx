@@ -1099,22 +1099,38 @@ export default function AppShell({ children }: PropsWithChildren){
         </div>
       </aside>
       <main className={`flex-1 min-w-0 flex flex-col min-h-0 transition-all duration-300 ${sidebarCollapsed ? 'ml-16' : 'ml-64'}`} style={{ height: '100vh' }}>
-        <div className="h-14 shrink-0 border-b border-gray-700/40 shadow-sm text-white flex items-center justify-between px-6 bg-gradient-to-r from-gray-700 via-gray-700 to-gray-800">
+        <div className="h-14 shrink-0 border-b border-gray-700/40 shadow-sm text-white flex items-center justify-between gap-3 px-4 sm:px-6 bg-gradient-to-r from-gray-700 via-gray-700 to-gray-800">
           <GlobalSearch
-            widthClassName="w-[760px] max-w-[70vw]"
+            widthClassName="w-[760px] max-w-[min(760px,calc(100vw-20rem))] flex-1 min-w-0"
             maxRecents={4}
             isItemAllowed={canSeeGlobalSearchItem}
             getLocalSections={() => globalSearchLocalSections}
           />
-          <div className="flex items-center gap-4">
-            <ChangelogNewsPanel />
-            <NotificationBell />
-            <div className="relative flex items-center gap-3">
-              <button onClick={()=>setOpen(v=>!v)} className="flex items-center gap-3 hover:opacity-90 transition-opacity duration-200">
-                <span className="text-base font-medium text-gray-50 max-w-[220px] truncate">{displayName}</span>
-                <img src={avatarUrl} className="w-11 h-11 rounded-full border-2 border-gray-500/60 object-cover shadow-md"/>
-              </button>
+          <div className="flex items-center gap-2 sm:gap-3 shrink-0">
+            <div
+              role="toolbar"
+              aria-label="Hub shortcuts"
+              className="flex items-center gap-0.5 rounded-xl border border-white/10 bg-gradient-to-b from-gray-800/85 to-gray-900/90 p-1 shadow-inner"
+            >
+              <ChangelogNewsPanel />
+              <span className="w-px h-8 shrink-0 self-center rounded-full bg-white/12" aria-hidden />
+              <NotificationBell />
+              <span className="w-px h-8 shrink-0 self-center rounded-full bg-white/12" aria-hidden />
               <FixedBugReportButton />
+            </div>
+            <div className="relative">
+              <button
+                type="button"
+                onClick={() => setOpen((v) => !v)}
+                className="flex items-center gap-2.5 rounded-xl border border-white/10 bg-black/15 hover:bg-black/25 hover:border-white/18 px-2 py-1.5 sm:pr-3 transition-all max-w-[min(240px,42vw)] sm:max-w-[280px]"
+              >
+                <img
+                  src={avatarUrl}
+                  alt=""
+                  className="w-9 h-9 sm:w-10 sm:h-10 rounded-full border-2 border-gray-500/55 object-cover shadow-md flex-shrink-0"
+                />
+                <span className="text-sm font-semibold text-gray-50 truncate min-w-0">{displayName}</span>
+              </button>
               {open && (
                 <div className="absolute right-0 top-full mt-2 w-56 rounded-lg border border-gray-200/20 bg-white text-black shadow-xl z-50">
                   <Link to="/profile" onClick={()=>setOpen(false)} className="block px-4 py-2.5 hover:bg-gray-50 transition-colors duration-150">My Information</Link>
