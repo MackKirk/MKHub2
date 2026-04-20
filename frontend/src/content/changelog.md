@@ -22,7 +22,9 @@ title: Update 1.1.026 - Week 17
 - New Safety Tab inside Projects, allowing to create Inspections from created Form Templates.
 
 ### Improved
-- (none this release)
+- Header bar: shortcuts grouped in one toolbar (What’s new, notifications, report bug) with consistent icon buttons;
+- Global search field styling aligned with the top bar.
+- What’s new opens as a large centered modal (backdrop, larger content area, close button, Escape to close) instead of a small dropdown.
 
 ### Fixed
 - (none this release)
