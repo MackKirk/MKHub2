@@ -25,6 +25,7 @@ import {
   type SafetyFormDefinition,
 } from '@/types/safetyFormTemplate';
 import { withSignSessionQuery, type SafetySignSession } from '@/lib/safetySignSessionQuery';
+import { imageFilesFromClipboardData, isLikelyImageFile } from '@/utils/imageUploadHelpers';
 
 type SafetyInspectionRow = {
   id: string;
@@ -56,6 +57,9 @@ type SafetyInspectionRow = {
   }>;
   interim_pdf_client_file_id?: string | null;
   final_pdf_client_file_id?: string | null;
+  first_finalized_at?: string | null;
+  first_finalized_by_id?: string | null;
+  pdf_regeneration_error?: string | null;
 };
 
 type FormTemplatePick = {
@@ -88,12 +92,6 @@ function guessImageMimeFromName(name: string): string {
   if (lower.endsWith('.tif') || lower.endsWith('.tiff')) return 'image/tiff';
   if (lower.endsWith('.jpg') || lower.endsWith('.jpeg')) return 'image/jpeg';
   return 'image/jpeg';
-}
-
-function isLikelyImageFile(file: File): boolean {
-  const ct = file.type || '';
-  if (ct.startsWith('image/')) return true;
-  return /\.(jpe?g|png|gif|webp|heic|heif|bmp|tiff?)$/i.test(file.name);
 }
 
 function resolveImageContentType(file: File): string {
@@ -329,9 +327,9 @@ function YnCommentPhotoDropzone({
   const dragDepth = useRef(0);
   const [dragActive, setDragActive] = useState(false);
 
-  const pushFiles = (list: FileList | null) => {
+  const pushFiles = (list: FileList | File[] | null) => {
     if (!list?.length || disabled || uploading) return;
-    const picked = Array.from(list);
+    const picked = Array.isArray(list) ? list : Array.from(list);
     const images = picked.filter((f) => isLikelyImageFile(f));
     if (images.length < picked.length) {
       toast.error('Some files were skipped — only images are allowed.');
@@ -343,6 +341,14 @@ function YnCommentPhotoDropzone({
   return (
     <div
       className="w-full"
+      tabIndex={disabled || uploading ? -1 : 0}
+      onPaste={(e) => {
+        if (disabled || uploading) return;
+        const files = imageFilesFromClipboardData(e.clipboardData);
+        if (!files.length) return;
+        e.preventDefault();
+        pushFiles(files);
+      }}
       onDragEnter={(e) => {
         e.preventDefault();
         e.stopPropagation();
@@ -390,7 +396,9 @@ function YnCommentPhotoDropzone({
         <p className="text-sm font-medium text-gray-800">
           {uploading ? 'Uploading…' : 'Drag photos here or click to choose'}
         </p>
-        <p className="text-xs text-gray-500 mt-2">Drag-and-drop images here or choose files from your computer.</p>
+        <p className="text-xs text-gray-500 mt-2">
+          Drag-and-drop images here, choose files, or paste with Ctrl+V (click this area first).
+        </p>
       </button>
       <input
         ref={inputRef}
@@ -533,6 +541,99 @@ export default function ProjectSafetyTab({
   const inspectionImmutable =
     detail?.status === 'finalized' || detail?.status === 'pending_signatures';
   const formEditable = !!(canWrite && detail && !inspectionImmutable);
+
+  /** FileObject id for the PDF saved to Project files (final) or interim while awaiting signatures */
+  const inspectionPdfFileObjectId = useMemo(() => {
+    if (!detail?.status) return null;
+    const st = (detail.status || '').toLowerCase();
+    const fin = (detail.finalized_pdf_file_object_id || '').trim();
+    const interim = (detail.interim_pdf_file_object_id || '').trim();
+    if (st === 'finalized' && fin) return fin;
+    if (st === 'pending_signatures' && interim) return interim;
+    return null;
+  }, [detail]);
+
+  const showInspectionPdfAction = useMemo(() => {
+    if (!detail?.status || !safetyAccess || !isDynamicInspection) return false;
+    const st = (detail.status || '').toLowerCase();
+    return st === 'finalized' || st === 'pending_signatures';
+  }, [detail?.status, safetyAccess, isDynamicInspection]);
+
+  const canRegenerateInspectionPdf = useMemo(
+    () => showInspectionPdfAction && canWrite && !inspectionPdfFileObjectId,
+    [showInspectionPdfAction, canWrite, inspectionPdfFileObjectId]
+  );
+
+  const [pdfLinkOpening, setPdfLinkOpening] = useState(false);
+  const openInspectionPdfInNewTab = useCallback(async () => {
+    if (!selectedId || !showInspectionPdfAction) return;
+    setPdfLinkOpening(true);
+    try {
+      let fid = inspectionPdfFileObjectId;
+      if (!fid && canRegenerateInspectionPdf) {
+        const data = await api<SafetyInspectionRow>(
+          'POST',
+          `/projects/${encodeURIComponent(projectId)}/safety-inspections/${encodeURIComponent(selectedId)}/regenerate-pdf`,
+          {}
+        );
+        const regenErr = (data as { pdf_regeneration_error?: string }).pdf_regeneration_error;
+        if (regenErr) {
+          toast.error(
+            regenErr === 'missing_files_write_or_safety_category'
+              ? 'Could not save PDF to Project files (missing write access or Safety category not allowed for your role).'
+              : regenErr === 'project_missing_client'
+                ? 'Could not save PDF because this project has no client record.'
+                : regenErr === 'pdf_build_failed' || regenErr === 'pdf_attach_failed'
+                  ? 'Could not build or save the inspection PDF.'
+                  : 'Could not regenerate the inspection PDF.'
+          );
+          return;
+        }
+        const st = (data.status || '').toLowerCase();
+        const next =
+          st === 'finalized'
+            ? (data.finalized_pdf_file_object_id || '').trim()
+            : (data.interim_pdf_file_object_id || '').trim();
+        if (!next) {
+          toast.error('PDF was not created');
+          return;
+        }
+        fid = next;
+        qc.invalidateQueries({ queryKey: ['projectSafetyInspection', projectId, selectedId] });
+        qc.invalidateQueries({ queryKey: listKey });
+        qc.invalidateQueries({ queryKey: ['projectFiles', projectId] });
+        toast.success('PDF restored to Project files');
+      }
+      if (!fid) {
+        if (showInspectionPdfAction && !canWrite) {
+          toast.error('The PDF is missing from Files. A user with edit permission must open this page to restore it.');
+        }
+        return;
+      }
+      const r = await api<{ preview_url?: string; download_url?: string }>(
+        'GET',
+        withFileAccessToken(`/files/${encodeURIComponent(fid)}/preview`)
+      );
+      const url = String(r.preview_url || r.download_url || '').trim();
+      if (!url) {
+        toast.error('PDF preview is not available');
+        return;
+      }
+      window.open(url, '_blank', 'noopener,noreferrer');
+    } catch {
+      toast.error('Could not open PDF');
+    } finally {
+      setPdfLinkOpening(false);
+    }
+  }, [
+    selectedId,
+    showInspectionPdfAction,
+    inspectionPdfFileObjectId,
+    canRegenerateInspectionPdf,
+    projectId,
+    qc,
+    listKey,
+  ]);
 
   const myPendingSignRequest = useMemo(() => {
     if (!detail?.sign_requests || !signerUserId) return null;
@@ -1111,7 +1212,7 @@ export default function ProjectSafetyTab({
               onClick={() => setShowCreateModal(true)}
               className="w-full border-2 border-dashed border-gray-300 rounded-t-xl p-2.5 hover:border-brand-red hover:bg-gray-50 transition-all text-center bg-white flex items-center justify-center min-h-[60px] min-w-0"
             >
-              <span className="font-medium text-xs text-gray-700">+ New Form</span>
+              <span className="font-medium text-xs text-gray-700">+ New Inspection</span>
             </button>
           )}
           {listLoading ? (
@@ -1289,7 +1390,7 @@ export default function ProjectSafetyTab({
               </h2>
             </div>
             {detail && (
-              <div className="flex items-center gap-2 shrink-0">
+              <div className="flex items-center gap-2 shrink-0 flex-wrap justify-end">
                 <span className="text-xs text-gray-500">Status</span>
                 <span
                   className={`text-xs font-semibold px-2.5 py-1 rounded-full ${
@@ -1306,6 +1407,25 @@ export default function ProjectSafetyTab({
                       ? 'Awaiting signatures'
                       : 'Draft'}
                 </span>
+                {showInspectionPdfAction && (inspectionPdfFileObjectId || canRegenerateInspectionPdf) ? (
+                  <button
+                    type="button"
+                    disabled={pdfLinkOpening}
+                    onClick={() => void openInspectionPdfInNewTab()}
+                    title={
+                      canRegenerateInspectionPdf && !inspectionPdfFileObjectId
+                        ? 'Rebuilds the PDF from the saved inspection and adds it back to Project files'
+                        : undefined
+                    }
+                    className="text-xs font-medium px-2.5 py-1 rounded-lg border border-gray-300 text-gray-800 bg-white hover:bg-gray-50 disabled:opacity-50"
+                  >
+                    {pdfLinkOpening
+                      ? inspectionPdfFileObjectId
+                        ? 'Opening…'
+                        : 'Generating…'
+                      : 'Download PDF'}
+                  </button>
+                ) : null}
               </div>
             )}
           </div>

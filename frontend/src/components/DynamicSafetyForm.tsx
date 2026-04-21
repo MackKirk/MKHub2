@@ -68,6 +68,21 @@ const CONTROL_SELECT_FLEX = `flex-1 min-w-0 min-h-[2.75rem] px-3 py-2 border-2 b
 /** Sidecar for optional per-field notes (`_fieldComments`). yes_no_na uses { comments, commentImageIds } on the field value. */
 const SIDE_COMMENT_PAYLOAD_KEY = '_fieldComments';
 
+/** Global block before worker signature: same shape as a side comment entry (string or `{ text, imageIds }`). */
+const ADDITIONAL_COMMENTS_PAYLOAD_KEY = '_additionalComments';
+
+function getAdditionalComments(p: Record<string, unknown>): SideCommentEntry {
+  return parseSideCommentRaw(p[ADDITIONAL_COMMENTS_PAYLOAD_KEY]);
+}
+
+function mergeAdditionalComments(prev: Record<string, unknown>, entry: SideCommentEntry): Record<string, unknown> {
+  const serialized = serializeSideCommentEntry(entry);
+  const out = { ...prev };
+  if (serialized === undefined) delete out[ADDITIONAL_COMMENTS_PAYLOAD_KEY];
+  else out[ADDITIONAL_COMMENTS_PAYLOAD_KEY] = serialized;
+  return out;
+}
+
 function ChatBubbleIcon({ className }: { className?: string }) {
   return (
     <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
@@ -304,6 +319,16 @@ export default function DynamicSafetyForm({
       setFormPayload((prev) => {
         const cur = getSideCommentForField(prev, fieldKey);
         return mergeSideComment(prev, fieldKey, { ...cur, ...patch });
+      });
+    },
+    [setFormPayload]
+  );
+
+  const updateAdditionalComments = useCallback(
+    (patch: Partial<SideCommentEntry>) => {
+      setFormPayload((prev) => {
+        const cur = getAdditionalComments(prev);
+        return mergeAdditionalComments(prev, { ...cur, ...patch });
       });
     },
     [setFormPayload]
@@ -809,20 +834,21 @@ export default function DynamicSafetyForm({
                   onChange={(v) => setKey(k, v)}
                 />
               </div>
+            ) : opts.length === 0 ? (
+              <div className={`${CONTROL_SELECT_FLEX} flex items-center text-sm text-gray-500 bg-gray-50`}>
+                No options
+              </div>
             ) : (
-              <select
-                value={val}
-                onChange={(e) => setKey(k, e.target.value)}
-                disabled={disabled}
-                className={CONTROL_SELECT_FLEX}
-              >
-                <option value="">Select One</option>
-                {opts.map((o) => (
-                  <option key={o.value} value={o.value}>
-                    {o.label}
-                  </option>
-                ))}
-              </select>
+              <div className="flex-1 min-w-0">
+                <SafetySearchableSingle
+                  hideLabel
+                  label={field.label}
+                  rows={opts}
+                  value={val}
+                  disabled={disabled}
+                  onChange={(v) => setKey(k, v)}
+                />
+              </div>
             )}
             {!disabled && (
               <CommentIconOnly
@@ -1058,7 +1084,6 @@ export default function DynamicSafetyForm({
                 value={sel}
                 disabled={disabled}
                 onChange={(next) => setKey(k, next)}
-                searchable
                 searchPlaceholder="Search workers…"
               />
             </div>
@@ -1204,7 +1229,6 @@ export default function DynamicSafetyForm({
                 value={sel}
                 disabled={disabled}
                 onChange={(next) => setKey(k, next)}
-                searchable
                 searchPlaceholder="Search equipment…"
               />
             </div>
@@ -1330,6 +1354,8 @@ export default function DynamicSafetyForm({
     }
   }, [workerSigFileId]);
 
+  const additionalComments = getAdditionalComments(formPayload);
+
   return (
     <div ref={formScrollClampRef} className="space-y-4">
       {sections.map((section) => {
@@ -1345,6 +1371,26 @@ export default function DynamicSafetyForm({
           </div>
         );
       })}
+      <div
+        data-safety-field-key="_additionalComments"
+        className="rounded-xl border border-gray-200 bg-white overflow-visible"
+      >
+        <div className="px-4 py-3 border-b border-gray-200 bg-gray-200">
+          <h3 className="text-sm font-semibold text-gray-700">Additional Comments / Photos</h3>
+        </div>
+        <div className="p-4">
+          <SafetyFieldCommentPanel
+            expanded={!disabled}
+            disabled={disabled}
+            text={additionalComments.text}
+            imageIds={additionalComments.imageIds}
+            onTextChange={(s) => updateAdditionalComments({ text: s })}
+            onImageIdsChange={(ids) => updateAdditionalComments({ imageIds: ids })}
+            projectId={projectId}
+            uploadFile={uploadFile}
+          />
+        </div>
+      </div>
       {workerSig != null && (
         <div
           data-safety-field-key={DYNAMIC_FORM_WORKER_SIGNATURE_HIGHLIGHT_KEY}

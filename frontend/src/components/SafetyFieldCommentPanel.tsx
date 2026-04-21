@@ -1,6 +1,7 @@
 import { useCallback, useRef, useState } from 'react';
 import toast from 'react-hot-toast';
 import { withFileAccessToken } from '@/lib/api';
+import { imageFilesFromClipboardData, isLikelyImageFile } from '@/utils/imageUploadHelpers';
 
 const MAX_IMAGES = 8;
 
@@ -64,11 +65,7 @@ export function SafetyFieldCommentPanel({
   const [busy, setBusy] = useState(false);
   const [dragOver, setDragOver] = useState(false);
 
-  const acceptFile = useCallback(
-    (file: File) =>
-      /^image\//.test(file.type) || /\.(jpe?g|png|gif|webp|heic|bmp)$/i.test(file.name),
-    []
-  );
+  const acceptFile = useCallback((file: File) => isLikelyImageFile(file), []);
 
   const addImageFiles = useCallback(
     async (files: FileList | File[] | null) => {
@@ -113,12 +110,27 @@ export function SafetyFieldCommentPanel({
         <textarea
           value={text}
           onChange={(e) => onTextChange(e.target.value)}
+          onPaste={(e) => {
+            if (disabled || busy || !projectId) return;
+            const files = imageFilesFromClipboardData(e.clipboardData);
+            if (!files.length) return;
+            e.preventDefault();
+            void addImageFiles(files);
+          }}
           placeholder="Comments / details (optional)"
           rows={3}
           disabled={disabled}
           className="w-full px-3 py-2 border-2 border-gray-200 rounded-xl text-sm resize-y disabled:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-brand-red/20 focus:border-brand-red"
         />
         <div
+          tabIndex={disabled || busy || !projectId ? -1 : 0}
+          onPaste={(e) => {
+            if (disabled || busy || !projectId) return;
+            const files = imageFilesFromClipboardData(e.clipboardData);
+            if (!files.length) return;
+            e.preventDefault();
+            void addImageFiles(files);
+          }}
           onDragEnter={(e) => {
             e.preventDefault();
             e.stopPropagation();
@@ -139,7 +151,7 @@ export function SafetyFieldCommentPanel({
             setDragOver(false);
             void addImageFiles(e.dataTransfer.files);
           }}
-          className={`rounded-xl border-2 border-dashed px-3 py-4 text-center transition-colors ${
+          className={`rounded-xl border-2 border-dashed px-3 py-4 text-center transition-colors outline-none focus-visible:ring-2 focus-visible:ring-brand-red/25 ${
             dragOver ? 'border-brand-red bg-red-50/50' : 'border-gray-200 bg-gray-50/80'
           } ${!projectId || busy ? 'opacity-60 pointer-events-none' : ''}`}
         >
@@ -164,7 +176,7 @@ export function SafetyFieldCommentPanel({
           >
             Upload images
           </button>
-          <p className="text-xs text-gray-500 mt-1">or drag and drop images here</p>
+          <p className="text-xs text-gray-500 mt-1">or drag and drop here, or paste (Ctrl+V) in this box or in the comment field above</p>
           {!projectId ? (
             <p className="text-xs text-amber-700 mt-2">Open this inspection from a project to attach images.</p>
           ) : null}
