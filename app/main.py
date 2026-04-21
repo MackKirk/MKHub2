@@ -377,6 +377,22 @@ def create_app() -> FastAPI:
                                     """
                                 )
                             )
+                            db.execute(
+                                text(
+                                    """
+                                    ALTER TABLE project_safety_inspections
+                                    ADD COLUMN IF NOT EXISTS first_finalized_at TIMESTAMPTZ NULL
+                                    """
+                                )
+                            )
+                            db.execute(
+                                text(
+                                    """
+                                    ALTER TABLE project_safety_inspections
+                                    ADD COLUMN IF NOT EXISTS first_finalized_by_id UUID NULL REFERENCES users(id) ON DELETE SET NULL
+                                    """
+                                )
+                            )
                             db.commit()
                         if db.execute(
                             text(

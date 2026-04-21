@@ -17,7 +17,7 @@ type Props = {
   rows?: MultiSelectRow[];
   /** When true with `rows`, keep caller order (e.g. custom list hierarchy order). */
   preserveOrder?: boolean;
-  /** Search field at the top of the dropdown panel. */
+  /** Search field at the top of the dropdown panel (default: true). */
   searchable?: boolean;
   searchPlaceholder?: string;
   /** Shown on the trigger when nothing is selected. */
@@ -40,7 +40,7 @@ export default function SafetyDropdownMulti({
   options,
   rows,
   preserveOrder,
-  searchable,
+  searchable = true,
   searchPlaceholder = 'Search…',
   emptyLabel = 'Select Multiple',
   clearSelectionLabel = 'Clear selection',
@@ -98,9 +98,7 @@ export default function SafetyDropdownMulti({
       ? emptyLabel
       : value.length === 1
         ? labelFor(value[0])
-        : value.length <= 2
-          ? value.map(labelFor).join(', ')
-          : `${value.length} selected`;
+        : `${value.length} selected`;
 
   const filteredRows = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
@@ -141,6 +139,33 @@ export default function SafetyDropdownMulti({
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
         </svg>
       </button>
+
+      {value.length >= 2 && (
+        <div className="flex flex-wrap gap-1.5 mt-1.5">
+          {value.map((v) => (
+            <span
+              key={v}
+              className="inline-flex items-center gap-1 max-w-full pl-2 pr-1 py-1 rounded-lg bg-gray-100 border border-gray-200 text-xs text-gray-800"
+            >
+              <span className="truncate min-w-0" title={labelFor(v)}>
+                {labelFor(v)}
+              </span>
+              {!disabled && (
+                <button
+                  type="button"
+                  aria-label={`Remove ${labelFor(v)}`}
+                  className="shrink-0 p-0.5 rounded hover:bg-gray-200 text-gray-600"
+                  onClick={() => toggle(v)}
+                >
+                  <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              )}
+            </span>
+          ))}
+        </div>
+      )}
 
       {open &&
         !disabled &&

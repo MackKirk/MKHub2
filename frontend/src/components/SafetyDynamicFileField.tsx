@@ -1,6 +1,7 @@
 import { useState, type ReactNode } from 'react';
 import { withFileAccessToken } from '@/lib/api';
 import type { SafetyFormField } from '@/types/safetyFormTemplate';
+import { filesFromClipboardData, imageFilesFromClipboardData, isLikelyImageFile } from '@/utils/imageUploadHelpers';
 
 function getFileIds(p: Record<string, unknown>, k: string): string[] {
   const v = p[k];
@@ -48,12 +49,17 @@ export default function SafetyDynamicFileField({
       : field.settings?.allowMultipleFiles === true;
   const [busy, setBusy] = useState(false);
 
-  const addFiles = async (files: FileList | null) => {
+  const ingestFileList = async (files: File[] | null) => {
     if (!files?.length || disabled || !projectId) return;
+    const filtered =
+      field.type === 'image_view'
+        ? files.filter((f) => isLikelyImageFile(f))
+        : files.filter((f) => f.type === 'application/pdf' || /\.pdf$/i.test(f.name));
+    if (!filtered.length) return;
     setBusy(true);
     try {
       const next = multi ? [...ids] : [];
-      for (const file of Array.from(files)) {
+      for (const file of filtered) {
         const id = await uploadFile(file);
         if (id) next.push(id);
       }
@@ -66,8 +72,31 @@ export default function SafetyDynamicFileField({
     }
   };
 
+  const addFiles = async (files: FileList | null) => {
+    if (!files?.length) return;
+    await ingestFileList(Array.from(files));
+  };
+
   return (
-    <div className={outerClassName ?? `p-4 ${rowBg}`}>
+    <div
+      className={`${outerClassName ?? `p-4 ${rowBg}`} outline-none focus-visible:ring-2 focus-visible:ring-brand-red/25 rounded-xl`}
+      tabIndex={disabled || busy || !projectId ? -1 : 0}
+      onPaste={(e) => {
+        if (disabled || busy || !projectId) return;
+        if (field.type === 'pdf_insert') {
+          const raw = filesFromClipboardData(e.clipboardData);
+          const pdfs = raw.filter((f) => f.type === 'application/pdf' || /\.pdf$/i.test(f.name));
+          if (!pdfs.length) return;
+          e.preventDefault();
+          void ingestFileList(pdfs);
+          return;
+        }
+        const pasted = imageFilesFromClipboardData(e.clipboardData);
+        if (!pasted.length) return;
+        e.preventDefault();
+        void ingestFileList(pasted);
+      }}
+    >
       {!hideTitle && <div className="text-sm font-medium text-gray-600 mb-2">{field.label}</div>}
       <div className="flex items-center gap-2 mb-2 flex-wrap rounded-xl border-2 border-gray-200 bg-white px-3 py-2">
           <label className="block text-xs text-gray-600 flex-1 min-w-0 cursor-pointer">

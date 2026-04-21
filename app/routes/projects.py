@@ -156,6 +156,66 @@ def _assert_awarded_project_for_safety(p: Project) -> None:
         )
 
 
+def _file_object_id_from_client_file(db: Session, cf_id: Optional[uuid.UUID]) -> Optional[str]:
+    """Resolve ClientFile row to FileObject id (same bytes as linked in Project files)."""
+    if cf_id is None:
+        return None
+    cf = (
+        db.query(ClientFile)
+        .filter(ClientFile.id == cf_id, ClientFile.deleted_at.is_(None))
+        .first()
+    )
+    if not cf or not getattr(cf, "file_object_id", None):
+        return None
+    return str(cf.file_object_id)
+
+
+def _null_inspection_pdf_fk_if_client_file_missing_or_deleted(
+    db: Session, row: ProjectSafetyInspection, *, clear_interim: bool, clear_final: bool
+) -> None:
+    """Clear FK when the ClientFile row is missing or soft-deleted (e.g. user removed PDF from Files)."""
+    changed = False
+    if clear_final and getattr(row, "final_pdf_client_file_id", None):
+        cid = row.final_pdf_client_file_id
+        cf = db.query(ClientFile).filter(ClientFile.id == cid).first()
+        if cf is None or getattr(cf, "deleted_at", None) is not None:
+            row.final_pdf_client_file_id = None
+            changed = True
+    if clear_interim and getattr(row, "interim_pdf_client_file_id", None):
+        cid = row.interim_pdf_client_file_id
+        cf = db.query(ClientFile).filter(ClientFile.id == cid).first()
+        if cf is None or getattr(cf, "deleted_at", None) is not None:
+            row.interim_pdf_client_file_id = None
+            changed = True
+    if changed:
+        db.add(row)
+        db.commit()
+        db.refresh(row)
+
+
+def _inspection_pdf_client_file_active(db: Session, row: ProjectSafetyInspection, *, interim: bool) -> bool:
+    cid = row.interim_pdf_client_file_id if interim else row.final_pdf_client_file_id
+    if not cid:
+        return False
+    cf = db.query(ClientFile).filter(ClientFile.id == cid).first()
+    return bool(cf and getattr(cf, "deleted_at", None) is None)
+
+
+def _backfill_first_finalized_snapshot_if_missing(db: Session, row: ProjectSafetyInspection, user: User) -> None:
+    """Inspections finalized before first_finalized_* columns were added."""
+    if (getattr(row, "status", None) or "").lower() != "finalized":
+        return
+    if getattr(row, "first_finalized_at", None) is not None:
+        return
+    cand = getattr(row, "updated_at", None) or getattr(row, "inspection_date", None) or datetime.now(timezone.utc)
+    by = getattr(row, "updated_by", None) or getattr(row, "created_by", None) or user.id
+    row.first_finalized_at = cand
+    row.first_finalized_by_id = by
+    db.add(row)
+    db.commit()
+    db.refresh(row)
+
+
 def _safety_inspection_to_dict(db: Session, row: ProjectSafetyInspection) -> dict:
     st = getattr(row, "status", None) or "draft"
     if st not in ("draft", "finalized", "pending_signatures"):
@@ -209,6 +269,8 @@ def _safety_inspection_to_dict(db: Session, row: ProjectSafetyInspection) -> dic
     ]
     interim_cf = getattr(row, "interim_pdf_client_file_id", None)
     final_cf = getattr(row, "final_pdf_client_file_id", None)
+    interim_pdf_fo = _file_object_id_from_client_file(db, interim_cf)
+    finalized_pdf_fo = _file_object_id_from_client_file(db, final_cf)
     return {
         "id": str(row.id),
         "project_id": str(row.project_id),
@@ -225,6 +287,14 @@ def _safety_inspection_to_dict(db: Session, row: ProjectSafetyInspection) -> dic
         "sign_requests": sign_requests_out,
         "interim_pdf_client_file_id": str(interim_cf) if interim_cf else None,
         "final_pdf_client_file_id": str(final_cf) if final_cf else None,
+        "interim_pdf_file_object_id": interim_pdf_fo,
+        "finalized_pdf_file_object_id": finalized_pdf_fo,
+        "first_finalized_at": getattr(row, "first_finalized_at", None).isoformat()
+        if getattr(row, "first_finalized_at", None)
+        else None,
+        "first_finalized_by_id": str(getattr(row, "first_finalized_by_id", None))
+        if getattr(row, "first_finalized_by_id", None)
+        else None,
         "created_at": row.created_at.isoformat() if row.created_at else None,
         "created_by": str(row.created_by) if row.created_by else None,
         "updated_at": row.updated_at.isoformat() if row.updated_at else None,
@@ -337,8 +407,14 @@ def _attach_safety_inspection_pdf(
     if tpl and getattr(tpl, "version_label", None):
         tv_label = str(tpl.version_label).strip()
     finalizer = _safety_inspection_user_display_name(db, user)
+    ff_uid = getattr(row, "first_finalized_by_id", None)
+    if document_kind == "final" and ff_uid:
+        fu = db.query(User).filter(User.id == ff_uid).first()
+        if fu:
+            finalizer = _safety_inspection_user_display_name(db, fu)
     project_address = (getattr(p, "address", None) or "").strip()
     extra = _extra_signers_pdf_payload(db, row.id)
+    ff_at = getattr(row, "first_finalized_at", None) if document_kind == "final" else None
     try:
         pdf_bytes = build_safety_inspection_pdf_bytes(
             db,
@@ -354,6 +430,7 @@ def _attach_safety_inspection_pdf(
             finalized_by_name=finalizer,
             document_kind=document_kind,
             extra_signers=extra,
+            first_finalized_at=ff_at,
         )
     except Exception:
         log.exception("Safety inspection PDF generation failed inspection_id=%s", row.id)
@@ -2597,7 +2674,99 @@ def get_project_safety_inspection(
     else:
         raise HTTPException(status_code=403, detail="Forbidden")
     _assert_awarded_project_for_safety(p)
+    _null_inspection_pdf_fk_if_client_file_missing_or_deleted(db, row, clear_interim=True, clear_final=True)
     return _safety_inspection_to_dict(db, row)
+
+
+@router.post("/{project_id}/safety-inspections/{inspection_id}/regenerate-pdf")
+def regenerate_project_safety_inspection_pdf(
+    project_id: str,
+    inspection_id: str,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+    _=Depends(require_permissions("business:projects:safety:write")),
+):
+    """Rebuild inspection PDF and attach a new Project file (same payload as Files). Use when the PDF was removed from Files."""
+    p = db.query(Project).filter(Project.id == project_id, Project.deleted_at.is_(None)).first()
+    if not p:
+        raise HTTPException(status_code=404, detail="Not found")
+    _assert_project_line_write(user, p)
+    _assert_awarded_project_for_safety(p)
+    row = (
+        db.query(ProjectSafetyInspection)
+        .filter(
+            ProjectSafetyInspection.id == inspection_id,
+            ProjectSafetyInspection.project_id == project_id,
+        )
+        .first()
+    )
+    if not row:
+        raise HTTPException(status_code=404, detail="Inspection not found")
+    st = (getattr(row, "status", None) or "").strip().lower()
+    if not getattr(row, "form_template_id", None) or not isinstance(getattr(row, "form_definition_snapshot", None), dict):
+        raise HTTPException(status_code=400, detail="This inspection has no template snapshot; PDF cannot be rebuilt.")
+    log = logging.getLogger(__name__)
+
+    if st == "finalized":
+        _null_inspection_pdf_fk_if_client_file_missing_or_deleted(db, row, clear_interim=False, clear_final=True)
+        db.refresh(row)
+        if _inspection_pdf_client_file_active(db, row, interim=False):
+            raise HTTPException(
+                status_code=400,
+                detail="Inspection PDF is still linked to an active Project file. Remove it from Files first to regenerate.",
+            )
+        _backfill_first_finalized_snapshot_if_missing(db, row, user)
+        err, fo_id, cf_id = _attach_safety_inspection_pdf(
+            db,
+            p,
+            row,
+            user,
+            document_kind="final",
+            log=log,
+            name_suffix="",
+            audit_source="safety_inspection_pdf_regenerate",
+        )
+        if err:
+            out = dict(_safety_inspection_to_dict(db, row))
+            out["pdf_regeneration_error"] = err
+            return out
+        if cf_id:
+            row.final_pdf_client_file_id = cf_id
+            db.add(row)
+            db.commit()
+            db.refresh(row)
+        return _safety_inspection_to_dict(db, row)
+
+    if st == "pending_signatures":
+        _null_inspection_pdf_fk_if_client_file_missing_or_deleted(db, row, clear_interim=True, clear_final=False)
+        db.refresh(row)
+        if _inspection_pdf_client_file_active(db, row, interim=True):
+            raise HTTPException(
+                status_code=400,
+                detail="Interim PDF is still linked to an active Project file. Remove it from Files first to regenerate.",
+            )
+        err, fo_id, cf_id = _attach_safety_inspection_pdf(
+            db,
+            p,
+            row,
+            user,
+            document_kind="interim",
+            log=log,
+            name_suffix="-interim",
+            audit_source="safety_inspection_pdf_regenerate_interim",
+        )
+        out = dict(_safety_inspection_to_dict(db, row))
+        if err:
+            out["pdf_regeneration_error"] = err
+            return out
+        if cf_id:
+            row.interim_pdf_client_file_id = cf_id
+            db.add(row)
+            db.commit()
+            db.refresh(row)
+        return _safety_inspection_to_dict(db, row)
+
+    raise HTTPException(status_code=400, detail="PDF can only be regenerated for finalized or pending-signatures inspections.")
 
 
 @router.delete("/{project_id}/safety-inspections/{inspection_id}")
@@ -2723,6 +2892,10 @@ def update_project_safety_inspection(
                 row.status = "finalized"
         else:
             row.status = st
+    new_st = (getattr(row, "status", None) or "draft").strip().lower()
+    if prev_status == "draft" and new_st == "finalized" and getattr(row, "first_finalized_at", None) is None:
+        row.first_finalized_at = datetime.now(timezone.utc)
+        row.first_finalized_by_id = user.id
     row.updated_by = user.id
     row.updated_at = datetime.now(timezone.utc)
 
@@ -2927,6 +3100,9 @@ def complete_safety_inspection_signer_signature(
     finalized_pdf_file_object_id: Optional[str] = None
     if n_pending == 0:
         submitter = db.query(User).filter(User.id == row.created_by).first() if getattr(row, "created_by", None) else user
+        if getattr(row, "first_finalized_at", None) is None:
+            row.first_finalized_at = datetime.now(timezone.utc)
+            row.first_finalized_by_id = user.id
         if row.interim_pdf_client_file_id:
             _soft_delete_client_file_row(db, row.interim_pdf_client_file_id, user.id)
             row.interim_pdf_client_file_id = None

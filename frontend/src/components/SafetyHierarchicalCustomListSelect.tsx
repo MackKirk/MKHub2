@@ -342,7 +342,6 @@ export function SafetyHierarchicalCustomListMulti({
   const [open, setOpen] = useState(false);
   const [pathIds, setPathIds] = useState<string[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
-  const [draft, setDraft] = useState<string[]>(value);
   const rootRef = useRef<HTMLDivElement>(null);
   const anchorRef = useRef<HTMLButtonElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
@@ -358,16 +357,26 @@ export function SafetyHierarchicalCustomListMulti({
     return m;
   }, [leafOptions]);
 
+  /** After each leaf pick (or when opening), back to Top + empty search so the next pick is quick. */
+  const resetPickerNavigation = useCallback(() => {
+    setPathIds([]);
+    setSearchQuery('');
+  }, []);
+
+  const closePanel = useCallback(() => {
+    setOpen(false);
+    resetPickerNavigation();
+  }, [resetPickerNavigation]);
+
   useEffect(() => {
     if (!open) {
-      setSearchQuery('');
-      setPathIds([]);
+      resetPickerNavigation();
       return;
     }
-    setDraft([...value]);
+    resetPickerNavigation();
     const t = window.setTimeout(() => searchInputRef.current?.focus(), 0);
     return () => window.clearTimeout(t);
-  }, [open, value]);
+  }, [open, resetPickerNavigation]);
 
   const levelNodes = useMemo(() => getChildrenAtPath(items, pathIds), [items, pathIds]);
 
@@ -379,9 +388,15 @@ export function SafetyHierarchicalCustomListMulti({
     );
   }, [leafOptions, searchQuery]);
 
-  const addLeaf = useCallback((id: string) => {
-    setDraft((d) => (d.includes(id) ? d : [...d, id]));
-  }, []);
+  const pickLeaf = useCallback(
+    (id: string) => {
+      if (!value.includes(id)) {
+        onChange([...value, id]);
+      }
+      resetPickerNavigation();
+    },
+    [onChange, value, resetPickerNavigation]
+  );
 
   const removeCommitted = useCallback(
     (id: string) => {
@@ -395,23 +410,7 @@ export function SafetyHierarchicalCustomListMulti({
       ? emptyLabel
       : value.length === 1
         ? labelById.get(value[0]) ?? value[0]
-        : value.length <= 2
-          ? value.map((id) => labelById.get(id) ?? id).join(', ')
-          : `${value.length} selected`;
-
-  const apply = useCallback(() => {
-    onChange([...draft]);
-    setOpen(false);
-    setPathIds([]);
-    setSearchQuery('');
-  }, [draft, onChange]);
-
-  const cancel = useCallback(() => {
-    setDraft([...value]);
-    setOpen(false);
-    setPathIds([]);
-    setSearchQuery('');
-  }, [value]);
+        : `${value.length} selected`;
 
   useEffect(() => {
     if (!open) return;
@@ -419,20 +418,20 @@ export function SafetyHierarchicalCustomListMulti({
       const t = e.target as Node;
       if (rootRef.current?.contains(t)) return;
       if (panelRef.current?.contains(t)) return;
-      cancel();
+      closePanel();
     };
     document.addEventListener('mousedown', onDoc);
     return () => document.removeEventListener('mousedown', onDoc);
-  }, [open, cancel]);
+  }, [open, closePanel]);
 
   useEffect(() => {
     if (!open) return;
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') cancel();
+      if (e.key === 'Escape') closePanel();
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [open, cancel]);
+  }, [open, closePanel]);
 
   return (
     <div ref={rootRef} className="relative space-y-2">
@@ -458,7 +457,7 @@ export function SafetyHierarchicalCustomListMulti({
         </svg>
       </button>
 
-      {!disabled && value.length > 0 && (
+      {value.length >= 2 && (
         <div className="flex flex-wrap gap-1.5">
           {value.map((id) => (
             <span
@@ -468,16 +467,18 @@ export function SafetyHierarchicalCustomListMulti({
               <span className="truncate min-w-0" title={labelById.get(id)}>
                 {labelById.get(id) ?? id}
               </span>
-              <button
-                type="button"
-                aria-label="Remove"
-                className="shrink-0 p-0.5 rounded hover:bg-gray-200 text-gray-600"
-                onClick={() => removeCommitted(id)}
-              >
-                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                </svg>
-              </button>
+              {!disabled && (
+                <button
+                  type="button"
+                  aria-label="Remove"
+                  className="shrink-0 p-0.5 rounded hover:bg-gray-200 text-gray-600"
+                  onClick={() => removeCommitted(id)}
+                >
+                  <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              )}
             </span>
           ))}
         </div>
@@ -496,111 +497,95 @@ export function SafetyHierarchicalCustomListMulti({
             pathIds={pathIds}
             setPathIds={setPathIds}
             items={items}
-            footer={
+          >
+            {value.length > 0 && (
+              <div className="px-2 py-2 bg-blue-50/60 border-b border-blue-100 shrink-0">
+                <div className="text-[10px] font-semibold uppercase tracking-wide text-blue-800 mb-1">Selected</div>
+                <div className="flex flex-wrap gap-1.5">
+                  {value.map((id) => (
+                    <span
+                      key={id}
+                      className="inline-flex items-center gap-1 max-w-full pl-2 pr-1 py-0.5 rounded-md bg-white border border-blue-200 text-xs text-gray-800"
+                    >
+                      <span className="truncate min-w-0 max-w-[14rem]" title={labelById.get(id)}>
+                        {labelById.get(id) ?? id}
+                      </span>
+                      <button
+                        type="button"
+                        aria-label="Remove from selection"
+                        className="shrink-0 p-0.5 rounded hover:bg-gray-100 text-gray-600"
+                        onClick={() => onChange(value.filter((x) => x !== id))}
+                      >
+                        <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                        </svg>
+                      </button>
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
+            {searchQuery.trim() ? (
+              searchHits.length === 0 ? (
+                <div className="px-3 py-2 text-sm text-gray-500">No matches</div>
+              ) : (
+                searchHits.map((row) => (
+                  <button
+                    key={row.value}
+                    type="button"
+                    className="w-full px-3 py-2 text-left text-sm hover:bg-gray-50 text-gray-800 flex items-center justify-between gap-2"
+                    onClick={() => pickLeaf(row.value)}
+                  >
+                    <span className="min-w-0 truncate">{row.label}</span>
+                    {value.includes(row.value) ? (
+                      <span className="text-[10px] font-medium text-blue-700 shrink-0">Selected</span>
+                    ) : null}
+                  </button>
+                ))
+              )
+            ) : (
               <>
                 <button
                   type="button"
-                  className="px-3 py-2 text-sm font-medium rounded-xl border-2 border-gray-200 bg-white hover:border-gray-300 text-gray-700"
-                  onClick={cancel}
+                  className="w-full px-3 py-2 text-left text-sm text-gray-500 hover:bg-gray-50"
+                  onClick={() => {
+                    onChange([]);
+                    resetPickerNavigation();
+                  }}
                 >
-                  Cancel
+                  Clear all selections
                 </button>
-                <button
-                  type="button"
-                  className="px-3 py-2 text-sm font-medium rounded-xl border-2 border-brand-red bg-brand-red text-white hover:opacity-95"
-                  onClick={apply}
-                >
-                  Apply
-                </button>
+                {levelNodes.length === 0 ? (
+                  <div className="px-3 py-2 text-sm text-gray-500">No items</div>
+                ) : (
+                  levelNodes.map((node) => {
+                    const subs = node.children ?? [];
+                    const isBranch = subs.length > 0;
+                    return (
+                      <button
+                        key={node.id}
+                        type="button"
+                        onClick={() => {
+                          if (isBranch) setPathIds([...pathIds, node.id]);
+                          else pickLeaf(node.id);
+                        }}
+                        className={`w-full px-3 py-2 text-left text-sm flex items-center justify-between gap-2 hover:bg-gray-50 ${
+                          isBranch ? 'text-gray-800' : 'text-gray-900 font-medium'
+                        }`}
+                      >
+                        <span className="min-w-0 truncate">{node.name || '—'}</span>
+                        {isBranch ? (
+                          <ChevronRight className="w-4 h-4 text-gray-400 shrink-0" />
+                        ) : value.includes(node.id) ? (
+                          <span className="text-[10px] font-medium text-blue-700 shrink-0">Selected</span>
+                        ) : null}
+                      </button>
+                    );
+                  })
+                )}
               </>
-            }
-          >
-          {draft.length > 0 && (
-            <div className="px-2 py-2 bg-blue-50/60 border-b border-blue-100">
-              <div className="text-[10px] font-semibold uppercase tracking-wide text-blue-800 mb-1">Selected</div>
-              <div className="flex flex-wrap gap-1.5">
-                {draft.map((id) => (
-                  <span
-                    key={id}
-                    className="inline-flex items-center gap-1 max-w-full pl-2 pr-1 py-0.5 rounded-md bg-white border border-blue-200 text-xs text-gray-800"
-                  >
-                    <span className="truncate min-w-0 max-w-[14rem]" title={labelById.get(id)}>
-                      {labelById.get(id) ?? id}
-                    </span>
-                    <button
-                      type="button"
-                      aria-label="Remove from selection"
-                      className="shrink-0 p-0.5 rounded hover:bg-gray-100 text-gray-600"
-                      onClick={() => setDraft((d) => d.filter((x) => x !== id))}
-                    >
-                      <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                      </svg>
-                    </button>
-                  </span>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {searchQuery.trim() ? (
-            searchHits.length === 0 ? (
-              <div className="px-3 py-2 text-sm text-gray-500">No matches</div>
-            ) : (
-              searchHits.map((row) => (
-                <button
-                  key={row.value}
-                  type="button"
-                  className="w-full px-3 py-2 text-left text-sm hover:bg-gray-50 text-gray-800 flex items-center justify-between gap-2"
-                  onClick={() => addLeaf(row.value)}
-                >
-                  <span className="min-w-0 truncate">{row.label}</span>
-                  {draft.includes(row.value) ? (
-                    <span className="text-[10px] font-medium text-blue-700 shrink-0">Added</span>
-                  ) : null}
-                </button>
-              ))
-            )
-          ) : (
-            <>
-              <button
-                type="button"
-                className="w-full px-3 py-2 text-left text-sm text-gray-500 hover:bg-gray-50"
-                onClick={() => setDraft([])}
-              >
-                Clear all (draft)
-              </button>
-              {levelNodes.length === 0 ? (
-                <div className="px-3 py-2 text-sm text-gray-500">No items</div>
-              ) : (
-                levelNodes.map((node) => {
-                  const subs = node.children ?? [];
-                  const isBranch = subs.length > 0;
-                  return (
-                    <button
-                      key={node.id}
-                      type="button"
-                      onClick={() => {
-                        if (isBranch) setPathIds([...pathIds, node.id]);
-                        else addLeaf(node.id);
-                      }}
-                      className={`w-full px-3 py-2 text-left text-sm flex items-center justify-between gap-2 hover:bg-gray-50 ${
-                        isBranch ? 'text-gray-800' : 'text-gray-900 font-medium'
-                      }`}
-                    >
-                      <span className="min-w-0 truncate">{node.name || '—'}</span>
-                      {isBranch ? (
-                        <ChevronRight className="w-4 h-4 text-gray-400 shrink-0" />
-                      ) : draft.includes(node.id) ? (
-                        <span className="text-[10px] font-medium text-blue-700 shrink-0">Added</span>
-                      ) : null}
-                    </button>
-                  );
-                })
-              )}
-            </>
-          )}
-        </PickerPanel>,
+            )}
+          </PickerPanel>,
           document.body
         )}
     </div>

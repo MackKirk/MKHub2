@@ -348,6 +348,11 @@ class ProjectSafetyInspection(Base):
     final_pdf_client_file_id: Mapped[Optional[uuid.UUID]] = mapped_column(
         UUID(as_uuid=True), ForeignKey("client_files.id", ondelete="SET NULL"), nullable=True
     )
+    # Immutable snapshot when the inspection first reached "finalized" (for PDF / regeneration after file delete)
+    first_finalized_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    first_finalized_by_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
 
     form_template = relationship("FormTemplate", back_populates="inspections")
     sign_requests = relationship(

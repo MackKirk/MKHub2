@@ -8,8 +8,14 @@ import uuid as uuid_mod
 from datetime import datetime
 from typing import Any, Dict, List, Optional, Tuple, Union
 
+import pytz
+
+# Use pytz (already in requirements): Windows often has no IANA DB for zoneinfo without extra `tzdata`.
+_PDF_DISPLAY_TZ = pytz.timezone("America/Vancouver")
+_PDF_TZ_LABEL = "Vancouver, BC"
+
 from reportlab.lib import colors
-from reportlab.lib.enums import TA_CENTER
+from reportlab.lib.enums import TA_CENTER, TA_LEFT
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
 from reportlab.lib.units import inch
@@ -17,6 +23,7 @@ from reportlab.platypus import (
     BaseDocTemplate,
     Frame,
     Image,
+    CondPageBreak,
     KeepTogether,
     PageBreak,
     PageTemplate,
@@ -25,6 +32,7 @@ from reportlab.platypus import (
     Table,
     TableStyle,
 )
+from reportlab.platypus.flowables import Flowable, TopPadder
 from reportlab.lib.utils import ImageReader
 from sqlalchemy.orm import Session
 
@@ -44,6 +52,11 @@ except Exception:  # pragma: no cover
     HEADER_TITLE_BASE_SIZE = 12
     HEADER_TITLE_MIN_SIZE = 6
 
+# page_MK_template: dark band ends in a diagonal — keep white text left of that edge (narrower than proposals title width).
+_SAFETY_BANNER_TEXT_MAX_WIDTH = 300
+# First baseline for header stack; slightly higher than proposals (784) so the block sits a bit further up in the band.
+_SAFETY_BANNER_FIRST_BASELINE = 794
+
 from ..models.models import EmployeeProfile, FileObject, FleetAsset, FormCustomListItem, User
 from .onboarding_storage import read_file_object_bytes
 
@@ -62,8 +75,14 @@ _GRAY_BD = colors.HexColor("#d1d5db")
 _NEUTRAL_BG = colors.white
 _NEUTRAL_BD = colors.HexColor("#e5e7eb")
 _MUTED_TXT = "#9ca3af"
+_CHOICE_CIRCLE_DIAMETER = 24.0
+_CHOICE_CIRCLE_TEXT_SIZE = 9.0
 
 _MK_TEMPLATE_REL = os.path.join("proposals", "assets", "templates", "page_MK_template.png")
+# Right-aligned metadata line at the very top of the page (above the Mack Kirk logo in page_MK_template).
+_TOP_PAGE_CODE_LINE_Y = 826
+# Inset from the right edge of the page (smaller = line sits further right than frame margin rm).
+_TOP_PAGE_CODE_RIGHT_INSET = 18
 
 
 def _esc(s: Any) -> str:
@@ -72,45 +91,165 @@ def _esc(s: Any) -> str:
     return xml_escape(str(s or ""), entities={'"': "&quot;", "'": "&apos;"})
 
 
+def _as_utc_aware(dt: datetime) -> datetime:
+    """DB/API datetimes are stored in UTC; naive values are treated as UTC."""
+    if dt.tzinfo is None:
+        return pytz.UTC.localize(dt)
+    return dt.astimezone(pytz.UTC)
+
+
+def _format_pdf_datetime_vancouver(dt: Optional[datetime]) -> str:
+    """Wall clock in America/Vancouver (PST/PDT) for PDF copy."""
+    if not dt:
+        return "—"
+    loc = _as_utc_aware(dt).astimezone(_PDF_DISPLAY_TZ)
+    tz_abbr = loc.strftime("%Z").strip() or (loc.tzname() or "")
+    return f"{loc.strftime('%Y-%m-%d %H:%M')} {tz_abbr}".strip()
+
+
+def _format_iso_timestamp_vancouver(raw: str) -> Optional[str]:
+    """Parse ISO-8601 (e.g. from signature pad) and format in Vancouver; None if not parseable."""
+    s = (raw or "").strip()
+    if not s:
+        return None
+    try:
+        dt = datetime.fromisoformat(s.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    return _format_pdf_datetime_vancouver(dt)
+
+
+def _try_parse_iso_datetime(s: str) -> Optional[datetime]:
+    t = (s or "").strip()
+    if not t:
+        return None
+    try:
+        return datetime.fromisoformat(t.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+
+
 def _template_bg_path() -> str:
     base = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     return os.path.normpath(os.path.join(base, _MK_TEMPLATE_REL))
 
 
-def _draw_mk_banner_form_title(canvas: Any, title: str, *, visible: bool = True) -> None:
-    """Form name in white on the dark header band (aligned with proposals `page_MK_template`)."""
+def _banner_project_line(project_name: str, project_code: str) -> str:
+    pn = (project_name or "").strip()
+    pc = (project_code or "").strip()
+    if pn and pc:
+        return f"{pn} ({pc})"
+    if pn:
+        return pn
+    if pc:
+        return pc
+    return ""
+
+
+def _draw_mk_banner_header(
+    canvas: Any,
+    *,
+    title: str,
+    project_name: str,
+    project_code: str,
+    project_address: str,
+    visible: bool = True,
+) -> None:
+    """Form name plus project and address in white on the dark band (like proposals cover + company line)."""
     if not visible:
         return
     from reportlab.pdfbase.pdfmetrics import stringWidth
 
+    font_title = "Montserrat-Bold" if _pdf_dyn else "Helvetica-Bold"
+    font_sub_bold = "Montserrat-Bold" if _pdf_dyn else "Helvetica-Bold"
+    font_sub = "Montserrat" if _pdf_dyn else "Helvetica"
+    max_w = min(HEADER_TITLE_MAX_WIDTH, _SAFETY_BANNER_TEXT_MAX_WIDTH)
+    x = 40.0
+    y0 = float(_SAFETY_BANNER_FIRST_BASELINE)
+
     text = (title or "").strip() or "Safety inspection"
-    font = "Montserrat-Bold" if _pdf_dyn else "Helvetica-Bold"
-    max_w = HEADER_TITLE_MAX_WIDTH
     size = HEADER_TITLE_BASE_SIZE
-    while size > HEADER_TITLE_MIN_SIZE and stringWidth(text, font, size) > max_w:
+    while size > HEADER_TITLE_MIN_SIZE and stringWidth(text, font_title, size) > max_w:
         size -= 0.5
+    line_h = size + 4
+    wrap = _pdf_wrap_text
 
     canvas.saveState()
     canvas.setFillColor(colors.white)
-    wrap = _pdf_wrap_text
-    if stringWidth(text, font, size) > max_w and wrap:
-        lines = wrap(text, font, size, max_w)[:2]
-        canvas.setFont(font, size)
-        line_height = size + 4
-        y_title = 784
+
+    last_title_bl: float
+    if stringWidth(text, font_title, size) > max_w and wrap:
+        lines = wrap(text, font_title, size, max_w)[:2]
+        canvas.setFont(font_title, size)
+        y_title = y0
         for line in lines:
-            canvas.drawString(40, y_title, line)
-            y_title -= line_height
-    elif stringWidth(text, font, size) > max_w:
+            canvas.drawString(x, y_title, line)
+            last_title_bl = y_title
+            y_title -= line_h
+    elif stringWidth(text, font_title, size) > max_w:
         el = "…"
         t = text
-        canvas.setFont(font, size)
-        while len(t) > 1 and stringWidth(t + el, font, size) > max_w:
+        canvas.setFont(font_title, size)
+        while len(t) > 1 and stringWidth(t + el, font_title, size) > max_w:
             t = t[:-1]
-        canvas.drawString(40, 784, t + el)
+        canvas.drawString(x, y0, t + el)
+        last_title_bl = y0
     else:
-        canvas.setFont(font, size)
-        canvas.drawString(40, 784, text)
+        canvas.setFont(font_title, size)
+        canvas.drawString(x, y0, text)
+        last_title_bl = y0
+
+    proj = _banner_project_line(project_name, project_code)
+    addr = (project_address or "").strip()
+    if not proj and not addr:
+        canvas.restoreState()
+        return
+
+    sub_b = 9.0
+    sub_a = 8.0
+    gap_below_title = 12.0
+    y_cursor = last_title_bl - gap_below_title
+
+    if proj:
+        canvas.setFont(font_sub_bold, sub_b)
+        if wrap and stringWidth(proj, font_sub_bold, sub_b) > max_w:
+            plines = wrap(proj, font_sub_bold, sub_b, max_w)[:3]
+        else:
+            plines = [proj]
+        for pl in plines:
+            if y_cursor < 708:
+                break
+            line = pl
+            if not wrap and stringWidth(line, font_sub_bold, sub_b) > max_w:
+                el = "…"
+                t = line
+                while len(t) > 1 and stringWidth(t + el, font_sub_bold, sub_b) > max_w:
+                    t = t[:-1]
+                line = t + el
+            canvas.drawString(x, y_cursor, line)
+            y_cursor -= sub_b + 2
+
+    if addr:
+        if proj:
+            y_cursor -= 2
+        canvas.setFont(font_sub, sub_a)
+        if wrap and stringWidth(addr, font_sub, sub_a) > max_w:
+            alines = wrap(addr, font_sub, sub_a, max_w)[:4]
+        else:
+            alines = [addr]
+        for al in alines:
+            if y_cursor < 692:
+                break
+            line = al
+            if not wrap and stringWidth(line, font_sub, sub_a) > max_w:
+                el = "…"
+                t = line
+                while len(t) > 1 and stringWidth(t + el, font_sub, sub_a) > max_w:
+                    t = t[:-1]
+                line = t + el
+            canvas.drawString(x, y_cursor, line)
+            y_cursor -= sub_a + 2
+
     canvas.restoreState()
 
 
@@ -270,6 +409,21 @@ def _get_side_comment(payload: Dict[str, Any], field_key: str) -> Tuple[str, Lis
     return "", []
 
 
+def _get_additional_comments(payload: Dict[str, Any]) -> Tuple[str, List[str]]:
+    """Top-level `_additionalComments` — same serialized shape as a `_fieldComments` entry."""
+    raw = payload.get("_additionalComments")
+    if isinstance(raw, str):
+        return raw.strip(), []
+    if isinstance(raw, dict):
+        text = str(raw.get("text") or "").strip()
+        arr = raw.get("imageIds") or raw.get("images")
+        ids: List[str] = []
+        if isinstance(arr, list):
+            ids = [str(x).strip() for x in arr if isinstance(x, str) and str(x).strip()]
+        return text, ids
+    return "", []
+
+
 def _get_yn_comment_images(val: Any) -> List[str]:
     if not val or not isinstance(val, dict):
         return []
@@ -324,6 +478,68 @@ def _badge_style(name: str, parent: ParagraphStyle) -> ParagraphStyle:
     )
 
 
+def _chip_style(name: str, parent: ParagraphStyle) -> ParagraphStyle:
+    return ParagraphStyle(
+        name,
+        parent=parent,
+        fontSize=9,
+        leading=11,
+        alignment=TA_LEFT,
+        textColor=colors.black,
+    )
+
+
+class _CircledChoiceLabel(Flowable):
+    """Selected option: compact filled ellipse (light tint) + border; label centered (bold)."""
+
+    def __init__(self, label: str, text_hex: str, fill_color: Any, border_color: Any) -> None:
+        Flowable.__init__(self)
+        self._label = label
+        self._hex = text_hex
+        self._fill = fill_color
+        self._stroke = border_color
+        self._font = "Montserrat-Bold" if _pdf_dyn else "Helvetica-Bold"
+        self._size = _CHOICE_CIRCLE_TEXT_SIZE
+
+    def wrap(self, availWidth: float, availHeight: float) -> Tuple[float, float]:
+        side = _CHOICE_CIRCLE_DIAMETER
+        if availWidth and availWidth > 0 and side > availWidth:
+            side = availWidth
+        self.width = side
+        self.height = side
+        return self.width, self.height
+
+    def draw(self) -> None:
+        from reportlab.pdfbase.pdfmetrics import getAscentDescent, stringWidth
+
+        c = self.canv
+        w, h = self.width, self.height
+        c.setFillColor(self._fill)
+        c.setStrokeColor(self._stroke)
+        c.setLineWidth(0.9)
+        c.ellipse(0, 0, w, h, stroke=1, fill=1)
+        c.setFillColor(colors.HexColor(self._hex))
+        c.setFont(self._font, self._size)
+        tw = stringWidth(self._label, self._font, self._size)
+        ascent, descent = getAscentDescent(self._font, self._size)
+        tx = (w - tw) / 2.0
+        ty = (h - (ascent - descent)) / 2.0 - descent
+        c.drawString(tx, ty, self._label)
+
+
+def _single_selected_choice(
+    defs: List[Tuple[str, str, Any, str, Any]],
+    selected: str,
+    empty_style: ParagraphStyle,
+) -> Union[_CircledChoiceLabel, Paragraph]:
+    """Show only the selected label (circled); if none matched, em dash in muted color."""
+    sel = (selected or "").lower().strip()
+    for key, label, bg, txt_hex, bd in defs:
+        if sel == key:
+            return _CircledChoiceLabel(label, txt_hex, bg, bd)
+    return Paragraph(f'<para><font color="{_MUTED_TXT}">—</font></para>', empty_style)
+
+
 def _mini_badge_table(
     badge_defs: List[Tuple[str, str, Any, str, Any]],
     selected: str,
@@ -360,31 +576,34 @@ def _mini_badge_table(
     return t
 
 
-def _pfna_badges(selected: str, badge_style: ParagraphStyle) -> Table:
+def _pfna_badges(selected: str, badge_style: ParagraphStyle) -> Union[_CircledChoiceLabel, Paragraph]:
     defs = [
-        ("pass", "P", _GREEN_BG, "#166534", _GREEN_BD),
-        ("fail", "F", _RED_BG, "#991b1b", _RED_BD),
+        ("pass", "Pass", _GREEN_BG, "#166534", _GREEN_BD),
+        ("fail", "Fail", _RED_BG, "#991b1b", _RED_BD),
         ("na", "NA", _GRAY_BG, "#374151", _GRAY_BD),
     ]
-    return _mini_badge_table(defs, selected, badge_style)
+    chip = _chip_style("ChoiceChip", badge_style)
+    return _single_selected_choice(defs, selected, chip)
 
 
-def _yna_badges(selected: str, badge_style: ParagraphStyle) -> Table:
+def _yna_badges(selected: str, badge_style: ParagraphStyle) -> Union[_CircledChoiceLabel, Paragraph]:
     defs = [
-        ("yes", "Y", _GREEN_BG, "#166534", _GREEN_BD),
-        ("no", "N", _RED_BG, "#991b1b", _RED_BD),
+        ("yes", "Yes", _GREEN_BG, "#166534", _GREEN_BD),
+        ("no", "No", _RED_BG, "#991b1b", _RED_BD),
         ("na", "NA", _GRAY_BG, "#374151", _GRAY_BD),
     ]
-    return _mini_badge_table(defs, selected, badge_style)
+    chip = _chip_style("ChoiceChip", badge_style)
+    return _single_selected_choice(defs, selected, chip)
 
 
-def _checkbox_badge(checked: bool, badge_style: ParagraphStyle) -> Table:
+def _checkbox_badge(checked: bool, badge_style: ParagraphStyle) -> Union[_CircledChoiceLabel, Paragraph]:
     defs = [
         ("yes", "Yes", _GREEN_BG, "#166534", _GREEN_BD),
         ("no", "No", _RED_BG, "#991b1b", _RED_BD),
     ]
     sel = "yes" if checked else "no"
-    return _mini_badge_table(defs, sel, badge_style, col_widths=[52.0, 52.0])
+    chip = _chip_style("ChoiceChip", badge_style)
+    return _single_selected_choice(defs, sel, chip)
 
 
 def _pft_badges(val: Dict[str, Any], badge_style: ParagraphStyle) -> Table:
@@ -434,7 +653,20 @@ def _plain_text_value(db: Session, field: Dict[str, Any], payload: Dict[str, Any
     val = payload.get(key)
     if ftype == "text_info":
         return ""
-    if ftype in ("short_text", "long_text", "number", "date", "time"):
+    if ftype in ("short_text", "long_text", "number"):
+        return str(val).strip() if val is not None else ""
+    if ftype == "date":
+        if val is None:
+            return ""
+        ds = str(val).strip()
+        if not ds:
+            return ""
+        if len(ds) > 10:
+            p = _try_parse_iso_datetime(ds)
+            if p:
+                return _format_pdf_datetime_vancouver(p)
+        return ds
+    if ftype == "time":
         return str(val).strip() if val is not None else ""
     if ftype == "dropdown_single":
         return _resolve_dropdown_value(db, field, str(val or "").strip(), list_maps)
@@ -515,13 +747,17 @@ def build_safety_inspection_pdf_bytes(
     finalized_by_name: str,
     document_kind: str = "final",
     extra_signers: Optional[List[Dict[str, Any]]] = None,
+    first_finalized_at: Optional[datetime] = None,
 ) -> bytes:
     list_ids = _collect_custom_list_ids_from_definition(definition)
     list_maps = _build_custom_list_label_maps(db, list_ids) if list_ids else {}
 
     buf = io.BytesIO()
     page_w, page_h = A4
-    lm, rm, tm, bm = 40, 40, 100, 52
+    # Margins vs page_MK_template.png: keep flowables inside the white band (header/footer graphics).
+    # Proposals using the same template use a larger bottom margin; 52pt was too tight and overlapped the footer.
+    lm, rm = 44, 44
+    tm, bm = 132, 92
     frame_w = page_w - lm - rm
     frame_h = page_h - tm - bm
 
@@ -538,6 +774,12 @@ def build_safety_inspection_pdf_bytes(
         fontSize=9.5,
         textColor=colors.HexColor("#4b5563"),
         leading=13,
+    )
+    meta_footer_style = ParagraphStyle(
+        "MetaFoot",
+        parent=sub_style,
+        spaceBefore=0,
+        spaceAfter=3,
     )
     h2 = ParagraphStyle(
         "SecH",
@@ -570,30 +812,11 @@ def build_safety_inspection_pdf_bytes(
     col_val_w = frame_w * 0.68
 
     story: List[Any] = []
-    date_s = inspection_date.strftime("%Y-%m-%d %H:%M UTC") if inspection_date else "—"
+    date_s = _format_pdf_datetime_vancouver(inspection_date) if inspection_date else "—"
     tv = (template_version_label or "").strip()
     tv_line = f"Version: {tv}" if tv else ""
 
-    # Form title is drawn in white on the MK template header band on every page (see on_page).
-    story.append(Paragraph(f"<b>Project:</b> {_esc(project_name)} ({_esc(project_code)})", sub_style))
-    if project_address:
-        story.append(Paragraph(f"<b>Location:</b> {_esc(project_address)}", sub_style))
-    story.append(Paragraph(f"<b>Inspection ID:</b> {_esc(inspection_id)}", sub_style))
-    story.append(Paragraph(f"<b>Inspection date:</b> {_esc(date_s)}", sub_style))
-    if tv_line:
-        story.append(Paragraph(_esc(tv_line), sub_style))
-    if kind == "interim":
-        story.append(Paragraph("<b>Status:</b> Pending additional signatures", sub_style))
-        story.append(
-            Paragraph(
-                "<i>This document is not final until all requested signers have signed.</i>",
-                sub_style,
-            )
-        )
-    else:
-        story.append(Paragraph("<b>Status:</b> Finalized", sub_style))
-    story.append(Paragraph(f"<b>Prepared / finalized by:</b> {_esc(finalized_by_name)}", sub_style))
-    story.append(Spacer(1, 0.15 * inch))
+    # Form title + project/address are drawn on the MK header band (see on_page). General metadata is at the end of the PDF.
 
     for sec in _sorted_sections(definition):
         stitle = str(sec.get("title") or "Section").strip()
@@ -615,7 +838,7 @@ def build_safety_inspection_pdf_bytes(
             label = str(field.get("label") or field.get("key") or "Field")
             label_p = Paragraph(_esc(label), lbl_style)
 
-            val_flow: Union[Paragraph, Table]
+            val_flow: Union[Paragraph, Table, Flowable]
             extra_flows: List[Any] = []
             img_ids: List[str] = []
 
@@ -698,18 +921,48 @@ def build_safety_inspection_pdf_bytes(
                     ]
                 )
             )
-            block.append(KeepTogether(row_tbl))
+            block.append(row_tbl)
             block.append(Spacer(1, 8))
             has_content = True
 
         if has_content:
-            story.append(Paragraph(_esc(stitle), h2))
-            story.extend(block)
+            h2_flow = Paragraph(_esc(stitle), h2)
+            if not block:
+                story.append(h2_flow)
+            else:
+                # Push the section to the next page only if there is not enough room for the title + first row.
+                first_h = block[0].wrap(frame_w, frame_h)[1]
+                story.append(CondPageBreak(first_h + h2.leading + 8))
+                story.append(h2_flow)
+                story.extend(block)
+
+    ac_text, ac_imgs = _get_additional_comments(form_payload)
+    if ac_text or ac_imgs:
+        ac_h2 = Paragraph("Additional Comments / Photos", h2)
+        ac_parts: List[Any] = []
+        if ac_text:
+            ac_parts.append(Paragraph(_esc(ac_text), val_style))
+        seen_ac: set = set()
+        ac_unique: List[str] = []
+        for i in ac_imgs:
+            if i not in seen_ac:
+                seen_ac.add(i)
+                ac_unique.append(i)
+        for fid in ac_unique[:_MAX_IMAGES_PER_FIELD]:
+            im = _load_image_flowable(db, fid, max_w=min(col_val_w * 0.95, 3.2 * inch))
+            if im:
+                ac_parts.append(Spacer(1, 6))
+                ac_parts.append(im)
+        if ac_parts:
+            story.append(CondPageBreak(ac_h2.wrap(frame_w, frame_h)[1] + h2.leading + 8))
+            story.append(ac_h2)
+            story.extend(ac_parts)
+            story.append(Spacer(1, 8))
 
     sig_id = str(form_payload.get("_worker_signature_file_id") or "").strip()
     if sig_id:
         story.append(PageBreak())
-        story.append(Paragraph("Worker signature", h2))
+        h2_worker = Paragraph("Worker signature", h2)
         meta_lines = []
         sn = str(form_payload.get("_worker_signature_signer_name") or "").strip()
         sa = str(form_payload.get("_worker_signature_signed_at") or "").strip()
@@ -717,41 +970,100 @@ def build_safety_inspection_pdf_bytes(
         if sn:
             meta_lines.append(f"Signed by: {sn}")
         if sa:
-            meta_lines.append(f"Timestamp (UTC): {sa}")
+            van = _format_iso_timestamp_vancouver(sa)
+            meta_lines.append(f"Signed at ({_PDF_TZ_LABEL}): {van or sa}")
         if loc:
             meta_lines.append(f"Location: {loc}")
-        for line in meta_lines:
-            story.append(Paragraph(_esc(line), sub_style))
+        meta_flows: List[Any] = [Paragraph(_esc(line), sub_style) for line in meta_lines]
         img = _load_image_flowable(db, sig_id, max_w=min(frame_w * 0.85, 4.5 * inch))
         if img:
-            story.append(Spacer(1, 0.12 * inch))
-            story.append(img)
+            meta_flows.append(Spacer(1, 0.12 * inch))
+            meta_flows.append(img)
+        if meta_flows:
+            story.append(KeepTogether([h2_worker, meta_flows[0]]))
+            story.extend(meta_flows[1:])
+        else:
+            story.append(h2_worker)
 
     if extras:
         story.append(PageBreak())
-        story.append(Paragraph("Additional signers", h2))
+        h2_sigs = Paragraph("Additional signers", h2)
+        sig_body: List[Any] = []
         for ex in extras:
             if not isinstance(ex, dict):
                 continue
             nm = str(ex.get("display_name") or "Signer").strip()
             pending = bool(ex.get("pending"))
-            story.append(Paragraph(_esc(nm), sub_style))
+            sig_body.append(Paragraph(_esc(nm), sub_style))
             if pending:
-                story.append(Paragraph("<i>Signature pending</i>", sub_style))
+                sig_body.append(Paragraph("<i>Signature pending</i>", sub_style))
             else:
                 sa = str(ex.get("signed_at_utc") or "").strip()
                 loc = str(ex.get("location_label") or "").strip()
                 if sa:
-                    story.append(Paragraph(_esc(f"Signed at: {sa}"), sub_style))
+                    van = _format_iso_timestamp_vancouver(sa)
+                    sig_body.append(
+                        Paragraph(_esc(f"Signed at ({_PDF_TZ_LABEL}): {van or sa}"), sub_style)
+                    )
                 if loc:
-                    story.append(Paragraph(_esc(f"Location: {loc}"), sub_style))
+                    sig_body.append(Paragraph(_esc(f"Location: {loc}"), sub_style))
                 fid = str(ex.get("signature_file_object_id") or "").strip()
                 if fid:
                     im = _load_image_flowable(db, fid, max_w=min(frame_w * 0.85, 4.5 * inch))
                     if im:
-                        story.append(Spacer(1, 0.08 * inch))
-                        story.append(im)
-            story.append(Spacer(1, 0.16 * inch))
+                        sig_body.append(Spacer(1, 0.08 * inch))
+                        sig_body.append(im)
+            sig_body.append(Spacer(1, 0.16 * inch))
+        if sig_body:
+            story.append(KeepTogether([h2_sigs, sig_body[0]]))
+            story.extend(sig_body[1:])
+        else:
+            story.append(h2_sigs)
+
+    meta_rows_inner: List[Any] = []
+    meta_rows_inner.append(
+        Paragraph(f"<b>Project:</b> {_esc(project_name)} ({_esc(project_code)})", meta_footer_style)
+    )
+    if project_address:
+        meta_rows_inner.append(Paragraph(f"<b>Location:</b> {_esc(project_address)}", meta_footer_style))
+    meta_rows_inner.append(Paragraph(f"<b>Inspection ID:</b> {_esc(inspection_id)}", meta_footer_style))
+    meta_rows_inner.append(
+        Paragraph(f"<b>Inspection date ({_esc(_PDF_TZ_LABEL)}):</b> {_esc(date_s)}", meta_footer_style)
+    )
+    if tv_line:
+        meta_rows_inner.append(Paragraph(_esc(tv_line), meta_footer_style))
+    if kind == "final" and first_finalized_at is not None:
+        ff_s = _format_pdf_datetime_vancouver(first_finalized_at)
+        meta_rows_inner.append(
+            Paragraph(f"<b>First finalized ({_esc(_PDF_TZ_LABEL)}):</b> {_esc(ff_s)}", meta_footer_style)
+        )
+    if kind == "interim":
+        meta_rows_inner.append(Paragraph("<b>Status:</b> Pending additional signatures", meta_footer_style))
+        meta_rows_inner.append(
+            Paragraph(
+                "<i>This document is not final until all requested signers have signed.</i>",
+                meta_footer_style,
+            )
+        )
+    else:
+        meta_rows_inner.append(Paragraph("<b>Status:</b> Finalized", meta_footer_style))
+    meta_rows_inner.append(
+        Paragraph(f"<b>Prepared / finalized by:</b> {_esc(finalized_by_name)}", meta_footer_style)
+    )
+    meta_table = Table([[p] for p in meta_rows_inner], colWidths=[frame_w])
+    meta_table.setStyle(
+        TableStyle(
+            [
+                ("VALIGN", (0, 0), (-1, -1), "TOP"),
+                ("LEFTPADDING", (0, 0), (-1, -1), 0),
+                ("RIGHTPADDING", (0, 0), (-1, -1), 0),
+                ("TOPPADDING", (0, 0), (-1, -1), 0),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 0),
+            ]
+        )
+    )
+    # Anchor the administrative block to the bottom of the remaining frame on the last page.
+    story.append(TopPadder(meta_table))
 
     tmpl_path = _template_bg_path()
     use_bg = _get_cached_bg_reader and os.path.exists(tmpl_path)
@@ -764,23 +1076,37 @@ def build_safety_inspection_pdf_bytes(
             if use_bg and _get_cached_bg_reader:
                 bg = _get_cached_bg_reader(tmpl_path)
                 canvas.drawImage(bg, 0, 0, width=page_w, height=page_h)
-                _draw_mk_banner_form_title(canvas, header_title, visible=True)
+            canvas.setFont("Helvetica", 8)
+            canvas.setFillColor(colors.HexColor("#9ca3af"))
+            suffix = " · INTERIM" if kind == "interim" else ""
+            text = f"{project_code} · Page {canvas.getPageNumber()}{suffix}"
+            canvas.drawRightString(page_w - _TOP_PAGE_CODE_RIGHT_INSET, _TOP_PAGE_CODE_LINE_Y, text)
+            if use_bg and _get_cached_bg_reader:
+                _draw_mk_banner_header(
+                    canvas,
+                    title=header_title,
+                    project_name=project_name,
+                    project_code=project_code,
+                    project_address=project_address,
+                    visible=True,
+                )
         except Exception as e:
             logger.warning("safety_inspection_pdf: background draw failed: %s", e)
         finally:
             canvas.restoreState()
 
-    def on_page_end(canvas: Any, doc: Any) -> None:
-        canvas.saveState()
-        canvas.setFont("Helvetica", 8)
-        canvas.setFillColor(colors.HexColor("#9ca3af"))
-        suffix = " · INTERIM" if kind == "interim" else ""
-        text = f"{project_code} · Page {canvas.getPageNumber()}{suffix}"
-        canvas.drawCentredString(page_w / 2, 18, text)
-        canvas.restoreState()
-
-    frame = Frame(lm, bm, frame_w, frame_h, id="main", leftPadding=0, rightPadding=0, topPadding=0, bottomPadding=0)
-    pt = PageTemplate(id="main", frames=[frame], onPage=on_page, onPageEnd=on_page_end)
+    frame = Frame(
+        lm,
+        bm,
+        frame_w,
+        frame_h,
+        id="main",
+        leftPadding=0,
+        rightPadding=0,
+        topPadding=8,
+        bottomPadding=10,
+    )
+    pt = PageTemplate(id="main", frames=[frame], onPage=on_page)
 
     doc = BaseDocTemplate(
         buf,
