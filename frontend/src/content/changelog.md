@@ -22,6 +22,7 @@ title: Update 1.1.026 - Week 17
 - New Safety Tab inside Projects, allowing to create Inspections from created Form Templates.
 - Corporate cards: inventory (last four + expiry), custody assign/return, PCI-safe fields only.
 - Company assets area in the sidebar (equipment + corporate cards), split from Fleet.
+- **System settings → Lookup lists:** a **Training matrix slots** list. You can rename columns, add or remove them, and pick whether each column treats the cell as **expiry**, **date taken**, or **plain text**.
 
 ### Improved
 - Header bar: shortcuts grouped in one toolbar (What’s new, notifications, report bug) with consistent icon buttons;
@@ -32,6 +33,7 @@ title: Update 1.1.026 - Week 17
 - Equipment detail: title bar, tabs, typography, and primary/secondary buttons aligned with the rest of the app (e.g. Projects/Opportunities).
 - Corporate cards: **Mark cancelled** sends a status update (`PATCH`, no longer uses `DELETE`). Administrators see **Delete card** to remove the record permanently (with confirmation). Equipment detail: administrators see **Delete equipment** to retire the item (with confirmation).
 - API: `DELETE /company-credit-cards/:id` permanently removes the row and is **administrator-only** (use `PATCH` with `status: cancelled` to cancel). Equipment: `DELETE /fleet/equipment/:id` **retires** the item (`equipment:write`). **`POST /fleet/equipment/:id/purge`** removes the row from the database (and linked work orders) — **administrators only**.
+- The HR training matrix table, CSV download, and training dropdowns on user profiles now use that same list—what you save in settings is what everyone sees.
 
 ### Fixed
 - (none this release)

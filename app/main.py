@@ -1492,6 +1492,53 @@ def create_app() -> FastAPI:
                         db.commit()
                         print("[startup] Created employee_training_records table")
 
+                    rows = db.execute(
+                        text(
+                            """
+                            SELECT 1
+                            FROM information_schema.columns
+                            WHERE table_name = 'employee_training_records'
+                              AND column_name = 'matrix_training_id'
+                            LIMIT 1
+                            """
+                        )
+                    ).fetchall()
+                    if not rows:
+                        db.execute(
+                            text(
+                                "ALTER TABLE employee_training_records ADD COLUMN matrix_training_id VARCHAR(64) NULL"
+                            )
+                        )
+                        db.commit()
+                        print("[startup] Added matrix_training_id to employee_training_records")
+                    try:
+                        db.execute(
+                            text(
+                                """
+                                CREATE UNIQUE INDEX IF NOT EXISTS uq_employee_training_user_matrix
+                                ON employee_training_records (user_id, matrix_training_id)
+                                WHERE matrix_training_id IS NOT NULL
+                                """
+                            )
+                        )
+                        db.commit()
+                    except Exception:
+                        pass
+
+                    try:
+                        db.execute(
+                            text(
+                                """
+                                UPDATE employee_training_records
+                                SET matrix_training_id = NULL
+                                WHERE matrix_training_id = 'drivers_licence'
+                                """
+                            )
+                        )
+                        db.commit()
+                    except Exception:
+                        pass
+
                     # Corporate credit card inventory (last four + expiry only; no full PAN)
                     rows = db.execute(
                         text(

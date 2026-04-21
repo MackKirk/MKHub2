@@ -8117,6 +8117,19 @@ function EmployeeTrainingSection({ userId, canEdit }: { userId: string; canEdit:
     queryFn: () => api<any[]>('GET', `/auth/users/${encodeURIComponent(userId)}/training-records`),
     enabled: !!userId,
   });
+  const { data: matrixSnap, isLoading: matrixLoading } = useQuery({
+    queryKey: ['user-training-matrix', userId],
+    queryFn: () =>
+      api<{ items: Array<{ id: string; label: string; cell_kind: string; display: string; record: any | null }> }>(
+        'GET',
+        `/auth/users/${encodeURIComponent(userId)}/training-matrix`,
+      ),
+    enabled: !!userId,
+  });
+  const { data: matrixCatalog } = useQuery({
+    queryKey: ['training-matrix-catalog'],
+    queryFn: () => api<{ items: Array<{ id: string; label: string; cell_kind: string }> }>('GET', '/auth/training-records/matrix-catalog'),
+  });
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<any | null>(null);
   const [saving, setSaving] = useState(false);
@@ -8143,6 +8156,7 @@ function EmployeeTrainingSection({ userId, canEdit }: { userId: string; canEdit:
     session_time: '',
     time_start: '',
     time_end: '',
+    matrix_training_id: '',
   });
 
   const resetForm = (defaults?: Partial<typeof form>) => {
@@ -8165,6 +8179,7 @@ function EmployeeTrainingSection({ userId, canEdit }: { userId: string; canEdit:
       session_time: '',
       time_start: '',
       time_end: '',
+      matrix_training_id: '',
       ...defaults,
     });
   };
@@ -8172,6 +8187,15 @@ function EmployeeTrainingSection({ userId, canEdit }: { userId: string; canEdit:
   const openAdd = () => {
     setEditing(null);
     resetForm();
+    setCertificateFile(null);
+    setCertificateDocTitle('');
+    setCertificateDragActive(false);
+    setModalOpen(true);
+  };
+
+  const openAddForMatrix = (slot: { id: string; label: string }) => {
+    setEditing(null);
+    resetForm({ title: slot.label, matrix_training_id: slot.id });
     setCertificateFile(null);
     setCertificateDocTitle('');
     setCertificateDragActive(false);
@@ -8203,6 +8227,7 @@ function EmployeeTrainingSection({ userId, canEdit }: { userId: string; canEdit:
       session_time: st,
       time_start: parsed.time_start,
       time_end: parsed.time_end,
+      matrix_training_id: r.matrix_training_id != null ? String(r.matrix_training_id) : '',
     });
     setCertificateFile(null);
     setCertificateDocTitle('');
@@ -8220,6 +8245,12 @@ function EmployeeTrainingSection({ userId, canEdit }: { userId: string; canEdit:
     setIncludeWeekends(false);
     setDifferentCompletionDate(false);
   };
+
+  /** Matrix slots without a linked HR record yet — shortcuts only; filled slots live in Training & courses above. */
+  const matrixShortcutItems = useMemo(
+    () => (matrixSnap?.items || []).filter((row) => !row.record),
+    [matrixSnap?.items],
+  );
 
   const trainingDurationHint = useMemo(() => {
     const startD = form.start_date.trim();
@@ -8273,6 +8304,7 @@ function EmployeeTrainingSection({ userId, canEdit }: { userId: string; canEdit:
       crew: form.crew.trim() || undefined,
       location: form.location.trim() || undefined,
       session_time,
+      matrix_training_id: form.matrix_training_id.trim() ? form.matrix_training_id.trim() : null,
     };
   };
 
@@ -8329,6 +8361,7 @@ function EmployeeTrainingSection({ userId, canEdit }: { userId: string; canEdit:
       }
       queryClient.invalidateQueries({ queryKey: ['user-docs', userId] });
       queryClient.invalidateQueries({ queryKey: ['user-folders', userId] });
+      queryClient.invalidateQueries({ queryKey: ['user-training-matrix', userId] });
       closeModal();
       refetch();
     } catch (err: any) {
@@ -8349,6 +8382,7 @@ function EmployeeTrainingSection({ userId, canEdit }: { userId: string; canEdit:
     try {
       await api('DELETE', `/auth/users/${encodeURIComponent(userId)}/training-records/${r.id}`);
       toast.success('Deleted');
+      queryClient.invalidateQueries({ queryKey: ['user-training-matrix', userId] });
       refetch();
     } catch (err: any) {
       toast.error(err?.message || 'Delete failed');
@@ -8502,6 +8536,56 @@ function EmployeeTrainingSection({ userId, canEdit }: { userId: string; canEdit:
         )}
       </div>
 
+      <div className="mt-6 border-t border-gray-200 pt-6">
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+          <div className="flex min-w-0 items-center gap-2">
+            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-emerald-100">
+              <svg className="h-4 w-4 text-emerald-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M12 4v16m8-8H4"
+                />
+              </svg>
+            </div>
+            <div className="min-w-0">
+              <h5 className="text-sm font-semibold text-emerald-950">Standard training matrix</h5>
+              <p className="mt-0.5 text-xs text-gray-500">
+                Shortcuts to add a linked record for a checklist slot. After you save, it appears in{' '}
+                <span className="font-medium text-gray-700">Training & courses</span> above and leaves this list.
+              </p>
+            </div>
+          </div>
+        </div>
+        {matrixLoading ? (
+          <div className="h-24 animate-pulse rounded-lg bg-slate-100" />
+        ) : matrixShortcutItems.length === 0 ? (
+          <div className="rounded-lg border border-emerald-100 bg-emerald-50/50 px-4 py-3 text-sm text-emerald-900">
+            All standard matrix slots are covered in <span className="font-semibold">Training & courses</span> above.
+          </div>
+        ) : canEdit ? (
+          <div className="flex flex-wrap gap-2">
+            {matrixShortcutItems.map((row) => (
+              <button
+                key={row.id}
+                type="button"
+                onClick={() => openAddForMatrix({ id: row.id, label: row.label })}
+                className="inline-flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-3 py-2 text-left text-xs font-semibold text-gray-800 shadow-sm transition-colors hover:border-brand-red hover:text-brand-red"
+              >
+                <span className="text-brand-red">+</span>
+                <span>{row.label}</span>
+              </button>
+            ))}
+          </div>
+        ) : (
+          <p className="rounded-lg border border-dashed border-gray-200 bg-slate-50/60 px-4 py-3 text-xs text-gray-600">
+            Not yet linked in Training & courses:{' '}
+            <span className="font-medium text-gray-800">{matrixShortcutItems.map((r) => r.label).join(', ')}</span>
+          </p>
+        )}
+      </div>
+
       {modalOpen && (
         <OverlayPortal>
           <div
@@ -8535,6 +8619,32 @@ function EmployeeTrainingSection({ userId, canEdit }: { userId: string; canEdit:
                           className={TRAINING_INPUT_CLASS}
                           required
                         />
+                      </div>
+                      <div>
+                        <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-600">
+                          Matrix slot (optional)
+                        </label>
+                        <select
+                          value={form.matrix_training_id}
+                          onChange={(e) => {
+                            const v = e.target.value;
+                            const label =
+                              matrixCatalog?.items?.find((x) => x.id === v)?.label?.trim() || '';
+                            setForm((f) => ({
+                              ...f,
+                              matrix_training_id: v,
+                              ...(!editing && label ? { title: label } : {}),
+                            }));
+                          }}
+                          className={TRAINING_INPUT_CLASS}
+                        >
+                          <option value="">— None —</option>
+                          {(matrixCatalog?.items || []).map((opt) => (
+                            <option key={opt.id} value={opt.id}>
+                              {opt.label}
+                            </option>
+                          ))}
+                        </select>
                       </div>
                       <div>
                         <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-600">

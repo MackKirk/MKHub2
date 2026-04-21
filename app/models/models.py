@@ -1032,6 +1032,8 @@ class EmployeeTrainingRecord(Base):
     crew: Mapped[Optional[str]] = mapped_column(String(200))
     location: Mapped[Optional[str]] = mapped_column(String(500))
     session_time: Mapped[Optional[str]] = mapped_column(String(120))
+    # Standard training matrix slug (see app.training_matrix_catalog)
+    matrix_training_id: Mapped[Optional[str]] = mapped_column(String(64), nullable=True, index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
     updated_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
     created_by_user_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"))

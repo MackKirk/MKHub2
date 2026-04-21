@@ -9,6 +9,11 @@ import uuid
 from ..db import get_db
 from ..models.models import SettingList, SettingItem, Client, Attendance, User, Shift, Project, EmployeeProfile, AuditLog
 from ..services.standard_file_categories import ensure_standard_file_categories
+from ..services.training_matrix_slots import (
+    ensure_training_matrix_slots,
+    validate_cell_kind,
+    validate_matrix_slot_slug,
+)
 from ..auth.security import require_permissions, get_current_user
 from ..auth.security import User as UserType
 from ..config import settings
@@ -300,6 +305,7 @@ def get_settings_bundle(db: Session = Depends(get_db), user: UserType = Depends(
     # Only include setting lists if user has access
     if has_access:
         ensure_standard_file_categories(db)
+        ensure_training_matrix_slots(db)
         rows = db.query(SettingList).all()
         for lst in rows:
             items = db.query(SettingItem).filter(SettingItem.list_id == lst.id).order_by(SettingItem.sort_index.asc()).all()
@@ -422,6 +428,7 @@ def create_setting_item(
     allow_edit_proposal: Optional[str] = None,
     sets_start_date: Optional[str] = None,
     sets_end_date: Optional[str] = None,
+    cell_kind: Optional[str] = None,
     db: Session = Depends(get_db),
     user: UserType = Depends(get_current_user),
 ):
@@ -443,12 +450,22 @@ def create_setting_item(
                 detail="Category id must use lowercase letters, numbers and hyphens only (e.g. bid-documents).",
             )
         label = slug
-    
+
     lst = db.query(SettingList).filter(SettingList.name == list_name).first()
     if not lst:
         lst = SettingList(name=list_name)
         db.add(lst)
         db.flush()
+    if list_name == "training_matrix_slots":
+        slug = (value or "").strip()
+        validate_matrix_slot_slug(slug)
+        dup = (
+            db.query(SettingItem)
+            .filter(SettingItem.list_id == lst.id, SettingItem.value == slug)
+            .first()
+        )
+        if dup:
+            raise HTTPException(status_code=400, detail="A matrix slot with this slug already exists.")
     if list_name == "standard_file_categories":
         dup = db.query(SettingItem).filter(SettingItem.list_id == lst.id, SettingItem.label == label).first()
         if dup:
@@ -484,6 +501,8 @@ def create_setting_item(
             meta["sets_start_date"] = sets_start_date.lower() in ("true", "1", "yes")
         if sets_end_date is not None:
             meta["sets_end_date"] = sets_end_date.lower() in ("true", "1", "yes")
+    if list_name == "training_matrix_slots":
+        meta["cell_kind"] = validate_cell_kind(cell_kind)
     it = SettingItem(list_id=lst.id, label=label, value=value, sort_index=sort_index, meta=meta or None)
     db.add(it)
     db.commit()
@@ -762,7 +781,7 @@ def update_attendance(
 
 
 @router.put("/{list_name}/{item_id}")
-def update_setting_item(list_name: str, item_id: str, label: str = None, value: str = None, sort_index: int | None = None, abbr: Optional[str] = None, color: Optional[str] = None, allow_edit_proposal: Optional[str] = None, sets_start_date: Optional[str] = None, sets_end_date: Optional[str] = None, description: Optional[str] = None, icon: Optional[str] = None, show_in_project: Optional[str] = None, show_in_opportunity: Optional[str] = None, db: Session = Depends(get_db), user: UserType = Depends(get_current_user)):
+def update_setting_item(list_name: str, item_id: str, label: str = None, value: str = None, sort_index: int | None = None, abbr: Optional[str] = None, color: Optional[str] = None, allow_edit_proposal: Optional[str] = None, sets_start_date: Optional[str] = None, sets_end_date: Optional[str] = None, description: Optional[str] = None, icon: Optional[str] = None, show_in_project: Optional[str] = None, show_in_opportunity: Optional[str] = None, cell_kind: Optional[str] = None, db: Session = Depends(get_db), user: UserType = Depends(get_current_user)):
     from ..auth.security import _has_permission
     
     lst = db.query(SettingList).filter(SettingList.name == list_name).first()
@@ -783,6 +802,20 @@ def update_setting_item(list_name: str, item_id: str, label: str = None, value: 
     label_changed = label is not None and label != old_label
     if label is not None:
         it.label = label
+    if list_name == "training_matrix_slots" and value is not None:
+        slug = (value or "").strip()
+        validate_matrix_slot_slug(slug)
+        dup = (
+            db.query(SettingItem)
+            .filter(
+                SettingItem.list_id == lst.id,
+                SettingItem.value == slug,
+                SettingItem.id != item_id,
+            )
+            .first()
+        )
+        if dup:
+            raise HTTPException(status_code=400, detail="A matrix slot with this slug already exists.")
     if value is not None:
         it.value = value
     if sort_index is not None:
@@ -815,6 +848,8 @@ def update_setting_item(list_name: str, item_id: str, label: str = None, value: 
             meta["description"] = description
         if icon is not None:
             meta["icon"] = ((icon or "").strip() or "📁")
+    if list_name == "training_matrix_slots" and cell_kind is not None:
+        meta["cell_kind"] = validate_cell_kind(cell_kind)
     # Always set meta (even if empty dict) to ensure meta fields are preserved
     it.meta = meta
     db.commit()

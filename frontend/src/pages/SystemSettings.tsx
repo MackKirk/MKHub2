@@ -12,6 +12,7 @@ type SettingsSection = 'files' | 'templates' | 'lists';
 /** Human-readable label for setting list keys (sidebar + headers). */
 function formatSettingsListTitle(name: string): string {
   if (name === 'terms-templates') return 'Terms Templates';
+  if (name === 'training_matrix_slots') return 'Training matrix slots';
   return name
     .replace(/_/g, ' ')
     .replace(/\b\w/g, (c) => c.toUpperCase());
@@ -40,11 +41,14 @@ export default function SystemSettings(){
     setDescription('');
     setNewShowInProject(true);
     setNewShowInOpportunity(true);
+    setNewMatrixCellKind('expiry');
     setEdits({});
   }, [sel]);
   const [edits, setEdits] = useState<Record<string, Item>>({});
+  const [newMatrixCellKind, setNewMatrixCellKind] = useState<'expiry' | 'date_taken' | 'text'>('expiry');
   const isColorList = useMemo(()=> sel.toLowerCase().includes('status'), [sel]);
   const isDivisionList = useMemo(()=> sel.toLowerCase().includes('division'), [sel]);
+  const isMatrixSlotsList = useMemo(()=> sel === 'training_matrix_slots', [sel]);
   const isTimesheetConfig = useMemo(()=> sel === 'timesheet', [sel]);
   const isTermsTemplates = useMemo(()=> sel === 'terms-templates', [sel]);
   const getEdit = (it: Item): Item => edits[it.id] || it;
@@ -448,11 +452,20 @@ export default function SystemSettings(){
                 <div className="mb-4 rounded-lg border border-dashed border-gray-200 bg-gray-50/70 p-4">
                   <div className="text-xs font-semibold uppercase tracking-wide text-gray-500 mb-3">Add entry</div>
                   <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-end">
-                    <input className="border rounded px-2 py-1 text-sm sm:min-w-[12rem]" placeholder="Label" value={label} onChange={e=>setLabel(e.target.value)} />
+                    <input className="border rounded px-2 py-1 text-sm sm:min-w-[12rem]" placeholder={isMatrixSlotsList ? 'Column title' : 'Label'} value={label} onChange={e=>setLabel(e.target.value)} />
                     {isDivisionList ? (
                       <>
                         <input className="border rounded px-2 py-1 text-sm w-28" placeholder="Abbr" value={(value||'').split('|')[0]||''} onChange={e=>{ const parts = (value||'').split('|'); parts[0] = e.target.value; setValue(parts.join('|')); }} />
                         <input type="color" title="Color" className="border rounded w-10 h-8 p-0" value={((value||'').split('|')[1]||'#cccccc')} onChange={e=>{ const parts = (value||'').split('|'); parts[1] = e.target.value; setValue(parts.join('|')); }} />
+                      </>
+                    ) : isMatrixSlotsList ? (
+                      <>
+                        <input className="border rounded px-2 py-1 text-sm w-44 font-mono" placeholder="Slug (stable id)" value={value} onChange={e=>setValue(e.target.value)} />
+                        <select className="border rounded px-2 py-1 text-sm w-48 bg-white" value={newMatrixCellKind} onChange={e=> setNewMatrixCellKind(e.target.value as 'expiry' | 'date_taken' | 'text')}>
+                          <option value="expiry">Expiry date</option>
+                          <option value="date_taken">Date taken</option>
+                          <option value="text">Text / notes</option>
+                        </select>
                       </>
                     ) : isColorList ? (
                       <input type="color" title="Color" className="border rounded w-10 h-8 p-0" value={value||'#cccccc'} onChange={e=>setValue(e.target.value)} />
@@ -471,7 +484,7 @@ export default function SystemSettings(){
                         </label>
                       </span>
                     )}
-                    <button onClick={async()=>{ if(!label){ toast.error('Label required'); return; } try{ await api('POST', `/settings/${encodeURIComponent(sel)}`, undefined, { 'Content-Type':'application/x-www-form-urlencoded' }); }catch{} try{ let url = `/settings/${encodeURIComponent(sel)}?label=${encodeURIComponent(label)}`; if(isDivisionList){ const [abbr, color] = (value||'').split('|'); url += `&abbr=${encodeURIComponent(abbr||'')}&color=${encodeURIComponent(color||'#cccccc')}`; } else if (isColorList){ url += `&value=${encodeURIComponent(value||'#cccccc')}`; if (sel === 'project_statuses'){ url += `&show_in_project=${newShowInProject ? 'true' : 'false'}&show_in_opportunity=${newShowInOpportunity ? 'true' : 'false'}`; } } else { url += `&value=${encodeURIComponent(value||'')}`; } await api('POST', url); setLabel(''); setValue(''); await refetch(); toast.success('Added'); }catch(_e){ toast.error('Failed'); } }} className="rounded-lg px-3 py-1.5 text-xs font-semibold text-white bg-brand-red hover:opacity-95">Add</button>
+                    <button onClick={async()=>{ if(!label){ toast.error('Label required'); return; } if(isMatrixSlotsList && !(value||'').trim()){ toast.error('Slug is required'); return; } try{ await api('POST', `/settings/${encodeURIComponent(sel)}`, undefined, { 'Content-Type':'application/x-www-form-urlencoded' }); }catch{} try{ let url = `/settings/${encodeURIComponent(sel)}?label=${encodeURIComponent(label)}`; if(isDivisionList){ const [abbr, color] = (value||'').split('|'); url += `&abbr=${encodeURIComponent(abbr||'')}&color=${encodeURIComponent(color||'#cccccc')}`; } else if (isMatrixSlotsList){ url += `&value=${encodeURIComponent((value||'').trim())}&cell_kind=${encodeURIComponent(newMatrixCellKind)}`; } else if (isColorList){ url += `&value=${encodeURIComponent(value||'#cccccc')}`; if (sel === 'project_statuses'){ url += `&show_in_project=${newShowInProject ? 'true' : 'false'}&show_in_opportunity=${newShowInOpportunity ? 'true' : 'false'}`; } } else { url += `&value=${encodeURIComponent(value||'')}`; } await api('POST', url); setLabel(''); setValue(''); setNewMatrixCellKind('expiry'); await refetch(); toast.success('Added'); }catch(_e){ toast.error('Failed'); } }} className="rounded-lg px-3 py-1.5 text-xs font-semibold text-white bg-brand-red hover:opacity-95">Add</button>
                   </div>
                 </div>
               )}
@@ -494,6 +507,15 @@ export default function SystemSettings(){
                           <>
                             <input className="border rounded px-2 py-1 text-sm w-24" placeholder="Abbr" value={e.meta?.abbr||''} onChange={ev=> setEdits(s=>({ ...s, [it.id]: { ...(s[it.id]||it), meta: { ...(s[it.id]?.meta||it.meta||{}), abbr: ev.target.value } } }))} />
                             <input type="color" title="Color" className="border rounded w-10 h-8 p-0" value={e.meta?.color||'#cccccc'} onChange={ev=> setEdits(s=>({ ...s, [it.id]: { ...(s[it.id]||it), meta: { ...(s[it.id]?.meta||it.meta||{}), color: ev.target.value } } }))} />
+                          </>
+                        ) : isMatrixSlotsList ? (
+                          <>
+                            <input className="border rounded px-2 py-1 text-sm w-36 font-mono" placeholder="Slug" value={e.value||''} onChange={ev=> setEdits(s=>({ ...s, [it.id]: { ...(s[it.id]||it), value: ev.target.value } }))} />
+                            <select className="border rounded px-2 py-1 text-sm w-44 bg-white" value={(e.meta?.cell_kind as string) || 'text'} onChange={ev=> setEdits(s=>({ ...s, [it.id]: { ...(s[it.id]||it), meta: { ...(s[it.id]?.meta||it.meta||{}), cell_kind: ev.target.value } } }))}>
+                              <option value="expiry">Expiry date</option>
+                              <option value="date_taken">Date taken</option>
+                              <option value="text">Text / notes</option>
+                            </select>
                           </>
                         ) : isColorList ? (
                           <>
@@ -530,7 +552,7 @@ export default function SystemSettings(){
                         {/* sort index is now auto-assigned and not user-editable */}
                       </div>
                       <div className="flex items-center gap-2">
-                        <button onClick={async()=>{ try{ let url = `/settings/${encodeURIComponent(sel)}/${encodeURIComponent(it.id)}?label=${encodeURIComponent(e.label||'')}`; if (isTermsTemplates){ url += `&description=${encodeURIComponent(e.meta?.description||'')}`; } else if (isDivisionList){ url += `&abbr=${encodeURIComponent(e.meta?.abbr||'')}&color=${encodeURIComponent(e.meta?.color||'')}`; } else if (isColorList){ url += `&value=${encodeURIComponent(e.value||'')}`; if (sel === 'project_statuses'){ const allowEdit = e.meta?.allow_edit_proposal; const setsStart = e.meta?.sets_start_date; const setsEnd = e.meta?.sets_end_date; const sip = typeof e.meta?.show_in_project === 'boolean' ? e.meta.show_in_project : effectiveShowInProject(it); const sio = typeof e.meta?.show_in_opportunity === 'boolean' ? e.meta.show_in_opportunity : effectiveShowInOpportunity(it); url += `&allow_edit_proposal=${(allowEdit === true || allowEdit === 'true' || allowEdit === 1) ? 'true' : 'false'}`; url += `&sets_start_date=${(setsStart === true || setsStart === 'true' || setsStart === 1) ? 'true' : 'false'}`; url += `&sets_end_date=${(setsEnd === true || setsEnd === 'true' || setsEnd === 1) ? 'true' : 'false'}`; url += `&show_in_project=${sip ? 'true' : 'false'}&show_in_opportunity=${sio ? 'true' : 'false'}`; } } else { url += `&value=${encodeURIComponent(e.value||'')}`; } await api('PUT', url); await refetch(); toast.success('Saved'); }catch(_e){ toast.error('Failed'); } }} className="rounded-lg px-3 py-1.5 text-xs font-semibold text-white bg-brand-red hover:opacity-95">Save</button>
+                        <button onClick={async()=>{ try{ let url = `/settings/${encodeURIComponent(sel)}/${encodeURIComponent(it.id)}?label=${encodeURIComponent(e.label||'')}`; if (isTermsTemplates){ url += `&description=${encodeURIComponent(e.meta?.description||'')}`; } else if (isDivisionList){ url += `&abbr=${encodeURIComponent(e.meta?.abbr||'')}&color=${encodeURIComponent(e.meta?.color||'')}`; } else if (isMatrixSlotsList){ url += `&value=${encodeURIComponent((e.value||'').trim())}&cell_kind=${encodeURIComponent(String(e.meta?.cell_kind || 'text'))}`; } else if (isColorList){ url += `&value=${encodeURIComponent(e.value||'')}`; if (sel === 'project_statuses'){ const allowEdit = e.meta?.allow_edit_proposal; const setsStart = e.meta?.sets_start_date; const setsEnd = e.meta?.sets_end_date; const sip = typeof e.meta?.show_in_project === 'boolean' ? e.meta.show_in_project : effectiveShowInProject(it); const sio = typeof e.meta?.show_in_opportunity === 'boolean' ? e.meta.show_in_opportunity : effectiveShowInOpportunity(it); url += `&allow_edit_proposal=${(allowEdit === true || allowEdit === 'true' || allowEdit === 1) ? 'true' : 'false'}`; url += `&sets_start_date=${(setsStart === true || setsStart === 'true' || setsStart === 1) ? 'true' : 'false'}`; url += `&sets_end_date=${(setsEnd === true || setsEnd === 'true' || setsEnd === 1) ? 'true' : 'false'}`; url += `&show_in_project=${sip ? 'true' : 'false'}&show_in_opportunity=${sio ? 'true' : 'false'}`; } } else { url += `&value=${encodeURIComponent(e.value||'')}`; } await api('PUT', url); await refetch(); toast.success('Saved'); }catch(_e){ toast.error('Failed'); } }} className="rounded-lg px-3 py-1.5 text-xs font-semibold text-white bg-brand-red hover:opacity-95">Save</button>
                         <button onClick={async()=>{ if(!(await confirm({ title: 'Delete item?', description: 'This action cannot be undone.' }))) return; try{ await api('DELETE', `/settings/${encodeURIComponent(sel)}/${encodeURIComponent(it.id)}`); await refetch(); toast.success('Deleted'); }catch(_e){ toast.error('Failed'); } }} className="rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50">Delete</button>
                       </div>
                     </div>

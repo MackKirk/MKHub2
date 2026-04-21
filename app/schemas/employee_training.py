@@ -22,6 +22,7 @@ class EmployeeTrainingRecordBase(BaseModel):
     crew: Optional[str] = Field(None, max_length=200)
     location: Optional[str] = Field(None, max_length=500)
     session_time: Optional[str] = Field(None, max_length=120)
+    matrix_training_id: Optional[str] = Field(None, max_length=64)
 
 
 class EmployeeTrainingRecordCreate(EmployeeTrainingRecordBase):
@@ -51,6 +52,7 @@ class EmployeeTrainingRecordUpdate(BaseModel):
     crew: Optional[str] = Field(None, max_length=200)
     location: Optional[str] = Field(None, max_length=500)
     session_time: Optional[str] = Field(None, max_length=120)
+    matrix_training_id: Optional[str] = Field(None, max_length=64)
 
 
 class EmployeeTrainingRecordRead(BaseModel):
@@ -71,6 +73,7 @@ class EmployeeTrainingRecordRead(BaseModel):
     crew: Optional[str] = None
     location: Optional[str] = None
     session_time: Optional[str] = None
+    matrix_training_id: Optional[str] = None
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
     created_by_user_id: Optional[UUID] = None

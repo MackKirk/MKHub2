@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { Fragment, useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 import { api } from '@/lib/api';
@@ -80,10 +80,65 @@ function formatStatusLabel(status: string | null | undefined): string {
 }
 
 /**
- * Training & Learning team dashboard — Overview (calendar + recent + expiry) and Training schedule (full list).
+ * Training & Learning team dashboard — Overview, Training schedule, and Training matrix (company checklist).
  */
+
+type MatrixCatalogItem = { id: string; label: string; cell_kind?: string };
+
+type MatrixCellPayload = {
+  tone: 'green' | 'yellow' | 'red' | null;
+  record_id: string | null;
+  completion_date: string | null;
+  expiry_date: string | null;
+  date_taken: string | null;
+  display: string;
+};
+
+type MatrixRowPayload = {
+  user_id: string;
+  employee: string;
+  cells: Record<string, MatrixCellPayload>;
+};
+
+type MatrixGroupPayload = {
+  team_label: string;
+  rows: MatrixRowPayload[];
+};
+
+function MatrixCellDot({ cell, userId }: { cell: MatrixCellPayload | undefined; userId: string }) {
+  const c = cell;
+  const taken = c?.date_taken || c?.completion_date || '';
+  const exp = c?.expiry_date || '';
+  const tooltipLines = [`Date taken: ${taken ? taken.slice(0, 10) : '—'}`, `Expires: ${exp ? exp.slice(0, 10) : '—'}`];
+  const tooltip = tooltipLines.join('\n');
+
+  if (!c?.tone) {
+    return (
+      <span className="inline-flex h-8 w-10 items-center justify-center text-xs text-slate-300 select-none">—</span>
+    );
+  }
+
+  const bgClass =
+    c.tone === 'green'
+      ? 'bg-emerald-500 shadow-emerald-500/30'
+      : c.tone === 'yellow'
+        ? 'bg-amber-400 shadow-amber-400/35'
+        : 'bg-red-500 shadow-red-500/30';
+
+  return (
+    <Link
+      to={`/users/${encodeURIComponent(userId)}?tab=training`}
+      title={tooltip}
+      className="inline-flex h-9 w-10 items-center justify-center rounded-full text-white/0 hover:opacity-95 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#7f1010] focus-visible:ring-offset-1"
+      aria-label={`Training — ${tooltip.replace(/\n/g, '. ')}`}
+    >
+      <span className={`h-3.5 w-3.5 rounded-full ${bgClass} shadow-md ring-1 ring-black/5`} />
+    </Link>
+  );
+}
+
 export default function TrainingLearningDashboard() {
-  const [pageTab, setPageTab] = useState<'overview' | 'schedule'>('overview');
+  const [pageTab, setPageTab] = useState<'overview' | 'schedule' | 'matrix'>('overview');
   const [scheduleYear, setScheduleYear] = useState(() => new Date().getFullYear());
   const [currentMonth, setCurrentMonth] = useState<Date>(() => {
     const d = new Date();
@@ -125,6 +180,22 @@ export default function TrainingLearningDashboard() {
     queryFn: () => api<ExpiringPayload>('GET', '/auth/training-records/summary/expiring'),
     enabled: pageTab === 'overview',
   });
+
+  const { data: matrixCatalog } = useQuery({
+    queryKey: ['training-matrix-catalog'],
+    queryFn: () => api<{ items: MatrixCatalogItem[] }>('GET', '/auth/training-records/matrix-catalog'),
+    enabled: pageTab === 'matrix',
+    staleTime: 60 * 60 * 1000,
+  });
+
+  const { data: matrixReport, isLoading: matrixLoading } = useQuery({
+    queryKey: ['training-hr-matrix-report'],
+    queryFn: () =>
+      api<{ groups: MatrixGroupPayload[] }>('GET', '/auth/training-records/matrix-report?format=json'),
+    enabled: pageTab === 'matrix',
+  });
+
+  const matrixColumns = matrixCatalog?.items ?? [];
 
   const eventsByDay = useMemo(() => {
     const map: Record<string, CalendarEvent[]> = {};
@@ -186,12 +257,12 @@ export default function TrainingLearningDashboard() {
   const getDayEvents = (date: Date | null) => (date ? eventsByDay[formatDateLocal(date)] || [] : []);
 
   return (
-    <div className="p-4 max-w-7xl mx-auto space-y-5 pb-10">
-      <div className="bg-slate-200/50 rounded-[12px] border border-slate-200 py-4 px-6">
+    <div className="-mx-5 w-[calc(100%+2.5rem)] max-w-none space-y-5 pb-10 px-3 sm:px-4">
+      <div className="bg-slate-200/50 rounded-[12px] border border-slate-200 py-4 px-4 sm:px-6">
         <div className="text-xl font-bold text-gray-900 tracking-tight mb-0.5">Training & Learning</div>
         <div className="text-sm text-gray-500 font-medium">
-          Team dashboard — replaces the Safety Review & Training Schedule spreadsheet; data comes from each employee
-          profile (Training tab).
+          Team dashboard — overview, schedule, and the standard training matrix from each employee profile (Training
+          tab).
         </div>
       </div>
 
@@ -200,6 +271,7 @@ export default function TrainingLearningDashboard() {
           [
             ['overview', 'Overview'],
             ['schedule', 'Training schedule'],
+            ['matrix', 'Training matrix'],
           ] as const
         ).map(([id, label]) => (
           <button
@@ -568,6 +640,97 @@ export default function TrainingLearningDashboard() {
                 )}
               </tbody>
             </table>
+          </div>
+        </section>
+      )}
+
+      {pageTab === 'matrix' && (
+        <section className="rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden">
+          <div className="border-b border-slate-100 bg-gradient-to-r from-slate-50 to-white px-4 py-3">
+            <h2 className="text-sm font-bold text-gray-900 tracking-tight">Training matrix</h2>
+            <p className="text-xs text-gray-500 mt-0.5 max-w-3xl">
+              Employees grouped by team ·{' '}
+              <span className="inline-flex items-center gap-1">
+                <span className="inline-block h-2 w-2 rounded-full bg-emerald-500" /> OK / more than 6 mo.
+              </span>{' '}
+              ·{' '}
+              <span className="inline-flex items-center gap-1">
+                <span className="inline-block h-2 w-2 rounded-full bg-amber-400" /> Expiring within 6 mo.
+              </span>{' '}
+              ·{' '}
+              <span className="inline-flex items-center gap-1">
+                <span className="inline-block h-2 w-2 rounded-full bg-red-500" /> Expired
+              </span>{' '}
+              · Hover a dot for dates; click opens the employee Training tab.
+            </p>
+          </div>
+          <div className="p-2">
+            {matrixLoading ? (
+              <p className="p-6 text-sm text-gray-400">Loading…</p>
+            ) : matrixColumns.length === 0 ? (
+              <p className="p-6 text-sm text-gray-500">Could not load matrix catalog.</p>
+            ) : (
+              <table className="w-full text-sm border-collapse min-w-[960px]">
+                <thead className="sticky top-0 z-10 bg-gray-50 shadow-sm">
+                  <tr className="border-b border-slate-200">
+                    <th className="text-left py-3 px-3 font-semibold text-[10px] uppercase tracking-wide text-gray-600 whitespace-nowrap min-w-[160px]">
+                      Employee
+                    </th>
+                    {matrixColumns.map((col) => (
+                      <th
+                        key={col.id}
+                        title={col.label}
+                        className="text-center py-3 px-1 font-semibold text-[10px] uppercase tracking-wide text-gray-600 align-bottom w-12 min-w-[3rem]"
+                      >
+                        <span className="line-clamp-4 leading-tight inline-block max-w-[4.5rem]">{col.label}</span>
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {(matrixReport?.groups ?? []).length === 0 ? (
+                    <tr>
+                      <td colSpan={1 + matrixColumns.length} className="py-10 text-center text-gray-500 text-sm">
+                        No active employees in range, or no data yet.
+                      </td>
+                    </tr>
+                  ) : (
+                    (matrixReport?.groups ?? []).map((group, gi) => (
+                      <Fragment key={`${group.team_label}-${gi}`}>
+                        <tr className="bg-emerald-50/80 border-y border-emerald-100">
+                          <td
+                            colSpan={1 + matrixColumns.length}
+                            className="py-2 px-3 text-xs font-bold text-emerald-950 uppercase tracking-wide"
+                          >
+                            {group.team_label}
+                          </td>
+                        </tr>
+                        {group.rows.map((row) => (
+                          <tr
+                            key={row.user_id}
+                            className="border-b border-slate-100 hover:bg-slate-50/80 align-middle"
+                          >
+                            <td className="py-2.5 px-3 text-sm text-gray-900 font-medium border-r border-slate-100/80">
+                              <Link
+                                to={`/users/${encodeURIComponent(row.user_id)}?tab=training`}
+                                className="text-[#7f1010] hover:underline"
+                              >
+                                {row.employee || '—'}
+                              </Link>
+                            </td>
+                            {matrixColumns.map((col) => (
+                              <td key={col.id} className="py-1.5 px-0.5 text-center align-middle">
+                                <MatrixCellDot cell={row.cells[col.id]} userId={row.user_id} />
+                              </td>
+                            ))}
+                          </tr>
+                        ))}
+                      </Fragment>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            )}
           </div>
         </section>
       )}

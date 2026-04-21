@@ -1,14 +1,19 @@
+import csv
+import io
+import itertools
 import uuid
+from collections import defaultdict
 from datetime import date, datetime, timedelta, timezone
-from typing import Optional, Tuple
+from typing import List, Optional, Tuple
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status, Body, Request
+from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 from slugify import slugify
 
 from ..db import get_db
 from ..config import settings
-from ..models.models import User, Role, Invite, UsernameReservation, EmployeeProfile
+from ..models.models import User, Role, Invite, UsernameReservation, EmployeeProfile, user_divisions, SettingItem
 from ..schemas.auth import (
     UsernameSuggestRequest,
     UsernameSuggestResponse,
@@ -37,6 +42,8 @@ from .security import (
     _has_permission,
 )
 from ..logging import structlog
+from ..services.training_matrix_slots import get_matrix_training_defs, is_valid_matrix_training_id
+from ..training_matrix_catalog import catalog_dicts, format_record_cell_display, matrix_cell_detail, normalize_matrix_training_id
 import smtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
@@ -2608,6 +2615,7 @@ def _training_can_edit(user: User, user_id: str) -> bool:
 
 
 def _training_row(r):
+    mid = getattr(r, "matrix_training_id", None)
     return {
         "id": str(r.id),
         "user_id": str(r.user_id),
@@ -2626,10 +2634,80 @@ def _training_row(r):
         "crew": getattr(r, "crew", None),
         "location": getattr(r, "location", None),
         "session_time": getattr(r, "session_time", None),
+        "matrix_training_id": str(mid).strip() if mid else None,
         "created_at": r.created_at.isoformat() if r.created_at else None,
         "updated_at": r.updated_at.isoformat() if r.updated_at else None,
         "created_by_user_id": str(r.created_by_user_id) if r.created_by_user_id else None,
     }
+
+
+def _enforce_unique_matrix_training(
+    db: Session,
+    user_id: uuid.UUID,
+    matrix_training_id: Optional[str],
+    *,
+    exclude_record_id: Optional[uuid.UUID] = None,
+) -> Optional[str]:
+    mid = normalize_matrix_training_id(matrix_training_id)
+    if not mid:
+        return None
+    if not is_valid_matrix_training_id(mid, db):
+        raise HTTPException(status_code=400, detail="Invalid matrix_training_id")
+    from ..models.models import EmployeeTrainingRecord
+
+    q = db.query(EmployeeTrainingRecord).filter(
+        EmployeeTrainingRecord.user_id == user_id,
+        EmployeeTrainingRecord.matrix_training_id == mid,
+    )
+    if exclude_record_id:
+        q = q.filter(EmployeeTrainingRecord.id != exclude_record_id)
+    if q.first():
+        raise HTTPException(
+            status_code=400,
+            detail="Another training record already uses this matrix slot for this employee",
+        )
+    return mid
+
+
+def _team_label_for_profile(
+    db: Session,
+    user_id: uuid.UUID,
+    profile: Optional[EmployeeProfile],
+) -> str:
+    """Match UserInfo job line: division labels from user_divisions, else profile.division."""
+    div_rows = (
+        db.query(SettingItem.label)
+        .join(user_divisions, user_divisions.c.division_id == SettingItem.id)
+        .filter(user_divisions.c.user_id == user_id)
+        .all()
+    )
+    labels = [(row[0] or "").strip() for row in div_rows if row and row[0]]
+    if labels:
+        return ", ".join(sorted(set(labels)))
+    if profile:
+        return (profile.division or "").strip()
+    return ""
+
+
+def _pick_explicit_matrix_record(records: List, matrix_id: str) -> Optional[object]:
+    """Rows whose matrix_training_id equals this catalog slug (never title inference)."""
+    direct = [
+        x
+        for x in records
+        if getattr(x, "matrix_training_id", None) is not None
+        and str(getattr(x, "matrix_training_id")).strip() == matrix_id
+    ]
+    if not direct:
+        return None
+    if len(direct) == 1:
+        return direct[0]
+    return max(
+        direct,
+        key=lambda r: (
+            r.completion_date or r.updated_at or r.created_at,
+            r.id,
+        ),
+    )
 
 
 def _training_hr_aggregate_can_view(user: User) -> bool:
@@ -2687,6 +2765,40 @@ def list_training_records(user_id: str, db: Session = Depends(get_db), user: Use
     return [_training_row(r) for r in rows]
 
 
+@router.get("/users/{user_id}/training-matrix")
+def user_training_matrix_snapshot(
+    user_id: str,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Resolved standard matrix rows for profile Training tab — explicit matrix_training_id only."""
+    if not _training_can_view(user, user_id):
+        raise HTTPException(status_code=403, detail="Forbidden")
+    from ..models.models import EmployeeTrainingRecord
+
+    records = (
+        db.query(EmployeeTrainingRecord)
+        .filter(EmployeeTrainingRecord.user_id == user_id)
+        .order_by(nullslast(desc(EmployeeTrainingRecord.completion_date)), desc(EmployeeTrainingRecord.created_at))
+        .all()
+    )
+    defs = get_matrix_training_defs(db)
+    items = []
+    for col in defs:
+        picked = _pick_explicit_matrix_record(records, col.id)
+        disp = format_record_cell_display(picked, col.id, defs) if picked else ""
+        items.append(
+            {
+                "id": col.id,
+                "label": col.label,
+                "cell_kind": col.cell_kind,
+                "display": disp,
+                "record": _training_row(picked) if picked else None,
+            }
+        )
+    return {"items": items}
+
+
 @router.post("/users/{user_id}/training-records")
 def create_training_record(
     user_id: str,
@@ -2703,8 +2815,10 @@ def create_training_record(
         raise HTTPException(status_code=404, detail="User not found")
 
     now = datetime.now(timezone.utc)
+    uid = uuid.UUID(str(user_id))
+    mid = _enforce_unique_matrix_training(db, uid, getattr(payload, "matrix_training_id", None))
     r = EmployeeTrainingRecord(
-        user_id=uuid.UUID(str(user_id)),
+        user_id=uid,
         title=payload.title.strip(),
         provider=(payload.provider or "").strip() or None,
         category=(payload.category or "").strip() or None,
@@ -2720,6 +2834,7 @@ def create_training_record(
         crew=(payload.crew or "").strip() or None,
         location=(payload.location or "").strip() or None,
         session_time=(payload.session_time or "").strip() or None,
+        matrix_training_id=mid,
         created_at=now,
         updated_at=now,
         created_by_user_id=user.id,
@@ -2752,6 +2867,15 @@ def update_training_record(
         raise HTTPException(status_code=404, detail="Training record not found")
 
     data = payload.model_dump(exclude_unset=True)
+    if "matrix_training_id" in data:
+        raw_mid = data["matrix_training_id"]
+        if raw_mid is None or (isinstance(raw_mid, str) and not raw_mid.strip()):
+            r.matrix_training_id = None
+        else:
+            r.matrix_training_id = _enforce_unique_matrix_training(
+                db, uuid.UUID(str(user_id)), raw_mid, exclude_record_id=r.id
+            )
+
     for key in (
         "title",
         "provider",
@@ -2794,6 +2918,117 @@ def update_training_record(
     db.commit()
     db.refresh(r)
     return _training_row(r)
+
+
+@router.get("/training-records/matrix-catalog")
+def training_matrix_catalog_list(db: Session = Depends(get_db), _user: User = Depends(get_current_user)):
+    defs = get_matrix_training_defs(db)
+    return {"items": catalog_dicts(defs)}
+
+
+@router.get("/training-records/matrix-report")
+def training_records_matrix_report(
+    response_format: str = Query("csv", alias="format", description="csv or json"),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    if not _training_hr_aggregate_can_view(user):
+        raise HTTPException(status_code=403, detail="Forbidden")
+    from ..models.models import EmployeeTrainingRecord
+
+    fmt = (response_format or "csv").strip().lower()
+    if fmt not in ("csv", "json"):
+        raise HTTPException(status_code=400, detail="format must be csv or json")
+
+    now = datetime.now(timezone.utc)
+    users_query = (
+        db.query(User, EmployeeProfile)
+        .outerjoin(EmployeeProfile, EmployeeProfile.user_id == User.id)
+        .filter(User.is_active == True)  # noqa: E712
+    )
+    all_user_rows = users_query.all()
+    user_ids: List[uuid.UUID] = [u.id for u, _ in all_user_rows]
+    defs = get_matrix_training_defs(db)
+    if not user_ids:
+        if fmt == "json":
+            return {"groups": []}
+        buf = io.StringIO()
+        buf.write("\ufeff")
+        w = csv.writer(buf)
+        w.writerow(["Team", "Employee"] + [c.label for c in defs])
+        return StreamingResponse(
+            iter([buf.getvalue()]),
+            media_type="text/csv; charset=utf-8",
+            headers={"Content-Disposition": 'attachment; filename="training-matrix.csv"'},
+        )
+
+    all_recs = (
+        db.query(EmployeeTrainingRecord).filter(EmployeeTrainingRecord.user_id.in_(user_ids)).all()
+    )
+    rec_by_user: dict = defaultdict(list)
+    for r in all_recs:
+        rec_by_user[r.user_id].append(r)
+
+    matrix_rows_out: List[dict] = []
+    for u, prof in all_user_rows:
+        if prof and prof.termination_date is not None:
+            term = prof.termination_date
+            if term.tzinfo is None:
+                term = term.replace(tzinfo=timezone.utc)
+            if term < now:
+                continue
+
+        team = _team_label_for_profile(db, u.id, prof)
+        name = _employee_display_name(prof, u)
+
+        recs = rec_by_user.get(u.id, [])
+        today_d = now.date()
+        cells_detail = {}
+        for col in defs:
+            picked = _pick_explicit_matrix_record(recs, col.id)
+            cells_detail[col.id] = matrix_cell_detail(picked, col.id, today_d, defs)
+
+        matrix_rows_out.append(
+            {
+                "team": team,
+                "employee": name,
+                "user_id": str(u.id),
+                "cells": cells_detail,
+            }
+        )
+
+    matrix_rows_out.sort(key=lambda x: ((x["team"] or "").lower(), (x["employee"] or "").lower()))
+
+    def _matrix_groups(rows: List[dict]) -> List[dict]:
+        out = []
+        for _, grp in itertools.groupby(
+            rows, key=lambda x: (x.get("team") or "").strip().lower() or "__ungrouped__"
+        ):
+            chunk = list(grp)
+            lbl = (chunk[0].get("team") or "").strip()
+            out.append({"team_label": lbl if lbl else "Unassigned", "rows": chunk})
+        return out
+
+    if fmt == "json":
+        return {"groups": _matrix_groups(matrix_rows_out)}
+
+    buf = io.StringIO()
+    buf.write("\ufeff")
+    w = csv.writer(buf)
+    headers = ["Team", "Employee"] + [c.label for c in defs]
+    w.writerow(headers)
+    for row in matrix_rows_out:
+        w.writerow(
+            [row["team"], row["employee"]]
+            + [row["cells"][c.id].get("display") or "" for c in defs]
+        )
+
+    data = buf.getvalue()
+    return StreamingResponse(
+        iter([data]),
+        media_type="text/csv; charset=utf-8",
+        headers={"Content-Disposition": 'attachment; filename="training-matrix.csv"'},
+    )
 
 
 @router.get("/training-records/calendar")

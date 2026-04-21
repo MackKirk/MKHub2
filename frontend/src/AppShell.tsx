@@ -1194,8 +1194,8 @@ export default function AppShell({ children }: PropsWithChildren){
             </div>
           </div>
         </div>
-        <div className="flex-1 min-h-0 overflow-y-auto">
-        <div className="p-5 min-h-full">
+        <div className="flex-1 min-h-0 overflow-auto">
+        <div className="p-5 min-h-full min-w-0">
           {onboardingStatus?.has_pending &&
             !onboardingStatus?.past_deadline &&
             location.pathname !== '/onboarding/documents' && (
