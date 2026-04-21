@@ -100,6 +100,11 @@ function resolveImageContentType(file: File): string {
   return guessImageMimeFromName(file.name);
 }
 
+function deepCloneJsonish<T>(value: T): T {
+  if (value == null) return value;
+  return JSON.parse(JSON.stringify(value)) as T;
+}
+
 function isYesNoEntry(v: unknown): v is { status?: string; comments?: string; comment_image_ids?: unknown } {
   return v != null && typeof v === 'object' && !Array.isArray(v);
 }
@@ -707,7 +712,7 @@ export default function ProjectSafetyTab({
     if (!detail?.id) return;
     const raw =
       detail.form_payload && typeof detail.form_payload === 'object' && !Array.isArray(detail.form_payload)
-        ? { ...detail.form_payload }
+        ? deepCloneJsonish(detail.form_payload)
         : {};
     setFormPayload(raw);
     setCommittedJson(JSON.stringify(raw));
@@ -774,7 +779,7 @@ export default function ProjectSafetyTab({
     mutationFn: async () => {
       const sid = selectedId;
       if (!sid) throw new Error('no id');
-      const fp = formPayloadRef.current;
+      const fp = deepCloneJsonish(formPayloadRef.current);
       const body: Record<string, unknown> = {
         form_payload: fp,
       };
@@ -818,7 +823,7 @@ export default function ProjectSafetyTab({
     mutationFn: async (additionalSignerUserIds: string[]) => {
       const sid = selectedId;
       if (!sid) throw new Error('no id');
-      const fp = formPayloadRef.current;
+      const fp = deepCloneJsonish(formPayloadRef.current);
       if (detail?.form_template_id && dynamicDefinition) {
         const missing = validateDynamicFormMissing(dynamicDefinition, fp);
         if (missing.length) {
@@ -901,7 +906,7 @@ export default function ProjectSafetyTab({
       const parsed = committedJson ? (JSON.parse(committedJson) as unknown) : {};
       const obj =
         parsed && typeof parsed === 'object' && !Array.isArray(parsed)
-          ? (parsed as Record<string, unknown>)
+          ? deepCloneJsonish(parsed as Record<string, unknown>)
           : {};
       setFormPayload({ ...obj });
     } catch {

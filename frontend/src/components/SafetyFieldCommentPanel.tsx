@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useRef, useState, type Dispatch, type SetStateAction } from 'react';
 import toast from 'react-hot-toast';
 import { withFileAccessToken } from '@/lib/api';
 import { imageFilesFromClipboardData, isLikelyImageFile } from '@/utils/imageUploadHelpers';
@@ -11,7 +11,8 @@ type Props = {
   text: string;
   imageIds: string[];
   onTextChange: (s: string) => void;
-  onImageIdsChange: (ids: string[]) => void;
+  /** Use functional updates so async uploads merge with the latest ids (avoids stale closures). */
+  onImageIdsChange: Dispatch<SetStateAction<string[]>>;
   projectId: string;
   uploadFile: (file: File) => Promise<string | null>;
 };
@@ -77,29 +78,37 @@ export function SafetyFieldCommentPanel({
       }
       setBusy(true);
       try {
-        let next = [...imageIds];
+        const newIds: string[] = [];
         for (const file of list) {
-          if (next.length >= MAX_IMAGES) {
-            toast.error(`You can attach at most ${MAX_IMAGES} images.`);
-            break;
-          }
           const id = await uploadFile(file);
-          if (id) next.push(id);
+          if (id) newIds.push(id);
           else toast.error('Could not upload image.');
         }
-        onImageIdsChange(next.slice(0, MAX_IMAGES));
+        if (newIds.length === 0) return;
+        onImageIdsChange((prev) => {
+          const room = Math.max(0, MAX_IMAGES - prev.length);
+          if (room === 0) {
+            toast.error(`You can attach at most ${MAX_IMAGES} images.`);
+            return prev;
+          }
+          const toAdd = newIds.slice(0, room);
+          if (newIds.length > room) {
+            toast.error(`You can attach at most ${MAX_IMAGES} images.`);
+          }
+          return [...prev, ...toAdd].slice(0, MAX_IMAGES);
+        });
       } finally {
         setBusy(false);
       }
     },
-    [acceptFile, disabled, imageIds, onImageIdsChange, projectId, uploadFile]
+    [acceptFile, disabled, onImageIdsChange, projectId, uploadFile]
   );
 
   const removeImage = useCallback(
     (id: string) => {
-      onImageIdsChange(imageIds.filter((x) => x !== id));
+      onImageIdsChange((prev) => prev.filter((x) => x !== id));
     },
-    [imageIds, onImageIdsChange]
+    [onImageIdsChange]
   );
 
   const has = text.trim().length > 0 || imageIds.length > 0;

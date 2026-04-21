@@ -1,4 +1,12 @@
-import { useMemo, useEffect, useLayoutEffect, useCallback, useState, useRef } from 'react';
+import {
+  useMemo,
+  useEffect,
+  useLayoutEffect,
+  useCallback,
+  useState,
+  useRef,
+  type SetStateAction,
+} from 'react';
 import { useQuery, useQueries } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import { withSignSessionQuery, type SafetySignSession } from '@/lib/safetySignSessionQuery';
@@ -315,23 +323,49 @@ export default function DynamicSafetyForm({
   }, []);
 
   const updateSideComment = useCallback(
-    (fieldKey: string, patch: Partial<SideCommentEntry>) => {
+    (
+      fieldKey: string,
+      patch: Partial<SideCommentEntry> | ((cur: SideCommentEntry) => Partial<SideCommentEntry>)
+    ) => {
       setFormPayload((prev) => {
         const cur = getSideCommentForField(prev, fieldKey);
-        return mergeSideComment(prev, fieldKey, { ...cur, ...patch });
+        const resolved = typeof patch === 'function' ? patch(cur) : patch;
+        return mergeSideComment(prev, fieldKey, { ...cur, ...resolved });
       });
     },
     [setFormPayload]
   );
 
+  /** Routes image id updates through functional `SetStateAction` so async paste/upload never applies stale arrays. */
+  const setSideCommentImageIds = useCallback(
+    (fieldKey: string) => (updater: SetStateAction<string[]>) => {
+      updateSideComment(fieldKey, (cur) => ({
+        imageIds: typeof updater === 'function' ? updater(cur.imageIds) : updater,
+      }));
+    },
+    [updateSideComment]
+  );
+
   const updateAdditionalComments = useCallback(
-    (patch: Partial<SideCommentEntry>) => {
+    (
+      patch: Partial<SideCommentEntry> | ((cur: SideCommentEntry) => Partial<SideCommentEntry>)
+    ) => {
       setFormPayload((prev) => {
         const cur = getAdditionalComments(prev);
-        return mergeAdditionalComments(prev, { ...cur, ...patch });
+        const resolved = typeof patch === 'function' ? patch(cur) : patch;
+        return mergeAdditionalComments(prev, { ...cur, ...resolved });
       });
     },
     [setFormPayload]
+  );
+
+  const setAdditionalCommentImageIds = useCallback(
+    (updater: SetStateAction<string[]>) => {
+      updateAdditionalComments((cur) => ({
+        imageIds: typeof updater === 'function' ? updater(cur.imageIds) : updater,
+      }));
+    },
+    [updateAdditionalComments]
   );
 
   const setYnCommentOnly = useCallback(
@@ -345,10 +379,11 @@ export default function DynamicSafetyForm({
   );
 
   const setYnCommentImageIds = useCallback(
-    (fieldKey: string, commentImageIds: string[]) => {
+    (fieldKey: string, updater: SetStateAction<string[]>) => {
       setFormPayload((prev) => {
         const yn = getYn(prev, fieldKey);
-        return { ...prev, [fieldKey]: { ...yn, commentImageIds } };
+        const nextIds = typeof updater === 'function' ? updater(yn.commentImageIds) : updater;
+        return { ...prev, [fieldKey]: { ...yn, commentImageIds: nextIds } };
       });
     },
     [setFormPayload]
@@ -552,7 +587,7 @@ export default function DynamicSafetyForm({
             text={sideComment.text}
             imageIds={sideComment.imageIds}
             onTextChange={(s) => updateSideComment(k, { text: s })}
-            onImageIdsChange={(ids) => updateSideComment(k, { imageIds: ids })}
+            onImageIdsChange={setSideCommentImageIds(k)}
             projectId={projectId}
             uploadFile={uploadFile}
           />
@@ -595,7 +630,7 @@ export default function DynamicSafetyForm({
             text={sideComment.text}
             imageIds={sideComment.imageIds}
             onTextChange={(s) => updateSideComment(k, { text: s })}
-            onImageIdsChange={(ids) => updateSideComment(k, { imageIds: ids })}
+            onImageIdsChange={setSideCommentImageIds(k)}
             projectId={projectId}
             uploadFile={uploadFile}
           />
@@ -631,7 +666,7 @@ export default function DynamicSafetyForm({
             text={sideComment.text}
             imageIds={sideComment.imageIds}
             onTextChange={(s) => updateSideComment(k, { text: s })}
-            onImageIdsChange={(ids) => updateSideComment(k, { imageIds: ids })}
+            onImageIdsChange={setSideCommentImageIds(k)}
             projectId={projectId}
             uploadFile={uploadFile}
           />
@@ -671,7 +706,7 @@ export default function DynamicSafetyForm({
             text={sideComment.text}
             imageIds={sideComment.imageIds}
             onTextChange={(s) => updateSideComment(k, { text: s })}
-            onImageIdsChange={(ids) => updateSideComment(k, { imageIds: ids })}
+            onImageIdsChange={setSideCommentImageIds(k)}
             projectId={projectId}
             uploadFile={uploadFile}
           />
@@ -709,7 +744,7 @@ export default function DynamicSafetyForm({
             text={sideComment.text}
             imageIds={sideComment.imageIds}
             onTextChange={(s) => updateSideComment(k, { text: s })}
-            onImageIdsChange={(ids) => updateSideComment(k, { imageIds: ids })}
+            onImageIdsChange={setSideCommentImageIds(k)}
             projectId={projectId}
             uploadFile={uploadFile}
           />
@@ -745,7 +780,7 @@ export default function DynamicSafetyForm({
             text={sideComment.text}
             imageIds={sideComment.imageIds}
             onTextChange={(s) => updateSideComment(k, { text: s })}
-            onImageIdsChange={(ids) => updateSideComment(k, { imageIds: ids })}
+            onImageIdsChange={setSideCommentImageIds(k)}
             projectId={projectId}
             uploadFile={uploadFile}
           />
@@ -790,7 +825,7 @@ export default function DynamicSafetyForm({
             text={sideComment.text}
             imageIds={sideComment.imageIds}
             onTextChange={(s) => updateSideComment(k, { text: s })}
-            onImageIdsChange={(ids) => updateSideComment(k, { imageIds: ids })}
+            onImageIdsChange={setSideCommentImageIds(k)}
             projectId={projectId}
             uploadFile={uploadFile}
           />
@@ -864,7 +899,7 @@ export default function DynamicSafetyForm({
             text={sideComment.text}
             imageIds={sideComment.imageIds}
             onTextChange={(s) => updateSideComment(k, { text: s })}
-            onImageIdsChange={(ids) => updateSideComment(k, { imageIds: ids })}
+            onImageIdsChange={setSideCommentImageIds(k)}
             projectId={projectId}
             uploadFile={uploadFile}
           />
@@ -930,7 +965,7 @@ export default function DynamicSafetyForm({
             text={sideComment.text}
             imageIds={sideComment.imageIds}
             onTextChange={(s) => updateSideComment(k, { text: s })}
-            onImageIdsChange={(ids) => updateSideComment(k, { imageIds: ids })}
+            onImageIdsChange={setSideCommentImageIds(k)}
             projectId={projectId}
             uploadFile={uploadFile}
           />
@@ -975,7 +1010,7 @@ export default function DynamicSafetyForm({
             text={sideComment.text}
             imageIds={sideComment.imageIds}
             onTextChange={(s) => updateSideComment(k, { text: s })}
-            onImageIdsChange={(ids) => updateSideComment(k, { imageIds: ids })}
+            onImageIdsChange={setSideCommentImageIds(k)}
             projectId={projectId}
             uploadFile={uploadFile}
           />
@@ -1021,7 +1056,7 @@ export default function DynamicSafetyForm({
             text={yn.comments}
             imageIds={yn.commentImageIds}
             onTextChange={(s) => setYnCommentOnly(k, s)}
-            onImageIdsChange={(ids) => setYnCommentImageIds(k, ids)}
+            onImageIdsChange={(updater) => setYnCommentImageIds(k, updater)}
             projectId={projectId}
             uploadFile={uploadFile}
           />
@@ -1061,7 +1096,7 @@ export default function DynamicSafetyForm({
             text={sideComment.text}
             imageIds={sideComment.imageIds}
             onTextChange={(s) => updateSideComment(k, { text: s })}
-            onImageIdsChange={(ids) => updateSideComment(k, { imageIds: ids })}
+            onImageIdsChange={setSideCommentImageIds(k)}
             projectId={projectId}
             uploadFile={uploadFile}
           />
@@ -1101,7 +1136,7 @@ export default function DynamicSafetyForm({
             text={sideComment.text}
             imageIds={sideComment.imageIds}
             onTextChange={(s) => updateSideComment(k, { text: s })}
-            onImageIdsChange={(ids) => updateSideComment(k, { imageIds: ids })}
+            onImageIdsChange={setSideCommentImageIds(k)}
             projectId={projectId}
             uploadFile={uploadFile}
           />
@@ -1166,7 +1201,7 @@ export default function DynamicSafetyForm({
             text={sideComment.text}
             imageIds={sideComment.imageIds}
             onTextChange={(s) => updateSideComment(k, { text: s })}
-            onImageIdsChange={(ids) => updateSideComment(k, { imageIds: ids })}
+            onImageIdsChange={setSideCommentImageIds(k)}
             projectId={projectId}
             uploadFile={uploadFile}
           />
@@ -1206,7 +1241,7 @@ export default function DynamicSafetyForm({
             text={sideComment.text}
             imageIds={sideComment.imageIds}
             onTextChange={(s) => updateSideComment(k, { text: s })}
-            onImageIdsChange={(ids) => updateSideComment(k, { imageIds: ids })}
+            onImageIdsChange={setSideCommentImageIds(k)}
             projectId={projectId}
             uploadFile={uploadFile}
           />
@@ -1246,7 +1281,7 @@ export default function DynamicSafetyForm({
             text={sideComment.text}
             imageIds={sideComment.imageIds}
             onTextChange={(s) => updateSideComment(k, { text: s })}
-            onImageIdsChange={(ids) => updateSideComment(k, { imageIds: ids })}
+            onImageIdsChange={setSideCommentImageIds(k)}
             projectId={projectId}
             uploadFile={uploadFile}
           />
@@ -1276,7 +1311,7 @@ export default function DynamicSafetyForm({
             text={sideComment.text}
             imageIds={sideComment.imageIds}
             onTextChange={(s) => updateSideComment(k, { text: s })}
-            onImageIdsChange={(ids) => updateSideComment(k, { imageIds: ids })}
+            onImageIdsChange={setSideCommentImageIds(k)}
             projectId={projectId}
             uploadFile={uploadFile}
           />
@@ -1314,7 +1349,7 @@ export default function DynamicSafetyForm({
             text={sideComment.text}
             imageIds={sideComment.imageIds}
             onTextChange={(s) => updateSideComment(k, { text: s })}
-            onImageIdsChange={(ids) => updateSideComment(k, { imageIds: ids })}
+            onImageIdsChange={setSideCommentImageIds(k)}
             projectId={projectId}
             uploadFile={uploadFile}
           />
@@ -1385,7 +1420,7 @@ export default function DynamicSafetyForm({
             text={additionalComments.text}
             imageIds={additionalComments.imageIds}
             onTextChange={(s) => updateAdditionalComments({ text: s })}
-            onImageIdsChange={(ids) => updateAdditionalComments({ imageIds: ids })}
+            onImageIdsChange={setAdditionalCommentImageIds}
             projectId={projectId}
             uploadFile={uploadFile}
           />
