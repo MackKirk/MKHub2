@@ -1,4 +1,4 @@
-import { Routes, Route, Navigate, useLocation, useNavigate } from 'react-router-dom';
+import { Routes, Route, Navigate, useLocation, useNavigate, useParams } from 'react-router-dom';
 import { QueryClientProvider } from '@tanstack/react-query';
 import { Toaster } from 'react-hot-toast';
 import { lazy, Suspense, useEffect } from 'react';
@@ -68,6 +68,9 @@ import FleetAssetNew from './pages/FleetAssetNew';
 import EquipmentList from './pages/EquipmentList';
 import EquipmentNew from './pages/EquipmentNew';
 import EquipmentDetail from './pages/EquipmentDetail';
+import CompanyCreditCardsList from './pages/CompanyCreditCardsList';
+import CompanyCreditCardNew from './pages/CompanyCreditCardNew';
+import CompanyCreditCardDetail from './pages/CompanyCreditCardDetail';
 import WorkOrders from './pages/WorkOrders';
 import WorkOrderNew from './pages/WorkOrderNew';
 import Inspections from './pages/Inspections';
@@ -94,6 +97,13 @@ import { BusinessLineProvider } from './context/BusinessLineContext';
 import { BUSINESS_LINE_REPAIRS_MAINTENANCE } from './lib/businessLine';
 
 const RouteFallback = () => <div className="min-h-[40vh] flex items-center justify-center text-gray-500">Loading...</div>;
+
+/** Legacy URLs under /fleet/equipment → /company-assets/equipment (avoid /assets/* — static files) */
+function LegacyFleetEquipmentDetailRedirect() {
+  const { id } = useParams();
+  if (!id) return <Navigate to="/company-assets/equipment" replace />;
+  return <Navigate to={`/company-assets/equipment/${id}`} replace />;
+}
 
 import { getToken } from './lib/api';
 
@@ -203,9 +213,15 @@ export default function App(){
           <Route path="/fleet/other-assets" element={<AppShell><FleetAssets/></AppShell>} />
           <Route path="/fleet/assets/new" element={<AppShell><FleetAssetNew/></AppShell>} />
           <Route path="/fleet/assets/:id" element={<AppShell><FleetAssetDetail/></AppShell>} />
-          <Route path="/fleet/equipment" element={<AppShell><EquipmentList/></AppShell>} />
-          <Route path="/fleet/equipment/new" element={<AppShell><EquipmentNew/></AppShell>} />
-          <Route path="/fleet/equipment/:id" element={<AppShell><EquipmentDetail/></AppShell>} />
+          <Route path="/company-assets/equipment" element={<AppShell><EquipmentList/></AppShell>} />
+          <Route path="/company-assets/equipment/new" element={<AppShell><EquipmentNew/></AppShell>} />
+          <Route path="/company-assets/equipment/:id" element={<AppShell><EquipmentDetail/></AppShell>} />
+          <Route path="/company-assets/credit-cards" element={<AppShell><CompanyCreditCardsList/></AppShell>} />
+          <Route path="/company-assets/credit-cards/new" element={<AppShell><CompanyCreditCardNew/></AppShell>} />
+          <Route path="/company-assets/credit-cards/:id" element={<AppShell><CompanyCreditCardDetail/></AppShell>} />
+          <Route path="/fleet/equipment" element={<Navigate to="/company-assets/equipment" replace />} />
+          <Route path="/fleet/equipment/new" element={<Navigate to="/company-assets/equipment/new" replace />} />
+          <Route path="/fleet/equipment/:id" element={<LegacyFleetEquipmentDetailRedirect />} />
           <Route path="/fleet/calendar" element={<AppShell><FleetSchedulePage/></AppShell>} />
           <Route path="/fleet/inspection-schedules" element={<Navigate to="/fleet/calendar" replace />} />
           <Route path="/fleet/inspection-schedules/:id" element={<AppShell><InspectionScheduleDetail/></AppShell>} />

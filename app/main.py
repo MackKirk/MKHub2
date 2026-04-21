@@ -39,6 +39,7 @@ from .routes.community import router as community_router
 from .routes.employee_management import router as employee_management_router
 from .routes.permissions import router as permissions_router
 from .routes.fleet import router as fleet_router
+from .routes.company_credit_cards import router as company_credit_cards_router
 from .routes.safety import router as safety_router
 from .routes.form_templates import router as form_templates_router
 from .routes.form_custom_lists import router as form_custom_lists_router
@@ -169,6 +170,7 @@ def create_app() -> FastAPI:
     app.include_router(employee_management_router)
     app.include_router(permissions_router)
     app.include_router(fleet_router)
+    app.include_router(company_credit_cards_router)
     app.include_router(safety_router)
     app.include_router(form_custom_lists_router)
     app.include_router(form_templates_router)
@@ -1489,6 +1491,30 @@ def create_app() -> FastAPI:
                         Base.metadata.create_all(bind=engine, tables=[EmployeeTrainingRecord.__table__])
                         db.commit()
                         print("[startup] Created employee_training_records table")
+
+                    # Corporate credit card inventory (last four + expiry only; no full PAN)
+                    rows = db.execute(
+                        text(
+                            """
+                            SELECT 1
+                            FROM information_schema.tables
+                            WHERE table_name = 'company_credit_cards'
+                            LIMIT 1
+                            """
+                        )
+                    ).fetchall()
+                    if not rows:
+                        from .models.models import CompanyCreditCard, CompanyCreditCardAssignment
+
+                        Base.metadata.create_all(
+                            bind=engine,
+                            tables=[
+                                CompanyCreditCard.__table__,
+                                CompanyCreditCardAssignment.__table__,
+                            ],
+                        )
+                        db.commit()
+                        print("[startup] Created company_credit_cards tables")
 
                     # Soft delete columns (if missing)
                     for table_name, fk_col in [("projects", "deleted_by_id"), ("clients", "deleted_by_id"), ("proposals", "deleted_by_id"), ("quotes", "deleted_by_id")]:

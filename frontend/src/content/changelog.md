@@ -20,11 +20,18 @@ title: Update 1.1.026 - Week 17
 ### New
 - New Form Templates and For Custom Lists areas.
 - New Safety Tab inside Projects, allowing to create Inspections from created Form Templates.
+- Corporate cards: inventory (last four + expiry), custody assign/return, PCI-safe fields only.
+- Company assets area in the sidebar (equipment + corporate cards), split from Fleet.
 
 ### Improved
 - Header bar: shortcuts grouped in one toolbar (What’s new, notifications, report bug) with consistent icon buttons;
 - Global search field styling aligned with the top bar.
 - What’s new opens as a large centered modal (backdrop, larger content area, close button, Escape to close) instead of a small dropdown.
+- Corporate card detail page: clearer layout, Details/Custody tabs, header card preview.
+- Corporate cards list: filters, search, sorting, custody filters, and table layout aligned with the Equipment list.
+- Equipment detail: title bar, tabs, typography, and primary/secondary buttons aligned with the rest of the app (e.g. Projects/Opportunities).
+- Corporate cards: **Mark cancelled** sends a status update (`PATCH`, no longer uses `DELETE`). Administrators see **Delete card** to remove the record permanently (with confirmation). Equipment detail: administrators see **Delete equipment** to retire the item (with confirmation).
+- API: `DELETE /company-credit-cards/:id` permanently removes the row and is **administrator-only** (use `PATCH` with `status: cancelled` to cancel). Equipment: `DELETE /fleet/equipment/:id` **retires** the item (`equipment:write`). **`POST /fleet/equipment/:id/purge`** removes the row from the database (and linked work orders) — **administrators only**.
 
 ### Fixed
 - (none this release)
@@ -52,7 +59,7 @@ title: Update 1.1.025 - Week 16
 - (none this release)
 
 ### Known issues
-- Chat is not working properly
+- (none this release)
 
 <<<RELEASE>>>
 id: 2026-04-01-1

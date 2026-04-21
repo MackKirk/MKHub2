@@ -68,6 +68,10 @@ export default defineConfig({
         changeOrigin: true,
         ws: true,
       },
+      '/company-credit-cards': {
+        target: 'http://localhost:8000',
+        changeOrigin: true,
+      },
     }
   },
   build: { 

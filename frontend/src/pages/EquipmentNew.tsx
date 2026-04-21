@@ -197,7 +197,7 @@ export default function EquipmentNew() {
       </div>
       <EquipmentNewForm
         initialCategory={categoryFromUrl}
-        onSuccess={(data) => nav(`/fleet/equipment/${data.id}`)}
+        onSuccess={(data) => nav(`/company-assets/equipment/${data.id}`)}
         onCancel={() => nav(-1)}
       />
     </div>

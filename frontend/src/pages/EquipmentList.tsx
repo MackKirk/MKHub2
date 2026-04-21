@@ -533,7 +533,7 @@ export default function EquipmentList() {
         <div className="mt-4 pt-3 border-t border-gray-200 flex items-center gap-2">
           <button
             type="button"
-            onClick={(e) => { e.stopPropagation(); nav(`/fleet/equipment/${item.id}`); }}
+            onClick={(e) => { e.stopPropagation(); nav(`/company-assets/equipment/${item.id}`); }}
             className="px-3 py-1.5 text-xs font-medium text-white bg-brand-red rounded-lg hover:opacity-90 transition-opacity"
           >
             View Details
@@ -881,7 +881,7 @@ export default function EquipmentList() {
                 onSuccess={(data) => {
                   setShowNewEquipmentModal(false);
                   queryClient.invalidateQueries({ queryKey: ['equipment'] });
-                  nav(`/fleet/equipment/${data.id}`);
+                  nav(`/company-assets/equipment/${data.id}`);
                 }}
                 onCancel={() => setShowNewEquipmentModal(false)}
                 onValidationChange={(canSubmit, isPending) => {

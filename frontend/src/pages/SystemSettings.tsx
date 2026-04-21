@@ -620,6 +620,7 @@ const IMPLEMENTED_PERMISSIONS = new Set([
   'fleet:access',
   'fleet:vehicles:read', 'fleet:vehicles:write',
   'fleet:equipment:read', 'fleet:equipment:write',
+  'company_cards:read', 'company_cards:write',
   'inventory:access',
   'inventory:suppliers:read', 'inventory:suppliers:write',
   'inventory:products:read', 'inventory:products:write',

@@ -6,6 +6,7 @@ import toast from 'react-hot-toast';
 import AddressAutocomplete from '@/components/AddressAutocomplete';
 import { formatDateLocal } from '@/lib/dateUtils';
 import OverlayPortal from '@/components/OverlayPortal';
+import { useConfirm } from '@/components/ConfirmProvider';
 
 type Equipment = {
   id: string;
@@ -78,6 +79,7 @@ export default function EquipmentDetail() {
   const nav = useNavigate();
   const location = useLocation();
   const queryClient = useQueryClient();
+  const confirm = useConfirm();
 
   const searchParams = new URLSearchParams(location.search);
   const initialTab = (searchParams.get('tab') as 'general' | 'work-orders' | 'logs' | null) || 'general';
@@ -126,6 +128,9 @@ export default function EquipmentDetail() {
     queryFn: () => api<any[]>('GET', '/employees'),
   });
 
+  const { data: me } = useQuery({ queryKey: ['me'], queryFn: () => api<any>('GET', '/auth/me') });
+  const isAdministrator = !!(me?.roles || []).some((r: string) => String(r || '').toLowerCase() === 'admin');
+
   const openAssignment = useMemo(() => assignments.find((a) => !a.returned_at), [assignments]);
 
   const findAssignmentForLog = useCallback(
@@ -172,6 +177,31 @@ export default function EquipmentDetail() {
     onError: (error: any) => toast.error(error?.message || 'Failed to return'),
   });
 
+  const canWriteEquipment =
+    isAdministrator || !!(me?.permissions || []).includes('equipment:write');
+
+  const [retiringEquipment, setRetiringEquipment] = useState(false);
+  const retireEquipmentMutation = useMutation({
+    mutationFn: () => api('DELETE', `/fleet/equipment/${id}`),
+    onSuccess: () => {
+      toast.success('Equipment retired');
+      queryClient.invalidateQueries({ queryKey: ['equipment'] });
+      nav('/company-assets/equipment');
+    },
+    onError: (error: any) => toast.error(error?.message || 'Retire failed'),
+  });
+
+  const [purgingEquipment, setPurgingEquipment] = useState(false);
+  const purgeEquipmentMutation = useMutation({
+    mutationFn: () => api('POST', `/fleet/equipment/${id}/purge`),
+    onSuccess: () => {
+      toast.success('Equipment removed from database');
+      queryClient.invalidateQueries({ queryKey: ['equipment'] });
+      nav('/company-assets/equipment');
+    },
+    onError: (error: any) => toast.error(error?.message || 'Permanent delete failed'),
+  });
+
   const statusColors: Record<string, string> = {
     available: 'bg-green-100 text-green-800',
     checked_out: 'bg-blue-100 text-blue-800',
@@ -196,64 +226,88 @@ export default function EquipmentDetail() {
   }, []);
 
   if (!isValidId) {
-    return <div className="p-4">Invalid equipment ID</div>;
+    return (
+      <div className="space-y-4 min-w-0">
+        <div className="rounded-xl border bg-white p-4 text-sm text-gray-600">Invalid equipment ID</div>
+      </div>
+    );
   }
 
   if (isLoading) {
     return (
-      <div className="space-y-4">
-        <div className="h-6 bg-gray-100 animate-pulse rounded" />
+      <div className="space-y-4 min-w-0">
+        <div className="h-6 animate-pulse rounded bg-gray-100" />
       </div>
     );
   }
 
   if (!equipment) {
-    return <div className="p-4">Equipment not found</div>;
+    return (
+      <div className="space-y-4 min-w-0">
+        <div className="rounded-xl border bg-white p-4 text-sm text-gray-600">Equipment not found</div>
+      </div>
+    );
   }
 
   const isAssigned = !!openAssignment;
+  const categoryLabel = equipment.category.replace(/_/g, ' ');
+  const heroThumbSrc = equipment.photos?.[0]
+    ? withFileAccessToken(`/files/${equipment.photos[0]}/thumbnail?w=160`)
+    : '/ui/assets/placeholders/project.png';
+
+  const tabLabel: Record<'general' | 'work-orders' | 'logs', string> = {
+    general: 'General',
+    'work-orders': 'Work orders',
+    logs: 'Logs',
+  };
 
   return (
     <div className="space-y-4 min-w-0 overflow-x-hidden">
-      {/* Header - same layout as FleetAssetDetail */}
-      <div className="rounded-xl border bg-white p-4 mb-4">
-        <div className="flex items-center justify-between flex-wrap gap-4">
-          <div className="flex items-center gap-3 flex-1 min-w-0">
+      {/* Title bar — same pattern as ProjectDetail, Opportunities, EquipmentList */}
+      <div className="rounded-xl border bg-white p-4">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="flex min-w-0 flex-1 items-center gap-3">
             <button
-              onClick={() => nav(-1)}
-              className="p-2 rounded-lg hover:bg-gray-100 transition-colors flex items-center justify-center text-gray-600 hover:text-gray-900 flex-shrink-0"
-              title="Back"
+              type="button"
+              onClick={() => nav('/company-assets/equipment')}
+              className="flex shrink-0 items-center justify-center rounded p-1.5 text-gray-600 transition-colors hover:bg-gray-100"
+              title="Back to equipment"
             >
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
               </svg>
             </button>
+            <img
+              src={heroThumbSrc}
+              alt=""
+              className="hidden h-10 w-10 shrink-0 rounded-lg border border-gray-200 object-cover sm:block"
+            />
             <div className="min-w-0 flex-1">
-              <h1 className="text-lg font-bold text-gray-900 truncate">{equipment.name}</h1>
-              <div className="flex flex-wrap items-center gap-2 mt-1">
-                {equipment.unit_number && (
-                  <span className="text-xs text-gray-600">Unit #{equipment.unit_number}</span>
-                )}
-                <span className="text-xs text-gray-500 capitalize">{equipment.category.replace('_', ' ')}</span>
+              <div className="truncate text-sm font-semibold text-gray-900">{equipment.name}</div>
+              <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-gray-500">
+                {equipment.unit_number ? <span>Unit #{equipment.unit_number}</span> : null}
+                <span className="capitalize">{categoryLabel}</span>
                 <span
-                  className={`px-2 py-0.5 rounded-full text-xs font-medium ${statusColors[equipment.status] || 'bg-gray-100 text-gray-800'}`}
+                  className={`inline-flex rounded px-2 py-0.5 text-xs font-medium ${statusColors[equipment.status] || 'bg-gray-100 text-gray-800'}`}
                 >
-                  {equipment.status.replace('_', ' ')}
+                  {equipment.status.replace(/_/g, ' ')}
                 </span>
                 <span
-                  className={`px-2 py-0.5 rounded-full text-xs font-medium ${isAssigned ? 'bg-blue-100 text-blue-800' : 'bg-green-100 text-green-800'}`}
+                  className={`inline-flex rounded px-2 py-0.5 text-xs font-medium ${
+                    isAssigned ? 'bg-blue-100 text-blue-800' : 'bg-green-100 text-green-800'
+                  }`}
                 >
                   {isAssigned ? 'Assigned' : 'Available'}
                 </span>
               </div>
             </div>
           </div>
-          <div className="flex items-center gap-2 flex-shrink-0">
+          <div className="flex shrink-0 flex-wrap items-center gap-2">
             {openAssignment ? (
               <button
                 type="button"
                 onClick={() => setShowReturnModal(true)}
-                className="px-4 py-2 border border-gray-300 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50"
+                className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
               >
                 Return
               </button>
@@ -261,265 +315,343 @@ export default function EquipmentDetail() {
               <button
                 type="button"
                 onClick={() => setShowAssignModal(true)}
-                className="px-4 py-2 bg-brand-red text-white rounded-lg text-sm font-medium hover:bg-red-700"
+                className="rounded-lg bg-brand-red px-4 py-2 text-sm font-medium text-white hover:bg-red-700"
               >
                 Assign
               </button>
             )}
-            <div className="text-right pl-4 border-l border-gray-200">
-              <div className="text-[10px] font-medium text-gray-500 uppercase tracking-wide">Today</div>
-              <div className="text-xs font-semibold text-gray-700">{todayLabel}</div>
+            {canWriteEquipment ? (
+              <button
+                type="button"
+                disabled={retiringEquipment || retireEquipmentMutation.isPending}
+                onClick={async () => {
+                  const choice = await confirm({
+                    title: 'Retire equipment',
+                    message: openAssignment
+                      ? 'This item is still assigned. Retiring marks it as removed from active inventory; return it first if you want a clean custody record. Continue?'
+                      : 'Retire this equipment? It will stay in the system as retired (history preserved).',
+                    confirmText: 'Retire',
+                    cancelText: 'Cancel',
+                  });
+                  if (choice !== 'confirm') return;
+                  setRetiringEquipment(true);
+                  try {
+                    await retireEquipmentMutation.mutateAsync();
+                  } finally {
+                    setRetiringEquipment(false);
+                  }
+                }}
+                className="rounded-lg border border-amber-300 bg-amber-50 px-4 py-2 text-sm font-medium text-amber-900 hover:bg-amber-100 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {retiringEquipment || retireEquipmentMutation.isPending ? 'Retiring…' : 'Retire equipment'}
+              </button>
+            ) : null}
+            {isAdministrator ? (
+              <button
+                type="button"
+                disabled={purgingEquipment || purgeEquipmentMutation.isPending}
+                onClick={async () => {
+                  const choice = await confirm({
+                    title: 'Permanently delete equipment',
+                    message:
+                      'Remove this equipment row from the database (assignments, logs, checkouts, and linked work orders). For test data cleanup only. This cannot be undone.',
+                    confirmText: 'Delete permanently',
+                    cancelText: 'Cancel',
+                  });
+                  if (choice !== 'confirm') return;
+                  setPurgingEquipment(true);
+                  try {
+                    await purgeEquipmentMutation.mutateAsync();
+                  } finally {
+                    setPurgingEquipment(false);
+                  }
+                }}
+                className="rounded-lg border border-red-400 bg-white px-4 py-2 text-sm font-semibold text-red-800 hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {purgingEquipment || purgeEquipmentMutation.isPending ? 'Deleting…' : 'Delete permanently'}
+              </button>
+            ) : null}
+            <div className="hidden border-l border-gray-200 pl-4 text-right sm:block">
+              <div className="text-[10px] font-medium uppercase tracking-wide text-gray-500">Today</div>
+              <div className="mt-0.5 text-xs font-semibold text-gray-700">{todayLabel}</div>
             </div>
           </div>
         </div>
       </div>
 
-      {/* Tabs */}
-      <div className="rounded-xl border border-gray-200 bg-white overflow-hidden">
-        <div className="flex gap-1 border-b border-gray-200 px-4">
+      {/* Tabs + content — underline tabs + brand red, same as EquipmentList category row */}
+      <div className="min-w-0 overflow-hidden rounded-xl border border-gray-200 bg-white">
+        <div className="flex gap-1 overflow-x-auto border-b border-gray-200 px-4">
           {(['general', 'work-orders', 'logs'] as const).map((t) => (
             <button
               key={t}
+              type="button"
               onClick={() => {
                 setTab(t);
-                nav(`/fleet/equipment/${id}?tab=${t}`, { replace: true });
+                nav(`/company-assets/equipment/${id}?tab=${t}`, { replace: true });
               }}
-              className={`px-3 py-2 text-xs font-medium transition-colors border-b-2 -mb-[1px] capitalize ${
-                tab === t ? 'border-brand-red text-brand-red' : 'border-transparent text-gray-600 hover:text-gray-900'
+              className={`-mb-px shrink-0 border-b-2 px-3 py-2 text-xs font-medium transition-colors ${
+                tab === t
+                  ? 'border-brand-red text-brand-red'
+                  : 'border-transparent text-gray-600 hover:text-gray-900'
               }`}
             >
-              {t.replace('-', ' ')}
+              {tabLabel[t]}
             </button>
           ))}
         </div>
-      </div>
 
-      {/* Tab Content */}
-      <div className="rounded-b-xl border border-t-0 border-gray-200 bg-white p-4 min-w-0 overflow-hidden">
-        {tab === 'general' && (
-          <div className="space-y-6">
-            <div className="grid md:grid-cols-2 gap-4">
-              <div className="rounded-xl border border-gray-200 bg-white overflow-hidden">
-                <div className="px-4 py-3 border-b border-gray-200 bg-gray-50">
-                  <h4 className="font-semibold text-gray-900">Basic Information</h4>
-                </div>
-                <div className="p-4 grid md:grid-cols-2 gap-3 text-sm">
-                  <div>
-                    <div className="text-gray-600">Name</div>
-                    <div className="font-medium">{equipment.name}</div>
+        <div className="min-w-0 overflow-hidden p-4">
+          {tab === 'general' && (
+            <div className="space-y-4">
+              <div className="grid gap-4 md:grid-cols-2">
+                <div className="overflow-hidden rounded-xl border border-gray-200 bg-white">
+                  <div className="border-b border-gray-200 bg-gray-50 px-4 py-3">
+                    <h4 className="font-semibold text-gray-900">Basic information</h4>
                   </div>
-                  <div>
-                    <div className="text-gray-600">Unit Number</div>
-                    <div className="font-medium">{equipment.unit_number || '—'}</div>
-                  </div>
-                  <div>
-                    <div className="text-gray-600">Category</div>
-                    <div className="font-medium capitalize">{equipment.category.replace('_', ' ')}</div>
-                  </div>
-                  <div>
-                    <div className="text-gray-600">Serial Number</div>
-                    <div className="font-medium">{equipment.serial_number || '—'}</div>
-                  </div>
-                  <div>
-                    <div className="text-gray-600">Brand</div>
-                    <div className="font-medium">{equipment.brand || '—'}</div>
-                  </div>
-                  <div>
-                    <div className="text-gray-600">Model</div>
-                    <div className="font-medium">{equipment.model || '—'}</div>
-                  </div>
-                  <div>
-                    <div className="text-gray-600">Value</div>
-                    <div className="font-medium">
-                      {equipment.value ? `$${equipment.value.toLocaleString()}` : '—'}
+                  <div className="grid gap-3 p-4 text-sm md:grid-cols-2">
+                    <div>
+                      <div className="text-gray-600">Name</div>
+                      <div className="font-medium text-gray-900">{equipment.name}</div>
                     </div>
-                  </div>
-                  <div>
-                    <div className="text-gray-600">Status</div>
-                    <span
-                      className={`inline-block px-2 py-0.5 rounded text-xs font-medium ${statusColors[equipment.status] || 'bg-gray-100 text-gray-800'}`}
-                    >
-                      {equipment.status.replace('_', ' ')}
-                    </span>
-                  </div>
-                </div>
-              </div>
-              <div className="rounded-xl border border-gray-200 bg-white overflow-hidden">
-                <div className="px-4 py-3 border-b border-gray-200 bg-gray-50">
-                  <h4 className="font-semibold text-gray-900">Assignment & Dates</h4>
-                </div>
-                <div className="p-4 grid md:grid-cols-2 gap-3 text-sm">
-                  <div>
-                    <div className="text-gray-600">Assignment Status</div>
-                    <span
-                      className={`inline-block mt-1 px-2 py-0.5 rounded text-xs font-medium ${openAssignment ? 'bg-blue-100 text-blue-800' : 'bg-green-100 text-green-800'}`}
-                    >
-                      {openAssignment ? 'Assigned' : 'Available'}
-                    </span>
-                  </div>
-                  {openAssignment && (
-                    <>
-                      <div>
-                        <div className="text-gray-600">Assigned to</div>
-                        <div className="font-medium">
-                          {openAssignment.assigned_to_name ||
-                            employees.find((e: any) => e.id === openAssignment.assigned_to_user_id)?.profile
-                              ?.preferred_name ||
-                            employees.find((e: any) => e.id === openAssignment.assigned_to_user_id)?.username ||
-                            openAssignment.assigned_to_user_id ||
-                            '—'}
-                        </div>
-                      </div>
-                      <div>
-                        <div className="text-gray-600">Since</div>
-                        <div className="font-medium">{formatDateLocal(new Date(openAssignment.assigned_at))}</div>
-                      </div>
-                      <div>
-                        <div className="text-gray-600">Department</div>
-                        <div className="font-medium">{openAssignment.department_snapshot || '—'}</div>
-                      </div>
-                    </>
-                  )}
-                  <div>
-                    <div className="text-gray-600">Warranty Expiry</div>
-                    <div className="font-medium">
-                      {equipment.warranty_expiry ? new Date(equipment.warranty_expiry).toLocaleDateString() : '—'}
+                    <div>
+                      <div className="text-gray-600">Unit number</div>
+                      <div className="font-medium text-gray-900">{equipment.unit_number || '—'}</div>
                     </div>
-                  </div>
-                  <div>
-                    <div className="text-gray-600">Purchase Date</div>
-                    <div className="font-medium">
-                      {equipment.purchase_date ? new Date(equipment.purchase_date).toLocaleDateString() : '—'}
+                    <div>
+                      <div className="text-gray-600">Category</div>
+                      <div className="font-medium capitalize text-gray-900">{categoryLabel}</div>
+                    </div>
+                    <div>
+                      <div className="text-gray-600">Serial number</div>
+                      <div className="font-medium text-gray-900">{equipment.serial_number || '—'}</div>
+                    </div>
+                    <div>
+                      <div className="text-gray-600">Brand</div>
+                      <div className="font-medium text-gray-900">{equipment.brand || '—'}</div>
+                    </div>
+                    <div>
+                      <div className="text-gray-600">Model</div>
+                      <div className="font-medium text-gray-900">{equipment.model || '—'}</div>
+                    </div>
+                    <div>
+                      <div className="text-gray-600">Value</div>
+                      <div className="font-medium text-gray-900">
+                        {equipment.value != null ? `$${equipment.value.toLocaleString()}` : '—'}
+                      </div>
+                    </div>
+                    <div>
+                      <div className="text-gray-600">Status</div>
+                      <span
+                        className={`mt-1 inline-flex rounded px-2 py-0.5 text-xs font-medium ${statusColors[equipment.status] || 'bg-gray-100 text-gray-800'}`}
+                      >
+                        {equipment.status.replace(/_/g, ' ')}
+                      </span>
                     </div>
                   </div>
                 </div>
-              </div>
-            </div>
-            {equipment.notes && (
-              <div className="rounded-xl border border-gray-200 bg-white overflow-hidden">
-                <div className="px-4 py-3 border-b border-gray-200 bg-gray-50">
-                  <h4 className="font-semibold text-gray-900">Notes</h4>
-                </div>
-                <div className="p-4 text-sm">{equipment.notes}</div>
-              </div>
-            )}
-          </div>
-        )}
-
-        {tab === 'work-orders' && (
-          <div className="space-y-4">
-            <div className="flex justify-between items-center">
-              <h3 className="font-semibold text-lg">Work Orders</h3>
-              <button
-                onClick={() => setShowWorkOrderForm(true)}
-                className="px-4 py-2 bg-brand-red text-white rounded-lg hover:bg-red-700 text-sm"
-              >
-                + New Work Order
-              </button>
-            </div>
-            <div className="space-y-2">
-              {Array.isArray(workOrders) &&
-                workOrders.map((wo) => {
-                  const p = wo.photos as string[] | { before?: string[]; after?: string[] } | null;
-                  const photoList = Array.isArray(p)
-                    ? p
-                    : p && typeof p === 'object'
-                      ? [...(Array.isArray((p as any).before) ? (p as any).before : []), ...(Array.isArray((p as any).after) ? (p as any).after : [])]
-                      : [];
-                  return (
-                    <div
-                      key={wo.id}
-                      className="border rounded-lg p-4 hover:bg-gray-50 cursor-pointer"
-                      onClick={() => nav(`/fleet/work-orders/${wo.id}`)}
-                    >
-                      <div className="flex items-center justify-between">
-                        <div className="flex-1">
-                          <div className="font-medium">{wo.work_order_number}</div>
-                          <div className="text-sm text-gray-600">{wo.description}</div>
-                          <div className="flex gap-2 mt-2">
-                            <span
-                              className={`px-2 py-1 rounded text-xs ${urgencyColors[wo.urgency] || 'bg-gray-100 text-gray-800'}`}
-                            >
-                              {wo.urgency}
-                            </span>
-                            <span
-                              className={`px-2 py-1 rounded text-xs ${statusColors[wo.status] || 'bg-gray-100 text-gray-800'}`}
-                            >
-                              {wo.status}
-                            </span>
-                          </div>
-                          {photoList.length > 0 && (
-                            <div className="flex gap-2 mt-2">
-                              {photoList.slice(0, 3).map((photoId: string, idx: number) => (
-                                <img
-                                  key={idx}
-                                  src={withFileAccessToken(`/files/${photoId}/thumbnail?w=100`)}
-                                  alt={`Photo ${idx + 1}`}
-                                  className="w-16 h-16 object-cover rounded border"
-                                />
-                              ))}
-                            </div>
-                          )}
-                        </div>
-                        <div className="text-sm text-gray-500 ml-4">
-                          {new Date(wo.created_at).toLocaleDateString()}
-                        </div>
-                      </div>
+                <div className="overflow-hidden rounded-xl border border-gray-200 bg-white">
+                  <div className="border-b border-gray-200 bg-gray-50 px-4 py-3">
+                    <h4 className="font-semibold text-gray-900">Assignment & dates</h4>
+                  </div>
+                  <div className="grid gap-3 p-4 text-sm md:grid-cols-2">
+                    <div>
+                      <div className="text-gray-600">Assignment</div>
+                      <span
+                        className={`mt-1 inline-flex rounded px-2 py-0.5 text-xs font-medium ${
+                          openAssignment ? 'bg-blue-100 text-blue-800' : 'bg-green-100 text-green-800'
+                        }`}
+                      >
+                        {openAssignment ? 'Assigned' : 'Available'}
+                      </span>
                     </div>
-                  );
-                })}
-            </div>
-            {(!workOrders || workOrders.length === 0) && (
-              <div className="text-center text-gray-500 py-8">No work orders found</div>
-            )}
-          </div>
-        )}
-
-        {tab === 'logs' && (
-          <div className="space-y-4">
-            <h3 className="font-semibold text-lg">Logs & History</h3>
-            <div className="space-y-2">
-              {Array.isArray(logs) &&
-                logs.map((log) => {
-                  const linkedAssignment =
-                    log.log_type === 'checkout' || log.log_type === 'checkin' ? findAssignmentForLog(log) : null;
-                  const isClickable = !!linkedAssignment;
-                  const displayLogType = log.log_type === 'checkout' ? 'assignment' : log.log_type === 'checkin' ? 'return' : log.log_type;
-                  return (
-                    <div
-                      key={log.id}
-                      className={`border-l-4 pl-4 py-2 ${isClickable ? 'border-brand-red cursor-pointer hover:bg-gray-50 rounded-r-lg transition-colors' : 'border-gray-300'}`}
-                      onClick={
-                        isClickable
-                          ? () => {
-                              setLogDetailAssignment(linkedAssignment!);
-                              setLogDetailLogType(
-                                log.log_type === 'checkout' ? 'assignment' : ('return' as 'assignment' | 'return')
-                              );
-                            }
-                          : undefined
-                      }
-                      role={isClickable ? 'button' : undefined}
-                    >
-                      <div className="flex items-center justify-between">
+                    {openAssignment ? (
+                      <>
                         <div>
-                          <div className="font-medium capitalize">{displayLogType.replace('_', ' ')}</div>
-                          <div className="text-sm text-gray-600">{log.description}</div>
-                          {isClickable && (
-                            <div className="text-xs text-brand-red mt-1">Click for full details</div>
-                          )}
+                          <div className="text-gray-600">Assigned to</div>
+                          <div className="font-medium text-gray-900">
+                            {openAssignment.assigned_to_name ||
+                              employees.find((e: any) => e.id === openAssignment.assigned_to_user_id)?.profile
+                                ?.preferred_name ||
+                              employees.find((e: any) => e.id === openAssignment.assigned_to_user_id)?.username ||
+                              openAssignment.assigned_to_user_id ||
+                              '—'}
+                          </div>
                         </div>
-                        <div className="text-sm text-gray-500">{new Date(log.log_date).toLocaleDateString()}</div>
+                        <div>
+                          <div className="text-gray-600">Since</div>
+                          <div className="font-medium text-gray-900">
+                            {formatDateLocal(new Date(openAssignment.assigned_at))}
+                          </div>
+                        </div>
+                        <div>
+                          <div className="text-gray-600">Department</div>
+                          <div className="font-medium text-gray-900">{openAssignment.department_snapshot || '—'}</div>
+                        </div>
+                      </>
+                    ) : null}
+                    <div>
+                      <div className="text-gray-600">Warranty expiry</div>
+                      <div className="font-medium text-gray-900">
+                        {equipment.warranty_expiry ? formatDateLocal(new Date(equipment.warranty_expiry)) : '—'}
                       </div>
                     </div>
-                  );
-                })}
+                    <div>
+                      <div className="text-gray-600">Purchase date</div>
+                      <div className="font-medium text-gray-900">
+                        {equipment.purchase_date ? formatDateLocal(new Date(equipment.purchase_date)) : '—'}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              {equipment.notes ? (
+                <div className="overflow-hidden rounded-xl border border-gray-200 bg-white">
+                  <div className="border-b border-gray-200 bg-gray-50 px-4 py-3">
+                    <h4 className="font-semibold text-gray-900">Notes</h4>
+                  </div>
+                  <div className="p-4 text-sm text-gray-900">{equipment.notes}</div>
+                </div>
+              ) : null}
             </div>
-            {(!logs || logs.length === 0) && (
-              <div className="text-center text-gray-500 py-8">No logs found</div>
-            )}
-          </div>
-        )}
+          )}
+
+          {tab === 'work-orders' && (
+            <div className="space-y-4">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <h3 className="text-sm font-semibold text-gray-900">Work orders</h3>
+                <button
+                  type="button"
+                  onClick={() => setShowWorkOrderForm(true)}
+                  className="rounded-lg bg-brand-red px-4 py-2 text-sm font-medium text-white hover:bg-red-700"
+                >
+                  + New work order
+                </button>
+              </div>
+              <div className="space-y-2">
+                {Array.isArray(workOrders) &&
+                  workOrders.map((wo) => {
+                    const p = wo.photos as string[] | { before?: string[]; after?: string[] } | null;
+                    const photoList = Array.isArray(p)
+                      ? p
+                      : p && typeof p === 'object'
+                        ? [
+                            ...(Array.isArray((p as any).before) ? (p as any).before : []),
+                            ...(Array.isArray((p as any).after) ? (p as any).after : []),
+                          ]
+                        : [];
+                    return (
+                      <div
+                        key={wo.id}
+                        className="cursor-pointer rounded-lg border p-4 hover:bg-gray-50"
+                        onClick={() => nav(`/fleet/work-orders/${wo.id}`)}
+                        role="button"
+                        tabIndex={0}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter' || e.key === ' ') {
+                            e.preventDefault();
+                            nav(`/fleet/work-orders/${wo.id}`);
+                          }
+                        }}
+                      >
+                        <div className="flex items-start justify-between gap-4">
+                          <div className="min-w-0 flex-1">
+                            <div className="font-medium text-gray-900">{wo.work_order_number}</div>
+                            <div className="text-sm text-gray-600">{wo.description}</div>
+                            <div className="mt-2 flex flex-wrap gap-2">
+                              <span
+                                className={`rounded px-2 py-1 text-xs ${urgencyColors[wo.urgency] || 'bg-gray-100 text-gray-800'}`}
+                              >
+                                {wo.urgency}
+                              </span>
+                              <span
+                                className={`rounded px-2 py-1 text-xs ${statusColors[wo.status] || 'bg-gray-100 text-gray-800'}`}
+                              >
+                                {wo.status.replace(/_/g, ' ')}
+                              </span>
+                            </div>
+                            {photoList.length > 0 ? (
+                              <div className="mt-2 flex flex-wrap gap-2">
+                                {photoList.slice(0, 3).map((photoId: string, idx: number) => (
+                                  <img
+                                    key={idx}
+                                    src={withFileAccessToken(`/files/${photoId}/thumbnail?w=100`)}
+                                    alt=""
+                                    className="h-16 w-16 rounded border object-cover"
+                                  />
+                                ))}
+                              </div>
+                            ) : null}
+                          </div>
+                          <div className="shrink-0 text-sm text-gray-500">
+                            {formatDateLocal(new Date(wo.created_at))}
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+              </div>
+              {(!workOrders || workOrders.length === 0) && (
+                <div className="py-8 text-center text-sm text-gray-500">No work orders found</div>
+              )}
+            </div>
+          )}
+
+          {tab === 'logs' && (
+            <div className="space-y-4">
+              <h3 className="text-sm font-semibold text-gray-900">Logs & history</h3>
+              <div className="space-y-2">
+                {Array.isArray(logs) &&
+                  logs.map((log) => {
+                    const linkedAssignment =
+                      log.log_type === 'checkout' || log.log_type === 'checkin' ? findAssignmentForLog(log) : null;
+                    const isClickable = !!linkedAssignment;
+                    const displayLogType =
+                      log.log_type === 'checkout' ? 'assignment' : log.log_type === 'checkin' ? 'return' : log.log_type;
+                    return (
+                      <div
+                        key={log.id}
+                        className={`border-l-4 py-2 pl-4 ${
+                          isClickable
+                            ? 'cursor-pointer border-brand-red hover:rounded-r-lg hover:bg-gray-50'
+                            : 'border-gray-300'
+                        }`}
+                        onClick={
+                          isClickable
+                            ? () => {
+                                setLogDetailAssignment(linkedAssignment!);
+                                setLogDetailLogType(
+                                  log.log_type === 'checkout' ? 'assignment' : ('return' as 'assignment' | 'return')
+                                );
+                              }
+                            : undefined
+                        }
+                        role={isClickable ? 'button' : undefined}
+                      >
+                        <div className="flex items-start justify-between gap-4">
+                          <div className="min-w-0">
+                            <div className="font-medium capitalize text-gray-900">
+                              {displayLogType.replace(/_/g, ' ')}
+                            </div>
+                            <div className="text-sm text-gray-600">{log.description}</div>
+                            {isClickable ? (
+                              <div className="mt-1 text-xs text-brand-red">Click for full details</div>
+                            ) : null}
+                          </div>
+                          <div className="shrink-0 text-sm text-gray-500">
+                            {formatDateLocal(new Date(log.log_date))}
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+              </div>
+              {(!logs || logs.length === 0) && (
+                <div className="py-8 text-center text-sm text-gray-500">No logs found</div>
+              )}
+            </div>
+          )}
+        </div>
       </div>
 
       {/* Assign Modal */}

@@ -166,6 +166,17 @@ const IconWrench = () => (
   </svg>
 );
 
+const IconCreditCard = () => (
+  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <path
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      strokeWidth={2}
+      d="M3 10h18M7 15h1m4 0h1m-7 4h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v11a2 2 0 002 2z"
+    />
+  </svg>
+);
+
 const IconUsersGroup = () => (
   <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
@@ -467,15 +478,23 @@ export default function AppShell({ children }: PropsWithChildren){
     },
     {
       id: 'fleet',
-      label: 'Fleet & Equipment',
+      label: 'Fleet',
       icon: <IconTruck />,
       items: [
         { id: 'fleet-dashboard', label: 'Dashboard', path: '/fleet', icon: <IconTruck />, requiredPermission: 'fleet:access' },
         { id: 'fleet-assets', label: 'Fleet Assets', path: '/fleet/assets', icon: <IconTruck />, requiredPermission: 'fleet:vehicles:read' },
-        { id: 'equipment', label: 'Equipment', path: '/fleet/equipment', icon: <IconWrench />, requiredPermission: 'equipment:read' },
         { id: 'fleet-calendar', label: 'Schedule', path: '/fleet/calendar', icon: <IconCalendar />, requiredPermission: 'fleet:access' },
         { id: 'work-orders', label: 'Work Orders', path: '/fleet/work-orders', icon: <IconClipboard />, requiredPermission: 'fleet:access' },
         { id: 'inspections', label: 'Inspections', path: '/fleet/inspections', icon: <IconClipboardCheck />, requiredPermission: 'fleet:access' },
+      ]
+    },
+    {
+      id: 'company-assets',
+      label: 'Company assets',
+      icon: <IconBox />,
+      items: [
+        { id: 'equipment', label: 'Equipment', path: '/company-assets/equipment', icon: <IconWrench />, requiredPermission: 'equipment:read' },
+        { id: 'corporate-cards', label: 'Corporate cards', path: '/company-assets/credit-cards', icon: <IconCreditCard />, requiredPermission: 'company_cards:read' },
       ]
     },
     {
@@ -585,7 +604,10 @@ export default function AppShell({ children }: PropsWithChildren){
       if (item.type === 'customer') return hasPermission('business:customers:read');
       if (item.type === 'quote') return hasPermission('sales:quotations:read');
       if (item.type === 'user') return hasPermission('hr:users:read') || hasPermission('users:read');
-      if (item.type === 'fleet_asset' || item.type === 'equipment' || item.type === 'work_order') return hasPermission('fleet:access') || hasPermission('fleet:read');
+      if (item.type === 'fleet_asset' || item.type === 'equipment' || item.type === 'work_order') {
+        return hasPermission('fleet:access') || hasPermission('fleet:read');
+      }
+      if (item.type === 'company_credit_card') return hasPermission('company_cards:read');
       // Unknown types: default allow (backend should still enforce on data fetch)
       return true;
     };
@@ -891,12 +913,21 @@ export default function AppShell({ children }: PropsWithChildren){
               return '/quotes';
             };
 
+            const getCompanyAssetsDefaultPath = () => {
+              if (category.id !== 'company-assets') return category.items[0]?.path || '#';
+              if (hasPermission('equipment:read')) return '/company-assets/equipment';
+              if (hasPermission('company_cards:read')) return '/company-assets/credit-cards';
+              const first = category.items.find((it) => hasPermission(it.requiredPermission));
+              return first?.path || '/company-assets/equipment';
+            };
+
             // Get the default path based on category
             const getDefaultPath = () => {
               if (category.id === 'services') return getServicesDefaultPath();
               if (category.id === 'repairs_maintenance') return getRepairsMaintenanceDefaultPath();
               if (category.id === 'business') return getBusinessDefaultPath();
               if (category.id === 'sales') return getSalesDefaultPath();
+              if (category.id === 'company-assets') return getCompanyAssetsDefaultPath();
               return category.items[0]?.path || '#';
             };
 
