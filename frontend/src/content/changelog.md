@@ -31,7 +31,7 @@ title: Update 1.1.026 - Week 17
 - Corporate cards list: filters, search, sorting, custody filters, and table layout aligned with the Equipment list.
 - Equipment detail: title bar, tabs, typography, and primary/secondary buttons aligned with the rest of the app (e.g. Projects/Opportunities).
 - Corporate cards: **Mark cancelled** sends a status update (`PATCH`, no longer uses `DELETE`). Administrators see **Delete card** to remove the record permanently (with confirmation). Equipment detail: administrators see **Delete equipment** to retire the item (with confirmation).
-- API: `DELETE /company-credit-cards/:id` permanently removes the row and is **administrator-only** (use `PATCH` with `status: cancelled` to cancel). `DELETE /fleet/equipment/:id` is **administrator-only** (retires the item as before).
+- API: `DELETE /company-credit-cards/:id` permanently removes the row and is **administrator-only** (use `PATCH` with `status: cancelled` to cancel). Equipment: `DELETE /fleet/equipment/:id` **retires** the item (`equipment:write`). **`POST /fleet/equipment/:id/purge`** removes the row from the database (and linked work orders) — **administrators only**.
 
 ### Fixed
 - (none this release)

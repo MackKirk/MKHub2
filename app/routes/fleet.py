@@ -1061,10 +1061,7 @@ def delete_equipment(
     user=Depends(get_current_user),
     _=Depends(require_permissions("equipment:write")),
 ):
-    """Retire equipment (soft delete). Administrators only."""
-    if not is_admin(user, db):
-        raise HTTPException(status_code=403, detail="Only administrators can delete equipment")
-
+    """Retire equipment (soft delete: status set to retired)."""
     equipment = db.query(Equipment).filter(Equipment.id == equipment_id).first()
     if not equipment:
         raise HTTPException(status_code=404, detail="Equipment not found")
@@ -1084,6 +1081,43 @@ def delete_equipment(
         context={"equipment_id": str(equipment.id), "note": "status set to retired"},
     )
     return {"message": "Equipment deleted successfully"}
+
+
+@router.post("/equipment/{equipment_id}/purge")
+def purge_equipment_record(
+    equipment_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    user=Depends(get_current_user),
+):
+    """Permanently remove equipment and DB-cascaded rows. Deletes work orders linked to this equipment (no FK). Administrators only."""
+    if not is_admin(user, db):
+        raise HTTPException(status_code=403, detail="Only administrators can permanently delete equipment")
+
+    equipment = db.query(Equipment).filter(Equipment.id == equipment_id).first()
+    if not equipment:
+        raise HTTPException(status_code=404, detail="Equipment not found")
+
+    before = snapshot_equipment(equipment)
+    work_orders = (
+        db.query(WorkOrder)
+        .filter(WorkOrder.entity_type == "equipment", WorkOrder.entity_id == equipment_id)
+        .all()
+    )
+    for wo in work_orders:
+        db.delete(wo)
+
+    db.delete(equipment)
+    db.commit()
+    audit_fleet(
+        db,
+        user,
+        entity_type="equipment",
+        entity_id=equipment_id,
+        action="DELETE",
+        changes_json={"before": before, "purged_work_orders": len(work_orders)},
+        context={"equipment_id": str(equipment_id), "permanent": True},
+    )
+    return {"message": "Equipment permanently removed"}
 
 
 @router.post("/equipment/{equipment_id}/checkout", response_model=EquipmentCheckoutResponse)

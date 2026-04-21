@@ -177,15 +177,29 @@ export default function EquipmentDetail() {
     onError: (error: any) => toast.error(error?.message || 'Failed to return'),
   });
 
-  const [deletingEquipment, setDeletingEquipment] = useState(false);
-  const deleteEquipmentMutation = useMutation({
+  const canWriteEquipment =
+    isAdministrator || !!(me?.permissions || []).includes('equipment:write');
+
+  const [retiringEquipment, setRetiringEquipment] = useState(false);
+  const retireEquipmentMutation = useMutation({
     mutationFn: () => api('DELETE', `/fleet/equipment/${id}`),
     onSuccess: () => {
       toast.success('Equipment retired');
       queryClient.invalidateQueries({ queryKey: ['equipment'] });
       nav('/company-assets/equipment');
     },
-    onError: (error: any) => toast.error(error?.message || 'Delete failed'),
+    onError: (error: any) => toast.error(error?.message || 'Retire failed'),
+  });
+
+  const [purgingEquipment, setPurgingEquipment] = useState(false);
+  const purgeEquipmentMutation = useMutation({
+    mutationFn: () => api('POST', `/fleet/equipment/${id}/purge`),
+    onSuccess: () => {
+      toast.success('Equipment removed from database');
+      queryClient.invalidateQueries({ queryKey: ['equipment'] });
+      nav('/company-assets/equipment');
+    },
+    onError: (error: any) => toast.error(error?.message || 'Permanent delete failed'),
   });
 
   const statusColors: Record<string, string> = {
@@ -306,30 +320,55 @@ export default function EquipmentDetail() {
                 Assign
               </button>
             )}
-            {isAdministrator ? (
+            {canWriteEquipment ? (
               <button
                 type="button"
-                disabled={deletingEquipment || deleteEquipmentMutation.isPending}
+                disabled={retiringEquipment || retireEquipmentMutation.isPending}
                 onClick={async () => {
                   const choice = await confirm({
-                    title: 'Delete equipment',
+                    title: 'Retire equipment',
                     message: openAssignment
-                      ? 'This item is still assigned. Retiring it will mark it as removed from active inventory; return it first if you want a clean custody record. Continue?'
-                      : 'Retire this equipment (mark as removed from active inventory)? Administrators only.',
-                    confirmText: 'Retire equipment',
+                      ? 'This item is still assigned. Retiring marks it as removed from active inventory; return it first if you want a clean custody record. Continue?'
+                      : 'Retire this equipment? It will stay in the system as retired (history preserved).',
+                    confirmText: 'Retire',
                     cancelText: 'Cancel',
                   });
                   if (choice !== 'confirm') return;
-                  setDeletingEquipment(true);
+                  setRetiringEquipment(true);
                   try {
-                    await deleteEquipmentMutation.mutateAsync();
+                    await retireEquipmentMutation.mutateAsync();
                   } finally {
-                    setDeletingEquipment(false);
+                    setRetiringEquipment(false);
                   }
                 }}
-                className="rounded-lg border border-red-300 bg-red-50 px-4 py-2 text-sm font-medium text-red-800 hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-50"
+                className="rounded-lg border border-amber-300 bg-amber-50 px-4 py-2 text-sm font-medium text-amber-900 hover:bg-amber-100 disabled:cursor-not-allowed disabled:opacity-50"
               >
-                {deletingEquipment || deleteEquipmentMutation.isPending ? 'Deleting…' : 'Delete equipment'}
+                {retiringEquipment || retireEquipmentMutation.isPending ? 'Retiring…' : 'Retire equipment'}
+              </button>
+            ) : null}
+            {isAdministrator ? (
+              <button
+                type="button"
+                disabled={purgingEquipment || purgeEquipmentMutation.isPending}
+                onClick={async () => {
+                  const choice = await confirm({
+                    title: 'Permanently delete equipment',
+                    message:
+                      'Remove this equipment row from the database (assignments, logs, checkouts, and linked work orders). For test data cleanup only. This cannot be undone.',
+                    confirmText: 'Delete permanently',
+                    cancelText: 'Cancel',
+                  });
+                  if (choice !== 'confirm') return;
+                  setPurgingEquipment(true);
+                  try {
+                    await purgeEquipmentMutation.mutateAsync();
+                  } finally {
+                    setPurgingEquipment(false);
+                  }
+                }}
+                className="rounded-lg border border-red-400 bg-white px-4 py-2 text-sm font-semibold text-red-800 hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {purgingEquipment || purgeEquipmentMutation.isPending ? 'Deleting…' : 'Delete permanently'}
               </button>
             ) : null}
             <div className="hidden border-l border-gray-200 pl-4 text-right sm:block">
