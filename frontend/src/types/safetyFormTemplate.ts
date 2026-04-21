@@ -296,8 +296,18 @@ function isEmptyValue(field: SafetyFormField, v: unknown): boolean {
   return false;
 }
 
-export function validateDynamicForm(definition: SafetyFormDefinition, payload: Record<string, unknown>): string[] {
-  const errs: string[] = [];
+/** Synthetic key for required worker signature validation (not a payload key). */
+export const DYNAMIC_FORM_WORKER_SIGNATURE_HIGHLIGHT_KEY = '__dynamic_worker_signature__';
+
+export type DynamicFormMissingField = { key: string; label: string };
+
+export function validateDynamicFormMissing(
+  definition: SafetyFormDefinition,
+  payload: Record<string, unknown>
+): DynamicFormMissingField[] {
+  const errs: DynamicFormMissingField[] = [];
+  const push = (key: string, label: string) => errs.push({ key, label });
+
   for (const sec of definition.sections) {
     for (const field of sec.fields) {
       if (!field.required) continue;
@@ -305,24 +315,25 @@ export function validateDynamicForm(definition: SafetyFormDefinition, payload: R
       if (!isFieldVisible(field, payload)) continue;
       if (field.type === 'pass_fail_total') continue;
       const v = payload[field.key];
+      const label = field.label || field.key;
       if (field.type === 'checkbox') {
-        if (v !== true) errs.push(field.label || field.key);
+        if (v !== true) push(field.key, label);
         continue;
       }
       if (field.type === 'dropdown_multi' || field.type === 'user_multi' || field.type === 'equipment_multi') {
-        if (!Array.isArray(v) || v.length === 0) errs.push(field.label || field.key);
+        if (!Array.isArray(v) || v.length === 0) push(field.key, label);
         continue;
       }
       if (field.type === 'yes_no_na') {
         const o = v && typeof v === 'object' && !Array.isArray(v) ? (v as { status?: string }) : {};
-        if (!o.status || !['yes', 'no', 'na'].includes(o.status)) errs.push(field.label || field.key);
+        if (!o.status || !['yes', 'no', 'na'].includes(o.status)) push(field.key, label);
         continue;
       }
       if (field.type === 'pass_fail_na') {
-        if (v !== 'pass' && v !== 'fail' && v !== 'na') errs.push(field.label || field.key);
+        if (v !== 'pass' && v !== 'fail' && v !== 'na') push(field.key, label);
         continue;
       }
-      if (isEmptyValue(field, v)) errs.push(field.label || field.key);
+      if (isEmptyValue(field, v)) push(field.key, label);
     }
   }
   const workerSig = definition.signature_policy?.worker;
@@ -330,11 +341,15 @@ export function validateDynamicForm(definition: SafetyFormDefinition, payload: R
     const mode = workerSig.mode || 'drawn';
     const typed = typeof payload._worker_signature === 'string' && payload._worker_signature.trim().length > 0;
     const drawn = typeof payload._worker_signature_file_id === 'string' && payload._worker_signature_file_id.trim().length > 0;
-    if (mode === 'typed' && !typed) errs.push('Worker signature');
-    if (mode === 'drawn' && !drawn) errs.push('Worker signature');
-    if (mode === 'any' && !typed && !drawn) errs.push('Worker signature');
+    if (mode === 'typed' && !typed) push(DYNAMIC_FORM_WORKER_SIGNATURE_HIGHLIGHT_KEY, 'Worker signature');
+    if (mode === 'drawn' && !drawn) push(DYNAMIC_FORM_WORKER_SIGNATURE_HIGHLIGHT_KEY, 'Worker signature');
+    if (mode === 'any' && !typed && !drawn) push(DYNAMIC_FORM_WORKER_SIGNATURE_HIGHLIGHT_KEY, 'Worker signature');
   }
   return errs;
+}
+
+export function validateDynamicForm(definition: SafetyFormDefinition, payload: Record<string, unknown>): string[] {
+  return validateDynamicFormMissing(definition, payload).map((e) => e.label);
 }
 
 /** Whether to show a required asterisk next to the field label in the respondent UI. */

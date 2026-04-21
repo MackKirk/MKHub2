@@ -28,6 +28,7 @@ from ..models.models import (
     Proposal,
 )
 from ..services.permissions import is_admin
+from ..services.safety_sign_request_access import user_has_any_sign_request_on_project
 
 # Upload categories / path segments from ProposalForm & ImagePicker (see frontend ProposalForm.tsx).
 _PROPOSAL_TAB_CLIENT_FILE_MARKERS = (
@@ -236,11 +237,13 @@ def assert_can_read_storage_key(user: User, db: Session, storage_key: str) -> No
         proj = db.query(Project).filter(Project.id == puid, Project.deleted_at.is_(None)).first()
         if not proj:
             raise HTTPException(status_code=404, detail="Project not found")
-        if not can_access_business_line(user, getattr(proj, "business_line", None)):
-            raise HTTPException(status_code=403, detail="Forbidden")
-        if not has_project_files_category_permission(user, cat, action="read", project=proj):
-            raise HTTPException(status_code=403, detail="Forbidden")
-        return
+        line_ok = can_access_business_line(user, getattr(proj, "business_line", None))
+        cat_ok = has_project_files_category_permission(user, cat, action="read", project=proj)
+        if line_ok and cat_ok:
+            return
+        if user_has_any_sign_request_on_project(db, user, str(proj.id)):
+            return
+        raise HTTPException(status_code=403, detail="Forbidden")
     if c:
         if not _has_permission(user, "business:customers:read"):
             raise HTTPException(status_code=403, detail="Forbidden")
@@ -460,13 +463,16 @@ def assert_can_read_file_object(user: User, db: Session, fo: FileObject) -> None
         if not proj:
             raise HTTPException(status_code=404, detail="Project not found")
         if not can_access_project_for_proposal_assets(user, proj):
-            raise HTTPException(status_code=403, detail="Forbidden")
+            if not user_has_any_sign_request_on_project(db, user, str(proj.id)):
+                raise HTTPException(status_code=403, detail="Forbidden")
         cat = str(fo.category_id) if fo.category_id else None
         if has_project_files_category_permission(
             user, cat, action="read", project=proj
         ):
             return
         if _can_read_project_file_via_proposal_tab(user, db, proj, fo):
+            return
+        if user_has_any_sign_request_on_project(db, user, str(proj.id)):
             return
         raise HTTPException(status_code=403, detail="Forbidden")
 

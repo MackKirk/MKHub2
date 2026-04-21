@@ -1,4 +1,6 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode, type RefObject } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode, type RefObject } from 'react';
+import { createPortal } from 'react-dom';
+import { useFixedPortalDropdownPosition } from '@/hooks/useFixedPortalDropdownPosition';
 import { type FormCustomListTreeNode, getChildrenAtPath } from '@/utils/customListTree';
 
 const SEP = ' › ';
@@ -25,15 +27,23 @@ function ChevronRight({ className }: { className?: string }) {
   );
 }
 
-function useCloseOnOutsideAndEscape(open: boolean, setOpen: (v: boolean) => void, rootRef: RefObject<HTMLDivElement | null>) {
+function useCloseOnOutsideAndEscape(
+  open: boolean,
+  setOpen: (v: boolean) => void,
+  rootRef: RefObject<HTMLDivElement | null>,
+  panelRef?: RefObject<HTMLElement | null>
+) {
   useEffect(() => {
     if (!open) return;
     const onDoc = (e: MouseEvent) => {
-      if (rootRef.current && !rootRef.current.contains(e.target as Node)) setOpen(false);
+      const t = e.target as Node;
+      if (rootRef.current?.contains(t)) return;
+      if (panelRef?.current?.contains(t)) return;
+      setOpen(false);
     };
     document.addEventListener('mousedown', onDoc);
     return () => document.removeEventListener('mousedown', onDoc);
-  }, [open, setOpen, rootRef]);
+  }, [open, setOpen, rootRef, panelRef]);
 
   useEffect(() => {
     if (!open) return;
@@ -54,6 +64,8 @@ type PanelChromeProps = {
   items: FormCustomListTreeNode[];
   children: ReactNode;
   footer?: ReactNode;
+  panelRef: RefObject<HTMLDivElement | null>;
+  fixedOverlayStyle: CSSProperties;
 };
 
 function PickerPanel({
@@ -65,13 +77,17 @@ function PickerPanel({
   items,
   children,
   footer,
+  panelRef,
+  fixedOverlayStyle,
 }: PanelChromeProps) {
   const trail = breadcrumbTrail(items, pathIds);
   const showSearch = true;
 
   return (
     <div
-      className="absolute z-30 left-0 right-0 mt-1 flex max-h-[min(24rem,70vh)] flex-col rounded-xl border-2 border-gray-200 bg-white shadow-lg overflow-hidden"
+      ref={panelRef}
+      style={fixedOverlayStyle}
+      className="fixed flex flex-col rounded-xl border-2 border-gray-200 bg-white shadow-lg overflow-hidden min-h-0"
       role="dialog"
       aria-label="Custom list picker"
     >
@@ -151,7 +167,13 @@ export function SafetyHierarchicalCustomListSingle({
   const [pathIds, setPathIds] = useState<string[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const rootRef = useRef<HTMLDivElement>(null);
+  const anchorRef = useRef<HTMLButtonElement>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
+  const fixedPanelStyle = useFixedPortalDropdownPosition(open && !disabled, anchorRef, {
+    maxHeightPx: 384,
+    viewportMaxFraction: 0.7,
+  });
 
   const labelById = useMemo(() => {
     const m = new Map<string, string>();
@@ -161,7 +183,7 @@ export function SafetyHierarchicalCustomListSingle({
 
   const summary = !value.trim() ? emptyLabel : labelById.get(value) ?? value;
 
-  useCloseOnOutsideAndEscape(open, setOpen, rootRef);
+  useCloseOnOutsideAndEscape(open, setOpen, rootRef, panelRef);
 
   useEffect(() => {
     if (!open) {
@@ -204,6 +226,7 @@ export function SafetyHierarchicalCustomListSingle({
     <div ref={rootRef} className="relative">
       {!hideLabel && <label className="block text-sm font-medium text-gray-600 mb-2">{label}</label>}
       <button
+        ref={anchorRef}
         type="button"
         disabled={disabled}
         aria-expanded={open}
@@ -223,15 +246,20 @@ export function SafetyHierarchicalCustomListSingle({
         </svg>
       </button>
 
-      {open && !disabled && (
-        <PickerPanel
-          searchQuery={searchQuery}
-          setSearchQuery={setSearchQuery}
-          searchInputRef={searchInputRef}
-          pathIds={pathIds}
-          setPathIds={setPathIds}
-          items={items}
-        >
+      {open &&
+        !disabled &&
+        fixedPanelStyle != null &&
+        createPortal(
+          <PickerPanel
+            panelRef={panelRef}
+            fixedOverlayStyle={fixedPanelStyle}
+            searchQuery={searchQuery}
+            setSearchQuery={setSearchQuery}
+            searchInputRef={searchInputRef}
+            pathIds={pathIds}
+            setPathIds={setPathIds}
+            items={items}
+          >
           {searchQuery.trim() ? (
             searchHits.length === 0 ? (
               <div className="px-3 py-2 text-sm text-gray-500">No matches</div>
@@ -282,8 +310,9 @@ export function SafetyHierarchicalCustomListSingle({
               )}
             </>
           )}
-        </PickerPanel>
-      )}
+        </PickerPanel>,
+          document.body
+        )}
     </div>
   );
 }
@@ -315,7 +344,13 @@ export function SafetyHierarchicalCustomListMulti({
   const [searchQuery, setSearchQuery] = useState('');
   const [draft, setDraft] = useState<string[]>(value);
   const rootRef = useRef<HTMLDivElement>(null);
+  const anchorRef = useRef<HTMLButtonElement>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
+  const fixedPanelStyle = useFixedPortalDropdownPosition(open && !disabled, anchorRef, {
+    maxHeightPx: 384,
+    viewportMaxFraction: 0.7,
+  });
 
   const labelById = useMemo(() => {
     const m = new Map<string, string>();
@@ -381,7 +416,10 @@ export function SafetyHierarchicalCustomListMulti({
   useEffect(() => {
     if (!open) return;
     const onDoc = (e: MouseEvent) => {
-      if (rootRef.current && !rootRef.current.contains(e.target as Node)) cancel();
+      const t = e.target as Node;
+      if (rootRef.current?.contains(t)) return;
+      if (panelRef.current?.contains(t)) return;
+      cancel();
     };
     document.addEventListener('mousedown', onDoc);
     return () => document.removeEventListener('mousedown', onDoc);
@@ -400,6 +438,7 @@ export function SafetyHierarchicalCustomListMulti({
     <div ref={rootRef} className="relative space-y-2">
       {!hideLabel && <label className="block text-sm font-medium text-gray-600 mb-2">{label}</label>}
       <button
+        ref={anchorRef}
         type="button"
         disabled={disabled}
         aria-expanded={open}
@@ -444,33 +483,38 @@ export function SafetyHierarchicalCustomListMulti({
         </div>
       )}
 
-      {open && !disabled && (
-        <PickerPanel
-          searchQuery={searchQuery}
-          setSearchQuery={setSearchQuery}
-          searchInputRef={searchInputRef}
-          pathIds={pathIds}
-          setPathIds={setPathIds}
-          items={items}
-          footer={
-            <>
-              <button
-                type="button"
-                className="px-3 py-2 text-sm font-medium rounded-xl border-2 border-gray-200 bg-white hover:border-gray-300 text-gray-700"
-                onClick={cancel}
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                className="px-3 py-2 text-sm font-medium rounded-xl border-2 border-brand-red bg-brand-red text-white hover:opacity-95"
-                onClick={apply}
-              >
-                Apply
-              </button>
-            </>
-          }
-        >
+      {open &&
+        !disabled &&
+        fixedPanelStyle != null &&
+        createPortal(
+          <PickerPanel
+            panelRef={panelRef}
+            fixedOverlayStyle={fixedPanelStyle}
+            searchQuery={searchQuery}
+            setSearchQuery={setSearchQuery}
+            searchInputRef={searchInputRef}
+            pathIds={pathIds}
+            setPathIds={setPathIds}
+            items={items}
+            footer={
+              <>
+                <button
+                  type="button"
+                  className="px-3 py-2 text-sm font-medium rounded-xl border-2 border-gray-200 bg-white hover:border-gray-300 text-gray-700"
+                  onClick={cancel}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  className="px-3 py-2 text-sm font-medium rounded-xl border-2 border-brand-red bg-brand-red text-white hover:opacity-95"
+                  onClick={apply}
+                >
+                  Apply
+                </button>
+              </>
+            }
+          >
           {draft.length > 0 && (
             <div className="px-2 py-2 bg-blue-50/60 border-b border-blue-100">
               <div className="text-[10px] font-semibold uppercase tracking-wide text-blue-800 mb-1">Selected</div>
@@ -556,8 +600,9 @@ export function SafetyHierarchicalCustomListMulti({
               )}
             </>
           )}
-        </PickerPanel>
-      )}
+        </PickerPanel>,
+          document.body
+        )}
     </div>
   );
 }

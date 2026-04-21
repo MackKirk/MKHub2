@@ -1,6 +1,7 @@
-import { useMemo, useEffect, useCallback, useState } from 'react';
+import { useMemo, useEffect, useLayoutEffect, useCallback, useState, useRef } from 'react';
 import { useQuery, useQueries } from '@tanstack/react-query';
-import { api, withFileAccessToken } from '@/lib/api';
+import { api } from '@/lib/api';
+import { withSignSessionQuery, type SafetySignSession } from '@/lib/safetySignSessionQuery';
 import SafetySignaturePad, { type SavedSignatureMeta } from '@/components/SafetySignaturePad';
 import SafetyDynamicFileField from '@/components/SafetyDynamicFileField';
 import SafetyPdfViewReferenceField from '@/components/SafetyPdfViewReferenceField';
@@ -15,6 +16,7 @@ import {
 import {
   collectPassFailNaKeysOrdered,
   computePftAggregate,
+  DYNAMIC_FORM_WORKER_SIGNATURE_HIGHLIGHT_KEY,
   isFieldVisible,
   type SafetyFormDefinition,
   type SafetyFormField,
@@ -217,6 +219,10 @@ type Props = {
   /** Shown on saved signature + embedded in PDF metadata */
   signerDisplayName?: string;
   signerUserId?: string;
+  /** Pending signers without safety:read — pass through to template / list / upload APIs */
+  signSession?: SafetySignSession | null;
+  /** Keys of required fields that failed validation (e.g. finalize); shown with a red outline */
+  highlightRequiredFieldKeys?: readonly string[];
 };
 
 function PassFailTotalAggregateSync({
@@ -257,8 +263,33 @@ export default function DynamicSafetyForm({
   projectId = '',
   signerDisplayName = 'Preview user',
   signerUserId,
+  signSession = null,
+  highlightRequiredFieldKeys,
 }: Props) {
   const disabled = !canWrite || readOnly;
+  const highlightKeySet = useMemo(
+    () => (highlightRequiredFieldKeys?.length ? new Set(highlightRequiredFieldKeys) : null),
+    [highlightRequiredFieldKeys]
+  );
+
+  const highlightScrollPrevEmpty = useRef(true);
+  useLayoutEffect(() => {
+    const keys = highlightRequiredFieldKeys ?? [];
+    if (keys.length === 0) {
+      highlightScrollPrevEmpty.current = true;
+      return;
+    }
+    const shouldScroll = highlightScrollPrevEmpty.current;
+    highlightScrollPrevEmpty.current = false;
+    if (!shouldScroll) return;
+    const first = keys[0];
+    const escaped =
+      typeof CSS !== 'undefined' && typeof CSS.escape === 'function'
+        ? CSS.escape(first)
+        : first.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+    const el = document.querySelector(`[data-safety-field-key="${escaped}"]`);
+    el?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }, [highlightRequiredFieldKeys]);
   const [commentOpen, setCommentOpen] = useState<Record<string, boolean>>({});
   const sections = useMemo(() => sortedSections(definition), [definition]);
 
@@ -318,8 +349,12 @@ export default function DynamicSafetyForm({
   });
 
   const { data: fleetAssets = [] } = useQuery({
-    queryKey: ['fleet-assets-safety-form'],
-    queryFn: () => api<FleetPick[]>('GET', '/form-templates/support/fleet-assets?limit=200'),
+    queryKey: ['fleet-assets-safety-form', signSession?.projectId, signSession?.inspectionId],
+    queryFn: () =>
+      api<FleetPick[]>(
+        'GET',
+        withSignSessionQuery('/form-templates/support/fleet-assets?limit=200', signSession)
+      ),
     enabled: needFleet,
   });
 
@@ -341,9 +376,15 @@ export default function DynamicSafetyForm({
 
   const customListQueries = useQueries({
     queries: customListIds.map((id) => ({
-      queryKey: ['formCustomList', id, 'runtime'] as const,
+      queryKey: ['formCustomList', id, 'runtime', signSession?.projectId, signSession?.inspectionId] as const,
       queryFn: () =>
-        api<FormCustomListRuntimeDetail>('GET', `/form-custom-lists/${encodeURIComponent(id)}?for_runtime=true`),
+        api<FormCustomListRuntimeDetail>(
+          'GET',
+          withSignSessionQuery(
+            `/form-custom-lists/${encodeURIComponent(id)}?for_runtime=true`,
+            signSession
+          )
+        ),
       staleTime: 60_000,
     })),
   });
@@ -420,6 +461,9 @@ export default function DynamicSafetyForm({
         form.append('client_id', '');
         form.append('employee_id', '');
         form.append('category_id', FILE_CAT);
+        if (signSession?.inspectionId?.trim()) {
+          form.append('pending_safety_sign_inspection_id', signSession.inspectionId.trim());
+        }
         const res = await api<{ id: string }>('POST', '/files/upload-proxy', form);
         // Keep file_object on storage for form/PDF only — not listed under Project > Files.
         return res.id;
@@ -427,13 +471,14 @@ export default function DynamicSafetyForm({
         return null;
       }
     },
-    [projectId]
+    [projectId, signSession?.inspectionId]
   );
 
   const renderField = (field: SafetyFormField, _zebra: boolean, _idx: number) => {
     if (!isFieldVisible(field, formPayload)) return null;
     const rowBg = '';
     const k = field.key;
+    const rowWrapClass = `p-4 ${rowBg} ${highlightKeySet?.has(k) ? 'ring-2 ring-red-500/90 rounded-lg' : ''}`;
     const commentExpanded = commentOpen[field.id] === true;
     const sideComment = getSideCommentForField(formPayload, k);
     const sideCommentFilled =
@@ -443,7 +488,7 @@ export default function DynamicSafetyForm({
     if (field.type === 'pass_fail_total') {
       const pft = getPft(formPayload, k);
       return (
-        <div key={field.id} className={`p-4 ${rowBg}`}>
+        <div key={field.id} data-safety-field-key={k} className={rowWrapClass}>
           <PassFailTotalAggregateSync
             fieldKey={k}
             sourceKeys={allPassFailNaKeys}
@@ -492,7 +537,7 @@ export default function DynamicSafetyForm({
 
     if (field.type === 'text_info') {
       return (
-        <div key={field.id} className={`p-4 ${rowBg}`}>
+        <div key={field.id} data-safety-field-key={k} className={rowWrapClass}>
           <p className="text-sm text-gray-700 leading-relaxed whitespace-pre-wrap">{field.label}</p>
         </div>
       );
@@ -500,7 +545,7 @@ export default function DynamicSafetyForm({
 
     if (field.type === 'short_text') {
       return (
-        <div key={field.id} className={`p-4 ${rowBg}`}>
+        <div key={field.id} data-safety-field-key={k} className={rowWrapClass}>
           <FieldQuestionLabel field={field} className={FIELD_QUESTION_CLASS} />
           <div className="flex items-center gap-2">
             <input
@@ -535,7 +580,7 @@ export default function DynamicSafetyForm({
 
     if (field.type === 'long_text') {
       return (
-        <div key={field.id} className={`p-4 ${rowBg}`}>
+        <div key={field.id} data-safety-field-key={k} className={rowWrapClass}>
           <FieldQuestionLabel field={field} className={FIELD_QUESTION_CLASS} />
           <div className="flex items-start gap-2">
             <textarea
@@ -573,7 +618,7 @@ export default function DynamicSafetyForm({
       const raw = formPayload[k];
       const num = typeof raw === 'number' ? raw : raw === '' || raw == null ? '' : String(raw);
       return (
-        <div key={field.id} className={`p-4 ${rowBg}`}>
+        <div key={field.id} data-safety-field-key={k} className={rowWrapClass}>
           <FieldQuestionLabel field={field} className={FIELD_QUESTION_CLASS} />
           <div className="flex items-center gap-2">
             <input
@@ -613,7 +658,7 @@ export default function DynamicSafetyForm({
       const v = getStr(formPayload, k);
       const iso = v.includes('T') ? v.slice(0, 10) : v;
       return (
-        <div key={field.id} className={`p-4 ${rowBg}`}>
+        <div key={field.id} data-safety-field-key={k} className={rowWrapClass}>
           <FieldQuestionLabel field={field} className={FIELD_QUESTION_CLASS} />
           <div className="flex items-center gap-2">
             <div className="flex-1 min-w-0 rounded-xl border-2 border-gray-200 bg-white px-2 py-0.5 focus-within:ring-2 focus-within:ring-brand-red/20 focus-within:border-brand-red">
@@ -649,7 +694,7 @@ export default function DynamicSafetyForm({
 
     if (field.type === 'time') {
       return (
-        <div key={field.id} className={`p-4 ${rowBg}`}>
+        <div key={field.id} data-safety-field-key={k} className={rowWrapClass}>
           <FieldQuestionLabel field={field} className={FIELD_QUESTION_CLASS} />
           <div className="flex items-center gap-2">
             <div className="flex-1 min-w-0 rounded-xl border-2 border-gray-200 bg-white px-2 py-0.5 focus-within:ring-2 focus-within:ring-brand-red/20 focus-within:border-brand-red">
@@ -686,7 +731,7 @@ export default function DynamicSafetyForm({
     if (field.type === 'checkbox') {
       const v = formPayload[k] === true;
       return (
-        <div key={field.id} className={`p-4 ${rowBg}`}>
+        <div key={field.id} data-safety-field-key={k} className={rowWrapClass}>
           <div className="flex flex-wrap items-center justify-between gap-2">
             <label
               className={`inline-flex items-center gap-3 min-w-0 flex-1 cursor-pointer rounded-xl border-2 border-gray-200 bg-white px-3 py-2.5 hover:border-gray-300 transition-colors ${
@@ -745,7 +790,7 @@ export default function DynamicSafetyForm({
             : [];
       const val = getStr(formPayload, k);
       return (
-        <div key={field.id} className={`p-4 ${rowBg}`}>
+        <div key={field.id} data-safety-field-key={k} className={rowWrapClass}>
           <FieldQuestionLabel field={field} className={FIELD_QUESTION_CLASS} />
           <div className="flex items-center gap-2">
             {listId && listLoading ? (
@@ -814,7 +859,7 @@ export default function DynamicSafetyForm({
         : [];
       const sel = getStrArr(formPayload, k);
       return (
-        <div key={field.id} className={`p-4 ${rowBg}`}>
+        <div key={field.id} data-safety-field-key={k} className={rowWrapClass}>
           <FieldQuestionLabel field={field} className={FIELD_QUESTION_CLASS} />
           <div className="flex items-center gap-2">
             <div className="flex-1 min-w-0">
@@ -871,7 +916,7 @@ export default function DynamicSafetyForm({
       const cur = formPayload[k];
       const st = cur === 'pass' || cur === 'fail' || cur === 'na' ? cur : '';
       return (
-        <div key={field.id} className={`p-4 ${rowBg}`}>
+        <div key={field.id} data-safety-field-key={k} className={rowWrapClass}>
           <div className="flex flex-wrap items-center gap-4">
             <FieldQuestionLabel field={field} className={`flex-1 min-w-0 ${FIELD_QUESTION_INLINE}`} />
             <div className="flex gap-2 shrink-0 items-center flex-wrap">
@@ -917,7 +962,7 @@ export default function DynamicSafetyForm({
       const ynCommentFilled =
         yn.comments.trim().length > 0 || yn.commentImageIds.length > 0;
       return (
-        <div key={field.id} className={`p-4 ${rowBg}`}>
+        <div key={field.id} data-safety-field-key={k} className={rowWrapClass}>
           <div className="flex flex-wrap items-center gap-4">
             <FieldQuestionLabel field={field} className={`flex-1 min-w-0 ${FIELD_QUESTION_INLINE}`} />
             <div className="flex gap-2 shrink-0 items-center flex-wrap">
@@ -962,7 +1007,7 @@ export default function DynamicSafetyForm({
       const val = getStr(formPayload, k);
       const workerRows = employees.map((e) => ({ value: e.id, label: e.name || e.username || e.id }));
       return (
-        <div key={field.id} className={`p-4 ${rowBg}`}>
+        <div key={field.id} data-safety-field-key={k} className={rowWrapClass}>
           <FieldQuestionLabel field={field} className={FIELD_QUESTION_CLASS} />
           <div className="flex items-center gap-2">
             <div className="flex-1 min-w-0">
@@ -1002,7 +1047,7 @@ export default function DynamicSafetyForm({
       const sel = getStrArr(formPayload, k);
       const workerRows = employees.map((e) => ({ value: e.id, label: e.name || e.username || e.id }));
       return (
-        <div key={field.id} className={`p-4 ${rowBg}`}>
+        <div key={field.id} data-safety-field-key={k} className={rowWrapClass}>
           <FieldQuestionLabel field={field} className={FIELD_QUESTION_CLASS} />
           <div className="flex items-center gap-2">
             <div className="flex-1 min-w-0">
@@ -1048,7 +1093,7 @@ export default function DynamicSafetyForm({
         else if (!Number.isNaN(la) && !Number.isNaN(ln)) setKey(k, { lat: la, lng: ln });
       };
       return (
-        <div key={field.id} className={`p-4 ${rowBg}`}>
+        <div key={field.id} data-safety-field-key={k} className={rowWrapClass}>
           <FieldQuestionLabel field={field} className={FIELD_QUESTION_CLASS} />
           <div className="flex flex-wrap items-end gap-2">
             <div className="flex flex-wrap gap-2 items-end flex-1 min-w-0">
@@ -1108,7 +1153,7 @@ export default function DynamicSafetyForm({
       const val = getStr(formPayload, k);
       const fleetRows = fleetAssets.map((a) => ({ value: a.id, label: a.label }));
       return (
-        <div key={field.id} className={`p-4 ${rowBg}`}>
+        <div key={field.id} data-safety-field-key={k} className={rowWrapClass}>
           <FieldQuestionLabel field={field} className={FIELD_QUESTION_CLASS} />
           <div className="flex items-center gap-2">
             <div className="flex-1 min-w-0">
@@ -1148,7 +1193,7 @@ export default function DynamicSafetyForm({
       const sel = getStrArr(formPayload, k);
       const fleetRows = fleetAssets.map((a) => ({ value: a.id, label: a.label }));
       return (
-        <div key={field.id} className={`p-4 ${rowBg}`}>
+        <div key={field.id} data-safety-field-key={k} className={rowWrapClass}>
           <FieldQuestionLabel field={field} className={FIELD_QUESTION_CLASS} />
           <div className="flex items-center gap-2">
             <div className="flex-1 min-w-0">
@@ -1187,7 +1232,7 @@ export default function DynamicSafetyForm({
 
     if (field.type === 'pdf_view') {
       return (
-        <div key={field.id} className={`p-4 ${rowBg}`}>
+        <div key={field.id} data-safety-field-key={k} className={rowWrapClass}>
           <SafetyPdfViewReferenceField
             field={field}
             rowBg=""
@@ -1217,7 +1262,7 @@ export default function DynamicSafetyForm({
 
     if (field.type === 'image_view' || field.type === 'pdf_insert') {
       return (
-        <div key={field.id} className={`p-4 ${rowBg}`}>
+        <div key={field.id} data-safety-field-key={k} className={rowWrapClass}>
           <FieldQuestionLabel field={field} className={FIELD_QUESTION_CLASS} />
           <SafetyDynamicFileField
             field={field}
@@ -1259,20 +1304,38 @@ export default function DynamicSafetyForm({
   const workerSig = definition.signature_policy?.worker;
   const sigMode = workerSig?.mode || 'drawn';
   const workerSigFileId = getStr(formPayload, '_worker_signature_file_id') || null;
-  const workerSignedAt = getStr(formPayload, '_worker_signature_signed_at');
-  const workerSignerName = getStr(formPayload, '_worker_signature_signer_name');
-  const workerLocationLabel = getStr(formPayload, '_worker_signature_location_label');
-  const workerSignedDisplay =
-    workerSignedAt && !Number.isNaN(Date.parse(workerSignedAt))
-      ? new Date(workerSignedAt).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })
-      : '';
+
+  const formScrollClampRef = useRef<HTMLDivElement>(null);
+  const prevWorkerSigFileIdRef = useRef<string | null>(null);
+
+  /** After the signature pad unmounts, main scroll height shrinks; clamp scrollTop so the page does not stay "stuck" past the content. */
+  useLayoutEffect(() => {
+    const prev = prevWorkerSigFileIdRef.current;
+    prevWorkerSigFileIdRef.current = workerSigFileId;
+    const justSaved = !prev && !!workerSigFileId;
+    if (!justSaved) return;
+    const root = formScrollClampRef.current;
+    if (!root) return;
+    let el: HTMLElement | null = root;
+    while (el) {
+      const { overflowY } = window.getComputedStyle(el);
+      if (
+        (overflowY === 'auto' || overflowY === 'scroll' || overflowY === 'overlay') &&
+        el.scrollHeight > el.clientHeight
+      ) {
+        const max = el.scrollHeight - el.clientHeight;
+        if (el.scrollTop > max) el.scrollTop = Math.max(0, max);
+      }
+      el = el.parentElement;
+    }
+  }, [workerSigFileId]);
 
   return (
-    <div className="space-y-4">
+    <div ref={formScrollClampRef} className="space-y-4">
       {sections.map((section) => {
         const visibleFields = section.fields.filter((f) => isFieldVisible(f, formPayload));
         return (
-          <div key={section.id} className="rounded-xl border border-gray-200 bg-white overflow-hidden">
+          <div key={section.id} className="rounded-xl border border-gray-200 bg-white overflow-visible">
             <div className="px-4 py-3 border-b border-gray-200 bg-gray-200">
               <h3 className="text-sm font-semibold text-gray-700">{section.title}</h3>
             </div>
@@ -1283,9 +1346,24 @@ export default function DynamicSafetyForm({
         );
       })}
       {workerSig != null && (
-        <div className="rounded-xl border border-gray-200 bg-white p-4 space-y-3">
+        <div
+          data-safety-field-key={DYNAMIC_FORM_WORKER_SIGNATURE_HIGHLIGHT_KEY}
+          className={`rounded-xl border border-gray-200 bg-white p-4 space-y-3 ${
+            highlightKeySet?.has(DYNAMIC_FORM_WORKER_SIGNATURE_HIGHLIGHT_KEY) ? 'ring-2 ring-red-500/90' : ''
+          }`}
+        >
           <div className={FIELD_QUESTION_CLASS}>
-            Worker signature{workerSig.required ? ' (required)' : ' (optional)'}
+            {workerSig.required ? (
+              <span className="inline-flex flex-wrap items-baseline gap-x-1">
+                <span>Worker signature</span>
+                <span className="text-red-600 font-semibold" aria-hidden>
+                  *
+                </span>
+                <span className="sr-only"> (required)</span>
+              </span>
+            ) : (
+              <>Worker signature (optional)</>
+            )}
           </div>
           {(sigMode === 'typed' || sigMode === 'any') && (
             <input
@@ -1299,49 +1377,33 @@ export default function DynamicSafetyForm({
           )}
           {(sigMode === 'drawn' || sigMode === 'any') && projectId && (
             <>
-              {workerSigFileId && (
-                <div className="rounded-lg border border-gray-200 bg-gray-50/80 p-3 space-y-2 mb-1">
-                  <div className="text-xs font-semibold text-gray-600 uppercase tracking-wide">Saved signature</div>
-                  <div className="flex flex-wrap gap-4 items-start">
-                    <a
-                      href={withFileAccessToken(`/files/${encodeURIComponent(workerSigFileId)}/thumbnail?w=640`)}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="shrink-0 block rounded border border-gray-200 bg-white overflow-hidden"
-                    >
-                      <img
-                        src={withFileAccessToken(`/files/${encodeURIComponent(workerSigFileId)}/thumbnail?w=320`)}
-                        alt="Signature"
-                        className="max-h-28 w-auto max-w-[200px] object-contain"
-                      />
-                    </a>
-                    <div className="text-sm text-gray-800 space-y-1 min-w-0 flex-1">
-                      <div>
-                        <span className="text-gray-500">Signed by: </span>
-                        <span className="font-medium">{workerSignerName || '—'}</span>
-                      </div>
-                      <div>
-                        <span className="text-gray-500">Time: </span>
-                        <span>{workerSignedDisplay || '—'}</span>
-                      </div>
-                      <div>
-                        <span className="text-gray-500">Location: </span>
-                        <span>{workerLocationLabel || 'Not captured'}</span>
-                      </div>
-                    </div>
-                  </div>
-                </div>
+              {workerSigFileId && !disabled && canWrite && (
+                <p className="text-sm text-gray-600 mb-1">
+                  Signature on file.{' '}
+                  <button
+                    type="button"
+                    className="font-medium text-brand-red hover:underline"
+                    onClick={() => clearWorkerSignaturePersisted()}
+                  >
+                    Replace signature
+                  </button>
+                </p>
               )}
-              <SafetySignaturePad
-                projectId={projectId}
-                disabled={disabled}
-                fileObjectId={workerSigFileId}
-                onFileObjectId={(id) => setKey('_worker_signature_file_id', id || '')}
-                signerDisplayName={signerDisplayName}
-                signerUserId={signerUserId}
-                onSignatureSaved={applyWorkerSignatureSaved}
-                onSignatureClear={clearWorkerSignaturePersisted}
-              />
+              {workerSigFileId && disabled && (
+                <p className="text-sm text-gray-600 mb-1">Signature on file — see signatures below.</p>
+              )}
+              {!workerSigFileId && (
+                <SafetySignaturePad
+                  projectId={projectId}
+                  disabled={disabled}
+                  fileObjectId={workerSigFileId}
+                  onFileObjectId={(id) => setKey('_worker_signature_file_id', id || '')}
+                  signerDisplayName={signerDisplayName}
+                  signerUserId={signerUserId}
+                  onSignatureSaved={applyWorkerSignatureSaved}
+                  onSignatureClear={clearWorkerSignaturePersisted}
+                />
+              )}
             </>
           )}
         </div>

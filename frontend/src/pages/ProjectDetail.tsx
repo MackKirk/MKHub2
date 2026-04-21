@@ -794,26 +794,39 @@ export default function ProjectDetail(){
   const confirm = useConfirm();
   const queryClient = useQueryClient();
   const { id } = useParams();
-  const { data:proj, isLoading } = useQuery({ queryKey:['project', id], queryFn: ()=>api<Project>('GET', `/projects/${id}`) });
-  const { data:settings } = useQuery({ queryKey:['settings'], queryFn: ()=>api<any>('GET','/settings') });
-  const { data:projectDivisions } = useQuery({ queryKey:['project-divisions'], queryFn: ()=>api<any[]>('GET','/settings/project-divisions'), staleTime: 300_000 });
-  const { data:files, refetch: refetchFiles } = useQuery({ queryKey:['projectFiles', id], queryFn: ()=>api<ProjectFile[]>('GET', `/projects/${id}/files`) });
-  const { data:clientFiles } = useQuery({ queryKey:['clientFilesForContacts-project', proj?.client_id||''], queryFn: ()=> proj?.client_id? api<any[]>('GET', `/clients/${encodeURIComponent(String(proj?.client_id||''))}/files`) : Promise.resolve([]), enabled: !!proj?.client_id });
-  const { data:updates, refetch: refetchUpdates } = useQuery({ queryKey:['projectUpdates', id], queryFn: ()=>api<Update[]>('GET', `/projects/${id}/updates`) });
-  const { data:reports, refetch: refetchReports } = useQuery({ queryKey:['projectReports', id], queryFn: ()=>api<Report[]>('GET', `/projects/${id}/reports`) });
-  const { data:proposals } = useQuery({ queryKey:['projectProposals', id], queryFn: ()=>api<Proposal[]>('GET', `/proposals?project_id=${encodeURIComponent(String(id||''))}`) });
-  const { data:projectEstimates } = useQuery({ queryKey:['projectEstimates', id], queryFn: ()=>api<any[]>('GET', `/estimate/estimates?project_id=${encodeURIComponent(String(id||''))}`) });
-  const { data:employees } = useQuery({ queryKey:['employees'], queryFn: ()=>api<any[]>('GET','/employees') });
-  // Check for tab query parameter
   const searchParams = new URLSearchParams(location.search);
   const safetyInspectionFromUrl = searchParams.get('safety_inspection');
+  const signOnlySafetySession =
+    searchParams.get('sign_only') === '1' && Boolean((safetyInspectionFromUrl || '').trim());
+
+  const { data:proj, isLoading } = useQuery({
+    queryKey: ['project', id, signOnlySafetySession ? safetyInspectionFromUrl : ''],
+    queryFn: () =>
+      api<Project>(
+        'GET',
+        signOnlySafetySession && safetyInspectionFromUrl
+          ? `/projects/${id}?sign_inspection_id=${encodeURIComponent(safetyInspectionFromUrl)}`
+          : `/projects/${id}`
+      ),
+    enabled: !!id,
+  });
+  const { data:settings } = useQuery({ queryKey:['settings'], queryFn: ()=>api<any>('GET','/settings') });
+  const { data:projectDivisions } = useQuery({ queryKey:['project-divisions'], queryFn: ()=>api<any[]>('GET','/settings/project-divisions'), staleTime: 300_000 });
+  const { data:files, refetch: refetchFiles } = useQuery({ queryKey:['projectFiles', id], queryFn: ()=>api<ProjectFile[]>('GET', `/projects/${id}/files`), enabled: !!id && !signOnlySafetySession });
+  const { data:clientFiles } = useQuery({ queryKey:['clientFilesForContacts-project', proj?.client_id||''], queryFn: ()=> proj?.client_id? api<any[]>('GET', `/clients/${encodeURIComponent(String(proj?.client_id||''))}/files`) : Promise.resolve([]), enabled: !!proj?.client_id && !signOnlySafetySession });
+  const { data:updates, refetch: refetchUpdates } = useQuery({ queryKey:['projectUpdates', id], queryFn: ()=>api<Update[]>('GET', `/projects/${id}/updates`), enabled: !!id && !signOnlySafetySession });
+  const { data:reports, refetch: refetchReports } = useQuery({ queryKey:['projectReports', id], queryFn: ()=>api<Report[]>('GET', `/projects/${id}/reports`), enabled: !!id && !signOnlySafetySession });
+  const { data:proposals } = useQuery({ queryKey:['projectProposals', id], queryFn: ()=>api<Proposal[]>('GET', `/proposals?project_id=${encodeURIComponent(String(id||''))}`), enabled: !!id && !signOnlySafetySession });
+  const { data:projectEstimates } = useQuery({ queryKey:['projectEstimates', id], queryFn: ()=>api<any[]>('GET', `/estimate/estimates?project_id=${encodeURIComponent(String(id||''))}`), enabled: !!id && !signOnlySafetySession });
+  const { data:employees } = useQuery({ queryKey:['employees'], queryFn: ()=>api<any[]>('GET','/employees') });
+  // Tab query parameter (searchParams above)
   const initialTab = (searchParams.get('tab') as 'overview'|'general'|'reports'|'dispatch'|'timesheet'|'files'|'photos'|'documents'|'proposal'|'pricing'|'estimate'|'orders'|'safety'|null) || null;
   const [tab, setTab] = useState<'overview'|'general'|'reports'|'dispatch'|'timesheet'|'files'|'photos'|'documents'|'proposal'|'pricing'|'estimate'|'orders'|'safety'|null>(initialTab);
   // Live pricing items (from ProposalForm) to update division percentages instantly without reload.
   const [livePricingItems, setLivePricingItems] = useState<any[] | null>(null);
   const [pickerOpen, setPickerOpen] = useState(false);
   const [showOnSiteLeadsModal, setShowOnSiteLeadsModal] = useState(false);
-  const [isHeroCollapsed, setIsHeroCollapsed] = useState(false);
+  const [isHeroCollapsed, setIsHeroCollapsed] = useState(() => signOnlySafetySession);
   const estimateBuilderRef = useRef<EstimateBuilderRef>(null);
   const proposalFormSaveRef = useRef<(() => Promise<void>) | undefined>(undefined);
   const safetyTabSaveRef = useRef<(() => Promise<void>) | undefined>(undefined);
@@ -852,10 +865,16 @@ export default function ProjectDetail(){
   useEffect(() => {
     if (me === undefined) return;
 
-    const searchParams = new URLSearchParams(location.search);
-    const tabParam = searchParams.get('tab') as 'overview'|'general'|'reports'|'dispatch'|'timesheet'|'files'|'photos'|'documents'|'proposal'|'pricing'|'estimate'|'orders'|'safety'|null;
+    const sp = new URLSearchParams(location.search);
+    const tabParam = sp.get('tab') as 'overview'|'general'|'reports'|'dispatch'|'timesheet'|'files'|'photos'|'documents'|'proposal'|'pricing'|'estimate'|'orders'|'safety'|null;
+    const signOnly =
+      sp.get('sign_only') === '1' && Boolean(sp.get('safety_inspection')?.trim());
     const validTabs = ['overview','general','reports','dispatch','timesheet','files','photos','documents','proposal','pricing','estimate','orders','safety'];
     if (tabParam && validTabs.includes(tabParam)) {
+      if (tabParam === 'safety' && signOnly) {
+        setTab('safety');
+        return;
+      }
       if (tabParam === 'overview' || hasTabPermission(tabParam)) {
         setTab(tabParam === 'overview' ? null : tabParam);
       } else {
@@ -878,12 +897,16 @@ export default function ProjectDetail(){
 
   // Auto-collapse hero section when a tab is selected, expand when back to primary page
   useEffect(() => {
+    if (signOnlySafetySession) {
+      setIsHeroCollapsed(true);
+      return;
+    }
     if (tab === null || tab === 'overview') {
       setIsHeroCollapsed(false);
     } else {
       setIsHeroCollapsed(true);
     }
-  }, [tab]);
+  }, [tab, signOnlySafetySession]);
   
   const cover = useMemo(()=>{
     const arr = (files||[]) as ProjectFile[];
@@ -962,6 +985,9 @@ export default function ProjectDetail(){
   
   // Filter tabs based on permissions (only when user data is loaded)
   const availableTabs = useMemo(() => {
+    if (signOnlySafetySession) {
+      return [] as unknown as typeof baseAvailableTabs;
+    }
     // If user data is still loading, return all base tabs to avoid permission errors
     if (me === undefined) {
       return baseAvailableTabs;
@@ -970,7 +996,7 @@ export default function ProjectDetail(){
       if (tab === 'overview') return true; // Overview is always available
       return hasTabPermission(tab);
     });
-  }, [baseAvailableTabs, hasTabPermission, me]);
+  }, [baseAvailableTabs, hasTabPermission, me, signOnlySafetySession]);
 
   // Invalidate Recent Activity when project data changes (so card updates without waiting for refetch interval)
   const invalidateRecentActivity = useCallback(() => {
@@ -1042,6 +1068,9 @@ export default function ProjectDetail(){
   }, [location.pathname, nav, invalidateQueriesForTab]);
 
   const handleTabClick = async (newTab: typeof availableTabs[number] | 'estimate' | null) => {
+    if (signOnlySafetySession) {
+      return;
+    }
     // Check permission for the tab being accessed (when not going to overview)
     if (newTab !== null && newTab !== 'overview' && !hasTabPermission(newTab)) {
       toast.error('You do not have permission to access this tab');
@@ -2028,10 +2057,16 @@ export default function ProjectDetail(){
       </div>
       </div>
 
-      {/* Tab Cards - Always visible */}
-      <div className={`mb-4 transition-all duration-[1200ms] ease-in-out ${isHeroCollapsed ? 'mt-16' : 'mt-0'}`}>
-        <ProjectTabCards availableTabs={availableTabs} onTabClick={handleTabClick} proj={proj} currentTab={tab} />
-      </div>
+      {/* Tab Cards — hidden for safety sign-only session (external signer) */}
+      {!signOnlySafetySession && (
+        <div className={`mb-4 transition-all duration-[1200ms] ease-in-out ${isHeroCollapsed ? 'mt-16' : 'mt-0'}`}>
+          <ProjectTabCards availableTabs={availableTabs} onTabClick={handleTabClick} proj={proj} currentTab={tab} />
+        </div>
+      )}
+      {/* Same offset as tab strip: collapsed hero is position:absolute; without this, Safety content sits under it */}
+      {signOnlySafetySession && isHeroCollapsed && (
+        <div className="mt-16 mb-4 shrink-0" aria-hidden />
+      )}
 
       {/* Calendar and Costs Cards - Only show on overview */}
       {!tab && (
@@ -2253,10 +2288,18 @@ export default function ProjectDetail(){
                     address_city: proj?.address_city,
                     address_province: proj?.address_province,
                   }}
-                  canRead={isAdmin || permissions.has('business:projects:safety:read')}
-                  canWrite={isAdmin || permissions.has('business:projects:safety:write')}
+                  canRead={
+                    signOnlySafetySession ||
+                    isAdmin ||
+                    permissions.has('business:projects:safety:read')
+                  }
+                  canWrite={
+                    !signOnlySafetySession &&
+                    (isAdmin || permissions.has('business:projects:safety:write'))
+                  }
                   initialSafetyInspectionId={safetyInspectionFromUrl}
                   flushSaveRef={safetyTabSaveRef}
+                  signOnlySession={signOnlySafetySession}
                 />
               )}
             </>

@@ -1,4 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
+import { useFixedPortalDropdownPosition } from '@/hooks/useFixedPortalDropdownPosition';
 
 export type SingleSelectRow = { value: string; label: string };
 
@@ -28,7 +30,10 @@ export default function SafetySearchableSingle({
   const [open, setOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const rootRef = useRef<HTMLDivElement>(null);
+  const anchorRef = useRef<HTMLButtonElement>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
+  const fixedPanelStyle = useFixedPortalDropdownPosition(open && !disabled, anchorRef, { maxHeightPx: 288 });
 
   const sortedRows = useMemo(
     () => [...rows].sort((a, b) => a.label.localeCompare(b.label, undefined, { sensitivity: 'base' })),
@@ -50,7 +55,10 @@ export default function SafetySearchableSingle({
   useEffect(() => {
     if (!open) return;
     const onDoc = (e: MouseEvent) => {
-      if (rootRef.current && !rootRef.current.contains(e.target as Node)) setOpen(false);
+      const t = e.target as Node;
+      if (rootRef.current?.contains(t)) return;
+      if (panelRef.current?.contains(t)) return;
+      setOpen(false);
     };
     document.addEventListener('mousedown', onDoc);
     return () => document.removeEventListener('mousedown', onDoc);
@@ -93,6 +101,7 @@ export default function SafetySearchableSingle({
         <label className="block text-sm font-medium text-gray-600 mb-2">{label}</label>
       )}
       <button
+        ref={anchorRef}
         type="button"
         disabled={disabled}
         aria-expanded={open}
@@ -112,54 +121,60 @@ export default function SafetySearchableSingle({
         </svg>
       </button>
 
-      {open && !disabled && (
-        <div
-          className="absolute z-30 left-0 right-0 mt-1 flex max-h-72 flex-col rounded-xl border-2 border-gray-200 bg-white shadow-lg overflow-hidden"
-          role="listbox"
-        >
-          <div className="shrink-0 border-b border-gray-100 p-2 bg-gray-50/80">
-            <input
-              ref={searchInputRef}
-              type="search"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder={searchPlaceholder}
-              className="w-full min-h-[2.5rem] px-3 py-2 text-sm border-2 border-gray-200 rounded-xl bg-white focus:outline-none focus:ring-2 focus:ring-brand-red/20 focus:border-brand-red"
-              onClick={(e) => e.stopPropagation()}
-              onKeyDown={(e) => e.stopPropagation()}
-            />
-          </div>
-          <div className="min-h-0 flex-1 overflow-y-auto divide-y divide-gray-100">
-            <button
-              type="button"
-              className="w-full px-3 py-2 text-left text-sm text-gray-500 hover:bg-gray-50"
-              onMouseDown={pickOnMouseDown('')}
-            >
-              {emptyLabel}
-            </button>
-            {sortedRows.length === 0 ? (
-              <div className="px-3 py-2 text-sm text-gray-500">No options</div>
-            ) : filteredRows.length === 0 ? (
-              <div className="px-3 py-2 text-sm text-gray-500">No matches</div>
-            ) : (
-              filteredRows.map((row) => (
-                <button
-                  key={row.value}
-                  type="button"
-                  role="option"
-                  aria-selected={value === row.value}
-                  onMouseDown={pickOnMouseDown(row.value)}
-                  className={`w-full px-3 py-2 text-left text-sm hover:bg-gray-50 ${
-                    value === row.value ? 'bg-blue-50 text-blue-900 font-medium' : 'text-gray-800'
-                  }`}
-                >
-                  {row.label}
-                </button>
-              ))
-            )}
-          </div>
-        </div>
-      )}
+      {open &&
+        !disabled &&
+        fixedPanelStyle != null &&
+        createPortal(
+          <div
+            ref={panelRef}
+            style={fixedPanelStyle}
+            className="flex flex-col rounded-xl border-2 border-gray-200 bg-white shadow-lg overflow-hidden min-h-0"
+            role="listbox"
+          >
+            <div className="shrink-0 border-b border-gray-100 p-2 bg-gray-50/80">
+              <input
+                ref={searchInputRef}
+                type="search"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder={searchPlaceholder}
+                className="w-full min-h-[2.5rem] px-3 py-2 text-sm border-2 border-gray-200 rounded-xl bg-white focus:outline-none focus:ring-2 focus:ring-brand-red/20 focus:border-brand-red"
+                onClick={(e) => e.stopPropagation()}
+                onKeyDown={(e) => e.stopPropagation()}
+              />
+            </div>
+            <div className="min-h-0 flex-1 overflow-y-auto divide-y divide-gray-100">
+              <button
+                type="button"
+                className="w-full px-3 py-2 text-left text-sm text-gray-500 hover:bg-gray-50"
+                onMouseDown={pickOnMouseDown('')}
+              >
+                {emptyLabel}
+              </button>
+              {sortedRows.length === 0 ? (
+                <div className="px-3 py-2 text-sm text-gray-500">No options</div>
+              ) : filteredRows.length === 0 ? (
+                <div className="px-3 py-2 text-sm text-gray-500">No matches</div>
+              ) : (
+                filteredRows.map((row) => (
+                  <button
+                    key={row.value}
+                    type="button"
+                    role="option"
+                    aria-selected={value === row.value}
+                    onMouseDown={pickOnMouseDown(row.value)}
+                    className={`w-full px-3 py-2 text-left text-sm hover:bg-gray-50 ${
+                      value === row.value ? 'bg-blue-50 text-blue-900 font-medium' : 'text-gray-800'
+                    }`}
+                  >
+                    {row.label}
+                  </button>
+                ))
+              )}
+            </div>
+          </div>,
+          document.body
+        )}
     </div>
   );
 }

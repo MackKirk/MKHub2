@@ -1,9 +1,11 @@
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate, useSearchParams } from 'react-router-dom';
+import toast from 'react-hot-toast';
 import { api } from '@/lib/api';
 import { formatDateLocal } from '@/lib/dateUtils';
 import { BUSINESS_LINE_REPAIRS_MAINTENANCE } from '@/lib/businessLine';
 import PageHeaderBar from '@/components/PageHeaderBar';
+import { useConfirm } from '@/components/ConfirmProvider';
 
 type SafetyListRow = {
   id: string;
@@ -30,7 +32,11 @@ function projectHref(row: SafetyListRow): string {
 
 export default function SafetyInspectionsPage() {
   const nav = useNavigate();
+  const qc = useQueryClient();
+  const confirm = useConfirm();
   const [searchParams, setSearchParams] = useSearchParams();
+  const { data: me } = useQuery({ queryKey: ['me'], queryFn: () => api<{ roles?: string[] }>('GET', '/auth/me') });
+  const isAdmin = (me?.roles || []).includes('admin');
   const search = searchParams.get('search') ?? '';
   const statusParam = searchParams.get('status') ?? '';
   const sortBy = searchParams.get('sort') === 'project' ? 'project' : 'inspection_date';
@@ -157,6 +163,11 @@ export default function SafetyInspectionsPage() {
                   <th className="px-3 py-2 text-left">Template</th>
                   <th className="px-3 py-2 text-left">Worker</th>
                   <th className="px-3 py-2 text-left">Status</th>
+                  {isAdmin ? (
+                    <th className="px-2 py-2 text-right w-12" aria-label="Actions">
+                      <span className="sr-only">Delete</span>
+                    </th>
+                  ) : null}
                 </tr>
               </thead>
               <tbody>
@@ -190,6 +201,46 @@ export default function SafetyInspectionsPage() {
                         {row.status === 'finalized' ? 'Finalized' : 'Draft'}
                       </span>
                     </td>
+                    {isAdmin ? (
+                      <td className="px-2 py-1.5 text-right align-middle w-12">
+                        <button
+                          type="button"
+                          title="Delete inspection"
+                          className="inline-flex items-center justify-center rounded-lg p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 transition-colors"
+                          onClick={async (e) => {
+                            e.stopPropagation();
+                            const result = await confirm({
+                              title: 'Delete inspection',
+                              message:
+                                'Delete this safety inspection permanently? This cannot be undone.',
+                            });
+                            if (result !== 'confirm') return;
+                            try {
+                              await api(
+                                'DELETE',
+                                `/projects/${encodeURIComponent(row.project_id)}/safety-inspections/${encodeURIComponent(row.id)}`
+                              );
+                              toast.success('Inspection deleted');
+                              await qc.invalidateQueries({ queryKey: ['safetyInspections'] });
+                              await qc.invalidateQueries({ queryKey: ['safetyInspectionsCalendar'] });
+                              await qc.invalidateQueries({ queryKey: ['projectSafetyInspections', row.project_id] });
+                              await qc.invalidateQueries({ queryKey: ['projectSafetyInspection', row.project_id] });
+                            } catch {
+                              toast.error('Could not delete inspection');
+                            }
+                          }}
+                        >
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
+                            <path
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              strokeWidth={2}
+                              d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
+                            />
+                          </svg>
+                        </button>
+                      </td>
+                    ) : null}
                   </tr>
                 ))}
               </tbody>

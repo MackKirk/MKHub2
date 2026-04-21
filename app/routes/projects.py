@@ -45,6 +45,11 @@ from ..auth.security import (
     has_project_files_category_permission,
     can_access_business_line,
     can_write_business_line,
+    _has_permission,
+)
+from ..services.safety_sign_request_access import (
+    user_has_pending_safety_sign_request_for_inspection,
+    user_has_sign_request_for_inspection,
 )
 from ..services.business_line import (
     BUSINESS_LINE_CONSTRUCTION,
@@ -197,6 +202,8 @@ def _safety_inspection_to_dict(db: Session, row: ProjectSafetyInspection) -> dic
             "status": r.status or "pending",
             "signed_at": r.signed_at.isoformat() if r.signed_at else None,
             "signer_display_name_snapshot": r.signer_display_name_snapshot,
+            "signature_file_object_id": str(r.signature_file_object_id) if r.signature_file_object_id else None,
+            "signature_location_label": (r.signature_location_label or "").strip() or None,
         }
         for r in req_rows
     ]
@@ -961,7 +968,15 @@ def list_projects(
 
 
 @router.get("/{project_id}")
-def get_project(project_id: str, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+def get_project(
+    project_id: str,
+    sign_inspection_id: Optional[str] = Query(
+        None,
+        description="When set with a pending sign request for this user+inspection, allows project read without business-line project access.",
+    ),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
     # Handle special routes like "new" that shouldn't be treated as UUIDs
     if project_id == "new":
         raise HTTPException(status_code=404, detail="Not found")
@@ -975,7 +990,12 @@ def get_project(project_id: str, db: Session = Depends(get_db), user: User = Dep
     p = db.query(Project).filter(Project.id == project_id, Project.deleted_at.is_(None)).first()
     if not p:
         raise HTTPException(status_code=404, detail="Not found")
-    _assert_project_line_read(user, p)
+    if can_access_business_line(user, getattr(p, "business_line", None)):
+        pass
+    elif sign_inspection_id and user_has_sign_request_for_inspection(db, user, project_id, sign_inspection_id):
+        pass
+    else:
+        raise HTTPException(status_code=403, detail="Forbidden")
     client = None
     if getattr(p, 'client_id', None):
         try:
@@ -2555,13 +2575,10 @@ def get_project_safety_inspection(
     inspection_id: str,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
-    _=Depends(require_permissions("business:projects:safety:read")),
 ):
     p = db.query(Project).filter(Project.id == project_id, Project.deleted_at.is_(None)).first()
     if not p:
         raise HTTPException(status_code=404, detail="Not found")
-    _assert_project_line_read(user, p)
-    _assert_awarded_project_for_safety(p)
     row = (
         db.query(ProjectSafetyInspection)
         .filter(
@@ -2572,7 +2589,41 @@ def get_project_safety_inspection(
     )
     if not row:
         raise HTTPException(status_code=404, detail="Inspection not found")
+    if _has_permission(user, "business:projects:safety:read"):
+        _assert_project_line_read(user, p)
+    elif user_has_sign_request_for_inspection(db, user, project_id, inspection_id):
+        # Invited signer: can read draft, pending_signatures, or finalized (return visits via notification link)
+        pass
+    else:
+        raise HTTPException(status_code=403, detail="Forbidden")
+    _assert_awarded_project_for_safety(p)
     return _safety_inspection_to_dict(db, row)
+
+
+@router.delete("/{project_id}/safety-inspections/{inspection_id}")
+def delete_project_safety_inspection(
+    project_id: str,
+    inspection_id: str,
+    db: Session = Depends(get_db),
+    _: User = Depends(require_roles("admin")),
+):
+    """Hard-delete an inspection (admin only). Sign requests cascade."""
+    p = db.query(Project).filter(Project.id == project_id, Project.deleted_at.is_(None)).first()
+    if not p:
+        raise HTTPException(status_code=404, detail="Not found")
+    row = (
+        db.query(ProjectSafetyInspection)
+        .filter(
+            ProjectSafetyInspection.id == inspection_id,
+            ProjectSafetyInspection.project_id == project_id,
+        )
+        .first()
+    )
+    if not row:
+        raise HTTPException(status_code=404, detail="Inspection not found")
+    db.delete(row)
+    db.commit()
+    return {"status": "ok"}
 
 
 @router.put("/{project_id}/safety-inspections/{inspection_id}")
@@ -2753,8 +2804,14 @@ def update_project_safety_inspection(
                 from ..services.notifications import create_notification
 
                 proj_label = str(p.name or p.code or "Project")
+                proj_base = (
+                    "/rm-projects"
+                    if getattr(p, "business_line", None) == BUSINESS_LINE_REPAIRS_MAINTENANCE
+                    else "/projects"
+                )
                 for uid in additional_signer_ids:
-                    link = f"/safety/sign/{project_id}/{row.id}"
+                    # Open the project Safety tab with this inspection selected (same context as the requester).
+                    link = f"{proj_base}/{project_id}?tab=safety&safety_inspection={row.id}&sign_only=1"
                     create_notification(
                         db,
                         str(uid),
@@ -2794,7 +2851,6 @@ def complete_safety_inspection_signer_signature(
     payload: dict = Body(...),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
-    _=Depends(require_permissions("business:projects:safety:read")),
 ):
     """Record an additional signer's signature; auto-finalizes and attaches final PDF when all are signed."""
     if not isinstance(payload, dict):
@@ -2802,7 +2858,12 @@ def complete_safety_inspection_signer_signature(
     p = db.query(Project).filter(Project.id == project_id, Project.deleted_at.is_(None)).first()
     if not p:
         raise HTTPException(status_code=404, detail="Not found")
-    _assert_project_line_read(user, p)
+    if _has_permission(user, "business:projects:safety:read"):
+        _assert_project_line_read(user, p)
+    elif user_has_pending_safety_sign_request_for_inspection(db, user, project_id, inspection_id):
+        pass
+    else:
+        raise HTTPException(status_code=403, detail="Forbidden")
     _assert_awarded_project_for_safety(p)
     row = (
         db.query(ProjectSafetyInspection)

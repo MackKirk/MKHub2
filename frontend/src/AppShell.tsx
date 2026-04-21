@@ -723,6 +723,26 @@ export default function AppShell({ children }: PropsWithChildren){
     onboardingBlocked &&
     !matchesOnboardingDocumentsRedirectExempt(location.pathname);
 
+  useEffect(() => {
+    const { body, documentElement } = document;
+    const prevBodyOverflow = body.style.overflow;
+    const prevHtmlOverflow = documentElement.style.overflow;
+    const prevBodyHeight = body.style.height;
+    const prevHtmlHeight = documentElement.style.height;
+
+    body.style.overflow = 'hidden';
+    documentElement.style.overflow = 'hidden';
+    body.style.height = '100%';
+    documentElement.style.height = '100%';
+
+    return () => {
+      body.style.overflow = prevBodyOverflow;
+      documentElement.style.overflow = prevHtmlOverflow;
+      body.style.height = prevBodyHeight;
+      documentElement.style.height = prevHtmlHeight;
+    };
+  }, []);
+
   if (showHubLoadingGate || needsWizardRedirectWhileInShell || needsDocumentsRedirectWhileInShell) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-slate-50 text-gray-500">
@@ -732,7 +752,7 @@ export default function AppShell({ children }: PropsWithChildren){
   }
 
   return (
-    <div className="min-h-screen flex">
+    <div className="h-screen flex overflow-hidden">
       <aside className={`${sidebarCollapsed ? 'w-16' : 'w-64'} text-white bg-gradient-to-b from-gray-800/95 via-gray-800 to-gray-900 transition-all duration-300 flex flex-col fixed left-0 top-0 h-screen z-40`}>
         {/* Subtle abstract pattern overlay */}
         <div 

@@ -24,6 +24,8 @@ type Props = {
   onFileObjectId: (id: string | null) => void;
   signerDisplayName: string;
   signerUserId?: string;
+  /** When set, upload-proxy allows this user without project files write (pending additional signer). */
+  pendingSafetySignInspectionId?: string;
   onSignatureSaved?: (fileId: string, meta: SavedSignatureMeta) => void;
   /** Called after Clear to remove persisted metadata from the form payload */
   onSignatureClear?: () => void;
@@ -49,6 +51,7 @@ export default function SafetySignaturePad({
   signerUserId,
   onSignatureSaved,
   onSignatureClear,
+  pendingSafetySignInspectionId,
 }: Props) {
   const wrapRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -95,7 +98,17 @@ export default function SafetySignaturePad({
     return { x: p.clientX - r.left, y: p.clientY - r.top };
   };
 
-  const start = (e: React.MouseEvent<HTMLCanvasElement> | React.TouchEvent<HTMLCanvasElement>) => {
+  const posNative = (e: MouseEvent | TouchEvent, c: HTMLCanvasElement) => {
+    const r = c.getBoundingClientRect();
+    if ('touches' in e && e.touches.length > 0) {
+      const p = e.touches[0];
+      return { x: p.clientX - r.left, y: p.clientY - r.top };
+    }
+    const m = e as MouseEvent;
+    return { x: m.clientX - r.left, y: m.clientY - r.top };
+  };
+
+  const start = (e: React.MouseEvent<HTMLCanvasElement>) => {
     if (disabled) return;
     const c = canvasRef.current;
     if (!c) return;
@@ -104,7 +117,7 @@ export default function SafetySignaturePad({
     last.current = pos(e, c);
   };
 
-  const move = (e: React.MouseEvent<HTMLCanvasElement> | React.TouchEvent<HTMLCanvasElement>) => {
+  const move = (e: React.MouseEvent<HTMLCanvasElement>) => {
     if (!drawing.current || disabled) return;
     const c = canvasRef.current;
     if (!c) return;
@@ -128,6 +141,50 @@ export default function SafetySignaturePad({
   const end = () => {
     drawing.current = false;
   };
+
+  /** React's touch handlers are often passive; we need non-passive listeners so preventDefault stops page scroll while drawing. */
+  useEffect(() => {
+    const c = canvasRef.current;
+    if (!c) return;
+    const passiveFalse = { passive: false } as const;
+    const onTouchStart = (e: TouchEvent) => {
+      if (disabled) return;
+      e.preventDefault();
+      drawing.current = true;
+      last.current = posNative(e, c);
+    };
+    const onTouchMove = (e: TouchEvent) => {
+      if (!drawing.current || disabled) return;
+      const ctx = c.getContext('2d');
+      if (!ctx) return;
+      e.preventDefault();
+      const p = posNative(e, c);
+      ctx.save();
+      ctx.strokeStyle = '#111827';
+      ctx.lineWidth = 2;
+      ctx.lineCap = 'round';
+      ctx.lineJoin = 'round';
+      ctx.beginPath();
+      ctx.moveTo(last.current.x, last.current.y);
+      ctx.lineTo(p.x, p.y);
+      ctx.stroke();
+      ctx.restore();
+      last.current = p;
+    };
+    const onTouchEnd = () => {
+      drawing.current = false;
+    };
+    c.addEventListener('touchstart', onTouchStart, passiveFalse);
+    c.addEventListener('touchmove', onTouchMove, passiveFalse);
+    c.addEventListener('touchend', onTouchEnd);
+    c.addEventListener('touchcancel', onTouchEnd);
+    return () => {
+      c.removeEventListener('touchstart', onTouchStart, passiveFalse);
+      c.removeEventListener('touchmove', onTouchMove, passiveFalse);
+      c.removeEventListener('touchend', onTouchEnd);
+      c.removeEventListener('touchcancel', onTouchEnd);
+    };
+  }, [disabled]);
 
   const clear = () => {
     setupCanvas();
@@ -159,15 +216,22 @@ export default function SafetySignaturePad({
         meta.lng = geo.coords.longitude;
         meta.locationLabel = `${geo.coords.latitude.toFixed(5)}, ${geo.coords.longitude.toFixed(5)}`;
       }
-      const file = new File([blob], 'signature.png', { type: 'image/png' });
+      // Unique name per upload: canonical_key uses project + date + original_name; a fixed
+      // "signature.png" collides when another signer uploads the same day and overwrites blob bytes
+      // while leaving distinct FileObject rows — PDF then shows the same image twice.
+      const uniqueName = `signature-${crypto.randomUUID()}.png`;
+      const file = new File([blob], uniqueName, { type: 'image/png' });
       const form = new FormData();
       form.append('file', file);
-      form.append('original_name', 'signature.png');
+      form.append('original_name', uniqueName);
       form.append('content_type', 'image/png');
       form.append('project_id', projectId);
       form.append('client_id', '');
       form.append('employee_id', '');
       form.append('category_id', CATEGORY);
+      if (pendingSafetySignInspectionId?.trim()) {
+        form.append('pending_safety_sign_inspection_id', pendingSafetySignInspectionId.trim());
+      }
       const res = await api<{ id: string }>('POST', '/files/upload-proxy', form);
       // Do not attach to Project > Files; signature bytes are only referenced from the inspection payload / PDF.
       if (onSignatureSaved) {
@@ -181,7 +245,16 @@ export default function SafetySignaturePad({
     } finally {
       setUploading(false);
     }
-  }, [disabled, onFileObjectId, onSignatureSaved, projectId, signerDisplayName, signerUserId, setupCanvas]);
+  }, [
+    disabled,
+    onFileObjectId,
+    onSignatureSaved,
+    pendingSafetySignInspectionId,
+    projectId,
+    signerDisplayName,
+    signerUserId,
+    setupCanvas,
+  ]);
 
   return (
     <div className="space-y-2">
@@ -193,9 +266,6 @@ export default function SafetySignaturePad({
           onMouseMove={move}
           onMouseUp={end}
           onMouseLeave={end}
-          onTouchStart={start}
-          onTouchMove={move}
-          onTouchEnd={end}
         />
       </div>
       <div className="flex flex-wrap gap-2">

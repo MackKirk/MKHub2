@@ -193,18 +193,30 @@ async def upload_proxy(
     client_id: Optional[str] = Form(None),
     employee_id: Optional[str] = Form(None),
     category_id: str = Form("files"),
+    pending_safety_sign_inspection_id: Optional[str] = Form(None),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
     storage: StorageProvider = Depends(get_storage)
 ):
-    assert_can_initiate_upload(
-        user,
-        db,
-        project_id=project_id,
-        client_id=client_id,
-        employee_id=employee_id,
-        category_id=category_id,
-    )
+    from ..services.safety_sign_request_access import user_has_pending_safety_sign_request_for_inspection
+
+    if (
+        pending_safety_sign_inspection_id
+        and project_id
+        and user_has_pending_safety_sign_request_for_inspection(
+            db, user, project_id, pending_safety_sign_inspection_id
+        )
+    ):
+        pass
+    else:
+        assert_can_initiate_upload(
+            user,
+            db,
+            project_id=project_id,
+            client_id=client_id,
+            employee_id=employee_id,
+            category_id=category_id,
+        )
     """
     Proxy endpoint for file uploads when direct Azure Blob upload fails due to CORS.
     This endpoint receives the file data and uploads it to Azure Blob Storage on behalf of the client.

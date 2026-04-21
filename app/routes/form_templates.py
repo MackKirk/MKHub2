@@ -12,6 +12,7 @@ from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
 from ..auth.security import get_current_user, require_permissions
+from ..services.safety_sign_request_access import assert_safety_read_or_pending_sign_session
 from ..db import get_db
 from ..models.models import FormCustomList, FormTemplate, FleetAsset, User
 
@@ -289,10 +290,14 @@ def create_form_template(
 def support_fleet_assets_for_form_templates(
     q: Optional[str] = Query(None, description="Search name, unit #, plate"),
     limit: int = Query(100, ge=1, le=200),
+    sign_project_id: Optional[str] = Query(None),
+    sign_inspection_id: Optional[str] = Query(None),
     db: Session = Depends(get_db),
-    _user: User = Depends(get_current_user),
-    _perm=Depends(require_permissions("business:projects:safety:read")),
+    user: User = Depends(get_current_user),
 ):
+    assert_safety_read_or_pending_sign_session(
+        user, db, sign_project_id=sign_project_id, sign_inspection_id=sign_inspection_id
+    )
     """Minimal fleet asset list for safety form pickers (no fleet:* permission required)."""
     query = db.query(FleetAsset).filter(FleetAsset.status == "active")
     if q and q.strip():
@@ -348,10 +353,14 @@ def duplicate_form_template(
 @router.get("/{template_id}")
 def get_form_template(
     template_id: str,
+    sign_project_id: Optional[str] = Query(None),
+    sign_inspection_id: Optional[str] = Query(None),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
-    _=Depends(require_permissions("business:projects:safety:read")),
 ):
+    assert_safety_read_or_pending_sign_session(
+        user, db, sign_project_id=sign_project_id, sign_inspection_id=sign_inspection_id
+    )
     tid = uuid.UUID(str(template_id))
     t = db.query(FormTemplate).filter(FormTemplate.id == tid).first()
     if not t:

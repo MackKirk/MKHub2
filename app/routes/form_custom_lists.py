@@ -11,6 +11,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from ..auth.security import get_current_user, require_permissions
+from ..services.safety_sign_request_access import assert_safety_read_or_pending_sign_session
 from ..db import get_db
 from ..models.models import FormCustomList, FormCustomListItem, FormTemplate, User
 
@@ -240,9 +241,13 @@ def get_custom_list(
     list_id: str,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
-    _=Depends(require_permissions("business:projects:safety:read")),
     for_runtime: bool = Query(False, description="If true, omit inactive items from tree"),
+    sign_project_id: Optional[str] = Query(None),
+    sign_inspection_id: Optional[str] = Query(None),
 ):
+    assert_safety_read_or_pending_sign_session(
+        user, db, sign_project_id=sign_project_id, sign_inspection_id=sign_inspection_id
+    )
     lid = uuid.UUID(str(list_id))
     lst = db.query(FormCustomList).filter(FormCustomList.id == lid).first()
     if not lst:

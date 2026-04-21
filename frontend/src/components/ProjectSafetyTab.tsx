@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type MutableRefObject } from 'react';
-import { Link } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
 import { api, withFileAccessToken } from '@/lib/api';
@@ -17,9 +16,15 @@ import {
   type YesNoNa,
 } from '@/data/projectSafetyInspectionTemplate';
 import DynamicSafetyForm from '@/components/DynamicSafetyForm';
+import SafetySignaturePad from '@/components/SafetySignaturePad';
 import { useConfirm } from '@/components/ConfirmProvider';
 import { useUnsavedChangesGuard } from '@/hooks/useUnsavedChangesGuard';
-import { normalizeDefinition, validateDynamicForm, type SafetyFormDefinition } from '@/types/safetyFormTemplate';
+import {
+  normalizeDefinition,
+  validateDynamicFormMissing,
+  type SafetyFormDefinition,
+} from '@/types/safetyFormTemplate';
+import { withSignSessionQuery, type SafetySignSession } from '@/lib/safetySignSessionQuery';
 
 type SafetyInspectionRow = {
   id: string;
@@ -46,6 +51,8 @@ type SafetyInspectionRow = {
     status: string;
     signed_at?: string | null;
     signer_display_name_snapshot?: string | null;
+    signature_file_object_id?: string | null;
+    signature_location_label?: string | null;
   }>;
   interim_pdf_client_file_id?: string | null;
   final_pdf_client_file_id?: string | null;
@@ -125,6 +132,117 @@ function getYnRaw(
   return { status, comments, comment_image_ids };
 }
 
+function formatInspectionSignedAt(iso: string | undefined | null): string {
+  if (!iso || Number.isNaN(Date.parse(iso))) return '—';
+  return new Date(iso).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
+}
+
+/** Worker + co-signers who completed a drawn signature on this inspection. */
+function InspectionSignaturesGallery({
+  formPayload,
+  signRequests,
+}: {
+  formPayload: Record<string, unknown>;
+  signRequests: SafetyInspectionRow['sign_requests'];
+}) {
+  const workerFileId =
+    typeof formPayload._worker_signature_file_id === 'string' && formPayload._worker_signature_file_id.trim()
+      ? formPayload._worker_signature_file_id.trim()
+      : null;
+  const workerName =
+    typeof formPayload._worker_signature_signer_name === 'string' ? formPayload._worker_signature_signer_name.trim() : '';
+  const workerSignedAt =
+    typeof formPayload._worker_signature_signed_at === 'string' ? formPayload._worker_signature_signed_at : '';
+  const workerLoc =
+    typeof formPayload._worker_signature_location_label === 'string'
+      ? formPayload._worker_signature_location_label.trim()
+      : '';
+
+  const additionalSigned = (signRequests ?? [])
+    .filter((r) => (r.status || '').toLowerCase() === 'signed' && r.signature_file_object_id)
+    .sort((a, b) => {
+      const ta = Date.parse(a.signed_at || '') || 0;
+      const tb = Date.parse(b.signed_at || '') || 0;
+      return ta - tb;
+    });
+
+  if (!workerFileId && additionalSigned.length === 0) return null;
+
+  return (
+    <div className="rounded-xl border border-gray-200 bg-white p-4 space-y-4">
+      <div className="text-xs font-semibold text-gray-600 uppercase tracking-wide">Signatures on this inspection</div>
+      <div className="space-y-4">
+        {workerFileId && (
+          <div className="rounded-lg border border-gray-100 bg-gray-50/80 p-3">
+            <div className="text-xs font-medium text-gray-500 mb-2">Worker</div>
+            <div className="flex flex-wrap gap-4 items-start">
+              <a
+                href={withFileAccessToken(`/files/${encodeURIComponent(workerFileId)}/thumbnail?w=640`)}
+                target="_blank"
+                rel="noreferrer"
+                className="shrink-0 block rounded border border-gray-200 bg-white overflow-hidden"
+              >
+                <img
+                  src={withFileAccessToken(`/files/${encodeURIComponent(workerFileId)}/thumbnail?w=320`)}
+                  alt=""
+                  className="max-h-28 w-auto max-w-[200px] object-contain"
+                />
+              </a>
+              <div className="text-sm text-gray-800 space-y-1 min-w-0 flex-1">
+                <div>
+                  <span className="text-gray-500">Signed by: </span>
+                  <span className="font-medium">{workerName || '—'}</span>
+                </div>
+                <div>
+                  <span className="text-gray-500">Time: </span>
+                  <span>{formatInspectionSignedAt(workerSignedAt)}</span>
+                </div>
+                <div>
+                  <span className="text-gray-500">Location: </span>
+                  <span>{workerLoc || 'Not captured'}</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+        {additionalSigned.map((r) => (
+          <div key={r.id} className="rounded-lg border border-gray-100 bg-gray-50/80 p-3">
+            <div className="text-xs font-medium text-gray-500 mb-2">Additional signer</div>
+            <div className="flex flex-wrap gap-4 items-start">
+              <a
+                href={withFileAccessToken(`/files/${encodeURIComponent(r.signature_file_object_id!)}/thumbnail?w=640`)}
+                target="_blank"
+                rel="noreferrer"
+                className="shrink-0 block rounded border border-gray-200 bg-white overflow-hidden"
+              >
+                <img
+                  src={withFileAccessToken(`/files/${encodeURIComponent(r.signature_file_object_id!)}/thumbnail?w=320`)}
+                  alt=""
+                  className="max-h-28 w-auto max-w-[200px] object-contain"
+                />
+              </a>
+              <div className="text-sm text-gray-800 space-y-1 min-w-0 flex-1">
+                <div>
+                  <span className="text-gray-500">Signed by: </span>
+                  <span className="font-medium">{(r.signer_display_name_snapshot || '').trim() || '—'}</span>
+                </div>
+                <div>
+                  <span className="text-gray-500">Time: </span>
+                  <span>{formatInspectionSignedAt(r.signed_at)}</span>
+                </div>
+                <div>
+                  <span className="text-gray-500">Location: </span>
+                  <span>{(r.signature_location_label || '').trim() || 'Not captured'}</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 type Props = {
   projectId: string;
   proj: { name?: string; address?: string; address_city?: string; address_province?: string };
@@ -134,6 +252,8 @@ type Props = {
   initialSafetyInspectionId?: string | null;
   /** Parent (e.g. ProjectDetail) calls this before switching away from the Safety tab */
   flushSaveRef?: MutableRefObject<(() => Promise<void>) | undefined>;
+  /** Pending signer without project/safety read: skip list, hide back to all inspections */
+  signOnlySession?: boolean;
 };
 
 function YnCommentImageGrid({
@@ -292,10 +412,13 @@ export default function ProjectSafetyTab({
   canWrite,
   initialSafetyInspectionId,
   flushSaveRef,
+  signOnlySession = false,
 }: Props) {
   const qc = useQueryClient();
   const confirm = useConfirm();
-  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [selectedId, setSelectedId] = useState<string | null>(() =>
+    signOnlySession && initialSafetyInspectionId?.trim() ? initialSafetyInspectionId.trim() : null
+  );
   const [formPayload, setFormPayload] = useState<Record<string, unknown>>({});
   /** JSON snapshot of last committed form_payload (server or after save); null = no baseline yet */
   const [committedJson, setCommittedJson] = useState<string | null>(null);
@@ -308,21 +431,36 @@ export default function ProjectSafetyTab({
   const [finalizeModalOpen, setFinalizeModalOpen] = useState(false);
   const [extraSignerQuery, setExtraSignerQuery] = useState('');
   const [extraSignerIds, setExtraSignerIds] = useState<string[]>([]);
+  /** Field keys (or synthetic worker-signature key) to outline in red after finalize validation fails */
+  const [requiredFieldHighlightKeys, setRequiredFieldHighlightKeys] = useState<string[]>([]);
 
   const listKey = ['projectSafetyInspections', projectId];
   const { data: list = [], isLoading: listLoading } = useQuery({
     queryKey: listKey,
     queryFn: () => api<SafetyInspectionRow[]>('GET', `/projects/${encodeURIComponent(projectId)}/safety-inspections`),
-    enabled: canRead && !!projectId,
+    enabled: canRead && !!projectId && !signOnlySession,
   });
+
+  const signSession: SafetySignSession | null = useMemo(
+    () =>
+      signOnlySession && selectedId
+        ? { projectId, inspectionId: selectedId }
+        : null,
+    [signOnlySession, projectId, selectedId]
+  );
 
   useEffect(() => {
     const sid = initialSafetyInspectionId?.trim();
-    if (!sid || !list.length) return;
+    if (!sid) return;
+    if (signOnlySession) {
+      setSelectedId(sid);
+      return;
+    }
+    if (!list.length) return;
     if (list.some((r) => r.id === sid)) {
       setSelectedId(sid);
     }
-  }, [initialSafetyInspectionId, list]);
+  }, [initialSafetyInspectionId, list, signOnlySession]);
 
   const { data: schedulableTemplates = [] } = useQuery({
     queryKey: ['formTemplatesSchedulable', showCreateModal],
@@ -330,10 +468,12 @@ export default function ProjectSafetyTab({
     enabled: showCreateModal && canWrite,
   });
 
+  const safetyAccess = canRead || signOnlySession;
+
   const { data: me } = useQuery({
     queryKey: ['me'],
     queryFn: () => api<{ id?: string; username?: string; profile?: { first_name?: string; last_name?: string } }>('GET', '/auth/me'),
-    enabled: canRead && !!selectedId,
+    enabled: safetyAccess && !!selectedId,
   });
 
   const signerDisplayName = useMemo(() => {
@@ -354,17 +494,23 @@ export default function ProjectSafetyTab({
         'GET',
         `/projects/${encodeURIComponent(projectId)}/safety-inspections/${encodeURIComponent(selectedId!)}`
       ),
-    enabled: canRead && !!projectId && !!selectedId,
+    enabled: safetyAccess && !!projectId && !!selectedId,
   });
 
   const isDynamicInspection = Boolean(detail?.form_template_id);
 
   const { data: templateFallback } = useQuery({
-    queryKey: ['formTemplate', detail?.form_template_id],
+    queryKey: ['formTemplate', detail?.form_template_id, signSession?.inspectionId],
     queryFn: () =>
-      api<{ definition: SafetyFormDefinition }>('GET', `/form-templates/${encodeURIComponent(detail!.form_template_id!)}`),
+      api<{ definition: SafetyFormDefinition }>(
+        'GET',
+        withSignSessionQuery(
+          `/form-templates/${encodeURIComponent(detail!.form_template_id!)}`,
+          signSession
+        )
+      ),
     enabled:
-      canRead &&
+      safetyAccess &&
       !!detail?.form_template_id &&
       (!detail?.form_definition_snapshot ||
         (typeof detail.form_definition_snapshot === 'object' &&
@@ -387,6 +533,47 @@ export default function ProjectSafetyTab({
   const inspectionImmutable =
     detail?.status === 'finalized' || detail?.status === 'pending_signatures';
   const formEditable = !!(canWrite && detail && !inspectionImmutable);
+
+  const myPendingSignRequest = useMemo(() => {
+    if (!detail?.sign_requests || !signerUserId) return null;
+    return (
+      detail.sign_requests.find(
+        (r) => r.signer_user_id === signerUserId && (r.status || '').toLowerCase() === 'pending'
+      ) ?? null
+    );
+  }, [detail?.sign_requests, signerUserId]);
+
+  const completeSignatureMutation = useMutation({
+    mutationFn: (body: {
+      sign_request_id: string;
+      signature_file_object_id: string;
+      signed_at?: string;
+      location_label?: string;
+    }) => {
+      if (!selectedId) throw new Error('No inspection');
+      return api<SafetyInspectionRow>(
+        'POST',
+        `/projects/${encodeURIComponent(projectId)}/safety-inspections/${encodeURIComponent(selectedId)}/signatures/complete`,
+        body
+      );
+    },
+    onSuccess: (data) => {
+      qc.invalidateQueries({ queryKey: ['projectSafetyInspection', projectId, selectedId] });
+      qc.invalidateQueries({ queryKey: listKey });
+      qc.invalidateQueries({ queryKey: ['safetyInspections'] });
+      qc.invalidateQueries({ queryKey: ['safetyInspectionsCalendar'] });
+      qc.invalidateQueries({ queryKey: ['projectFiles', projectId] });
+      if (data?.status === 'finalized') {
+        toast.success('All signatures collected. Inspection is finalized.');
+      } else {
+        toast.success('Signature recorded.');
+      }
+      if ((data as { pdf_attachment_error?: string })?.pdf_attachment_error) {
+        toast.error('The final PDF could not be saved to Project files.');
+      }
+    },
+    onError: () => toast.error('Could not submit signature'),
+  });
 
   const inspectionDisplayName = useMemo(() => {
     if (!detail) return '';
@@ -423,7 +610,18 @@ export default function ProjectSafetyTab({
         : {};
     setFormPayload(raw);
     setCommittedJson(JSON.stringify(raw));
+    setRequiredFieldHighlightKeys([]);
   }, [detail?.id]);
+
+  useEffect(() => {
+    if (!dynamicDefinition || requiredFieldHighlightKeys.length === 0) return;
+    const stillMissing = validateDynamicFormMissing(dynamicDefinition, formPayload);
+    const stillSet = new Set(stillMissing.map((m) => m.key));
+    setRequiredFieldHighlightKeys((prev) => {
+      const next = prev.filter((k) => stillSet.has(k));
+      return next.length === prev.length ? prev : next;
+    });
+  }, [formPayload, dynamicDefinition, requiredFieldHighlightKeys]);
 
   useEffect(() => {
     setYnCommentOpen({});
@@ -521,9 +719,16 @@ export default function ProjectSafetyTab({
       if (!sid) throw new Error('no id');
       const fp = formPayloadRef.current;
       if (detail?.form_template_id && dynamicDefinition) {
-        const missing = validateDynamicForm(dynamicDefinition, fp);
+        const missing = validateDynamicFormMissing(dynamicDefinition, fp);
         if (missing.length) {
-          toast.error(`Missing required fields: ${missing.slice(0, 5).join(', ')}${missing.length > 5 ? '…' : ''}`);
+          toast.error(
+            `Missing required fields: ${missing
+              .slice(0, 5)
+              .map((m) => m.label)
+              .join(', ')}${missing.length > 5 ? '…' : ''}`
+          );
+          setRequiredFieldHighlightKeys(missing.map((m) => m.key));
+          setFinalizeModalOpen(false);
           throw new Error('validation');
         }
       }
@@ -545,6 +750,7 @@ export default function ProjectSafetyTab({
       setFinalizeModalOpen(false);
       setExtraSignerIds([]);
       setExtraSignerQuery('');
+      setRequiredFieldHighlightKeys([]);
       setCommittedJson(JSON.stringify(formPayloadRef.current));
       qc.invalidateQueries({ queryKey: listKey });
       qc.invalidateQueries({ queryKey: ['safetyInspections'] });
@@ -887,7 +1093,7 @@ export default function ProjectSafetyTab({
 
   const formSections = useMemo(() => PROJECT_SAFETY_INSPECTION_TEMPLATE, []);
 
-  if (!canRead) {
+  if (!canRead && !signOnlySession) {
     return <div className="rounded-xl border bg-white p-6 text-sm text-gray-600">You do not have permission to view safety inspections.</div>;
   }
 
@@ -1035,39 +1241,41 @@ export default function ProjectSafetyTab({
 
   return (
     <div className="space-y-4 min-w-0">
-      <div className="flex flex-wrap items-center gap-3">
-        <button
-          type="button"
-          onClick={() => {
-            void (async () => {
-              if (!hasUnsavedChanges) {
-                setSelectedId(null);
-                return;
-              }
-              const result = await confirm({
-                title: 'Unsaved Changes',
-                message: 'You have unsaved changes. What would you like to do?',
-                confirmText: 'Save and Continue',
-                cancelText: 'Cancel',
-                showDiscard: true,
-                discardText: 'Continue without saving',
-              });
-              if (result === 'cancel') return;
-              if (result === 'confirm') {
-                try {
-                  await flushSaveInspection();
-                } catch {
+      {!signOnlySession && (
+        <div className="flex flex-wrap items-center gap-3">
+          <button
+            type="button"
+            onClick={() => {
+              void (async () => {
+                if (!hasUnsavedChanges) {
+                  setSelectedId(null);
                   return;
                 }
-              }
-              setSelectedId(null);
-            })();
-          }}
-          className="text-sm text-brand-red hover:underline font-medium"
-        >
-          ← All inspections
-        </button>
-      </div>
+                const result = await confirm({
+                  title: 'Unsaved Changes',
+                  message: 'You have unsaved changes. What would you like to do?',
+                  confirmText: 'Save and Continue',
+                  cancelText: 'Cancel',
+                  showDiscard: true,
+                  discardText: 'Continue without saving',
+                });
+                if (result === 'cancel') return;
+                if (result === 'confirm') {
+                  try {
+                    await flushSaveInspection();
+                  } catch {
+                    return;
+                  }
+                }
+                setSelectedId(null);
+              })();
+            }}
+            className="text-sm text-brand-red hover:underline font-medium"
+          >
+            ← All inspections
+          </button>
+        </div>
+      )}
 
       {detailLoading && !detail ? (
         <div className="rounded-xl border bg-white p-8 text-center text-gray-500">Loading…</div>
@@ -1104,15 +1312,10 @@ export default function ProjectSafetyTab({
 
           {detail?.status === 'pending_signatures' && (
             <div className="rounded-xl border border-sky-200 bg-sky-50/80 px-4 py-3 text-sm text-sky-900">
-              This inspection is waiting for additional signers. The form is read-only.{' '}
-              {detail.sign_requests?.some((r) => r.signer_user_id === signerUserId && r.status === 'pending') ? (
-                <Link
-                  className="font-medium text-brand-red hover:underline"
-                  to={`/safety/sign/${encodeURIComponent(projectId)}/${encodeURIComponent(detail.id)}`}
-                >
-                  Open signing page
-                </Link>
-              ) : null}
+              <p>
+                This inspection is waiting for additional signers. The form is read-only so everyone reviews the same content.
+                {myPendingSignRequest ? ' Sign at the bottom when you have reviewed the form.' : ''}
+              </p>
             </div>
           )}
 
@@ -1125,10 +1328,12 @@ export default function ProjectSafetyTab({
               projectId={projectId}
               signerDisplayName={signerDisplayName}
               signerUserId={signerUserId}
+              signSession={signSession}
+              highlightRequiredFieldKeys={requiredFieldHighlightKeys}
             />
           ) : (
             formSections.map((section) => (
-              <div key={section.id} className="rounded-xl border border-gray-200 bg-white overflow-hidden">
+              <div key={section.id} className="rounded-xl border border-gray-200 bg-white overflow-visible">
                 <div className="px-4 py-3 border-b border-gray-100 bg-gray-50/80">
                   <h3 className="text-sm font-semibold text-gray-800">{section.title}</h3>
                   {section.subtitle && <p className="text-xs text-gray-500 mt-1">{section.subtitle}</p>}
@@ -1139,6 +1344,10 @@ export default function ProjectSafetyTab({
               </div>
             ))
           )}
+
+          {detail ? (
+            <InspectionSignaturesGallery formPayload={formPayload} signRequests={detail.sign_requests} />
+          ) : null}
 
           {formEditable && (
             <div className="flex flex-wrap gap-3 items-center">
@@ -1154,6 +1363,29 @@ export default function ProjectSafetyTab({
               >
                 {finalizeMutation.isPending ? 'Finalizing…' : saveMutation.isPending ? 'Saving…' : 'Finalize inspection'}
               </button>
+            </div>
+          )}
+
+          {detail?.status === 'pending_signatures' && myPendingSignRequest && (
+            <div className="rounded-xl border border-sky-200 bg-sky-50/80 px-4 py-4 text-sm text-sky-900 space-y-3">
+              <p className="text-xs font-medium text-sky-950">Your signature is requested</p>
+              <SafetySignaturePad
+                projectId={projectId}
+                disabled={completeSignatureMutation.isPending}
+                fileObjectId={null}
+                onFileObjectId={() => {}}
+                signerDisplayName={signerDisplayName}
+                signerUserId={signerUserId}
+                pendingSafetySignInspectionId={detail?.id}
+                onSignatureSaved={(fileId, meta) => {
+                  completeSignatureMutation.mutate({
+                    sign_request_id: myPendingSignRequest.id,
+                    signature_file_object_id: fileId,
+                    signed_at: meta.signedAt,
+                    location_label: meta.locationLabel,
+                  });
+                }}
+              />
             </div>
           )}
 
