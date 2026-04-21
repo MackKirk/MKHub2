@@ -21,9 +21,18 @@ function projectHref(ev: SafetyCalEvent): string {
   return `${base}/${encodeURIComponent(ev.project_id)}?${q.toString()}`;
 }
 
-type SafetyServiceCalendarProps = { embedView?: boolean };
+type SafetyServiceCalendarProps = {
+  embedView?: boolean;
+  /** When set, shows “Schedule new inspection” next to month navigation (dashed style). */
+  canSchedule?: boolean;
+  onScheduleNew?: () => void;
+};
 
-export default function SafetyServiceCalendar({ embedView }: SafetyServiceCalendarProps) {
+export default function SafetyServiceCalendar({
+  embedView,
+  canSchedule,
+  onScheduleNew,
+}: SafetyServiceCalendarProps) {
   const navigate = useNavigate();
   const [currentMonth, setCurrentMonth] = useState<Date>(() => {
     const d = new Date();
@@ -151,6 +160,15 @@ export default function SafetyServiceCalendar({ embedView }: SafetyServiceCalend
             >
               →
             </button>
+            {canSchedule && onScheduleNew && (
+              <button
+                type="button"
+                onClick={onScheduleNew}
+                className="ml-1 px-2.5 py-1.5 rounded-lg border border-dashed border-gray-300 text-gray-600 hover:bg-gray-50 hover:border-gray-400 text-xs font-medium transition-colors"
+              >
+                Schedule new inspection
+              </button>
+            )}
           </div>
         </div>
 

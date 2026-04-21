@@ -29,9 +29,10 @@ title: Update 1.1.026 - Week 17
 - Global search field styling aligned with the top bar.
 - What’s new opens as a large centered modal (backdrop, larger content area, close button, Escape to close) instead of a small dropdown.
 - Equipment detail design improved.
+- Dynamic safety forms: comment and Y/N photo attachments use safer state updates so fast paste or multiple uploads merge with the latest image list instead of dropping or overwriting IDs.
 
 ### Fixed
-- (none this release)
+- File upload (upload proxy): each upload gets a unique storage key so repeated pastes or duplicate names no longer overwrite earlier blobs.
 
 ### Known issues
 - (none this release)

@@ -75,6 +75,8 @@ _GRAY_BD = colors.HexColor("#d1d5db")
 _NEUTRAL_BG = colors.white
 _NEUTRAL_BD = colors.HexColor("#e5e7eb")
 _MUTED_TXT = "#9ca3af"
+# Light gray for empty field placeholder (italic in paragraph XML)
+_NO_ANSWER_HEX = "#b8c4d0"
 _CHOICE_CIRCLE_DIAMETER = 24.0
 _CHOICE_CIRCLE_TEXT_SIZE = 9.0
 
@@ -489,6 +491,14 @@ def _chip_style(name: str, parent: ParagraphStyle) -> ParagraphStyle:
     )
 
 
+def _no_answer_paragraph(style: ParagraphStyle) -> Paragraph:
+    """Italic, light color — used when a field has no response in the PDF."""
+    return Paragraph(
+        f'<para><i><font color="{_NO_ANSWER_HEX}">No answer</font></i></para>',
+        style,
+    )
+
+
 class _CircledChoiceLabel(Flowable):
     """Selected option: compact filled ellipse (light tint) + border; label centered (bold)."""
 
@@ -537,7 +547,7 @@ def _single_selected_choice(
     for key, label, bg, txt_hex, bd in defs:
         if sel == key:
             return _CircledChoiceLabel(label, txt_hex, bg, bd)
-    return Paragraph(f'<para><font color="{_MUTED_TXT}">—</font></para>', empty_style)
+    return _no_answer_paragraph(empty_style)
 
 
 def _mini_badge_table(
@@ -606,12 +616,14 @@ def _checkbox_badge(checked: bool, badge_style: ParagraphStyle) -> Union[_Circle
     return _single_selected_choice(defs, sel, chip)
 
 
-def _pft_badges(val: Dict[str, Any], badge_style: ParagraphStyle) -> Table:
+def _pft_badges(val: Dict[str, Any], badge_style: ParagraphStyle, no_answer_style: ParagraphStyle) -> Union[Table, Paragraph]:
     """Aggregate P/F/NA counts — color only columns with count > 0 (matches “only marked” emphasis)."""
     o = val if isinstance(val, dict) else {}
     np = int(o.get("pass") or 0)
     nf = int(o.get("fail") or 0)
     nn = int(o.get("na") or 0)
+    if np == 0 and nf == 0 and nn == 0:
+        return _no_answer_paragraph(no_answer_style)
 
     cols: List[Tuple[int, str, Any, str, Any]] = [
         (np, "P", _GREEN_BG, "#166534", _GREEN_BD),
@@ -645,6 +657,65 @@ def _pft_badges(val: Dict[str, Any], badge_style: ParagraphStyle) -> Table:
         ts.append(("BOX", (i, 0), (i, 0), 2.5 if on else 0.75, bd if on else _NEUTRAL_BD))
     t.setStyle(TableStyle(ts))
     return t
+
+
+def _plain_field_has_answer(
+    field: Dict[str, Any],
+    payload: Dict[str, Any],
+    list_maps: Dict[str, Dict[str, str]],
+) -> bool:
+    """True when the field has a non-empty primary value (PDF shows real content, not 'No answer')."""
+    key = str(field.get("key") or "").strip()
+    ftype = str(field.get("type") or "")
+    val = payload.get(key)
+    if ftype == "text_info":
+        return True
+    if ftype in ("short_text", "long_text", "number"):
+        if val is None:
+            return False
+        return str(val).strip() != ""
+    if ftype == "date":
+        if val is None:
+            return False
+        return str(val).strip() != ""
+    if ftype == "time":
+        if val is None:
+            return False
+        return str(val).strip() != ""
+    if ftype == "dropdown_single":
+        return bool(str(val or "").strip())
+    if ftype == "dropdown_multi":
+        if not isinstance(val, list) or not val:
+            return False
+        return any(str(x).strip() for x in val)
+    if ftype == "user_single":
+        return bool(val)
+    if ftype == "user_multi":
+        return isinstance(val, list) and len(val) > 0
+    if ftype == "gps":
+        if not val or not isinstance(val, dict):
+            return False
+        lat, lng = val.get("lat"), val.get("lng")
+        if lat is None or lng is None:
+            return False
+        return str(lat).strip() != "" and str(lng).strip() != ""
+    if ftype in ("equipment_single", "equipment_multi"):
+        if isinstance(val, list):
+            return len(val) > 0
+        return bool(val)
+    if ftype == "image_view":
+        return len(_collect_image_view_ids(key, payload)) > 0
+    if ftype == "pdf_insert":
+        if isinstance(val, str) and val.strip():
+            return True
+        if isinstance(val, dict):
+            ids = val.get("file_object_ids")
+            if isinstance(ids, list) and ids:
+                return True
+        return False
+    if ftype == "pdf_view":
+        return True
+    return val is not None and str(val).strip() != ""
 
 
 def _plain_text_value(db: Session, field: Dict[str, Any], payload: Dict[str, Any], list_maps: Dict[str, Dict[str, str]]) -> str:
@@ -806,6 +877,14 @@ def build_safety_inspection_pdf_bytes(
         textColor=colors.HexColor("#111827"),
         leading=12,
     )
+    no_answer_style = ParagraphStyle(
+        "FldNoAns",
+        parent=val_style,
+        fontName=val_style.fontName,
+        fontSize=9,
+        leading=12,
+        textColor=colors.HexColor("#94a3b8"),
+    )
     badge_chr = _badge_style("BadgeChr", val_style)
 
     col_label_w = frame_w * 0.32
@@ -858,10 +937,13 @@ def build_safety_inspection_pdf_bytes(
             elif ftype == "checkbox":
                 val_flow = _checkbox_badge(form_payload.get(key) is True, badge_chr)
             elif ftype == "pass_fail_total":
-                val_flow = _pft_badges(form_payload.get(key) or {}, badge_chr)
+                val_flow = _pft_badges(form_payload.get(key) or {}, badge_chr, no_answer_style)
             else:
-                txt = _plain_text_value(db, field, form_payload, list_maps)
-                val_flow = Paragraph(_esc(txt), val_style)
+                if _plain_field_has_answer(field, form_payload, list_maps):
+                    txt = _plain_text_value(db, field, form_payload, list_maps)
+                    val_flow = Paragraph(_esc(txt), val_style)
+                else:
+                    val_flow = _no_answer_paragraph(no_answer_style)
 
             sc_text, sc_imgs = _get_side_comment(form_payload, key)
             if sc_text:

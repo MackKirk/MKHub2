@@ -1,5 +1,4 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
 import SafetyServiceCalendar from './SafetyServiceCalendar';
@@ -13,7 +12,6 @@ import {
 } from '@/components/safety/SafetyModalChrome';
 import PageHeaderBar from '@/components/PageHeaderBar';
 import { api } from '@/lib/api';
-import { BUSINESS_LINE_REPAIRS_MAINTENANCE } from '@/lib/businessLine';
 
 type BizProject = { id: string; name: string; code?: string; business_line?: string };
 
@@ -36,7 +34,6 @@ type SafetyInspectionCreated = {
 
 export default function SafetySchedulePage() {
   const queryClient = useQueryClient();
-  const navigate = useNavigate();
   const [showModal, setShowModal] = useState(false);
   /** Text in the project combobox: search query or selected project label */
   const [projectInput, setProjectInput] = useState('');
@@ -109,15 +106,10 @@ export default function SafetySchedulePage() {
       queryClient.invalidateQueries({ queryKey: ['safetyInspectionsCalendar'] });
       queryClient.invalidateQueries({ queryKey: ['safetyInspections'] });
       queryClient.invalidateQueries({ queryKey: ['projectSafetyInspections', row.project_id] });
-      const selected = projectItems.find((p) => p.id === row.project_id);
-      const base =
-        selected?.business_line === BUSINESS_LINE_REPAIRS_MAINTENANCE ? '/rm-projects' : '/projects';
-      const q = new URLSearchParams({ tab: 'safety', safety_inspection: row.id });
       setShowModal(false);
       setSelectedProjectId('');
       setProjectInput('');
       setSelectedTemplateId('');
-      navigate(`${base}/${encodeURIComponent(row.project_id)}?${q.toString()}`);
     },
     onError: () => toast.error('Could not schedule inspection'),
   });
@@ -149,35 +141,20 @@ export default function SafetySchedulePage() {
       <PageHeaderBar
         title="Safety schedule"
         subtitle="Scheduled site safety inspections on the calendar. Open the project Safety tab to complete forms."
-        trailing={
-          <>
-            <Link
-              to="/safety/inspections"
-              className="px-3 py-2 text-xs font-medium text-gray-700 border border-gray-200 rounded-lg bg-white hover:bg-gray-50 transition-colors"
-            >
-              Inspections list
-            </Link>
-            {canSchedule && (
-              <button
-                type="button"
-                onClick={() => {
-                  setProjectInput('');
-                  setSelectedProjectId('');
-                  setDebouncedQ('');
-                  setProjectDropdownOpen(false);
-                  setSelectedTemplateId('');
-                  setShowModal(true);
-                }}
-                className="px-3 py-2 rounded-lg bg-brand-red text-white text-xs font-medium hover:bg-[#aa1212] transition-colors"
-              >
-                Schedule new inspection
-              </button>
-            )}
-          </>
-        }
       />
 
-      <SafetyServiceCalendar embedView />
+      <SafetyServiceCalendar
+        embedView
+        canSchedule={canSchedule}
+        onScheduleNew={() => {
+          setProjectInput('');
+          setSelectedProjectId('');
+          setDebouncedQ('');
+          setProjectDropdownOpen(false);
+          setSelectedTemplateId('');
+          setShowModal(true);
+        }}
+      />
 
       {showModal && canSchedule && (
         <OverlayPortal>

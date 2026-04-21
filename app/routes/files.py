@@ -1,4 +1,5 @@
 import os
+import uuid
 from datetime import datetime
 from typing import Optional
 
@@ -125,6 +126,12 @@ def canonical_key(
     folder = slugify(category or "files")
     slug_part = f"-{slugify(slug)}" if slug else ""
     return f"/org/{year}/{proj}{slug_part}/{folder}/{today}_{safe_name}{ext}"
+
+
+def unique_upload_key(base_key: str) -> str:
+    """Make an upload key unique so repeated pasted images never overwrite earlier blobs."""
+    root, ext = os.path.splitext(base_key)
+    return f"{root}_{uuid.uuid4().hex[:12]}{ext}"
 
 
 def _file_url_with_access_token(base_url: str, request: Request) -> str:
@@ -297,6 +304,7 @@ async def upload_proxy(
         category=category_id,
         original_name=original_name,
     )
+    final_key = unique_upload_key(final_key)
     
     if is_heic:
         logger.info(f"Detected HEIC file in upload-proxy: {original_name}, converting to JPG")

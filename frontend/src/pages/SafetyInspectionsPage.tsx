@@ -70,15 +70,6 @@ export default function SafetyInspectionsPage() {
       <PageHeaderBar
         title="Site safety inspections"
         subtitle="All awarded projects you can access. Open a row to edit in the project Safety tab."
-        trailing={
-          <button
-            type="button"
-            onClick={() => nav('/safety/calendar')}
-            className="px-3 py-2 text-xs font-medium text-gray-700 border border-gray-200 rounded-lg bg-white hover:bg-gray-50 transition-colors"
-          >
-            Calendar
-          </button>
-        }
       />
 
       <div className="rounded-xl border bg-white p-4 mb-4">
