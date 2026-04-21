@@ -21,6 +21,7 @@ from ..schemas.company_credit_cards import (
 )
 from ..services.audit import compute_diff
 from ..services.fleet_audit import audit_fleet, snapshot_company_credit_card
+from ..services.permissions import is_admin
 from ..services.task_service import get_user_display
 
 router = APIRouter(prefix="/company-credit-cards", tags=["company-credit-cards"])
@@ -187,32 +188,33 @@ def update_company_credit_card(
 
 
 @router.delete("/{card_id}")
-def cancel_company_credit_card(
+def delete_company_credit_card(
     card_id: uuid.UUID,
     db: Session = Depends(get_db),
     user=Depends(get_current_user),
     _=Depends(require_permissions("company_cards:write")),
 ):
+    """Permanently remove the card record (admin only). Custody rows cascade. Use PATCH status=cancelled to cancel without deleting."""
+    if not is_admin(user, db):
+        raise HTTPException(status_code=403, detail="Only administrators can delete a corporate card record")
+
     card = db.query(CompanyCreditCard).filter(CompanyCreditCard.id == card_id).first()
     if not card:
         raise HTTPException(status_code=404, detail="Credit card record not found")
 
     before = snapshot_company_credit_card(card)
-    card.status = "cancelled"
-    card.updated_at = datetime.now(timezone.utc)
-
+    db.delete(card)
     db.commit()
-    db.refresh(card)
     audit_fleet(
         db,
         user,
         entity_type="company_credit_card",
-        entity_id=card.id,
-        action="UPDATE",
-        changes_json={"before": before, "after": snapshot_company_credit_card(card), "soft_cancel": True},
-        context={"company_credit_card_id": str(card.id)},
+        entity_id=card_id,
+        action="DELETE",
+        changes_json={"before": before},
+        context={"company_credit_card_id": str(card_id)},
     )
-    return {"message": "Card marked as cancelled"}
+    return {"message": "Corporate card record deleted"}
 
 
 @router.get("/{card_id}/assignments", response_model=List[CompanyCreditCardAssignmentResponse])

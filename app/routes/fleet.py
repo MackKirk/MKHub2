@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session, joinedload
 
 from ..db import get_db
 from ..auth.security import get_current_user, require_permissions, require_roles
+from ..services.permissions import is_admin
 from ..services.asset_assignment_service import (
     create_assignment_for_fleet_asset,
     return_assignment_for_fleet_asset,
@@ -1060,7 +1061,10 @@ def delete_equipment(
     user=Depends(get_current_user),
     _=Depends(require_permissions("equipment:write")),
 ):
-    """Delete equipment (soft delete by setting status to retired)"""
+    """Retire equipment (soft delete). Administrators only."""
+    if not is_admin(user, db):
+        raise HTTPException(status_code=403, detail="Only administrators can delete equipment")
+
     equipment = db.query(Equipment).filter(Equipment.id == equipment_id).first()
     if not equipment:
         raise HTTPException(status_code=404, detail="Equipment not found")

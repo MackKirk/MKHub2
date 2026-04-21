@@ -4,6 +4,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import toast from 'react-hot-toast';
 import OverlayPortal from '@/components/OverlayPortal';
+import { useConfirm } from '@/components/ConfirmProvider';
 import {
   expiryBadgeClass,
   expiryLabel,
@@ -86,6 +87,7 @@ export default function CompanyCreditCardDetail() {
   const { id } = useParams();
   const nav = useNavigate();
   const qc = useQueryClient();
+  const confirm = useConfirm();
   const [tab, setTab] = useState<'details' | 'custody'>('details');
   const [showAssign, setShowAssign] = useState(false);
   const [showReturn, setShowReturn] = useState(false);
@@ -122,6 +124,9 @@ export default function CompanyCreditCardDetail() {
     queryKey: ['employees'],
     queryFn: () => api<any[]>('GET', '/employees'),
   });
+
+  const { data: me } = useQuery({ queryKey: ['me'], queryFn: () => api<any>('GET', '/auth/me') });
+  const isAdministrator = !!(me?.roles || []).some((r: string) => String(r || '').toLowerCase() === 'admin');
 
   useEffect(() => {
     if (!card) return;
@@ -193,13 +198,26 @@ export default function CompanyCreditCardDetail() {
     onError: (e: any) => toast.error(e?.message || 'Return failed'),
   });
 
-  const cancelMutation = useMutation({
+  const markCancelledMutation = useMutation({
+    mutationFn: () => api('PATCH', `/company-credit-cards/${id}`, { status: 'cancelled' }),
+    onSuccess: () => {
+      toast.success('Card marked as cancelled');
+      qc.invalidateQueries({ queryKey: ['company-credit-card', id] });
+      qc.invalidateQueries({ queryKey: ['company-credit-cards'] });
+      setEditStatus('cancelled');
+    },
+    onError: (e: any) => toast.error(e?.message || 'Failed to cancel'),
+  });
+
+  const [deletingCard, setDeletingCard] = useState(false);
+  const deleteCardMutation = useMutation({
     mutationFn: () => api('DELETE', `/company-credit-cards/${id}`),
     onSuccess: () => {
-      toast.success('Card marked cancelled');
+      toast.success('Card record removed');
+      qc.invalidateQueries({ queryKey: ['company-credit-cards'] });
       nav('/company-assets/credit-cards');
     },
-    onError: (e: any) => toast.error(e?.message || 'Failed'),
+    onError: (e: any) => toast.error(e?.message || 'Delete failed'),
   });
 
   if (!isValidId) return <div className="max-w-5xl px-4 py-6 text-sm text-gray-600">Invalid id</div>;
@@ -311,12 +329,37 @@ export default function CompanyCreditCardDetail() {
           )}
           <button
             type="button"
-            onClick={() => cancelMutation.mutate()}
-            disabled={cancelMutation.isPending || card.status !== 'active'}
+            onClick={() => markCancelledMutation.mutate()}
+            disabled={markCancelledMutation.isPending || card.status !== 'active'}
             className="rounded-full border border-red-300 bg-red-50 px-4 py-1.5 text-sm font-medium text-red-800 hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-40"
           >
             Mark cancelled
           </button>
+          {isAdministrator ? (
+            <button
+              type="button"
+              disabled={deletingCard || deleteCardMutation.isPending}
+              onClick={async () => {
+                const choice = await confirm({
+                  title: 'Delete corporate card',
+                  message:
+                    'Permanently remove this card record from MKHub (including custody history)? This cannot be undone.',
+                  confirmText: 'Delete permanently',
+                  cancelText: 'Cancel',
+                });
+                if (choice !== 'confirm') return;
+                setDeletingCard(true);
+                try {
+                  await deleteCardMutation.mutateAsync();
+                } finally {
+                  setDeletingCard(false);
+                }
+              }}
+              className="rounded-full border border-red-400 bg-white px-4 py-1.5 text-sm font-semibold text-red-800 hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {deletingCard || deleteCardMutation.isPending ? 'Deleting…' : 'Delete card'}
+            </button>
+          ) : null}
         </div>
       </div>
 
