@@ -227,6 +227,8 @@ def _perm_matches_map(perm_map: dict, perm: str) -> bool:
         return bool(perm_map.get("company_cards:read"))
     if perm == "company_cards:write":
         return bool(perm_map.get("company_cards:write"))
+    if perm == "training:manage":
+        return bool(perm_map.get("training:manage") or perm_map.get("users:write"))
     return False
 
 
@@ -279,6 +281,8 @@ def _has_permission(user: User, perm: str) -> bool:
                 elif area == 'work_orders':
                     pass
                 elif area == 'inspections':
+                    pass
+                elif area == 'training':
                     pass
                 else:
                     # Check if area access is explicitly denied (False in override)

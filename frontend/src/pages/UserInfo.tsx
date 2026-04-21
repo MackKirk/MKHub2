@@ -8413,8 +8413,9 @@ function EmployeeTrainingSection({ userId, canEdit }: { userId: string; canEdit:
           <div className="min-w-0">
             <h5 className="text-sm font-semibold text-emerald-950">Training & courses</h5>
             <p className="mt-0.5 text-xs text-gray-500">
-              HR training history (not the LMS). Use <span className="font-medium text-gray-700">Start date</span> for
-              scheduled or in-progress rows so they show on the team training calendar.
+              HR training history, including optional sync from completed internal LMS courses. Use{' '}
+              <span className="font-medium text-gray-700">Start date</span> for scheduled or in-progress rows so they
+              show on the team training calendar.
             </p>
           </div>
         </div>
@@ -8499,7 +8500,16 @@ function EmployeeTrainingSection({ userId, canEdit }: { userId: string; canEdit:
                     <td className="max-w-[140px] truncate px-4 py-2.5 text-xs text-slate-600" title={r.item_type_label || ''}>
                       {r.item_type_label || '—'}
                     </td>
-                    <td className="px-4 py-2.5 font-medium text-gray-900">{r.title}</td>
+                    <td className="px-4 py-2.5 font-medium text-gray-900">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span>{r.title}</span>
+                        {r.training_source === 'lms' && (
+                          <span className="rounded bg-violet-100 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-violet-800">
+                            Internal LMS
+                          </span>
+                        )}
+                      </div>
+                    </td>
                     <td className="px-4 py-2.5 text-gray-700">{r.provider || '—'}</td>
                     <td className="px-4 py-2.5 text-gray-700">{r.category || '—'}</td>
                     <td className="max-w-[100px] truncate px-4 py-2.5 text-gray-700" title={r.crew || ''}>

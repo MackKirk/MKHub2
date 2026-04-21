@@ -1016,7 +1016,7 @@ class EmployeeFolder(Base):
     created_by: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True))
 
 class EmployeeTrainingRecord(Base):
-    """Manual HR log of courses/trainings completed (not linked to LMS training_courses)."""
+    """HR training log (manual entry and optional mirror row when an internal LMS course completes with matrix sync)."""
     __tablename__ = "employee_training_records"
 
     id: Mapped[uuid.UUID] = uuid_pk()
@@ -2793,7 +2793,11 @@ class TrainingCourse(Base):
     generates_certificate: Mapped[bool] = mapped_column(Boolean, default=False)
     certificate_validity_days: Mapped[Optional[int]] = mapped_column(Integer)
     certificate_text: Mapped[Optional[str]] = mapped_column(Text)  # Custom certificate text
-    
+
+    # HR matrix / employee training record sync (optional)
+    matrix_training_id: Mapped[Optional[str]] = mapped_column(String(64), nullable=True, index=True)
+    sync_completion_to_employee_record: Mapped[bool] = mapped_column(Boolean, default=False)
+
     # Metadata
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
     created_by: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"))

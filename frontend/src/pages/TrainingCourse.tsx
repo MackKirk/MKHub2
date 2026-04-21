@@ -1,9 +1,12 @@
-import { useParams, useNavigate } from 'react-router-dom';
+import '@/pages/training/LessonRichTextEditor.css';
+import { useParams, useNavigate, Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import DOMPurify from 'dompurify';
 import { api, withFileAccessToken } from '@/lib/api';
+import { injectFileAccessTokensInHtml } from '@/lib/trainingRichText';
+import type { Config } from 'dompurify';
 import toast from 'react-hot-toast';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 
 type Module = {
   id: string;
@@ -31,6 +34,11 @@ type QuizQuestion = {
   options?: string[];
 };
 
+const TRAINING_RICH_TEXT_SANITIZE: Config = {
+  ADD_TAGS: ['mark'],
+  ADD_ATTR: ['style', 'target', 'rel', 'class', 'data-color', 'data-highlight'],
+};
+
 type Quiz = {
   id: string;
   title: string;
@@ -46,6 +54,8 @@ type Course = {
   modules: Module[];
   progress?: {
     progress_percent: number;
+    started_at?: string;
+    completed_at?: string;
     current_module_id?: string;
     current_lesson_id?: string;
   };
@@ -66,6 +76,62 @@ export default function TrainingCourse() {
     enabled: !!courseId,
   });
 
+  const selectedModule = useMemo(() => {
+    if (!course?.modules?.length) return null;
+    if (selectedLessonId) {
+      const m = course.modules.find((mod) => mod.lessons.some((l) => l.id === selectedLessonId));
+      if (m) return m;
+    }
+    const cur = course.progress?.current_lesson_id;
+    if (cur) {
+      const m = course.modules.find((mod) => mod.lessons.some((l) => l.id === cur));
+      if (m) return m;
+    }
+    return course.modules[0];
+  }, [course, selectedLessonId]);
+
+  const selectedLesson = useMemo(() => {
+    if (!course?.modules?.length) return null;
+    const flat = course.modules.flatMap((m) => m.lessons);
+    if (selectedLessonId) {
+      const found = flat.find((l) => l.id === selectedLessonId);
+      if (found) return found;
+    }
+    const cur = course.progress?.current_lesson_id;
+    if (cur) {
+      const found = flat.find((l) => l.id === cur);
+      if (found) return found;
+    }
+    return flat[0] ?? null;
+  }, [course, selectedLessonId]);
+
+  const needsQuiz =
+    !!course?.progress &&
+    !!selectedLesson &&
+    (selectedLesson.lesson_type === 'quiz' || selectedLesson.has_quiz);
+
+  const { data: lessonQuiz, isLoading: quizLoading } = useQuery<Quiz>({
+    queryKey: ['training-lesson-quiz', courseId, selectedModule?.id, selectedLesson?.id],
+    queryFn: () =>
+      api<Quiz>(
+        'GET',
+        `/training/${courseId}/modules/${selectedModule!.id}/lessons/${selectedLesson!.id}/quiz`,
+      ),
+    enabled: Boolean(needsQuiz && courseId && selectedModule?.id && selectedLesson?.id),
+  });
+
+  useEffect(() => {
+    setQuizAnswers({});
+    setQuizSubmitted(false);
+    setQuizResult(null);
+  }, [selectedLesson?.id]);
+
+  useEffect(() => {
+    if (!course?.modules?.length || selectedLessonId) return;
+    const hint = course.progress?.current_lesson_id || course.modules[0]?.lessons[0]?.id;
+    if (hint) setSelectedLessonId(hint);
+  }, [course, selectedLessonId]);
+
   const startMutation = useMutation({
     mutationFn: () => api('POST', `/training/${courseId}/start`),
     onSuccess: () => {
@@ -85,11 +151,21 @@ export default function TrainingCourse() {
   });
 
   const submitQuizMutation = useMutation({
-    mutationFn: ({ moduleId, lessonId, answers }: { moduleId: string; lessonId: string; answers: Record<string, string> }) =>
+    mutationFn: ({
+      moduleId,
+      lessonId,
+      answers,
+      passingScorePercent,
+    }: {
+      moduleId: string;
+      lessonId: string;
+      answers: Record<string, string>;
+      passingScorePercent: number;
+    }) =>
       api('POST', `/training/${courseId}/modules/${moduleId}/lessons/${lessonId}/quiz/submit`, {
         answers,
       }),
-    onSuccess: (data) => {
+    onSuccess: (data, variables) => {
       setQuizResult(data);
       setQuizSubmitted(true);
       if (data.passed) {
@@ -97,7 +173,9 @@ export default function TrainingCourse() {
         queryClient.invalidateQueries({ queryKey: ['training-course', courseId] });
         queryClient.invalidateQueries({ queryKey: ['training'] });
       } else {
-        toast.error(`Quiz failed. Score: ${data.score_percent}%. Minimum: ${quiz?.passing_score_percent}%`);
+        toast.error(
+          `Quiz failed. Score: ${data.score_percent}%. Minimum: ${variables.passingScorePercent}%`,
+        );
       }
     },
     onError: () => {
@@ -113,33 +191,23 @@ export default function TrainingCourse() {
     return <div className="p-4">Course not found</div>;
   }
 
-  // Find selected lesson
-  const selectedLesson = course.modules
-    .flatMap((m) => m.lessons)
-    .find((l) => l.id === selectedLessonId) || course.modules[0]?.lessons[0];
-
   const handleStartCourse = () => {
     startMutation.mutate();
   };
 
   const handleCompleteLesson = () => {
-    if (!selectedLesson) return;
-    const module = course.modules.find((m) => m.lessons.some((l) => l.id === selectedLesson.id));
-    if (module) {
-      completeMutation.mutate({ moduleId: module.id, lessonId: selectedLesson.id });
-    }
+    if (!selectedLesson || !selectedModule) return;
+    completeMutation.mutate({ moduleId: selectedModule.id, lessonId: selectedLesson.id });
   };
 
   const handleSubmitQuiz = () => {
-    if (!selectedLesson || !quiz) return;
-    const module = course.modules.find((m) => m.lessons.some((l) => l.id === selectedLesson.id));
-    if (module) {
-      submitQuizMutation.mutate({
-        moduleId: module.id,
-        lessonId: selectedLesson.id,
-        answers: quizAnswers,
-      });
-    }
+    if (!selectedLesson || !lessonQuiz || !selectedModule) return;
+    submitQuizMutation.mutate({
+      moduleId: selectedModule.id,
+      lessonId: selectedLesson.id,
+      answers: quizAnswers,
+      passingScorePercent: lessonQuiz.passing_score_percent,
+    });
   };
 
   const handleRetryQuiz = () => {
@@ -257,9 +325,11 @@ export default function TrainingCourse() {
 
               {selectedLesson.lesson_type === 'text' && selectedLesson.content?.rich_text_content && (
                 <div
-                  className="prose max-w-none mb-4"
+                  className="prose max-w-none mb-4 training-lesson-rich-text"
                   dangerouslySetInnerHTML={{
-                    __html: DOMPurify.sanitize(selectedLesson.content.rich_text_content || ''),
+                    __html: injectFileAccessTokensInHtml(
+                      DOMPurify.sanitize(selectedLesson.content.rich_text_content || '', TRAINING_RICH_TEXT_SANITIZE),
+                    ),
                   }}
                 />
               )}
@@ -277,16 +347,22 @@ export default function TrainingCourse() {
                 </div>
               )}
 
-              {(selectedLesson.lesson_type === 'quiz' || selectedLesson.has_quiz) && quiz && (
+              {(selectedLesson.lesson_type === 'quiz' || selectedLesson.has_quiz) && needsQuiz && (
                 <div className="border rounded-lg p-6 bg-white mb-4">
-                  <h3 className="text-xl font-bold mb-4">{quiz.title}</h3>
+                  {quizLoading && <p className="text-gray-600">Loading quiz…</p>}
+                  {!quizLoading && !lessonQuiz && (
+                    <p className="text-amber-800">No quiz is attached to this lesson yet.</p>
+                  )}
+                  {lessonQuiz && (
+                    <>
+                  <h3 className="text-xl font-bold mb-4">{lessonQuiz.title}</h3>
                   <p className="text-sm text-gray-600 mb-6">
-                    Passing score: {quiz.passing_score_percent}%
+                    Passing score: {lessonQuiz.passing_score_percent}%
                   </p>
 
                   {!quizSubmitted ? (
                     <div className="space-y-6">
-                      {quiz.questions.map((question, idx) => (
+                      {lessonQuiz.questions.map((question, idx) => (
                         <div key={question.id} className="border-b pb-4">
                           <p className="font-semibold mb-3">
                             {idx + 1}. {question.question_text}
@@ -347,7 +423,10 @@ export default function TrainingCourse() {
 
                       <button
                         onClick={handleSubmitQuiz}
-                        disabled={submitQuizMutation.isPending || Object.keys(quizAnswers).length < quiz.questions.length}
+                        disabled={
+                          submitQuizMutation.isPending ||
+                          Object.keys(quizAnswers).length < lessonQuiz.questions.length
+                        }
                         className="w-full px-6 py-3 bg-[#7f1010] text-white rounded-lg font-semibold hover:bg-[#a31414] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                       >
                         {submitQuizMutation.isPending ? 'Submitting...' : 'Submit Quiz'}
@@ -368,14 +447,14 @@ export default function TrainingCourse() {
                           {quizResult.total_count} correct)
                         </p>
                         <p className="text-sm">
-                          Minimum required: {quiz.passing_score_percent}%
+                          Minimum required: {lessonQuiz.passing_score_percent}%
                         </p>
                       </div>
 
                       {quizResult.results && (
                         <div className="space-y-3">
                           <p className="font-semibold">Results:</p>
-                          {quiz.questions.map((question, idx) => {
+                          {lessonQuiz.questions.map((question, idx) => {
                             const isCorrect = quizResult.results[question.id];
                             return (
                               <div
@@ -415,6 +494,8 @@ export default function TrainingCourse() {
                       )}
                     </div>
                   ) : null}
+                    </>
+                  )}
                 </div>
               )}
             </div>
@@ -437,6 +518,21 @@ export default function TrainingCourse() {
             {selectedLesson.completed && (
               <div className="px-6 py-3 bg-green-50 text-green-800 rounded-lg font-semibold">
                 ✓ Lesson Completed
+              </div>
+            )}
+
+            {course.progress?.completed_at && (
+              <div className="mt-8 border rounded-xl bg-emerald-50 border-emerald-200 p-6">
+                <p className="font-bold text-emerald-900 text-lg mb-2">Course completed</p>
+                <p className="text-sm text-emerald-800 mb-4">
+                  You have finished all required lessons. Your certificate is available if this course issues one.
+                </p>
+                <Link
+                  to="/training/certificates"
+                  className="inline-block px-4 py-2 bg-emerald-700 text-white rounded-lg font-semibold hover:bg-emerald-800"
+                >
+                  View certificates
+                </Link>
               </div>
             )}
           </div>

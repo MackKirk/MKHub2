@@ -65,7 +65,10 @@ from ..services.training import (
     duplicate_course,
     validate_course_for_publishing,
     check_renewal_requirements,
+    sync_course_completion_to_employee_record,
 )
+from ..services.training_matrix_slots import is_valid_matrix_training_id
+from ..training_matrix_catalog import normalize_matrix_training_id
 from ..services.task_service import get_user_display
 from ..storage.provider import StorageProvider
 from ..storage.local_provider import LocalStorageProvider
@@ -74,6 +77,15 @@ from ..config import settings
 from ..proposals.pdf_certificate import create_certificate_pdf
 
 router = APIRouter(prefix="/training", tags=["training"])
+
+
+def _validate_matrix_training_id(raw: Optional[str], db: Session) -> Optional[str]:
+    mid = normalize_matrix_training_id(raw)
+    if not mid:
+        return None
+    if not is_valid_matrix_training_id(mid, db):
+        raise HTTPException(status_code=400, detail="Invalid matrix_training_id for training matrix")
+    return mid
 
 
 # =====================
@@ -113,35 +125,50 @@ def list_courses(
     in_progress = []
     required = []
     expired = []
-    
+    placed_ids = set()
+
     for course in all_courses:
         progress = user_progress.get(course.id)
         certificate = user_certificates.get(course.id)
-        
+
         # Check if expired
         if certificate and certificate.expires_at and certificate.expires_at < datetime.utcnow():
             expired.append(_serialize_course(course, progress, certificate))
+            placed_ids.add(course.id)
             continue
-        
+
         # Check if completed
         if progress and progress.completed_at:
             completed.append(_serialize_course(course, progress, certificate))
+            placed_ids.add(course.id)
             continue
-        
+
         # Check if in progress
         if progress and progress.started_at:
             in_progress.append(_serialize_course(course, progress, certificate))
+            placed_ids.add(course.id)
             continue
-        
+
         # Check if required
         if course.id in required_course_ids:
             required.append(_serialize_course(course, progress, certificate))
-    
+            placed_ids.add(course.id)
+
+    # Published courses not shown above (e.g. optional / browse catalog)
+    available = []
+    for course in all_courses:
+        if course.id in placed_ids:
+            continue
+        progress = user_progress.get(course.id)
+        certificate = user_certificates.get(course.id)
+        available.append(_serialize_course(course, progress, certificate))
+
     return {
         "completed": completed,
         "in_progress": in_progress,
         "required": required,
         "expired": expired,
+        "available": available,
     }
 
 
@@ -226,7 +253,24 @@ def get_course(
             "order_index": module.order_index,
             "lessons": lesson_data,
         })
-    
+
+    # Reconcile stored progress with completed_lessons (session uses autoflush=False;
+    # older rows may have stale progress_percent / missing completed_at).
+    if progress:
+        live_pct = calculate_course_progress(course_uuid, me.id, db)
+        dirty = False
+        if live_pct != progress.progress_percent:
+            progress.progress_percent = live_pct
+            dirty = True
+        if progress.completed_at is None and check_course_completion(course_uuid, me.id, db):
+            progress.completed_at = datetime.utcnow()
+            if course.generates_certificate:
+                generate_certificate(course_uuid, me.id, db)
+            sync_course_completion_to_employee_record(course, me.id, db)
+            dirty = True
+        if dirty:
+            db.commit()
+
     return {
         "id": str(course.id),
         "title": course.title,
@@ -486,20 +530,18 @@ def submit_quiz(
     if not progress:
         raise HTTPException(status_code=404, detail="Progress not found")
     
-    # Update progress with quiz score
+    # Update progress with quiz score (only pass advances the lesson)
     if passed:
         update_lesson_progress(progress.id, lesson_uuid, score_percent, db)
-    
-    # Get next lesson
-    next_lesson = get_next_lesson(course_uuid, me.id, db)
-    
-    if next_lesson:
-        progress.current_lesson_id = next_lesson.id
-        progress.current_module_id = next_lesson.module_id
-    else:
-        progress.current_lesson_id = None
-        progress.current_module_id = None
-    
+
+        next_lesson = get_next_lesson(course_uuid, me.id, db)
+        if next_lesson:
+            progress.current_lesson_id = next_lesson.id
+            progress.current_module_id = next_lesson.module_id
+        else:
+            progress.current_lesson_id = None
+            progress.current_module_id = None
+
     progress.last_accessed_at = datetime.utcnow()
     db.commit()
     
@@ -613,7 +655,7 @@ def list_admin_courses(
     status: Optional[str] = Query(None),
     category_id: Optional[str] = Query(None),
     db: Session = Depends(get_db),
-    _=Depends(require_permissions("users:write"))
+    _=Depends(require_permissions("training:manage", "users:write"))
 ):
     """List all courses (admin view, includes drafts)"""
     query = db.query(TrainingCourse)
@@ -662,9 +704,10 @@ def list_admin_courses(
 def create_course(
     course_data: CourseCreate,
     db: Session = Depends(get_db),
-    me: User = Depends(require_permissions("users:write"))
+    me: User = Depends(require_permissions("training:manage", "users:write"))
 ):
     """Create a new course (starts as draft)"""
+    mid = _validate_matrix_training_id(getattr(course_data, "matrix_training_id", None), db)
     course = TrainingCourse(
         title=course_data.title,
         description=course_data.description,
@@ -678,6 +721,8 @@ def create_course(
         generates_certificate=course_data.generates_certificate,
         certificate_validity_days=course_data.certificate_validity_days,
         certificate_text=course_data.certificate_text,
+        matrix_training_id=mid,
+        sync_completion_to_employee_record=bool(getattr(course_data, "sync_completion_to_employee_record", False)),
         status="draft",
         created_by=me.id,
     )
@@ -708,7 +753,7 @@ def create_course(
 def get_admin_course(
     course_id: str,
     db: Session = Depends(get_db),
-    _=Depends(require_permissions("users:write"))
+    _=Depends(require_permissions("training:manage", "users:write"))
 ):
     """Get full course with all modules/lessons (admin view, includes drafts)"""
     try:
@@ -787,6 +832,8 @@ def get_admin_course(
         "generates_certificate": course.generates_certificate,
         "certificate_validity_days": course.certificate_validity_days,
         "certificate_text": course.certificate_text,
+        "matrix_training_id": getattr(course, "matrix_training_id", None),
+        "sync_completion_to_employee_record": bool(getattr(course, "sync_completion_to_employee_record", False)),
         "required_role_ids": [str(r.id) for r in course.required_roles],
         "required_division_ids": [str(d.id) for d in course.required_divisions],
         "required_user_ids": [str(u.id) for u in course.required_users],
@@ -802,7 +849,7 @@ def update_course(
     course_id: str,
     course_data: CourseUpdate,
     db: Session = Depends(get_db),
-    _=Depends(require_permissions("users:write"))
+    _=Depends(require_permissions("training:manage", "users:write"))
 ):
     """Update course metadata"""
     try:
@@ -841,7 +888,14 @@ def update_course(
         course.certificate_validity_days = course_data.certificate_validity_days
     if course_data.certificate_text is not None:
         course.certificate_text = course_data.certificate_text
-    
+
+    patch = course_data.model_dump(exclude_unset=True)
+    if "matrix_training_id" in patch:
+        raw = patch["matrix_training_id"]
+        course.matrix_training_id = _validate_matrix_training_id(raw, db) if raw not in (None, "") else None
+    if "sync_completion_to_employee_record" in patch:
+        course.sync_completion_to_employee_record = bool(patch["sync_completion_to_employee_record"])
+
     course.updated_at = datetime.utcnow()
     
     # Update required assignments
@@ -866,7 +920,7 @@ def update_course(
 def publish_course_endpoint(
     course_id: str,
     db: Session = Depends(get_db),
-    _=Depends(require_permissions("users:write"))
+    _=Depends(require_permissions("training:manage", "users:write"))
 ):
     """Publish a course"""
     try:
@@ -885,7 +939,7 @@ def publish_course_endpoint(
 def unpublish_course_endpoint(
     course_id: str,
     db: Session = Depends(get_db),
-    _=Depends(require_permissions("users:write"))
+    _=Depends(require_permissions("training:manage", "users:write"))
 ):
     """Unpublish a course"""
     try:
@@ -902,7 +956,7 @@ def duplicate_course_endpoint(
     course_id: str,
     body: dict = Body(...),
     db: Session = Depends(get_db),
-    me: User = Depends(get_current_user)
+    me: User = Depends(require_permissions("training:manage", "users:write")),
 ):
     """Duplicate a course"""
     try:
@@ -930,7 +984,7 @@ def duplicate_course_endpoint(
 def delete_course(
     course_id: str,
     db: Session = Depends(get_db),
-    _=Depends(require_permissions("users:write"))
+    _=Depends(require_permissions("training:manage", "users:write"))
 ):
     """Delete a course (soft delete if has progress)"""
     try:
@@ -962,7 +1016,7 @@ def create_module(
     course_id: str,
     module_data: ModuleCreate,
     db: Session = Depends(get_db),
-    _=Depends(require_permissions("users:write"))
+    _=Depends(require_permissions("training:manage", "users:write"))
 ):
     """Create a module"""
     try:
@@ -998,7 +1052,7 @@ def update_module(
     module_id: str,
     module_data: ModuleUpdate,
     db: Session = Depends(get_db),
-    _=Depends(require_permissions("users:write"))
+    _=Depends(require_permissions("training:manage", "users:write"))
 ):
     """Update module"""
     try:
@@ -1024,7 +1078,7 @@ def reorder_modules(
     course_id: str,
     reorder_data: ReorderModulesRequest,
     db: Session = Depends(get_db),
-    _=Depends(require_permissions("users:write"))
+    _=Depends(require_permissions("training:manage", "users:write"))
 ):
     """Bulk reorder modules"""
     try:
@@ -1053,7 +1107,7 @@ def delete_module(
     course_id: str,
     module_id: str,
     db: Session = Depends(get_db),
-    _=Depends(require_permissions("users:write"))
+    _=Depends(require_permissions("training:manage", "users:write"))
 ):
     """Delete a module"""
     try:
@@ -1076,7 +1130,7 @@ def create_lesson(
     module_id: str,
     lesson_data: LessonCreate,
     db: Session = Depends(get_db),
-    _=Depends(require_permissions("users:write"))
+    _=Depends(require_permissions("training:manage", "users:write"))
 ):
     """Create a lesson"""
     try:
@@ -1104,15 +1158,24 @@ def create_lesson(
     
     db.add(lesson)
     db.flush()
-    
-    # If lesson type is quiz, create quiz
-    if lesson_data.lesson_type == "quiz" and lesson_data.content and lesson_data.content.get("quiz_id"):
-        # Link existing quiz
-        quiz_uuid = uuid.UUID(lesson_data.content["quiz_id"])
-        quiz = db.query(TrainingQuiz).filter(TrainingQuiz.id == quiz_uuid).first()
-        if quiz:
-            quiz.lesson_id = lesson.id
-    
+
+    # Quiz lesson: link existing quiz by id, or create an empty quiz shell for the builder UI
+    if lesson_data.lesson_type == "quiz":
+        if lesson_data.content and lesson_data.content.get("quiz_id"):
+            quiz_uuid = uuid.UUID(str(lesson_data.content["quiz_id"]))
+            quiz = db.query(TrainingQuiz).filter(TrainingQuiz.id == quiz_uuid).first()
+            if quiz:
+                quiz.lesson_id = lesson.id
+        else:
+            db.add(
+                TrainingQuiz(
+                    lesson_id=lesson.id,
+                    title=lesson_data.title or "Quiz",
+                    passing_score_percent=70,
+                    allow_retry=True,
+                )
+            )
+
     db.commit()
     db.refresh(lesson)
     
@@ -1126,7 +1189,7 @@ def update_lesson(
     lesson_id: str,
     lesson_data: LessonUpdate,
     db: Session = Depends(get_db),
-    _=Depends(require_permissions("users:write"))
+    _=Depends(require_permissions("training:manage", "users:write"))
 ):
     """Update lesson"""
     try:
@@ -1159,7 +1222,7 @@ def reorder_lessons(
     module_id: str,
     reorder_data: ReorderLessonsRequest,
     db: Session = Depends(get_db),
-    _=Depends(require_permissions("users:write"))
+    _=Depends(require_permissions("training:manage", "users:write"))
 ):
     """Bulk reorder lessons"""
     try:
@@ -1189,7 +1252,7 @@ def delete_lesson(
     module_id: str,
     lesson_id: str,
     db: Session = Depends(get_db),
-    _=Depends(require_permissions("users:write"))
+    _=Depends(require_permissions("training:manage", "users:write"))
 ):
     """Delete a lesson"""
     try:
@@ -1210,7 +1273,7 @@ def delete_lesson(
 def create_quiz(
     quiz_data: QuizCreate,
     db: Session = Depends(get_db),
-    _=Depends(require_permissions("users:write"))
+    _=Depends(require_permissions("training:manage", "users:write"))
 ):
     """Create a quiz"""
     quiz = TrainingQuiz(
@@ -1231,7 +1294,7 @@ def create_quiz(
 def get_quiz(
     quiz_id: str,
     db: Session = Depends(get_db),
-    _=Depends(require_permissions("users:write"))
+    _=Depends(require_permissions("training:manage", "users:write"))
 ):
     """Get quiz with questions"""
     try:
@@ -1269,7 +1332,7 @@ def update_quiz(
     quiz_id: str,
     quiz_data: QuizUpdate,
     db: Session = Depends(get_db),
-    _=Depends(require_permissions("users:write"))
+    _=Depends(require_permissions("training:manage", "users:write"))
 ):
     """Update quiz settings"""
     try:
@@ -1297,7 +1360,7 @@ def add_quiz_question(
     quiz_id: str,
     question_data: QuizQuestionCreate,
     db: Session = Depends(get_db),
-    _=Depends(require_permissions("users:write"))
+    _=Depends(require_permissions("training:manage", "users:write"))
 ):
     """Add quiz question"""
     try:
@@ -1336,7 +1399,7 @@ def update_quiz_question(
     question_id: str,
     question_data: QuizQuestionUpdate,
     db: Session = Depends(get_db),
-    _=Depends(require_permissions("users:write"))
+    _=Depends(require_permissions("training:manage", "users:write"))
 ):
     """Update quiz question"""
     try:
@@ -1368,7 +1431,7 @@ def reorder_questions(
     quiz_id: str,
     reorder_data: ReorderQuestionsRequest,
     db: Session = Depends(get_db),
-    _=Depends(require_permissions("users:write"))
+    _=Depends(require_permissions("training:manage", "users:write"))
 ):
     """Bulk reorder questions"""
     try:
@@ -1397,7 +1460,7 @@ def delete_quiz_question(
     quiz_id: str,
     question_id: str,
     db: Session = Depends(get_db),
-    _=Depends(require_permissions("users:write"))
+    _=Depends(require_permissions("training:manage", "users:write"))
 ):
     """Delete quiz question"""
     try:
@@ -1417,7 +1480,7 @@ def delete_quiz_question(
 @router.get("/admin/overdue")
 def get_overdue_training(
     db: Session = Depends(get_db),
-    _=Depends(require_permissions("users:write"))
+    _=Depends(require_permissions("training:manage", "users:write"))
 ):
     """List employees with overdue training"""
     now = datetime.utcnow()
@@ -1452,7 +1515,7 @@ def get_overdue_training(
 @router.get("/admin/status")
 def get_training_status(
     db: Session = Depends(get_db),
-    _=Depends(require_permissions("users:write"))
+    _=Depends(require_permissions("training:manage", "users:write"))
 ):
     """Dashboard: completion rates, overdue training, course statistics"""
     # Total courses

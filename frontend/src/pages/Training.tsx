@@ -22,10 +22,13 @@ type TrainingData = {
   in_progress: Course[];
   required: Course[];
   expired: Course[];
+  available?: Course[];
 };
 
 export default function Training() {
-  const [activeTab, setActiveTab] = useState<'completed' | 'in_progress' | 'required' | 'expired'>('required');
+  const [activeTab, setActiveTab] = useState<
+    'completed' | 'in_progress' | 'required' | 'expired' | 'available'
+  >('required');
   const { data, isLoading } = useQuery<TrainingData>({
     queryKey: ['training'],
     queryFn: () => api<TrainingData>('GET', '/training'),
@@ -37,11 +40,23 @@ export default function Training() {
     <div>
       <div className="bg-slate-200/50 rounded-[12px] border border-slate-200 py-4 px-6 mb-6">
         <div className="text-xl font-bold text-gray-900 tracking-tight mb-0.5">Training & Learning</div>
-        <div className="text-sm text-gray-500 font-medium">Complete your required training and earn certificates</div>
+        <div className="text-sm text-gray-500 font-medium">
+          Complete your required training, browse internal courses, and earn certificates
+        </div>
       </div>
 
       {/* Tabs */}
-      <div className="mb-4 flex gap-2 border-b">
+      <div className="mb-4 flex gap-2 border-b flex-wrap">
+        <button
+          onClick={() => setActiveTab('available')}
+          className={`px-4 py-2 font-semibold border-b-2 transition-colors ${
+            activeTab === 'available'
+              ? 'border-[#7f1010] text-[#7f1010]'
+              : 'border-transparent text-gray-600 hover:text-gray-900'
+          }`}
+        >
+          Browse ({data?.available?.length || 0})
+        </button>
         <button
           onClick={() => setActiveTab('required')}
           className={`px-4 py-2 font-semibold border-b-2 transition-colors ${

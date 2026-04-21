@@ -1555,6 +1555,35 @@ def create_app() -> FastAPI:
                     except Exception:
                         pass
 
+                    # LMS → HR matrix sync fields on training_courses
+                    rows = db.execute(
+                        text(
+                            """
+                            SELECT 1
+                            FROM information_schema.columns
+                            WHERE table_schema = 'public' AND table_name = 'training_courses'
+                              AND column_name = 'matrix_training_id'
+                            LIMIT 1
+                            """
+                        )
+                    ).fetchall()
+                    if not rows:
+                        try:
+                            db.execute(
+                                text(
+                                    "ALTER TABLE training_courses ADD COLUMN matrix_training_id VARCHAR(64) NULL"
+                                )
+                            )
+                            db.execute(
+                                text(
+                                    "ALTER TABLE training_courses ADD COLUMN sync_completion_to_employee_record BOOLEAN NOT NULL DEFAULT false"
+                                )
+                            )
+                            db.commit()
+                            print("[startup] Added matrix_training_id / sync_completion_to_employee_record to training_courses")
+                        except Exception:
+                            db.rollback()
+
                     # Corporate credit card inventory (last four + expiry only; no full PAN)
                     rows = db.execute(
                         text(

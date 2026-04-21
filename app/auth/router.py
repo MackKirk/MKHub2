@@ -2638,6 +2638,11 @@ def _training_row(r):
         "created_at": r.created_at.isoformat() if r.created_at else None,
         "updated_at": r.updated_at.isoformat() if r.updated_at else None,
         "created_by_user_id": str(r.created_by_user_id) if r.created_by_user_id else None,
+        "training_source": (
+            "lms"
+            if (r.provider or "").strip() == "MKHub LMS" or ("[MKHub LMS]" in (r.notes or ""))
+            else "manual"
+        ),
     }
 
 

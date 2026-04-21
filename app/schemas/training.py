@@ -22,7 +22,11 @@ class CourseBase(BaseModel):
     generates_certificate: bool = False
     certificate_validity_days: Optional[int] = None
     certificate_text: Optional[str] = None
-    
+
+    # HR employee training / matrix (optional)
+    matrix_training_id: Optional[str] = None
+    sync_completion_to_employee_record: bool = False
+
     # Required assignments (for create/update)
     required_role_ids: Optional[List[uuid.UUID]] = None
     required_division_ids: Optional[List[uuid.UUID]] = None
@@ -47,6 +51,8 @@ class CourseUpdate(BaseModel):
     generates_certificate: Optional[bool] = None
     certificate_validity_days: Optional[int] = None
     certificate_text: Optional[str] = None
+    matrix_training_id: Optional[str] = None
+    sync_completion_to_employee_record: Optional[bool] = None
     required_role_ids: Optional[List[uuid.UUID]] = None
     required_division_ids: Optional[List[uuid.UUID]] = None
     required_user_ids: Optional[List[uuid.UUID]] = None

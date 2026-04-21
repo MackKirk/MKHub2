@@ -216,6 +216,7 @@ def assert_can_initiate_upload(
         or _has_permission(user, "hr:users:write")
         or _has_permission(user, "documents:write")
         or _has_permission(user, "documents:access")
+        or _has_permission(user, "training:manage")
     ):
         raise HTTPException(status_code=403, detail="Forbidden")
 

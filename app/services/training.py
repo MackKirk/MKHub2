@@ -15,16 +15,101 @@ from ..models.models import (
     TrainingCertificate,
     User,
     EmployeeProfile,
+    EmployeeTrainingRecord,
     Role,
     SettingItem,
     TaskItem,
     FileObject,
+    user_divisions,
 )
+from ..training_matrix_catalog import normalize_matrix_training_id
+from .training_matrix_slots import is_valid_matrix_training_id
 from .task_service import create_task_item, get_user_display
 from ..storage.provider import StorageProvider
 from ..storage.local_provider import LocalStorageProvider
 from ..storage.blob_provider import BlobStorageProvider
 from ..config import settings
+
+
+LMS_PROVIDER_LABEL = "MKHub LMS"
+LMS_NOTE_PREFIX = "[MKHub LMS]"
+
+
+def _lms_course_note(course_id: uuid.UUID) -> str:
+    return f"{LMS_NOTE_PREFIX} course_id:{course_id}\nInternal course: /training/{course_id}"
+
+
+def sync_course_completion_to_employee_record(course: TrainingCourse, user_id: uuid.UUID, db: Session) -> None:
+    """
+    When enabled, mirror LMS completion into employee_training_records for the HR matrix / profile.
+    Does not overwrite a manual record that does not originate from this LMS sync.
+    """
+    if not getattr(course, "sync_completion_to_employee_record", False):
+        return
+    mid = normalize_matrix_training_id(getattr(course, "matrix_training_id", None))
+    if not mid or not is_valid_matrix_training_id(mid, db):
+        return
+
+    cert = (
+        db.query(TrainingCertificate)
+        .filter(TrainingCertificate.user_id == user_id, TrainingCertificate.course_id == course.id)
+        .order_by(TrainingCertificate.issued_at.desc())
+        .first()
+    )
+    progress = (
+        db.query(TrainingProgress)
+        .filter(TrainingProgress.user_id == user_id, TrainingProgress.course_id == course.id)
+        .first()
+    )
+    comp_dt = (progress.completed_at if progress and progress.completed_at else None) or datetime.utcnow()
+    completion_date = comp_dt.date() if hasattr(comp_dt, "date") else comp_dt
+
+    expiry_date = None
+    if cert and cert.expires_at:
+        expiry_date = cert.expires_at.date() if hasattr(cert.expires_at, "date") else None
+
+    cert_number = (cert.certificate_number if cert else None) or None
+
+    existing = (
+        db.query(EmployeeTrainingRecord)
+        .filter(EmployeeTrainingRecord.user_id == user_id, EmployeeTrainingRecord.matrix_training_id == mid)
+        .first()
+    )
+    notes = _lms_course_note(course.id)
+    now = datetime.utcnow()
+
+    if existing:
+        prov = (existing.provider or "").strip()
+        note = existing.notes or ""
+        is_lms = prov == LMS_PROVIDER_LABEL or LMS_NOTE_PREFIX in note
+        if not is_lms:
+            return
+        existing.title = course.title
+        existing.provider = LMS_PROVIDER_LABEL
+        existing.delivery_format = "online"
+        existing.completion_date = completion_date
+        existing.status = "completed"
+        existing.certificate_number = cert_number
+        existing.expiry_date = expiry_date
+        existing.notes = notes
+        existing.updated_at = now
+        return
+
+    row = EmployeeTrainingRecord(
+        user_id=user_id,
+        title=course.title,
+        provider=LMS_PROVIDER_LABEL,
+        delivery_format="online",
+        completion_date=completion_date,
+        status="completed",
+        certificate_number=cert_number,
+        expiry_date=expiry_date,
+        notes=notes,
+        matrix_training_id=mid,
+        created_at=now,
+        updated_at=now,
+    )
+    db.add(row)
 
 
 def get_storage() -> StorageProvider:
@@ -55,9 +140,15 @@ def get_required_courses_for_user(user_id: uuid.UUID, db: Session) -> List[Train
         if division_item:
             user_division_ids = [division_item.id]
     
-    # Also check user_divisions relationship
-    user_divisions = db.query(SettingItem).join("users").filter(User.id == user_id).all()
-    user_division_ids.extend([d.id for d in user_divisions])
+    # Also check user_divisions association table (User <-> SettingItem)
+    for row in (
+        db.query(SettingItem.id)
+        .join(user_divisions, user_divisions.c.division_id == SettingItem.id)
+        .filter(user_divisions.c.user_id == user_id)
+        .all()
+    ):
+        user_division_ids.append(row[0])
+    user_division_ids = list(dict.fromkeys(user_division_ids))
     
     # Build query for required courses
     query = db.query(TrainingCourse).filter(
@@ -157,33 +248,41 @@ def check_course_completion(course_id: uuid.UUID, user_id: uuid.UUID, db: Sessio
     course = db.query(TrainingCourse).filter(TrainingCourse.id == course_id).first()
     if not course:
         return False
-    
-    # Get all lessons
-    all_lessons = db.query(TrainingLesson).join(TrainingModule).filter(
-        TrainingModule.course_id == course_id,
-        TrainingLesson.requires_completion == True
-    ).all()
-    
-    if not all_lessons:
-        return False
-    
-    # Get progress
+
     progress = db.query(TrainingProgress).filter(
         TrainingProgress.user_id == user_id,
         TrainingProgress.course_id == course_id
     ).first()
-    
+
     if not progress:
         return False
-    
-    # Check if all lessons are completed
+
     completed_lesson_ids = {
         cl.lesson_id for cl in db.query(TrainingCompletedLesson).filter(
             TrainingCompletedLesson.progress_id == progress.id
         ).all()
     }
-    
-    all_lesson_ids = {lesson.id for lesson in all_lessons}
+
+    # Lessons that count toward "course done": explicit True, or NULL (legacy / unset).
+    required_like = db.query(TrainingLesson).join(TrainingModule).filter(
+        TrainingModule.course_id == course_id,
+        or_(
+            TrainingLesson.requires_completion == True,
+            TrainingLesson.requires_completion.is_(None),
+        ),
+    ).all()
+
+    if required_like:
+        all_lesson_ids = {lesson.id for lesson in required_like}
+    else:
+        # Every lesson is explicitly optional (requires_completion=False only).
+        all_any = db.query(TrainingLesson).join(TrainingModule).filter(
+            TrainingModule.course_id == course_id,
+        ).all()
+        if not all_any:
+            return False
+        all_lesson_ids = {lesson.id for lesson in all_any}
+
     return all_lesson_ids.issubset(completed_lesson_ids)
 
 
@@ -256,7 +355,9 @@ def update_lesson_progress(progress_id: uuid.UUID, lesson_id: uuid.UUID, quiz_sc
         quiz_score=quiz_score,
     )
     db.add(completed)
-    
+    # Session uses autoflush=False (app/db.py); queries below must see this row.
+    db.flush()
+
     # Update progress
     progress.last_accessed_at = datetime.utcnow()
     progress.progress_percent = calculate_course_progress(progress.course_id, progress.user_id, db)
@@ -264,12 +365,14 @@ def update_lesson_progress(progress_id: uuid.UUID, lesson_id: uuid.UUID, quiz_sc
     # Check if course is complete
     if check_course_completion(progress.course_id, progress.user_id, db):
         progress.completed_at = datetime.utcnow()
-        
+
         # Generate certificate if course generates one
         course = db.query(TrainingCourse).filter(TrainingCourse.id == progress.course_id).first()
         if course and course.generates_certificate:
             generate_certificate(progress.course_id, progress.user_id, db)
-    
+        if course:
+            sync_course_completion_to_employee_record(course, progress.user_id, db)
+
     db.commit()
 
 
@@ -574,6 +677,8 @@ def duplicate_course(course_id: uuid.UUID, new_title: str, created_by: uuid.UUID
         generates_certificate=original.generates_certificate,
         certificate_validity_days=original.certificate_validity_days,
         certificate_text=original.certificate_text,
+        matrix_training_id=getattr(original, "matrix_training_id", None),
+        sync_completion_to_employee_record=getattr(original, "sync_completion_to_employee_record", False),
         status="draft",
         created_by=created_by,
         cloned_from_id=original.id,

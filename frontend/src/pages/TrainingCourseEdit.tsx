@@ -4,6 +4,7 @@ import { api } from '@/lib/api';
 import toast from 'react-hot-toast';
 import { useState, useEffect, useMemo, useRef } from 'react';
 import { useUnsavedChangesGuard } from '@/hooks/useUnsavedChangesGuard';
+import CourseBuilderPanel from '@/pages/training/CourseBuilderPanel';
 
 type Course = {
   id: string;
@@ -20,6 +21,8 @@ type Course = {
   generates_certificate: boolean;
   certificate_validity_days?: number;
   certificate_text?: string;
+  matrix_training_id?: string | null;
+  sync_completion_to_employee_record?: boolean;
   required_role_ids: string[];
   required_division_ids: string[];
   required_user_ids: string[];
@@ -44,10 +47,11 @@ type Lesson = {
 };
 
 export default function TrainingCourseEdit() {
-  const { courseId } = useParams<{ courseId: string }>();
+  const { courseId: courseIdParam } = useParams<{ courseId: string }>();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const isNew = courseId === 'new';
+  const courseId = courseIdParam?.trim() || undefined;
+  const isNew = !courseId || courseId === 'new';
 
   const { data: course, isLoading } = useQuery<Course>({
     queryKey: ['training-admin-course', courseId],
@@ -70,6 +74,12 @@ export default function TrainingCourseEdit() {
     queryFn: () => api('GET', '/employees'),
   });
 
+  const { data: matrixCatalog } = useQuery({
+    queryKey: ['training-matrix-catalog'],
+    queryFn: () => api<{ items: Array<{ id: string; label: string }> }>('GET', '/auth/training-records/matrix-catalog'),
+    staleTime: 60 * 60 * 1000,
+  });
+
   const [activeTab, setActiveTab] = useState<'setup' | 'requirements' | 'certificate' | 'builder'>('setup');
   const [formData, setFormData] = useState<Partial<Course>>({
     title: '',
@@ -82,6 +92,8 @@ export default function TrainingCourseEdit() {
     required_role_ids: [],
     required_division_ids: [],
     required_user_ids: [],
+    matrix_training_id: '',
+    sync_completion_to_employee_record: false,
   });
   const initialFormDataRef = useRef<Partial<Course>>({});
 
@@ -105,6 +117,8 @@ export default function TrainingCourseEdit() {
         required_role_ids: course.required_role_ids || [],
         required_division_ids: course.required_division_ids || [],
         required_user_ids: course.required_user_ids || [],
+        matrix_training_id: course.matrix_training_id || '',
+        sync_completion_to_employee_record: !!course.sync_completion_to_employee_record,
       };
       setFormData(initial);
       initialFormDataRef.current = initial;
@@ -120,6 +134,8 @@ export default function TrainingCourseEdit() {
         required_role_ids: [],
         required_division_ids: [],
         required_user_ids: [],
+        matrix_training_id: '',
+        sync_completion_to_employee_record: false,
       };
       setFormData(initial);
       initialFormDataRef.current = initial;
@@ -150,8 +166,9 @@ export default function TrainingCourseEdit() {
     },
     onSuccess: (data) => {
       toast.success(isNew ? 'Course created!' : 'Course updated!');
-      if (isNew && data.id) {
-        navigate(`/training/admin/${data.id}`);
+      const createdId = typeof data === 'object' && data && 'id' in data ? String((data as { id: string }).id) : '';
+      if (isNew && createdId) {
+        navigate(`/training/admin/${createdId}`);
       } else {
         initialFormDataRef.current = { ...formData };
         queryClient.invalidateQueries({ queryKey: ['training-admin-course', courseId] });
@@ -181,7 +198,11 @@ export default function TrainingCourseEdit() {
   });
 
   const handleSave = () => {
-    saveMutation.mutate(formData);
+    const payload: Record<string, unknown> = { ...formData };
+    const mid = (formData.matrix_training_id as string)?.trim();
+    payload.matrix_training_id = mid || null;
+    payload.sync_completion_to_employee_record = !!formData.sync_completion_to_employee_record;
+    saveMutation.mutate(payload);
   };
 
   const handlePublish = () => {
@@ -193,10 +214,6 @@ export default function TrainingCourseEdit() {
   const categories = (settings?.training_categories as any[]) || [];
   const divisions = (settings?.divisions as any[]) || [];
 
-  if (isLoading && !isNew) {
-    return <div className="p-4">Loading course...</div>;
-  }
-
   const todayLabel = useMemo(() => {
     return new Date().toLocaleDateString('en-CA', {
       weekday: 'long',
@@ -205,6 +222,10 @@ export default function TrainingCourseEdit() {
       day: 'numeric',
     });
   }, []);
+
+  if (isLoading && !isNew) {
+    return <div className="p-4">Loading course...</div>;
+  }
 
   return (
     <div>
@@ -320,6 +341,40 @@ export default function TrainingCourseEdit() {
                 <option value="draft">Draft</option>
                 <option value="published">Published</option>
               </select>
+            </div>
+
+            <div className="border-t pt-4 mt-4">
+              <p className="text-sm font-semibold text-gray-800 mb-2">HR profile & training matrix</p>
+              <p className="text-xs text-gray-500 mb-3">
+                When a learner completes this course, optionally write a row to their HR training history and fill the
+                standard matrix column (only if the slot is free or was created by a previous LMS sync for this
+                course).
+              </p>
+              <div className="mb-3">
+                <label className="block text-sm font-semibold mb-2">Matrix column (slug)</label>
+                <select
+                  value={formData.matrix_training_id || ''}
+                  onChange={(e) => setFormData({ ...formData, matrix_training_id: e.target.value })}
+                  className="w-full px-4 py-2 border rounded-lg"
+                >
+                  <option value="">None — internal only</option>
+                  {(matrixCatalog?.items || []).map((it) => (
+                    <option key={it.id} value={it.id}>
+                      {it.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <label className="flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  checked={!!formData.sync_completion_to_employee_record}
+                  onChange={(e) =>
+                    setFormData({ ...formData, sync_completion_to_employee_record: e.target.checked })
+                  }
+                />
+                <span className="text-sm font-medium">Sync completion to employee training record / matrix</span>
+              </label>
             </div>
           </div>
         )}
@@ -495,22 +550,8 @@ export default function TrainingCourseEdit() {
               <div className="text-center py-12 text-gray-500">
                 <p>Save the course first to add modules and lessons.</p>
               </div>
-            ) : course ? (
-              <div>
-                <p className="text-gray-600 mb-4">
-                  Course Builder interface will be implemented here. For now, use the API endpoints directly.
-                </p>
-                <div className="space-y-2">
-                  {course.modules?.map((module) => (
-                    <div key={module.id} className="border rounded-lg p-4">
-                      <div className="font-semibold mb-2">{module.title}</div>
-                      <div className="text-sm text-gray-600">
-                        {module.lessons?.length || 0} lessons
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
+            ) : courseId ? (
+              <CourseBuilderPanel courseId={courseId} />
             ) : null}
           </div>
         )}
