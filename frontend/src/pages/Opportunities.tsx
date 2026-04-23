@@ -843,15 +843,22 @@ function FilterBuilderModal({
   );
 }
 
-export default function Opportunities(){
+type OpportunitiesListKind = 'opportunity' | 'leak';
+
+export default function Opportunities({ listKind = 'opportunity' }: { listKind?: OpportunitiesListKind } = {}) {
   const location = useLocation();
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const queryParam = searchParams.get('q') || '';
   const businessLine = useBusinessLine();
-  const opportunityBasePath = businessLine === BUSINESS_LINE_REPAIRS_MAINTENANCE ? '/rm-opportunities' : '/opportunities';
+  const isLeakMode = listKind === 'leak';
+  const opportunityBasePath = isLeakMode
+    ? '/rm-leak-investigations'
+    : (businessLine === BUSINESS_LINE_REPAIRS_MAINTENANCE ? '/rm-opportunities' : '/opportunities');
   const businessDashboardPath = businessLine === BUSINESS_LINE_REPAIRS_MAINTENANCE ? '/rm-business' : '/business';
-  const newOpportunityPath = `${businessLine === BUSINESS_LINE_REPAIRS_MAINTENANCE ? '/rm-projects' : '/projects'}/new?is_bidding=true`;
+  const newOpportunityPath = isLeakMode
+    ? '/rm-projects/new?is_leak_investigation=true'
+    : `${businessLine === BUSINESS_LINE_REPAIRS_MAINTENANCE ? '/rm-projects' : '/projects'}/new?is_bidding=true`;
   
   const [q, setQ] = useState(queryParam);
   const [isFilterModalOpen, setIsFilterModalOpen] = useState(false);
@@ -866,7 +873,8 @@ export default function Opportunities(){
       return urlView;
     }
     // Then check localStorage
-    const saved = localStorage.getItem('opportunities-view-mode');
+    const viewKey = isLeakMode ? 'leak-investigations-view-mode' : 'opportunities-view-mode';
+    const saved = localStorage.getItem(viewKey);
     return (saved === 'list' || saved === 'cards') ? saved : 'list';
   });
   
@@ -879,8 +887,8 @@ export default function Opportunities(){
       params.delete('view');
     }
     setSearchParams(params, { replace: true });
-    localStorage.setItem('opportunities-view-mode', viewMode);
-  }, [viewMode, searchParams, setSearchParams]);
+    localStorage.setItem(isLeakMode ? 'leak-investigations-view-mode' : 'opportunities-view-mode', viewMode);
+  }, [viewMode, searchParams, setSearchParams, isLeakMode]);
   
   // Get current date formatted (same as Dashboard)
   const todayLabel = useMemo(() => {
@@ -925,9 +933,10 @@ export default function Opportunities(){
     return params.toString() ? '?' + params.toString() : '';
   }, [searchParams, businessLine]);
   
+  const listEndpoint = isLeakMode ? '/projects/business/leak-investigations' : '/projects/business/opportunities';
   const { data, isLoading, refetch } = useQuery({ 
-    queryKey:['opportunities', businessLine, qs], 
-    queryFn: ()=> api<{ items: Opportunity[]; total: number; page: number; limit: number } | Opportunity[]>('GET', `/projects/business/opportunities${qs}`)
+    queryKey: [isLeakMode ? 'leak-investigations' : 'opportunities', businessLine, qs], 
+    queryFn: ()=> api<{ items: Opportunity[]; total: number; page: number; limit: number } | Opportunity[]>('GET', `${listEndpoint}${qs}`)
   });
   
   // Load project divisions in parallel
@@ -1162,8 +1171,8 @@ export default function Opportunities(){
               </svg>
             </button>
             <div>
-              <div className="text-sm font-semibold text-gray-900">Opportunities</div>
-              <div className="text-xs text-gray-500 mt-0.5">Create, edit and track bids and quotes</div>
+              <div className="text-sm font-semibold text-gray-900">{isLeakMode ? 'Leak investigations' : 'Opportunities'}</div>
+              <div className="text-xs text-gray-500 mt-0.5">{isLeakMode ? 'Create, edit and track leak investigations' : 'Create, edit and track bids and quotes'}</div>
             </div>
           </div>
           <div className="text-right">
@@ -1213,7 +1222,7 @@ export default function Opportunities(){
               <div className="relative">
                 <input 
                   className="w-full border border-gray-200 rounded-lg px-3 py-2 pl-9 text-sm bg-gray-50/50 text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-1 focus:ring-gray-300 focus:border-gray-300 focus:bg-white transition-all duration-150" 
-                  placeholder="Search by opportunity name, code, or client name..." 
+                  placeholder={isLeakMode ? 'Search by leak investigation name, code, or client name...' : 'Search by opportunity name, code, or client name...'} 
                   value={q} 
                   onChange={e=>setQ(e.target.value)} 
                 />
@@ -1326,7 +1335,7 @@ export default function Opportunities(){
       
       {/* List area - same rounded-xl border bg-white as employee sections */}
       <div className="rounded-xl border bg-white p-4">
-      <LoadingOverlay isLoading={isInitialLoading} text="Loading opportunities...">
+      <LoadingOverlay isLoading={isInitialLoading} text={isLeakMode ? 'Loading leak investigations...' : 'Loading opportunities...'}>
         {viewMode === 'cards' ? (
           <div 
             className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-3 gap-4"
@@ -1343,7 +1352,7 @@ export default function Opportunities(){
                 className="border-2 border-dashed border-gray-300 rounded-lg p-2.5 hover:border-brand-red hover:bg-gray-50 transition-all text-center bg-white flex items-center justify-center min-h-[200px]"
               >
                 <div className="text-lg text-gray-400 mr-2">+</div>
-                <div className="font-medium text-xs text-gray-700">New Opportunity</div>
+                <div className="font-medium text-xs text-gray-700">{isLeakMode ? 'New Leak Investigation' : 'New Opportunity'}</div>
               </Link>
             )}
             {arr.map(p => (
@@ -1372,14 +1381,14 @@ export default function Opportunities(){
                 className="border-2 border-dashed border-gray-300 rounded-lg p-2.5 hover:border-brand-red hover:bg-gray-50 transition-all text-center bg-white flex items-center justify-center min-h-[60px] min-w-[680px]"
               >
                 <div className="text-lg text-gray-400 mr-2">+</div>
-                <div className="font-medium text-xs text-gray-700">New Opportunity</div>
+                <div className="font-medium text-xs text-gray-700">{isLeakMode ? 'New Leak Investigation' : 'New Opportunity'}</div>
               </Link>
             )}
             <div
               className="grid grid-cols-[10fr_5fr_5fr_5fr_auto] gap-2 sm:gap-3 lg:gap-4 items-center px-4 py-2 bg-gray-50 border-b border-gray-200 rounded-t-lg min-w-[680px] text-[10px] font-semibold text-gray-700"
               aria-hidden
             >
-              <button type="button" onClick={() => setListSort('opportunity')} className="min-w-0 text-left flex items-center gap-1 hover:text-gray-900 rounded py-0.5 outline-none focus:outline-none" title="Sort by opportunity name">Opportunity{sortBy === 'opportunity' ? (sortDir === 'asc' ? ' ↑' : ' ↓') : ''}</button>
+              <button type="button" onClick={() => setListSort('opportunity')} className="min-w-0 text-left flex items-center gap-1 hover:text-gray-900 rounded py-0.5 outline-none focus:outline-none" title={isLeakMode ? 'Sort by leak investigation name' : 'Sort by opportunity name'}>{isLeakMode ? 'Leak investigation' : 'Opportunity'}{sortBy === 'opportunity' ? (sortDir === 'asc' ? ' ↑' : ' ↓') : ''}</button>
               <button type="button" onClick={() => setListSort('estimator')} className="min-w-0 text-left flex items-center gap-1 hover:text-gray-900 rounded py-0.5 outline-none focus:outline-none" title="Sort by estimator">Estimator{sortBy === 'estimator' ? (sortDir === 'asc' ? ' ↑' : ' ↓') : ''}</button>
               <button type="button" onClick={() => setListSort('value')} className="min-w-0 text-left flex items-center gap-1 hover:text-gray-900 rounded py-0.5 outline-none focus:outline-none" title="Sort by estimated value">Est. value{sortBy === 'value' ? (sortDir === 'asc' ? ' ↑' : ' ↓') : ''}</button>
               <button type="button" onClick={() => setListSort('status')} className="min-w-0 text-left flex items-center gap-1 hover:text-gray-900 rounded py-0.5 outline-none focus:outline-none" title="Sort by status">Status{sortBy === 'status' ? (sortDir === 'asc' ? ' ↑' : ' ↓') : ''}</button>
@@ -1398,7 +1407,7 @@ export default function Opportunities(){
         )}
         {!isInitialLoading && arr.length === 0 && (
           <div className="p-8 text-center text-sm text-gray-500">
-            No opportunities found matching your criteria.
+            {isLeakMode ? 'No leak investigations found matching your criteria.' : 'No opportunities found matching your criteria.'}
           </div>
         )}
         {!isInitialLoading && totalCount > 0 && (

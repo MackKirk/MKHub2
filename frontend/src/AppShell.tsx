@@ -442,6 +442,7 @@ export default function AppShell({ children }: PropsWithChildren){
       icon: <IconWrench />,
       items: [
         { id: 'rm-business-dashboard', label: 'Dashboard', path: '/rm-business', icon: <IconDashboard />, requiredPermission: 'business:rm:projects:read' },
+        { id: 'rm-leak-investigations', label: 'Leak Investigations', path: '/rm-leak-investigations', icon: <IconClipboard />, requiredPermission: 'business:rm:projects:read' },
         { id: 'rm-opportunities', label: 'Opportunities', path: '/rm-opportunities', icon: <IconOpportunities />, requiredPermission: 'business:rm:projects:read' },
         { id: 'rm-projects', label: 'Projects', path: '/rm-projects', icon: <IconProjects />, requiredPermission: 'business:rm:projects:read' },
       ]
@@ -619,18 +620,29 @@ export default function AppShell({ children }: PropsWithChildren){
   const opportunityIdMatch = location.pathname.match(/^\/opportunities\/([^\/]+)$/);
   const rmProjectIdMatch = location.pathname.match(/^\/rm-projects\/([^\/]+)$/);
   const rmOpportunityIdMatch = location.pathname.match(/^\/rm-opportunities\/([^\/]+)$/);
-  const projectId = projectIdMatch?.[1] || opportunityIdMatch?.[1] || rmProjectIdMatch?.[1] || rmOpportunityIdMatch?.[1];
+  const rmLeakInvestigationIdMatch = location.pathname.match(/^\/rm-leak-investigations\/([^\/]+)$/);
+  const projectId =
+    projectIdMatch?.[1] ||
+    opportunityIdMatch?.[1] ||
+    rmProjectIdMatch?.[1] ||
+    rmOpportunityIdMatch?.[1] ||
+    rmLeakInvestigationIdMatch?.[1];
   const { data: currentProject } = useQuery({
     queryKey: ['project-for-nav', projectId],
-    queryFn: () => projectId ? api<{ is_bidding?: boolean }>('GET', `/projects/${projectId}`) : null,
+    queryFn: () =>
+      projectId ? api<{ is_bidding?: boolean; is_leak_investigation?: boolean }>('GET', `/projects/${projectId}`) : null,
     enabled: !!projectId,
     staleTime: 60_000
   });
   
   const onConstructionOpp =
     !!opportunityIdMatch || (!!projectIdMatch && !!currentProject?.is_bidding);
+  const onRmLeak =
+    !!rmLeakInvestigationIdMatch ||
+    (!!rmProjectIdMatch && !!currentProject?.is_leak_investigation);
   const onRmOpp =
-    !!rmOpportunityIdMatch || (!!rmProjectIdMatch && !!currentProject?.is_bidding);
+    !!rmOpportunityIdMatch ||
+    (!!rmProjectIdMatch && !!currentProject?.is_bidding && !currentProject?.is_leak_investigation);
   const isViewingOpportunity = onConstructionOpp || onRmOpp;
 
   const isCategoryActive = (category: MenuCategory) => {
@@ -650,6 +662,17 @@ export default function AppShell({ children }: PropsWithChildren){
           location.pathname === opportunitiesItem.path ||
           location.pathname.startsWith(opportunitiesItem.path + '/') ||
           (location.pathname.startsWith('/projects/') && !!currentProject?.is_bidding)
+        );
+      }
+    }
+    if (category.id === 'repairs_maintenance' && onRmLeak) {
+      const leakItem = category.items.find(item => item.id === 'rm-leak-investigations');
+      const rmProjItem = category.items.find(item => item.id === 'rm-projects');
+      if (leakItem && rmProjItem) {
+        return (
+          location.pathname === leakItem.path ||
+          location.pathname.startsWith(leakItem.path + '/') ||
+          (location.pathname.startsWith('/rm-projects/') && !!currentProject?.is_leak_investigation)
         );
       }
     }
@@ -675,6 +698,15 @@ export default function AppShell({ children }: PropsWithChildren){
         return false;
       }
       if (item.id === 'rm-projects' && isViewingOpportunity && onRmOpp) {
+        return false;
+      }
+      if (item.id === 'rm-projects' && onRmLeak) {
+        return false;
+      }
+      if (item.id === 'rm-opportunities' && onRmLeak) {
+        return false;
+      }
+      if (item.id === 'rm-leak-investigations' && onRmOpp) {
         return false;
       }
       // Special handling for system-settings: exclude /settings/attendance

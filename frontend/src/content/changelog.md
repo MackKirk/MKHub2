@@ -23,6 +23,7 @@ title: Update 1.1.026 - Week 17
 - Corporate cards: inventory, custody assign/return.
 - Company assets area in the sidebar (equipment + corporate cards), split from Fleet.
 - Training Matrix.
+- Repairs & Maintenance: New Leak Investigation tab. These investigations can be related to an Opportunity or a Project, but they run independently.
 
 ### Improved
 - Header bar: shortcuts grouped in one toolbar (What’s new, notifications, report bug) with consistent icon buttons;

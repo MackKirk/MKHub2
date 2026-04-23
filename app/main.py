@@ -951,6 +951,57 @@ def create_app() -> FastAPI:
                         print(f"[startup] business_line migration (non-critical): {e}")
                         db.rollback()
 
+                    try:
+                        rows = db.execute(
+                            text(
+                                """
+                                SELECT 1
+                                FROM information_schema.columns
+                                WHERE table_name = 'projects'
+                                  AND column_name = 'is_leak_investigation'
+                                LIMIT 1
+                                """
+                            )
+                        ).fetchall()
+                        if not rows:
+                            db.execute(
+                                text(
+                                    "ALTER TABLE projects ADD COLUMN is_leak_investigation BOOLEAN NOT NULL DEFAULT false"
+                                )
+                            )
+                            db.commit()
+                            print("[startup] Added is_leak_investigation column to projects table")
+                        rows2 = db.execute(
+                            text(
+                                """
+                                SELECT 1
+                                FROM information_schema.columns
+                                WHERE table_name = 'projects'
+                                  AND column_name = 'related_leak_investigation_id'
+                                LIMIT 1
+                                """
+                            )
+                        ).fetchall()
+                        if not rows2:
+                            db.execute(
+                                text(
+                                    "ALTER TABLE projects ADD COLUMN related_leak_investigation_id UUID NULL REFERENCES projects(id) ON DELETE SET NULL"
+                                )
+                            )
+                            try:
+                                db.execute(
+                                    text(
+                                        "CREATE INDEX IF NOT EXISTS idx_projects_related_leak_investigation_id ON projects(related_leak_investigation_id)"
+                                    )
+                                )
+                            except Exception:
+                                pass
+                            db.commit()
+                            print("[startup] Added related_leak_investigation_id column to projects table")
+                    except Exception as e:
+                        print(f"[startup] leak investigation columns (non-critical): {e}")
+                        db.rollback()
+
                     # Check for project_id column in user_documents
                     rows = db.execute(
                         text(

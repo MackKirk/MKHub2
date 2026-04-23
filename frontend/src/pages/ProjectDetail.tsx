@@ -28,10 +28,11 @@ import OverlayPortal from '@/components/OverlayPortal';
 import { BUSINESS_LINE_REPAIRS_MAINTENANCE } from '@/lib/businessLine';
 import { filterStatusesForOpportunity, filterStatusesForProject } from '@/lib/projectStatusVisibility';
 
-function salesListPaths(project: { business_line?: string; is_bidding?: boolean } | undefined | null) {
+function salesListPaths(project: { business_line?: string; is_bidding?: boolean; is_leak_investigation?: boolean } | undefined | null) {
   const rm = project?.business_line === BUSINESS_LINE_REPAIRS_MAINTENANCE;
   return {
     opportunities: rm ? '/rm-opportunities' : '/opportunities',
+    leakInvestigations: rm ? '/rm-leak-investigations' : '/opportunities',
     projects: rm ? '/rm-projects' : '/projects',
   };
 }
@@ -306,7 +307,11 @@ function getDisplayValue(
 }
 
 // Helper to build human-readable label from audit log for Recent Activity
-function buildRecentActivityLabel(log: { action?: string; entity_type?: string; changes?: any; context?: any; resolved_values?: Record<string, string> }, isOpportunity?: boolean): string {
+function buildRecentActivityLabel(
+  log: { action?: string; entity_type?: string; changes?: any; context?: any; resolved_values?: Record<string, string> },
+  isOpportunity?: boolean,
+  isLeakInvestigation?: boolean
+): string {
   const action = (log.action || '').toUpperCase();
   const entityType = (log.entity_type || '').toLowerCase();
   const changes = log.changes || {};
@@ -317,9 +322,18 @@ function buildRecentActivityLabel(log: { action?: string; entity_type?: string; 
   const changedFields: string[] = Array.isArray(context.changed_fields) ? context.changed_fields : [];
 
     if (entityType === 'project') {
-    if (action === 'CREATE') return isOpportunity ? 'Opportunity created' : 'Project created';
-    if (action === 'DELETE') return isOpportunity ? 'Opportunity deleted' : 'Project deleted';
-    if (action === 'RESTORE') return isOpportunity ? 'Opportunity restored' : 'Project restored';
+    if (action === 'CREATE') {
+      if (isLeakInvestigation) return 'Leak investigation created';
+      return isOpportunity ? 'Opportunity created' : 'Project created';
+    }
+    if (action === 'DELETE') {
+      if (isLeakInvestigation) return 'Leak investigation deleted';
+      return isOpportunity ? 'Opportunity deleted' : 'Project deleted';
+    }
+    if (action === 'RESTORE') {
+      if (isLeakInvestigation) return 'Leak investigation restored';
+      return isOpportunity ? 'Opportunity restored' : 'Project restored';
+    }
     if (action === 'UPDATE') {
       if (context.conversion) {
         // Show conversion with each updated field and its value: "Field to "value"" (one line per logical field, prefer name over ID)
@@ -467,7 +481,15 @@ function buildRecentActivityLabel(log: { action?: string; entity_type?: string; 
 }
 
 // Recent Activity card for project/opportunity - uses audit logs API
-function ProjectRecentActivity({ projectId, isOpportunity }: { projectId: string; isOpportunity?: boolean }) {
+function ProjectRecentActivity({
+  projectId,
+  isOpportunity,
+  isLeakInvestigation,
+}: {
+  projectId: string;
+  isOpportunity?: boolean;
+  isLeakInvestigation?: boolean;
+}) {
   const { data: logs = [], isFetching } = useQuery({
     queryKey: ['projectRecentActivity', projectId],
     queryFn: () => api<any[]>('GET', `/projects/${encodeURIComponent(projectId)}/audit-logs?limit=15&offset=0`),
@@ -499,7 +521,7 @@ function ProjectRecentActivity({ projectId, isOpportunity }: { projectId: string
           ) : logs.length > 0 ? (
             logs.map((log: any, idx: number) => (
               <div key={`${log.id}-${idx}`} className="text-xs text-gray-700 py-1.5 border-b border-gray-100 last:border-0">
-                <div className="font-medium">{buildRecentActivityLabel(log, isOpportunity)}</div>
+                <div className="font-medium">{buildRecentActivityLabel(log, isOpportunity, isLeakInvestigation)}</div>
                 <div className="text-[11px] text-gray-500">
                   {formatTimestamp(log.timestamp)}
                   {log.actor_name ? ` · by ${log.actor_name}` : ''}
@@ -745,7 +767,7 @@ function UserAvatar({ user, size = 'w-8 h-8', showTooltip = true, tooltipText }:
   );
 }
 
-type Project = { id:string, code?:string, name?:string, client_id?:string, client_display_name?:string, client_name?:string, related_client_ids?:string[], related_client_display_names?:string[], awarded_related_client_ids?:string[], awarded_related_client_id?:string|null, address?:string, address_city?:string, address_province?:string, address_country?:string, address_postal_code?:string, description?:string, status_id?:string, division_id?:string, division_ids?:string[], project_division_ids?:string[], estimator_id?:string, estimator_ids?:string[], project_admin_id?:string, onsite_lead_id?:string, division_onsite_leads?:Record<string, string>, contact_id?:string, contact_name?:string, contact_email?:string, contact_phone?:string, date_start?:string, date_eta?:string, date_awarded?:string, date_end?:string, cost_estimated?:number, cost_actual?:number, service_value?:number, progress?:number, site_id?:string, site_name?:string, site_address_line1?:string, site_address_line2?:string, site_city?:string, site_province?:string, site_country?:string, site_postal_code?:string, status_label?:string, status_changed_at?:string, is_bidding?:boolean, lead_source?:string, business_line?: string };
+type Project = { id:string, code?:string, name?:string, client_id?:string, client_display_name?:string, client_name?:string, related_client_ids?:string[], related_client_display_names?:string[], awarded_related_client_ids?:string[], awarded_related_client_id?:string|null, address?:string, address_city?:string, address_province?:string, address_country?:string, address_postal_code?:string, description?:string, status_id?:string, division_id?:string, division_ids?:string[], project_division_ids?:string[], estimator_id?:string, estimator_ids?:string[], project_admin_id?:string, onsite_lead_id?:string, division_onsite_leads?:Record<string, string>, contact_id?:string, contact_name?:string, contact_email?:string, contact_phone?:string, date_start?:string, date_eta?:string, date_awarded?:string, date_end?:string, cost_estimated?:number, cost_actual?:number, service_value?:number, progress?:number, site_id?:string, site_name?:string, site_address_line1?:string, site_address_line2?:string, site_city?:string, site_province?:string, site_country?:string, site_postal_code?:string, status_label?:string, status_changed_at?:string, is_bidding?:boolean, is_leak_investigation?:boolean, related_leak_investigation_id?:string|null, related_leak_investigation?: { id: string; name?: string | null; code?: string | null } | null, leak_investigation_links?: { id: string; name?: string | null; code?: string | null; is_bidding: boolean }[], lead_source?:string, business_line?: string };
 
 function projectAwardedRelatedIdsSet(proj: Project | null | undefined): Set<string> {
   const raw = proj?.awarded_related_client_ids;
@@ -810,6 +832,8 @@ export default function ProjectDetail(){
       ),
     enabled: !!id,
   });
+  const isLeakInvestigation = !!proj?.is_leak_investigation;
+  const isOpportunityStyleTabs = !!(proj?.is_bidding || isLeakInvestigation);
   const { data:settings } = useQuery({ queryKey:['settings'], queryFn: ()=>api<any>('GET','/settings') });
   const { data:projectDivisions } = useQuery({ queryKey:['project-divisions'], queryFn: ()=>api<any[]>('GET','/settings/project-divisions'), staleTime: 300_000 });
   const { data:files, refetch: refetchFiles } = useQuery({ queryKey:['projectFiles', id], queryFn: ()=>api<ProjectFile[]>('GET', `/projects/${id}/files`), enabled: !!id && !signOnlySafetySession });
@@ -888,12 +912,12 @@ export default function ProjectDetail(){
 
   useEffect(() => {
     if (isLoading || !proj) return;
-    if (proj.is_bidding && tab === 'safety') {
+    if (isOpportunityStyleTabs && tab === 'safety') {
       setTab(null);
       nav(location.pathname, { replace: true });
       toast.error('Safety inspections are only available for awarded projects.');
     }
-  }, [isLoading, proj, tab, location.pathname, nav]);
+  }, [isLoading, proj, tab, location.pathname, nav, isOpportunityStyleTabs]);
 
   // Auto-collapse hero section when a tab is selected, expand when back to primary page
   useEffect(() => {
@@ -975,11 +999,13 @@ export default function ProjectDetail(){
   const [editStartDateModal, setEditStartDateModal] = useState(false);
   const [editAwardedDateModal, setEditAwardedDateModal] = useState(false);
   const [editLeadSourceModal, setEditLeadSourceModal] = useState(false);
+  const [editRelatedLeakModal, setEditRelatedLeakModal] = useState(false);
+  const [editLeakInvestigationLinksModal, setEditLeakInvestigationLinksModal] = useState(false);
   const [editRelatedCustomersModal, setEditRelatedCustomersModal] = useState(false);
   const [showConvertModal, setShowConvertModal] = useState(false);
 
-  // Base available tabs
-  const baseAvailableTabs = proj?.is_bidding 
+  // Base available tabs (leak investigations use the same strip as opportunities)
+  const baseAvailableTabs = isOpportunityStyleTabs
     ? (['overview','reports','files','documents','proposal','pricing'] as const)
     : (['overview','reports','dispatch','timesheet','files','documents','proposal','pricing','orders','safety'] as const);
   
@@ -1141,7 +1167,11 @@ export default function ProjectDetail(){
 
   // Helper function to get page title based on active tab
   const getPageTitle = (proj: any, activeTab: typeof tab): string => {
-    const baseTitle = proj?.is_bidding ? 'Opportunity Information' : 'Project Information';
+    const baseTitle = proj?.is_bidding
+      ? 'Opportunity Information'
+      : proj?.is_leak_investigation
+        ? 'Leak investigation'
+        : 'Project Information';
     if (!activeTab || activeTab === 'overview') {
       return baseTitle;
     }
@@ -1164,7 +1194,9 @@ export default function ProjectDetail(){
   // Helper function to get page description based on active tab
   const getPageDescription = (proj: any, activeTab: typeof tab): string => {
     if (!activeTab || activeTab === 'overview') {
-      return proj?.is_bidding ? 'Overview, files, proposal and estimate.' : 'Overview, files, schedule and contacts.';
+      return proj?.is_bidding || proj?.is_leak_investigation
+        ? 'Overview, files, proposal and estimate.'
+        : 'Overview, files, schedule and contacts.';
     }
     const tabDescriptions: Record<string, string> = {
       'reports': 'Notes and history',
@@ -1194,11 +1226,21 @@ export default function ProjectDetail(){
                   handleTabClick(null);
                 } else {
                   const sp = salesListPaths(proj);
-                  nav(proj?.is_bidding ? sp.opportunities : sp.projects);
+                  if (proj?.is_bidding) nav(sp.opportunities);
+                  else if (proj?.is_leak_investigation) nav(sp.leakInvestigations);
+                  else nav(sp.projects);
                 }
               }}
               className="p-1.5 rounded hover:bg-gray-100 transition-colors flex items-center justify-center"
-              title={tab && tab !== 'overview' ? 'Back to Overview' : (proj?.is_bidding ? 'Back to Opportunities' : 'Back to Projects')}
+              title={
+                tab && tab !== 'overview'
+                  ? 'Back to Overview'
+                  : proj?.is_bidding
+                    ? 'Back to Opportunities'
+                    : proj?.is_leak_investigation
+                      ? 'Back to Leak investigations'
+                      : 'Back to Projects'
+              }
             >
               <svg className="w-4 h-4 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
@@ -1286,7 +1328,7 @@ export default function ProjectDetail(){
                     </div>
 
                     {/* Project Owner / Source - only show for projects */}
-                    {!proj?.is_bidding && (
+                    {!isOpportunityStyleTabs && (
                       <div>
                         <span className="text-[10px] font-medium text-gray-500 uppercase tracking-wide">Project Owner / Source</span>
                         {proj?.client_id ? (
@@ -1303,7 +1345,7 @@ export default function ProjectDetail(){
                     )}
 
                     {/* Related Customers - only show for projects (after conversion: list awarded only; tooltip for non-awarded) */}
-                    {!proj?.is_bidding && (() => {
+                    {!isOpportunityStyleTabs && (() => {
                       const relatedHero = projectRelatedCustomersHeroSplit(proj);
                       const showInfoTooltip =
                         relatedHero.hasAwardedData && relatedHero.nonAwardedEntries.length > 0;
@@ -1370,8 +1412,43 @@ export default function ProjectDetail(){
                       );
                     })()}
 
+                    {/* Related Leak Investigation — R&M projects only (below Related Customers) */}
+                    {!isOpportunityStyleTabs &&
+                      proj?.business_line === BUSINESS_LINE_REPAIRS_MAINTENANCE &&
+                      !isLeakInvestigation && (
+                        <div>
+                          <div className="flex items-center gap-1.5 mb-1.5">
+                            <span className="text-[10px] font-medium text-gray-500 uppercase tracking-wide">
+                              Related Leak Investigation
+                            </span>
+                            {hasEditPermission && (
+                              <button
+                                type="button"
+                                onClick={() => setEditRelatedLeakModal(true)}
+                                className="p-0.5 text-gray-400 hover:text-[#7f1010] transition-colors"
+                                title="Edit related leak investigation"
+                              >
+                                <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                                </svg>
+                              </button>
+                            )}
+                          </div>
+                          {proj?.related_leak_investigation_id ? (
+                            <Link
+                              to={`/rm-leak-investigations/${encodeURIComponent(String(proj.related_leak_investigation_id))}`}
+                              className="text-xs font-semibold text-[#7f1010] hover:text-[#a31414] hover:underline break-words mt-0.5 block"
+                            >
+                              {(proj?.related_leak_investigation?.name || '').trim() || 'Open leak investigation'}
+                            </Link>
+                          ) : (
+                            <div className="text-xs font-semibold text-gray-400 mt-0.5">—</div>
+                          )}
+                        </div>
+                      )}
+
                     {/* Site - only show for projects */}
-                    {!proj?.is_bidding && (
+                    {!isOpportunityStyleTabs && (
                       <div>
                         <div className="flex items-center gap-1.5 mb-1.5">
                           <span className="text-[10px] font-medium text-gray-500 uppercase tracking-wide">Site</span>
@@ -1454,8 +1531,8 @@ export default function ProjectDetail(){
 
                   {/* Column 2 */}
                   <div className="min-w-0">
-                    {/* Project Owner / Source - only show for opportunities */}
-                    {proj?.is_bidding && (
+                    {/* Project Owner / Source - opportunities and leak investigations */}
+                    {isOpportunityStyleTabs && (
                       <div>
                         <span className="text-[10px] font-medium text-gray-500 uppercase tracking-wide">Project Owner / Source</span>
                         {proj?.client_id ? (
@@ -1471,8 +1548,8 @@ export default function ProjectDetail(){
                       </div>
                     )}
 
-                    {/* Related Customers - only show for opportunities */}
-                    {proj?.is_bidding && (
+                    {/* Related Customers - opportunities and leak investigations */}
+                    {isOpportunityStyleTabs && (
                       <div>
                         <div className="flex items-center gap-1.5 mb-1.5">
                           <span className="text-[10px] font-medium text-gray-500 uppercase tracking-wide">Related Customers</span>
@@ -1508,8 +1585,8 @@ export default function ProjectDetail(){
                       </div>
                     )}
 
-                    {/* Site - only show for opportunities */}
-                    {proj?.is_bidding && (
+                    {/* Site - opportunities and leak investigations */}
+                    {isOpportunityStyleTabs && (
                       <div>
                         <div className="flex items-center gap-1.5 mb-1.5">
                           <span className="text-[10px] font-medium text-gray-500 uppercase tracking-wide">Site</span>
@@ -1567,8 +1644,85 @@ export default function ProjectDetail(){
                       </div>
                     )}
 
-                    {/* Lead Source - only show for opportunities */}
-                    {proj?.is_bidding && (
+                    {/* Related Leak Investigation — R&M opportunities only (column 2) */}
+                    {proj?.business_line === BUSINESS_LINE_REPAIRS_MAINTENANCE &&
+                      !isLeakInvestigation &&
+                      !!proj?.is_bidding && (
+                        <div>
+                          <div className="flex items-center gap-1.5 mb-1.5">
+                            <span className="text-[10px] font-medium text-gray-500 uppercase tracking-wide">
+                              Related Leak Investigation
+                            </span>
+                            {hasEditPermission && (
+                              <button
+                                type="button"
+                                onClick={() => setEditRelatedLeakModal(true)}
+                                className="p-0.5 text-gray-400 hover:text-[#7f1010] transition-colors"
+                                title="Edit related leak investigation"
+                              >
+                                <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                                </svg>
+                              </button>
+                            )}
+                          </div>
+                          {proj?.related_leak_investigation_id ? (
+                            <Link
+                              to={`/rm-leak-investigations/${encodeURIComponent(String(proj.related_leak_investigation_id))}`}
+                              className="text-xs font-semibold text-[#7f1010] hover:text-[#a31414] hover:underline break-words mt-0.5 block"
+                            >
+                              {(proj?.related_leak_investigation?.name || '').trim() || 'Open leak investigation'}
+                            </Link>
+                          ) : (
+                            <div className="text-xs font-semibold text-gray-400 mt-0.5">—</div>
+                          )}
+                        </div>
+                      )}
+
+                    {proj?.business_line === BUSINESS_LINE_REPAIRS_MAINTENANCE && isLeakInvestigation && (
+                      <div>
+                        <div className="flex items-center gap-1.5 mb-1.5">
+                          <span className="text-[10px] font-medium text-gray-500 uppercase tracking-wide">
+                            Related Opportunities / Projects
+                          </span>
+                          {hasEditPermission && (
+                            <button
+                              type="button"
+                              onClick={() => setEditLeakInvestigationLinksModal(true)}
+                              className="p-0.5 text-gray-400 hover:text-[#7f1010] transition-colors"
+                              title="Edit related opportunities and projects"
+                            >
+                              <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                              </svg>
+                            </button>
+                          )}
+                        </div>
+                        {(proj?.leak_investigation_links?.length ?? 0) > 0 ? (
+                          <ul className="mt-0.5 space-y-1">
+                            {(proj?.leak_investigation_links ?? []).map((row) => (
+                              <li key={row.id} className="min-w-0">
+                                <Link
+                                  to={
+                                    row.is_bidding
+                                      ? `/rm-opportunities/${encodeURIComponent(row.id)}`
+                                      : `/rm-projects/${encodeURIComponent(row.id)}`
+                                  }
+                                  className="text-xs font-semibold text-[#7f1010] hover:text-[#a31414] hover:underline break-words block"
+                                >
+                                  {(row.name || '').trim() || 'View record'}
+                                </Link>
+                              </li>
+                            ))}
+                          </ul>
+                        ) : (
+                          <div className="text-xs font-semibold text-gray-400 mt-0.5">—</div>
+                        )}
+                      </div>
+                    )}
+
+                    {/* Lead Source - opportunities and leak investigations */}
+                    {isOpportunityStyleTabs && (
                       <div>
                         <div className="flex items-center gap-1.5 mb-1.5">
                           <span className="text-[10px] font-medium text-gray-500 uppercase tracking-wide">Lead Source</span>
@@ -1589,7 +1743,7 @@ export default function ProjectDetail(){
                     )}
 
                     {/* Lead Source - only show for projects, at top of column 2 */}
-                    {!proj?.is_bidding && (
+                    {!isOpportunityStyleTabs && (
                       <div>
                         <div className="flex items-center gap-1.5 mb-1.5">
                           <span className="text-[10px] font-medium text-gray-500 uppercase tracking-wide">Lead Source</span>
@@ -1610,7 +1764,7 @@ export default function ProjectDetail(){
                     )}
 
                     {/* Start Date - only show for projects, not opportunities */}
-                    {!proj?.is_bidding && (
+                    {!isOpportunityStyleTabs && (
                       <div className="mb-4">
                         <div className="flex items-center gap-1.5 mb-1.5">
                           <span className="text-[10px] font-medium text-gray-500 uppercase tracking-wide">Start Date</span>
@@ -1631,7 +1785,7 @@ export default function ProjectDetail(){
                     )}
 
                     {/* Awarded Date - only show for projects, not opportunities */}
-                    {!proj?.is_bidding && (
+                    {!isOpportunityStyleTabs && (
                       <div className="mb-4">
                         <div className="flex items-center gap-1.5 mb-1.5">
                           <span className="text-[10px] font-medium text-gray-500 uppercase tracking-wide">Awarded Date</span>
@@ -1652,7 +1806,7 @@ export default function ProjectDetail(){
                     )}
 
                     {/* End date - only show for projects, not opportunities */}
-                    {!proj?.is_bidding && (
+                    {!isOpportunityStyleTabs && (
                       <div className="mb-4">
                         <div className="flex items-center gap-1.5 mb-1.5">
                           <span className="text-[10px] font-medium text-gray-500 uppercase tracking-wide">End Date</span>
@@ -1675,8 +1829,8 @@ export default function ProjectDetail(){
                   
                   {/* Column 3 */}
                   <div className="min-w-0">
-                    {/* Estimators - for opportunities, show in column 3 */}
-                    {proj?.is_bidding && (
+                    {/* Estimators - for opportunities and leak investigations, show in column 3 */}
+                    {isOpportunityStyleTabs && (
                       <div>
                         <div className="flex items-center gap-1.5 mb-1.5">
                           <span className="text-[10px] font-medium text-gray-500 uppercase tracking-wide">Estimators</span>
@@ -1727,7 +1881,7 @@ export default function ProjectDetail(){
                     )}
 
                     {/* Estimators - only show for projects, not opportunities */}
-                    {!proj?.is_bidding && (
+                    {!isOpportunityStyleTabs && (
                       <div>
                         <div className="flex items-center gap-1.5 mb-1.5">
                           <span className="text-[10px] font-medium text-gray-500 uppercase tracking-wide">Estimators</span>
@@ -1779,7 +1933,7 @@ export default function ProjectDetail(){
 
 
                     {/* Project Admin - Only show for projects, not opportunities */}
-                    {!proj?.is_bidding && (
+                    {!isOpportunityStyleTabs && (
                       <div>
                         <div className="flex items-center gap-1.5 mb-1.5">
                           <span className="text-[10px] font-medium text-gray-500 uppercase tracking-wide">Project Admin</span>
@@ -1812,7 +1966,7 @@ export default function ProjectDetail(){
                     )}
 
                     {/* On-site Leads */}
-                    {!proj?.is_bidding && (
+                    {!isOpportunityStyleTabs && (
                       <div>
                         <div className="flex items-center gap-1.5 mb-1.5">
                           <span className="text-[10px] font-medium text-gray-500 uppercase tracking-wide">On-site Leads</span>
@@ -1905,7 +2059,7 @@ export default function ProjectDetail(){
                     )}
 
                     {/* Progress - below On-site Leads, projects only */}
-                    {!proj?.is_bidding && (
+                    {!isOpportunityStyleTabs && (
                       <div className="mb-4 mt-4">
                         <div className="flex items-center gap-1.5 mb-2">
                           <span className="text-[10px] font-medium text-gray-500 uppercase tracking-wide">Progress</span>
@@ -1975,7 +2129,7 @@ export default function ProjectDetail(){
               </div>
               <div className="flex items-center gap-4 flex-shrink-0 pr-8">
                 {/* Progress - only show for projects, not opportunities */}
-                {!proj?.is_bidding && (
+                {!isOpportunityStyleTabs && (
                   <div className="flex items-center gap-2">
                     <div className="w-20 h-1.5 bg-gray-200 rounded-full overflow-hidden">
                       <div className="h-full bg-brand-red rounded-full transition-all" style={{ width: `${Math.max(0,Math.min(100,Number(proj?.progress||0)))}%` }} />
@@ -1983,10 +2137,10 @@ export default function ProjectDetail(){
                     <span className="text-xs font-semibold text-gray-700 w-8 text-right">{Math.max(0,Math.min(100,Number(proj?.progress||0)))}%</span>
                   </div>
                 )}
-                {/* Project Admin for projects, Estimators for opportunities */}
+                {/* Project Admin for projects, Estimators for opportunities / leak investigations */}
                 {(() => {
-                  if (proj?.is_bidding) {
-                    // For opportunities: show estimators
+                  if (isOpportunityStyleTabs) {
+                    // For opportunities and leak investigations: show estimators
                     const estimatorIds = proj?.estimator_ids || (proj?.estimator_id ? [proj.estimator_id] : []);
                     const estimators = estimatorIds
                       .map((id: string) => employees?.find((e: any) => String(e.id) === String(id)))
@@ -2071,7 +2225,7 @@ export default function ProjectDetail(){
       {/* Calendar and Costs Cards - Only show on overview */}
       {!tab && (
         <>
-          {!proj?.is_bidding && (
+          {!isOpportunityStyleTabs && (
             <>
               <div className="mb-4 grid md:grid-cols-2 gap-4">
                 <div className="rounded-xl border bg-white p-4">
@@ -2142,6 +2296,29 @@ export default function ProjectDetail(){
         );
       })()}
 
+      {/* Create related opportunity (R&M leak investigations only) */}
+      {!tab && proj?.is_leak_investigation && hasEditPermission && (() => {
+        const qs = new URLSearchParams();
+        qs.set('is_bidding', 'true');
+        if (id) qs.set('related_leak_investigation_id', String(id));
+        if (proj?.client_id) qs.set('client_id', String(proj.client_id));
+        if (proj?.site_id) qs.set('site_id', String(proj.site_id));
+        if (proj?.estimator_id) qs.set('estimator_id', String(proj.estimator_id));
+        const to = `/rm-projects/new?${qs.toString()}`;
+        return (
+          <div className="mb-4">
+            <Link
+              to={to}
+              className="w-full border-2 border-dashed rounded-lg p-2.5 transition-all text-center bg-white flex items-center justify-center gap-2 min-h-[60px] border-blue-300 hover:border-blue-600 hover:bg-blue-50"
+              title="Create a new opportunity linked to this leak investigation"
+            >
+              <span className="text-lg text-blue-500">+</span>
+              <span className="font-medium text-xs text-blue-700">Create related Opportunity</span>
+            </Link>
+          </div>
+        );
+      })()}
+
       {/* Description card - only when description exists */}
       {!tab && proj?.description?.trim() && (
         <div className="mt-6">
@@ -2157,7 +2334,11 @@ export default function ProjectDetail(){
       {/* Recent Activity */}
       {!tab && (
         <div className="mt-6">
-          <ProjectRecentActivity projectId={String(id||'')} isOpportunity={!!proj?.is_bidding} />
+          <ProjectRecentActivity
+            projectId={String(id || '')}
+            isOpportunity={!!proj?.is_bidding}
+            isLeakInvestigation={isLeakInvestigation}
+          />
         </div>
       )}
 
@@ -2168,17 +2349,20 @@ export default function ProjectDetail(){
           <div className="flex gap-3">
             <button onClick={async()=>{
               const result = await confirm({ 
-                title: proj?.is_bidding ? 'Delete Opportunity' : 'Delete Project', 
-                message: `Are you sure you want to delete "${proj?.name||(proj?.is_bidding ? 'this opportunity' : 'this project')}"? This action cannot be undone.${proj?.is_bidding ? '' : ' All related data (updates, notes, timesheets) will also be deleted.'}`,
+                title: proj?.is_bidding ? 'Delete Opportunity' : proj?.is_leak_investigation ? 'Delete Leak investigation' : 'Delete Project', 
+                message: `Are you sure you want to delete "${proj?.name||(proj?.is_bidding ? 'this opportunity' : proj?.is_leak_investigation ? 'this leak investigation' : 'this project')}"? This action cannot be undone.${proj?.is_bidding || proj?.is_leak_investigation ? '' : ' All related data (updates, notes, timesheets) will also be deleted.'}`,
                 confirmText: 'Delete',
                 cancelText: 'Cancel'
               });
               if (result !== 'confirm') return;
               try{
                 await api('DELETE', `/projects/${encodeURIComponent(String(id||''))}`);
-                toast.success(proj?.is_bidding ? 'Opportunity deleted' : 'Project deleted');
+                toast.success(
+                  proj?.is_bidding ? 'Opportunity deleted' : proj?.is_leak_investigation ? 'Leak investigation deleted' : 'Project deleted'
+                );
                 // Remove list caches so sidebar navigation shows fresh data immediately
                 queryClient.removeQueries({ queryKey: ['opportunities'] });
+                queryClient.removeQueries({ queryKey: ['leak-investigations'] });
                 queryClient.removeQueries({ queryKey: ['projects'] });
                 await Promise.all([
                   queryClient.invalidateQueries({ queryKey: ['clientOpportunities'] }),
@@ -2189,10 +2373,16 @@ export default function ProjectDetail(){
                   nav(`/customers/${encodeURIComponent(String(proj?.client_id))}`);
                 } else {
                   const sp = salesListPaths(proj);
-                  nav(proj?.is_bidding ? sp.opportunities : sp.projects);
+                  if (proj?.is_bidding) nav(sp.opportunities);
+                  else if (proj?.is_leak_investigation) nav(sp.leakInvestigations);
+                  else nav(sp.projects);
                 }
-              }catch(_e){ toast.error(proj?.is_bidding ? 'Failed to delete opportunity' : 'Failed to delete project'); }
-            }} className="px-4 py-2 rounded bg-red-600 hover:bg-red-700 text-white text-sm font-medium">{proj?.is_bidding ? 'Delete Opportunity' : 'Delete Project'}</button>
+              }catch(_e){
+                toast.error(
+                  proj?.is_bidding ? 'Failed to delete opportunity' : proj?.is_leak_investigation ? 'Failed to delete leak investigation' : 'Failed to delete project'
+                );
+              }
+            }} className="px-4 py-2 rounded bg-red-600 hover:bg-red-700 text-white text-sm font-medium">{proj?.is_bidding ? 'Delete Opportunity' : proj?.is_leak_investigation ? 'Delete Leak investigation' : 'Delete Project'}</button>
             <button 
               onClick={() => setShowAuditLogModal(true)}
               className="px-4 py-2 rounded border border-red-300 bg-white hover:bg-red-50 text-red-700 text-sm font-medium"
@@ -2231,7 +2421,7 @@ export default function ProjectDetail(){
                       <ProjectEtaEdit projectId={String(id)} proj={proj||{}} settings={settings||{}} />
                     </div>
                     <ProjectCostsSummary projectId={String(id)} proposals={proposals||[]} />
-                    {!proj?.is_bidding && (
+                    {!isOpportunityStyleTabs && (
                       <div className="md:col-span-3 rounded-xl border bg-white p-4">
                         <h4 className="text-sm font-semibold text-gray-900 mb-2">Workload</h4>
                         <CalendarMock title="Project Calendar" projectId={String(id)} hasEditPermission={hasEditPermission} />
@@ -2258,20 +2448,20 @@ export default function ProjectDetail(){
               )}
 
               {tab==='documents' && (
-                <ProjectDocumentsTab projectId={String(id)} isBidding={proj?.is_bidding} canEditDocuments={isAdmin || permissions.has('business:projects:documents:write')} />
+                <ProjectDocumentsTab projectId={String(id)} isBidding={isOpportunityStyleTabs} canEditDocuments={isAdmin || permissions.has('business:projects:documents:write')} />
               )}
 
               {tab==='proposal' && (
-                <ProjectProposalTab projectId={String(id)} clientId={String(proj?.client_id||'')} siteId={String(proj?.site_id||'')} proposals={proposals||[]} statusLabel={proj?.status_label||''} settings={settings||{}} isBidding={proj?.is_bidding} onPricingItemsChange={setLivePricingItems} showOnlyPricing={false} proposalFormSaveRef={proposalFormSaveRef} />
+                <ProjectProposalTab projectId={String(id)} clientId={String(proj?.client_id||'')} siteId={String(proj?.site_id||'')} proposals={proposals||[]} statusLabel={proj?.status_label||''} settings={settings||{}} isBidding={isOpportunityStyleTabs} onPricingItemsChange={setLivePricingItems} showOnlyPricing={false} proposalFormSaveRef={proposalFormSaveRef} />
               )}
 
               {tab==='pricing' && (
-                <ProjectProposalTab projectId={String(id)} clientId={String(proj?.client_id||'')} siteId={String(proj?.site_id||'')} proposals={proposals||[]} statusLabel={proj?.status_label||''} settings={settings||{}} isBidding={proj?.is_bidding} onPricingItemsChange={setLivePricingItems} showOnlyPricing={true} proposalFormSaveRef={proposalFormSaveRef} />
+                <ProjectProposalTab projectId={String(id)} clientId={String(proj?.client_id||'')} siteId={String(proj?.site_id||'')} proposals={proposals||[]} statusLabel={proj?.status_label||''} settings={settings||{}} isBidding={isOpportunityStyleTabs} onPricingItemsChange={setLivePricingItems} showOnlyPricing={true} proposalFormSaveRef={proposalFormSaveRef} />
               )}
 
               {tab==='estimate' && (
                 <div className="rounded-xl border bg-white p-4">
-                  <EstimateBuilder ref={estimateBuilderRef} projectId={String(id)} statusLabel={proj?.status_label||''} settings={settings||{}} isBidding={proj?.is_bidding} canEdit={canEditEstimate} />
+                  <EstimateBuilder ref={estimateBuilderRef} projectId={String(id)} statusLabel={proj?.status_label||''} settings={settings||{}} isBidding={isOpportunityStyleTabs} canEdit={canEditEstimate} />
                 </div>
               )}
 
@@ -2279,7 +2469,7 @@ export default function ProjectDetail(){
                 <OrdersTab projectId={String(id)} project={proj||{id: String(id)}} statusLabel={proj?.status_label||''} />
               )}
 
-              {tab==='safety' && !proj?.is_bidding && (
+              {tab==='safety' && !isOpportunityStyleTabs && (
                 <ProjectSafetyTab
                   projectId={String(id)}
                   proj={{
@@ -2307,7 +2497,7 @@ export default function ProjectDetail(){
         </>
       )}
 
-      {showOnSiteLeadsModal && !proj?.is_bidding && (
+      {showOnSiteLeadsModal && !isOpportunityStyleTabs && (
         <OnSiteLeadsModal
           projectId={String(id||'')}
           originalDivisions={Array.isArray(proj?.project_division_ids) ? proj.project_division_ids : []}
@@ -2418,7 +2608,7 @@ export default function ProjectDetail(){
           currentStatus={proj?.status_id || ''}
           currentStatusLabel={statusLabel}
           settings={settings}
-          isBidding={proj?.is_bidding}
+          isBidding={isOpportunityStyleTabs}
           onClose={() => setEditStatusModal(false)}
           onSave={async () => {
             await queryClient.invalidateQueries({ queryKey: ['project', id] });
@@ -2551,6 +2741,31 @@ export default function ProjectDetail(){
             await queryClient.invalidateQueries({ queryKey: ['project', id] });
             invalidateRecentActivity();
             setEditLeadSourceModal(false);
+          }}
+        />
+      )}
+
+      {editRelatedLeakModal && proj && id && (
+        <EditRelatedLeakInvestigationModal
+          projectId={String(id)}
+          currentRelatedLeakId={proj.related_leak_investigation_id || ''}
+          onClose={() => setEditRelatedLeakModal(false)}
+          onSave={async () => {
+            await queryClient.invalidateQueries({ queryKey: ['project', id] });
+            invalidateRecentActivity();
+            setEditRelatedLeakModal(false);
+          }}
+        />
+      )}
+
+      {editLeakInvestigationLinksModal && id && isLeakInvestigation && (
+        <EditLeakInvestigationLinksModal
+          leakInvestigationId={String(id)}
+          currentLinks={proj?.leak_investigation_links ?? []}
+          onClose={() => setEditLeakInvestigationLinksModal(false)}
+          onChanged={async () => {
+            await queryClient.invalidateQueries({ queryKey: ['project', id] });
+            invalidateRecentActivity();
           }}
         />
       )}
@@ -3229,6 +3444,294 @@ function EditRelatedCustomersModal({
         </div>
       </div>
     </div></OverlayPortal>
+  );
+}
+
+function EditRelatedLeakInvestigationModal({
+  projectId,
+  currentRelatedLeakId,
+  onClose,
+  onSave,
+}: {
+  projectId: string;
+  currentRelatedLeakId: string;
+  onClose: () => void;
+  onSave: () => Promise<void>;
+}) {
+  const [selectedId, setSelectedId] = useState<string>(currentRelatedLeakId || '');
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    setSelectedId(currentRelatedLeakId || '');
+  }, [currentRelatedLeakId]);
+
+  const { data: leakPickData } = useQuery({
+    queryKey: ['leak-investigations-pick-detail', BUSINESS_LINE_REPAIRS_MAINTENANCE],
+    queryFn: () =>
+      api<{ items: { id: string; name?: string; code?: string }[] }>(
+        'GET',
+        `/projects/business/leak-investigations?business_line=${encodeURIComponent(BUSINESS_LINE_REPAIRS_MAINTENANCE)}&limit=100`
+      ),
+    staleTime: 60_000,
+  });
+  const leakPickItems = Array.isArray((leakPickData as any)?.items) ? (leakPickData as any).items : [];
+
+  const handleSave = async () => {
+    const next = selectedId.trim();
+    const cur = (currentRelatedLeakId || '').trim();
+    if (next === cur) {
+      onClose();
+      return;
+    }
+    try {
+      setSaving(true);
+      await api('PATCH', `/projects/${encodeURIComponent(projectId)}`, {
+        related_leak_investigation_id: next ? next : null,
+      });
+      toast.success('Related leak investigation updated');
+      await onSave();
+    } catch (e: any) {
+      toast.error(e?.response?.data?.detail || 'Failed to update');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <OverlayPortal>
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={onClose}>
+        <div
+          className="max-w-md w-full max-h-[90vh] flex flex-col rounded-xl border border-gray-200 bg-gray-100 shadow-xl overflow-hidden"
+          onClick={(e) => e.stopPropagation()}
+        >
+          <div className="flex-shrink-0 rounded-t-xl border-b border-gray-200 bg-white p-4">
+            <div className="flex items-center gap-2">
+              <button type="button" onClick={onClose} className="p-1 rounded-lg hover:bg-gray-100 text-gray-600">
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                </svg>
+              </button>
+              <div>
+                <h2 className="text-sm font-semibold text-gray-900">Related Leak Investigation</h2>
+                <p className="text-xs text-gray-500 mt-0.5">At most one investigation, or none</p>
+              </div>
+            </div>
+          </div>
+          <div className="flex-1 overflow-y-auto p-4 min-h-0">
+            <div className="rounded-xl border border-gray-200 bg-white p-4">
+              <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">
+                Investigation
+              </label>
+              <select
+                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"
+                value={selectedId}
+                onChange={(e) => setSelectedId(e.target.value)}
+              >
+                <option value="">None</option>
+                {leakPickItems.map((row: { id: string; name?: string; code?: string }) => (
+                  <option key={row.id} value={row.id}>
+                    {(row.name || '').trim() || row.id}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+          <div className="flex-shrink-0 px-4 py-3 border-t border-gray-200 bg-white flex justify-end gap-2">
+            <button
+              type="button"
+              onClick={onClose}
+              className="px-3 py-1.5 rounded-lg text-sm text-gray-700 border border-gray-200 hover:bg-gray-50"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={handleSave}
+              disabled={saving}
+              className="px-4 py-2 rounded-lg text-sm font-semibold text-white bg-brand-red hover:bg-[#aa1212] disabled:opacity-50"
+            >
+              {saving ? 'Saving...' : 'Save'}
+            </button>
+          </div>
+        </div>
+      </div>
+    </OverlayPortal>
+  );
+}
+
+type LeakInvestigationLinkRow = { id: string; name?: string | null; code?: string | null; is_bidding: boolean };
+
+function EditLeakInvestigationLinksModal({
+  leakInvestigationId,
+  currentLinks,
+  onClose,
+  onChanged,
+}: {
+  leakInvestigationId: string;
+  currentLinks: LeakInvestigationLinkRow[];
+  onClose: () => void;
+  onChanged: () => Promise<void>;
+}) {
+  const confirmDlg = useConfirm();
+  const queryClient = useQueryClient();
+  const [q, setQ] = useState('');
+  const [linkingId, setLinkingId] = useState<string | null>(null);
+  const [removingId, setRemovingId] = useState<string | null>(null);
+
+  const { data: rows = [], isFetching } = useQuery({
+    queryKey: ['rm-projects-for-leak-link', q],
+    queryFn: async () => {
+      const params = new URLSearchParams();
+      params.set('business_line', BUSINESS_LINE_REPAIRS_MAINTENANCE);
+      params.set('is_leak_investigation', 'false');
+      if (q.trim()) params.set('q', q.trim());
+      const res = await api<any[]>('GET', `/projects?${params.toString()}`);
+      return Array.isArray(res) ? res : [];
+    },
+    staleTime: 30_000,
+  });
+
+  const pickable = useMemo(() => {
+    return (rows || []).filter((r: any) => {
+      if (String(r.id) === leakInvestigationId) return false;
+      if (r?.is_leak_investigation) return false;
+      if (String(r?.related_leak_investigation_id || '') === leakInvestigationId) return false;
+      return true;
+    });
+  }, [rows, leakInvestigationId]);
+
+  const linkToLeak = async (childId: string) => {
+    try {
+      setLinkingId(childId);
+      await api('PATCH', `/projects/${encodeURIComponent(childId)}`, {
+        related_leak_investigation_id: leakInvestigationId,
+      });
+      toast.success('Linked');
+      await queryClient.invalidateQueries({ queryKey: ['project', leakInvestigationId] });
+      await onChanged();
+    } catch (e: any) {
+      toast.error(e?.response?.data?.detail || 'Failed to link');
+    } finally {
+      setLinkingId(null);
+    }
+  };
+
+  const unlinkRow = async (childId: string) => {
+    const ok = await confirmDlg({
+      title: 'Remove link',
+      message: 'Remove this opportunity or project from this leak investigation?',
+      confirmText: 'Remove',
+      cancelText: 'Cancel',
+    });
+    if (ok !== 'confirm') return;
+    try {
+      setRemovingId(childId);
+      await api('PATCH', `/projects/${encodeURIComponent(childId)}`, {
+        related_leak_investigation_id: null,
+      });
+      toast.success('Link removed');
+      await queryClient.invalidateQueries({ queryKey: ['project', leakInvestigationId] });
+      await onChanged();
+    } catch (e: any) {
+      toast.error(e?.response?.data?.detail || 'Failed to remove link');
+    } finally {
+      setRemovingId(null);
+    }
+  };
+
+  return (
+    <OverlayPortal>
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={onClose}>
+        <div
+          className="max-w-lg w-full max-h-[90vh] flex flex-col rounded-xl border border-gray-200 bg-gray-100 shadow-xl overflow-hidden"
+          onClick={(e) => e.stopPropagation()}
+        >
+          <div className="flex-shrink-0 rounded-t-xl border-b border-gray-200 bg-white p-4">
+            <div className="flex items-center gap-2">
+              <button type="button" onClick={onClose} className="p-1 rounded-lg hover:bg-gray-100 text-gray-600">
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                </svg>
+              </button>
+              <div>
+                <h2 className="text-sm font-semibold text-gray-900">Related Opportunities / Projects</h2>
+                <p className="text-xs text-gray-500 mt-0.5">Remove linked records here, or search below to add one</p>
+              </div>
+            </div>
+          </div>
+          <div className="flex-1 overflow-y-auto p-4 min-h-0 space-y-3">
+            <div className="rounded-xl border border-gray-200 bg-white p-3">
+              <div className="text-[10px] font-medium text-gray-500 uppercase tracking-wide mb-2">Linked</div>
+              {currentLinks.length === 0 ? (
+                <div className="text-xs text-gray-500">None yet</div>
+              ) : (
+                <ul className="space-y-2">
+                  {currentLinks.map((row) => (
+                    <li key={row.id} className="flex items-center justify-between gap-2 min-w-0">
+                      <span className="text-xs font-semibold text-gray-900 truncate">
+                        {(row.name || '').trim() || 'Unnamed'}
+                      </span>
+                      <button
+                        type="button"
+                        disabled={removingId === row.id}
+                        onClick={() => unlinkRow(row.id)}
+                        className="flex-shrink-0 text-xs font-medium text-red-600 hover:text-red-800 disabled:opacity-50"
+                      >
+                        {removingId === row.id ? '…' : 'Remove'}
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+            <div className="rounded-xl border border-gray-200 bg-white p-3">
+              <div className="text-[10px] font-medium text-gray-500 uppercase tracking-wide mb-2">Add link</div>
+              <input
+                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"
+                placeholder="Search by name..."
+                value={q}
+                onChange={(e) => setQ(e.target.value)}
+              />
+            </div>
+            <div className="rounded-xl border border-gray-200 bg-white divide-y max-h-[40vh] overflow-y-auto">
+              {isFetching && <div className="p-3 text-xs text-gray-500">Loading...</div>}
+              {!isFetching && pickable.length === 0 && (
+                <div className="p-3 text-xs text-gray-500">No matches</div>
+              )}
+              {pickable.map((r: any) => {
+                const nameOnly = (r?.name || '').trim();
+                const kind = r?.is_bidding ? 'Opportunity' : 'Project';
+                return (
+                  <div key={String(r.id)} className="flex items-center justify-between gap-2 p-3">
+                    <div className="min-w-0">
+                      <div className="text-xs font-semibold text-gray-900 truncate">{nameOnly || 'Unnamed'}</div>
+                      <div className="text-[10px] text-gray-500">{kind}</div>
+                    </div>
+                    <button
+                      type="button"
+                      disabled={linkingId === String(r.id)}
+                      onClick={() => linkToLeak(String(r.id))}
+                      className="flex-shrink-0 px-2 py-1 rounded-lg text-xs font-medium bg-brand-red text-white hover:bg-[#aa1212] disabled:opacity-50"
+                    >
+                      {linkingId === String(r.id) ? '...' : 'Link'}
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+          <div className="flex-shrink-0 px-4 py-3 border-t border-gray-200 bg-white flex justify-end">
+            <button
+              type="button"
+              onClick={onClose}
+              className="px-3 py-1.5 rounded-lg text-sm text-gray-700 border border-gray-200 hover:bg-gray-50"
+            >
+              Close
+            </button>
+          </div>
+        </div>
+      </div>
+    </OverlayPortal>
   );
 }
 
@@ -9851,7 +10354,7 @@ function ProjectQuickEdit({ projectId, proj, settings }:{ projectId:string, proj
           </div>
         </div>
         <EmployeeSelect label="Estimator" value={estimator} onChange={setEstimator} employees={employees||[]} />
-        {!proj?.is_bidding && divs.length > 0 && (
+        {!(proj?.is_bidding || proj?.is_leak_investigation) && divs.length > 0 && (
           <div className="col-span-2">
             <label className="text-xs text-gray-600 mb-2 block">On-site Leads by Division</label>
             <div className="space-y-2">
@@ -9895,8 +10398,8 @@ function ProjectQuickEdit({ projectId, proj, settings }:{ projectId:string, proj
                 progress, 
                 estimator_id: estimator||null
               };
-              // Only include division_onsite_leads if not a bidding
-              if (!proj?.is_bidding) {
+              // Only include division_onsite_leads if not opportunity-style (bidding or leak investigation)
+              if (!(proj?.is_bidding || proj?.is_leak_investigation)) {
                 payload.division_onsite_leads = cleanedLeads;
               }
               await api('PATCH', `/projects/${projectId}`, payload); 
