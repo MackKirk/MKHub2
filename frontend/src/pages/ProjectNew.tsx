@@ -22,12 +22,16 @@ export default function ProjectNew(){
   const businessLine = useBusinessLine();
   const [sp] = useSearchParams();
   const initialClientId = sp.get('client_id')||'';
+  const initialIsLeakInvestigation = sp.get('is_leak_investigation') === 'true';
   const initialIsBidding = sp.get('is_bidding') === 'true';
+  const initialRelatedLeakId = (sp.get('related_leak_investigation_id') || '').trim();
+  const initialSiteIdFromUrl = (sp.get('site_id') || '').trim();
+  const initialEstimatorIdFromUrl = (sp.get('estimator_id') || '').trim();
 
   const [clientId, setClientId] = useState<string>(initialClientId);
   const [name, setName] = useState<string>('');
   const [desc, setDesc] = useState<string>('');
-  const [siteId, setSiteId] = useState<string>('');
+  const [siteId, setSiteId] = useState<string>(initialSiteIdFromUrl);
   const [createSite, setCreateSite] = useState<boolean>(false);
   const [siteForm, setSiteForm] = useState<any>({ site_name:'', site_address_line1:'', site_address_line2:'', site_city:'', site_province:'', site_country:'', site_postal_code:'', site_lat:null, site_lng:null, site_notes:'' });
   const setSiteField = (k:string, v:any)=> setSiteForm((s:any)=> ({ ...s, [k]: v }));
@@ -35,13 +39,15 @@ export default function ProjectNew(){
   const [statusLabel, setStatusLabel] = useState<string>('');
   const [divisionIds, setDivisionIds] = useState<string[]>([]); // Legacy support
   const [projectDivisionIds, setProjectDivisionIds] = useState<string[]>([]); // New project divisions
-  const [estimatorId, setEstimatorId] = useState<string>('');
+  const [estimatorId, setEstimatorId] = useState<string>(initialEstimatorIdFromUrl);
   const [leadId, setLeadId] = useState<string>('');
   const [contactId, setContactId] = useState<string>('');
   const [coverBlob, setCoverBlob] = useState<Blob|null>(null);
   const [coverPreview, setCoverPreview] = useState<string>('');
   const [hiddenPickerOpen, setHiddenPickerOpen] = useState<boolean>(false);
-  const [isBidding, setIsBidding] = useState<boolean>(initialIsBidding);
+  const [isLeakInvestigation] = useState<boolean>(initialIsLeakInvestigation);
+  const [relatedLeakInvestigationId, setRelatedLeakInvestigationId] = useState<string>(initialRelatedLeakId);
+  const [isBidding] = useState<boolean>(initialIsLeakInvestigation ? false : initialIsBidding);
   const [clientSearch, setClientSearch] = useState<string>('');
   const [clientModalOpen, setClientModalOpen] = useState<boolean>(false);
   const [showClientDropdown, setShowClientDropdown] = useState<boolean>(false);
@@ -85,7 +91,7 @@ export default function ProjectNew(){
       if (result && Array.isArray(result.data)) return result.data as Client[];
       return [] as Client[];
     },
-    enabled: !!clientSearch.trim() && !initialClientId
+    enabled: !!clientSearch.trim()
   });
   const { data:relatedClientSearchResults } = useQuery({
     queryKey: ['clients-search-related', relatedClientSearch],
@@ -109,19 +115,44 @@ export default function ProjectNew(){
     [projectDivisions, businessLine]
   );
   const { data:employees } = useQuery({ queryKey:['employees'], queryFn: ()=> api<any[]>('GET','/employees') });
+  const { data: leakPickData } = useQuery({
+    queryKey: ['leak-investigations-pick', businessLine],
+    queryFn: () =>
+      api<{ items: { id: string; name?: string; code?: string }[] }>(
+        'GET',
+        `/projects/business/leak-investigations?business_line=${encodeURIComponent(businessLine)}&limit=100`
+      ),
+    enabled: !isLeakInvestigation && businessLine === BUSINESS_LINE_REPAIRS_MAINTENANCE,
+    staleTime: 60_000,
+  });
+  const leakPickItems = Array.isArray((leakPickData as any)?.items) ? (leakPickData as any).items : [];
   const { data:contacts } = useQuery({ queryKey:['clientContacts-mini', clientId], queryFn: ()=> clientId? api<any[]>('GET', `/clients/${encodeURIComponent(clientId)}/contacts`) : Promise.resolve([]), enabled: !!clientId });
-  
-  const selectedClient = useMemo(() => {
+
+  const clientInMiniList = useMemo(() => {
     if (!clientId || !Array.isArray(clients)) return null;
-    return clients.find(c => c.id === clientId) || null;
+    return clients.find((c) => c.id === clientId) || null;
   }, [clientId, clients]);
+
+  const { data: clientById } = useQuery({
+    queryKey: ['client-detail-project-new', clientId],
+    queryFn: () => api<Client>('GET', `/clients/${encodeURIComponent(String(clientId || '').trim())}`),
+    enabled: !!String(clientId || '').trim() && !clientInMiniList,
+    staleTime: 60_000,
+  });
+
+  const selectedClient = useMemo(() => {
+    if (!clientId) return null;
+    if (clientInMiniList) return clientInMiniList;
+    const c = clientById as Client | undefined;
+    if (c && String(c.id) === clientId) return c;
+    return null;
+  }, [clientId, clientInMiniList, clientById]);
   
   const filteredClients = useMemo(() => {
-    if (initialClientId) return [];
     if (!clientSearch.trim()) return [];
     const list = clientSearchResults || [];
     return sortByLabel(list, c => (c.display_name || c.name || c.id || '').toString());
-  }, [clientSearch, clientSearchResults, initialClientId]);
+  }, [clientSearch, clientSearchResults]);
 
   const filteredRelatedClients = useMemo(() => {
     if (!relatedClientSearch.trim()) return [];
@@ -134,13 +165,13 @@ export default function ProjectNew(){
     );
   }, [relatedClientSearch, relatedClientSearchResults, clientId, relatedClientIds]);
 
-  useEffect(()=>{ 
-    if(initialClientId && Array.isArray(clients)) {
-      setClientId(initialClientId);
-      const client = clients.find(c => c.id === initialClientId);
-      if (client) {
-        setClientSearch(client.display_name||client.name||client.id);
-      }
+  useEffect(() => {
+    if (!initialClientId) return;
+    setClientId(initialClientId);
+    if (!Array.isArray(clients)) return;
+    const client = clients.find((c) => c.id === initialClientId);
+    if (client) {
+      setClientSearch(client.display_name || client.name || client.id);
     }
   }, [initialClientId, clients]);
   
@@ -179,14 +210,14 @@ export default function ProjectNew(){
   // Final submit: for opportunities also require at least one division (chosen on step 2).
   const canSubmit = useMemo(()=>{
     if(!canGoToStep2) return false;
-    if(isBidding && projectDivisionIds.length === 0) return false;
+    if((isBidding || isLeakInvestigation) && projectDivisionIds.length === 0) return false;
     return true;
-  }, [canGoToStep2, isBidding, projectDivisionIds.length]);
+  }, [canGoToStep2, isBidding, isLeakInvestigation, projectDivisionIds.length]);
 
   const submit = async()=>{
     if(!canSubmit || isSubmitting) return;
-    if(isBidding && projectDivisionIds.length === 0) {
-      toast.error('Select at least one division for this opportunity');
+    if((isBidding || isLeakInvestigation) && projectDivisionIds.length === 0) {
+      toast.error(isLeakInvestigation ? 'Select at least one division for this leak investigation' : 'Select at least one division for this opportunity');
       return;
     }
     try{
@@ -202,13 +233,20 @@ export default function ProjectNew(){
         description: desc||null, 
         client_id: clientId, 
         site_id: newSiteId||null, 
-        status_label: isBidding ? null : (statusLabel || null), // Backend will set "Prospecting" for opportunities
+        status_label: isBidding || isLeakInvestigation ? null : (statusLabel || null), // Backend sets Prospecting for opportunities / leak investigations
         division_ids: divisionIds, // Legacy support
         project_division_ids: projectDivisionIds.length > 0 ? projectDivisionIds : null, // New project divisions
         estimator_id: estimatorId||null, 
         onsite_lead_id: leadId||null, 
         contact_id: contactId||null, 
         is_bidding: isBidding,
+        is_leak_investigation: isLeakInvestigation,
+        related_leak_investigation_id:
+          !isLeakInvestigation &&
+          businessLine === BUSINESS_LINE_REPAIRS_MAINTENANCE &&
+          relatedLeakInvestigationId.trim()
+            ? relatedLeakInvestigationId.trim()
+            : null,
         related_client_ids: relatedClientIds.length > 0 ? relatedClientIds : null,
         business_line: businessLine,
       };
@@ -221,8 +259,11 @@ export default function ProjectNew(){
           await api('POST', `/projects/${encodeURIComponent(String(proj?.id||''))}/files?file_object_id=${encodeURIComponent(conf.id)}&category=project-cover-derived&original_name=project-cover.jpg`);
         }catch(_e){ /* silent */ }
       }
-      toast.success(isBidding ? 'Opportunity created' : 'Project created');
+      toast.success(
+        isLeakInvestigation ? 'Leak investigation created' : isBidding ? 'Opportunity created' : 'Project created'
+      );
       queryClient.removeQueries({ queryKey: ['opportunities'] });
+      queryClient.removeQueries({ queryKey: ['leak-investigations'] });
       queryClient.removeQueries({ queryKey: ['projects'] });
       const newId = String(proj?.id || '');
       if (newId) {
@@ -230,8 +271,11 @@ export default function ProjectNew(){
         queryClient.invalidateQueries({ queryKey: ['projectRecentActivity', newId] });
       }
       const oppPath = businessLine === BUSINESS_LINE_REPAIRS_MAINTENANCE ? '/rm-opportunities' : '/opportunities';
+      const leakPath = '/rm-leak-investigations';
       const projPath = businessLine === BUSINESS_LINE_REPAIRS_MAINTENANCE ? '/rm-projects' : '/projects';
-      if (isBidding) {
+      if (isLeakInvestigation) {
+        nav(`${leakPath}/${encodeURIComponent(newId)}`);
+      } else if (isBidding) {
         nav(`${oppPath}/${encodeURIComponent(newId)}`);
       } else {
         nav(`${projPath}/${encodeURIComponent(newId)}`);
@@ -262,11 +306,13 @@ export default function ProjectNew(){
                 </svg>
               </button>
               <div>
-                <div className="text-sm font-semibold text-gray-900">{isBidding ? 'New Opportunity' : 'New Project'}</div>
+                <div className="text-sm font-semibold text-gray-900">
+                  {isLeakInvestigation ? 'New Leak Investigation' : isBidding ? 'New Opportunity' : 'New Project'}
+                </div>
                 <div className="text-xs text-gray-500 mt-0.5">
                   {step === 1
                     ? 'Basic details and site'
-                    : isBidding
+                    : isBidding || isLeakInvestigation
                       ? 'Select divisions, then team and cover'
                       : 'Options and cover'}
                 </div>
@@ -294,96 +340,85 @@ export default function ProjectNew(){
                 
             <div>
               <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">Project Owner / Source *</label>
-              {initialClientId ? (
-                <div className="relative">
-                  <input 
-                    className={`w-full border border-gray-200 rounded-lg px-3 py-2 text-sm bg-gray-50 ${!clientValid ? 'border-red-500' : ''}`} 
-                    value={selectedClient ? (selectedClient.display_name||selectedClient.name||selectedClient.id) : ''} 
-                    readOnly
-                    disabled
-                  />
-                </div>
-              ) : (
-                <div className="relative">
-                  <div className="flex items-center gap-2">
-                    <div className="flex-1 relative">
-                      <input 
-                        className={`w-full border border-gray-200 rounded-lg px-3 py-2 text-sm ${!clientValid ? 'border-red-500' : ''}`} 
-                        placeholder="Search customer..." 
-                        value={clientSearch} 
-                        onChange={e=> {
-                          const value = e.target.value;
-                          setClientSearch(value);
-                          if (!value.trim()) {
+              <div className="relative">
+                <div className="flex items-center gap-2">
+                  <div className="flex-1 relative">
+                    <input 
+                      className={`w-full border border-gray-200 rounded-lg px-3 py-2 text-sm ${!clientValid ? 'border-red-500' : ''}`} 
+                      placeholder="Search customer..." 
+                      value={clientSearch} 
+                      onChange={e=> {
+                        const value = e.target.value;
+                        setClientSearch(value);
+                        if (!value.trim()) {
+                          setClientId('');
+                          setShowClientDropdown(false);
+                        } else {
+                          // Se o valor não corresponde ao cliente selecionado, limpar seleção
+                          if (selectedClient && value !== (selectedClient.display_name||selectedClient.name||selectedClient.id)) {
                             setClientId('');
-                            setShowClientDropdown(false);
-                          } else {
-                            // Se o valor não corresponde ao cliente selecionado, limpar seleção
-                            if (selectedClient && value !== (selectedClient.display_name||selectedClient.name||selectedClient.id)) {
-                              setClientId('');
-                              setShowClientDropdown(true);
-                            } else if (!selectedClient) {
-                              setShowClientDropdown(true);
-                            }
-                          }
-                        }}
-                        onFocus={() => {
-                          if (clientSearch.trim() && !selectedClient) {
+                            setShowClientDropdown(true);
+                          } else if (!selectedClient) {
                             setShowClientDropdown(true);
                           }
-                        }}
-                        onBlur={() => {
-                          // Pequeno delay para permitir o clique no dropdown antes de fechar
-                          setTimeout(() => {
-                            setShowClientDropdown(false);
-                            if (selectedClient) {
-                              setClientSearch(selectedClient.display_name||selectedClient.name||selectedClient.id);
-                            }
-                          }, 200);
-                        }}
-                      />
-                      {showClientDropdown && clientSearch.trim() && !selectedClient && filteredClients.length > 0 && (
-                        <div className="absolute z-10 w-full mt-1 bg-white border rounded-lg shadow-lg max-h-60 overflow-auto">
-                          {filteredClients.map(c => (
-                            <button
-                              key={c.id}
-                              type="button"
-                              onClick={() => {
-                                setClientId(c.id);
-                                setClientSearch(c.display_name||c.name||c.id);
-                                setShowClientDropdown(false);
-                              }}
-                              onMouseDown={(e) => {
-                                // Prevenir que o onBlur feche o dropdown antes do clique
-                                e.preventDefault();
-                              }}
-                              className="w-full text-left px-3 py-2 hover:bg-gray-50 border-b last:border-b-0"
-                            >
-                              <div className="font-medium">{c.display_name||c.name||c.id}</div>
-                              {c.city && <div className="text-xs text-gray-500">{c.city}{c.province ? `, ${c.province}` : ''}</div>}
-                            </button>
-                          ))}
-                        </div>
-                      )}
-                      {showClientDropdown && clientSearch.trim() && !selectedClient && filteredClients.length === 0 && clientSearchResults && (
-                        <div className="absolute z-10 w-full mt-1 bg-white border rounded-lg shadow-lg p-3 text-sm text-gray-500">
-                          No customers found
-                        </div>
-                      )}
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => setClientModalOpen(true)}
-                      className="px-3 py-2 rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50 flex-shrink-0"
-                      title="Browse all customers"
-                    >
-                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-                      </svg>
-                    </button>
+                        }
+                      }}
+                      onFocus={() => {
+                        if (clientSearch.trim() && !selectedClient) {
+                          setShowClientDropdown(true);
+                        }
+                      }}
+                      onBlur={() => {
+                        // Pequeno delay para permitir o clique no dropdown antes de fechar
+                        setTimeout(() => {
+                          setShowClientDropdown(false);
+                          if (selectedClient) {
+                            setClientSearch(selectedClient.display_name||selectedClient.name||selectedClient.id);
+                          }
+                        }, 200);
+                      }}
+                    />
+                    {showClientDropdown && clientSearch.trim() && !selectedClient && filteredClients.length > 0 && (
+                      <div className="absolute z-10 w-full mt-1 bg-white border rounded-lg shadow-lg max-h-60 overflow-auto">
+                        {filteredClients.map(c => (
+                          <button
+                            key={c.id}
+                            type="button"
+                            onClick={() => {
+                              setClientId(c.id);
+                              setClientSearch(c.display_name||c.name||c.id);
+                              setShowClientDropdown(false);
+                            }}
+                            onMouseDown={(e) => {
+                              // Prevenir que o onBlur feche o dropdown antes do clique
+                              e.preventDefault();
+                            }}
+                            className="w-full text-left px-3 py-2 hover:bg-gray-50 border-b last:border-b-0"
+                          >
+                            <div className="font-medium">{c.display_name||c.name||c.id}</div>
+                            {c.city && <div className="text-xs text-gray-500">{c.city}{c.province ? `, ${c.province}` : ''}</div>}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                    {showClientDropdown && clientSearch.trim() && !selectedClient && filteredClients.length === 0 && clientSearchResults && (
+                      <div className="absolute z-10 w-full mt-1 bg-white border rounded-lg shadow-lg p-3 text-sm text-gray-500">
+                        No customers found
+                      </div>
+                    )}
                   </div>
+                  <button
+                    type="button"
+                    onClick={() => setClientModalOpen(true)}
+                    className="px-3 py-2 rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50 flex-shrink-0"
+                    title="Browse all customers"
+                  >
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                    </svg>
+                  </button>
                 </div>
-              )}
+              </div>
               {!clientValid && <div className="text-[11px] text-red-600 mt-1">Required</div>}
             </div>
 
@@ -509,6 +544,26 @@ export default function ProjectNew(){
               <textarea className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" rows={3} value={desc} onChange={e=>setDesc(e.target.value)} />
             </div>
 
+            {!isLeakInvestigation && businessLine === BUSINESS_LINE_REPAIRS_MAINTENANCE && (
+              <div className="md:col-span-2">
+                <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">
+                  Related Leak Investigation (optional)
+                </label>
+                <select
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"
+                  value={relatedLeakInvestigationId}
+                  onChange={(e) => setRelatedLeakInvestigationId(e.target.value)}
+                >
+                  <option value="">None</option>
+                  {leakPickItems.map((row: { id: string; name?: string; code?: string }) => (
+                    <option key={row.id} value={row.id}>
+                      {(row.code ? `${row.code} — ` : '') + (row.name || row.id)}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
+
             {!!clientId && (
               <div className="md:col-span-2">
                 <div className="flex items-center justify-between mb-2">
@@ -610,10 +665,14 @@ export default function ProjectNew(){
                 <div className="space-y-4">
                   <div>
                     <label className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide block mb-1">
-                      Project Divisions {isBidding ? <span className="text-red-600">*</span> : null}
+                      Project Divisions {(isBidding || isLeakInvestigation) ? <span className="text-red-600">*</span> : null}
                     </label>
-                    {isBidding && projectDivisionIds.length === 0 && (
-                      <div className="text-[11px] text-red-600 mb-2">Select at least one division for this opportunity</div>
+                    {(isBidding || isLeakInvestigation) && projectDivisionIds.length === 0 && (
+                      <div className="text-[11px] text-red-600 mb-2">
+                        {isLeakInvestigation
+                          ? 'Select at least one division for this leak investigation'
+                          : 'Select at least one division for this opportunity'}
+                      </div>
                     )}
                   </div>
                   <div className="rounded-lg border border-gray-200 bg-white overflow-hidden">
@@ -701,7 +760,7 @@ export default function ProjectNew(){
                     )}
                   </div>
                   {/* Legacy divisions support (deprecated) — not shown for opportunities */}
-                  {!isBidding && settings?.divisions && settings.divisions.length > 0 && (
+                  {!(isBidding || isLeakInvestigation) && settings?.divisions && settings.divisions.length > 0 && (
                     <div className="mt-3 pt-3 border-t border-gray-200">
                       <label className="text-xs text-gray-500">Legacy Divisions (deprecated)</label>
                       <div className="flex flex-wrap gap-2 mt-1">
@@ -732,7 +791,7 @@ export default function ProjectNew(){
                   </div>
 
                   <div className="grid md:grid-cols-2 gap-4 pt-2 border-t border-gray-200">
-                    {!isBidding && (
+                    {!(isBidding || isLeakInvestigation) && (
                       <div>
                         <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">Status</label>
                         <select
@@ -764,7 +823,7 @@ export default function ProjectNew(){
                         ))}
                       </select>
                     </div>
-                    {!isBidding && (
+                    {!(isBidding || isLeakInvestigation) && (
                       <div>
                         <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">On-site lead</label>
                         <select
