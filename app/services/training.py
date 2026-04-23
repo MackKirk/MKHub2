@@ -490,6 +490,32 @@ def generate_certificate(course_id: uuid.UUID, user_id: uuid.UUID, db: Session) 
     return certificate
 
 
+def reconcile_training_progress_row(
+    course: TrainingCourse,
+    progress: TrainingProgress,
+    user_id: uuid.UUID,
+    db: Session,
+) -> None:
+    """
+    Sync progress_percent and completed_at with completed_lesson rows.
+    Used by GET /training and GET /training/{id} so the catalog matches reality
+    (especially when autoflush=False previously left progress_percent / completed_at stale).
+    """
+    dirty = False
+    live_pct = calculate_course_progress(course.id, user_id, db)
+    if live_pct != progress.progress_percent:
+        progress.progress_percent = live_pct
+        dirty = True
+    if progress.completed_at is None and check_course_completion(course.id, user_id, db):
+        progress.completed_at = datetime.utcnow()
+        if course.generates_certificate:
+            generate_certificate(course.id, user_id, db)
+        sync_course_completion_to_employee_record(course, user_id, db)
+        dirty = True
+    if dirty:
+        db.commit()
+
+
 def create_renewal_task(certificate_id: uuid.UUID, db: Session) -> Optional[TaskItem]:
     """Create task for training renewal X days before expiry"""
     certificate = db.query(TrainingCertificate).filter(TrainingCertificate.id == certificate_id).first()

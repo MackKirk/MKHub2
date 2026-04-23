@@ -55,17 +55,14 @@ from ..schemas.training import (
 )
 from ..services.training import (
     get_required_courses_for_user,
-    calculate_course_progress,
-    check_course_completion,
     get_next_lesson,
     update_lesson_progress,
-    generate_certificate,
     publish_course,
     unpublish_course,
     duplicate_course,
     validate_course_for_publishing,
     check_renewal_requirements,
-    sync_course_completion_to_employee_record,
+    reconcile_training_progress_row,
 )
 from ..services.training_matrix_slots import is_valid_matrix_training_id
 from ..training_matrix_catalog import normalize_matrix_training_id
@@ -116,6 +113,12 @@ def list_courses(
             TrainingCertificate.user_id == me.id
         ).all()
     }
+
+    # Align progress rows with lesson completions (same logic as GET /training/{id})
+    for course in all_courses:
+        progress = user_progress.get(course.id)
+        if progress:
+            reconcile_training_progress_row(course, progress, me.id, db)
     
     # Get required courses
     required_courses = get_required_courses_for_user(me.id, db)
@@ -131,15 +134,15 @@ def list_courses(
         progress = user_progress.get(course.id)
         certificate = user_certificates.get(course.id)
 
-        # Check if expired
-        if certificate and certificate.expires_at and certificate.expires_at < datetime.utcnow():
-            expired.append(_serialize_course(course, progress, certificate))
+        # Finished courses stay under "Completed" even if the certificate later expired
+        if progress and progress.completed_at:
+            completed.append(_serialize_course(course, progress, certificate))
             placed_ids.add(course.id)
             continue
 
-        # Check if completed
-        if progress and progress.completed_at:
-            completed.append(_serialize_course(course, progress, certificate))
+        # Renewal queue: cert past expiry, course not (yet) marked complete on progress
+        if certificate and certificate.expires_at and certificate.expires_at < datetime.utcnow():
+            expired.append(_serialize_course(course, progress, certificate))
             placed_ids.add(course.id)
             continue
 
@@ -254,22 +257,8 @@ def get_course(
             "lessons": lesson_data,
         })
 
-    # Reconcile stored progress with completed_lessons (session uses autoflush=False;
-    # older rows may have stale progress_percent / missing completed_at).
     if progress:
-        live_pct = calculate_course_progress(course_uuid, me.id, db)
-        dirty = False
-        if live_pct != progress.progress_percent:
-            progress.progress_percent = live_pct
-            dirty = True
-        if progress.completed_at is None and check_course_completion(course_uuid, me.id, db):
-            progress.completed_at = datetime.utcnow()
-            if course.generates_certificate:
-                generate_certificate(course_uuid, me.id, db)
-            sync_course_completion_to_employee_record(course, me.id, db)
-            dirty = True
-        if dirty:
-            db.commit()
+        reconcile_training_progress_row(course, progress, me.id, db)
 
     return {
         "id": str(course.id),

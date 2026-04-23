@@ -1,4 +1,5 @@
 import os
+import re
 from fastapi import FastAPI, Request
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
@@ -11,6 +12,20 @@ from slowapi.errors import RateLimitExceeded
 from slowapi.middleware import SlowAPIMiddleware
 
 from .config import settings
+
+# GET /files/{uuid} and GET /files/local-inline/… are embedded in LMS iframes / viewers.
+_INLINE_FILE_GET_RE = re.compile(
+    r"^/files/[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+)
+
+
+def _inline_file_response_allows_embedding(request: Request) -> bool:
+    if request.method != "GET":
+        return False
+    path = request.url.path
+    if path.startswith("/files/local-inline/"):
+        return True
+    return _INLINE_FILE_GET_RE.match(path) is not None
 from .db import Base, engine, SessionLocal
 from sqlalchemy import inspect, text
 from .logging import setup_logging, RequestIdMiddleware
@@ -126,11 +141,13 @@ def create_app() -> FastAPI:
     @app.middleware("http")
     async def add_security_headers(request, call_next):
         response = await call_next(request)
-        response.headers["X-Frame-Options"] = "DENY"
+        embed_ok = _inline_file_response_allows_embedding(request)
+        if not embed_ok:
+            response.headers["X-Frame-Options"] = "DENY"
         response.headers["X-Content-Type-Options"] = "nosniff"
         if settings.public_base_url.strip().lower().startswith("https://"):
             response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
-        if (settings.environment or "").lower() in ("prod", "production"):
+        if (settings.environment or "").lower() in ("prod", "production") and not embed_ok:
             response.headers["Content-Security-Policy"] = (
                 "default-src 'self'; "
                 "img-src 'self' data: blob: https:; "

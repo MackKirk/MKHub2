@@ -1,8 +1,8 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { api } from '@/lib/api';
+import { api, withFileAccessToken } from '@/lib/api';
 import { uploadTrainingContentFile } from '@/lib/trainingFileUpload';
 import toast from 'react-hot-toast';
-import { useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import LessonRichTextEditor from '@/pages/training/LessonRichTextEditor';
 
 type Lesson = {
@@ -41,7 +41,7 @@ const LESSON_TYPES = ['text', 'video', 'pdf', 'image', 'quiz'] as const;
 export default function CourseBuilderPanel({ courseId }: { courseId: string }) {
   const queryClient = useQueryClient();
   const [newModuleTitle, setNewModuleTitle] = useState('');
-  const [expanded, setExpanded] = useState<Record<string, boolean>>({});
+  const [activeLessonId, setActiveLessonId] = useState<string | null>(null);
   const [lessonDraft, setLessonDraft] = useState<Record<string, { title: string; lesson_type: string; body: string }>>(
     {},
   );
@@ -51,6 +51,34 @@ export default function CourseBuilderPanel({ courseId }: { courseId: string }) {
     queryFn: () => api<AdminCourse>('GET', `/training/admin/courses/${courseId}`),
     enabled: !!courseId,
   });
+
+  const sortedModules = useMemo(
+    () => [...(course?.modules || [])].sort((a, b) => a.order_index - b.order_index),
+    [course?.modules],
+  );
+
+  useEffect(() => {
+    const ids: string[] = [];
+    for (const mod of sortedModules) {
+      for (const les of [...mod.lessons].sort((a, b) => a.order_index - b.order_index)) {
+        ids.push(les.id);
+      }
+    }
+    if (ids.length === 0) {
+      setActiveLessonId(null);
+      return;
+    }
+    setActiveLessonId((prev) => (prev && ids.includes(prev) ? prev : ids[0]));
+  }, [sortedModules]);
+
+  const activeEntry = useMemo(() => {
+    if (!activeLessonId) return null;
+    for (const mod of sortedModules) {
+      const lesson = mod.lessons.find((l) => l.id === activeLessonId);
+      if (lesson) return { moduleId: mod.id, module: mod, lesson };
+    }
+    return null;
+  }, [sortedModules, activeLessonId]);
 
   const invalidate = () => {
     queryClient.invalidateQueries({ queryKey: ['training-admin-course', courseId] });
@@ -95,16 +123,13 @@ export default function CourseBuilderPanel({ courseId }: { courseId: string }) {
 
   const createLesson = useMutation({
     mutationFn: (payload: { moduleId: string; title: string; lesson_type: string; content?: Record<string, unknown> }) =>
-      api('POST', `/training/admin/courses/${courseId}/modules/${payload.moduleId}/lessons`, {
+      api<{ id: string }>('POST', `/training/admin/courses/${courseId}/modules/${payload.moduleId}/lessons`, {
         title: payload.title,
         lesson_type: payload.lesson_type,
         requires_completion: true,
         content: payload.content,
       }),
-    onSuccess: () => {
-      toast.success('Lesson added');
-      invalidate();
-    },
+    onSuccess: () => invalidate(),
     onError: () => toast.error('Failed to add lesson'),
   });
 
@@ -172,13 +197,13 @@ export default function CourseBuilderPanel({ courseId }: { courseId: string }) {
   });
 
   const moveModule = (idx: number, dir: -1 | 1) => {
-    const mods = [...(course?.modules || [])].sort((a, b) => a.order_index - b.order_index);
+    const mods = [...sortedModules];
     const j = idx + dir;
     if (j < 0 || j >= mods.length) return;
     const ids = mods.map((m) => m.id);
     const t = ids[idx];
     ids[idx] = ids[j];
-    ids[j] = t;
+    ids[j] = t!;
     reorderModules.mutate(ids);
   };
 
@@ -189,7 +214,7 @@ export default function CourseBuilderPanel({ courseId }: { courseId: string }) {
     const ids = sorted.map((l) => l.id);
     const t = ids[idx];
     ids[idx] = ids[j];
-    ids[j] = t;
+    ids[j] = t!;
     reorderLessons.mutate({ moduleId, lessonIds: ids });
   };
 
@@ -203,7 +228,7 @@ export default function CourseBuilderPanel({ courseId }: { courseId: string }) {
     setLessonDraft((d) => ({ ...d, [k]: { ...getDraft(moduleId), ...part } }));
   };
 
-  const submitNewLesson = (moduleId: string) => {
+  const submitNewLesson = async (moduleId: string) => {
     const d = getDraft(moduleId);
     let content: Record<string, unknown> | undefined;
     if (d.lesson_type === 'text') content = { rich_text_content: d.body || '<p></p>' };
@@ -217,7 +242,23 @@ export default function CourseBuilderPanel({ courseId }: { courseId: string }) {
         .filter(Boolean);
       content = { images: ids };
     }
-    createLesson.mutate({ moduleId, title: d.title.trim() || 'Lesson', lesson_type: d.lesson_type, content });
+    try {
+      const res = await createLesson.mutateAsync({
+        moduleId,
+        title: d.title.trim() || 'Lesson',
+        lesson_type: d.lesson_type,
+        content,
+      });
+      toast.success('Lesson added');
+      if (res?.id) setActiveLessonId(res.id);
+      setLessonDraft((prev) => {
+        const next = { ...prev };
+        delete next[draftKey(moduleId)];
+        return next;
+      });
+    } catch {
+      /* toast from mutation */
+    }
   };
 
   if (isLoading || !course) {
@@ -247,265 +288,106 @@ export default function CourseBuilderPanel({ courseId }: { courseId: string }) {
       </div>
 
       {course.modules.length === 0 && (
-        <p className="text-sm text-gray-500">Add a module, then add lessons inside it.</p>
+        <p className="text-sm text-gray-500">Add a module, then add lessons from the outline.</p>
       )}
 
-      {[...course.modules].sort((a, b) => a.order_index - b.order_index).map((mod, mi) => {
-        const open = expanded[mod.id] !== false;
-        const lessons = [...mod.lessons].sort((a, b) => a.order_index - b.order_index);
-        return (
-          <div key={mod.id} className="border rounded-xl overflow-hidden bg-slate-50/50">
-            <div className="flex flex-wrap items-center gap-2 px-4 py-3 bg-white border-b">
-              <button
-                type="button"
-                className="text-sm font-semibold text-gray-700 mr-2"
-                onClick={() => setExpanded((e) => ({ ...e, [mod.id]: !open }))}
-              >
-                {open ? '▼' : '▶'}
-              </button>
-              <input
-                defaultValue={mod.title}
-                key={mod.id + mod.title}
-                className="flex-1 min-w-[160px] px-2 py-1 border rounded font-medium"
-                onBlur={(e) => {
-                  const v = e.target.value.trim();
-                  if (v && v !== mod.title) updateModule.mutate({ id: mod.id, title: v });
-                }}
-              />
-              <button
-                type="button"
-                className="text-xs px-2 py-1 border rounded"
-                onClick={() => moveModule(mi, -1)}
-                disabled={mi === 0}
-              >
-                Up
-              </button>
-              <button
-                type="button"
-                className="text-xs px-2 py-1 border rounded"
-                onClick={() => moveModule(mi, 1)}
-                disabled={mi === course.modules.length - 1}
-              >
-                Down
-              </button>
-              <button
-                type="button"
-                className="text-xs text-red-600"
-                onClick={() => {
-                  if (confirm('Delete this module and all its lessons?')) deleteModule.mutate(mod.id);
-                }}
-              >
-                Delete module
-              </button>
-            </div>
-            {open && (
-              <div className="p-4 space-y-4">
-                {lessons.map((les, li) => (
-                  <div key={les.id} className="border rounded-lg p-4 bg-white space-y-3">
-                    <div className="flex flex-wrap gap-2 items-center">
-                      <span className="text-xs font-mono text-gray-400">{les.lesson_type}</span>
-                      <input
-                        defaultValue={les.title}
-                        key={les.id + les.title}
-                        className="flex-1 min-w-[140px] px-2 py-1 border rounded text-sm font-semibold"
-                        onBlur={(e) => {
-                          const v = e.target.value.trim();
-                          if (v && v !== les.title)
-                            updateLesson.mutate({ moduleId: mod.id, lessonId: les.id, title: v });
-                        }}
-                      />
-                      <button
-                        type="button"
-                        className="text-xs px-2 py-1 border rounded"
-                        onClick={() => moveLesson(mod.id, lessons, li, -1)}
-                        disabled={li === 0}
-                      >
-                        Up
-                      </button>
-                      <button
-                        type="button"
-                        className="text-xs px-2 py-1 border rounded"
-                        onClick={() => moveLesson(mod.id, lessons, li, 1)}
-                        disabled={li === lessons.length - 1}
-                      >
-                        Down
-                      </button>
-                      <button
-                        type="button"
-                        className="text-xs text-red-600"
-                        onClick={() => {
-                          if (confirm('Delete this lesson?')) deleteLesson.mutate({ moduleId: mod.id, lessonId: les.id });
-                        }}
-                      >
-                        Delete
-                      </button>
-                    </div>
-                    {les.lesson_type === 'text' && (
-                      <LessonRichTextEditor
-                        lessonKey={les.id}
-                        initialHtml={String((les.content as { rich_text_content?: string })?.rich_text_content || '')}
-                        onSave={(html) =>
-                          updateLesson.mutate({
-                            moduleId: mod.id,
-                            lessonId: les.id,
-                            content: { rich_text_content: html },
-                          })
-                        }
-                      />
-                    )}
-                    {les.lesson_type === 'video' && (
-                      <input
-                        className="w-full border rounded p-2 text-sm"
-                        placeholder="Embed URL"
-                        defaultValue={String((les.content as { video_url?: string })?.video_url || '')}
-                        onBlur={(e) => {
-                          updateLesson.mutate({
-                            moduleId: mod.id,
-                            lessonId: les.id,
-                            content: { video_url: e.target.value.trim() },
-                          });
-                        }}
-                      />
-                    )}
-                    {les.lesson_type === 'pdf' && (
-                      <div className="space-y-2">
-                        <p className="text-xs text-gray-500">PDF file ID (upload via Company Files, then paste id)</p>
-                        <input
-                          className="w-full border rounded p-2 text-sm"
-                          defaultValue={String((les.content as { pdf_file_id?: string })?.pdf_file_id || '')}
-                          onBlur={(e) => {
-                            updateLesson.mutate({
-                              moduleId: mod.id,
-                              lessonId: les.id,
-                              content: { pdf_file_id: e.target.value.trim() },
-                            });
-                          }}
-                        />
-                      </div>
-                    )}
-                    {les.lesson_type === 'image' && (
-                      <div className="space-y-2">
-                        <p className="text-xs text-gray-500">Comma-separated image file IDs</p>
-                        <input
-                          className="w-full border rounded p-2 text-sm"
-                          defaultValue={((les.content as { images?: string[] })?.images || []).join(', ')}
-                          onBlur={(e) => {
-                            const ids = e.target.value
-                              .split(',')
-                              .map((s) => s.trim())
-                              .filter(Boolean);
-                            updateLesson.mutate({ moduleId: mod.id, lessonId: les.id, content: { images: ids } });
-                          }}
-                        />
-                      </div>
-                    )}
-                    {les.lesson_type === 'quiz' && les.quiz && (
-                      <div className="border-t pt-3 space-y-2">
-                        <div className="grid sm:grid-cols-3 gap-2">
-                          <input
-                            className="border rounded px-2 py-1 text-sm"
-                            defaultValue={les.quiz.title}
-                            onBlur={(e) => {
-                              const t = e.target.value.trim();
-                              if (t)
-                                updateQuizMeta.mutate({
-                                  quizId: les.quiz!.id,
-                                  title: t,
-                                  passing: les.quiz!.passing_score_percent,
-                                  allow_retry: les.quiz!.allow_retry,
-                                });
-                            }}
-                          />
-                          <input
-                            type="number"
-                            className="border rounded px-2 py-1 text-sm"
-                            defaultValue={les.quiz.passing_score_percent}
-                            onBlur={(e) => {
-                              const n = parseInt(e.target.value, 10);
-                              if (!Number.isNaN(n))
-                                updateQuizMeta.mutate({
-                                  quizId: les.quiz!.id,
-                                  title: les.quiz!.title,
-                                  passing: n,
-                                  allow_retry: les.quiz!.allow_retry,
-                                });
-                            }}
-                          />
-                          <label className="flex items-center gap-2 text-sm">
-                            <input
-                              type="checkbox"
-                              defaultChecked={les.quiz.allow_retry}
-                              onChange={(e) =>
-                                updateQuizMeta.mutate({
-                                  quizId: les.quiz!.id,
-                                  title: les.quiz!.title,
-                                  passing: les.quiz!.passing_score_percent,
-                                  allow_retry: e.target.checked,
-                                })
-                              }
-                            />
-                            Allow retry
-                          </label>
-                        </div>
-                        <ul className="text-sm space-y-1">
-                          {(les.quiz.questions || []).map((q) => (
-                            <li key={q.id} className="text-gray-700">
-                              {q.question_text}
-                            </li>
-                          ))}
-                        </ul>
-                        <AddQuestionForm
-                          onAdd={(text, options, correctIndex) =>
-                            addQuestion.mutate({ quizId: les.quiz!.id, text, options, correctIndex })
-                          }
-                          disabled={addQuestion.isPending}
-                        />
-                      </div>
-                    )}
-                  </div>
-                ))}
-
-                <div className="border border-dashed rounded-lg p-4 bg-slate-50 space-y-2">
-                  <div className="text-sm font-semibold text-gray-700">Add lesson</div>
-                  <div className="flex flex-wrap gap-2">
-                    <input
-                      className="flex-1 min-w-[160px] border rounded px-2 py-1 text-sm"
-                      placeholder="Title"
-                      value={getDraft(mod.id).title}
-                      onChange={(e) => setDraft(mod.id, { title: e.target.value })}
-                    />
-                    <select
-                      className="border rounded px-2 py-1 text-sm"
-                      value={getDraft(mod.id).lesson_type}
-                      onChange={(e) => setDraft(mod.id, { lesson_type: e.target.value })}
+      <div className="flex flex-col xl:flex-row gap-6 items-start">
+        <aside className="w-full xl:w-80 shrink-0 border rounded-xl bg-slate-50/90 p-3 max-h-[min(70vh,calc(100vh-12rem))] overflow-y-auto space-y-4 shadow-sm">
+          <div className="text-xs font-semibold uppercase tracking-wide text-gray-500 px-1">Course outline</div>
+          {sortedModules.map((mod, mi) => {
+            const lessons = [...mod.lessons].sort((a, b) => a.order_index - b.order_index);
+            return (
+              <div key={mod.id} className="rounded-lg border border-gray-200 bg-white overflow-hidden">
+                <div className="flex flex-wrap items-center gap-1 px-2 py-2 bg-slate-100/80 border-b border-gray-100">
+                  <input
+                    defaultValue={mod.title}
+                    key={mod.id + mod.title}
+                    className="flex-1 min-w-[100px] px-2 py-1 border rounded text-xs font-semibold"
+                    onBlur={(e) => {
+                      const v = e.target.value.trim();
+                      if (v && v !== mod.title) updateModule.mutate({ id: mod.id, title: v });
+                    }}
+                  />
+                  <button
+                    type="button"
+                    className="text-[10px] px-1.5 py-0.5 border rounded"
+                    onClick={() => moveModule(mi, -1)}
+                    disabled={mi === 0}
+                  >
+                    ↑
+                  </button>
+                  <button
+                    type="button"
+                    className="text-[10px] px-1.5 py-0.5 border rounded"
+                    onClick={() => moveModule(mi, 1)}
+                    disabled={mi === sortedModules.length - 1}
+                  >
+                    ↓
+                  </button>
+                  <button
+                    type="button"
+                    className="text-[10px] text-red-600 px-1"
+                    onClick={() => {
+                      if (confirm('Delete this module and all its lessons?')) deleteModule.mutate(mod.id);
+                    }}
+                  >
+                    ✕
+                  </button>
+                </div>
+                <div className="p-1 space-y-0.5">
+                  {lessons.map((les) => (
+                    <button
+                      key={les.id}
+                      type="button"
+                      onClick={() => setActiveLessonId(les.id)}
+                      className={`w-full text-left rounded-md px-2 py-2 text-sm transition-colors ${
+                        activeLessonId === les.id
+                          ? 'bg-[#7f1010] text-white shadow-inner'
+                          : 'hover:bg-slate-100 text-gray-800'
+                      }`}
                     >
-                      {LESSON_TYPES.map((t) => (
-                        <option key={t} value={t}>
-                          {t}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                  {getDraft(mod.id).lesson_type === 'text' && (
-                    <LessonRichTextEditor
-                      lessonKey={`draft-${mod.id}`}
-                      initialHtml={getDraft(mod.id).body}
-                      onSave={(html) => setDraft(mod.id, { body: html })}
-                    />
-                  )}
+                      <div className="font-medium truncate">{les.title}</div>
+                      <div
+                        className={`text-[10px] uppercase mt-0.5 ${activeLessonId === les.id ? 'text-white/80' : 'text-gray-400'}`}
+                      >
+                        {les.lesson_type}
+                      </div>
+                    </button>
+                  ))}
+                </div>
+                <div className="p-2 border-t border-gray-100 bg-slate-50/80 space-y-2">
+                  <div className="text-[10px] font-semibold text-gray-500 uppercase">New lesson</div>
+                  <input
+                    className="w-full border rounded px-2 py-1 text-xs"
+                    placeholder="Title"
+                    value={getDraft(mod.id).title}
+                    onChange={(e) => setDraft(mod.id, { title: e.target.value })}
+                  />
+                  <select
+                    className="w-full border rounded px-2 py-1 text-xs"
+                    value={getDraft(mod.id).lesson_type}
+                    onChange={(e) => setDraft(mod.id, { lesson_type: e.target.value })}
+                  >
+                    {LESSON_TYPES.map((t) => (
+                      <option key={t} value={t}>
+                        {t}
+                      </option>
+                    ))}
+                  </select>
                   {getDraft(mod.id).lesson_type === 'video' && (
                     <input
-                      className="w-full border rounded p-2 text-sm"
-                      placeholder="Video embed URL"
+                      className="w-full border rounded px-2 py-1 text-xs"
+                      placeholder="Embed URL"
                       value={getDraft(mod.id).body}
                       onChange={(e) => setDraft(mod.id, { body: e.target.value })}
                     />
                   )}
                   {(getDraft(mod.id).lesson_type === 'pdf' || getDraft(mod.id).lesson_type === 'image') && (
-                    <div className="space-y-2">
+                    <div>
                       <input
                         type="file"
                         accept={getDraft(mod.id).lesson_type === 'pdf' ? 'application/pdf' : 'image/*'}
+                        className="text-[10px] w-full"
                         onChange={async (e) => {
                           const f = e.target.files?.[0];
                           if (!f) return;
@@ -518,23 +400,273 @@ export default function CourseBuilderPanel({ courseId }: { courseId: string }) {
                           }
                         }}
                       />
-                      <p className="text-xs text-gray-500">File ID: {getDraft(mod.id).body || '—'}</p>
+                      <p className="text-[10px] text-gray-500 mt-1 truncate">ID: {getDraft(mod.id).body || '—'}</p>
                     </div>
                   )}
                   <button
                     type="button"
                     disabled={createLesson.isPending}
-                    onClick={() => submitNewLesson(mod.id)}
-                    className="px-3 py-1.5 bg-gray-800 text-white rounded text-sm font-semibold"
+                    onClick={() => void submitNewLesson(mod.id)}
+                    className="w-full px-2 py-1.5 bg-gray-800 text-white rounded text-xs font-semibold"
                   >
-                    Create lesson
+                    Create in this module
                   </button>
                 </div>
               </div>
-            )}
-          </div>
-        );
-      })}
+            );
+          })}
+        </aside>
+
+        <section className="flex-1 min-w-0 w-full border rounded-xl bg-white shadow-sm overflow-hidden">
+          {!activeEntry ? (
+            <div className="p-10 text-center text-gray-500 text-sm">
+              Select a lesson in the outline, or add modules and lessons to get started.
+            </div>
+          ) : (
+            <div className="flex flex-col min-h-[420px]">
+              <div className="flex flex-wrap items-center gap-2 px-4 py-3 border-b bg-slate-50/80">
+                <span className="text-xs font-semibold text-[#7f1010] uppercase tracking-wide truncate max-w-[40%]">
+                  {activeEntry.module.title}
+                </span>
+                <span className="text-xs text-gray-400">/</span>
+                <input
+                  defaultValue={activeEntry.lesson.title}
+                  key={activeEntry.lesson.id + activeEntry.lesson.title}
+                  className="flex-1 min-w-[140px] px-2 py-1 border rounded text-sm font-semibold"
+                  onBlur={(e) => {
+                    const v = e.target.value.trim();
+                    if (v && v !== activeEntry.lesson.title)
+                      updateLesson.mutate({
+                        moduleId: activeEntry.moduleId,
+                        lessonId: activeEntry.lesson.id,
+                        title: v,
+                      });
+                  }}
+                />
+                <span className="text-xs font-mono text-gray-400">{activeEntry.lesson.lesson_type}</span>
+                {(() => {
+                  const lessons = [...activeEntry.module.lessons].sort((a, b) => a.order_index - b.order_index);
+                  const li = lessons.findIndex((l) => l.id === activeEntry.lesson.id);
+                  return (
+                    <>
+                      <button
+                        type="button"
+                        className="text-xs px-2 py-1 border rounded"
+                        onClick={() => moveLesson(activeEntry.moduleId, lessons, li, -1)}
+                        disabled={li <= 0}
+                      >
+                        Lesson ↑
+                      </button>
+                      <button
+                        type="button"
+                        className="text-xs px-2 py-1 border rounded"
+                        onClick={() => moveLesson(activeEntry.moduleId, lessons, li, 1)}
+                        disabled={li < 0 || li >= lessons.length - 1}
+                      >
+                        Lesson ↓
+                      </button>
+                    </>
+                  );
+                })()}
+                <button
+                  type="button"
+                  className="text-xs text-red-600 ml-auto"
+                  onClick={() => {
+                    if (confirm('Delete this lesson?')) {
+                      deleteLesson.mutate({
+                        moduleId: activeEntry.moduleId,
+                        lessonId: activeEntry.lesson.id,
+                      });
+                    }
+                  }}
+                >
+                  Delete lesson
+                </button>
+              </div>
+              <div className="p-4 flex-1 overflow-auto bg-white">
+                {activeEntry.lesson.lesson_type === 'text' && (
+                  <LessonRichTextEditor
+                    lessonKey={activeEntry.lesson.id}
+                    initialHtml={String((activeEntry.lesson.content as { rich_text_content?: string })?.rich_text_content || '')}
+                    onSave={(html) =>
+                      updateLesson.mutate({
+                        moduleId: activeEntry.moduleId,
+                        lessonId: activeEntry.lesson.id,
+                        content: { rich_text_content: html },
+                      })
+                    }
+                  />
+                )}
+                {activeEntry.lesson.lesson_type === 'video' && (
+                  <input
+                    className="w-full border rounded p-2 text-sm"
+                    placeholder="Embed URL"
+                    defaultValue={String((activeEntry.lesson.content as { video_url?: string })?.video_url || '')}
+                    onBlur={(e) => {
+                      updateLesson.mutate({
+                        moduleId: activeEntry.moduleId,
+                        lessonId: activeEntry.lesson.id,
+                        content: { video_url: e.target.value.trim() },
+                      });
+                    }}
+                  />
+                )}
+                {activeEntry.lesson.lesson_type === 'pdf' && (
+                  <div className="space-y-3">
+                    <p className="text-xs text-gray-500">
+                      Upload a PDF below (stored as course content). The ID updates automatically; learners see the same preview.
+                    </p>
+                    <input
+                      type="file"
+                      accept="application/pdf"
+                      className="text-sm w-full max-w-md"
+                      onChange={async (e) => {
+                        const f = e.target.files?.[0];
+                        if (!f) return;
+                        try {
+                          const id = await uploadTrainingContentFile(f);
+                          updateLesson.mutate({
+                            moduleId: activeEntry.moduleId,
+                            lessonId: activeEntry.lesson.id,
+                            content: { pdf_file_id: id },
+                          });
+                          toast.success('PDF uploaded');
+                        } catch {
+                          toast.error('PDF upload failed');
+                        }
+                        e.target.value = '';
+                      }}
+                    />
+                    <div>
+                      <label className="text-xs font-semibold text-gray-600">File ID (optional manual edit)</label>
+                      <input
+                        className="w-full border rounded p-2 text-sm font-mono mt-0.5"
+                        defaultValue={String((activeEntry.lesson.content as { pdf_file_id?: string })?.pdf_file_id || '')}
+                        key={(activeEntry.lesson.content as { pdf_file_id?: string })?.pdf_file_id || 'empty'}
+                        onBlur={(e) => {
+                          const v = e.target.value.trim();
+                          updateLesson.mutate({
+                            moduleId: activeEntry.moduleId,
+                            lessonId: activeEntry.lesson.id,
+                            content: { pdf_file_id: v },
+                          });
+                        }}
+                      />
+                    </div>
+                    {(activeEntry.lesson.content as { pdf_file_id?: string })?.pdf_file_id ? (
+                      <div className="border rounded-lg overflow-hidden bg-white">
+                        <iframe
+                          title="PDF preview"
+                          key={String((activeEntry.lesson.content as { pdf_file_id?: string }).pdf_file_id)}
+                          src={`${withFileAccessToken(`/files/${(activeEntry.lesson.content as { pdf_file_id: string }).pdf_file_id}`)}#view=FitH`}
+                          className="w-full h-[min(65vh,680px)] min-h-[400px] border-0"
+                        />
+                        <div className="px-2 py-2 border-t bg-slate-50 text-xs">
+                          <a
+                            href={withFileAccessToken(
+                              `/files/${(activeEntry.lesson.content as { pdf_file_id: string }).pdf_file_id}`,
+                            )}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-[#7f1010] underline"
+                          >
+                            Open in new tab
+                          </a>
+                        </div>
+                      </div>
+                    ) : (
+                      <p className="text-sm text-amber-800">Upload a PDF or paste a file UUID to enable preview.</p>
+                    )}
+                  </div>
+                )}
+                {activeEntry.lesson.lesson_type === 'image' && (
+                  <div className="space-y-2">
+                    <p className="text-xs text-gray-500">Comma-separated image file IDs</p>
+                    <input
+                      className="w-full border rounded p-2 text-sm"
+                      defaultValue={((activeEntry.lesson.content as { images?: string[] })?.images || []).join(', ')}
+                      onBlur={(e) => {
+                        const ids = e.target.value
+                          .split(',')
+                          .map((s) => s.trim())
+                          .filter(Boolean);
+                        updateLesson.mutate({
+                          moduleId: activeEntry.moduleId,
+                          lessonId: activeEntry.lesson.id,
+                          content: { images: ids },
+                        });
+                      }}
+                    />
+                  </div>
+                )}
+                {activeEntry.lesson.lesson_type === 'quiz' && activeEntry.lesson.quiz && (
+                  <div className="border rounded-lg p-4 space-y-3 bg-slate-50/50">
+                    <div className="grid sm:grid-cols-3 gap-2">
+                      <input
+                        className="border rounded px-2 py-1 text-sm bg-white"
+                        defaultValue={activeEntry.lesson.quiz.title}
+                        onBlur={(e) => {
+                          const t = e.target.value.trim();
+                          if (t)
+                            updateQuizMeta.mutate({
+                              quizId: activeEntry.lesson.quiz!.id,
+                              title: t,
+                              passing: activeEntry.lesson.quiz!.passing_score_percent,
+                              allow_retry: activeEntry.lesson.quiz!.allow_retry,
+                            });
+                        }}
+                      />
+                      <input
+                        type="number"
+                        className="border rounded px-2 py-1 text-sm bg-white"
+                        defaultValue={activeEntry.lesson.quiz.passing_score_percent}
+                        onBlur={(e) => {
+                          const n = parseInt(e.target.value, 10);
+                          if (!Number.isNaN(n))
+                            updateQuizMeta.mutate({
+                              quizId: activeEntry.lesson.quiz!.id,
+                              title: activeEntry.lesson.quiz!.title,
+                              passing: n,
+                              allow_retry: activeEntry.lesson.quiz!.allow_retry,
+                            });
+                        }}
+                      />
+                      <label className="flex items-center gap-2 text-sm bg-white border rounded px-2">
+                        <input
+                          type="checkbox"
+                          defaultChecked={activeEntry.lesson.quiz.allow_retry}
+                          onChange={(e) =>
+                            updateQuizMeta.mutate({
+                              quizId: activeEntry.lesson.quiz!.id,
+                              title: activeEntry.lesson.quiz!.title,
+                              passing: activeEntry.lesson.quiz!.passing_score_percent,
+                              allow_retry: e.target.checked,
+                            })
+                          }
+                        />
+                        Allow retry
+                      </label>
+                    </div>
+                    <ul className="text-sm space-y-1">
+                      {(activeEntry.lesson.quiz.questions || []).map((q) => (
+                        <li key={q.id} className="text-gray-700">
+                          {q.question_text}
+                        </li>
+                      ))}
+                    </ul>
+                    <AddQuestionForm
+                      onAdd={(text, options, correctIndex) =>
+                        addQuestion.mutate({ quizId: activeEntry.lesson.quiz!.id, text, options, correctIndex })
+                      }
+                      disabled={addQuestion.isPending}
+                    />
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+        </section>
+      </div>
     </div>
   );
 }
@@ -550,7 +682,7 @@ function AddQuestionForm({
   const [opts, setOpts] = useState('Option A\nOption B\nOption C');
   const [correct, setCorrect] = useState(0);
   return (
-    <div className="flex flex-col gap-2 border rounded p-2 bg-slate-50">
+    <div className="flex flex-col gap-2 border rounded p-2 bg-white">
       <input
         className="border rounded px-2 py-1 text-sm"
         placeholder="Question text"

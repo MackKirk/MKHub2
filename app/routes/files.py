@@ -848,6 +848,73 @@ def serve_local_file_inline(
     )
 
 
+@router.get("/{file_id:uuid}")
+def serve_file_inline_by_id(
+    file_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user_bearer_or_query_token),
+):
+    """
+    Return raw file bytes for inline use (<img src="/files/{id}?access_token=…">, PDF iframes, etc.).
+    Blob-backed files are proxied from storage with the correct Content-Type (unlike /download, which
+    returns JSON with a SAS URL for API clients).
+    """
+    import logging
+    from pathlib import Path
+    from mimetypes import guess_type
+
+    from fastapi.responses import FileResponse
+
+    logger = logging.getLogger(__name__)
+
+    fo: Optional[FileObject] = db.query(FileObject).filter(FileObject.id == file_id).first()
+    if not fo:
+        raise HTTPException(status_code=404, detail="File not found")
+    assert_can_read_file_object(user, db, fo)
+
+    storage = get_storage_for_file(fo)
+    content_type = fo.content_type or "application/octet-stream"
+
+    if isinstance(storage, LocalStorageProvider):
+        file_path = storage._get_path(fo.key)
+        if not file_path.exists():
+            if fo.provider == "blob":
+                logger.warning(
+                    "Inline file %s (key: %s) missing locally; blob file needs Azure or sync",
+                    file_id,
+                    fo.key,
+                )
+            raise HTTPException(status_code=404, detail="File not found")
+        ct = content_type
+        if file_path.suffix:
+            guessed = guess_type(str(file_path))
+            if guessed[0]:
+                ct = guessed[0]
+        return FileResponse(
+            path=str(file_path),
+            media_type=ct,
+            headers={"Content-Disposition": "inline"},
+        )
+
+    url = storage.get_download_url(fo.key, expires_s=300)
+    if not url:
+        raise HTTPException(status_code=404, detail="File not available in blob storage")
+    try:
+        with httpx.Client(timeout=120.0) as client:
+            r = client.get(url)
+            r.raise_for_status()
+            body = r.content
+    except httpx.HTTPError as e:
+        logger.warning("Inline fetch failed for file %s: %s", file_id, e)
+        raise HTTPException(status_code=502, detail="Could not read file from storage") from e
+
+    return Response(
+        content=body,
+        media_type=content_type,
+        headers={"Content-Disposition": "inline"},
+    )
+
+
 @router.get("/{file_id}/download")
 def download(
     file_id: str,
