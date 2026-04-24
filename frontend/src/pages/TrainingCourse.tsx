@@ -1,10 +1,10 @@
 import '@/pages/training/LessonRichTextEditor.css';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import DOMPurify from 'dompurify';
 import { api, withFileAccessToken } from '@/lib/api';
 import { injectFileAccessTokensInHtml } from '@/lib/trainingRichText';
-import type { Config } from 'dompurify';
+import { sanitizeTrainingRichTextHtml } from '@/lib/trainingRichTextSanitize';
+import { toYoutubeEmbedUrl } from '@/lib/youtubeEmbed';
 import toast from 'react-hot-toast';
 import { useState, useEffect, useMemo } from 'react';
 
@@ -32,11 +32,6 @@ type QuizQuestion = {
   question_type: string;
   order_index: number;
   options?: string[];
-};
-
-const TRAINING_RICH_TEXT_SANITIZE: Config = {
-  ADD_TAGS: ['mark'],
-  ADD_ATTR: ['style', 'target', 'rel', 'class', 'data-color', 'data-highlight'],
 };
 
 type Quiz = {
@@ -299,11 +294,17 @@ export default function TrainingCourse() {
               {selectedLesson.lesson_type === 'video' && (
                 <div>
                   {selectedLesson.content?.video_url ? (
-                    <div className="aspect-video bg-black rounded-lg mb-4">
+                    <div className="aspect-video bg-black rounded-lg mb-4 overflow-hidden">
                       <iframe
-                        src={selectedLesson.content.video_url}
-                        className="w-full h-full rounded-lg"
+                        title="Lesson video"
+                        src={
+                          toYoutubeEmbedUrl(String(selectedLesson.content.video_url)) ||
+                          String(selectedLesson.content.video_url)
+                        }
+                        className="w-full h-full rounded-lg border-0"
+                        allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
                         allowFullScreen
+                        referrerPolicy="strict-origin-when-cross-origin"
                       />
                     </div>
                   ) : (
@@ -314,12 +315,27 @@ export default function TrainingCourse() {
                 </div>
               )}
 
-              {selectedLesson.lesson_type === 'pdf' && selectedLesson.content?.pdf_file_id && (
-                <div className="border rounded-lg p-4 mb-4">
-                  <iframe
-                    src={withFileAccessToken(`/files/${selectedLesson.content.pdf_file_id}`)}
-                    className="w-full h-[600px] rounded"
-                  />
+              {selectedLesson.lesson_type === 'pdf' && (
+                <div className="border rounded-lg p-4 mb-4 bg-slate-50">
+                  {selectedLesson.content?.pdf_file_id ? (
+                    <>
+                      <iframe
+                        title="Lesson PDF"
+                        src={`${withFileAccessToken(`/files/${selectedLesson.content.pdf_file_id}`)}#view=FitH`}
+                        className="w-full h-[min(70vh,720px)] min-h-[420px] rounded bg-white border border-gray-200"
+                      />
+                      <a
+                        href={withFileAccessToken(`/files/${selectedLesson.content.pdf_file_id}`)}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-block mt-3 text-sm text-[#7f1010] underline"
+                      >
+                        Open PDF in a new tab
+                      </a>
+                    </>
+                  ) : (
+                    <p className="text-sm text-gray-600">No PDF is attached to this lesson yet.</p>
+                  )}
                 </div>
               )}
 
@@ -328,7 +344,7 @@ export default function TrainingCourse() {
                   className="prose max-w-none mb-4 training-lesson-rich-text"
                   dangerouslySetInnerHTML={{
                     __html: injectFileAccessTokensInHtml(
-                      DOMPurify.sanitize(selectedLesson.content.rich_text_content || '', TRAINING_RICH_TEXT_SANITIZE),
+                      sanitizeTrainingRichTextHtml(selectedLesson.content.rich_text_content || ''),
                     ),
                   }}
                 />

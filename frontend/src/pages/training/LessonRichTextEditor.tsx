@@ -1,8 +1,7 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useReducer, useRef, useState } from 'react';
 import type { Editor } from '@tiptap/core';
 import { EditorContent, useEditor } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
-import Image from '@tiptap/extension-image';
 import Link from '@tiptap/extension-link';
 import Placeholder from '@tiptap/extension-placeholder';
 import Underline from '@tiptap/extension-underline';
@@ -10,9 +9,13 @@ import TextAlign from '@tiptap/extension-text-align';
 import TextStyle from '@tiptap/extension-text-style';
 import { Color } from '@tiptap/extension-color';
 import Highlight from '@tiptap/extension-highlight';
+import Youtube from '@tiptap/extension-youtube';
 import toast from 'react-hot-toast';
 import './LessonRichTextEditor.css';
+import { withFileAccessToken } from '@/lib/api';
+import { injectFileAccessTokensInHtml, stripFileAccessTokensFromHtml } from '@/lib/trainingRichText';
 import { uploadTrainingContentFile } from '@/lib/trainingFileUpload';
+import { LessonImage } from '@/pages/training/lessonImageExtension';
 
 type EditorMode = 'visual' | 'html';
 
@@ -69,13 +72,15 @@ export default function LessonRichTextEditor({
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastSavedRef = useRef<string>(initialHtml || '');
   const editorRef = useRef<Editor | null>(null);
+  const [, bumpSelection] = useReducer((x: number) => x + 1, 0);
 
   const flushSave = useCallback(
     (html: string) => {
-      if (html === lastSavedRef.current) return;
-      lastSavedRef.current = html;
+      const canonical = stripFileAccessTokensFromHtml(html);
+      if (canonical === lastSavedRef.current) return;
+      lastSavedRef.current = canonical;
       setSaveState('saving');
-      onSave(html);
+      onSave(canonical);
       setSaveState('saved');
       window.setTimeout(() => setSaveState('idle'), 1200);
     },
@@ -114,14 +119,19 @@ export default function LessonRichTextEditor({
             rel: 'noopener noreferrer',
           },
         }),
-        Image.configure({
-          inline: false,
-          allowBase64: false,
-          HTMLAttributes: { class: 'rounded-lg max-w-full' },
+        LessonImage,
+        Youtube.configure({
+          addPasteHandler: true,
+          controls: true,
+          nocookie: true,
+          modestBranding: true,
+          width: 640,
+          height: 360,
+          HTMLAttributes: { class: 'lesson-youtube-iframe' },
         }),
         Placeholder.configure({ placeholder }),
       ],
-      content: initialHtml || '<p></p>',
+      content: injectFileAccessTokensInHtml(initialHtml || '<p></p>'),
       editorProps: {
         attributes: {
           class: 'focus:outline-none',
@@ -135,7 +145,11 @@ export default function LessonRichTextEditor({
           void (async () => {
             try {
               const id = await uploadTrainingContentFile(file);
-              editorRef.current?.chain().focus().setImage({ src: `/files/${id}`, alt: file.name }).run();
+              editorRef.current
+                ?.chain()
+                .focus()
+                .setImage({ src: withFileAccessToken(`/files/${id}`), alt: file.name })
+                .run();
             } catch {
               toast.error('Image upload failed');
             }
@@ -153,8 +167,20 @@ export default function LessonRichTextEditor({
   editorRef.current = editor;
 
   useEffect(() => {
-    lastSavedRef.current = initialHtml || '';
-    setSourceHtml(initialHtml || '');
+    if (!editor) return;
+    const onSel = () => bumpSelection();
+    editor.on('selectionUpdate', onSel);
+    editor.on('transaction', onSel);
+    return () => {
+      editor.off('selectionUpdate', onSel);
+      editor.off('transaction', onSel);
+    };
+  }, [editor]);
+
+  useEffect(() => {
+    const canonical = stripFileAccessTokensFromHtml(initialHtml || '');
+    lastSavedRef.current = canonical;
+    setSourceHtml(canonical);
   }, [lessonKey, initialHtml]);
 
   useEffect(() => {
@@ -166,7 +192,7 @@ export default function LessonRichTextEditor({
   const setModeVisual = useCallback(() => {
     if (!editor) return;
     try {
-      editor.commands.setContent(sourceHtml || '<p></p>');
+      editor.commands.setContent(injectFileAccessTokensInHtml(sourceHtml || '<p></p>'));
       setMode('visual');
       scheduleSave(editor.getHTML());
     } catch {
@@ -176,7 +202,7 @@ export default function LessonRichTextEditor({
 
   const setModeHtml = useCallback(() => {
     if (!editor) return;
-    setSourceHtml(editor.getHTML());
+    setSourceHtml(stripFileAccessTokensFromHtml(editor.getHTML()));
     setMode('html');
   }, [editor]);
 
@@ -184,7 +210,11 @@ export default function LessonRichTextEditor({
     if (!file) return;
     try {
       const id = await uploadTrainingContentFile(file);
-      editorRef.current?.chain().focus().setImage({ src: `/files/${id}`, alt: file.name }).run();
+      editorRef.current
+        ?.chain()
+        .focus()
+        .setImage({ src: withFileAccessToken(`/files/${id}`), alt: file.name })
+        .run();
     } catch {
       toast.error('Image upload failed');
     }
@@ -307,6 +337,17 @@ export default function LessonRichTextEditor({
             <ToolbarButton title="Insert image" onClick={() => fileRef.current?.click()}>
               Image
             </ToolbarButton>
+            <ToolbarButton
+              title="Embed YouTube video"
+              onClick={() => {
+                const raw = window.prompt('YouTube URL or video ID', 'https://www.youtube.com/watch?v=');
+                if (raw === null || !raw.trim()) return;
+                const ok = editor.chain().focus().setYoutubeVideo({ src: raw.trim() }).run();
+                if (!ok) toast.error('Could not embed — paste a valid YouTube link or ID');
+              }}
+            >
+              YouTube
+            </ToolbarButton>
             <input
               ref={fileRef}
               type="file"
@@ -360,7 +401,7 @@ export default function LessonRichTextEditor({
       </div>
 
       {mode === 'visual' ? (
-        <EditorContent editor={editor} className="max-h-[min(520px,55vh)] overflow-y-auto bg-white" />
+        <EditorContent editor={editor} className="lesson-richtext-editor-content max-h-[min(640px,65vh)] overflow-y-auto bg-white" />
       ) : (
         <textarea
           className="w-full min-h-[320px] font-mono text-sm p-3 border-0 focus:ring-0 focus:outline-none"
@@ -369,7 +410,7 @@ export default function LessonRichTextEditor({
           onChange={(e) => setSourceHtml(e.target.value)}
           onBlur={() => {
             try {
-              editor.commands.setContent(sourceHtml || '<p></p>');
+              editor.commands.setContent(injectFileAccessTokensInHtml(sourceHtml || '<p></p>'));
               scheduleSave(editor.getHTML());
             } catch {
               /* invalid html */
@@ -379,8 +420,8 @@ export default function LessonRichTextEditor({
       )}
 
       <p className="text-[11px] text-gray-500 px-3 py-2 border-t border-gray-100 bg-slate-50">
-        Images are stored as <code className="bg-white px-1 rounded">/files/…</code> and load for learners with access. Paste screenshots from the clipboard into the
-        visual editor.
+        Images use <code className="bg-white px-1 rounded">/files/…</code> for learners. Insert the next image while the cursor is still right after the previous one (same paragraph) — two or more images in one paragraph form a row; drag corners to set width (e.g. ~33% each).
+        Align icons move the whole row when the paragraph has only images. <strong>YouTube</strong>: toolbar or paste URL. Paste screenshots in visual mode.
       </p>
     </div>
   );

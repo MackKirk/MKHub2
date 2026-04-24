@@ -452,9 +452,22 @@ def _can_read_file_object_via_inferred_storage_scope(
     return False
 
 
+def _is_training_course_material_blob(fo: FileObject) -> bool:
+    """
+    LMS uploads (images/PDF for lessons) use canonical_key(..., 'misc', 'training-course-content', ...).
+    Any authenticated user may read these so learners can view published course materials
+    (UUID is still unguessable; scope is limited to this upload category).
+    """
+    key = (getattr(fo, "key", None) or "").replace("\\", "/").lower()
+    return "/misc/training-course-content/" in key
+
+
 def assert_can_read_file_object(user: User, db: Session, fo: FileObject) -> None:
     """Raise 403 if user may not read/download this file."""
     if _is_employee_profile_photo_file(db, fo):
+        return
+
+    if _is_training_course_material_blob(fo):
         return
 
     pid, cid, eid = _resolve_file_scope_from_references(db, fo)
