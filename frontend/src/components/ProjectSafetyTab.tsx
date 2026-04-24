@@ -16,6 +16,7 @@ import {
   type YesNoNa,
 } from '@/data/projectSafetyInspectionTemplate';
 import DynamicSafetyForm from '@/components/DynamicSafetyForm';
+import CustomSafetySignatureSlots from '@/components/safety/CustomSafetySignatureSlots';
 import SafetySignaturePad from '@/components/SafetySignaturePad';
 import { useConfirm } from '@/components/ConfirmProvider';
 import { useUnsavedChangesGuard } from '@/hooks/useUnsavedChangesGuard';
@@ -24,6 +25,7 @@ import {
   validateDynamicFormMissing,
   type SafetyFormDefinition,
 } from '@/types/safetyFormTemplate';
+import { appendCustomSignatureSlot, getCustomSignaturesFromPayload, hasIncompleteCustomSignature } from '@/lib/customSafetySignatures';
 import { withSignSessionQuery, type SafetySignSession } from '@/lib/safetySignSessionQuery';
 import { imageFilesFromClipboardData, isLikelyImageFile } from '@/utils/imageUploadHelpers';
 
@@ -169,7 +171,15 @@ function InspectionSignaturesGallery({
       return ta - tb;
     });
 
-  if (!workerFileId && additionalSigned.length === 0) return null;
+  const customSigned = getCustomSignaturesFromPayload(formPayload)
+    .filter((e) => (e.file_id || '').trim())
+    .sort((a, b) => {
+      const ta = Date.parse(a.signed_at || '') || 0;
+      const tb = Date.parse(b.signed_at || '') || 0;
+      return ta - tb;
+    });
+
+  if (!workerFileId && additionalSigned.length === 0 && customSigned.length === 0) return null;
 
   return (
     <div className="rounded-xl border border-gray-200 bg-white p-4 space-y-4">
@@ -208,6 +218,51 @@ function InspectionSignaturesGallery({
             </div>
           </div>
         )}
+        {customSigned.map((c) => (
+          <div key={c.id} className="rounded-lg border border-gray-100 bg-gray-50/80 p-3">
+            <div className="text-xs font-medium text-gray-500 mb-2">Custom Signer</div>
+            <div className="flex flex-wrap gap-4 items-start">
+              <a
+                href={withFileAccessToken(`/files/${encodeURIComponent(c.file_id!)}/thumbnail?w=640`)}
+                target="_blank"
+                rel="noreferrer"
+                className="shrink-0 block rounded border border-gray-200 bg-white overflow-hidden"
+              >
+                <img
+                  src={withFileAccessToken(`/files/${encodeURIComponent(c.file_id!)}/thumbnail?w=320`)}
+                  alt=""
+                  className="max-h-28 w-auto max-w-[200px] object-contain"
+                />
+              </a>
+              <div className="text-sm text-gray-800 space-y-1 min-w-0 flex-1">
+                <div>
+                  <span className="text-gray-500">Signed by: </span>
+                  <span className="font-medium">{(c.name || '').trim() || '—'}</span>
+                </div>
+                {(c.company || '').trim() ? (
+                  <div>
+                    <span className="text-gray-500">Company: </span>
+                    <span>{(c.company || '').trim()}</span>
+                  </div>
+                ) : null}
+                {(c.occupation || '').trim() ? (
+                  <div>
+                    <span className="text-gray-500">Occupation: </span>
+                    <span>{(c.occupation || '').trim()}</span>
+                  </div>
+                ) : null}
+                <div>
+                  <span className="text-gray-500">Time: </span>
+                  <span>{formatInspectionSignedAt(c.signed_at)}</span>
+                </div>
+                <div>
+                  <span className="text-gray-500">Location: </span>
+                  <span>{(c.location_label || '').trim() || 'Not captured'}</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        ))}
         {additionalSigned.map((r) => (
           <div key={r.id} className="rounded-lg border border-gray-100 bg-gray-50/80 p-3">
             <div className="text-xs font-medium text-gray-500 mb-2">Additional signer</div>
@@ -837,6 +892,11 @@ export default function ProjectSafetyTab({
           setFinalizeModalOpen(false);
           throw new Error('validation');
         }
+      }
+      if (detail?.form_template_id && hasIncompleteCustomSignature(fp)) {
+        toast.error('Complete or remove custom signatures that have a name but no drawn signature.');
+        setFinalizeModalOpen(false);
+        throw new Error('validation');
       }
       const body: Record<string, unknown> = {
         status: 'finalized',
@@ -1474,8 +1534,27 @@ export default function ProjectSafetyTab({
             <InspectionSignaturesGallery formPayload={formPayload} signRequests={detail.sign_requests} />
           ) : null}
 
+          {formEditable && isDynamicInspection && dynamicDefinition ? (
+            <CustomSafetySignatureSlots
+              projectId={projectId}
+              formPayload={formPayload}
+              setFormPayload={setFormPayload}
+              disabled={finalizeMutation.isPending || saveMutation.isPending}
+            />
+          ) : null}
+
           {formEditable && (
             <div className="flex flex-wrap gap-3 items-center">
+              {isDynamicInspection && dynamicDefinition ? (
+                <button
+                  type="button"
+                  disabled={finalizeMutation.isPending || saveMutation.isPending}
+                  onClick={() => setFormPayload((p) => appendCustomSignatureSlot(p))}
+                  className="px-5 py-2.5 border border-gray-300 text-gray-800 bg-white rounded-lg font-medium text-sm hover:bg-gray-50 disabled:opacity-50"
+                >
+                  Add custom signature
+                </button>
+              ) : null}
               <button
                 type="button"
                 disabled={finalizeMutation.isPending || saveMutation.isPending}

@@ -79,31 +79,19 @@ const IconEmpty = () => (
 );
 
 // --- DashboardHeader ---
-function DashboardHeader({
-  todayLabel,
-  lastRefreshedAt,
-}: {
-  todayLabel: string;
-  lastRefreshedAt: number | null;
-}) {
-  const refreshedLabel = lastRefreshedAt
-    ? new Date(lastRefreshedAt).toLocaleTimeString('en-CA', { hour: '2-digit', minute: '2-digit' })
-    : null;
+function DashboardHeader({ todayLabel }: { todayLabel: string }) {
   return (
-    <div className="rounded-xl border border-gray-200 bg-white p-5 min-w-0">
-      <div className="flex flex-wrap items-center justify-between gap-4">
-        <div>
-          <h1 className="text-lg font-bold text-gray-900">Fleet & Equipment</h1>
-          <p className="text-sm text-gray-500 mt-0.5">Executive overview</p>
-        </div>
-        <div className="flex items-center gap-4 text-right">
+    <div className="rounded-xl border bg-white p-4 mb-4">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-3 flex-1">
           <div>
-            <div className="text-[10px] font-medium text-gray-500 uppercase tracking-wide">Today</div>
-            <div className="text-sm font-semibold text-gray-700">{todayLabel}</div>
+            <div className="text-sm font-semibold text-gray-900">Fleet & Equipment</div>
+            <div className="text-xs text-gray-500 mt-0.5">Executive overview</div>
           </div>
-          {refreshedLabel && (
-            <div className="text-[10px] text-gray-400">Last refreshed {refreshedLabel}</div>
-          )}
+        </div>
+        <div className="text-right">
+          <div className="text-[10px] font-medium text-gray-500 uppercase tracking-wide">Today</div>
+          <div className="text-xs font-semibold text-gray-700 mt-0.5">{todayLabel}</div>
         </div>
       </div>
     </div>
@@ -686,7 +674,7 @@ export default function FleetDashboard() {
   const [newAssetModalType, setNewAssetModalType] = useState<'vehicle' | 'heavy_machinery' | 'other' | null>(null);
   const [newEquipmentModalOpen, setNewEquipmentModalOpen] = useState(false);
 
-  const { data, isLoading, dataUpdatedAt } = useQuery({
+  const { data, isLoading } = useQuery({
     queryKey: ['fleetDashboard'],
     queryFn: () => api<DashboardData>('GET', '/fleet/dashboard'),
   });
@@ -740,9 +728,9 @@ export default function FleetDashboard() {
   if (isLoading) {
     return (
       <div className="space-y-6 min-w-0 overflow-x-hidden">
-        <div className="rounded-xl border border-gray-200 bg-white p-5">
-          <div className="h-6 w-48 bg-gray-100 animate-pulse rounded" />
-          <div className="h-4 w-32 mt-2 bg-gray-100 animate-pulse rounded" />
+        <div className="rounded-xl border bg-white p-4 mb-4">
+          <div className="h-5 w-48 bg-gray-100 animate-pulse rounded" />
+          <div className="h-3 w-40 mt-2 bg-gray-100 animate-pulse rounded" />
         </div>
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
           {[1, 2, 3, 4].map((i) => (
@@ -757,11 +745,8 @@ export default function FleetDashboard() {
   }
 
   return (
-    <div className="space-y-8 min-w-0 overflow-x-hidden">
-      <DashboardHeader
-        todayLabel={todayLabel}
-        lastRefreshedAt={dataUpdatedAt ?? null}
-      />
+    <div className="space-y-4 min-w-0 overflow-x-hidden">
+      <DashboardHeader todayLabel={todayLabel} />
 
       {/* Row 1 — Operational Snapshot */}
       <section>
