@@ -606,14 +606,59 @@ def _yna_badges(selected: str, badge_style: ParagraphStyle) -> Union[_CircledCho
     return _single_selected_choice(defs, selected, chip)
 
 
-def _checkbox_badge(checked: bool, badge_style: ParagraphStyle) -> Union[_CircledChoiceLabel, Paragraph]:
-    defs = [
-        ("yes", "Yes", _GREEN_BG, "#166534", _GREEN_BD),
-        ("no", "No", _RED_BG, "#991b1b", _RED_BD),
-    ]
-    sel = "yes" if checked else "no"
-    chip = _chip_style("ChoiceChip", badge_style)
-    return _single_selected_choice(defs, sel, chip)
+def _coerce_checkbox_checked(raw: Any) -> bool:
+    """Match stored payload to PDF checkbox (bool, string, or numeric from JSON/DB quirks)."""
+    if raw is True:
+        return True
+    if raw is False or raw is None:
+        return False
+    if isinstance(raw, str):
+        return raw.strip().lower() in ("true", "1", "yes", "on")
+    if isinstance(raw, (int, float)):
+        return raw != 0
+    return False
+
+
+class _CheckboxFlowable(Flowable):
+    """Vector checkbox: square outline plus line checkmark when selected."""
+
+    def __init__(self, checked: bool, size: float = 16.0) -> None:
+        super().__init__()
+        self._checked = checked
+        self._size = size
+
+    def wrap(self, availWidth: float, availHeight: float) -> Tuple[float, float]:
+        self.width = min(self._size, availWidth) if availWidth else self._size
+        self.height = min(self._size, availHeight) if availHeight else self._size
+        return self.width, self.height
+
+    def draw(self) -> None:
+        c = self.canv
+        w = getattr(self, "width", self._size)
+        h = getattr(self, "height", self._size)
+        c.saveState()
+        c.setStrokeColor(colors.HexColor("#374151"))
+        c.setLineWidth(1.1)
+        c.rect(0.5, 0.5, max(0, w - 1), max(0, h - 1), stroke=1, fill=0)
+        if self._checked:
+            c.setLineCap(1)
+            c.setLineJoin(1)
+            c.setStrokeColor(colors.HexColor("#111827"))
+            c.setLineWidth(1.7)
+            x1 = w * 0.24
+            y1 = h * 0.50
+            x2 = w * 0.42
+            y2 = h * 0.30
+            x3 = w * 0.76
+            y3 = h * 0.72
+            c.line(x1, y1, x2, y2)
+            c.line(x2, y2, x3, y3)
+        c.restoreState()
+
+
+def _checkbox_badge(checked: bool, badge_style: ParagraphStyle) -> _CheckboxFlowable:
+    """Paper-style checkbox: empty square or square with checkmark."""
+    return _CheckboxFlowable(checked, size=16.0)
 
 
 def _pft_badges(val: Dict[str, Any], badge_style: ParagraphStyle, no_answer_style: ParagraphStyle) -> Union[Table, Paragraph]:
@@ -666,10 +711,12 @@ def _plain_field_has_answer(
 ) -> bool:
     """True when the field has a non-empty primary value (PDF shows real content, not 'No answer')."""
     key = str(field.get("key") or "").strip()
-    ftype = str(field.get("type") or "")
+    ftype = str(field.get("type") or "").strip().lower()
     val = payload.get(key)
     if ftype == "text_info":
         return True
+    if ftype == "checkbox":
+        return _coerce_checkbox_checked(val)
     if ftype in ("short_text", "long_text", "number"):
         if val is None:
             return False
@@ -720,7 +767,7 @@ def _plain_field_has_answer(
 
 def _plain_text_value(db: Session, field: Dict[str, Any], payload: Dict[str, Any], list_maps: Dict[str, Dict[str, str]]) -> str:
     key = str(field.get("key") or "").strip()
-    ftype = str(field.get("type") or "")
+    ftype = str(field.get("type") or "").strip().lower()
     val = payload.get(key)
     if ftype == "text_info":
         return ""
@@ -800,6 +847,31 @@ def _sorted_fields(sec: Dict[str, Any]) -> List[Dict[str, Any]]:
         return []
     out = [f for f in fields if isinstance(f, dict)]
     out.sort(key=lambda f: int(f.get("order") or 0))
+    return out
+
+
+def _custom_on_site_signature_entries(form_payload: Dict[str, Any]) -> List[Dict[str, str]]:
+    """Third-party signatures stored in form_payload._custom_signatures (see frontend customSafetySignatures)."""
+    raw = form_payload.get("_custom_signatures")
+    if not isinstance(raw, list):
+        return []
+    out: List[Dict[str, str]] = []
+    for item in raw:
+        if not isinstance(item, dict):
+            continue
+        fid = str(item.get("file_id") or "").strip()
+        if not fid:
+            continue
+        out.append(
+            {
+                "file_id": fid,
+                "name": str(item.get("name") or "").strip(),
+                "company": str(item.get("company") or "").strip(),
+                "occupation": str(item.get("occupation") or "").strip(),
+                "signed_at": str(item.get("signed_at") or "").strip(),
+                "location_label": str(item.get("location_label") or "").strip(),
+            }
+        )
     return out
 
 
@@ -905,7 +977,7 @@ def build_safety_inspection_pdf_bytes(
         for field in fields:
             if not _is_field_visible(field, form_payload):
                 continue
-            ftype = str(field.get("type") or "")
+            ftype = str(field.get("type") or "").strip().lower()
             if ftype == "text_info":
                 lbl = str(field.get("label") or "")
                 if lbl:
@@ -913,7 +985,7 @@ def build_safety_inspection_pdf_bytes(
                     has_content = True
                 continue
 
-            key = str(field.get("key") or "")
+            key = str(field.get("key") or "").strip()
             label = str(field.get("label") or field.get("key") or "Field")
             label_p = Paragraph(_esc(label), lbl_style)
 
@@ -935,7 +1007,7 @@ def build_safety_inspection_pdf_bytes(
                     extra_flows.append(Paragraph(f"<b>Notes:</b> {_esc(notes)}", val_style))
                 img_ids.extend(_get_yn_comment_images(raw))
             elif ftype == "checkbox":
-                val_flow = _checkbox_badge(form_payload.get(key) is True, badge_chr)
+                val_flow = _checkbox_badge(_coerce_checkbox_checked(form_payload.get(key)), badge_chr)
             elif ftype == "pass_fail_total":
                 val_flow = _pft_badges(form_payload.get(key) or {}, badge_chr, no_answer_style)
             else:
@@ -1066,6 +1138,42 @@ def build_safety_inspection_pdf_bytes(
             story.extend(meta_flows[1:])
         else:
             story.append(h2_worker)
+
+    custom_sigs = _custom_on_site_signature_entries(form_payload)
+    if custom_sigs:
+        story.append(PageBreak())
+        h2_custom = Paragraph("Custom on-site signatures", h2)
+        custom_flows: List[Any] = []
+        for cs in custom_sigs:
+            nm = (cs.get("name") or "").strip() or "Signer"
+            custom_flows.append(Paragraph(_esc(nm), sub_style))
+            co = (cs.get("company") or "").strip()
+            if co:
+                custom_flows.append(Paragraph(_esc(f"Company: {co}"), sub_style))
+            occ = (cs.get("occupation") or "").strip()
+            if occ:
+                custom_flows.append(Paragraph(_esc(f"Occupation: {occ}"), sub_style))
+            sa = (cs.get("signed_at") or "").strip()
+            if sa:
+                van = _format_iso_timestamp_vancouver(sa)
+                custom_flows.append(
+                    Paragraph(_esc(f"Signed at ({_PDF_TZ_LABEL}): {van or sa}"), sub_style)
+                )
+            loc = (cs.get("location_label") or "").strip()
+            if loc:
+                custom_flows.append(Paragraph(_esc(f"Location: {loc}"), sub_style))
+            cfid = (cs.get("file_id") or "").strip()
+            if cfid:
+                im = _load_image_flowable(db, cfid, max_w=min(frame_w * 0.85, 4.5 * inch))
+                if im:
+                    custom_flows.append(Spacer(1, 0.12 * inch))
+                    custom_flows.append(im)
+            custom_flows.append(Spacer(1, 0.16 * inch))
+        if custom_flows:
+            story.append(KeepTogether([h2_custom, custom_flows[0]]))
+            story.extend(custom_flows[1:])
+        else:
+            story.append(h2_custom)
 
     if extras:
         story.append(PageBreak())
