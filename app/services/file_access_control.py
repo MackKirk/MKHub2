@@ -217,6 +217,7 @@ def assert_can_initiate_upload(
         or _has_permission(user, "documents:write")
         or _has_permission(user, "documents:access")
         or _has_permission(user, "training:manage")
+        or _has_permission(user, "settings:access")
     ):
         raise HTTPException(status_code=403, detail="Forbidden")
 
@@ -462,6 +463,16 @@ def _is_training_course_material_blob(fo: FileObject) -> bool:
     return "/misc/training-course-content/" in key
 
 
+def _is_organization_logo_library_blob(fo: FileObject) -> bool:
+    key = (getattr(fo, "key", None) or "").replace("\\", "/").lower()
+    return "/misc/organization-logos/" in key
+
+
+def _is_certificate_background_library_blob(fo: FileObject) -> bool:
+    key = (getattr(fo, "key", None) or "").replace("\\", "/").lower()
+    return "/misc/certificate-backgrounds/" in key
+
+
 def assert_can_read_file_object(user: User, db: Session, fo: FileObject) -> None:
     """Raise 403 if user may not read/download this file."""
     if _is_employee_profile_photo_file(db, fo):
@@ -469,6 +480,24 @@ def assert_can_read_file_object(user: User, db: Session, fo: FileObject) -> None
 
     if _is_training_course_material_blob(fo):
         return
+
+    if _is_organization_logo_library_blob(fo):
+        if (
+            _has_permission(user, "training:manage")
+            or _has_permission(user, "users:write")
+            or _has_permission(user, "settings:access")
+        ):
+            return
+        raise HTTPException(status_code=403, detail="Forbidden")
+
+    if _is_certificate_background_library_blob(fo):
+        if (
+            _has_permission(user, "training:manage")
+            or _has_permission(user, "users:write")
+            or _has_permission(user, "settings:access")
+        ):
+            return
+        raise HTTPException(status_code=403, detail="Forbidden")
 
     pid, cid, eid = _resolve_file_scope_from_references(db, fo)
 

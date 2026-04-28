@@ -7,13 +7,15 @@ from datetime import datetime, date, time, timedelta, timezone
 import uuid
 
 from ..db import get_db
-from ..models.models import SettingList, SettingItem, Client, Attendance, User, Shift, Project, EmployeeProfile, AuditLog
+from ..models.models import SettingList, SettingItem, Client, Attendance, User, Shift, Project, EmployeeProfile, AuditLog, FileObject
 from ..services.standard_file_categories import ensure_standard_file_categories
 from ..services.training_matrix_slots import (
     ensure_training_matrix_slots,
     validate_cell_kind,
     validate_matrix_slot_slug,
 )
+from ..services.organization_logos import ensure_organization_logos_list
+from ..services.certificate_background_library import ensure_certificate_backgrounds_list
 from ..auth.security import require_permissions, get_current_user
 from ..auth.security import User as UserType
 from ..config import settings
@@ -306,6 +308,8 @@ def get_settings_bundle(db: Session = Depends(get_db), user: UserType = Depends(
     if has_access:
         ensure_standard_file_categories(db)
         ensure_training_matrix_slots(db)
+        ensure_organization_logos_list(db)
+        ensure_certificate_backgrounds_list(db)
         rows = db.query(SettingList).all()
         for lst in rows:
             items = db.query(SettingItem).filter(SettingItem.list_id == lst.id).order_by(SettingItem.sort_index.asc()).all()
@@ -429,6 +433,7 @@ def create_setting_item(
     sets_start_date: Optional[str] = None,
     sets_end_date: Optional[str] = None,
     cell_kind: Optional[str] = None,
+    file_object_id: Optional[str] = None,
     db: Session = Depends(get_db),
     user: UserType = Depends(get_current_user),
 ):
@@ -503,6 +508,27 @@ def create_setting_item(
             meta["sets_end_date"] = sets_end_date.lower() in ("true", "1", "yes")
     if list_name == "training_matrix_slots":
         meta["cell_kind"] = validate_cell_kind(cell_kind)
+    if list_name in ("organization_logos", "certificate_backgrounds"):
+        raw_f = (file_object_id or "").strip()
+        if not raw_f:
+            raise HTTPException(
+                status_code=400,
+                detail="file_object_id is required for organization logos and certificate backgrounds",
+            )
+        try:
+            fid = uuid.UUID(raw_f)
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Invalid file_object_id")
+        fo = db.query(FileObject).filter(FileObject.id == fid).first()
+        if not fo:
+            raise HTTPException(status_code=404, detail="File not found")
+        ct = (fo.content_type or "").lower()
+        key_l = (fo.key or "").lower()
+        if not (ct.startswith("image/") or key_l.endswith((".png", ".jpg", ".jpeg", ".webp", ".gif"))):
+            noun = "Organization logo" if list_name == "organization_logos" else "Certificate background"
+            raise HTTPException(status_code=400, detail=f"{noun} must be an image file")
+        meta["file_object_id"] = str(fid)
+        value = str(fid)
     it = SettingItem(list_id=lst.id, label=label, value=value, sort_index=sort_index, meta=meta or None)
     db.add(it)
     db.commit()
@@ -781,7 +807,7 @@ def update_attendance(
 
 
 @router.put("/{list_name}/{item_id}")
-def update_setting_item(list_name: str, item_id: str, label: str = None, value: str = None, sort_index: int | None = None, abbr: Optional[str] = None, color: Optional[str] = None, allow_edit_proposal: Optional[str] = None, sets_start_date: Optional[str] = None, sets_end_date: Optional[str] = None, description: Optional[str] = None, icon: Optional[str] = None, show_in_project: Optional[str] = None, show_in_opportunity: Optional[str] = None, cell_kind: Optional[str] = None, db: Session = Depends(get_db), user: UserType = Depends(get_current_user)):
+def update_setting_item(list_name: str, item_id: str, label: str = None, value: str = None, sort_index: int | None = None, abbr: Optional[str] = None, color: Optional[str] = None, allow_edit_proposal: Optional[str] = None, sets_start_date: Optional[str] = None, sets_end_date: Optional[str] = None, description: Optional[str] = None, icon: Optional[str] = None, show_in_project: Optional[str] = None, show_in_opportunity: Optional[str] = None, cell_kind: Optional[str] = None, file_object_id: Optional[str] = None, db: Session = Depends(get_db), user: UserType = Depends(get_current_user)):
     from ..auth.security import _has_permission
     
     lst = db.query(SettingList).filter(SettingList.name == list_name).first()
@@ -850,6 +876,26 @@ def update_setting_item(list_name: str, item_id: str, label: str = None, value: 
             meta["icon"] = ((icon or "").strip() or "📁")
     if list_name == "training_matrix_slots" and cell_kind is not None:
         meta["cell_kind"] = validate_cell_kind(cell_kind)
+    if list_name in ("organization_logos", "certificate_backgrounds") and file_object_id is not None:
+        raw_f = (file_object_id or "").strip()
+        if raw_f:
+            try:
+                fid = uuid.UUID(raw_f)
+            except ValueError:
+                raise HTTPException(status_code=400, detail="Invalid file_object_id")
+            fo = db.query(FileObject).filter(FileObject.id == fid).first()
+            if not fo:
+                raise HTTPException(status_code=404, detail="File not found")
+            ct = (fo.content_type or "").lower()
+            key_l = (fo.key or "").lower()
+            if not (ct.startswith("image/") or key_l.endswith((".png", ".jpg", ".jpeg", ".webp", ".gif"))):
+                noun = "Organization logo" if list_name == "organization_logos" else "Certificate background"
+                raise HTTPException(status_code=400, detail=f"{noun} must be an image file")
+            meta["file_object_id"] = str(fid)
+            it.value = str(fid)
+        else:
+            meta.pop("file_object_id", None)
+            it.value = ""
     # Always set meta (even if empty dict) to ensure meta fields are preserved
     it.meta = meta
     db.commit()

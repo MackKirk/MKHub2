@@ -22,6 +22,16 @@ class CourseBase(BaseModel):
     generates_certificate: bool = False
     certificate_validity_days: Optional[int] = None
     certificate_text: Optional[str] = None
+    certificate_background_file_id: Optional[uuid.UUID] = None
+    certificate_background_setting_item_id: Optional[uuid.UUID] = None
+    certificate_background_preset_key: Optional[str] = None
+    certificate_logo_file_id: Optional[uuid.UUID] = None
+    certificate_logo_setting_item_id: Optional[uuid.UUID] = None
+    certificate_heading_primary: Optional[str] = None
+    certificate_heading_secondary: Optional[str] = None
+    certificate_body_template: Optional[str] = None
+    certificate_instructor_name: Optional[str] = None
+    certificate_layout: Optional[Dict[str, Any]] = None
 
     # HR employee training / matrix (optional)
     matrix_training_id: Optional[str] = None
@@ -51,6 +61,16 @@ class CourseUpdate(BaseModel):
     generates_certificate: Optional[bool] = None
     certificate_validity_days: Optional[int] = None
     certificate_text: Optional[str] = None
+    certificate_background_file_id: Optional[uuid.UUID] = None
+    certificate_background_setting_item_id: Optional[uuid.UUID] = None
+    certificate_background_preset_key: Optional[str] = None
+    certificate_logo_file_id: Optional[uuid.UUID] = None
+    certificate_logo_setting_item_id: Optional[uuid.UUID] = None
+    certificate_heading_primary: Optional[str] = None
+    certificate_heading_secondary: Optional[str] = None
+    certificate_body_template: Optional[str] = None
+    certificate_instructor_name: Optional[str] = None
+    certificate_layout: Optional[Dict[str, Any]] = None
     matrix_training_id: Optional[str] = None
     sync_completion_to_employee_record: Optional[bool] = None
     required_role_ids: Optional[List[uuid.UUID]] = None

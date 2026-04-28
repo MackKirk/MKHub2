@@ -5,6 +5,20 @@ import toast from 'react-hot-toast';
 import { useEffect, useMemo, useState } from 'react';
 import LessonRichTextEditor from '@/pages/training/LessonRichTextEditor';
 
+const FIELD =
+  'w-full rounded-xl border border-slate-200 px-3 py-2 text-sm text-gray-900 placeholder:text-gray-400 transition-shadow focus:border-brand-red focus:outline-none focus:ring-2 focus:ring-brand-red/20';
+const FIELD_XS = `${FIELD} text-xs py-1.5 px-2.5 rounded-lg`;
+const BTN_ICON =
+  'inline-flex h-7 min-w-[1.75rem] items-center justify-center rounded-md border border-slate-200 bg-white text-xs font-semibold text-gray-600 shadow-sm transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40';
+
+const LESSON_TYPE_LABEL: Record<string, string> = {
+  text: 'Rich text',
+  video: 'Video',
+  pdf: 'PDF',
+  image: 'Images',
+  quiz: 'Quiz',
+};
+
 type Lesson = {
   id: string;
   title: string;
@@ -262,18 +276,23 @@ export default function CourseBuilderPanel({ courseId }: { courseId: string }) {
   };
 
   if (isLoading || !course) {
-    return <div className="text-gray-600 py-8">Loading course structure…</div>;
+    return (
+      <div className="flex min-h-[200px] flex-col items-center justify-center rounded-xl border border-slate-200 bg-slate-50/50 px-6 py-10">
+        <div className="h-9 w-9 animate-spin rounded-full border-2 border-slate-200 border-t-brand-red" />
+        <p className="mt-3 text-sm font-medium text-gray-600">Loading course structure…</p>
+      </div>
+    );
   }
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-wrap gap-2 items-end border-b pb-4">
-        <div className="flex-1 min-w-[200px]">
-          <label className="block text-xs font-semibold text-gray-600 mb-1">New module title</label>
+      <div className="flex flex-col gap-3 border-b border-slate-200/90 pb-5 sm:flex-row sm:flex-wrap sm:items-end">
+        <div className="min-w-0 flex-1 sm:min-w-[220px]">
+          <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-gray-500">New module</label>
           <input
             value={newModuleTitle}
             onChange={(e) => setNewModuleTitle(e.target.value)}
-            className="w-full px-3 py-2 border rounded-lg"
+            className={FIELD}
             placeholder="e.g. Introduction"
           />
         </div>
@@ -281,44 +300,43 @@ export default function CourseBuilderPanel({ courseId }: { courseId: string }) {
           type="button"
           disabled={!newModuleTitle.trim() || createModule.isPending}
           onClick={() => createModule.mutate(newModuleTitle.trim())}
-          className="px-4 py-2 bg-[#7f1010] text-white rounded-lg font-semibold disabled:opacity-50"
+          className="rounded-lg bg-brand-red px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-red-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-red/40 disabled:opacity-50 sm:shrink-0"
         >
           Add module
         </button>
       </div>
 
       {course.modules.length === 0 && (
-        <p className="text-sm text-gray-500">Add a module, then add lessons from the outline.</p>
+        <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50/40 px-4 py-6 text-center">
+          <p className="text-sm font-medium text-gray-700">Start with a module</p>
+          <p className="mt-1 text-sm text-gray-500">Modules group your lessons. Add one above, then create lessons from the outline.</p>
+        </div>
       )}
 
-      <div className="flex flex-col xl:flex-row gap-6 items-start">
-        <aside className="w-full xl:w-80 shrink-0 border rounded-xl bg-slate-50/90 p-3 max-h-[min(70vh,calc(100vh-12rem))] overflow-y-auto space-y-4 shadow-sm">
-          <div className="text-xs font-semibold uppercase tracking-wide text-gray-500 px-1">Course outline</div>
+      <div className="flex flex-col items-start gap-6 xl:flex-row">
+        <aside className="max-h-[min(70vh,calc(100vh-12rem))] w-full shrink-0 space-y-4 overflow-y-auto rounded-xl border border-slate-200/90 bg-gradient-to-b from-slate-50/95 to-slate-50/60 p-3 shadow-sm xl:w-80">
+          <div className="px-1 text-[10px] font-bold uppercase tracking-wider text-gray-400">Course outline</div>
           {sortedModules.map((mod, mi) => {
             const lessons = [...mod.lessons].sort((a, b) => a.order_index - b.order_index);
             return (
-              <div key={mod.id} className="rounded-lg border border-gray-200 bg-white overflow-hidden">
-                <div className="flex flex-wrap items-center gap-1 px-2 py-2 bg-slate-100/80 border-b border-gray-100">
+              <div key={mod.id} className="overflow-hidden rounded-xl border border-slate-200/90 bg-white shadow-sm">
+                <div className="flex flex-wrap items-center gap-1 border-b border-slate-100 bg-white px-2 py-2">
                   <input
                     defaultValue={mod.title}
                     key={mod.id + mod.title}
-                    className="flex-1 min-w-[100px] px-2 py-1 border rounded text-xs font-semibold"
+                    className={`${FIELD_XS} min-w-[100px] flex-1 font-semibold`}
                     onBlur={(e) => {
                       const v = e.target.value.trim();
                       if (v && v !== mod.title) updateModule.mutate({ id: mod.id, title: v });
                     }}
                   />
-                  <button
-                    type="button"
-                    className="text-[10px] px-1.5 py-0.5 border rounded"
-                    onClick={() => moveModule(mi, -1)}
-                    disabled={mi === 0}
-                  >
+                  <button type="button" title="Move up" className={BTN_ICON} onClick={() => moveModule(mi, -1)} disabled={mi === 0}>
                     ↑
                   </button>
                   <button
                     type="button"
-                    className="text-[10px] px-1.5 py-0.5 border rounded"
+                    title="Move down"
+                    className={BTN_ICON}
                     onClick={() => moveModule(mi, 1)}
                     disabled={mi === sortedModules.length - 1}
                   >
@@ -326,7 +344,8 @@ export default function CourseBuilderPanel({ courseId }: { courseId: string }) {
                   </button>
                   <button
                     type="button"
-                    className="text-[10px] text-red-600 px-1"
+                    title="Delete module"
+                    className={`${BTN_ICON} border-red-200 text-red-600 hover:bg-red-50`}
                     onClick={() => {
                       if (confirm('Delete this module and all its lessons?')) deleteModule.mutate(mod.id);
                     }}
@@ -334,49 +353,53 @@ export default function CourseBuilderPanel({ courseId }: { courseId: string }) {
                     ✕
                   </button>
                 </div>
-                <div className="p-1 space-y-0.5">
+                <div className="space-y-0.5 p-1">
                   {lessons.map((les) => (
                     <button
                       key={les.id}
                       type="button"
                       onClick={() => setActiveLessonId(les.id)}
-                      className={`w-full text-left rounded-md px-2 py-2 text-sm transition-colors ${
+                      className={`w-full rounded-lg px-2.5 py-2 text-left text-sm transition-all ${
                         activeLessonId === les.id
-                          ? 'bg-[#7f1010] text-white shadow-inner'
-                          : 'hover:bg-slate-100 text-gray-800'
+                          ? 'bg-brand-red text-white shadow-md shadow-brand-red/15 ring-1 ring-brand-red/30'
+                          : 'text-gray-800 hover:bg-slate-100'
                       }`}
                     >
-                      <div className="font-medium truncate">{les.title}</div>
-                      <div
-                        className={`text-[10px] uppercase mt-0.5 ${activeLessonId === les.id ? 'text-white/80' : 'text-gray-400'}`}
-                      >
-                        {les.lesson_type}
+                      <div className="truncate font-medium">{les.title}</div>
+                      <div className="mt-1 flex items-center gap-1.5">
+                        <span
+                          className={`inline-flex rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${
+                            activeLessonId === les.id ? 'bg-white/20 text-white' : 'bg-slate-100 text-gray-500'
+                          }`}
+                        >
+                          {LESSON_TYPE_LABEL[les.lesson_type] ?? les.lesson_type}
+                        </span>
                       </div>
                     </button>
                   ))}
                 </div>
-                <div className="p-2 border-t border-gray-100 bg-slate-50/80 space-y-2">
-                  <div className="text-[10px] font-semibold text-gray-500 uppercase">New lesson</div>
+                <div className="space-y-2 border-t border-slate-100 bg-slate-50/70 p-2.5">
+                  <div className="text-[10px] font-bold uppercase tracking-wider text-gray-400">New lesson</div>
                   <input
-                    className="w-full border rounded px-2 py-1 text-xs"
+                    className={FIELD_XS}
                     placeholder="Title"
                     value={getDraft(mod.id).title}
                     onChange={(e) => setDraft(mod.id, { title: e.target.value })}
                   />
                   <select
-                    className="w-full border rounded px-2 py-1 text-xs"
+                    className={FIELD_XS}
                     value={getDraft(mod.id).lesson_type}
                     onChange={(e) => setDraft(mod.id, { lesson_type: e.target.value })}
                   >
                     {LESSON_TYPES.map((t) => (
                       <option key={t} value={t}>
-                        {t}
+                        {LESSON_TYPE_LABEL[t] ?? t}
                       </option>
                     ))}
                   </select>
                   {getDraft(mod.id).lesson_type === 'video' && (
                     <input
-                      className="w-full border rounded px-2 py-1 text-xs"
+                      className={FIELD_XS}
                       placeholder="Embed URL"
                       value={getDraft(mod.id).body}
                       onChange={(e) => setDraft(mod.id, { body: e.target.value })}
@@ -387,7 +410,7 @@ export default function CourseBuilderPanel({ courseId }: { courseId: string }) {
                       <input
                         type="file"
                         accept={getDraft(mod.id).lesson_type === 'pdf' ? 'application/pdf' : 'image/*'}
-                        className="text-[10px] w-full"
+                        className="w-full text-[11px] file:mr-2 file:rounded-md file:border-0 file:bg-slate-200 file:px-2 file:py-1 file:text-xs file:font-semibold file:text-gray-700"
                         onChange={async (e) => {
                           const f = e.target.files?.[0];
                           if (!f) return;
@@ -400,14 +423,14 @@ export default function CourseBuilderPanel({ courseId }: { courseId: string }) {
                           }
                         }}
                       />
-                      <p className="text-[10px] text-gray-500 mt-1 truncate">ID: {getDraft(mod.id).body || '—'}</p>
+                      <p className="mt-1 truncate text-[10px] text-gray-500">ID: {getDraft(mod.id).body || '—'}</p>
                     </div>
                   )}
                   <button
                     type="button"
                     disabled={createLesson.isPending}
                     onClick={() => void submitNewLesson(mod.id)}
-                    className="w-full px-2 py-1.5 bg-gray-800 text-white rounded text-xs font-semibold"
+                    className="w-full rounded-lg bg-slate-800 px-2 py-2 text-xs font-semibold text-white shadow-sm transition-colors hover:bg-slate-900 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-red/25 disabled:opacity-50"
                   >
                     Create in this module
                   </button>
@@ -417,22 +440,35 @@ export default function CourseBuilderPanel({ courseId }: { courseId: string }) {
           })}
         </aside>
 
-        <section className="flex-1 min-w-0 w-full border rounded-xl bg-white shadow-sm overflow-hidden">
+        <section className="min-w-0 w-full flex-1 overflow-hidden rounded-xl border border-slate-200/90 bg-white shadow-sm">
           {!activeEntry ? (
-            <div className="p-10 text-center text-gray-500 text-sm">
-              Select a lesson in the outline, or add modules and lessons to get started.
+            <div className="flex flex-col items-center justify-center px-6 py-16 text-center">
+              <div className="mb-3 rounded-full bg-slate-100 p-3 text-slate-500">
+                <svg className="h-8 w-8" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={1.5}
+                    d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253"
+                  />
+                </svg>
+              </div>
+              <p className="text-sm font-semibold text-gray-700">No lesson selected</p>
+              <p className="mt-1 max-w-sm text-sm text-gray-500">
+                Pick a lesson in the outline, or add modules and new lessons to start editing content.
+              </p>
             </div>
           ) : (
-            <div className="flex flex-col min-h-[420px]">
-              <div className="flex flex-wrap items-center gap-2 px-4 py-3 border-b bg-slate-50/80">
-                <span className="text-xs font-semibold text-[#7f1010] uppercase tracking-wide truncate max-w-[40%]">
+            <div className="flex min-h-[420px] flex-col">
+              <div className="flex flex-wrap items-center gap-2 border-b border-slate-200/80 bg-gradient-to-r from-slate-50 to-white px-3 py-3 sm:px-4">
+                <span className="max-w-[38%] truncate text-[11px] font-bold uppercase tracking-wider text-brand-red">
                   {activeEntry.module.title}
                 </span>
-                <span className="text-xs text-gray-400">/</span>
+                <span className="text-xs text-gray-300">/</span>
                 <input
                   defaultValue={activeEntry.lesson.title}
                   key={activeEntry.lesson.id + activeEntry.lesson.title}
-                  className="flex-1 min-w-[140px] px-2 py-1 border rounded text-sm font-semibold"
+                  className={`${FIELD} min-w-[120px] flex-1 py-1.5 text-sm font-semibold sm:min-w-[160px]`}
                   onBlur={(e) => {
                     const v = e.target.value.trim();
                     if (v && v !== activeEntry.lesson.title)
@@ -443,7 +479,9 @@ export default function CourseBuilderPanel({ courseId }: { courseId: string }) {
                       });
                   }}
                 />
-                <span className="text-xs font-mono text-gray-400">{activeEntry.lesson.lesson_type}</span>
+                <span className="rounded-md bg-slate-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-gray-500">
+                  {LESSON_TYPE_LABEL[activeEntry.lesson.lesson_type] ?? activeEntry.lesson.lesson_type}
+                </span>
                 {(() => {
                   const lessons = [...activeEntry.module.lessons].sort((a, b) => a.order_index - b.order_index);
                   const li = lessons.findIndex((l) => l.id === activeEntry.lesson.id);
@@ -451,26 +489,28 @@ export default function CourseBuilderPanel({ courseId }: { courseId: string }) {
                     <>
                       <button
                         type="button"
-                        className="text-xs px-2 py-1 border rounded"
+                        title="Move lesson up"
+                        className={BTN_ICON}
                         onClick={() => moveLesson(activeEntry.moduleId, lessons, li, -1)}
                         disabled={li <= 0}
                       >
-                        Lesson ↑
+                        ↑
                       </button>
                       <button
                         type="button"
-                        className="text-xs px-2 py-1 border rounded"
+                        title="Move lesson down"
+                        className={BTN_ICON}
                         onClick={() => moveLesson(activeEntry.moduleId, lessons, li, 1)}
                         disabled={li < 0 || li >= lessons.length - 1}
                       >
-                        Lesson ↓
+                        ↓
                       </button>
                     </>
                   );
                 })()}
                 <button
                   type="button"
-                  className="text-xs text-red-600 ml-auto"
+                  className="ml-auto rounded-lg border border-red-200 bg-white px-2.5 py-1.5 text-xs font-semibold text-red-600 shadow-sm transition-colors hover:bg-red-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-red-300/50"
                   onClick={() => {
                     if (confirm('Delete this lesson?')) {
                       deleteLesson.mutate({
@@ -480,10 +520,10 @@ export default function CourseBuilderPanel({ courseId }: { courseId: string }) {
                     }
                   }}
                 >
-                  Delete lesson
+                  Delete
                 </button>
               </div>
-              <div className="p-4 flex-1 overflow-auto bg-white">
+              <div className="flex-1 overflow-auto bg-white p-4">
                 {activeEntry.lesson.lesson_type === 'text' && (
                   <LessonRichTextEditor
                     lessonKey={activeEntry.lesson.id}
@@ -499,7 +539,7 @@ export default function CourseBuilderPanel({ courseId }: { courseId: string }) {
                 )}
                 {activeEntry.lesson.lesson_type === 'video' && (
                   <input
-                    className="w-full border rounded p-2 text-sm"
+                    className={FIELD}
                     placeholder="Embed URL"
                     defaultValue={String((activeEntry.lesson.content as { video_url?: string })?.video_url || '')}
                     onBlur={(e) => {
@@ -519,7 +559,7 @@ export default function CourseBuilderPanel({ courseId }: { courseId: string }) {
                     <input
                       type="file"
                       accept="application/pdf"
-                      className="text-sm w-full max-w-md"
+                      className="w-full max-w-md text-sm file:mr-2 file:rounded-md file:border-0 file:bg-slate-200 file:px-2 file:py-1.5 file:text-xs file:font-semibold file:text-gray-700"
                       onChange={async (e) => {
                         const f = e.target.files?.[0];
                         if (!f) return;
@@ -540,7 +580,7 @@ export default function CourseBuilderPanel({ courseId }: { courseId: string }) {
                     <div>
                       <label className="text-xs font-semibold text-gray-600">File ID (optional manual edit)</label>
                       <input
-                        className="w-full border rounded p-2 text-sm font-mono mt-0.5"
+                        className={`${FIELD} mt-0.5 font-mono text-xs`}
                         defaultValue={String((activeEntry.lesson.content as { pdf_file_id?: string })?.pdf_file_id || '')}
                         key={(activeEntry.lesson.content as { pdf_file_id?: string })?.pdf_file_id || 'empty'}
                         onBlur={(e) => {
@@ -554,21 +594,21 @@ export default function CourseBuilderPanel({ courseId }: { courseId: string }) {
                       />
                     </div>
                     {(activeEntry.lesson.content as { pdf_file_id?: string })?.pdf_file_id ? (
-                      <div className="border rounded-lg overflow-hidden bg-white">
+                      <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
                         <iframe
                           title="PDF preview"
                           key={String((activeEntry.lesson.content as { pdf_file_id?: string }).pdf_file_id)}
                           src={`${withFileAccessToken(`/files/${(activeEntry.lesson.content as { pdf_file_id: string }).pdf_file_id}`)}#view=FitH`}
                           className="w-full h-[min(65vh,680px)] min-h-[400px] border-0"
                         />
-                        <div className="px-2 py-2 border-t bg-slate-50 text-xs">
+                        <div className="border-t border-slate-100 bg-slate-50 px-3 py-2 text-xs">
                           <a
                             href={withFileAccessToken(
                               `/files/${(activeEntry.lesson.content as { pdf_file_id: string }).pdf_file_id}`,
                             )}
                             target="_blank"
                             rel="noopener noreferrer"
-                            className="text-[#7f1010] underline"
+                            className="font-medium text-brand-red underline-offset-2 hover:underline"
                           >
                             Open in new tab
                           </a>
@@ -583,7 +623,7 @@ export default function CourseBuilderPanel({ courseId }: { courseId: string }) {
                   <div className="space-y-2">
                     <p className="text-xs text-gray-500">Comma-separated image file IDs</p>
                     <input
-                      className="w-full border rounded p-2 text-sm"
+                      className={FIELD}
                       defaultValue={((activeEntry.lesson.content as { images?: string[] })?.images || []).join(', ')}
                       onBlur={(e) => {
                         const ids = e.target.value
@@ -600,10 +640,10 @@ export default function CourseBuilderPanel({ courseId }: { courseId: string }) {
                   </div>
                 )}
                 {activeEntry.lesson.lesson_type === 'quiz' && activeEntry.lesson.quiz && (
-                  <div className="border rounded-lg p-4 space-y-3 bg-slate-50/50">
-                    <div className="grid sm:grid-cols-3 gap-2">
+                  <div className="space-y-3 rounded-xl border border-slate-200/90 bg-slate-50/50 p-4">
+                    <div className="grid gap-2 sm:grid-cols-3">
                       <input
-                        className="border rounded px-2 py-1 text-sm bg-white"
+                        className={`${FIELD} bg-white py-2`}
                         defaultValue={activeEntry.lesson.quiz.title}
                         onBlur={(e) => {
                           const t = e.target.value.trim();
@@ -618,7 +658,7 @@ export default function CourseBuilderPanel({ courseId }: { courseId: string }) {
                       />
                       <input
                         type="number"
-                        className="border rounded px-2 py-1 text-sm bg-white"
+                        className={`${FIELD} bg-white py-2`}
                         defaultValue={activeEntry.lesson.quiz.passing_score_percent}
                         onBlur={(e) => {
                           const n = parseInt(e.target.value, 10);
@@ -631,7 +671,7 @@ export default function CourseBuilderPanel({ courseId }: { courseId: string }) {
                             });
                         }}
                       />
-                      <label className="flex items-center gap-2 text-sm bg-white border rounded px-2">
+                      <label className="flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm">
                         <input
                           type="checkbox"
                           defaultChecked={activeEntry.lesson.quiz.allow_retry}
@@ -647,9 +687,12 @@ export default function CourseBuilderPanel({ courseId }: { courseId: string }) {
                         Allow retry
                       </label>
                     </div>
-                    <ul className="text-sm space-y-1">
+                    <ul className="space-y-1.5 text-sm">
                       {(activeEntry.lesson.quiz.questions || []).map((q) => (
-                        <li key={q.id} className="text-gray-700">
+                        <li
+                          key={q.id}
+                          className="rounded-lg border border-slate-100 bg-white px-3 py-2 text-gray-800 shadow-sm"
+                        >
                           {q.question_text}
                         </li>
                       ))}
@@ -682,25 +725,25 @@ function AddQuestionForm({
   const [opts, setOpts] = useState('Option A\nOption B\nOption C');
   const [correct, setCorrect] = useState(0);
   return (
-    <div className="flex flex-col gap-2 border rounded p-2 bg-white">
+    <div className="flex flex-col gap-2 rounded-xl border border-slate-200 bg-white p-3 shadow-sm">
       <input
-        className="border rounded px-2 py-1 text-sm"
+        className={FIELD}
         placeholder="Question text"
         value={text}
         onChange={(e) => setText(e.target.value)}
       />
       <textarea
-        className="border rounded px-2 py-1 text-sm font-mono min-h-[60px]"
+        className={`${FIELD} min-h-[72px] resize-y font-mono text-xs`}
         placeholder="One option per line"
         value={opts}
         onChange={(e) => setOpts(e.target.value)}
       />
-      <div className="flex items-center gap-2 text-sm">
-        <span>Correct option #</span>
+      <div className="flex flex-wrap items-center gap-2 text-sm text-gray-600">
+        <span className="font-medium">Correct option #</span>
         <input
           type="number"
           min={0}
-          className="w-16 border rounded px-1"
+          className={`${FIELD} w-20 py-1.5 text-center`}
           value={correct}
           onChange={(e) => setCorrect(parseInt(e.target.value, 10) || 0)}
         />
@@ -724,7 +767,7 @@ function AddQuestionForm({
           onAdd(text.trim(), options, correct);
           setText('');
         }}
-        className="self-start px-3 py-1 bg-[#7f1010] text-white rounded text-xs font-semibold"
+        className="self-start rounded-lg bg-brand-red px-4 py-2 text-xs font-semibold text-white shadow-sm transition-colors hover:bg-red-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-red/40 disabled:opacity-50"
       >
         Add question
       </button>

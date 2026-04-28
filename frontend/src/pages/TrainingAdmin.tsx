@@ -24,6 +24,9 @@ type StatusData = {
   overdue_certificates: number;
 };
 
+const statCard =
+  'rounded-xl border border-slate-200/90 bg-white p-4 shadow-sm transition-shadow hover:shadow-md';
+
 export default function TrainingAdmin() {
   const [statusFilter, setStatusFilter] = useState<string>('');
   const { data: courses, isLoading } = useQuery<Course[]>({
@@ -46,163 +49,158 @@ export default function TrainingAdmin() {
     });
   }, []);
 
+  const filterBtn = (active: boolean) =>
+    `px-4 py-2 rounded-full text-sm font-semibold transition-all border ${
+      active
+        ? 'border-brand-red bg-brand-red text-white shadow-sm'
+        : 'border-slate-200 bg-white text-gray-700 hover:border-slate-300 hover:bg-slate-50'
+    }`;
+
   return (
-    <div>
-      <div className="bg-slate-200/50 rounded-[12px] border border-slate-200 flex items-center justify-between py-4 px-6 mb-6">
-        <div className="flex items-center justify-between flex-1">
+    <div className="space-y-6">
+      <div className="rounded-xl border border-slate-200/80 bg-gradient-to-br from-slate-50 to-white px-6 py-5 shadow-sm">
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <div>
-            <div className="text-xl font-bold text-gray-900 tracking-tight mb-0.5">Training Administration</div>
-            <div className="text-sm text-gray-500 font-medium">Manage courses, modules, and training content.</div>
+            <h1 className="text-xl font-bold tracking-tight text-gray-900">Training administration</h1>
+            <p className="mt-1 text-sm font-medium text-gray-500">
+              Manage courses, modules, and content for your team.
+            </p>
           </div>
-          <div className="flex items-center gap-4">
+          <div className="flex flex-wrap items-center gap-4">
             <div className="text-right">
-              <div className="text-xs text-gray-400 mb-1.5 font-medium uppercase tracking-wide">Today</div>
+              <div className="text-[10px] font-semibold uppercase tracking-wider text-gray-400">Today</div>
               <div className="text-sm font-semibold text-gray-700">{todayLabel}</div>
             </div>
             <Link
               to="/training/admin/new"
-              className="px-4 py-2 bg-brand-red text-white rounded-lg font-semibold hover:bg-red-700 transition-colors"
+              className="inline-flex items-center justify-center rounded-lg bg-brand-red px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-brand-red700 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-red/40"
             >
-              + Create Course
+              + Create course
             </Link>
           </div>
         </div>
       </div>
 
-      {/* Statistics Cards */}
       {status && (
-        <div className="grid md:grid-cols-5 gap-4 mb-6">
-          <div className="border rounded-xl bg-white p-4">
-            <div className="text-2xl font-bold">{status.total_courses}</div>
-            <div className="text-sm text-gray-600">Total Courses</div>
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+          <div className={statCard}>
+            <div className="text-2xl font-bold tabular-nums text-gray-900">{status.total_courses}</div>
+            <div className="text-xs font-medium uppercase tracking-wide text-gray-500">Total courses</div>
           </div>
-          <div className="border rounded-xl bg-white p-4">
-            <div className="text-2xl font-bold text-green-600">{status.published_courses}</div>
-            <div className="text-sm text-gray-600">Published</div>
+          <div className={statCard}>
+            <div className="text-2xl font-bold tabular-nums text-emerald-600">{status.published_courses}</div>
+            <div className="text-xs font-medium uppercase tracking-wide text-gray-500">Published</div>
           </div>
-          <div className="border rounded-xl bg-white p-4">
-            <div className="text-2xl font-bold text-gray-600">{status.draft_courses}</div>
-            <div className="text-sm text-gray-600">Drafts</div>
+          <div className={statCard}>
+            <div className="text-2xl font-bold tabular-nums text-slate-600">{status.draft_courses}</div>
+            <div className="text-xs font-medium uppercase tracking-wide text-gray-500">Drafts</div>
           </div>
-          <div className="border rounded-xl bg-white p-4">
-            <div className="text-2xl font-bold text-blue-600">{status.total_completions}</div>
-            <div className="text-sm text-gray-600">Completions</div>
+          <div className={statCard}>
+            <div className="text-2xl font-bold tabular-nums text-sky-600">{status.total_completions}</div>
+            <div className="text-xs font-medium uppercase tracking-wide text-gray-500">Completions</div>
           </div>
-          <div className="border rounded-xl bg-white p-4">
-            <div className="text-2xl font-bold text-orange-600">{status.overdue_certificates}</div>
-            <div className="text-sm text-gray-600">Overdue</div>
+          <div className={statCard}>
+            <div className="text-2xl font-bold tabular-nums text-amber-600">{status.overdue_certificates}</div>
+            <div className="text-xs font-medium uppercase tracking-wide text-gray-500">Overdue certs</div>
           </div>
         </div>
       )}
 
-      {/* Filters */}
-      <div className="mb-4 flex gap-2">
-        <button
-          onClick={() => setStatusFilter('')}
-          className={`px-4 py-2 rounded-lg font-semibold transition-colors ${
-            statusFilter === ''
-              ? 'bg-[#7f1010] text-white'
-              : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-          }`}
-        >
+      <div className="flex flex-wrap gap-2">
+        <button type="button" onClick={() => setStatusFilter('')} className={filterBtn(statusFilter === '')}>
           All
         </button>
         <button
+          type="button"
           onClick={() => setStatusFilter('published')}
-          className={`px-4 py-2 rounded-lg font-semibold transition-colors ${
-            statusFilter === 'published'
-              ? 'bg-[#7f1010] text-white'
-              : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-          }`}
+          className={filterBtn(statusFilter === 'published')}
         >
           Published
         </button>
-        <button
-          onClick={() => setStatusFilter('draft')}
-          className={`px-4 py-2 rounded-lg font-semibold transition-colors ${
-            statusFilter === 'draft'
-              ? 'bg-[#7f1010] text-white'
-              : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-          }`}
-        >
+        <button type="button" onClick={() => setStatusFilter('draft')} className={filterBtn(statusFilter === 'draft')}>
           Drafts
         </button>
       </div>
 
-      {/* Course List */}
       {isLoading ? (
-        <div className="grid md:grid-cols-3 gap-4">
+        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
           {[1, 2, 3].map((i) => (
-            <div key={i} className="h-64 bg-gray-100 animate-pulse rounded-xl" />
+            <div key={i} className="h-64 animate-pulse rounded-xl border border-slate-200 bg-slate-100/80" />
           ))}
         </div>
       ) : courses && courses.length > 0 ? (
-        <div className="grid md:grid-cols-3 gap-4">
+        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
           {courses.map((course) => (
-            <div
+            <article
               key={course.id}
-              className="border rounded-xl bg-white overflow-hidden hover:shadow-lg transition-shadow"
+              className="group flex flex-col overflow-hidden rounded-xl border border-slate-200/90 bg-white shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-md"
             >
               {course.thumbnail_file_id ? (
                 <img
                   src={withFileAccessToken(`/files/${course.thumbnail_file_id}/thumbnail?w=400`)}
-                  alt={course.title}
-                  className="w-full h-40 object-cover"
+                  alt=""
+                  className="h-40 w-full object-cover"
                 />
               ) : (
-                <div className="w-full h-40 bg-gradient-to-br from-gray-200 to-gray-300 flex items-center justify-center">
-                  <span className="text-gray-400 text-4xl">📚</span>
+                <div className="flex h-40 w-full items-center justify-center bg-gradient-to-br from-slate-100 to-slate-200/80">
+                  <span className="text-4xl opacity-40" aria-hidden>
+                    📚
+                  </span>
                 </div>
               )}
-              <div className="p-4">
-                <div className="flex items-center justify-between mb-2">
-                  {course.category_label && (
-                    <span className="text-xs font-semibold text-[#7f1010] uppercase">
+              <div className="flex flex-1 flex-col p-4">
+                <div className="mb-2 flex items-start justify-between gap-2">
+                  {course.category_label ? (
+                    <span className="rounded-md bg-brand-red/10 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-brand-red">
                       {course.category_label}
                     </span>
+                  ) : (
+                    <span />
                   )}
                   <span
-                    className={`text-xs font-semibold px-2 py-1 rounded ${
+                    className={`shrink-0 rounded-full px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wide ${
                       course.status === 'published'
-                        ? 'bg-green-100 text-green-800'
-                        : 'bg-gray-100 text-gray-800'
+                        ? 'bg-emerald-100 text-emerald-800'
+                        : 'bg-slate-100 text-slate-700'
                     }`}
                   >
                     {course.status}
                   </span>
                 </div>
-                <h3 className="font-bold text-lg mb-2 line-clamp-2">{course.title}</h3>
-                {course.description && (
-                  <p className="text-sm text-gray-600 line-clamp-2 mb-3">{course.description}</p>
+                <h2 className="mb-1 line-clamp-2 text-lg font-bold text-gray-900">{course.title}</h2>
+                {course.description ? (
+                  <p className="mb-3 line-clamp-2 text-sm text-gray-600">{course.description}</p>
+                ) : (
+                  <p className="mb-3 text-sm italic text-gray-400">No description</p>
                 )}
-                <div className="flex items-center justify-between text-xs text-gray-500 mb-3">
+                <div className="mt-auto flex items-center justify-between border-t border-slate-100 pt-3 text-xs text-gray-500">
                   <span>{course.module_count} modules</span>
                   <span>{course.lesson_count} lessons</span>
                 </div>
-                <div className="flex gap-2">
-                  <Link
-                    to={`/training/admin/${course.id}`}
-                    className="flex-1 text-center px-3 py-2 bg-[#7f1010] text-white rounded-lg font-semibold hover:bg-[#a31414] transition-colors text-sm"
-                  >
-                    Edit
-                  </Link>
-                </div>
+                <Link
+                  to={`/training/admin/${course.id}`}
+                  className="mt-3 block w-full rounded-lg bg-brand-red py-2.5 text-center text-sm font-semibold text-white transition-colors hover:bg-brand-red700 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-red/40"
+                >
+                  Edit course
+                </Link>
               </div>
-            </div>
+            </article>
           ))}
         </div>
       ) : (
-        <div className="text-center py-12 text-gray-500">
-          <p className="text-lg">No courses found.</p>
+        <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50/50 px-6 py-16 text-center">
+          <p className="text-lg font-medium text-gray-700">No courses yet</p>
+          <p className="mx-auto mt-2 max-w-md text-sm text-gray-500">
+            Create a course to add modules, lessons, quizzes, and publish to your team.
+          </p>
           <Link
             to="/training/admin/new"
-            className="inline-block mt-4 px-6 py-3 bg-[#7f1010] text-white rounded-lg font-semibold hover:bg-[#a31414] transition-colors"
+            className="mt-6 inline-flex items-center justify-center rounded-lg bg-brand-red px-6 py-3 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-brand-red700 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-red/40"
           >
-            Create Your First Course
+            Create your first course
           </Link>
         </div>
       )}
     </div>
   );
 }
-

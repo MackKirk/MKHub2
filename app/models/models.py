@@ -2799,6 +2799,27 @@ class TrainingCourse(Base):
     generates_certificate: Mapped[bool] = mapped_column(Boolean, default=False)
     certificate_validity_days: Mapped[Optional[int]] = mapped_column(Integer)
     certificate_text: Mapped[Optional[str]] = mapped_column(Text)  # Custom certificate text
+    certificate_background_file_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("file_objects.id", ondelete="SET NULL"), nullable=True
+    )
+    # Preset from SettingList `certificate_backgrounds` (meta.file_object_id). Ignored when certificate_background_file_id is set.
+    certificate_background_setting_item_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("setting_items.id", ondelete="SET NULL"), nullable=True
+    )
+    certificate_logo_file_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("file_objects.id", ondelete="SET NULL"), nullable=True
+    )
+    # Preset from SettingList `organization_logos` (meta.file_object_id). Ignored when certificate_logo_file_id is set.
+    certificate_logo_setting_item_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("setting_items.id", ondelete="SET NULL"), nullable=True
+    )
+    # Legacy bundled preset key (app/static/training/certificate_backgrounds). Null if using library item or custom file.
+    certificate_background_preset_key: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+    certificate_heading_primary: Mapped[Optional[str]] = mapped_column(String(200), nullable=True)
+    certificate_heading_secondary: Mapped[Optional[str]] = mapped_column(String(200), nullable=True)
+    certificate_body_template: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    certificate_instructor_name: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    certificate_layout: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
 
     # HR matrix / employee training record sync (optional)
     matrix_training_id: Mapped[Optional[str]] = mapped_column(String(64), nullable=True, index=True)

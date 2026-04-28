@@ -1,5 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { api } from '@/lib/api';
+import { api, withFileAccessToken } from '@/lib/api';
+import { uploadOrganizationLogoFile, uploadCertificateBackgroundFile } from '@/lib/trainingFileUpload';
 import { useMemo, useState, useEffect, useRef } from 'react';
 import toast from 'react-hot-toast';
 import { useConfirm } from '@/components/ConfirmProvider';
@@ -24,7 +25,7 @@ export default function SystemSettings(){
   const { data, refetch, isLoading } = useQuery({ queryKey:['settings-bundle'], queryFn: ()=>api<Record<string, Item[]>>('GET','/settings') });
   // Filter out non-list settings (like google_places_api_key) and lists with dedicated sections (like terms-templates)
   const lists = Object.entries(data||{})
-    .filter(([name]) => !['google_places_api_key', 'terms-templates', 'branding', 'standard_file_categories'].includes(name))
+    .filter(([name]) => !['google_places_api_key', 'terms-templates', 'branding', 'standard_file_categories', 'organization_logos', 'certificate_backgrounds'].includes(name))
     .sort(([a],[b])=> a.localeCompare(b));
   const [sel, setSel] = useState<string>('client_statuses');
   const items = (data||{})[sel]||[];
@@ -591,6 +592,22 @@ export default function SystemSettings(){
               <StandardFileCategories />
             </div>
           </div>
+          <div className="mt-10 border-t border-gray-100 pt-8">
+            <h3 className="text-sm font-semibold text-gray-900">Organization logos</h3>
+            <p className="mt-1 text-xs text-gray-600">
+              Upload large PNG or JPEG logos once; reuse them in LMS certificates and other surfaces. Each entry needs a
+              label and an image file.
+            </p>
+            <OrganizationLogosSection />
+          </div>
+          <div className="mt-10 border-t border-gray-100 pt-8">
+            <h3 className="text-sm font-semibold text-gray-900">Certificate backgrounds</h3>
+            <p className="mt-1 text-xs text-gray-600">
+              Landscape images (PNG, JPEG, WebP) for LMS completion certificates. Authors pick these in the course
+              Certificate tab; upload high-resolution artwork here.
+            </p>
+            <CertificateBackgroundsSection />
+          </div>
         </div>
       )}
 
@@ -612,6 +629,393 @@ export default function SystemSettings(){
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+function OrganizationLogosSection() {
+  const qc = useQueryClient();
+  const confirm = useConfirm();
+  const fileRef = useRef<HTMLInputElement>(null);
+  const { data, isLoading } = useQuery({
+    queryKey: ['settings-bundle'],
+    queryFn: () => api<Record<string, Item[]>>('GET', '/settings'),
+  });
+  const logos = (data?.organization_logos || []) as Item[];
+  const [newLabel, setNewLabel] = useState('');
+  const [busy, setBusy] = useState(false);
+
+  const addFiles = async (files: FileList | null) => {
+    if (!files?.length) return;
+    setBusy(true);
+    try {
+      const arr = Array.from(files);
+      for (let i = 0; i < arr.length; i++) {
+        const f = arr[i];
+        const stem = f.name.replace(/\.[^.]+$/, '') || 'Logo';
+        const label = i === 0 ? (newLabel.trim() || stem) : stem;
+        const fid = await uploadOrganizationLogoFile(f);
+        const params = new URLSearchParams({ label, file_object_id: fid });
+        await api('POST', `/settings/organization_logos?${params.toString()}`);
+      }
+      await qc.invalidateQueries({ queryKey: ['settings-bundle'] });
+      await qc.invalidateQueries({ queryKey: ['training-organization-logo-presets'] });
+      toast.success(arr.length > 1 ? 'Logos added' : 'Logo added');
+      setNewLabel('');
+      if (fileRef.current) fileRef.current.value = '';
+    } catch {
+      toast.error('Upload failed');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="mt-4 space-y-4">
+      <div className="flex flex-wrap items-end gap-3 rounded-lg border border-gray-200 bg-gray-50/80 p-4">
+        <div className="min-w-[200px] flex-1">
+          <label className="block text-[11px] font-medium text-gray-500 mb-1">Default label (first file)</label>
+          <input
+            className="w-full rounded-md border border-gray-200 px-3 py-2 text-sm"
+            placeholder="e.g. Primary mark — full color"
+            value={newLabel}
+            onChange={(e) => setNewLabel(e.target.value)}
+          />
+        </div>
+        <div>
+          <input
+            ref={fileRef}
+            type="file"
+            accept="image/jpeg,image/png,image/webp,image/gif"
+            multiple
+            className="sr-only"
+            id="org-logo-multi"
+            onChange={(e) => {
+              addFiles(e.target.files);
+              e.target.value = '';
+            }}
+          />
+          <label
+            htmlFor="org-logo-multi"
+            className={`inline-flex cursor-pointer rounded-md bg-brand-red px-4 py-2 text-sm font-medium text-white shadow-sm hover:opacity-95 ${busy ? 'pointer-events-none opacity-60' : ''}`}
+          >
+            {busy ? 'Uploading…' : 'Choose image(s)…'}
+          </label>
+        </div>
+      </div>
+
+      <div className="overflow-hidden rounded-lg border border-gray-200">
+        <div className="max-h-[24rem] overflow-auto">
+          <table className="w-full min-w-[640px] text-sm">
+            <thead className="sticky top-0 z-[1] border-b border-gray-200 bg-gray-50 text-left text-[11px] font-semibold uppercase tracking-wide text-gray-500">
+              <tr>
+                <th className="w-24 px-3 py-2.5">Preview</th>
+                <th className="min-w-[180px] px-3 py-2.5">Label</th>
+                <th className="px-3 py-2.5 text-right">Actions</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-100 bg-white">
+              {isLoading ? (
+                <tr>
+                  <td colSpan={3} className="px-3 py-8 text-center text-gray-500">
+                    Loading…
+                  </td>
+                </tr>
+              ) : logos.length === 0 ? (
+                <tr>
+                  <td colSpan={3} className="px-3 py-8 text-center text-gray-500">
+                    No logos yet. Upload one or more images above.
+                  </td>
+                </tr>
+              ) : (
+                logos.map((it) => {
+                  const fid = it.meta?.file_object_id as string | undefined;
+                  return (
+                    <tr key={it.id} className="align-middle hover:bg-gray-50/50">
+                      <td className="px-3 py-2">
+                        {fid ? (
+                          <img
+                            src={withFileAccessToken(`/files/${fid}`)}
+                            alt=""
+                            className="h-14 w-20 rounded border border-gray-200 object-contain bg-white"
+                          />
+                        ) : (
+                          <span className="text-xs text-gray-400">—</span>
+                        )}
+                      </td>
+                      <td className="px-3 py-2">
+                        <input
+                          className="w-full min-w-0 rounded-md border border-gray-200 px-2 py-1.5 text-sm"
+                          defaultValue={it.label}
+                          key={it.id + it.label}
+                          onBlur={async (e) => {
+                            const v = e.target.value.trim();
+                            if (v && v !== it.label) {
+                              try {
+                                await api(
+                                  'PUT',
+                                  `/settings/organization_logos/${encodeURIComponent(it.id)}?label=${encodeURIComponent(v)}`,
+                                );
+                                await qc.invalidateQueries({ queryKey: ['settings-bundle'] });
+                                await qc.invalidateQueries({ queryKey: ['training-organization-logo-presets'] });
+                                toast.success('Saved');
+                              } catch {
+                                toast.error('Failed to save label');
+                              }
+                            }
+                          }}
+                        />
+                      </td>
+                      <td className="px-3 py-2 text-right whitespace-nowrap">
+                        <label className="mr-2 inline-block cursor-pointer text-xs font-medium text-brand-red hover:underline">
+                          Replace
+                          <input
+                            type="file"
+                            accept="image/jpeg,image/png,image/webp,image/gif"
+                            className="sr-only"
+                            onChange={async (ev) => {
+                              const f = ev.target.files?.[0];
+                              ev.target.value = '';
+                              if (!f || !fid) return;
+                              setBusy(true);
+                              try {
+                                const newId = await uploadOrganizationLogoFile(f);
+                                const params = new URLSearchParams({ file_object_id: newId });
+                                await api(
+                                  'PUT',
+                                  `/settings/organization_logos/${encodeURIComponent(it.id)}?${params.toString()}`,
+                                );
+                                await qc.invalidateQueries({ queryKey: ['settings-bundle'] });
+                                await qc.invalidateQueries({ queryKey: ['training-organization-logo-presets'] });
+                                toast.success('Image replaced');
+                              } catch {
+                                toast.error('Replace failed');
+                              } finally {
+                                setBusy(false);
+                              }
+                            }}
+                          />
+                        </label>
+                        <button
+                          type="button"
+                          className="text-xs font-medium text-red-600 hover:underline"
+                          onClick={async () => {
+                            if (!(await confirm({ title: 'Remove logo?', description: it.label }))) return;
+                            try {
+                              await api('DELETE', `/settings/organization_logos/${encodeURIComponent(it.id)}`);
+                              await qc.invalidateQueries({ queryKey: ['settings-bundle'] });
+                              await qc.invalidateQueries({ queryKey: ['training-organization-logo-presets'] });
+                              toast.success('Removed');
+                            } catch {
+                              toast.error('Delete failed');
+                            }
+                          }}
+                        >
+                          Delete
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function CertificateBackgroundsSection() {
+  const qc = useQueryClient();
+  const confirm = useConfirm();
+  const fileRef = useRef<HTMLInputElement>(null);
+  const { data, isLoading } = useQuery({
+    queryKey: ['settings-bundle'],
+    queryFn: () => api<Record<string, Item[]>>('GET', '/settings'),
+  });
+  const rows = (data?.certificate_backgrounds || []) as Item[];
+  const [newLabel, setNewLabel] = useState('');
+  const [busy, setBusy] = useState(false);
+
+  const addFiles = async (files: FileList | null) => {
+    if (!files?.length) return;
+    setBusy(true);
+    try {
+      const arr = Array.from(files);
+      for (let i = 0; i < arr.length; i++) {
+        const f = arr[i];
+        const stem = f.name.replace(/\.[^.]+$/, '') || 'Background';
+        const label = i === 0 ? (newLabel.trim() || stem) : stem;
+        const fid = await uploadCertificateBackgroundFile(f);
+        const params = new URLSearchParams({ label, file_object_id: fid });
+        await api('POST', `/settings/certificate_backgrounds?${params.toString()}`);
+      }
+      await qc.invalidateQueries({ queryKey: ['settings-bundle'] });
+      await qc.invalidateQueries({ queryKey: ['training-certificate-bg-presets'] });
+      toast.success(arr.length > 1 ? 'Backgrounds added' : 'Background added');
+      setNewLabel('');
+      if (fileRef.current) fileRef.current.value = '';
+    } catch {
+      toast.error('Upload failed');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="mt-4 space-y-4">
+      <div className="flex flex-wrap items-end gap-3 rounded-lg border border-gray-200 bg-gray-50/80 p-4">
+        <div className="min-w-[200px] flex-1">
+          <label className="block text-[11px] font-medium text-gray-500 mb-1">Default label (first file)</label>
+          <input
+            className="w-full rounded-md border border-gray-200 px-3 py-2 text-sm"
+            placeholder="e.g. Corporate landscape — v2"
+            value={newLabel}
+            onChange={(e) => setNewLabel(e.target.value)}
+          />
+        </div>
+        <div>
+          <input
+            ref={fileRef}
+            type="file"
+            accept="image/jpeg,image/png,image/webp,image/gif"
+            multiple
+            className="sr-only"
+            id="cert-bg-multi"
+            onChange={(e) => {
+              addFiles(e.target.files);
+              e.target.value = '';
+            }}
+          />
+          <label
+            htmlFor="cert-bg-multi"
+            className={`inline-flex cursor-pointer rounded-md bg-brand-red px-4 py-2 text-sm font-medium text-white shadow-sm hover:opacity-95 ${busy ? 'pointer-events-none opacity-60' : ''}`}
+          >
+            {busy ? 'Uploading…' : 'Choose image(s)…'}
+          </label>
+        </div>
+      </div>
+
+      <div className="overflow-hidden rounded-lg border border-gray-200">
+        <div className="max-h-[24rem] overflow-auto">
+          <table className="w-full min-w-[640px] text-sm">
+            <thead className="sticky top-0 z-[1] border-b border-gray-200 bg-gray-50 text-left text-[11px] font-semibold uppercase tracking-wide text-gray-500">
+              <tr>
+                <th className="w-28 px-3 py-2.5">Preview</th>
+                <th className="min-w-[180px] px-3 py-2.5">Label</th>
+                <th className="px-3 py-2.5 text-right">Actions</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-100 bg-white">
+              {isLoading ? (
+                <tr>
+                  <td colSpan={3} className="px-3 py-8 text-center text-gray-500">
+                    Loading…
+                  </td>
+                </tr>
+              ) : rows.length === 0 ? (
+                <tr>
+                  <td colSpan={3} className="px-3 py-8 text-center text-gray-500">
+                    No certificate backgrounds yet. Upload landscape images above.
+                  </td>
+                </tr>
+              ) : (
+                rows.map((it) => {
+                  const fid = it.meta?.file_object_id as string | undefined;
+                  const pubPreview = fid ? `/training/certificate-background-library/${it.id}` : '';
+                  return (
+                    <tr key={it.id} className="align-middle hover:bg-gray-50/50">
+                      <td className="px-3 py-2">
+                        {fid ? (
+                          <img
+                            src={pubPreview}
+                            alt=""
+                            className="h-12 w-20 rounded border border-gray-200 object-cover bg-white"
+                          />
+                        ) : (
+                          <span className="text-xs text-gray-400">—</span>
+                        )}
+                      </td>
+                      <td className="px-3 py-2">
+                        <input
+                          className="w-full min-w-0 rounded-md border border-gray-200 px-2 py-1.5 text-sm"
+                          defaultValue={it.label}
+                          key={it.id + it.label}
+                          onBlur={async (e) => {
+                            const v = e.target.value.trim();
+                            if (v && v !== it.label) {
+                              try {
+                                await api(
+                                  'PUT',
+                                  `/settings/certificate_backgrounds/${encodeURIComponent(it.id)}?label=${encodeURIComponent(v)}`,
+                                );
+                                await qc.invalidateQueries({ queryKey: ['settings-bundle'] });
+                                await qc.invalidateQueries({ queryKey: ['training-certificate-bg-presets'] });
+                                toast.success('Saved');
+                              } catch {
+                                toast.error('Failed to save label');
+                              }
+                            }
+                          }}
+                        />
+                      </td>
+                      <td className="px-3 py-2 text-right whitespace-nowrap">
+                        <label className="mr-2 inline-block cursor-pointer text-xs font-medium text-brand-red hover:underline">
+                          Replace
+                          <input
+                            type="file"
+                            accept="image/jpeg,image/png,image/webp,image/gif"
+                            className="sr-only"
+                            onChange={async (ev) => {
+                              const f = ev.target.files?.[0];
+                              ev.target.value = '';
+                              if (!f || !fid) return;
+                              setBusy(true);
+                              try {
+                                const newId = await uploadCertificateBackgroundFile(f);
+                                const params = new URLSearchParams({ file_object_id: newId });
+                                await api(
+                                  'PUT',
+                                  `/settings/certificate_backgrounds/${encodeURIComponent(it.id)}?${params.toString()}`,
+                                );
+                                await qc.invalidateQueries({ queryKey: ['settings-bundle'] });
+                                await qc.invalidateQueries({ queryKey: ['training-certificate-bg-presets'] });
+                                toast.success('Image replaced');
+                              } catch {
+                                toast.error('Replace failed');
+                              } finally {
+                                setBusy(false);
+                              }
+                            }}
+                          />
+                        </label>
+                        <button
+                          type="button"
+                          className="text-xs font-medium text-red-600 hover:underline"
+                          onClick={async () => {
+                            if (!(await confirm({ title: 'Remove background?', description: it.label }))) return;
+                            try {
+                              await api('DELETE', `/settings/certificate_backgrounds/${encodeURIComponent(it.id)}`);
+                              await qc.invalidateQueries({ queryKey: ['settings-bundle'] });
+                              await qc.invalidateQueries({ queryKey: ['training-certificate-bg-presets'] });
+                              toast.success('Removed');
+                            } catch {
+                              toast.error('Delete failed');
+                            }
+                          }}
+                        >
+                          Delete
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
     </div>
   );
 }

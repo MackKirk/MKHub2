@@ -13,6 +13,33 @@
 -->
 
 <<<RELEASE>>>
+id: 2026-04-28-1
+date: 2026-04-28
+title: Update 1.1.027 - Week 18
+
+### New
+- Training certificates: layout editor (logo position/size, content margins, text sizes, spacing, signature left/right inset) with defaults tuned for the corporate background; reset layout control.
+- Live certificate preview uses the real PDF engine via an unsaved-payload render endpoint so what you adjust matches the exported PDF; optional “final PDF” preview mode.
+- Certificate validity can be set to never expire (no fixed day count).
+- Course editor **Setup** tab redesigned (clear sections, Udemy-style landing context, duration field with minutes suffix).
+
+### Improved
+- Certificate backgrounds come only from **System Settings** library presets (legacy bundled course backgrounds removed).
+- Larger organization logo on generated certificates; signatures show instructor/participant names without extra redundant labels; cleaner signature block vs artwork.
+- Instructor and participant names on certificates resolved automatically from course/completion context where applicable.
+- PDF viewer embedded preview: fit-to-page, hides thumbnails/toolbars via viewer params; iframe sizing improves edge cropping in live preview.
+- **Requirements** tab: searchable lists with checkboxes and removable chips for roles, divisions, and users.
+- **Publication** status: Draft / Published controls and a status badge moved to the **top course header** (visible on every tab); removed duplicate block from Setup.
+- **Navigation**: **My Training** is now the first item under **Personal** in the sidebar; it was removed from the Training & Learning group to avoid a duplicate link (certificates and admin remain there).
+
+### Fixed
+- Saving a course draft no longer dropped the selected certificate background back to a default (library selection persists).
+- Reduced mismatch between certificate preview and generated PDF (scaling, spacing, title/body gap behavior).
+
+### Known issues
+- (none this release)
+
+<<<RELEASE>>>
 id: 2026-04-20-1
 date: 2026-04-20
 title: Update 1.1.026 - Week 17
