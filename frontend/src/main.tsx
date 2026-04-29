@@ -16,8 +16,8 @@ if (import.meta.env.PROD && 'serviceWorker' in navigator) {
       console.log('Service worker registered successfully');
     },
     onControllerChange: () => {
-      // Optionally reload page when new SW takes control
-      // window.location.reload();
+      // Ensure users immediately run the latest cached bundle after SW swaps.
+      window.location.reload();
     }
   });
 }

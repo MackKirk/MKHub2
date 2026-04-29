@@ -544,7 +544,7 @@ export default function TrainingCourse() {
                   You have finished all required lessons. Your certificate is available if this course issues one.
                 </p>
                 <Link
-                  to="/training/certificates"
+                  to="/training?tab=certificates"
                   className="inline-block px-4 py-2 bg-emerald-700 text-white rounded-lg font-semibold hover:bg-emerald-800"
                 >
                   View certificates

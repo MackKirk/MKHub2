@@ -3485,6 +3485,29 @@ export default function UserInfo(){
         </div>
       )}
       
+      <div className="rounded-xl border bg-white p-3 mt-6">
+        <h5 className="text-xs font-semibold text-gray-900 mb-2">Record audit</h5>
+        <div className="text-xs text-gray-600 space-y-1">
+          <div>
+            <span className="font-semibold text-gray-800">Last profile change: </span>
+            {(() => {
+              const iso = p?.updated_at;
+              if (!iso) return '—';
+              try {
+                return new Date(iso as string).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
+              } catch {
+                return '—';
+              }
+            })()}
+            {p?.updated_by_name ? <span className="text-gray-700"> · {p.updated_by_name}</span> : null}
+          </div>
+          <p className="text-gray-500">
+            Updates automatically when someone saves this employee (profile, departments, or account fields). This is separate from the manual{' '}
+            <span className="font-medium text-gray-700">Last Update Sync (Bamboo files)</span> field.
+          </p>
+        </div>
+      </div>
+
       {/* BambooHR Actions - Moved to bottom */}
       {canEdit && (
         <div className="rounded-xl border bg-white p-3 mt-6">

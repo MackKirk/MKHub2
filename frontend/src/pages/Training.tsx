@@ -1,7 +1,8 @@
 import { useQuery } from '@tanstack/react-query';
 import { api, withFileAccessToken } from '@/lib/api';
-import { Link } from 'react-router-dom';
-import { useState } from 'react';
+import { Link, useSearchParams } from 'react-router-dom';
+import { useCallback, useEffect, useState } from 'react';
+import TrainingCertificates from './TrainingCertificates';
 
 type Course = {
   id: string;
@@ -25,16 +26,37 @@ type TrainingData = {
   available?: Course[];
 };
 
+type CourseTab = 'completed' | 'in_progress' | 'required' | 'expired' | 'available';
+type TrainingTab = CourseTab | 'certificates';
+
 export default function Training() {
-  const [activeTab, setActiveTab] = useState<
-    'completed' | 'in_progress' | 'required' | 'expired' | 'available'
-  >('required');
+  const [searchParams, setSearchParams] = useSearchParams();
+  const [activeTab, setActiveTab] = useState<TrainingTab>('required');
+
+  useEffect(() => {
+    if (searchParams.get('tab') === 'certificates') {
+      setActiveTab('certificates');
+    }
+  }, [searchParams]);
+
+  const setTab = useCallback(
+    (tab: TrainingTab) => {
+      setActiveTab(tab);
+      if (tab === 'certificates') {
+        setSearchParams({ tab: 'certificates' }, { replace: true });
+      } else {
+        setSearchParams({}, { replace: true });
+      }
+    },
+    [setSearchParams]
+  );
+
   const { data, isLoading } = useQuery<TrainingData>({
     queryKey: ['training'],
     queryFn: () => api<TrainingData>('GET', '/training'),
   });
 
-  const courses = data?.[activeTab] || [];
+  const courses = activeTab === 'certificates' ? [] : data?.[activeTab as CourseTab] || [];
 
   return (
     <div>
@@ -48,7 +70,8 @@ export default function Training() {
       {/* Tabs */}
       <div className="mb-4 flex gap-2 border-b flex-wrap">
         <button
-          onClick={() => setActiveTab('available')}
+          type="button"
+          onClick={() => setTab('available')}
           className={`px-4 py-2 font-semibold border-b-2 transition-colors ${
             activeTab === 'available'
               ? 'border-[#7f1010] text-[#7f1010]'
@@ -58,7 +81,8 @@ export default function Training() {
           Browse ({data?.available?.length || 0})
         </button>
         <button
-          onClick={() => setActiveTab('required')}
+          type="button"
+          onClick={() => setTab('required')}
           className={`px-4 py-2 font-semibold border-b-2 transition-colors ${
             activeTab === 'required'
               ? 'border-[#7f1010] text-[#7f1010]'
@@ -68,7 +92,8 @@ export default function Training() {
           Required ({data?.required?.length || 0})
         </button>
         <button
-          onClick={() => setActiveTab('in_progress')}
+          type="button"
+          onClick={() => setTab('in_progress')}
           className={`px-4 py-2 font-semibold border-b-2 transition-colors ${
             activeTab === 'in_progress'
               ? 'border-[#7f1010] text-[#7f1010]'
@@ -78,7 +103,8 @@ export default function Training() {
           In Progress ({data?.in_progress?.length || 0})
         </button>
         <button
-          onClick={() => setActiveTab('completed')}
+          type="button"
+          onClick={() => setTab('completed')}
           className={`px-4 py-2 font-semibold border-b-2 transition-colors ${
             activeTab === 'completed'
               ? 'border-[#7f1010] text-[#7f1010]'
@@ -88,7 +114,8 @@ export default function Training() {
           Completed ({data?.completed?.length || 0})
         </button>
         <button
-          onClick={() => setActiveTab('expired')}
+          type="button"
+          onClick={() => setTab('expired')}
           className={`px-4 py-2 font-semibold border-b-2 transition-colors ${
             activeTab === 'expired'
               ? 'border-[#7f1010] text-[#7f1010]'
@@ -97,20 +124,35 @@ export default function Training() {
         >
           Expired ({data?.expired?.length || 0})
         </button>
+        <button
+          type="button"
+          onClick={() => setTab('certificates')}
+          className={`px-4 py-2 font-semibold border-b-2 transition-colors ${
+            activeTab === 'certificates'
+              ? 'border-[#7f1010] text-[#7f1010]'
+              : 'border-transparent text-gray-600 hover:text-gray-900'
+          }`}
+        >
+          My certificates
+        </button>
       </div>
 
+      {activeTab === 'certificates' ? (
+        <TrainingCertificates embedded />
+      ) : null}
+
       {/* Course Grid */}
-      {isLoading ? (
+      {activeTab !== 'certificates' && isLoading ? (
         <div className="grid md:grid-cols-3 gap-4">
           {[1, 2, 3].map((i) => (
             <div key={i} className="h-64 bg-gray-100 animate-pulse rounded-xl" />
           ))}
         </div>
-      ) : courses.length === 0 ? (
+      ) : activeTab !== 'certificates' && courses.length === 0 ? (
         <div className="text-center py-12 text-gray-500">
           <p className="text-lg">No courses in this category.</p>
         </div>
-      ) : (
+      ) : activeTab !== 'certificates' ? (
         <div className="grid md:grid-cols-3 gap-4">
           {courses.map((course) => (
             <Link
@@ -176,7 +218,7 @@ export default function Training() {
             </Link>
           ))}
         </div>
-      )}
+      ) : null}
     </div>
   );
 }

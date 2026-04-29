@@ -15,7 +15,12 @@ type Certificate = {
   is_expired: boolean;
 };
 
-export default function TrainingCertificates() {
+type TrainingCertificatesProps = {
+  /** Hide the page hero when embedded in My Training (`/training`). */
+  embedded?: boolean;
+};
+
+export default function TrainingCertificates({ embedded }: TrainingCertificatesProps = {}) {
   const { data: certificates, isLoading } = useQuery<Certificate[]>({
     queryKey: ['training-certificates'],
     queryFn: () => api<Certificate[]>('GET', '/training/certificates'),
@@ -35,16 +40,18 @@ export default function TrainingCertificates() {
 
   return (
     <div>
-      <div className="bg-slate-200/50 rounded-[12px] border border-slate-200 flex items-center justify-between py-4 px-6 mb-6">
-        <div>
-          <div className="text-xl font-bold text-gray-900 tracking-tight mb-0.5">My Certificates</div>
-          <div className="text-sm text-gray-500 font-medium">View and download your training certificates.</div>
+      {!embedded && (
+        <div className="bg-slate-200/50 rounded-[12px] border border-slate-200 flex items-center justify-between py-4 px-6 mb-6">
+          <div>
+            <div className="text-xl font-bold text-gray-900 tracking-tight mb-0.5">My Certificates</div>
+            <div className="text-sm text-gray-500 font-medium">View and download your training certificates.</div>
+          </div>
+          <div className="text-right">
+            <div className="text-xs text-gray-400 mb-1.5 font-medium uppercase tracking-wide">Today</div>
+            <div className="text-sm font-semibold text-gray-700">{todayLabel}</div>
+          </div>
         </div>
-        <div className="text-right">
-          <div className="text-xs text-gray-400 mb-1.5 font-medium uppercase tracking-wide">Today</div>
-          <div className="text-sm font-semibold text-gray-700">{todayLabel}</div>
-        </div>
-      </div>
+      )}
 
       {isLoading ? (
         <div className="grid md:grid-cols-3 gap-4">

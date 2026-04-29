@@ -33,6 +33,18 @@ type MenuCategory = {
   items: MenuItem[];
 };
 
+function menuChildMatchesLocation(child: MenuItem, pathname: string, search: string): boolean {
+  if (child.id === 'personal-my-certificates') {
+    return pathname === '/training' && new URLSearchParams(search).get('tab') === 'certificates';
+  }
+  if (child.id === 'fleet-assets') {
+    return ['/fleet/assets', '/fleet/vehicles', '/fleet/heavy-machinery', '/fleet/other-assets'].some(
+      (p) => pathname === p || pathname.startsWith(p + '/')
+    );
+  }
+  return pathname === child.path || pathname.startsWith(child.path + '/');
+}
+
 const IconHome = () => (
   <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" />
@@ -419,12 +431,25 @@ export default function AppShell({ children }: PropsWithChildren){
       label: 'Personal',
       icon: <IconUser />,
       items: [
-        { id: 'my-training', label: 'My Training', path: '/training', icon: <IconAcademic /> },
         { id: 'overview', label: 'Overview', path: '/overview', icon: <IconOverview /> },
         { id: 'schedule', label: 'Schedule', path: '/schedule', icon: <IconCalendar /> },
         { id: 'clock-in-out', label: 'Clock in/out', path: '/clock-in-out', icon: <IconClock /> },
         { id: 'task-requests', label: 'Requests', path: '/task-requests', icon: <IconRequest /> },
         { id: 'tasks', label: 'Tasks', path: '/tasks', icon: <IconClipboard /> },
+        {
+          id: 'my-training',
+          label: 'My Training',
+          path: '/training',
+          icon: <IconAcademic />,
+          children: [
+            {
+              id: 'personal-my-certificates',
+              label: 'My certificates',
+              path: '/training?tab=certificates',
+              icon: <IconDocument />,
+            },
+          ],
+        },
       ]
     },
     {
@@ -516,7 +541,6 @@ export default function AppShell({ children }: PropsWithChildren){
         ...(((me?.roles||[]).includes('admin') || (me?.permissions||[]).includes('training:manage') || (me?.permissions||[]).includes('users:write') || (me?.permissions||[]).includes('users:read') || (me?.permissions||[]).includes('hr:users:read') || (me?.permissions||[]).includes('hr:users:view:general')) ? [
           { id: 'training-dashboard', label: 'Dashboard', path: '/training/dashboard', icon: <IconOverview /> },
         ] : []),
-        { id: 'certificates', label: 'My Certificates', path: '/training/certificates', icon: <IconDocument /> },
         ...(((me?.roles||[]).includes('admin') || (me?.permissions||[]).includes('training:manage') || (me?.permissions||[]).includes('users:write')) ? [
           { id: 'training-admin', label: 'Training Admin', path: '/training/admin', icon: <IconSettings /> }
         ] : []),
@@ -529,6 +553,7 @@ export default function AppShell({ children }: PropsWithChildren){
       items: [
         // Check hr:access permission first - if not granted, hide entire category
         ...((me?.roles||[]).includes('admin') || (me?.permissions||[]).includes('hr:access') || (me?.permissions||[]).includes('users:read')) ? [
+          { id: 'hr-overview', label: 'Overview', path: '/human-resources/overview', icon: <IconOverview />, requiredPermission: 'hr:users:read' },
           { id: 'users', label: 'Users', path: '/users', icon: <IconUsersGroup />, requiredPermission: 'hr:users:read' },
           { id: 'onboarding-admin', label: 'Onboarding', path: '/onboarding/admin', icon: <IconDocument />, requiredPermission: 'hr:users:read' },
           { id: 'attendance', label: 'Attendance', path: '/settings/attendance', icon: <IconCalendar />, requiredPermission: 'hr:attendance:read' },
@@ -750,7 +775,7 @@ export default function AppShell({ children }: PropsWithChildren){
       }
       const isSelfActive = location.pathname === item.path || location.pathname.startsWith(item.path + '/');
       if (isSelfActive) return true;
-      if (Array.isArray(item.children) && item.children.some(child => location.pathname === child.path || location.pathname.startsWith(child.path + '/'))) {
+      if (Array.isArray(item.children) && item.children.some((child) => menuChildMatchesLocation(child, location.pathname, location.search))) {
         return true;
       }
       return false;
@@ -759,7 +784,7 @@ export default function AppShell({ children }: PropsWithChildren){
 
   const activeCategory = useMemo(() => {
     return menuCategories.find(cat => isCategoryActive(cat));
-  }, [location.pathname, menuCategories, currentProject, isViewingOpportunity, onConstructionOpp, onRmOpp]);
+  }, [location.pathname, location.search, menuCategories, currentProject, isViewingOpportunity, onConstructionOpp, onRmOpp]);
 
   const showHubLoadingGate =
     meLoading ||
@@ -1040,11 +1065,7 @@ export default function AppShell({ children }: PropsWithChildren){
                         const visibleChildren = (item.children || []).filter(canSeeMenuItem);
                         const hasChildren = visibleChildren.length > 0;
                         const isAnyChildActive = hasChildren
-                          ? visibleChildren.some(child =>
-                              child.id === 'fleet-assets'
-                                ? ['/fleet/assets', '/fleet/vehicles', '/fleet/heavy-machinery', '/fleet/other-assets'].some(p => location.pathname === p || location.pathname.startsWith(p + '/'))
-                                : (location.pathname === child.path || location.pathname.startsWith(child.path + '/'))
-                            )
+                          ? visibleChildren.some((child) => menuChildMatchesLocation(child, location.pathname, location.search))
                           : false;
                         const isItemOrChildActive = isItemActive || isAnyChildActive;
                         // Only show children after user navigates to Suppliers (or a child like Products)
@@ -1094,11 +1115,9 @@ export default function AppShell({ children }: PropsWithChildren){
                               {isGroupExpanded && (
                                 <div className="mt-0.5 ml-6 space-y-0.5">
                                   {visibleChildren.map(child => {
-                                    const childActive = !isViewingOpportunity && (
-                                      child.id === 'fleet-assets'
-                                        ? ['/fleet/assets', '/fleet/vehicles', '/fleet/heavy-machinery', '/fleet/other-assets'].some(p => location.pathname === p || location.pathname.startsWith(p + '/'))
-                                        : (location.pathname === child.path || location.pathname.startsWith(child.path + '/'))
-                                    );
+                                    const childActive =
+                                      !isViewingOpportunity &&
+                                      menuChildMatchesLocation(child, location.pathname, location.search);
                                     return (
                                       <NavLink
                                         key={child.id}

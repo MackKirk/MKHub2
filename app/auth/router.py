@@ -1496,10 +1496,26 @@ def get_user_profile(user_id: str, db: Session = Depends(get_db), me: User = Dep
                 "cloth_size",
                 "project_division_ids",
                 "bamboo_files_last_sync_at",
+                "updated_at",
+                "updated_by",
             ]
         }
         # New API field backed by legacy column
         profile_data["work_eligibility_status"] = getattr(ep, "work_permit_status", None)
+        profile_data["updated_by_name"] = None
+        if ep.updated_by:
+            ed_u = db.query(User).filter(User.id == ep.updated_by).first()
+            ed_ep = db.query(EmployeeProfile).filter(EmployeeProfile.user_id == ep.updated_by).first()
+            if ed_u:
+                pn = (getattr(ed_ep, "preferred_name", None) or "").strip() if ed_ep else ""
+                if pn:
+                    profile_data["updated_by_name"] = pn
+                else:
+                    fn = (getattr(ed_ep, "first_name", None) or "").strip() if ed_ep else ""
+                    ln = (getattr(ed_ep, "last_name", None) or "").strip() if ed_ep else ""
+                    profile_data["updated_by_name"] = (
+                        " ".join([x for x in [fn, ln] if x]) or ed_u.username
+                    )
         # Normalize null -> [] for frontend
         profile_data["project_division_ids"] = list(profile_data.get("project_division_ids") or [])
         # Get global custom cloth sizes
@@ -1572,6 +1588,9 @@ def update_user_profile(
         data["drivers_license_updated_at"] = datetime.now(timezone.utc)
     for k, v in data.items():
         setattr(ep, k, v)
+    if data:
+        ep.updated_at = datetime.now(timezone.utc)
+        ep.updated_by = me.id
     db.commit()
     return {"status": "ok"}
 

@@ -49,6 +49,7 @@ import Opportunities from './pages/Opportunities';
 import LeakInvestigations from './pages/LeakInvestigations';
 import OpportunityDetail from './pages/OpportunityDetail';
 import Users from './pages/Users';
+import HrDataQualityOverview from './pages/HrDataQualityOverview';
 import UserInfo from './pages/UserInfo';
 import EmployeeReviews from './pages/EmployeeReviews';
 import MyReviews from './pages/MyReviews';
@@ -87,7 +88,6 @@ import FormTemplatesPage from './pages/FormTemplatesPage';
 import FormTemplateEditorPage from './pages/FormTemplateEditorPage';
 import FormCustomListsPage from './pages/FormCustomListsPage';
 import TrainingCourse from './pages/TrainingCourse';
-import TrainingCertificates from './pages/TrainingCertificates';
 import TrainingAdmin from './pages/TrainingAdmin';
 import TrainingCourseEdit from './pages/TrainingCourseEdit';
 import TrainingLearningDashboard from './pages/TrainingLearningDashboard';
@@ -194,6 +194,7 @@ export default function App(){
           <Route path="/documents/create/:id" element={<AppShell><DocumentCreator/></AppShell>} />
           <Route path="/log-hours" element={<AppShell><LogHours/></AppShell>} />
           <Route path="/users" element={<AppShell><Users/></AppShell>} />
+          <Route path="/human-resources/overview" element={<AppShell><HrDataQualityOverview /></AppShell>} />
           <Route path="/users/:userId" element={<AppShell><UserInfo/></AppShell>} />
           <Route path="/settings/attendance" element={<AppShell><Attendance/></AppShell>} />
           <Route path="/community" element={<AppShell><Community/></AppShell>} />
@@ -236,8 +237,8 @@ export default function App(){
           <Route path="/fleet/inspections/new" element={<AppShell><InspectionNew/></AppShell>} />
           <Route path="/fleet/inspections/:id" element={<AppShell><InspectionDetail/></AppShell>} />
           <Route path="/training" element={<AppShell><Training/></AppShell>} />
+          <Route path="/training/certificates" element={<Navigate to="/training?tab=certificates" replace />} />
           <Route path="/training/:courseId" element={<AppShell><TrainingCourse/></AppShell>} />
-          <Route path="/training/certificates" element={<AppShell><TrainingCertificates/></AppShell>} />
           <Route path="/training/dashboard" element={<AppShell><TrainingLearningDashboard /></AppShell>} />
           <Route path="/training/hr-records" element={<Navigate to="/training/dashboard" replace />} />
           <Route path="/training/admin" element={<AppShell><TrainingAdmin/></AppShell>} />

@@ -2,10 +2,11 @@ import json
 from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, HTTPException, Body, Query
 from pydantic import BaseModel
-from sqlalchemy import update
+from sqlalchemy import update, or_, func as sa_func
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
-from typing import Optional, List, Any, Tuple, Literal
+from typing import Optional, List, Any, Tuple, Literal, Dict
+from collections import Counter, defaultdict
 import math
 import uuid
 
@@ -23,9 +24,11 @@ from ..models.models import (
     EmployeeNote,
     SystemLog,
     AuditLog,
+    user_divisions,
+    SettingItem,
 )
 from ..services.audit_log_entries import audit_rows_to_entry_dicts
-from ..auth.security import require_permissions, require_roles, get_current_user
+from ..auth.security import require_permissions, require_roles, get_current_user, _has_permission
 from ..services.home_dashboard_policy import sanitize_home_dashboard
 from ..services.home_dashboard_templates import (
     get_template_for_user,
@@ -204,6 +207,218 @@ def apply_my_home_dashboard_template(
         "layout": _ensure_list(row.layout),
         "widgets": _ensure_list(row.widgets),
         "template_key": resolve_template_key(user),
+    }
+
+
+def _hr_profile_display_name(
+    username: str,
+    preferred_name: Optional[str],
+    first_name: Optional[str],
+    last_name: Optional[str],
+) -> str:
+    if preferred_name and str(preferred_name).strip():
+        return str(preferred_name).strip()
+    fn = (first_name or "").strip()
+    ln = (last_name or "").strip()
+    parts = [x for x in [fn, ln] if x]
+    if parts:
+        return " ".join(parts)
+    return username or ""
+
+
+@router.get("/hr-data-quality")
+def hr_data_quality(
+    db: Session = Depends(get_db),
+    viewer: User = Depends(require_permissions("hr:users:read", "users:read")),
+):
+    """
+    HR overview: active employees with incomplete org/profile fields.
+    Summary counts include all eligible users with at least one gap; rows are capped at 500 (alphabetical by username).
+    Pay rate/type are never returned in rows (sensitive); compensation gaps appear only in summary counts and issue tags for viewers with hr:users:view:job:compensation.
+    """
+    can_comp = _has_permission(viewer, "hr:users:view:job:compensation")
+    now = datetime.now(timezone.utc)
+
+    slim = (
+        db.query(
+            User.id,
+            User.username,
+            User.email_personal,
+            EmployeeProfile.manager_user_id,
+            EmployeeProfile.division,
+            EmployeeProfile.project_division_ids,
+            EmployeeProfile.job_title,
+            EmployeeProfile.pay_rate,
+            EmployeeProfile.pay_type,
+            EmployeeProfile.updated_at,
+            EmployeeProfile.updated_by,
+            EmployeeProfile.first_name,
+            EmployeeProfile.last_name,
+            EmployeeProfile.preferred_name,
+            EmployeeProfile.id.label("ep_id"),
+        )
+        .outerjoin(EmployeeProfile, EmployeeProfile.user_id == User.id)
+        .filter(User.is_active == True)
+        .filter(
+            or_(
+                EmployeeProfile.id.is_(None),
+                EmployeeProfile.termination_date.is_(None),
+                EmployeeProfile.termination_date >= now,
+            )
+        )
+        .order_by(User.username.asc())
+        .all()
+    )
+
+    if not slim:
+        return {
+            "total_eligible": 0,
+            "total_with_gaps": 0,
+            "truncated": False,
+            "summary": {
+                "missing_supervisor": 0,
+                "missing_department": 0,
+                "missing_project_division": 0,
+                "missing_job_title": 0,
+                "missing_compensation": 0,
+            },
+            "rows": [],
+        }
+
+    user_ids = [r.id for r in slim]
+    ud_counts: Dict[uuid.UUID, int] = defaultdict(int)
+    for uid, cnt in (
+        db.query(user_divisions.c.user_id, sa_func.count())
+        .filter(user_divisions.c.user_id.in_(user_ids))
+        .group_by(user_divisions.c.user_id)
+        .all()
+    ):
+        ud_counts[uid] = int(cnt)
+
+    def gaps_for_row(r) -> List[str]:
+        ep_present = r.ep_id is not None
+        issues: List[str] = []
+        if not ep_present or r.manager_user_id is None:
+            issues.append("missing_supervisor")
+        dept_ok = ud_counts.get(r.id, 0) > 0 or (
+            ep_present and r.division and str(r.division).strip()
+        )
+        if not dept_ok:
+            issues.append("missing_department")
+        pdi = _ensure_list(r.project_division_ids) if ep_present else []
+        if not ep_present or not pdi:
+            issues.append("missing_project_division")
+        if not ep_present or not (r.job_title and str(r.job_title).strip()):
+            issues.append("missing_job_title")
+        if can_comp:
+            pr = (str(r.pay_rate).strip() if ep_present and r.pay_rate is not None else "") if ep_present else ""
+            pt = (str(r.pay_type).strip() if ep_present and r.pay_type is not None else "") if ep_present else ""
+            if not pr and not pt:
+                issues.append("missing_compensation")
+        return issues
+
+    with_gaps: List[Tuple[Any, List[str]]] = []
+    summary_counter: Counter = Counter()
+    for r in slim:
+        issues = gaps_for_row(r)
+        if not issues:
+            continue
+        with_gaps.append((r, issues))
+        for key in issues:
+            summary_counter[key] += 1
+
+    cap = 500
+    truncated = len(with_gaps) > cap
+    slice_pairs = with_gaps[:cap]
+
+    all_pd_ids: set = set()
+    editor_ids: set = set()
+    for r, _ in slice_pairs:
+        if r.project_division_ids and r.ep_id:
+            for x in _ensure_list(r.project_division_ids):
+                all_pd_ids.add(str(x))
+        if r.updated_by:
+            editor_ids.add(r.updated_by)
+
+    pd_labels: Dict[str, str] = {}
+    if all_pd_ids:
+        try:
+            uuids = [uuid.UUID(x) for x in all_pd_ids]
+            for it in db.query(SettingItem).filter(SettingItem.id.in_(uuids)).all():
+                pd_labels[str(it.id)] = (it.label or "").strip() or str(it.id)
+        except (ValueError, TypeError):
+            pass
+
+    editors: Dict[str, str] = {}
+    if editor_ids:
+        for u, ep in (
+            db.query(User, EmployeeProfile)
+            .outerjoin(EmployeeProfile, EmployeeProfile.user_id == User.id)
+            .filter(User.id.in_(editor_ids))
+            .all()
+        ):
+            editors[str(u.id)] = _hr_profile_display_name(
+                u.username,
+                getattr(ep, "preferred_name", None) if ep else None,
+                getattr(ep, "first_name", None) if ep else None,
+                getattr(ep, "last_name", None) if ep else None,
+            )
+
+    slice_uids = [r.id for r, _ in slice_pairs]
+    dept_labels_by_user: Dict[uuid.UUID, List[str]] = defaultdict(list)
+    if slice_uids:
+        for uid, lbl in (
+            db.query(user_divisions.c.user_id, SettingItem.label)
+            .join(SettingItem, SettingItem.id == user_divisions.c.division_id)
+            .filter(user_divisions.c.user_id.in_(slice_uids))
+            .all()
+        ):
+            if lbl and str(lbl).strip():
+                dept_labels_by_user[uid].append(str(lbl).strip())
+
+    out_rows = []
+    for r, issues in slice_pairs:
+        dept_labels = dept_labels_by_user.get(r.id, [])
+        department = ", ".join(dept_labels) if dept_labels else None
+        if not department and r.division and str(r.division).strip():
+            department = str(r.division).strip()
+
+        pd_ids = _ensure_list(r.project_division_ids) if r.ep_id else []
+        project_division_labels = [pd_labels.get(str(pid), str(pid)) for pid in pd_ids]
+
+        row_payload: dict = {
+            "user_id": str(r.id),
+            "username": r.username,
+            "email": r.email_personal,
+            "name": _hr_profile_display_name(
+                r.username,
+                r.preferred_name,
+                r.first_name,
+                r.last_name,
+            ),
+            "job_title": (str(r.job_title).strip() if r.job_title else None) if r.ep_id else None,
+            "department": department,
+            "project_division_labels": project_division_labels,
+            "manager_user_id": str(r.manager_user_id) if r.manager_user_id else None,
+            "issues": issues,
+            "profile_updated_at": r.updated_at.isoformat() if r.updated_at else None,
+            "profile_updated_by_id": str(r.updated_by) if r.updated_by else None,
+            "profile_updated_by_name": editors.get(str(r.updated_by)) if r.updated_by else None,
+        }
+        out_rows.append(row_payload)
+
+    return {
+        "total_eligible": len(slim),
+        "total_with_gaps": len(with_gaps),
+        "truncated": truncated,
+        "summary": {
+            "missing_supervisor": summary_counter.get("missing_supervisor", 0),
+            "missing_department": summary_counter.get("missing_department", 0),
+            "missing_project_division": summary_counter.get("missing_project_division", 0),
+            "missing_job_title": summary_counter.get("missing_job_title", 0),
+            "missing_compensation": summary_counter.get("missing_compensation", 0),
+        },
+        "rows": out_rows,
     }
 
 
@@ -421,23 +636,29 @@ def list_roles(db: Session = Depends(get_db), _=Depends(require_permissions("hr:
 
 
 @router.patch("/{user_id}")
-def update_user(user_id: str, payload: dict, db: Session = Depends(get_db), _=Depends(require_permissions("hr:users:write", "users:write"))):  # New HR permission or legacy
+def update_user(
+    user_id: str,
+    payload: dict,
+    db: Session = Depends(get_db),
+    actor: User = Depends(require_permissions("hr:users:write", "users:write")),
+):
     from ..models.models import SettingList, SettingItem
-    
+
     u = db.query(User).filter(User.id == user_id).first()
     if not u:
         raise HTTPException(status_code=404, detail="Not found")
     roles = payload.get("roles")
     is_active = payload.get("is_active")
     divisions = payload.get("divisions")
+    touched_profile_audit = False
     if roles is not None:
-        # roles can be list of names
         role_rows = db.query(Role).filter(Role.name.in_(roles)).all() if roles else []
         u.roles = role_rows
+        touched_profile_audit = True
     if is_active is not None:
         u.is_active = bool(is_active)
+        touched_profile_audit = True
     if divisions is not None:
-        # divisions can be list of division IDs (UUIDs)
         divisions_list = db.query(SettingList).filter(SettingList.name == "divisions").first()
         if divisions_list:
             division_items = db.query(SettingItem).filter(
@@ -445,6 +666,14 @@ def update_user(user_id: str, payload: dict, db: Session = Depends(get_db), _=De
                 SettingItem.id.in_([uuid.UUID(did) for did in divisions])
             ).all() if divisions else []
             u.divisions = division_items
+        touched_profile_audit = True
+    if touched_profile_audit:
+        ep = db.query(EmployeeProfile).filter(EmployeeProfile.user_id == u.id).first()
+        if not ep:
+            ep = EmployeeProfile(user_id=u.id)
+            db.add(ep)
+        ep.updated_at = datetime.now(timezone.utc)
+        ep.updated_by = actor.id
     db.commit()
     ep = db.query(EmployeeProfile).filter(EmployeeProfile.user_id == u.id).first()
     return _user_to_dict(u, ep)

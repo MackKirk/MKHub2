@@ -47,26 +47,31 @@ def update_user_divisions(
     user_id: str,
     division_ids: List[str],
     db: Session = Depends(get_db),
-    _=Depends(require_permissions("users:write"))
+    actor: User = Depends(require_permissions("users:write")),
 ):
     """Update user divisions (replace existing)"""
     user = db.query(User).filter(User.id == user_id).first()
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
-    
-    # Get divisions from SettingItem
+
     divisions_list = db.query(SettingList).filter(SettingList.name == "divisions").first()
     if not divisions_list:
         raise HTTPException(status_code=404, detail="Divisions list not found")
-    
+
     division_items = db.query(SettingItem).filter(
         SettingItem.list_id == divisions_list.id,
         SettingItem.id.in_([uuid_lib.UUID(did) for did in division_ids])
     ).all()
-    
+
     user.divisions = division_items
+    ep = db.query(EmployeeProfile).filter(EmployeeProfile.user_id == user.id).first()
+    if not ep:
+        ep = EmployeeProfile(user_id=user.id)
+        db.add(ep)
+    ep.updated_at = datetime.now(timezone.utc)
+    ep.updated_by = actor.id
     db.commit()
-    
+
     return {"status": "ok", "divisions": [{"id": str(d.id), "label": d.label} for d in division_items]}
 
 

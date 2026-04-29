@@ -1,9 +1,9 @@
 // Service Worker for MK Hub PWA
-// Version: 1.0.0
+// Version: 1.0.1
 // Cache static assets only - DO NOT cache API responses
 
-const CACHE_NAME = 'mkhub-v1';
-const STATIC_CACHE_NAME = 'mkhub-static-v1';
+const CACHE_NAME = 'mkhub-v2';
+const STATIC_CACHE_NAME = 'mkhub-static-v2';
 const OFFLINE_PAGE = '/offline.html';
 
 // Assets to cache on install
@@ -62,10 +62,11 @@ self.addEventListener('fetch', (event) => {
     }
   } catch (_) {}
 
-  // NEVER cache API or auth endpoints
+  // NEVER cache API/auth/files or chat launcher script
   if (url.pathname.startsWith('/api/') || 
       url.pathname.startsWith('/auth/') ||
-      url.pathname.startsWith('/files/')) {
+      url.pathname.startsWith('/files/') ||
+      url.pathname === '/ui/assets/chat-widget.js') {
     // Network only - do not cache
     event.respondWith(fetch(request));
     return;

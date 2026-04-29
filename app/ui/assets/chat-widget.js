@@ -8,8 +8,10 @@
   window.__initMKHubChat = function initMKHubChat(hostEl) {
     const token = localStorage.getItem('user_token');
     if (!token) return;
+    if (!hostEl) return;
     const existingPanel = document.getElementById('mkhub-chat-panel');
     if (existingPanel) existingPanel.remove();
+    document.querySelectorAll('.mkchat-fab').forEach((node) => node.remove());
 
     const api = async (method, path, body) => {
       const headers = { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token };
@@ -136,8 +138,7 @@
       '</span></span>' +
       '<span class="badge" id="mkchatBadge">0</span>';
 
-    if (hostEl) hostEl.appendChild(fab);
-    else document.body.appendChild(fab);
+    hostEl.appendChild(fab);
 
     const panel = document.createElement('div');
     panel.id = 'mkhub-chat-panel';
