@@ -2346,7 +2346,7 @@ export default function ProjectDetail(){
       {!tab && hasAdministratorAccess && (
         <div className="mt-6 rounded-xl border border-red-200 bg-red-50 p-4">
           <h3 className="text-sm font-semibold text-red-900 mb-3">Danger Zone</h3>
-          <div className="flex gap-3">
+          <div className="flex flex-wrap gap-3">
             <button onClick={async()=>{
               const result = await confirm({ 
                 title: proj?.is_bidding ? 'Delete Opportunity' : proj?.is_leak_investigation ? 'Delete Leak investigation' : 'Delete Project', 
@@ -2383,6 +2383,62 @@ export default function ProjectDetail(){
                 );
               }
             }} className="px-4 py-2 rounded bg-red-600 hover:bg-red-700 text-white text-sm font-medium">{proj?.is_bidding ? 'Delete Opportunity' : proj?.is_leak_investigation ? 'Delete Leak investigation' : 'Delete Project'}</button>
+            <button
+              type="button"
+              onClick={async () => {
+                const entityLabel = proj?.is_bidding
+                  ? 'Opportunity'
+                  : proj?.is_leak_investigation
+                    ? 'Leak Investigation'
+                    : 'Project';
+                const result = await confirm({
+                  title: `Duplicate ${entityLabel}`,
+                  message: `This will create a full copy of "${proj?.name || 'this entity'}" with a new code. Proposals, files, folders, updates, reports and events will be cloned. Timesheet, dispatch and audit logs will not. Continue?`,
+                  confirmText: 'Duplicate',
+                  cancelText: 'Cancel',
+                });
+                if (result !== 'confirm') return;
+                try {
+                  const res = await api<{ id: string }>(
+                    'POST',
+                    `/projects/${encodeURIComponent(String(id || ''))}/duplicate`
+                  );
+                  toast.success(`${entityLabel} duplicated`);
+                  queryClient.removeQueries({ queryKey: ['opportunities'] });
+                  queryClient.removeQueries({ queryKey: ['leak-investigations'] });
+                  queryClient.removeQueries({ queryKey: ['projects'] });
+                  await Promise.all([
+                    queryClient.invalidateQueries({ queryKey: ['clientOpportunities'] }),
+                    queryClient.invalidateQueries({ queryKey: ['clientProjects'] }),
+                    queryClient.invalidateQueries({ queryKey: ['clientProjectParticipations'] }),
+                  ]);
+                  const rm = proj?.business_line === BUSINESS_LINE_REPAIRS_MAINTENANCE;
+                  const newIdEnc = encodeURIComponent(res.id);
+                  if (proj?.is_leak_investigation) {
+                    nav(rm ? `/rm-leak-investigations/${newIdEnc}` : `/projects/${newIdEnc}`);
+                  } else if (proj?.is_bidding) {
+                    nav(rm ? `/rm-opportunities/${newIdEnc}` : `/opportunities/${newIdEnc}`);
+                  } else {
+                    nav(rm ? `/rm-projects/${newIdEnc}` : `/projects/${newIdEnc}`);
+                  }
+                } catch (_e) {
+                  toast.error(
+                    proj?.is_bidding
+                      ? 'Failed to duplicate opportunity'
+                      : proj?.is_leak_investigation
+                        ? 'Failed to duplicate leak investigation'
+                        : 'Failed to duplicate project'
+                  );
+                }
+              }}
+              className="px-4 py-2 rounded border border-red-300 bg-white hover:bg-red-50 text-red-700 text-sm font-medium"
+            >
+              {proj?.is_bidding
+                ? 'Duplicate Opportunity'
+                : proj?.is_leak_investigation
+                  ? 'Duplicate Leak Investigation'
+                  : 'Duplicate Project'}
+            </button>
             <button 
               onClick={() => setShowAuditLogModal(true)}
               className="px-4 py-2 rounded border border-red-300 bg-white hover:bg-red-50 text-red-700 text-sm font-medium"

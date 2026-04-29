@@ -115,6 +115,29 @@ export default function ProjectNew(){
     [projectDivisions, businessLine]
   );
   const { data:employees } = useQuery({ queryKey:['employees'], queryFn: ()=> api<any[]>('GET','/employees') });
+
+  const ESTIMATOR_DEPARTMENT = 'Sales / Estimating';
+  const employeesInEstimatingDept = useMemo(() => {
+    const list = employees || [];
+    const target = ESTIMATOR_DEPARTMENT.toLowerCase();
+    return list.filter((emp: any) => {
+      if (Array.isArray(emp.divisions) && emp.divisions.length > 0) {
+        return emp.divisions.some((d: any) => String(d?.label || '').trim().toLowerCase() === target);
+      }
+      const dept = String((emp.department || emp.division || '')).trim();
+      return dept.toLowerCase().includes(target);
+    });
+  }, [employees]);
+
+  const limitEstimatorListToSalesDept = isBidding || isLeakInvestigation;
+
+  useEffect(() => {
+    if (!limitEstimatorListToSalesDept || employees === undefined) return;
+    const ids = new Set(employeesInEstimatingDept.map((e: any) => String(e.id)));
+    if (estimatorId && !ids.has(estimatorId)) setEstimatorId('');
+  }, [limitEstimatorListToSalesDept, employees, employeesInEstimatingDept, estimatorId]);
+
+  const employeesForEstimatorSelect = limitEstimatorListToSalesDept ? employeesInEstimatingDept : employees || [];
   const { data: leakPickData } = useQuery({
     queryKey: ['leak-investigations-pick', businessLine],
     queryFn: () =>
@@ -816,7 +839,7 @@ export default function ProjectNew(){
                         onChange={(e) => setEstimatorId(e.target.value)}
                       >
                         <option value="">Select...</option>
-                        {sortByLabel(employees || [], (emp: any) => (emp.name || emp.username || '').toString()).map((emp: any) => (
+                        {sortByLabel(employeesForEstimatorSelect, (emp: any) => (emp.name || emp.username || '').toString()).map((emp: any) => (
                           <option key={emp.id} value={emp.id}>
                             {emp.name || emp.username}
                           </option>
