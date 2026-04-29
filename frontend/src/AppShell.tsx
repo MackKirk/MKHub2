@@ -1069,10 +1069,10 @@ export default function AppShell({ children }: PropsWithChildren){
                                     }`
                                   }
                                 >
-                                  {(isItemOrChildActive || location.pathname === item.path || location.pathname.startsWith(item.path + '/')) && (
+                                  {isItemOrChildActive && (
                                     <div className="absolute left-0 top-1/2 -translate-y-1/2 w-0.5 h-5 bg-white rounded-r-full" />
                                   )}
-                                  <span className={`flex-shrink-0 ${(isItemOrChildActive || location.pathname === item.path || location.pathname.startsWith(item.path + '/')) ? 'opacity-100' : 'opacity-60'}`}>{item.icon}</span>
+                                  <span className={`flex-shrink-0 ${isItemOrChildActive ? 'opacity-100' : 'opacity-60'}`}>{item.icon}</span>
                                   <span className="text-xs font-semibold flex-1">{item.label}</span>
                                 </NavLink>
                               ) : (
@@ -1140,10 +1140,10 @@ export default function AppShell({ children }: PropsWithChildren){
                               }`
                             }
                           >
-                            {(isItemActive || location.pathname === item.path || location.pathname.startsWith(item.path + '/')) && (
+                            {isItemActive && (
                               <div className="absolute left-0 top-1/2 -translate-y-1/2 w-0.5 h-5 bg-white rounded-r-full" />
                             )}
-                            <span className={`flex-shrink-0 ${(isItemActive || location.pathname === item.path || location.pathname.startsWith(item.path + '/')) ? 'opacity-100' : 'opacity-60'}`}>{item.icon}</span>
+                            <span className={`flex-shrink-0 ${isItemActive ? 'opacity-100' : 'opacity-60'}`}>{item.icon}</span>
                             <span className="text-xs font-semibold">{item.label}</span>
                           </NavLink>
                         );

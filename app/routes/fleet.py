@@ -1,6 +1,6 @@
 import uuid
 from datetime import datetime, timezone, timedelta
-from typing import List, Optional
+from typing import List, Optional, Dict, Any
 from sqlalchemy import or_, and_, func, case, cast, BigInteger
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Body
@@ -67,6 +67,10 @@ from ..schemas.fleet import (
     FleetInspectionResponse,
     WorkOrderCreate,
     WorkOrderUpdate,
+    WorkOrderStatusUpdateRequest,
+    WorkOrderCheckInRequest,
+    WorkOrderCheckOutRequest,
+    WorkOrderReopenRequest,
     WorkOrderResponse,
     WorkOrderListResponse,
     WorkOrderCalendarItem,
@@ -121,7 +125,7 @@ def create_work_order_from_inspection(
 ) -> WorkOrder:
     """Create a work order automatically from a failed inspection (body or mechanical)."""
     insp_type = getattr(inspection, "inspection_type", None) or "mechanical"
-    type_label = "Body (funilaria/pintura)" if insp_type == "body" else "Mechanical"
+    type_label = "Body" if insp_type == "body" else "Mechanical"
     wo = WorkOrder(
         work_order_number=generate_work_order_number(db),
         entity_type="fleet",
@@ -136,6 +140,18 @@ def create_work_order_from_inspection(
     )
     db.add(wo)
     db.flush()
+    _log_work_order_activity(
+        db,
+        wo.id,
+        "work_order_created_from_inspection",
+        details={
+            "inspection_id": str(inspection.id) if getattr(inspection, "id", None) else None,
+            "inspection_type": insp_type,
+            "inspection_result": getattr(inspection, "result", None),
+            "work_order_number": wo.work_order_number,
+        },
+        created_by=user_id,
+    )
     return wo
 
 
@@ -185,6 +201,44 @@ def update_fleet_asset_last_service(
     if updated:
         asset.updated_at = datetime.now(timezone.utc)
         db.flush()
+
+
+WORK_ORDER_PENDING_STATUS = WorkOrderStatus.open.value
+WORK_ORDER_FINISHED_STATUS = WorkOrderStatus.closed.value
+MANUAL_WORK_ORDER_TRANSITIONS: Dict[str, set[str]] = {
+    WorkOrderStatus.open.value: {
+        WorkOrderStatus.not_approved.value,
+        WorkOrderStatus.cancelled.value,
+    },
+    WorkOrderStatus.in_progress.value: {
+        WorkOrderStatus.pending_parts.value,
+        WorkOrderStatus.cancelled.value,
+    },
+    WorkOrderStatus.pending_parts.value: {
+        WorkOrderStatus.in_progress.value,
+        WorkOrderStatus.cancelled.value,
+    },
+}
+
+
+def _normalize_reason(reason: Optional[str]) -> Optional[str]:
+    if reason is None:
+        return None
+    txt = reason.strip()
+    return txt or None
+
+
+def _assert_manual_status_transition_allowed(current_status: str, target_status: str, reason: Optional[str]) -> None:
+    if target_status == current_status:
+        return
+    allowed_targets = MANUAL_WORK_ORDER_TRANSITIONS.get(current_status, set())
+    if target_status not in allowed_targets:
+        raise HTTPException(
+            status_code=409,
+            detail=f"Invalid manual status transition: {current_status} -> {target_status}",
+        )
+    if target_status == WorkOrderStatus.cancelled.value and not _normalize_reason(reason):
+        raise HTTPException(status_code=400, detail="Cancellation reason is required")
 
 
 # ---------- DASHBOARD ----------
@@ -479,6 +533,15 @@ def get_fleet_asset(
     return asset
 
 
+def _fleet_asset_json_file_id_list(value: Any) -> Any:
+    """JSON columns cannot serialize uuid.UUID; persist file_object ids as strings."""
+    if value is None:
+        return None
+    if isinstance(value, list):
+        return [str(x) for x in value]
+    return value
+
+
 @router.post("/assets", response_model=FleetAssetResponse)
 def create_fleet_asset(
     asset: FleetAssetCreate,
@@ -490,6 +553,10 @@ def create_fleet_asset(
     data = asset.model_dump() if hasattr(asset, 'model_dump') else asset.dict()
     if not (data.get('name') or '').strip():
         data['name'] = ''
+    if 'photos' in data:
+        data['photos'] = _fleet_asset_json_file_id_list(data.get('photos'))
+    if 'documents' in data:
+        data['documents'] = _fleet_asset_json_file_id_list(data.get('documents'))
     new_asset = FleetAsset(**data, created_by=user.id)
     db.add(new_asset)
     db.commit()
@@ -522,6 +589,8 @@ def update_fleet_asset(
     before = snapshot_fleet_asset(asset)
     update_data = asset_update.dict(exclude_unset=True)
     for key, value in update_data.items():
+        if key in ('photos', 'documents'):
+            value = _fleet_asset_json_file_id_list(value)
         setattr(asset, key, value)
     asset.updated_at = datetime.now(timezone.utc)
 
@@ -610,20 +679,77 @@ def get_asset_logs(
     ).order_by(FleetLog.log_date.desc()).all()
 
 
+def _fleet_audit_ctx_for_work_order(wo: WorkOrder, extra: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    """Audit context for work orders; includes fleet_asset_id when the WO is tied to a fleet asset."""
+    ctx: Dict[str, Any] = dict(extra or ())
+    wn = getattr(wo, "work_order_number", None)
+    if wn is not None and "work_order_number" not in ctx:
+        ctx["work_order_number"] = wn
+    if getattr(wo, "entity_type", None) == "fleet" and getattr(wo, "entity_id", None):
+        ctx["fleet_asset_id"] = str(wo.entity_id)
+    return ctx
+
+
 @router.get("/assets/{asset_id}/history")
 def get_fleet_asset_history(
     asset_id: uuid.UUID,
-    limit: int = Query(200, ge=1, le=400),
+    limit: int = Query(300, ge=1, le=500),
     db: Session = Depends(get_db),
     _=Depends(require_permissions("fleet:read")),
 ):
     """
-    Unified timeline: check-out/return (assignments), audit trail (edits from fleet API),
-    and other fleet_logs. Assignments supersede duplicate assignment/return fleet_logs.
+    Unified timeline: assignments (when no matching assignment audit), fleet_logs,
+    and audit logs for this asset (edits, inspections, schedules, compliance, work orders, files).
     """
     asset = db.query(FleetAsset).filter(FleetAsset.id == asset_id).first()
     if not asset:
         raise HTTPException(status_code=404, detail="Fleet asset not found")
+
+    aid_str = str(asset_id)
+    wo_ids = [
+        row[0]
+        for row in db.query(WorkOrder.id)
+        .filter(WorkOrder.entity_type == "fleet", WorkOrder.entity_id == asset_id)
+        .all()
+    ]
+
+    try:
+        bind = db.get_bind()
+        dialect = getattr(bind.dialect, "name", "") or ""
+    except Exception:
+        dialect = ""
+
+    fleet_entity_match = and_(AuditLog.entity_type == "fleet_asset", AuditLog.entity_id == asset_id)
+    audit_parts = [fleet_entity_match]
+    if dialect == "postgresql":
+        audit_parts.append(AuditLog.context.op("->>")("fleet_asset_id") == aid_str)
+        if wo_ids:
+            audit_parts.append(and_(AuditLog.entity_type == "work_order", AuditLog.entity_id.in_(wo_ids)))
+            audit_parts.append(
+                and_(
+                    AuditLog.entity_type == "work_order_file",
+                    AuditLog.context.op("->>")("work_order_id").in_([str(w) for w in wo_ids]),
+                )
+            )
+    else:
+        fleet_ctx = func.json_extract(AuditLog.context, "$.fleet_asset_id")
+        audit_parts.append(fleet_ctx == aid_str)
+        if wo_ids:
+            wos = [str(w) for w in wo_ids]
+            audit_parts.append(and_(AuditLog.entity_type == "work_order", AuditLog.entity_id.in_(wo_ids)))
+            wof_wo = func.json_extract(AuditLog.context, "$.work_order_id")
+            audit_parts.append(and_(AuditLog.entity_type == "work_order_file", wof_wo.in_(wos)))
+
+    audit_rows = (
+        db.query(AuditLog)
+        .filter(or_(*audit_parts))
+        .order_by(AuditLog.timestamp_utc.desc())
+        .limit(450)
+        .all()
+    )
+    audit_assignment_ids = {
+        str(row.entity_id) for row in audit_rows if (row.entity_type or "") == "asset_assignment"
+    }
 
     items: List[dict] = []
 
@@ -639,6 +765,8 @@ def get_fleet_asset_history(
     has_assignments = len(assignments) > 0
 
     for a in assignments:
+        if str(a.id) in audit_assignment_ids:
+            continue
         assignee = (a.assigned_to_name or "").strip() or (
             get_user_display(db, a.assigned_to_user_id) if a.assigned_to_user_id else "Unknown"
         )
@@ -678,30 +806,14 @@ def get_fleet_asset_history(
                 }
             )
 
-    audit_rows = (
-        db.query(AuditLog)
-        .filter(AuditLog.entity_type == "fleet_asset", AuditLog.entity_id == asset_id)
-        .order_by(AuditLog.timestamp_utc.desc())
-        .limit(120)
-        .all()
-    )
-    action_labels = {
-        "CREATE": "Vehicle created",
-        "UPDATE": "Vehicle updated",
-        "DELETE": "Vehicle deleted",
-    }
     for row in audit_rows:
-        act = (row.action or "").upper()
-        title = action_labels.get(act, f"Audit: {row.action}")
-        cf = (row.context or {}).get("changed_fields") if isinstance(row.context, dict) else None
-        subtitle = f"Fields: {', '.join(cf)}" if isinstance(cf, list) and cf else None
         items.append(
             {
                 "id": f"audit-{row.id}",
                 "source": "audit",
-                "kind": act.lower() or "audit",
-                "title": title,
-                "subtitle": subtitle,
+                "kind": (row.action or "audit").lower(),
+                "title": (row.entity_type or "audit").replace("_", " "),
+                "subtitle": None,
                 "detail": None,
                 "occurred_at": row.timestamp_utc.isoformat() if row.timestamp_utc else "",
                 "actor_id": str(row.actor_id) if row.actor_id else None,
@@ -710,6 +822,9 @@ def get_fleet_asset_history(
                 "log_subtype": None,
                 "audit_action": row.action,
                 "changes_json": row.changes_json,
+                "entity_type": row.entity_type,
+                "entity_id": str(row.entity_id) if row.entity_id is not None else None,
+                "audit_context": row.context,
             }
         )
 
@@ -1351,18 +1466,35 @@ def get_user_assets(
     current_assignments = []
     for a in current_assignments_q.all():
         asset_name = ""
+        fleet_asset_type = None
         if a.equipment_id:
             eq = db.query(Equipment).filter(Equipment.id == a.equipment_id).first()
             asset_name = eq.name if eq else ""
         elif a.fleet_asset_id:
             fa = db.query(FleetAsset).filter(FleetAsset.id == a.fleet_asset_id).first()
             asset_name = fa.name if fa else ""
+            fleet_asset_type = fa.asset_type if fa else None
+        odometer_out = a.odometer_out
+        if odometer_out is not None:
+            try:
+                odometer_out = int(odometer_out)
+            except (TypeError, ValueError):
+                odometer_out = None
+        hours_out = a.hours_out
+        if hours_out is not None:
+            try:
+                hours_out = float(hours_out)
+            except (TypeError, ValueError):
+                hours_out = None
         current_assignments.append({
             "id": str(a.id),
             "target_type": a.target_type,
             "equipment_id": str(a.equipment_id) if a.equipment_id else None,
             "fleet_asset_id": str(a.fleet_asset_id) if a.fleet_asset_id else None,
             "asset_name": asset_name,
+            "fleet_asset_type": fleet_asset_type,
+            "odometer_out": odometer_out,
+            "hours_out": hours_out,
             "assigned_at": a.assigned_at.isoformat() if a.assigned_at else None,
             "expected_return_at": a.expected_return_at.isoformat() if a.expected_return_at else None,
         })
@@ -1974,13 +2106,18 @@ def get_inspection_schedules_calendar(
             elif getattr(insp, "inspection_type", None) == "mechanical":
                 mech_id = insp.id
         unit_number = None
+        fleet_asset_name = None
         if s.fleet_asset:
-            unit_number = getattr(s.fleet_asset, "unit_number", None) or getattr(s.fleet_asset, "name", None)
+            fa = s.fleet_asset
+            fleet_asset_name = (fa.name or "").strip() or None
+            un = getattr(fa, "unit_number", None)
+            if un is not None and str(un).strip():
+                unit_number = str(un).strip()
         out.append(
             InspectionScheduleCalendarItem(
                 id=s.id,
                 scheduled_at=s.scheduled_at,
-                fleet_asset_name=s.fleet_asset.name if s.fleet_asset else None,
+                fleet_asset_name=fleet_asset_name,
                 unit_number=unit_number,
                 status=s.status,
                 body_inspection_id=body_id,
@@ -2607,6 +2744,19 @@ def list_work_orders(
     )
 
 
+def _work_order_expected_end_at(wo: WorkOrder):
+    """Calendar/UI: baseline + estimated_duration_minutes (not persisted). Baseline = scheduled_start or check-in or created."""
+    est = getattr(wo, "estimated_duration_minutes", None)
+    if est is None or est < 0:
+        return None
+    base = wo.scheduled_start_at or wo.check_in_at or wo.created_at
+    if base is None:
+        return None
+    if base.tzinfo is None:
+        base = base.replace(tzinfo=timezone.utc)
+    return base + timedelta(minutes=int(est))
+
+
 @router.get("/work-orders/calendar", response_model=List[WorkOrderCalendarItem])
 def get_work_orders_calendar(
     start: str = Query(..., description="Start date or datetime (ISO)"),
@@ -2651,8 +2801,13 @@ def get_work_orders_calendar(
         if wo.entity_type == "fleet":
             asset = db.query(FleetAsset).filter(FleetAsset.id == wo.entity_id).first()
             if asset:
-                asset_name = asset.name or asset.unit_number or asset.license_plate or str(wo.entity_id)
-                unit_number = getattr(asset, "unit_number", None) or getattr(asset, "name", None)
+                asset_name = (asset.name or "").strip() or None
+                if not asset_name:
+                    asset_name = " ".join(x for x in (asset.make, asset.model) if x) or None
+                if not asset_name:
+                    asset_name = (asset.license_plate or "").strip() or str(wo.entity_id)
+                un = getattr(asset, "unit_number", None)
+                unit_number = str(un).strip() if un is not None and str(un).strip() else None
         if wo.origin_source == "inspection" and wo.origin_id:
             insp = db.query(FleetInspection).filter(FleetInspection.id == wo.origin_id).first()
             if insp and getattr(insp, "inspection_type", None) in ("body", "mechanical"):
@@ -2662,8 +2817,8 @@ def get_work_orders_calendar(
             work_order_number=wo.work_order_number,
             entity_id=wo.entity_id,
             scheduled_start_at=wo.scheduled_start_at,
-            scheduled_end_at=wo.scheduled_end_at,
             estimated_duration_minutes=wo.estimated_duration_minutes,
+            expected_end_at=_work_order_expected_end_at(wo),
             status=wo.status,
             asset_name=asset_name,
             unit_number=unit_number,
@@ -2729,9 +2884,11 @@ def create_work_order(
     _=Depends(require_permissions("work_orders:write"))
 ):
     """Create a new work order"""
+    payload = work_order.dict()
+    payload["status"] = WorkOrderStatus.open.value
     wo = WorkOrder(
         work_order_number=generate_work_order_number(db),
-        **work_order.dict(),
+        **payload,
         assigned_by_user_id=user.id if work_order.assigned_to_user_id else None,
         created_by=user.id,
     )
@@ -2747,6 +2904,18 @@ def create_work_order(
             db
         )
     
+    _log_work_order_activity(
+        db,
+        wo.id,
+        "work_order_created",
+        details={
+            "work_order_number": wo.work_order_number,
+            "entity_type": wo.entity_type,
+            "entity_id": str(wo.entity_id) if getattr(wo, "entity_id", None) else None,
+            "status": wo.status,
+        },
+        created_by=user.id,
+    )
     db.commit()
     db.refresh(wo)
     audit_fleet(
@@ -2756,7 +2925,7 @@ def create_work_order(
         entity_id=wo.id,
         action="CREATE",
         changes_json={"after": snapshot_work_order(wo)},
-        context={"entity_type": wo.entity_type, "entity_id": str(wo.entity_id)},
+        context=_fleet_audit_ctx_for_work_order(wo, {"entity_type": wo.entity_type, "entity_id": str(wo.entity_id)}),
     )
     return wo
 
@@ -2775,7 +2944,6 @@ def update_work_order(
         raise HTTPException(status_code=404, detail="Work order not found")
 
     before_wo = snapshot_work_order(wo)
-    old_status = wo.status
     old_costs = (wo.costs or {}).copy()
     if isinstance(old_costs.get("labor"), list):
         old_costs["labor"] = list(wo.costs.get("labor") or [])
@@ -2785,6 +2953,13 @@ def update_work_order(
         old_costs["other"] = list(wo.costs.get("other") or [])
 
     update_data = work_order_update.dict(exclude_unset=True)
+    restricted_fields = {"status", "check_in_at", "check_out_at"}
+    blocked_fields = [k for k in restricted_fields if k in update_data]
+    if blocked_fields:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Use dedicated workflow endpoints for {', '.join(blocked_fields)} updates",
+        )
     for key, value in update_data.items():
         setattr(wo, key, value)
 
@@ -2802,14 +2977,6 @@ def update_work_order(
         wo.closed_at = datetime.now(timezone.utc)
 
     wo.updated_at = datetime.now(timezone.utc)
-
-    # Activity log: status change
-    if "status" in update_data and wo.status != old_status:
-        _log_work_order_activity(
-            db, work_order_id, "status_changed",
-            details={"old_status": old_status, "new_status": wo.status},
-            created_by=user.id,
-        )
 
     # Activity log: cost add/remove (diff old_costs vs wo.costs)
     if "costs" in update_data and wo.costs:
@@ -2836,6 +3003,21 @@ def update_work_order(
                         created_by=user.id,
                     )
 
+    after_wo_for_activity = snapshot_work_order(wo)
+    diff_for_activity = compute_diff(before_wo, after_wo_for_activity) or {}
+    changed_fields_for_activity = [
+        field for field in diff_for_activity.keys()
+        if field not in {"status", "costs"}
+    ]
+    if changed_fields_for_activity:
+        _log_work_order_activity(
+            db,
+            work_order_id,
+            "work_order_updated",
+            details={"changed_fields": changed_fields_for_activity},
+            created_by=user.id,
+        )
+
     db.commit()
     db.refresh(wo)
     after_wo = snapshot_work_order(wo)
@@ -2848,7 +3030,7 @@ def update_work_order(
             entity_id=wo.id,
             action="UPDATE",
             changes_json={"before": before_wo, "after": after_wo},
-            context={"work_order_number": wo.work_order_number, "changed_fields": list(diff_wo.keys())},
+            context=_fleet_audit_ctx_for_work_order(wo, {"changed_fields": list(diff_wo.keys())}),
         )
     return wo
 
@@ -2856,28 +3038,34 @@ def update_work_order(
 @router.put("/work-orders/{work_order_id}/status", response_model=WorkOrderResponse)
 def update_work_order_status(
     work_order_id: uuid.UUID,
-    status: WorkOrderStatus = Body(...),
+    body: WorkOrderStatusUpdateRequest,
     db: Session = Depends(get_db),
     user=Depends(get_current_user),
     _=Depends(require_permissions("work_orders:write"))
 ):
-    """Update work order status"""
+    """Update work order status through the allowed manual transitions."""
     wo = db.query(WorkOrder).filter(WorkOrder.id == work_order_id).first()
     if not wo:
         raise HTTPException(status_code=404, detail="Work order not found")
 
     before_flow = snapshot_work_order_flow(wo)
     old_status = wo.status
-    wo.status = status.value
-    if status == WorkOrderStatus.closed and not wo.closed_at:
-        wo.closed_at = datetime.now(timezone.utc)
+    reason = _normalize_reason(body.reason)
+    _assert_manual_status_transition_allowed(old_status, body.status.value, reason)
+    wo.status = body.status.value
+    if wo.status != WorkOrderStatus.closed.value:
+        wo.closed_at = None
     wo.updated_at = datetime.now(timezone.utc)
 
-    _log_work_order_activity(
-        db, work_order_id, "status_changed",
-        details={"old_status": old_status, "new_status": wo.status},
-        created_by=user.id,
-    )
+    if old_status != wo.status:
+        details: Dict[str, Any] = {"old_status": old_status, "new_status": wo.status}
+        if reason:
+            details["reason"] = reason
+        _log_work_order_activity(
+            db, work_order_id, "status_changed",
+            details=details,
+            created_by=user.id,
+        )
 
     db.commit()
     db.refresh(wo)
@@ -2891,7 +3079,7 @@ def update_work_order_status(
             entity_id=wo.id,
             action="UPDATE",
             changes_json={"before": before_flow, "after": after_flow},
-            context={"work_order_number": wo.work_order_number, "via": "status_endpoint"},
+            context=_fleet_audit_ctx_for_work_order(wo, {"via": "status_endpoint"}),
         )
     return wo
 
@@ -2899,52 +3087,37 @@ def update_work_order_status(
 @router.put("/work-orders/{work_order_id}/check-in", response_model=WorkOrderResponse)
 def work_order_check_in(
     work_order_id: uuid.UUID,
-    body: dict = Body(default_factory=dict),
+    body: WorkOrderCheckInRequest,
     db: Session = Depends(get_db),
     user=Depends(get_current_user),
     _=Depends(require_permissions("work_orders:write"))
 ):
-    """Register vehicle check-in (entrada). Sets check_in_at, optional scheduled_end_at (expected completion date)/odometer/hours, and status to in_progress."""
+    """Register vehicle check-in (entrada). Sets check_in_at, optional odometer/hours, and status to in_progress."""
     wo = db.query(WorkOrder).filter(WorkOrder.id == work_order_id).first()
     if not wo:
         raise HTTPException(status_code=404, detail="Work order not found")
+    if wo.status != WorkOrderStatus.open.value:
+        raise HTTPException(status_code=409, detail="Check-in is only allowed when work order is pending")
     before_flow = snapshot_work_order_flow(wo)
-    if body.get("estimated_duration_minutes") is not None:
-        wo.estimated_duration_minutes = int(body["estimated_duration_minutes"])
-    scheduled_end_at = body.get("scheduled_end_at")
-    if scheduled_end_at is not None:
-        try:
-            raw = str(scheduled_end_at).strip()
-            if "T" in raw or " " in raw:
-                wo.scheduled_end_at = datetime.fromisoformat(raw.replace("Z", "+00:00"))
-            else:
-                wo.scheduled_end_at = datetime.fromisoformat(raw + "T23:59:59")
-            if wo.scheduled_end_at.tzinfo is None:
-                wo.scheduled_end_at = wo.scheduled_end_at.replace(tzinfo=timezone.utc)
-        except Exception:
-            pass  # keep existing if parse fails
-    check_in_at = body.get("check_in_at")
+    wo.scheduled_end_at = None
+    check_in_at = body.check_in_at
     if check_in_at is not None:
-        wo.check_in_at = (
-            datetime.fromisoformat(str(check_in_at).replace("Z", "+00:00"))
-            if isinstance(check_in_at, str) else check_in_at
-        )
+        wo.check_in_at = check_in_at
         if wo.check_in_at.tzinfo is None:
             wo.check_in_at = wo.check_in_at.replace(tzinfo=timezone.utc)
     else:
         wo.check_in_at = datetime.now(timezone.utc)
     old_status = wo.status
-    if wo.status == "open":
-        wo.status = "in_progress"
-    if body.get("odometer_reading") is not None:
-        wo.odometer_reading = int(body["odometer_reading"])
-    if body.get("hours_reading") is not None:
-        wo.hours_reading = float(body["hours_reading"])
-    if wo.entity_type == "fleet" and (body.get("odometer_reading") is not None or body.get("hours_reading") is not None):
+    wo.status = WorkOrderStatus.in_progress.value
+    if body.odometer_reading is not None:
+        wo.odometer_reading = int(body.odometer_reading)
+    if body.hours_reading is not None:
+        wo.hours_reading = float(body.hours_reading)
+    if wo.entity_type == "fleet" and (body.odometer_reading is not None or body.hours_reading is not None):
         update_fleet_asset_last_service(
             wo.entity_id,
-            int(body["odometer_reading"]) if body.get("odometer_reading") is not None else None,
-            float(body["hours_reading"]) if body.get("hours_reading") is not None else None,
+            int(body.odometer_reading) if body.odometer_reading is not None else None,
+            float(body.hours_reading) if body.hours_reading is not None else None,
             db,
         )
     wo.updated_at = datetime.now(timezone.utc)
@@ -2955,6 +3128,17 @@ def work_order_check_in(
             details={"old_status": old_status, "new_status": wo.status},
             created_by=user.id,
         )
+    _log_work_order_activity(
+        db,
+        work_order_id,
+        "check_in",
+        details={
+            "check_in_at": wo.check_in_at.isoformat() if wo.check_in_at else None,
+            "odometer_reading": wo.odometer_reading,
+            "hours_reading": wo.hours_reading,
+        },
+        created_by=user.id,
+    )
 
     db.commit()
     db.refresh(wo)
@@ -2968,7 +3152,7 @@ def work_order_check_in(
             entity_id=wo.id,
             action="UPDATE",
             changes_json={"before": before_flow, "after": after_flow},
-            context={"work_order_number": wo.work_order_number, "via": "check_in"},
+            context=_fleet_audit_ctx_for_work_order(wo, {"via": "check_in"}),
         )
     return wo
 
@@ -2976,7 +3160,7 @@ def work_order_check_in(
 @router.put("/work-orders/{work_order_id}/check-out", response_model=WorkOrderResponse)
 def work_order_check_out(
     work_order_id: uuid.UUID,
-    body: dict = Body(default_factory=dict),
+    body: WorkOrderCheckOutRequest,
     db: Session = Depends(get_db),
     user=Depends(get_current_user),
     _=Depends(require_permissions("work_orders:write"))
@@ -2985,30 +3169,29 @@ def work_order_check_out(
     wo = db.query(WorkOrder).filter(WorkOrder.id == work_order_id).first()
     if not wo:
         raise HTTPException(status_code=404, detail="Work order not found")
+    if wo.status not in {WorkOrderStatus.in_progress.value, WorkOrderStatus.pending_parts.value}:
+        raise HTTPException(status_code=409, detail="Check-out is only allowed for in-progress or awaiting-parts work orders")
     before_flow = snapshot_work_order_flow(wo)
     old_status = wo.status
-    wo.status = "closed"
+    wo.status = WorkOrderStatus.closed.value
     if not wo.closed_at:
         wo.closed_at = datetime.now(timezone.utc)
-    check_out_at = body.get("check_out_at")
+    check_out_at = body.check_out_at
     if check_out_at is not None:
-        wo.check_out_at = (
-            datetime.fromisoformat(str(check_out_at).replace("Z", "+00:00"))
-            if isinstance(check_out_at, str) else check_out_at
-        )
+        wo.check_out_at = check_out_at
         if wo.check_out_at.tzinfo is None:
             wo.check_out_at = wo.check_out_at.replace(tzinfo=timezone.utc)
     else:
         wo.check_out_at = datetime.now(timezone.utc)
-    if body.get("odometer_reading") is not None:
-        wo.odometer_reading = int(body["odometer_reading"])
-    if body.get("hours_reading") is not None:
-        wo.hours_reading = float(body["hours_reading"])
-    if wo.entity_type == "fleet" and (body.get("odometer_reading") is not None or body.get("hours_reading") is not None):
+    if body.odometer_reading is not None:
+        wo.odometer_reading = int(body.odometer_reading)
+    if body.hours_reading is not None:
+        wo.hours_reading = float(body.hours_reading)
+    if wo.entity_type == "fleet" and (body.odometer_reading is not None or body.hours_reading is not None):
         update_fleet_asset_last_service(
             wo.entity_id,
-            int(body["odometer_reading"]) if body.get("odometer_reading") is not None else None,
-            float(body["hours_reading"]) if body.get("hours_reading") is not None else None,
+            int(body.odometer_reading) if body.odometer_reading is not None else None,
+            float(body.hours_reading) if body.hours_reading is not None else None,
             db,
         )
     wo.updated_at = datetime.now(timezone.utc)
@@ -3017,6 +3200,17 @@ def work_order_check_out(
         _log_work_order_activity(
             db, work_order_id, "status_changed",
             details={"old_status": old_status, "new_status": wo.status},
+            created_by=user.id,
+        )
+    _log_work_order_activity(
+        db,
+        work_order_id,
+        "check_out",
+        details={
+            "check_out_at": wo.check_out_at.isoformat() if wo.check_out_at else None,
+            "odometer_reading": wo.odometer_reading,
+            "hours_reading": wo.hours_reading,
+        },
         created_by=user.id,
     )
 
@@ -3032,7 +3226,66 @@ def work_order_check_out(
             entity_id=wo.id,
             action="UPDATE",
             changes_json={"before": before_flow, "after": after_flow},
-            context={"work_order_number": wo.work_order_number, "via": "check_out"},
+            context=_fleet_audit_ctx_for_work_order(wo, {"via": "check_out"}),
+        )
+    return wo
+
+
+@router.put("/work-orders/{work_order_id}/reopen", response_model=WorkOrderResponse)
+def reopen_work_order(
+    work_order_id: uuid.UUID,
+    body: WorkOrderReopenRequest,
+    db: Session = Depends(get_db),
+    user=Depends(get_current_user),
+    _=Depends(require_permissions("work_orders:write")),
+):
+    """Reopen cancelled or not-approved work orders back to pending."""
+    wo = db.query(WorkOrder).filter(WorkOrder.id == work_order_id).first()
+    if not wo:
+        raise HTTPException(status_code=404, detail="Work order not found")
+    if wo.status not in {WorkOrderStatus.cancelled.value, WorkOrderStatus.not_approved.value}:
+        raise HTTPException(status_code=409, detail="Only cancelled or not-approved work orders can be reopened")
+    if not is_admin(user, db):
+        raise HTTPException(status_code=403, detail="Only admins can reopen work orders")
+    reason = _normalize_reason(body.reason)
+    if not reason:
+        raise HTTPException(status_code=400, detail="Reopen reason is required")
+
+    before_flow = snapshot_work_order_flow(wo)
+    old_status = wo.status
+    wo.status = WorkOrderStatus.open.value
+    wo.closed_at = None
+    wo.check_out_at = None
+    wo.updated_at = datetime.now(timezone.utc)
+
+    _log_work_order_activity(
+        db,
+        work_order_id,
+        "work_order_reopened",
+        details={"old_status": old_status, "new_status": wo.status, "reason": reason},
+        created_by=user.id,
+    )
+    _log_work_order_activity(
+        db,
+        work_order_id,
+        "status_changed",
+        details={"old_status": old_status, "new_status": wo.status, "reason": reason},
+        created_by=user.id,
+    )
+
+    db.commit()
+    db.refresh(wo)
+    after_flow = snapshot_work_order_flow(wo)
+    diff_ro = compute_diff(before_flow, after_flow)
+    if diff_ro:
+        audit_fleet(
+            db,
+            user,
+            entity_type="work_order",
+            entity_id=wo.id,
+            action="UPDATE",
+            changes_json={"before": before_flow, "after": after_flow},
+            context=_fleet_audit_ctx_for_work_order(wo, {"via": "reopen", "reason": reason}),
         )
     return wo
 
@@ -3051,9 +3304,20 @@ def assign_work_order(
         raise HTTPException(status_code=404, detail="Work order not found")
 
     before_flow = snapshot_work_order_flow(wo)
+    old_assigned_to = wo.assigned_to_user_id
     wo.assigned_to_user_id = assigned_to
     wo.assigned_by_user_id = user.id
     wo.updated_at = datetime.now(timezone.utc)
+    _log_work_order_activity(
+        db,
+        work_order_id,
+        "assignment_changed",
+        details={
+            "old_assigned_to_user_id": str(old_assigned_to) if old_assigned_to else None,
+            "new_assigned_to_user_id": str(assigned_to),
+        },
+        created_by=user.id,
+    )
 
     db.commit()
     db.refresh(wo)
@@ -3067,7 +3331,7 @@ def assign_work_order(
             entity_id=wo.id,
             action="UPDATE",
             changes_json={"before": before_flow, "after": after_flow},
-            context={"work_order_number": wo.work_order_number, "via": "assign"},
+            context=_fleet_audit_ctx_for_work_order(wo, {"via": "assign"}),
         )
     return wo
 
@@ -3086,6 +3350,9 @@ def delete_work_order(
     snap = snapshot_work_order(wo)
     db.delete(wo)
     db.commit()
+    del_ctx: Dict[str, Any] = {"work_order_number": snap.get("work_order_number")}
+    if snap.get("entity_type") == "fleet" and snap.get("entity_id"):
+        del_ctx["fleet_asset_id"] = str(snap["entity_id"])
     audit_fleet(
         db,
         user,
@@ -3093,7 +3360,7 @@ def delete_work_order(
         entity_id=work_order_id,
         action="DELETE",
         changes_json={"deleted": snap},
-        context={"work_order_number": snap.get("work_order_number")},
+        context=del_ctx,
     )
     return {"message": "Work order deleted"}
 
@@ -3255,7 +3522,7 @@ def attach_work_order_file(
             "original_name": original_name or fo.original_name,
             "file_object_id": str(fo_id),
         },
-        context={"work_order_id": str(work_order_id)},
+        context=_fleet_audit_ctx_for_work_order(wo, {"work_order_id": str(work_order_id)}),
     )
     fo = db.query(FileObject).filter(FileObject.id == fo_id).first()
     return _work_order_file_item(row, fo) if fo else {"id": str(row.id), "file_object_id": file_object_id, "category": category, "original_name": original_name, "is_legacy": False}
@@ -3274,6 +3541,9 @@ def update_work_order_file(
     worf = db.query(WorkOrderFile).filter(WorkOrderFile.id == file_id, WorkOrderFile.work_order_id == work_order_id).first()
     if not worf:
         raise HTTPException(status_code=404, detail="File not found")
+    wo = db.query(WorkOrder).filter(WorkOrder.id == work_order_id).first()
+    if not wo:
+        raise HTTPException(status_code=404, detail="Work order not found")
     before_f = {"category": worf.category, "original_name": worf.original_name}
     if category is not None and category not in WORK_ORDER_FILE_CATEGORIES:
         raise HTTPException(status_code=400, detail=f"category must be one of: {WORK_ORDER_FILE_CATEGORIES}")
@@ -3281,10 +3551,21 @@ def update_work_order_file(
         worf.category = category
     if original_name is not None:
         worf.original_name = original_name
-    db.commit()
-    db.refresh(worf)
     after_f = {"category": worf.category, "original_name": worf.original_name}
     diff_f = compute_diff(before_f, after_f)
+    if diff_f:
+        _log_work_order_activity(
+            db,
+            work_order_id,
+            "file_updated",
+            details={
+                "before": before_f,
+                "after": after_f,
+            },
+            created_by=user.id,
+        )
+    db.commit()
+    db.refresh(worf)
     if diff_f:
         audit_fleet(
             db,
@@ -3293,7 +3574,7 @@ def update_work_order_file(
             entity_id=worf.id,
             action="UPDATE",
             changes_json={"before": before_f, "after": after_f},
-            context={"work_order_id": str(work_order_id)},
+            context=_fleet_audit_ctx_for_work_order(wo, {"work_order_id": str(work_order_id)}),
         )
     fo = db.query(FileObject).filter(FileObject.id == worf.file_object_id).first()
     return _work_order_file_item(worf, fo) if fo else {"id": str(worf.id), "file_object_id": str(worf.file_object_id), "category": worf.category, "original_name": worf.original_name, "is_legacy": False}
@@ -3326,7 +3607,7 @@ def delete_work_order_legacy_file(
                 entity_id=work_order_id,
                 action="UPDATE",
                 changes_json={"legacy_file_removed": True, "category": "outros", "file_object_id": fid_str},
-                context={"work_order_id": str(work_order_id)},
+                context=_fleet_audit_ctx_for_work_order(wo, {"work_order_id": str(work_order_id)}),
             )
             return {"message": "File removed"}
     if category == "photos" and wo.photos:
@@ -3345,7 +3626,7 @@ def delete_work_order_legacy_file(
             entity_id=work_order_id,
             action="UPDATE",
             changes_json={"legacy_file_removed": True, "category": "photos", "file_object_id": fid_str},
-            context={"work_order_id": str(work_order_id)},
+            context=_fleet_audit_ctx_for_work_order(wo, {"work_order_id": str(work_order_id)}),
         )
         return {"message": "File removed"}
     raise HTTPException(status_code=404, detail="File not found")
@@ -3361,6 +3642,9 @@ def delete_work_order_file(
 ):
     worf = db.query(WorkOrderFile).filter(WorkOrderFile.id == file_id, WorkOrderFile.work_order_id == work_order_id).first()
     if worf:
+        wo = db.query(WorkOrder).filter(WorkOrder.id == work_order_id).first()
+        if not wo:
+            raise HTTPException(status_code=404, detail="Work order not found")
         details = {"category": worf.category, "original_name": worf.original_name}
         _log_work_order_activity(db, work_order_id, "file_removed", details=details, created_by=user.id)
         wid = worf.id
@@ -3373,7 +3657,7 @@ def delete_work_order_file(
             entity_id=wid,
             action="DELETE",
             changes_json={"deleted": details},
-            context={"work_order_id": str(work_order_id)},
+            context=_fleet_audit_ctx_for_work_order(wo, {"work_order_id": str(work_order_id)}),
         )
         return {"message": "File removed"}
     raise HTTPException(status_code=404, detail="File not found")

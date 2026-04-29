@@ -10,8 +10,8 @@ type WorkOrderCalendarEvent = {
   work_order_number: string;
   entity_id: string;
   scheduled_start_at: string | null;
-  scheduled_end_at: string | null;
   estimated_duration_minutes: number | null;
+  expected_end_at: string | null;
   status: string;
   asset_name: string | null;
   unit_number?: string | null;
@@ -40,6 +40,28 @@ function formatTime(iso: string | null): string {
   return d.toLocaleTimeString('en-CA', { hour: '2-digit', minute: '2-digit', hour12: true });
 }
 
+/** Primary line = vehicle name; second line = unit (when set). Falls back to `fallback` if no name. */
+function calendarVehicleLines(
+  vehicleName: string | null | undefined,
+  unit: string | null | undefined,
+  fallback: string
+): { primary: string; unitLine: string | null; hint: string } {
+  const name = (vehicleName ?? '').trim();
+  const u = (unit ?? '').trim();
+  let primary = name;
+  let unitLine: string | null = null;
+  if (u) {
+    if (name) {
+      unitLine = `Unit ${u}`;
+    } else {
+      primary = `Unit ${u}`;
+    }
+  }
+  if (!primary) primary = fallback;
+  const hint = [name || null, u ? `Unit ${u}` : null].filter(Boolean).join(' · ') || fallback;
+  return { primary, unitLine, hint };
+}
+
 /** YYYY-MM-DD strings from start to end inclusive */
 function daysInRange(startStr: string, endStr: string): string[] {
   const out: string[] = [];
@@ -54,9 +76,20 @@ function daysInRange(startStr: string, endStr: string): string[] {
   return out;
 }
 
-type FleetServiceCalendarProps = { embedView?: boolean };
+type FleetServiceCalendarProps = {
+  embedView?: boolean;
+  /** When set with onScheduleNew, shows “Schedule new inspection” next to month navigation (dashed style, same as safety calendar). */
+  canSchedule?: boolean;
+  onScheduleNew?: () => void;
+  onNewWorkOrder?: () => void;
+};
 
-export default function FleetServiceCalendar({ embedView }: FleetServiceCalendarProps) {
+export default function FleetServiceCalendar({
+  embedView,
+  canSchedule = true,
+  onScheduleNew,
+  onNewWorkOrder,
+}: FleetServiceCalendarProps) {
   const navigate = useNavigate();
   const [currentMonth, setCurrentMonth] = useState<Date>(() => {
     const d = new Date();
@@ -95,7 +128,7 @@ export default function FleetServiceCalendar({ embedView }: FleetServiceCalendar
     woEvents.forEach((ev) => {
       const wo: WorkOrderCalendarEvent = { type: 'work_order', ...ev };
       const startDateIso = wo.scheduled_start_at || wo.check_in_at || wo.created_at;
-      const endDateIso = wo.scheduled_end_at ?? wo.check_out_at ?? startDateIso;
+      const endDateIso = wo.expected_end_at ?? wo.check_out_at ?? startDateIso;
       if (!startDateIso) return;
       const startDay = dayKey(startDateIso);
       const endDay = endDateIso ? dayKey(endDateIso) : startDay;
@@ -153,7 +186,7 @@ export default function FleetServiceCalendar({ embedView }: FleetServiceCalendar
   const getDayEvents = (date: Date | null) => (date ? eventsByDay[formatDateLocal(date)] || [] : []);
 
   return (
-    <div className={embedView ? '' : 'p-4 max-w-6xl mx-auto'}>
+    <div className={embedView ? 'space-y-4' : 'p-4 max-w-6xl mx-auto space-y-4'}>
       {!embedView && (
         <div className="flex flex-wrap items-center justify-between gap-4 mb-6">
           <h1 className="text-xl font-bold text-gray-900">Schedule</h1>
@@ -194,19 +227,46 @@ export default function FleetServiceCalendar({ embedView }: FleetServiceCalendar
             </span>
             {isLoading && <span className="text-xs text-gray-400">Loading…</span>}
           </div>
-          <div className="flex items-center gap-1">
+          <div className="flex items-center gap-1 flex-wrap justify-end">
             <button
+              type="button"
               onClick={goToPreviousMonth}
               className="px-2.5 py-1.5 rounded-lg border border-gray-200 hover:bg-gray-50 text-xs font-medium text-gray-600"
             >
               ←
             </button>
-            <button onClick={goToToday} className="px-2.5 py-1.5 rounded-lg border border-gray-200 hover:bg-gray-50 text-xs font-medium text-gray-600">
+            <button
+              type="button"
+              onClick={goToToday}
+              className="px-2.5 py-1.5 rounded-lg border border-gray-200 hover:bg-gray-50 text-xs font-medium text-gray-600"
+            >
               Today
             </button>
-            <button onClick={goToNextMonth} className="px-2.5 py-1.5 rounded-lg border border-gray-200 hover:bg-gray-50 text-xs font-medium text-gray-600">
+            <button
+              type="button"
+              onClick={goToNextMonth}
+              className="px-2.5 py-1.5 rounded-lg border border-gray-200 hover:bg-gray-50 text-xs font-medium text-gray-600"
+            >
               →
             </button>
+            {canSchedule && onScheduleNew && (
+              <button
+                type="button"
+                onClick={onScheduleNew}
+                className="ml-1 px-2.5 py-1.5 rounded-lg border border-dashed border-gray-300 text-gray-600 hover:bg-gray-50 hover:border-gray-400 text-xs font-medium transition-colors"
+              >
+                Schedule new inspection
+              </button>
+            )}
+            {canSchedule && onNewWorkOrder && (
+              <button
+                type="button"
+                onClick={onNewWorkOrder}
+                className="ml-1 px-2.5 py-1.5 rounded-lg border border-dashed border-gray-300 text-gray-600 hover:bg-gray-50 hover:border-gray-400 text-xs font-medium transition-colors"
+              >
+                New work order
+              </button>
+            )}
           </div>
         </div>
 
@@ -233,36 +293,94 @@ export default function FleetServiceCalendar({ embedView }: FleetServiceCalendar
                   {date.getDate()}
                 </span>
                 <div className="mt-1 space-y-1 flex-1 overflow-auto">
-                  {dayEvents.slice(0, 5).map((ev) =>
-                    ev.type === 'work_order' ? (
-                      <button
-                        key={`wo-${ev.id}-${date.toISOString()}`}
-                        type="button"
-                        onClick={() => navigate(`/fleet/work-orders/${ev.id}`)}
-                        className={`w-full text-left text-xs px-2 py-1.5 rounded-lg border truncate block shadow-sm ${
-                          ev.work_order_type === 'mechanical'
-                            ? 'bg-green-50 hover:bg-green-100 border-green-200/80 text-green-900'
-                            : ev.work_order_type === 'body'
-                              ? 'bg-blue-50 hover:bg-blue-100 border-blue-200/80 text-blue-900'
-                              : 'bg-gray-100 hover:bg-gray-200 border-gray-200/80 text-gray-800'
-                        }`}
-                        title={`${ev.work_order_type === 'mechanical' ? 'Mechanical' : ev.work_order_type === 'body' ? 'Body' : 'Service'} ${ev.work_order_number} ${ev.unit_number || ev.asset_name || ''}`}
-                      >
-                        <span className="font-medium block truncate">{ev.unit_number || ev.asset_name || ev.work_order_number}</span>
-                      </button>
-                    ) : (
+                  {dayEvents.slice(0, 5).map((ev) => {
+                    if (ev.type === 'work_order') {
+                      const woLines = calendarVehicleLines(ev.asset_name, ev.unit_number, ev.work_order_number);
+                      return (
+                        <button
+                          key={`wo-${ev.id}-${date.toISOString()}`}
+                          type="button"
+                          onClick={() => navigate(`/fleet/work-orders/${ev.id}`)}
+                          className={`w-full text-left text-xs px-2 py-1.5 rounded-lg border shadow-sm ${
+                            ev.work_order_type === 'mechanical'
+                              ? 'bg-green-50 hover:bg-green-100 border-green-200/80 text-green-900'
+                              : ev.work_order_type === 'body'
+                                ? 'bg-blue-50 hover:bg-blue-100 border-blue-200/80 text-blue-900'
+                                : 'bg-gray-100 hover:bg-gray-200 border-gray-200/80 text-gray-800'
+                          }`}
+                          title={`Work order · ${
+                            ev.work_order_type === 'mechanical'
+                              ? 'Mechanical'
+                              : ev.work_order_type === 'body'
+                                ? 'Body'
+                                : 'Service'
+                          } · ${ev.work_order_number} — ${woLines.hint}`}
+                        >
+                          <div className="flex items-start gap-1.5 min-w-0">
+                            <div className="flex flex-col items-center gap-0.5 shrink-0" title="Work order">
+                              <span className="rounded px-1 py-0.5 text-[9px] font-bold uppercase tracking-wide bg-white/80 border border-black/10 text-gray-700 w-full text-center">
+                                WO
+                              </span>
+                              {ev.work_order_type === 'mechanical' && (
+                                <span
+                                  className="rounded px-1 py-0.5 text-[8px] font-bold uppercase tracking-wide leading-none bg-white/80 border border-green-400/50 text-green-900"
+                                  title="Mechanical"
+                                >
+                                  MECH
+                                </span>
+                              )}
+                              {ev.work_order_type === 'body' && (
+                                <span
+                                  className="rounded px-1 py-0.5 text-[8px] font-bold uppercase tracking-wide leading-none bg-white/80 border border-blue-400/50 text-blue-900"
+                                  title="Body (exterior)"
+                                >
+                                  BODY
+                                </span>
+                              )}
+                            </div>
+                            <div className="min-w-0 flex-1 text-left">
+                              <span className="font-medium block leading-snug line-clamp-2">{woLines.primary}</span>
+                              {woLines.unitLine && (
+                                <span className="text-[10px] leading-tight block opacity-85 line-clamp-1">
+                                  {woLines.unitLine}
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                        </button>
+                      );
+                    }
+                    const inLines = calendarVehicleLines(ev.fleet_asset_name, ev.unit_number, 'Scheduled');
+                    return (
                       <button
                         key={`sched-${ev.id}`}
                         type="button"
                         onClick={() => navigate(`/fleet/inspection-schedules/${ev.id}`)}
-                        className="w-full text-left text-xs px-2 py-1.5 rounded-lg bg-green-50 hover:bg-green-100 border border-green-200/60 truncate block shadow-sm"
-                        title={`Inspection ${ev.unit_number || ev.fleet_asset_name || 'Scheduled'} ${formatTime(ev.scheduled_at)}`}
+                        className="w-full text-left text-xs px-2 py-1.5 rounded-lg border shadow-sm bg-violet-50 hover:bg-violet-100 border-violet-200/80 text-violet-900"
+                        title={`Inspection schedule — ${inLines.hint} · ${formatTime(ev.scheduled_at)}`}
                       >
-                        <span className="font-medium text-green-800 block truncate">{ev.unit_number || ev.fleet_asset_name || 'Scheduled'}</span>
-                        <span className="text-green-600 text-[10px]">{formatTime(ev.scheduled_at)}</span>
+                        <div className="flex items-start gap-1.5 min-w-0">
+                          <span
+                            className="shrink-0 rounded px-1 py-0.5 text-[9px] font-bold uppercase tracking-wide bg-white/80 border border-violet-300/60 text-violet-800"
+                            title="Inspection"
+                          >
+                            INSP
+                          </span>
+                          <div className="min-w-0 flex-1 text-left">
+                            <span className="font-medium text-violet-900 block leading-snug line-clamp-2">
+                              {inLines.primary}
+                            </span>
+                            {inLines.unitLine && (
+                              <span className="text-violet-700/90 text-[10px] leading-tight block line-clamp-1">
+                                {inLines.unitLine}
+                              </span>
+                            )}
+                            <span className="text-violet-600 text-[10px] block">{formatTime(ev.scheduled_at)}</span>
+                          </div>
+                        </div>
                       </button>
-                    )
-                  )}
+                    );
+                  })}
                   {dayEvents.length > 5 && (
                     <span className="text-[10px] text-gray-500">+{dayEvents.length - 5} more</span>
                   )}
@@ -273,11 +391,30 @@ export default function FleetServiceCalendar({ embedView }: FleetServiceCalendar
         </div>
 
         {!isLoading && (
-          <div className="mt-3 pt-3 border-t border-gray-100 flex flex-wrap items-center justify-center gap-4 text-[10px] text-gray-500">
-            <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded bg-green-100 border border-green-200"></span> Mechanical</span>
-            <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded bg-blue-100 border border-blue-200"></span> Body</span>
-            <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded bg-gray-200 border border-gray-300"></span> Other</span>
-            <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded bg-green-50 border border-green-200"></span> Scheduled</span>
+          <div className="mt-3 pt-3 border-t border-gray-100 flex flex-col sm:flex-row flex-wrap items-stretch sm:items-center justify-center gap-3 sm:gap-6 text-[10px] text-gray-500">
+            <div className="flex flex-wrap items-center justify-center gap-3 sm:gap-4">
+              <span className="text-[9px] font-bold uppercase tracking-wide text-gray-400 w-full sm:w-auto text-center sm:text-left sm:mr-1">Work orders</span>
+              <span className="flex items-center gap-1.5">
+                <span className="w-2.5 h-2.5 rounded bg-green-100 border border-green-200 shrink-0" />
+                <span>Mechanical</span>
+              </span>
+              <span className="flex items-center gap-1.5">
+                <span className="w-2.5 h-2.5 rounded bg-blue-100 border border-blue-200 shrink-0" />
+                <span>Body</span>
+              </span>
+              <span className="flex items-center gap-1.5">
+                <span className="w-2.5 h-2.5 rounded bg-gray-200 border border-gray-300 shrink-0" />
+                <span>Other</span>
+              </span>
+            </div>
+            <div className="hidden sm:block w-px h-4 bg-gray-200 self-center" aria-hidden />
+            <div className="flex flex-wrap items-center justify-center gap-2">
+              <span className="text-[9px] font-bold uppercase tracking-wide text-violet-600/90 mr-1">Inspections</span>
+              <span className="flex items-center gap-1.5">
+                <span className="w-2.5 h-2.5 rounded bg-violet-100 border border-violet-200 shrink-0" />
+                <span>Scheduled (INSP)</span>
+              </span>
+            </div>
           </div>
         )}
 

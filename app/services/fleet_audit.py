@@ -61,19 +61,51 @@ def audit_fleet(
 
 
 def snapshot_fleet_asset(a: "FleetAsset") -> Dict[str, Any]:
+    """Full field snapshot for audit diffs (aligned with FleetAssetUpdate / UI)."""
+    def sid(x: Any) -> Optional[str]:
+        return str(x) if x is not None else None
+
+    hna = getattr(a, "hours_next_due_at", None)
+    hours_next = float(hna) if hna is not None else None
+
     return {
+        "asset_type": getattr(a, "asset_type", None),
         "name": getattr(a, "name", None),
         "unit_number": getattr(a, "unit_number", None),
-        "asset_type": getattr(a, "asset_type", None),
-        "status": getattr(a, "status", None),
-        "license_plate": getattr(a, "license_plate", None),
         "vin": getattr(a, "vin", None),
+        "license_plate": getattr(a, "license_plate", None),
         "make": getattr(a, "make", None),
         "model": getattr(a, "model", None),
-        "driver_id": str(a.driver_id) if getattr(a, "driver_id", None) else None,
-        "division_id": str(a.division_id) if getattr(a, "division_id", None) else None,
+        "year": getattr(a, "year", None),
+        "condition": getattr(a, "condition", None),
+        "body_style": getattr(a, "body_style", None),
+        "division_id": sid(getattr(a, "division_id", None)),
         "odometer_current": getattr(a, "odometer_current", None),
+        "odometer_last_service": getattr(a, "odometer_last_service", None),
         "hours_current": getattr(a, "hours_current", None),
+        "hours_last_service": getattr(a, "hours_last_service", None),
+        "status": getattr(a, "status", None),
+        "driver_id": sid(getattr(a, "driver_id", None)),
+        "icbc_registration_no": getattr(a, "icbc_registration_no", None),
+        "vancouver_decals": getattr(a, "vancouver_decals", None),
+        "ferry_length": getattr(a, "ferry_length", None),
+        "gvw_kg": getattr(a, "gvw_kg", None),
+        "fuel_type": getattr(a, "fuel_type", None),
+        "vehicle_type": getattr(a, "vehicle_type", None),
+        "driver_contact_phone": getattr(a, "driver_contact_phone", None),
+        "yard_location": getattr(a, "yard_location", None),
+        "gvw_value": getattr(a, "gvw_value", None),
+        "gvw_unit": getattr(a, "gvw_unit", None),
+        "equipment_type_label": getattr(a, "equipment_type_label", None),
+        "odometer_next_due_at": getattr(a, "odometer_next_due_at", None),
+        "odometer_noted_issues": getattr(a, "odometer_noted_issues", None),
+        "propane_sticker_cert": getattr(a, "propane_sticker_cert", None),
+        "propane_sticker_date": _dt(getattr(a, "propane_sticker_date", None)),
+        "hours_next_due_at": hours_next,
+        "hours_noted_issues": getattr(a, "hours_noted_issues", None),
+        "photos": getattr(a, "photos", None),
+        "documents": getattr(a, "documents", None),
+        "notes": (getattr(a, "notes", None) or "")[:2000] if getattr(a, "notes", None) else None,
     }
 
 
@@ -100,7 +132,6 @@ def snapshot_work_order(wo: "WorkOrder") -> Dict[str, Any]:
         "status": getattr(wo, "status", None),
         "assigned_to_user_id": str(wo.assigned_to_user_id) if getattr(wo, "assigned_to_user_id", None) else None,
         "scheduled_start_at": _dt(getattr(wo, "scheduled_start_at", None)),
-        "scheduled_end_at": _dt(getattr(wo, "scheduled_end_at", None)),
         "check_in_at": _dt(getattr(wo, "check_in_at", None)),
         "check_out_at": _dt(getattr(wo, "check_out_at", None)),
         "closed_at": _dt(getattr(wo, "closed_at", None)),

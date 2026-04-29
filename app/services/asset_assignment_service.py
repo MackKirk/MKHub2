@@ -4,6 +4,7 @@ Uses the unified asset_assignments table.
 """
 import uuid
 from datetime import datetime, timezone
+from decimal import Decimal
 from typing import Optional
 
 from sqlalchemy.orm import Session
@@ -20,6 +21,49 @@ from ..schemas.fleet import (
     AssetAssignmentReturnRequest,
     AssetAssignmentRead,
 )
+
+
+def _coerce_int_optional(v) -> Optional[int]:
+    """Normalize odometer-like values from ORM/JSON (int, str, Decimal, bool)."""
+    if v is None:
+        return None
+    if isinstance(v, bool):
+        return None
+    if isinstance(v, int):
+        return v
+    if isinstance(v, Decimal):
+        return int(v)
+    try:
+        return int(float(str(v)))
+    except (TypeError, ValueError):
+        return None
+
+
+def _coerce_float_optional(v) -> Optional[float]:
+    if v is None:
+        return None
+    if isinstance(v, bool):
+        return None
+    if isinstance(v, (int, float)):
+        return float(v)
+    if isinstance(v, Decimal):
+        return float(v)
+    try:
+        return float(str(v))
+    except (TypeError, ValueError):
+        return None
+
+
+def _photo_ids_for_json(ids: Optional[list]) -> Optional[list[str]]:
+    """JSON columns require native JSON types; Pydantic may pass UUID instances."""
+    if not ids:
+        return None
+    out: list[str] = []
+    for x in ids:
+        if x is None:
+            continue
+        out.append(str(x) if isinstance(x, uuid.UUID) else str(x))
+    return out if out else None
 
 
 def _to_read(a: AssetAssignment) -> AssetAssignmentRead:
@@ -67,6 +111,15 @@ def create_assignment_for_fleet_asset(
     )
     if open_assignment:
         raise ValueError("Asset already has an open assignment")
+    if (
+        getattr(asset, "asset_type", None) == "vehicle"
+        and payload.odometer_out is not None
+        and getattr(asset, "odometer_current", None) is not None
+        and int(payload.odometer_out) < int(asset.odometer_current)
+    ):
+        raise ValueError(
+            "Odometer out cannot be less than the asset's current odometer reading"
+        )
     assigned_at = payload.assigned_at or datetime.now(timezone.utc)
     assignment = AssetAssignment(
         target_type="fleet",
@@ -82,7 +135,7 @@ def create_assignment_for_fleet_asset(
         odometer_out=payload.odometer_out,
         hours_out=payload.hours_out,
         notes_out=payload.notes_out,
-        photos_out=payload.photos_out,
+        photos_out=_photo_ids_for_json(payload.photos_out),
     )
     db.add(assignment)
     db.flush()
@@ -127,15 +180,33 @@ def return_assignment_for_fleet_asset(
     )
     if not assignment:
         raise ValueError("No open assignment found for this asset")
-    if payload.odometer_in is not None and assignment.odometer_out is not None:
-        if payload.odometer_in < assignment.odometer_out:
-            raise ValueError("odometer_in must be >= odometer_out")
+    asset = db.query(FleetAsset).filter(FleetAsset.id == asset_id).first()
+    if not asset:
+        raise ValueError("Fleet asset not found")
+
+    odom_in = _coerce_int_optional(payload.odometer_in)
+    odom_out = _coerce_int_optional(assignment.odometer_out)
+    hrs_in = _coerce_float_optional(payload.hours_in)
+    hrs_out = _coerce_float_optional(assignment.hours_out)
+
+    atype = getattr(asset, "asset_type", None) or ""
+    if atype == "vehicle":
+        if odom_in is not None and odom_out is not None and odom_in < odom_out:
+            raise ValueError(
+                "Odometer in cannot be less than odometer out recorded at check-out"
+            )
+    elif atype in ("heavy_machinery", "other"):
+        if hrs_in is not None and hrs_out is not None and hrs_in < hrs_out:
+            raise ValueError(
+                "Hours in cannot be less than hours out recorded at check-out"
+            )
+
     now = datetime.now(timezone.utc)
     assignment.returned_at = now
-    assignment.odometer_in = payload.odometer_in
-    assignment.hours_in = payload.hours_in
+    assignment.odometer_in = odom_in if odom_in is not None else payload.odometer_in
+    assignment.hours_in = hrs_in if hrs_in is not None else payload.hours_in
     assignment.notes_in = payload.notes_in
-    assignment.photos_in = payload.photos_in
+    assignment.photos_in = _photo_ids_for_json(payload.photos_in)
     db.flush()
     name = assignment.assigned_to_name or (str(assignment.assigned_to_user_id) if assignment.assigned_to_user_id else "Unknown")
     log = FleetLog(
@@ -147,7 +218,6 @@ def return_assignment_for_fleet_asset(
         created_by=user_id,
     )
     db.add(log)
-    asset = db.query(FleetAsset).filter(FleetAsset.id == asset_id).first()
     if asset:
         asset.driver_id = None
         asset.updated_at = now
@@ -190,7 +260,7 @@ def create_assignment_for_equipment_item(
         odometer_out=payload.odometer_out,
         hours_out=payload.hours_out,
         notes_out=payload.notes_out,
-        photos_out=payload.photos_out,
+        photos_out=_photo_ids_for_json(payload.photos_out),
     )
     db.add(assignment)
     db.flush()
@@ -225,12 +295,19 @@ def return_assignment_for_equipment_item(
     )
     if not assignment:
         raise ValueError("No open assignment found for this equipment")
+    hrs_in = _coerce_float_optional(payload.hours_in)
+    hrs_out = _coerce_float_optional(assignment.hours_out)
+    if hrs_in is not None and hrs_out is not None and hrs_in < hrs_out:
+        raise ValueError(
+            "Hours in cannot be less than hours out recorded at check-out"
+        )
+    odom_in = _coerce_int_optional(payload.odometer_in)
     now = datetime.now(timezone.utc)
     assignment.returned_at = now
-    assignment.odometer_in = payload.odometer_in
-    assignment.hours_in = payload.hours_in
+    assignment.odometer_in = odom_in if odom_in is not None else payload.odometer_in
+    assignment.hours_in = hrs_in if hrs_in is not None else payload.hours_in
     assignment.notes_in = payload.notes_in
-    assignment.photos_in = payload.photos_in
+    assignment.photos_in = _photo_ids_for_json(payload.photos_in)
     db.flush()
     name = assignment.assigned_to_name or (str(assignment.assigned_to_user_id) if assignment.assigned_to_user_id else "Unknown")
     log = EquipmentLog(

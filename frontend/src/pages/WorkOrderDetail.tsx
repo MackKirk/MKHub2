@@ -1,11 +1,28 @@
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
-import { useState, useRef, useEffect, useMemo } from 'react';
+import { useState, useRef, useEffect, useMemo, useId } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api, withFileAccessToken } from '@/lib/api';
 import toast from 'react-hot-toast';
 import { WORK_ORDER_STATUS_OPTIONS, WORK_ORDER_STATUS_COLORS, WORK_ORDER_STATUS_LABELS, URGENCY_COLORS } from '@/lib/fleetBadges';
 import FleetDetailHeader from '@/components/FleetDetailHeader';
 import OverlayPortal from '@/components/OverlayPortal';
+import { useConfirm } from '@/components/ConfirmProvider';
+import {
+  SAFETY_MODAL_OVERLAY,
+  SAFETY_MODAL_BTN_CANCEL,
+  SAFETY_MODAL_BTN_PRIMARY,
+  SAFETY_MODAL_FIELD_LABEL,
+  SafetyFormModalLayout,
+} from '@/components/safety/SafetyModalChrome';
+
+const WO_MODAL_FIELD_INPUT =
+  'w-full border border-gray-200 rounded-lg px-3 py-2 text-sm shadow-sm focus:border-brand-red focus:outline-none focus:ring-2 focus:ring-red-500/15';
+
+const WO_CHECKOUT_PRIMARY_BTN =
+  'px-3 py-1.5 rounded-lg text-sm font-medium text-white bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 disabled:cursor-not-allowed';
+
+const WO_REOPEN_PRIMARY_BTN =
+  'px-3 py-1.5 rounded-lg text-sm font-medium text-white bg-amber-600 hover:bg-amber-700 disabled:opacity-50 disabled:cursor-not-allowed';
 
 type CostItem = {
   id?: string;
@@ -38,7 +55,6 @@ type WorkOrder = {
   updated_at?: string;
   closed_at?: string;
   scheduled_start_at?: string | null;
-  scheduled_end_at?: string | null;
   estimated_duration_minutes?: number | null;
   check_in_at?: string | null;
   check_out_at?: string | null;
@@ -49,13 +65,43 @@ type WorkOrder = {
   hours_reading?: number | null;
 };
 
+const MANUAL_STATUS_TRANSITIONS: Record<string, string[]> = {
+  open: ['not_approved', 'cancelled'],
+  in_progress: ['pending_parts', 'cancelled'],
+  pending_parts: ['in_progress', 'cancelled'],
+};
+
 export default function WorkOrderDetail() {
   const { id } = useParams();
   const nav = useNavigate();
   const location = useLocation();
   const queryClient = useQueryClient();
+  const confirm = useConfirm();
+  const woCheckInModalTitleId = useId();
+  const woCheckOutModalTitleId = useId();
+  const woStatusReasonModalTitleId = useId();
+  const woReopenModalTitleId = useId();
   const [showCostForm, setShowCostForm] = useState(false);
   const [editingCost, setEditingCost] = useState<{ category: string; index?: number } | null>(null);
+  const [showCheckInModal, setShowCheckInModal] = useState(false);
+  const [showCheckOutModal, setShowCheckOutModal] = useState(false);
+  const [showStatusReasonModal, setShowStatusReasonModal] = useState(false);
+  const [showReopenModal, setShowReopenModal] = useState(false);
+  const [statusTarget, setStatusTarget] = useState<string>('');
+  const [statusReason, setStatusReason] = useState('');
+  const [reopenReason, setReopenReason] = useState('');
+  const [checkInForm, setCheckInForm] = useState({
+    check_in_at: '',
+    odometer_reading: '',
+    hours_reading: '',
+  });
+  const [checkOutForm, setCheckOutForm] = useState({
+    check_out_at: '',
+    odometer_reading: '',
+    hours_reading: '',
+  });
+  const [descriptionEditing, setDescriptionEditing] = useState(false);
+  const [descriptionDraft, setDescriptionDraft] = useState('');
 
   const searchParams = new URLSearchParams(location.search);
   const initialTab = (searchParams.get('tab') as 'general' | 'costs' | 'files' | 'activity' | null) || 'general';
@@ -87,20 +133,6 @@ export default function WorkOrderDetail() {
   const { data: me } = useQuery({ queryKey: ['me'], queryFn: () => api<any>('GET', '/auth/me') });
   const isAdmin = (me?.roles || []).includes('admin');
 
-  const updateWorkOrderMutation = useMutation({
-    mutationFn: async (data: any) => {
-      return api('PUT', `/fleet/work-orders/${id}`, data);
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['workOrder', id] });
-      queryClient.invalidateQueries({ queryKey: ['workOrderActivity', id] });
-      toast.success('Work order updated');
-    },
-    onError: () => {
-      toast.error('Failed to update work order');
-    },
-  });
-
   const updateCostsMutation = useMutation({
     mutationFn: async (newCosts: any) => {
       return api('PUT', `/fleet/work-orders/${id}`, { costs: newCosts });
@@ -117,8 +149,34 @@ export default function WorkOrderDetail() {
     },
   });
 
+  const updateDescriptionMutation = useMutation({
+    mutationFn: async (description: string) => api('PUT', `/fleet/work-orders/${id}`, { description }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['workOrder', id] });
+      queryClient.invalidateQueries({ queryKey: ['workOrderActivity', id] });
+      toast.success('Description updated');
+      setDescriptionEditing(false);
+    },
+    onError: () => toast.error('Failed to update description'),
+  });
+
+  const updateStatusMutation = useMutation({
+    mutationFn: async (payload: { status: string; reason?: string }) => {
+      return api('PUT', `/fleet/work-orders/${id}/status`, payload);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['workOrder', id] });
+      queryClient.invalidateQueries({ queryKey: ['workOrderActivity', id] });
+      toast.success('Status updated');
+      setShowStatusReasonModal(false);
+      setStatusTarget('');
+      setStatusReason('');
+    },
+    onError: (e: any) => toast.error(e?.message || 'Failed to update status'),
+  });
+
   const checkInMutation = useMutation({
-    mutationFn: async (body: { check_in_at?: string; odometer_reading?: number; hours_reading?: number; estimated_duration_minutes?: number; scheduled_end_at?: string }) => {
+    mutationFn: async (body: { check_in_at?: string; odometer_reading?: number; hours_reading?: number }) => {
       return api('PUT', `/fleet/work-orders/${id}/check-in`, body);
     },
     onSuccess: () => {
@@ -127,6 +185,32 @@ export default function WorkOrderDetail() {
       toast.success('Work order started');
     },
     onError: () => toast.error('Failed to start work order'),
+  });
+
+  const checkOutMutation = useMutation({
+    mutationFn: async (body: { check_out_at?: string; odometer_reading?: number; hours_reading?: number }) => {
+      return api('PUT', `/fleet/work-orders/${id}/check-out`, body);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['workOrder', id] });
+      queryClient.invalidateQueries({ queryKey: ['workOrderActivity', id] });
+      toast.success('Work order finished');
+      setShowCheckOutModal(false);
+      setCheckOutForm({ check_out_at: '', odometer_reading: '', hours_reading: '' });
+    },
+    onError: (e: any) => toast.error(e?.message || 'Failed to finish work order'),
+  });
+
+  const reopenMutation = useMutation({
+    mutationFn: async (payload: { reason: string }) => api('PUT', `/fleet/work-orders/${id}/reopen`, payload),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['workOrder', id] });
+      queryClient.invalidateQueries({ queryKey: ['workOrderActivity', id] });
+      toast.success('Work order reopened');
+      setShowReopenModal(false);
+      setReopenReason('');
+    },
+    onError: (e: any) => toast.error(e?.message || 'Failed to reopen work order'),
   });
 
   const deleteWorkOrderMutation = useMutation({
@@ -165,6 +249,11 @@ export default function WorkOrderDetail() {
   };
 
   const canEditCosts = ['open', 'in_progress', 'pending_parts'].includes(workOrder?.status ?? '');
+  const canStartService = workOrder?.status === 'open';
+  const canFinishService = ['in_progress', 'pending_parts'].includes(workOrder?.status ?? '');
+  const canReopen = ['cancelled', 'not_approved'].includes(workOrder?.status ?? '') && isAdmin;
+  const allowedManualStatusTargets = MANUAL_STATUS_TRANSITIONS[workOrder?.status ?? ''] || [];
+  const statusOptionsForCurrent = workOrder ? [workOrder.status, ...allowedManualStatusTargets] : [];
 
   const removeCostItem = (category: 'labor' | 'parts' | 'other', index: number) => {
     const currentCosts = workOrder?.costs || {};
@@ -183,6 +272,71 @@ export default function WorkOrderDetail() {
       day: 'numeric',
     });
   }, []);
+
+  const goBackFromWorkOrder = () => {
+    if (window.history.length > 1) {
+      nav(-1);
+    } else {
+      nav('/fleet/work-orders');
+    }
+  };
+
+  const toIsoStringOrUndefined = (value: string): string | undefined => {
+    const trimmed = value.trim();
+    if (!trimmed) return undefined;
+    const dt = new Date(trimmed);
+    if (Number.isNaN(dt.getTime())) return undefined;
+    return dt.toISOString();
+  };
+
+  const parseNumberOrUndefined = (value: string): number | undefined => {
+    const trimmed = value.trim();
+    if (!trimmed) return undefined;
+    const parsed = Number(trimmed);
+    return Number.isFinite(parsed) ? parsed : undefined;
+  };
+
+  const submitCheckIn = () => {
+    const payload: { check_in_at?: string; odometer_reading?: number; hours_reading?: number } = {};
+    const checkInAt = toIsoStringOrUndefined(checkInForm.check_in_at);
+    const odometer = parseNumberOrUndefined(checkInForm.odometer_reading);
+    const hours = parseNumberOrUndefined(checkInForm.hours_reading);
+    if (checkInAt) payload.check_in_at = checkInAt;
+    if (odometer !== undefined) payload.odometer_reading = Math.max(0, Math.trunc(odometer));
+    if (hours !== undefined) payload.hours_reading = Math.max(0, hours);
+    checkInMutation.mutate(payload, {
+      onSuccess: () => {
+        setShowCheckInModal(false);
+        setCheckInForm({
+          check_in_at: '',
+          odometer_reading: '',
+          hours_reading: '',
+        });
+      },
+    });
+  };
+
+  const submitCheckOut = () => {
+    const payload: { check_out_at?: string; odometer_reading?: number; hours_reading?: number } = {};
+    const checkOutAt = toIsoStringOrUndefined(checkOutForm.check_out_at);
+    const odometer = parseNumberOrUndefined(checkOutForm.odometer_reading);
+    const hours = parseNumberOrUndefined(checkOutForm.hours_reading);
+    if (checkOutAt) payload.check_out_at = checkOutAt;
+    if (odometer !== undefined) payload.odometer_reading = Math.max(0, Math.trunc(odometer));
+    if (hours !== undefined) payload.hours_reading = Math.max(0, hours);
+    checkOutMutation.mutate(payload);
+  };
+
+  const requestStatusChange = (nextStatus: string) => {
+    if (!workOrder || nextStatus === workOrder.status) return;
+    if (nextStatus === 'cancelled') {
+      setStatusTarget(nextStatus);
+      setStatusReason('');
+      setShowStatusReasonModal(true);
+      return;
+    }
+    updateStatusMutation.mutate({ status: nextStatus });
+  };
 
   if (!isValidId) {
     return <div className="p-4">Invalid work order ID</div>;
@@ -204,13 +358,22 @@ export default function WorkOrderDetail() {
   return (
     <div className="space-y-4 min-w-0 overflow-x-hidden">
       <FleetDetailHeader
-        onBack={() => nav('/fleet/work-orders')}
+        onBack={goBackFromWorkOrder}
         title={<span className="text-sm font-semibold text-gray-900">{workOrder.work_order_number}</span>}
         subtitle={<span className="capitalize">{workOrder.entity_type}</span>}
         actions={isAdmin ? (
           <button
             type="button"
-            onClick={() => window.confirm('Delete this work order permanently?') && deleteWorkOrderMutation.mutate()}
+            onClick={async () => {
+              const result = await confirm({
+                title: 'Delete work order',
+                message: 'Are you sure you want to delete this work order permanently? This action cannot be undone.',
+                confirmText: 'Delete',
+                cancelText: 'Cancel',
+              });
+              if (result !== 'confirm') return;
+              deleteWorkOrderMutation.mutate();
+            }}
             disabled={deleteWorkOrderMutation.isPending}
             className="px-3 py-1.5 rounded-lg border border-red-200 bg-red-50 text-red-700 text-xs font-medium hover:bg-red-100 disabled:opacity-50"
           >
@@ -227,7 +390,7 @@ export default function WorkOrderDetail() {
 
       {/* Hero section - asset photo + key info (project-like) */}
       <div className="rounded-xl border bg-white overflow-hidden p-4">
-        <div className="flex gap-4 items-start">
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-start">
           {/* Left: asset image when fleet */}
           <div className="w-48 flex-shrink-0">
             <div className="w-48 h-36 rounded-xl border border-gray-200 overflow-hidden bg-gray-100">
@@ -252,47 +415,83 @@ export default function WorkOrderDetail() {
               </button>
             )}
           </div>
-          {/* Right: info grid */}
-          <div className="flex-1 min-w-0 grid grid-cols-2 sm:grid-cols-3 gap-x-6 gap-y-4">
-            <div>
-              <span className="text-[10px] font-medium text-gray-500 uppercase tracking-wide">Number</span>
-              <div className="text-sm font-semibold text-gray-900 mt-0.5">{workOrder.work_order_number}</div>
-            </div>
-            <div>
-              <span className="text-[10px] font-medium text-gray-500 uppercase tracking-wide">Status</span>
-              <div className="mt-1">
-                <select
-                  value={workOrder.status}
-                  onChange={(e) => updateWorkOrderMutation.mutate({ status: e.target.value })}
-                  disabled={updateWorkOrderMutation.isPending}
-                  className={`block w-full max-w-[180px] rounded-lg border border-gray-300 px-2.5 py-1.5 text-sm font-medium focus:ring-2 focus:ring-brand-red focus:border-brand-red ${statusColors[workOrder.status] || 'bg-gray-100 text-gray-800'}`}
-                >
-                  {WORK_ORDER_STATUS_OPTIONS.map((opt) => (
-                    <option key={opt.value} value={opt.value}>{opt.label}</option>
-                  ))}
-                </select>
+          {/* Right: info + actions */}
+          <div className="flex-1 min-w-0 lg:flex lg:items-center lg:justify-between lg:gap-4">
+            <div className="grid flex-1 grid-cols-2 sm:grid-cols-3 gap-x-6 gap-y-4">
+              <div>
+                <span className="text-[10px] font-medium text-gray-500 uppercase tracking-wide">Number</span>
+                <div className="text-sm font-semibold text-gray-900 mt-0.5">{workOrder.work_order_number}</div>
+              </div>
+              <div>
+                <span className="text-[10px] font-medium text-gray-500 uppercase tracking-wide">Status</span>
+                <div className="mt-1">
+                  <select
+                    value={workOrder.status}
+                    onChange={(e) => requestStatusChange(e.target.value)}
+                    disabled={updateStatusMutation.isPending || statusOptionsForCurrent.length <= 1}
+                    className={`block w-full max-w-[180px] rounded-lg border border-gray-300 px-2.5 py-1.5 text-sm font-medium focus:ring-2 focus:ring-brand-red focus:border-brand-red ${statusColors[workOrder.status] || 'bg-gray-100 text-gray-800'}`}
+                  >
+                    {WORK_ORDER_STATUS_OPTIONS.filter((opt) => statusOptionsForCurrent.includes(opt.value)).map((opt) => (
+                      <option key={opt.value} value={opt.value}>{opt.label}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+              <div>
+                <span className="text-[10px] font-medium text-gray-500 uppercase tracking-wide">Category</span>
+                <div className="text-sm font-semibold text-gray-900 mt-0.5 capitalize">{workOrder.category}</div>
+              </div>
+              <div>
+                <span className="text-[10px] font-medium text-gray-500 uppercase tracking-wide">Urgency</span>
+                <div className="mt-0.5">
+                  <span className={`inline-block px-2 py-0.5 rounded text-xs font-medium ${urgencyColors[workOrder.urgency] || 'bg-gray-100 text-gray-800'}`}>
+                    {workOrder.urgency}
+                  </span>
+                </div>
+              </div>
+              <div>
+                <span className="text-[10px] font-medium text-gray-500 uppercase tracking-wide">Entity</span>
+                <div className="text-sm font-semibold text-gray-900 mt-0.5 capitalize">{workOrder.entity_type}</div>
+              </div>
+              <div>
+                <span className="text-[10px] font-medium text-gray-500 uppercase tracking-wide">Created</span>
+                <div className="text-sm font-semibold text-gray-900 mt-0.5">{new Date(workOrder.created_at).toLocaleDateString()}</div>
               </div>
             </div>
-            <div>
-              <span className="text-[10px] font-medium text-gray-500 uppercase tracking-wide">Category</span>
-              <div className="text-sm font-semibold text-gray-900 mt-0.5 capitalize">{workOrder.category}</div>
-            </div>
-            <div>
-              <span className="text-[10px] font-medium text-gray-500 uppercase tracking-wide">Urgency</span>
-              <div className="mt-0.5">
-                <span className={`inline-block px-2 py-0.5 rounded text-xs font-medium ${urgencyColors[workOrder.urgency] || 'bg-gray-100 text-gray-800'}`}>
-                  {workOrder.urgency}
-                </span>
+
+            {(canStartService || canFinishService || canReopen) && (
+              <div className="mt-4 lg:mt-0 flex flex-wrap gap-3 lg:justify-end lg:self-center lg:shrink-0">
+                {canStartService && (
+                  <button
+                    type="button"
+                    onClick={() => setShowCheckInModal(true)}
+                    className="h-24 w-24 sm:h-28 sm:w-28 rounded-xl border-2 border-sky-400 bg-sky-50 text-sky-950 text-sm font-semibold shadow-sm hover:bg-sky-100 active:scale-[0.98] transition flex flex-col items-center justify-center gap-1 px-1 py-2 text-center leading-tight"
+                  >
+                    <span>Check-in</span>
+                    <span className="text-[10px] font-semibold text-sky-700 normal-case">Start Service</span>
+                  </button>
+                )}
+                {canFinishService && (
+                  <button
+                    type="button"
+                    onClick={() => setShowCheckOutModal(true)}
+                    className="h-24 w-24 sm:h-28 sm:w-28 rounded-xl border-2 border-emerald-600 bg-emerald-50 text-emerald-950 text-sm font-semibold shadow-sm hover:bg-emerald-100 active:scale-[0.98] transition flex flex-col items-center justify-center gap-1 px-1 py-2 text-center leading-tight"
+                  >
+                    <span>Check-out</span>
+                    <span className="text-[10px] font-semibold text-emerald-800 normal-case">End Service</span>
+                  </button>
+                )}
+                {canReopen && (
+                  <button
+                    type="button"
+                    onClick={() => setShowReopenModal(true)}
+                    className="h-24 w-24 sm:h-28 sm:w-28 rounded-xl border border-amber-200 bg-amber-50 text-amber-800 text-sm font-semibold hover:bg-amber-100 active:scale-[0.98] transition"
+                  >
+                    Reopen
+                  </button>
+                )}
               </div>
-            </div>
-            <div>
-              <span className="text-[10px] font-medium text-gray-500 uppercase tracking-wide">Entity</span>
-              <div className="text-sm font-semibold text-gray-900 mt-0.5 capitalize">{workOrder.entity_type}</div>
-            </div>
-            <div>
-              <span className="text-[10px] font-medium text-gray-500 uppercase tracking-wide">Created</span>
-              <div className="text-sm font-semibold text-gray-900 mt-0.5">{new Date(workOrder.created_at).toLocaleDateString()}</div>
-            </div>
+            )}
           </div>
         </div>
       </div>
@@ -322,8 +521,66 @@ export default function WorkOrderDetail() {
         {tab === 'general' && (
           <div className="space-y-6">
             <div className="rounded-xl border border-gray-200 bg-gray-50/50 p-4">
-              <span className="text-[10px] font-medium text-gray-500 uppercase tracking-wide">Description</span>
-              <div className="font-medium text-gray-900 mt-1">{workOrder.description}</div>
+              <div className="flex items-center gap-1.5">
+                <span className="text-[10px] font-medium text-gray-500 uppercase tracking-wide">Description</span>
+                {canEditCosts && !descriptionEditing && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setDescriptionDraft(workOrder.description ?? '');
+                      setDescriptionEditing(true);
+                    }}
+                    className="text-gray-400 hover:text-[#7f1010] transition-colors p-0.5"
+                    title="Edit description"
+                    aria-label="Edit description"
+                  >
+                    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                    </svg>
+                  </button>
+                )}
+              </div>
+              {descriptionEditing ? (
+                <>
+                  <textarea
+                    value={descriptionDraft}
+                    onChange={(e) => setDescriptionDraft(e.target.value)}
+                    rows={5}
+                    className="mt-2 w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-brand-red focus:border-brand-red resize-y min-h-[5rem]"
+                    placeholder="Description…"
+                  />
+                  <div className="mt-2 flex flex-wrap items-center justify-end gap-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setDescriptionEditing(false);
+                        setDescriptionDraft('');
+                      }}
+                      className="px-3 py-1.5 rounded-lg text-sm font-medium text-gray-700 border border-gray-200 hover:bg-white"
+                      disabled={updateDescriptionMutation.isPending}
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const t = descriptionDraft.trim();
+                        if (!t) {
+                          toast.error('Description cannot be empty');
+                          return;
+                        }
+                        updateDescriptionMutation.mutate(t);
+                      }}
+                      disabled={updateDescriptionMutation.isPending}
+                      className="px-3 py-1.5 rounded-lg text-sm font-medium text-white bg-brand-red hover:bg-red-700 disabled:opacity-50"
+                    >
+                      {updateDescriptionMutation.isPending ? 'Saving…' : 'Save'}
+                    </button>
+                  </div>
+                </>
+              ) : (
+                <div className="font-medium text-gray-900 mt-1 whitespace-pre-wrap">{workOrder.description}</div>
+              )}
               {workOrder.origin_source === 'inspection' && workOrder.origin_id && (
                 <div className="mt-3">
                   <a
@@ -340,37 +597,67 @@ export default function WorkOrderDetail() {
 
             {workOrder.entity_type === 'fleet' && (
               <div className="rounded-xl border border-gray-200 bg-white p-4">
-                <h3 className="text-sm font-semibold text-gray-900 mb-4">Service &nbsp;/&nbsp; Shop</h3>
+                <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
+                  <h3 className="text-sm font-semibold text-gray-900">Service &nbsp;/&nbsp; Shop</h3>
+                </div>
                 <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <span className="text-[10px] font-medium text-gray-500 uppercase tracking-wide">Scheduled (end)</span>
+                    <span className="text-[10px] font-medium text-gray-500 uppercase tracking-wide">Scheduled date</span>
                     <div className="font-medium mt-1">
-                      {workOrder.scheduled_end_at
-                        ? new Date(workOrder.scheduled_end_at).toLocaleString('en-CA', { dateStyle: 'short', timeStyle: 'short' })
+                      {workOrder.scheduled_start_at
+                        ? new Date(workOrder.scheduled_start_at).toLocaleDateString('en-CA', {
+                            year: 'numeric',
+                            month: 'short',
+                            day: 'numeric',
+                          })
                         : '—'}
                     </div>
                   </div>
                   <div>
+                    <span className="text-[10px] font-medium text-gray-500 uppercase tracking-wide">Scheduled time</span>
+                    <div className="font-medium mt-1">
+                      {workOrder.scheduled_start_at
+                        ? new Date(workOrder.scheduled_start_at).toLocaleTimeString('en-CA', {
+                            hour: '2-digit',
+                            minute: '2-digit',
+                          })
+                        : '—'}
+                    </div>
+                  </div>
+                  <div className="col-span-2">
                     <span className="text-[10px] font-medium text-gray-500 uppercase tracking-wide">Expected duration</span>
                     <div className="font-medium mt-1">
-                      {(() => {
-                        const end = workOrder.scheduled_end_at ? new Date(workOrder.scheduled_end_at).getTime() : null;
-                        const start = workOrder.scheduled_start_at
-                          ? new Date(workOrder.scheduled_start_at).getTime()
-                          : workOrder.check_in_at
-                            ? new Date(workOrder.check_in_at).getTime()
-                            : workOrder.created_at
-                              ? new Date(workOrder.created_at).getTime()
-                              : null;
-                        if (end && start && end >= start) {
-                          const days = Math.ceil((end - start) / (24 * 60 * 60 * 1000));
-                          return `${days} day${days !== 1 ? 's' : ''}`;
-                        }
-                        if (workOrder.estimated_duration_minutes != null) {
-                          return `${Math.floor(workOrder.estimated_duration_minutes / 60)}h ${workOrder.estimated_duration_minutes % 60}min`;
-                        }
-                        return '—';
-                      })()}
+                      {workOrder.estimated_duration_minutes != null
+                        ? `${Math.floor(workOrder.estimated_duration_minutes / 60)}h ${workOrder.estimated_duration_minutes % 60}min`
+                        : '—'}
+                    </div>
+                  </div>
+                  <div>
+                    <span className="text-[10px] font-medium text-gray-500 uppercase tracking-wide">Body repair required</span>
+                    <div className="mt-1">
+                      <span
+                        className={`inline-block rounded-md px-2 py-0.5 text-xs font-semibold ${
+                          workOrder.body_repair_required
+                            ? 'bg-amber-100 text-amber-900 border border-amber-200'
+                            : 'bg-gray-100 text-gray-600 border border-gray-200'
+                        }`}
+                      >
+                        {workOrder.body_repair_required ? 'Yes' : 'No'}
+                      </span>
+                    </div>
+                  </div>
+                  <div>
+                    <span className="text-[10px] font-medium text-gray-500 uppercase tracking-wide">New decals required</span>
+                    <div className="mt-1">
+                      <span
+                        className={`inline-block rounded-md px-2 py-0.5 text-xs font-semibold ${
+                          workOrder.new_stickers_applied
+                            ? 'bg-sky-100 text-sky-900 border border-sky-200'
+                            : 'bg-gray-100 text-gray-600 border border-gray-200'
+                        }`}
+                      >
+                        {workOrder.new_stickers_applied ? 'Yes' : 'No'}
+                      </span>
                     </div>
                   </div>
                   <div>
@@ -592,6 +879,216 @@ export default function WorkOrderDetail() {
           <WorkOrderActivityTab workOrderId={id!} />
         )}
       </div>
+
+      {showCheckInModal && (
+        <OverlayPortal>
+          <div className={SAFETY_MODAL_OVERLAY} onClick={(e) => e.target === e.currentTarget && setShowCheckInModal(false)}>
+            <SafetyFormModalLayout
+              widthClass="w-[640px]"
+              titleId={woCheckInModalTitleId}
+              title="Start service"
+              subtitle="Check-in records when work began. Optional odometer and hours readings are saved on the work order."
+              onClose={() => setShowCheckInModal(false)}
+              footer={
+                <>
+                  <button type="button" onClick={() => setShowCheckInModal(false)} className={SAFETY_MODAL_BTN_CANCEL}>
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    onClick={submitCheckIn}
+                    disabled={checkInMutation.isPending}
+                    className={SAFETY_MODAL_BTN_PRIMARY}
+                  >
+                    {checkInMutation.isPending ? 'Starting…' : 'Start service'}
+                  </button>
+                </>
+              }
+            >
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div className="sm:col-span-2">
+                  <label className={SAFETY_MODAL_FIELD_LABEL}>Check-in time</label>
+                  <input
+                    type="datetime-local"
+                    value={checkInForm.check_in_at}
+                    onChange={(e) => setCheckInForm((p) => ({ ...p, check_in_at: e.target.value }))}
+                    className={WO_MODAL_FIELD_INPUT}
+                  />
+                </div>
+                <div>
+                  <label className={SAFETY_MODAL_FIELD_LABEL}>Odometer reading</label>
+                  <input
+                    type="number"
+                    min={0}
+                    value={checkInForm.odometer_reading}
+                    onChange={(e) => setCheckInForm((p) => ({ ...p, odometer_reading: e.target.value }))}
+                    className={WO_MODAL_FIELD_INPUT}
+                  />
+                </div>
+                <div className="sm:col-span-2">
+                  <label className={SAFETY_MODAL_FIELD_LABEL}>Hours reading</label>
+                  <input
+                    type="number"
+                    min={0}
+                    step="0.1"
+                    value={checkInForm.hours_reading}
+                    onChange={(e) => setCheckInForm((p) => ({ ...p, hours_reading: e.target.value }))}
+                    className={WO_MODAL_FIELD_INPUT}
+                  />
+                </div>
+              </div>
+            </SafetyFormModalLayout>
+          </div>
+        </OverlayPortal>
+      )}
+
+      {showCheckOutModal && (
+        <OverlayPortal>
+          <div className={SAFETY_MODAL_OVERLAY} onClick={(e) => e.target === e.currentTarget && setShowCheckOutModal(false)}>
+            <SafetyFormModalLayout
+              widthClass="w-[640px]"
+              titleId={woCheckOutModalTitleId}
+              title="End service"
+              subtitle="Check-out records when work finished. Optional final odometer and hours readings are saved on the work order."
+              onClose={() => setShowCheckOutModal(false)}
+              footer={
+                <>
+                  <button type="button" onClick={() => setShowCheckOutModal(false)} className={SAFETY_MODAL_BTN_CANCEL}>
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    onClick={submitCheckOut}
+                    disabled={checkOutMutation.isPending}
+                    className={WO_CHECKOUT_PRIMARY_BTN}
+                  >
+                    {checkOutMutation.isPending ? 'Finishing…' : 'Finish service'}
+                  </button>
+                </>
+              }
+            >
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className={SAFETY_MODAL_FIELD_LABEL}>Check-out time</label>
+                  <input
+                    type="datetime-local"
+                    value={checkOutForm.check_out_at}
+                    onChange={(e) => setCheckOutForm((p) => ({ ...p, check_out_at: e.target.value }))}
+                    className={WO_MODAL_FIELD_INPUT}
+                  />
+                </div>
+                <div>
+                  <label className={SAFETY_MODAL_FIELD_LABEL}>Odometer reading</label>
+                  <input
+                    type="number"
+                    min={0}
+                    value={checkOutForm.odometer_reading}
+                    onChange={(e) => setCheckOutForm((p) => ({ ...p, odometer_reading: e.target.value }))}
+                    className={WO_MODAL_FIELD_INPUT}
+                  />
+                </div>
+                <div className="sm:col-span-2">
+                  <label className={SAFETY_MODAL_FIELD_LABEL}>Hours reading</label>
+                  <input
+                    type="number"
+                    min={0}
+                    step="0.1"
+                    value={checkOutForm.hours_reading}
+                    onChange={(e) => setCheckOutForm((p) => ({ ...p, hours_reading: e.target.value }))}
+                    className={WO_MODAL_FIELD_INPUT}
+                  />
+                </div>
+              </div>
+            </SafetyFormModalLayout>
+          </div>
+        </OverlayPortal>
+      )}
+
+      {showStatusReasonModal && (
+        <OverlayPortal>
+          <div className={SAFETY_MODAL_OVERLAY} onClick={(e) => e.target === e.currentTarget && setShowStatusReasonModal(false)}>
+            <SafetyFormModalLayout
+              widthClass="w-[480px]"
+              titleId={woStatusReasonModalTitleId}
+              title="Cancellation reason"
+              subtitle="Provide a reason to change this work order to cancelled."
+              onClose={() => setShowStatusReasonModal(false)}
+              footer={
+                <>
+                  <button type="button" onClick={() => setShowStatusReasonModal(false)} className={SAFETY_MODAL_BTN_CANCEL}>
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => updateStatusMutation.mutate({ status: statusTarget, reason: statusReason })}
+                    disabled={updateStatusMutation.isPending || !statusReason.trim()}
+                    className={SAFETY_MODAL_BTN_PRIMARY}
+                  >
+                    {updateStatusMutation.isPending ? 'Saving…' : 'Confirm'}
+                  </button>
+                </>
+              }
+            >
+              <div>
+                <label className={SAFETY_MODAL_FIELD_LABEL} htmlFor={`${woStatusReasonModalTitleId}-reason`}>
+                  Reason
+                </label>
+                <textarea
+                  id={`${woStatusReasonModalTitleId}-reason`}
+                  value={statusReason}
+                  onChange={(e) => setStatusReason(e.target.value)}
+                  rows={5}
+                  className={`${WO_MODAL_FIELD_INPUT} resize-y min-h-[6rem]`}
+                  placeholder="Reason for cancellation…"
+                />
+              </div>
+            </SafetyFormModalLayout>
+          </div>
+        </OverlayPortal>
+      )}
+
+      {showReopenModal && (
+        <OverlayPortal>
+          <div className={SAFETY_MODAL_OVERLAY} onClick={(e) => e.target === e.currentTarget && setShowReopenModal(false)}>
+            <SafetyFormModalLayout
+              widthClass="w-[480px]"
+              titleId={woReopenModalTitleId}
+              title="Reopen work order"
+              subtitle="Explain why this work order is being reopened to pending."
+              onClose={() => setShowReopenModal(false)}
+              footer={
+                <>
+                  <button type="button" onClick={() => setShowReopenModal(false)} className={SAFETY_MODAL_BTN_CANCEL}>
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => reopenMutation.mutate({ reason: reopenReason })}
+                    disabled={reopenMutation.isPending || !reopenReason.trim()}
+                    className={WO_REOPEN_PRIMARY_BTN}
+                  >
+                    {reopenMutation.isPending ? 'Reopening…' : 'Reopen'}
+                  </button>
+                </>
+              }
+            >
+              <div>
+                <label className={SAFETY_MODAL_FIELD_LABEL} htmlFor={`${woReopenModalTitleId}-reason`}>
+                  Reason for reopen
+                </label>
+                <textarea
+                  id={`${woReopenModalTitleId}-reason`}
+                  value={reopenReason}
+                  onChange={(e) => setReopenReason(e.target.value)}
+                  rows={5}
+                  className={`${WO_MODAL_FIELD_INPUT} resize-y min-h-[6rem]`}
+                  placeholder="Reason for reopen…"
+                />
+              </div>
+            </SafetyFormModalLayout>
+          </div>
+        </OverlayPortal>
+      )}
     </div>
   );
 }
@@ -608,6 +1105,25 @@ type ActivityLogEntry = {
 function formatActivityMessage(entry: ActivityLogEntry): string {
   const d = entry.details || {};
   switch (entry.action) {
+    case 'work_order_created_from_inspection':
+      return `Created automatically from ${String(d.inspection_type ?? 'inspection')} inspection`;
+    case 'work_order_created':
+      return `Work order created (${String(d.work_order_number ?? 'N/A')})`;
+    case 'work_order_updated':
+      if (Array.isArray(d.changed_fields) && d.changed_fields.length > 0) {
+        return `Updated fields: ${d.changed_fields.join(', ')}`;
+      }
+      return 'Work order details updated';
+    case 'assignment_changed':
+      return 'Assignment updated';
+    case 'check_in':
+      return 'Check-in recorded';
+    case 'check_out':
+      return 'Check-out recorded';
+    case 'work_order_reopened':
+      return `Work order reopened to ${WORK_ORDER_STATUS_LABELS[String(d.new_status ?? 'open')] ?? String(d.new_status ?? 'pending')}`;
+    case 'file_updated':
+      return 'File metadata updated';
     case 'file_attached':
       return `Attached file "${d.original_name ?? 'file'}" to ${String(d.category ?? '').toLowerCase()}`;
     case 'file_removed':
@@ -615,13 +1131,46 @@ function formatActivityMessage(entry: ActivityLogEntry): string {
     case 'status_changed':
       const oldL = WORK_ORDER_STATUS_LABELS[d.old_status as string] ?? d.old_status;
       const newL = WORK_ORDER_STATUS_LABELS[d.new_status as string] ?? d.new_status;
-      return `Status changed from ${oldL} to ${newL}`;
+      return `Status changed from ${oldL} to ${newL}${d.reason ? ` (${String(d.reason)})` : ''}`;
     case 'cost_added':
       return `Added cost: ${d.description ?? '—'} (${d.category}) $${Number(d.amount ?? 0).toFixed(2)}`;
     case 'cost_removed':
       return `Removed cost: ${d.description ?? '—'} (${d.category}) $${Number(d.amount ?? 0).toFixed(2)}`;
     default:
       return entry.action;
+  }
+}
+
+function getWorkOrderActivityMeta(action: string): { borderClass: string; badge: string } {
+  switch (action) {
+    case 'work_order_created_from_inspection':
+      return { borderClass: 'border-brand-red', badge: 'Inspection' };
+    case 'work_order_created':
+      return { borderClass: 'border-brand-red', badge: 'Created' };
+    case 'work_order_updated':
+      return { borderClass: 'border-sky-500', badge: 'Updated' };
+    case 'assignment_changed':
+      return { borderClass: 'border-indigo-500', badge: 'Assignment' };
+    case 'check_in':
+      return { borderClass: 'border-cyan-500', badge: 'Check-in' };
+    case 'check_out':
+      return { borderClass: 'border-violet-500', badge: 'Check-out' };
+    case 'work_order_reopened':
+      return { borderClass: 'border-amber-500', badge: 'Reopened' };
+    case 'file_updated':
+      return { borderClass: 'border-blue-500', badge: 'File update' };
+    case 'status_changed':
+      return { borderClass: 'border-amber-500', badge: 'Status' };
+    case 'file_attached':
+      return { borderClass: 'border-brand-red', badge: 'Attachment' };
+    case 'file_removed':
+      return { borderClass: 'border-rose-500', badge: 'Removal' };
+    case 'cost_added':
+      return { borderClass: 'border-emerald-500', badge: 'Cost added' };
+    case 'cost_removed':
+      return { borderClass: 'border-orange-500', badge: 'Cost removed' };
+    default:
+      return { borderClass: 'border-gray-300', badge: 'Log' };
   }
 }
 
@@ -636,32 +1185,38 @@ function WorkOrderActivityTab({ workOrderId }: { workOrderId: string }) {
 
   return (
     <div className="space-y-4">
-      <h3 className="text-sm font-semibold text-gray-900">Activity log</h3>
-      <p className="text-xs text-gray-500">File attachments, status changes, and cost additions/removals.</p>
+      <div>
+        <h3 className="font-semibold text-lg">Activity history</h3>
+        <p className="text-sm text-gray-600 mt-1">File attachments, status changes, and cost updates (newest first).</p>
+      </div>
       {activity.length === 0 ? (
-        <div className="py-8 text-center text-gray-500 text-sm">No activity recorded yet.</div>
+        <div className="text-center text-gray-500 py-8">No activity recorded yet</div>
       ) : (
-        <ul className="space-y-0 divide-y divide-gray-100 border border-gray-200 rounded-lg overflow-hidden bg-white">
+        <div className="space-y-2">
           {activity.map((entry) => (
-            <li key={entry.id} className="flex items-start gap-3 px-4 py-3 hover:bg-gray-50/50">
-              <span className="flex-shrink-0 w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center text-gray-600 text-xs">
-                {entry.action === 'file_attached' && '📎'}
-                {entry.action === 'file_removed' && '🗑️'}
-                {entry.action === 'status_changed' && '🔄'}
-                {entry.action === 'cost_added' && '➕'}
-                {entry.action === 'cost_removed' && '➖'}
-                {!['file_attached', 'file_removed', 'status_changed', 'cost_added', 'cost_removed'].includes(entry.action) && '•'}
-              </span>
-              <div className="min-w-0 flex-1">
-                <div className="text-sm font-medium text-gray-900">{formatActivityMessage(entry)}</div>
-                <div className="text-xs text-gray-500 mt-0.5">
-                  {entry.created_by_display ?? 'System'}
-                  {entry.created_at && ` · ${new Date(entry.created_at).toLocaleString('en-CA', { dateStyle: 'short', timeStyle: 'short' })}`}
+            <div
+              key={entry.id}
+              className={`border-l-4 pl-4 py-2 rounded-r-lg ${getWorkOrderActivityMeta(entry.action).borderClass}`}
+            >
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="font-medium text-gray-900">{formatActivityMessage(entry)}</span>
+                    <span className="text-[10px] uppercase tracking-wide px-1.5 py-0.5 rounded bg-gray-100 text-gray-600">
+                      {getWorkOrderActivityMeta(entry.action).badge}
+                    </span>
+                  </div>
+                  <div className="text-xs text-gray-500 mt-1">
+                    By {entry.created_by_display ?? 'System'}
+                  </div>
+                </div>
+                <div className="text-sm text-gray-500 shrink-0 text-right">
+                  {entry.created_at ? new Date(entry.created_at).toLocaleString() : '—'}
                 </div>
               </div>
-            </li>
+            </div>
           ))}
-        </ul>
+        </div>
       )}
     </div>
   );
@@ -699,6 +1254,7 @@ function WorkOrderFilesTab({ workOrderId }: { workOrderId: string }) {
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
   const [fileSearchQuery, setFileSearchQuery] = useState('');
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const woFilesUploadModalTitleId = useId();
 
   const { data: files = [], isLoading } = useQuery({
     queryKey: ['workOrderFiles', workOrderId],
@@ -1102,49 +1658,62 @@ function WorkOrderFilesTab({ workOrderId }: { workOrderId: string }) {
 
       {/* Upload modal */}
       {showUpload && (
-        <OverlayPortal><div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50" onClick={(e) => e.target === e.currentTarget && setShowUpload(false)}>
-          <div className="bg-white rounded-xl w-full max-w-md p-4" onClick={(e) => e.stopPropagation()}>
-            <div className="text-sm font-semibold mb-3">Upload Files</div>
-            <div className="space-y-3">
-              {selectedCategory === 'all' && (
+        <OverlayPortal>
+          <div className={SAFETY_MODAL_OVERLAY} onClick={(e) => e.target === e.currentTarget && setShowUpload(false)}>
+            <SafetyFormModalLayout
+              widthClass="w-[448px]"
+              titleId={woFilesUploadModalTitleId}
+              title="Upload files"
+              subtitle="Pick one or more files. You can also drag and drop onto a category or the file area on this page."
+              onClose={() => setShowUpload(false)}
+              footer={
+                <button type="button" onClick={() => setShowUpload(false)} className={SAFETY_MODAL_BTN_CANCEL}>
+                  Close
+                </button>
+              }
+            >
+              <div className="space-y-3">
+                {selectedCategory === 'all' && (
+                  <div>
+                    <label className={SAFETY_MODAL_FIELD_LABEL} htmlFor={`${woFilesUploadModalTitleId}-category`}>
+                      Category
+                    </label>
+                    <select
+                      id={`${woFilesUploadModalTitleId}-category`}
+                      value={uploadCategory}
+                      onChange={(e) => setUploadCategory(e.target.value)}
+                      className={WO_MODAL_FIELD_INPUT}
+                    >
+                      {WO_FILE_CATEGORIES.filter((c) => c.id !== 'all').map((c) => (
+                        <option key={c.id} value={c.id}>{c.label}</option>
+                      ))}
+                    </select>
+                  </div>
+                )}
                 <div>
-                  <label className="block text-xs font-medium text-gray-600 mb-1">Category</label>
-                  <select
-                    value={uploadCategory}
-                    onChange={(e) => setUploadCategory(e.target.value)}
-                    className="w-full border rounded px-3 py-2 text-sm"
-                  >
-                    {WO_FILE_CATEGORIES.filter((c) => c.id !== 'all').map((c) => (
-                      <option key={c.id} value={c.id}>{c.label}</option>
-                    ))}
-                  </select>
+                  <label className={SAFETY_MODAL_FIELD_LABEL} htmlFor={`${woFilesUploadModalTitleId}-file`}>
+                    Files
+                  </label>
+                  <input
+                    id={`${woFilesUploadModalTitleId}-file`}
+                    ref={fileInputRef}
+                    type="file"
+                    multiple
+                    onChange={async (e) => {
+                      const list = e.target.files;
+                      if (list?.length) {
+                        setShowUpload(false);
+                        await uploadMultiple(Array.from(list));
+                      }
+                    }}
+                    className="mt-1 w-full text-xs file:mr-2 file:text-sm file:rounded file:border file:border-gray-200 file:bg-white file:px-2 file:py-1"
+                  />
+                  <div className="text-[10px] text-gray-500 mt-1.5">Multiple files supported.</div>
                 </div>
-              )}
-              <div>
-                <div className="text-xs font-medium text-gray-600 mb-1.5">Files (multiple supported)</div>
-                <input
-                  ref={fileInputRef}
-                  type="file"
-                  multiple
-                  onChange={async (e) => {
-                    const list = e.target.files;
-                    if (list?.length) {
-                      setShowUpload(false);
-                      await uploadMultiple(Array.from(list));
-                    }
-                  }}
-                  className="w-full text-xs"
-                />
               </div>
-              <div className="text-[10px] text-gray-500">You can also drag and drop files onto a category in the sidebar or onto the file area.</div>
-            </div>
-            <div className="mt-4 flex justify-end gap-2">
-              <button type="button" onClick={() => setShowUpload(false)} className="px-3 py-1.5 rounded border text-xs">
-                Cancel
-              </button>
-            </div>
+            </SafetyFormModalLayout>
           </div>
-        </div></OverlayPortal>
+        </OverlayPortal>
       )}
 
       {/* Upload progress */}

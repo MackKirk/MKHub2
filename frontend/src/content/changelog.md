@@ -13,6 +13,30 @@
 -->
 
 <<<RELEASE>>>
+id: 2026-04-29-1
+date: 2026-04-29
+title: Update 1.1.027 - Week 18
+
+### New
+- On a **vehicle’s page**, you can see an **activity history** of what changed over time.
+- **Work orders** for fleet and equipment: you can **start** and **finish** service more clearly, see an **activity** list on the order, and admins can **reopen** some closed orders when needed.
+- On **equipment**, a **Work orders** section to view and create orders for that item.
+- **Fleet schedule**: calendar of service and inspections, with buttons to plan a new inspection or work order.
+- **Vehicle list**: filters (like on Opportunities) so you can narrow the list more easily.
+
+### Improved
+- Service **calendar** is easier to read (vehicle name and unit).
+- **Who can use Fleet** is clearer in your profile permissions (vehicles vs equipment).
+
+### Fixed
+- **Photos and documents** on vehicles save more reliably.
+- **Side menu** and **search lists inside pop-up windows** behave more predictably.
+- **Dates** on your profile’s assets tab show on the correct day.
+
+### Known issues
+- (none this release)
+
+<<<RELEASE>>>
 id: 2026-04-20-1
 date: 2026-04-20
 title: Update 1.1.026 - Week 17

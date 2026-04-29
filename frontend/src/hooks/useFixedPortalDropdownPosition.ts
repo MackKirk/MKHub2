@@ -8,6 +8,8 @@ export type FixedPortalDropdownOptions = {
   maxHeightPx?: number;
   /** Also cap height by this fraction of `window.innerHeight` (e.g. 0.7) */
   viewportMaxFraction?: number;
+  /** Stacking above modals (e.g. z-50); default 100. */
+  zIndex?: number;
 };
 
 /**
@@ -23,6 +25,7 @@ export function useFixedPortalDropdownPosition(
   const paddingFromViewportBottom = options?.paddingFromViewportBottom ?? 8;
   const maxHeightPx = options?.maxHeightPx ?? 288;
   const viewportMaxFraction = options?.viewportMaxFraction;
+  const zIndex = options?.zIndex ?? 100;
 
   const [style, setStyle] = useState<CSSProperties | null>(null);
 
@@ -42,13 +45,13 @@ export function useFixedPortalDropdownPosition(
     const maxHeight = Math.min(ceiling, Math.max(120, spaceBelow));
     setStyle({
       position: 'fixed',
-      zIndex: 100,
+      zIndex,
       top,
       left: r.left,
       width: r.width,
       maxHeight,
     });
-  }, [anchorRef, marginTop, paddingFromViewportBottom, maxHeightPx, viewportMaxFraction]);
+  }, [anchorRef, marginTop, paddingFromViewportBottom, maxHeightPx, viewportMaxFraction, zIndex]);
 
   useLayoutEffect(() => {
     if (!open) {

@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useFixedPortalDropdownPosition } from '@/hooks/useFixedPortalDropdownPosition';
+import { getOverlayRoot } from '@/lib/overlayRoot';
 
 export type SingleSelectRow = { value: string; label: string };
 
@@ -15,6 +16,8 @@ type Props = {
   searchPlaceholder?: string;
   /** Shown when no value is selected (trigger and clear row). */
   emptyLabel?: string;
+  /** Portal panel z-index (stacking vs siblings inside `#overlay-root`). Default 5000 — above typical modal shells (z-50). */
+  portalZIndex?: number;
 };
 
 export default function SafetySearchableSingle({
@@ -26,6 +29,7 @@ export default function SafetySearchableSingle({
   rows,
   searchPlaceholder = 'Search…',
   emptyLabel = 'Select One',
+  portalZIndex = 5000,
 }: Props) {
   const [open, setOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
@@ -33,7 +37,10 @@ export default function SafetySearchableSingle({
   const anchorRef = useRef<HTMLButtonElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
-  const fixedPanelStyle = useFixedPortalDropdownPosition(open && !disabled, anchorRef, { maxHeightPx: 288 });
+  const fixedPanelStyle = useFixedPortalDropdownPosition(open && !disabled, anchorRef, {
+    maxHeightPx: 288,
+    zIndex: portalZIndex,
+  });
 
   const sortedRows = useMemo(
     () => [...rows].sort((a, b) => a.label.localeCompare(b.label, undefined, { sensitivity: 'base' })),
@@ -173,7 +180,7 @@ export default function SafetySearchableSingle({
               )}
             </div>
           </div>,
-          document.body
+          getOverlayRoot()
         )}
     </div>
   );

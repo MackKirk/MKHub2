@@ -1,12 +1,28 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import toast from 'react-hot-toast';
 import { formatDateLocal } from '@/lib/dateUtils';
+import SafetySearchableSingle, { type SingleSelectRow } from '@/components/SafetySearchableSingle';
 
 const labelClass = 'text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1';
-const inputClass = 'w-full border border-gray-200 rounded-lg px-3 py-2 text-sm placeholder:text-gray-400 focus:outline-none focus:ring-1 focus:ring-gray-300 focus:border-gray-300';
+
+/** Matches `SafetySearchableSingle` trigger — use for date, selects, and read-only rows in the schedule form. */
+const scheduleFieldClass =
+  'w-full min-h-[2.75rem] border-2 border-gray-200 rounded-xl bg-white px-3 py-2 text-sm text-gray-900 placeholder:text-gray-400 ' +
+  'shadow-sm hover:border-gray-300 focus:outline-none focus:ring-2 focus:ring-brand-red/20 focus:border-brand-red ' +
+  'disabled:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-70';
+
+const scheduleTextareaClass =
+  `${scheduleFieldClass} min-h-[5rem] resize-y py-2.5`;
+
+/** Native selects: same chrome + chevron (encoded SVG, no nested quotes for Tailwind). */
+const scheduleSelectClass = [
+  scheduleFieldClass,
+  'cursor-pointer appearance-none bg-[length:1rem_1rem] bg-[right_0.65rem_center] bg-no-repeat pr-10',
+  "bg-[url(data:image/svg+xml;charset=utf-8,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%2216%22%20height%3D%2216%22%20fill%3D%22none%22%20viewBox%3D%220%200%2024%2024%22%20stroke%3D%22%236b7280%22%3E%3Cpath%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%20stroke-width%3D%222%22%20d%3D%22M19%209l-7%207-7-7%22%2F%3E%3C%2Fsvg%3E)]",
+].join(' ');
 
 const CATEGORY_OPTIONS = [
   { value: 'maintenance', label: 'Maintenance' },
@@ -22,6 +38,56 @@ const URGENCY_OPTIONS = [
   { value: 'urgent', label: 'Urgent' },
 ];
 
+const FLEET_ASSETS_PAGE_LIMIT = 100;
+
+/** Loads every fleet asset (paginates); list is ordered A→Z in the picker via `vehiclePickerRows`. */
+async function fetchAllFleetAssetsAlphabetical(): Promise<any[]> {
+  const limit = FLEET_ASSETS_PAGE_LIMIT;
+  let page = 1;
+  const all: any[] = [];
+
+  for (;;) {
+    const res = (await api<Record<string, unknown>>(
+      'GET',
+      `/fleet/assets?limit=${limit}&page=${page}&sort=name&dir=asc`
+    )) as Record<string, unknown>;
+
+    const raw = res?.items ?? (res as any)?.data;
+    const items = Array.isArray(raw) ? raw : [];
+    if (items.length === 0) break;
+
+    all.push(...items);
+
+    const total = typeof res.total === 'number' ? res.total : null;
+    const totalPagesField =
+      typeof (res as any).total_pages === 'number' ? Math.max(1, (res as any).total_pages as number) : null;
+    const totalPagesComputed =
+      total != null && total > 0 ? Math.max(1, Math.ceil(total / limit)) : null;
+    const totalPages = totalPagesField ?? totalPagesComputed;
+
+    if (totalPages != null) {
+      if (page >= totalPages) break;
+    } else if (items.length < limit) {
+      break;
+    }
+    page += 1;
+  }
+  return all;
+}
+
+function fleetAssetToPickerLabel(asset: any): string {
+  const type = String(asset.asset_type ?? 'asset').replace(/_/g, ' ');
+  const unit =
+    asset.unit_number != null && String(asset.unit_number).trim() !== ''
+      ? ` · Unit ${String(asset.unit_number).trim()}`
+      : '';
+  const name =
+    (asset.name != null && String(asset.name).trim() !== ''
+      ? String(asset.name).trim()
+      : [asset.make, asset.model].filter(Boolean).join(' ').trim()) || 'Unnamed';
+  return `${name} (${type})${unit}`;
+}
+
 /** Form to create an inspection schedule (agendamento). Creates the schedule and both Body and Mechanical inspections as pending. */
 export function InspectionScheduleForm({
   initialAssetId = '',
@@ -29,27 +95,64 @@ export function InspectionScheduleForm({
   onCancel,
   onValidationChange,
   formId = 'inspection-schedule-form',
+  /** When true, render only the form fields (for use inside SafetyFormModalLayout). */
+  embedded = false,
+  /** When true (with a non-empty initialAssetId), vehicle is fixed to that asset and cannot be changed. */
+  vehicleSelectionLocked = false,
+  /** Shown when vehicleSelectionLocked; falls back to initialAssetId if omitted. */
+  lockedVehicleDisplayName,
+  /** Searchable combobox + portal dropdown (e.g. fleet calendar modal). */
+  vehiclePickerSearchable = false,
 }: {
   initialAssetId?: string;
   onSuccess: (data: { id: string }) => void;
   onCancel: () => void;
   onValidationChange?: (canSubmit: boolean, isPending: boolean) => void;
   formId?: string;
+  embedded?: boolean;
+  vehicleSelectionLocked?: boolean;
+  lockedVehicleDisplayName?: string;
+  vehiclePickerSearchable?: boolean;
 }) {
   const queryClient = useQueryClient();
-  const { data: assetsRes } = useQuery({
-    queryKey: ['fleetAssets'],
-    queryFn: () => api<{ items: any[] }>('GET', '/fleet/assets?limit=500'),
+  const isVehicleLocked = Boolean(vehicleSelectionLocked && initialAssetId?.trim());
+
+  const {
+    data: assetsForPicker = [],
+    isLoading: fleetAssetsLoading,
+    isError: fleetAssetsError,
+    error: fleetAssetsErrorObj,
+    refetch: refetchFleetAssets,
+  } = useQuery({
+    queryKey: ['fleetAssetsSchedulePicker'],
+    queryFn: fetchAllFleetAssetsAlphabetical,
+    enabled: !isVehicleLocked,
+    staleTime: 60_000,
   });
-  const assets = assetsRes?.items ?? [];
+
+  const vehiclePickerRows: SingleSelectRow[] = useMemo(() => {
+    const rows = assetsForPicker
+      .filter((asset: any) => asset?.id != null && String(asset.id).trim() !== '')
+      .map((asset: any) => ({
+        value: String(asset.id),
+        label: fleetAssetToPickerLabel(asset),
+      }));
+    rows.sort((a, b) => a.label.localeCompare(b.label, undefined, { sensitivity: 'base' }));
+    return rows;
+  }, [assetsForPicker]);
 
   const [form, setForm] = useState({
-    fleet_asset_id: initialAssetId,
+    fleet_asset_id: initialAssetId?.trim() ?? '',
     scheduled_at: formatDateLocal(new Date()),
     urgency: 'normal',
     category: 'inspection',
     notes: '',
   });
+
+  useEffect(() => {
+    if (!isVehicleLocked || !initialAssetId?.trim()) return;
+    setForm((prev) => ({ ...prev, fleet_asset_id: initialAssetId.trim() }));
+  }, [isVehicleLocked, initialAssetId]);
 
   const updateField = (field: string, value: string) => {
     setForm((prev) => ({ ...prev, [field]: value }));
@@ -85,36 +188,68 @@ export function InspectionScheduleForm({
     onValidationChange?.(canSubmit, createMutation.isPending);
   }, [canSubmit, createMutation.isPending, onValidationChange]);
 
-  return (
-    <div className="rounded-xl border border-gray-200 bg-white overflow-hidden">
-      <div className="px-4 py-3 border-b border-gray-200">
-        <h4 className={labelClass}>Schedule</h4>
-      </div>
+  const formEl = (
       <form
         id={formId}
         onSubmit={(e) => {
           e.preventDefault();
           if (canSubmit) createMutation.mutate();
         }}
-        className="p-4"
+        className={embedded ? 'space-y-4' : 'p-4'}
       >
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div>
             <label className={labelClass}>Vehicle <span className="text-red-600">*</span></label>
-            <select
-              value={form.fleet_asset_id}
-              onChange={(e) => updateField('fleet_asset_id', e.target.value)}
-              className={inputClass}
-              required
-            >
-              <option value="">Select vehicle</option>
-              {Array.isArray(assets) &&
-                assets.map((asset: any) => (
-                  <option key={asset.id} value={asset.id}>
-                    {asset.name} ({asset.asset_type?.replace('_', ' ') ?? 'asset'})
+            {isVehicleLocked ? (
+              <div
+                className={`${scheduleFieldClass} bg-gray-50 text-gray-800 cursor-default`}
+                title="This schedule is for the asset you opened"
+              >
+                {lockedVehicleDisplayName?.trim() || initialAssetId}
+              </div>
+            ) : fleetAssetsLoading ? (
+              <div className={`${scheduleFieldClass} bg-gray-50 text-gray-500`}>Loading vehicles…</div>
+            ) : fleetAssetsError ? (
+              <div className="space-y-2">
+                <div className={`${scheduleFieldClass} border-red-200 bg-red-50 text-red-800 text-sm`}>
+                  Could not load vehicles.
+                  {(fleetAssetsErrorObj as Error)?.message
+                    ? ` ${(fleetAssetsErrorObj as Error).message}`
+                    : ' Check your connection and permissions, then try again.'}
+                </div>
+                <button
+                  type="button"
+                  onClick={() => refetchFleetAssets()}
+                  className="text-xs font-medium text-brand-red hover:underline"
+                >
+                  Retry
+                </button>
+              </div>
+            ) : vehiclePickerSearchable ? (
+              <SafetySearchableSingle
+                hideLabel
+                label="Vehicle"
+                value={form.fleet_asset_id}
+                onChange={(v) => updateField('fleet_asset_id', v)}
+                rows={vehiclePickerRows}
+                emptyLabel="Select vehicle"
+                searchPlaceholder="Search by name, unit #, type…"
+              />
+            ) : (
+              <select
+                value={form.fleet_asset_id}
+                onChange={(e) => updateField('fleet_asset_id', e.target.value)}
+                className={scheduleSelectClass}
+                required
+              >
+                <option value="">Select vehicle</option>
+                {vehiclePickerRows.map((row) => (
+                  <option key={row.value} value={row.value}>
+                    {row.label}
                   </option>
                 ))}
-            </select>
+              </select>
+            )}
           </div>
           <div>
             <label className={labelClass}>Date <span className="text-red-600">*</span></label>
@@ -122,7 +257,7 @@ export function InspectionScheduleForm({
               type="date"
               value={form.scheduled_at}
               onChange={(e) => updateField('scheduled_at', e.target.value)}
-              className={inputClass}
+              className={scheduleFieldClass}
               required
             />
           </div>
@@ -131,7 +266,7 @@ export function InspectionScheduleForm({
             <select
               value={form.urgency}
               onChange={(e) => updateField('urgency', e.target.value)}
-              className={inputClass}
+              className={scheduleSelectClass}
             >
               {URGENCY_OPTIONS.map((opt) => (
                 <option key={opt.value} value={opt.value}>
@@ -145,7 +280,7 @@ export function InspectionScheduleForm({
             <select
               value={form.category}
               onChange={(e) => updateField('category', e.target.value)}
-              className={inputClass}
+              className={scheduleSelectClass}
             >
               {CATEGORY_OPTIONS.map((opt) => (
                 <option key={opt.value} value={opt.value}>
@@ -155,13 +290,13 @@ export function InspectionScheduleForm({
             </select>
           </div>
         </div>
-        <div className="mt-4">
+        <div className={embedded ? '' : 'mt-4'}>
           <label className={labelClass}>Notes (optional)</label>
           <textarea
             value={form.notes}
             onChange={(e) => updateField('notes', e.target.value)}
             rows={3}
-            className={inputClass}
+            className={scheduleTextareaClass}
             placeholder="Observações..."
           />
         </div>
@@ -180,6 +315,18 @@ export function InspectionScheduleForm({
           </div>
         )}
       </form>
+  );
+
+  if (embedded) {
+    return formEl;
+  }
+
+  return (
+    <div className="rounded-xl border border-gray-200 bg-white overflow-hidden">
+      <div className="px-4 py-3 border-b border-gray-200">
+        <h4 className={labelClass}>Schedule</h4>
+      </div>
+      {formEl}
     </div>
   );
 }

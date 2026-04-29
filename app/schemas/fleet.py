@@ -370,9 +370,8 @@ class WorkOrderBase(BaseModel):
     origin_id: Optional[uuid.UUID] = None
     odometer_reading: Optional[int] = None  # For fleet assets
     hours_reading: Optional[float] = None  # For fleet assets
-    # Workshop / revision scheduling
+    # Workshop / revision scheduling (end time is derived from duration + baseline, not persisted)
     scheduled_start_at: Optional[datetime] = None
-    scheduled_end_at: Optional[datetime] = None
     estimated_duration_minutes: Optional[int] = None
     check_in_at: Optional[datetime] = None
     check_out_at: Optional[datetime] = None
@@ -398,13 +397,33 @@ class WorkOrderUpdate(BaseModel):
     odometer_reading: Optional[int] = None  # For fleet assets
     hours_reading: Optional[float] = None  # For fleet assets
     scheduled_start_at: Optional[datetime] = None
-    scheduled_end_at: Optional[datetime] = None
     estimated_duration_minutes: Optional[int] = None
     check_in_at: Optional[datetime] = None
     check_out_at: Optional[datetime] = None
     body_repair_required: Optional[bool] = None
     new_stickers_applied: Optional[bool] = None
     quote_file_ids: Optional[List[uuid.UUID]] = None
+
+
+class WorkOrderStatusUpdateRequest(BaseModel):
+    status: WorkOrderStatus
+    reason: Optional[str] = None
+
+
+class WorkOrderCheckInRequest(BaseModel):
+    check_in_at: Optional[datetime] = None
+    odometer_reading: Optional[int] = None
+    hours_reading: Optional[float] = None
+
+
+class WorkOrderCheckOutRequest(BaseModel):
+    check_out_at: Optional[datetime] = None
+    odometer_reading: Optional[int] = None
+    hours_reading: Optional[float] = None
+
+
+class WorkOrderReopenRequest(BaseModel):
+    reason: str
 
 
 class WorkOrderResponse(WorkOrderBase):
@@ -442,8 +461,8 @@ class WorkOrderCalendarItem(BaseModel):
     work_order_number: str
     entity_id: uuid.UUID
     scheduled_start_at: Optional[datetime] = None
-    scheduled_end_at: Optional[datetime] = None
     estimated_duration_minutes: Optional[int] = None
+    expected_end_at: Optional[datetime] = None  # computed: baseline + estimated_duration_minutes
     status: str
     asset_name: Optional[str] = None
     unit_number: Optional[str] = None

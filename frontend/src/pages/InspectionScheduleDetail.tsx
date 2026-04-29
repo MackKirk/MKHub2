@@ -64,6 +64,14 @@ export default function InspectionScheduleDetail() {
   const nav = useNavigate();
   const queryClient = useQueryClient();
 
+  const goBackFromSchedule = () => {
+    if (window.history.length > 1) {
+      nav(-1);
+    } else {
+      nav('/fleet/inspections');
+    }
+  };
+
   const { data: me } = useQuery({
     queryKey: ['me'],
     queryFn: () => api<{ roles?: string[] }>('GET', '/auth/me'),
@@ -126,7 +134,7 @@ export default function InspectionScheduleDetail() {
   if (!id) {
     return (
       <div className="p-4">
-        <button type="button" onClick={() => nav('/fleet/inspections')} className="text-brand-red hover:underline">
+        <button type="button" onClick={goBackFromSchedule} className="text-brand-red hover:underline">
           Back to inspections
         </button>
         <p className="mt-4 text-gray-500">Invalid schedule ID</p>
@@ -155,7 +163,7 @@ export default function InspectionScheduleDetail() {
   return (
     <div className="space-y-4 min-w-0 overflow-x-hidden">
       <FleetDetailHeader
-        onBack={() => nav('/fleet/inspections')}
+        onBack={goBackFromSchedule}
         title={<span className="text-sm font-semibold text-gray-900">Inspection</span>}
         subtitle={null}
         actions={isAdmin ? (

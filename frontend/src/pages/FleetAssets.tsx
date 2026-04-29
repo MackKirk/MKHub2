@@ -1,6 +1,6 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { useState, useEffect, useMemo, Fragment } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { api } from '@/lib/api';
 import { FleetAssetNewForm } from './FleetAssetNew';
 import OverlayPortal from '@/components/OverlayPortal';
@@ -514,7 +514,6 @@ export default function FleetAssets() {
   };
   
   const [typeFilter, setTypeFilter] = useState<string>(getInitialType());
-  const [expandedRowId, setExpandedRowId] = useState<string | null>(null);
 
   const pageParam = parseInt(searchParams.get('page') || '1', 10);
   const [page, setPage] = useState(pageParam);
@@ -672,81 +671,6 @@ export default function FleetAssets() {
       day: 'numeric',
     });
   }, []);
-
-  function renderExpandedPanel(asset: FleetAsset) {
-    const detail = (label: string, value: string | number | undefined) =>
-      value !== undefined && value !== null && String(value).trim() !== '' ? (
-        <div className="flex flex-col gap-0.5">
-          <span className="text-[10px] font-medium text-gray-500 uppercase tracking-wide">{label}</span>
-          <span className="text-xs text-gray-900">{Array.isArray(value) ? (value as string[]).join(', ') : String(value)}</span>
-        </div>
-      ) : null;
-
-    const gvwDisplay = asset.gvw_value != null
-      ? `${asset.gvw_value}${asset.gvw_unit ? ` ${asset.gvw_unit}` : ''}`
-      : asset.gvw_kg != null ? `${asset.gvw_kg} kg` : undefined;
-
-    return (
-      <div className="p-4 bg-gray-50/80 border-t border-gray-100 transition-all duration-150">
-        <div className="grid grid-cols-2 md:grid-cols-3 gap-x-6 gap-y-4 text-left">
-          <div className="space-y-3">
-            <div className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide">Identity</div>
-            <div className="space-y-2">
-              {detail('Make', asset.make)}
-              {detail('Model', asset.model)}
-              {detail('VIN/Serial', asset.vin)}
-              {detail('Division', asset.division_id)}
-              {detail('Condition', asset.condition)}
-            </div>
-          </div>
-          <div className="space-y-3">
-            <div className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide">Registration / Compliance</div>
-            <div className="space-y-2">
-              {detail('ICBC Registration No.', asset.icbc_registration_no)}
-              {detail('Vancouver Decal(s)', Array.isArray(asset.vancouver_decals) ? asset.vancouver_decals.join(', ') : undefined)}
-              {detail('Ferry Length', asset.ferry_length)}
-              {detail('GVW', gvwDisplay)}
-            </div>
-          </div>
-          <div className="space-y-3">
-            <div className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide">Maintenance</div>
-            <div className="space-y-2">
-              {detail('Current Odometer', asset.odometer_current)}
-              {detail('Last Service Odometer', asset.odometer_last_service)}
-              {detail('Odometer Next Due At', asset.odometer_next_due_at)}
-              {detail('Odometer Noted Issues', asset.odometer_noted_issues)}
-            </div>
-          </div>
-          <div className="space-y-3">
-            <div className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide">Location / Contact</div>
-            <div className="space-y-2">
-              {detail('Yard Location', asset.yard_location)}
-              {detail('Driver Contact Phone', asset.driver_contact_phone)}
-            </div>
-          </div>
-          {asset.asset_type === 'heavy_machinery' && (
-            <div className="space-y-3">
-              <div className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide">Hours</div>
-              <div className="space-y-2">
-                {detail('Current Hours', asset.hours_current)}
-                {detail('Hours Next Due At', asset.hours_next_due_at)}
-                {detail('Hours Noted Issues', asset.hours_noted_issues)}
-              </div>
-            </div>
-          )}
-        </div>
-        <div className="mt-4 pt-3 border-t border-gray-200 flex items-center gap-2">
-          <button
-            type="button"
-            onClick={(e) => { e.stopPropagation(); nav(`/fleet/assets/${asset.id}`); }}
-            className="px-3 py-1.5 text-xs font-medium text-white bg-brand-red rounded-lg hover:opacity-90 transition-opacity"
-          >
-            View Details
-          </button>
-        </div>
-      </div>
-    );
-  }
 
   // When New Asset modal is open: prevent body scroll and ESC to close
   useEffect(() => {
@@ -927,8 +851,7 @@ export default function FleetAssets() {
               <table className="w-full min-w-0 border-collapse">
                 <thead>
                   <tr className="text-[10px] font-semibold text-gray-700 bg-gray-50 border-b border-gray-200">
-                    <th className="w-10 px-2 py-2 text-left rounded-tl-lg" scope="col" aria-label="Expand row" />
-                    <th className="px-3 py-2 text-left">
+                    <th className="px-3 py-2 text-left rounded-tl-lg">
                       <button type="button" onClick={() => setListSort('unit_number')} className="flex items-center gap-1 hover:text-gray-900 rounded py-0.5 outline-none focus:outline-none" title="Sort by unit number">Unit #{sortBy === 'unit_number' ? (sortDir === 'asc' ? ' ↑' : ' ↓') : ''}</button>
                     </th>
                     <th className="px-3 py-2 text-left">
@@ -953,34 +876,22 @@ export default function FleetAssets() {
                 </thead>
                 <tbody>
                   {assets.map((asset) => {
-                    const isExpanded = expandedRowId === asset.id;
                     const primaryName = (asset.name && asset.name.trim()) || [asset.make, asset.model].filter(Boolean).join(' ').trim() || '—';
                     const metaLine = buildMetaLine(asset);
                     return (
-                      <Fragment key={asset.id}>
                         <tr
                           key={asset.id}
                           className="border-b border-gray-100 last:border-b-0 hover:bg-gray-50 cursor-pointer transition-colors min-h-[52px]"
-                          onClick={() => setExpandedRowId((prev) => (prev === asset.id ? null : asset.id))}
+                          onClick={() => nav(`/fleet/assets/${asset.id}`)}
+                          role="link"
+                          tabIndex={0}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter' || e.key === ' ') {
+                              e.preventDefault();
+                              nav(`/fleet/assets/${asset.id}`);
+                            }
+                          }}
                         >
-                          <td className="w-10 px-2 py-2 align-top" onClick={(e) => e.stopPropagation()}>
-                            <button
-                              type="button"
-                              aria-expanded={isExpanded}
-                              aria-label={isExpanded ? 'Collapse row' : 'Expand row'}
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                setExpandedRowId((prev) => (prev === asset.id ? null : asset.id));
-                              }}
-                              className="p-1 rounded text-gray-500 hover:text-gray-700 hover:bg-gray-100 transition-colors"
-                            >
-                              {isExpanded ? (
-                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
-                              ) : (
-                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
-                              )}
-                            </button>
-                          </td>
                           <td className="px-3 py-3 text-xs text-gray-600 align-top whitespace-nowrap">{asset.unit_number || '—'}</td>
                           <td className="px-3 py-3 align-top min-w-0">
                             <div className="flex flex-col gap-0.5 min-w-0">
@@ -1011,14 +922,6 @@ export default function FleetAssets() {
                             </span>
                           </td>
                         </tr>
-                        {isExpanded && (
-                          <tr className="bg-gray-50/50">
-                            <td colSpan={8} className="p-0 align-top">
-                              {renderExpandedPanel(asset)}
-                            </td>
-                          </tr>
-                        )}
-                      </Fragment>
                     );
                   })}
                 </tbody>

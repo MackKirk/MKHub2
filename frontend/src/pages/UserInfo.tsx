@@ -7320,7 +7320,12 @@ function UserAssetsSection({
   const [showVehicleCheckoutModal, setShowVehicleCheckoutModal] = useState(false);
   const [showCheckinModal, setShowCheckinModal] = useState(false);
   const [checkinEquipmentId, setCheckinEquipmentId] = useState<string | null>(null);
-  const [returnFleetAssetId, setReturnFleetAssetId] = useState<string | null>(null);
+  const [returnFleetContext, setReturnFleetContext] = useState<{
+    fleetAssetId: string;
+    fleetAssetType: string | null;
+    minOdometerIn: number | null;
+    minHoursIn: number | null;
+  } | null>(null);
   const [checkoutSubmitting, setCheckoutSubmitting] = useState(false);
   const [checkinSubmitting, setCheckinSubmitting] = useState(false);
   const [fleetReturnSubmitting, setFleetReturnSubmitting] = useState(false);
@@ -7350,17 +7355,42 @@ function UserAssetsSection({
     setShowCheckinModal(true);
   };
 
-  const handleFleetReturn = (fleetAssetId: string) => {
-    setReturnFleetAssetId(fleetAssetId);
+  const handleFleetReturn = (
+    fleetAssetId: string,
+    row?: { fleet_asset_type?: string | null; odometer_out?: number | null; hours_out?: number | null },
+  ) => {
+    const t = row?.fleet_asset_type ?? null;
+    const minOdom =
+      t === 'vehicle' && row?.odometer_out != null && !Number.isNaN(Number(row.odometer_out))
+        ? Number(row.odometer_out)
+        : null;
+    const minHrs =
+      (t === 'heavy_machinery' || t === 'other') &&
+      row?.hours_out != null &&
+      !Number.isNaN(Number(row.hours_out))
+        ? Number(row.hours_out)
+        : null;
+    setReturnFleetContext({
+      fleetAssetId,
+      fleetAssetType: t,
+      minOdometerIn: minOdom,
+      minHoursIn: minHrs,
+    });
   };
 
-  const handleFleetReturnSubmit = async (payload: { odometer_in?: number; notes_in?: string }) => {
-    if (!returnFleetAssetId) return;
+  const handleFleetReturnSubmit = async (payload: {
+    odometer_in?: number;
+    hours_in?: number;
+    notes_in?: string;
+  }) => {
+    if (!returnFleetContext) return;
     setFleetReturnSubmitting(true);
     try {
-      await api('POST', `/fleet/assets/${returnFleetAssetId}/return`, payload);
-      toast.success('Vehicle returned');
-      setReturnFleetAssetId(null);
+      await api('POST', `/fleet/assets/${returnFleetContext.fleetAssetId}/return`, payload);
+      toast.success(
+        returnFleetContext.fleetAssetType === 'vehicle' ? 'Vehicle returned' : 'Return recorded',
+      );
+      setReturnFleetContext(null);
       refetchAssets();
     } catch (e: any) {
       toast.error(e?.message || 'Return failed');
@@ -7499,7 +7529,13 @@ function UserAssetsSection({
                       <td className="py-2 px-3 text-right">
                         <button
                           type="button"
-                          onClick={() => handleFleetReturn(a.fleet_asset_id)}
+                          onClick={() =>
+                            handleFleetReturn(String(a.fleet_asset_id), {
+                              fleet_asset_type: a.fleet_asset_type,
+                              odometer_out: a.odometer_out,
+                              hours_out: a.hours_out,
+                            })
+                          }
                           className="text-xs px-2 py-1 rounded border border-gray-300 hover:bg-gray-100"
                         >
                           Return vehicle
@@ -7629,9 +7665,13 @@ function UserAssetsSection({
       )}
 
       {/* Fleet return modal */}
-      {returnFleetAssetId && (
+      {returnFleetContext && (
         <UserFleetReturnModal
-          onClose={() => setReturnFleetAssetId(null)}
+          key={returnFleetContext.fleetAssetId}
+          fleetAssetType={returnFleetContext.fleetAssetType}
+          minOdometerIn={returnFleetContext.minOdometerIn}
+          minHoursIn={returnFleetContext.minHoursIn}
+          onClose={() => setReturnFleetContext(null)}
           onSubmit={handleFleetReturnSubmit}
           submitting={fleetReturnSubmitting}
         />
@@ -7912,23 +7952,55 @@ function UserFleetVehicleCheckoutModal({
 }
 
 function UserFleetReturnModal({
+  fleetAssetType,
+  minOdometerIn,
+  minHoursIn,
   onClose,
   onSubmit,
   submitting,
 }: {
+  fleetAssetType: string | null;
+  minOdometerIn: number | null;
+  minHoursIn: number | null;
   onClose: () => void;
-  onSubmit: (p: { odometer_in?: number; notes_in?: string }) => Promise<void>;
+  onSubmit: (p: { odometer_in?: number; hours_in?: number; notes_in?: string }) => Promise<void>;
   submitting: boolean;
 }) {
   const [odometerIn, setOdometerIn] = useState('');
+  const [hoursIn, setHoursIn] = useState('');
   const [notes, setNotes] = useState('');
+
+  const isVehicle = fleetAssetType === 'vehicle';
+  const isHoursAsset = fleetAssetType === 'heavy_machinery' || fleetAssetType === 'other';
+  const title =
+    isVehicle ? 'Return vehicle' : isHoursAsset ? 'Return fleet asset' : 'Return fleet asset';
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    const payload: { odometer_in?: number; notes_in?: string } = {};
+    const payload: { odometer_in?: number; hours_in?: number; notes_in?: string } = {};
     if (odometerIn.trim() !== '') {
       const n = parseInt(odometerIn, 10);
-      if (!Number.isNaN(n)) payload.odometer_in = n;
+      if (!Number.isNaN(n)) {
+        if (minOdometerIn != null && n < minOdometerIn) {
+          toast.error(
+            `Odometer in must be at least ${minOdometerIn.toLocaleString()} (reading at check-out).`,
+          );
+          return;
+        }
+        payload.odometer_in = n;
+      }
+    }
+    if (hoursIn.trim() !== '') {
+      const h = parseFloat(hoursIn);
+      if (!Number.isNaN(h)) {
+        if (minHoursIn != null && h < minHoursIn) {
+          toast.error(
+            `Hours in must be at least ${minHoursIn.toLocaleString()} (reading at check-out).`,
+          );
+          return;
+        }
+        payload.hours_in = h;
+      }
     }
     if (notes.trim()) payload.notes_in = notes.trim();
     await onSubmit(payload);
@@ -7938,19 +8010,45 @@ function UserFleetReturnModal({
     <OverlayPortal>
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={onClose}>
       <div className="bg-white rounded-xl shadow-lg max-w-md w-full" onClick={e => e.stopPropagation()}>
-        <div className="p-4 border-b font-semibold">Return vehicle</div>
+        <div className="p-4 border-b font-semibold">{title}</div>
         <form onSubmit={handleSubmit} className="p-4 space-y-4">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Odometer (in)</label>
-            <input
-              type="number"
-              min={0}
-              value={odometerIn}
-              onChange={e => setOdometerIn(e.target.value)}
-              className="w-full border rounded-lg px-3 py-2"
-              placeholder="Optional"
-            />
-          </div>
+          {(isVehicle || (!isHoursAsset && !isVehicle)) && (
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Odometer (in)</label>
+              <input
+                type="number"
+                min={minOdometerIn != null ? minOdometerIn : 0}
+                value={odometerIn}
+                onChange={e => setOdometerIn(e.target.value)}
+                className="w-full border rounded-lg px-3 py-2"
+                placeholder={minOdometerIn != null ? `Min ${minOdometerIn.toLocaleString()}` : 'Optional'}
+              />
+              {minOdometerIn != null && (
+                <p className="text-xs text-gray-500 mt-1">
+                  Must be at least {minOdometerIn.toLocaleString()} (check-out).
+                </p>
+              )}
+            </div>
+          )}
+          {(isHoursAsset || (!isHoursAsset && !isVehicle)) && (
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Hours (in)</label>
+              <input
+                type="number"
+                step="any"
+                min={minHoursIn != null ? minHoursIn : 0}
+                value={hoursIn}
+                onChange={e => setHoursIn(e.target.value)}
+                className="w-full border rounded-lg px-3 py-2"
+                placeholder={minHoursIn != null ? `Min ${minHoursIn.toLocaleString()}` : 'Optional'}
+              />
+              {minHoursIn != null && (
+                <p className="text-xs text-gray-500 mt-1">
+                  Must be at least {minHoursIn.toLocaleString()} (check-out).
+                </p>
+              )}
+            </div>
+          )}
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Notes</label>
             <textarea value={notes} onChange={e => setNotes(e.target.value)} className="w-full border rounded-lg px-3 py-2" rows={2} />

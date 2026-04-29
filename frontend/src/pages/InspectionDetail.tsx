@@ -130,6 +130,14 @@ export default function InspectionDetail() {
   const nav = useNavigate();
   const queryClient = useQueryClient();
 
+  const goBackFromInspection = () => {
+    if (window.history.length > 1) {
+      nav(-1);
+    } else {
+      nav('/fleet/inspections');
+    }
+  };
+
   const isValidId = id && id !== 'new';
 
   const { data: inspection, isLoading } = useQuery({
@@ -384,7 +392,7 @@ export default function InspectionDetail() {
   return (
     <div className="space-y-4 min-w-0 overflow-x-hidden">
       <FleetDetailHeader
-        onBack={() => nav('/fleet/inspections')}
+        onBack={goBackFromInspection}
         title={<span className="text-sm font-semibold text-gray-900">Inspection</span>}
         subtitle={null}
         actions={isAdmin ? (

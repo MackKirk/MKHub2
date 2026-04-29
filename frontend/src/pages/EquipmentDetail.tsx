@@ -1,12 +1,27 @@
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
-import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
+import { useState, useEffect, useMemo, useCallback, useRef, useId } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api, withFileAccessToken } from '@/lib/api';
 import toast from 'react-hot-toast';
 import AddressAutocomplete from '@/components/AddressAutocomplete';
 import { formatDateLocal } from '@/lib/dateUtils';
 import OverlayPortal from '@/components/OverlayPortal';
+import { WorkOrderAttachmentsPicker } from '@/components/fleet/WorkOrderAttachmentsPicker';
+import {
+  SAFETY_MODAL_OVERLAY,
+  SAFETY_MODAL_BTN_CANCEL,
+  SAFETY_MODAL_BTN_PRIMARY,
+  SAFETY_MODAL_FIELD_LABEL,
+  SafetyFormModalLayout,
+} from '@/components/safety/SafetyModalChrome';
 import { useConfirm } from '@/components/ConfirmProvider';
+import {
+  CATEGORY_LABELS,
+  URGENCY_COLORS,
+  URGENCY_LABELS,
+  WORK_ORDER_STATUS_COLORS,
+  WORK_ORDER_STATUS_LABELS,
+} from '@/lib/fleetBadges';
 
 type Equipment = {
   id: string;
@@ -54,6 +69,15 @@ type WorkOrder = {
   photos?: string[] | { before?: string[]; after?: string[] };
   created_at: string;
 };
+
+function flattenWorkOrderPhotos(photos: WorkOrder['photos']): string[] {
+  if (!photos) return [];
+  if (Array.isArray(photos)) return photos;
+  return [
+    ...(Array.isArray(photos.before) ? photos.before : []),
+    ...(Array.isArray(photos.after) ? photos.after : []),
+  ];
+}
 
 type EquipmentLog = {
   id: string;
@@ -105,7 +129,7 @@ export default function EquipmentDetail() {
     enabled: isValidId,
   });
 
-  const { data: workOrders } = useQuery({
+  const { data: workOrders, isLoading: workOrdersLoading } = useQuery({
     queryKey: ['equipmentWorkOrders', id],
     queryFn: () => api<WorkOrder[]>('GET', `/fleet/equipment/${id}/work-orders`),
     enabled: isValidId,
@@ -207,13 +231,6 @@ export default function EquipmentDetail() {
     checked_out: 'bg-blue-100 text-blue-800',
     maintenance: 'bg-yellow-100 text-yellow-800',
     retired: 'bg-red-100 text-red-800',
-  };
-
-  const urgencyColors: Record<string, string> = {
-    low: 'bg-blue-100 text-blue-800',
-    normal: 'bg-gray-100 text-gray-800',
-    high: 'bg-orange-100 text-orange-800',
-    urgent: 'bg-red-100 text-red-800',
   };
 
   const todayLabel = useMemo(() => {
@@ -517,83 +534,84 @@ export default function EquipmentDetail() {
           )}
 
           {tab === 'work-orders' && (
-            <div className="space-y-4">
-              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div className="space-y-3">
+              <div>
                 <h3 className="text-sm font-semibold text-gray-900">Work orders</h3>
+                <p className="mt-0.5 text-xs text-gray-600">Create or open a work order for this equipment.</p>
+              </div>
+
+              <div className="min-w-0 overflow-hidden rounded-xl border border-gray-200 bg-white">
                 <button
                   type="button"
                   onClick={() => setShowWorkOrderForm(true)}
-                  className="rounded-lg bg-brand-red px-4 py-2 text-sm font-medium text-white hover:bg-red-700"
+                  className="flex min-h-[52px] w-full min-w-0 items-center justify-center rounded-t-xl border-2 border-dashed border-gray-300 bg-white p-2.5 text-center transition-all hover:border-brand-red hover:bg-gray-50"
                 >
-                  + New work order
+                  <span className="mr-2 text-lg text-gray-400">+</span>
+                  <span className="text-xs font-medium text-gray-700">New work order</span>
                 </button>
-              </div>
-              <div className="space-y-2">
-                {Array.isArray(workOrders) &&
+
+                {workOrdersLoading && (
+                  <div className="border-t border-gray-100 px-4 py-4 text-center text-xs text-gray-500">Loading…</div>
+                )}
+
+                {!workOrdersLoading &&
+                  Array.isArray(workOrders) &&
+                  workOrders.length === 0 && (
+                    <div className="border-t border-gray-100 px-4 py-6 text-center text-xs text-gray-500">
+                      No work orders yet for this equipment.
+                    </div>
+                  )}
+
+                {!workOrdersLoading &&
+                  Array.isArray(workOrders) &&
                   workOrders.map((wo) => {
-                    const p = wo.photos as string[] | { before?: string[]; after?: string[] } | null;
-                    const photoList = Array.isArray(p)
-                      ? p
-                      : p && typeof p === 'object'
-                        ? [
-                            ...(Array.isArray((p as any).before) ? (p as any).before : []),
-                            ...(Array.isArray((p as any).after) ? (p as any).after : []),
-                          ]
-                        : [];
+                    const photoList = flattenWorkOrderPhotos(wo.photos);
+                    const categoryLabel = CATEGORY_LABELS[wo.category] ?? wo.category;
                     return (
-                      <div
+                      <button
                         key={wo.id}
-                        className="cursor-pointer rounded-lg border p-4 hover:bg-gray-50"
+                        type="button"
                         onClick={() => nav(`/fleet/work-orders/${wo.id}`)}
-                        role="button"
-                        tabIndex={0}
-                        onKeyDown={(e) => {
-                          if (e.key === 'Enter' || e.key === ' ') {
-                            e.preventDefault();
-                            nav(`/fleet/work-orders/${wo.id}`);
-                          }
-                        }}
+                        className="flex w-full flex-col gap-1 border-t border-gray-100 px-3 py-2.5 text-left transition-colors hover:bg-gray-50"
                       >
-                        <div className="flex items-start justify-between gap-4">
-                          <div className="min-w-0 flex-1">
-                            <div className="font-medium text-gray-900">{wo.work_order_number}</div>
-                            <div className="text-sm text-gray-600">{wo.description}</div>
-                            <div className="mt-2 flex flex-wrap gap-2">
-                              <span
-                                className={`rounded px-2 py-1 text-xs ${urgencyColors[wo.urgency] || 'bg-gray-100 text-gray-800'}`}
-                              >
-                                {wo.urgency}
-                              </span>
-                              <span
-                                className={`rounded px-2 py-1 text-xs ${statusColors[wo.status] || 'bg-gray-100 text-gray-800'}`}
-                              >
-                                {wo.status.replace(/_/g, ' ')}
-                              </span>
-                            </div>
-                            {photoList.length > 0 ? (
-                              <div className="mt-2 flex flex-wrap gap-2">
-                                {photoList.slice(0, 3).map((photoId: string, idx: number) => (
-                                  <img
-                                    key={idx}
-                                    src={withFileAccessToken(`/files/${photoId}/thumbnail?w=100`)}
-                                    alt=""
-                                    className="h-16 w-16 rounded border object-cover"
-                                  />
-                                ))}
-                              </div>
-                            ) : null}
-                          </div>
-                          <div className="shrink-0 text-sm text-gray-500">
+                        <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-0.5 sm:flex-nowrap">
+                          <span className="shrink-0 text-sm font-semibold text-gray-900">{wo.work_order_number}</span>
+                          <span className="hidden text-[10px] text-gray-300 sm:inline">·</span>
+                          <span className="shrink-0 text-[11px] capitalize text-gray-500">{categoryLabel}</span>
+                          <span className="min-w-[4px] flex-1" />
+                          <span
+                            className={`inline-flex shrink-0 rounded px-1.5 py-0.5 text-[10px] font-medium ${URGENCY_COLORS[wo.urgency] || 'bg-gray-100 text-gray-800'}`}
+                          >
+                            {URGENCY_LABELS[wo.urgency] ?? wo.urgency}
+                          </span>
+                          <span
+                            className={`inline-flex shrink-0 rounded px-1.5 py-0.5 text-[10px] font-medium ${WORK_ORDER_STATUS_COLORS[wo.status] || 'bg-gray-100 text-gray-800'}`}
+                          >
+                            {WORK_ORDER_STATUS_LABELS[wo.status] ?? wo.status.replace(/_/g, ' ')}
+                          </span>
+                          <span className="shrink-0 whitespace-nowrap text-[11px] tabular-nums text-gray-500">
                             {formatDateLocal(new Date(wo.created_at))}
-                          </div>
+                          </span>
                         </div>
-                      </div>
+                        <div className="flex min-w-0 items-center gap-2">
+                          <p className="min-w-0 flex-1 truncate text-xs text-gray-600">{wo.description?.trim() || '—'}</p>
+                          {photoList.length > 0 ? (
+                            <div className="flex shrink-0 gap-0.5">
+                              {photoList.slice(0, 3).map((photoId, idx) => (
+                                <img
+                                  key={idx}
+                                  src={withFileAccessToken(`/files/${photoId}/thumbnail?w=64`)}
+                                  alt=""
+                                  className="h-8 w-8 rounded border border-gray-200 object-cover"
+                                />
+                              ))}
+                            </div>
+                          ) : null}
+                        </div>
+                      </button>
                     );
                   })}
               </div>
-              {(!workOrders || workOrders.length === 0) && (
-                <div className="py-8 text-center text-sm text-gray-500">No work orders found</div>
-              )}
             </div>
           )}
 
@@ -682,41 +700,21 @@ export default function EquipmentDetail() {
         />
       )}
       {showWorkOrderForm && (
-        <OverlayPortal><div
-          className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4"
-          onClick={() => setShowWorkOrderForm(false)}
-        >
-          <div
-            className="bg-white rounded-xl shadow-lg max-w-lg w-full max-h-[90vh] overflow-y-auto"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="p-4 border-b font-semibold flex items-center justify-between">
-              <span>New Work Order</span>
-              <button
-                type="button"
-                onClick={() => setShowWorkOrderForm(false)}
-                className="p-1 rounded hover:bg-gray-100 text-gray-600"
-              >
-                ✕
-              </button>
-            </div>
-            <div className="p-4">
-              <EquipmentWorkOrderFormInline
-                equipmentId={id!}
-                onSuccess={() => {
-                  setShowWorkOrderForm(false);
-                  queryClient.invalidateQueries({ queryKey: ['equipmentWorkOrders', id] });
-                }}
-                onCancel={() => setShowWorkOrderForm(false)}
-                employees={employees}
-              />
-            </div>
-          </div>
-        </div></OverlayPortal>
+        <EquipmentWorkOrderFormInline
+          equipmentId={id!}
+          onSuccess={() => {
+            setShowWorkOrderForm(false);
+            queryClient.invalidateQueries({ queryKey: ['equipmentWorkOrders', id] });
+          }}
+          onCancel={() => setShowWorkOrderForm(false)}
+          employees={employees}
+        />
       )}
     </div>
   );
 }
+
+const EQUIPMENT_NEW_WORK_ORDER_FORM_ID = 'equipment-new-work-order-form';
 
 function EquipmentWorkOrderFormInline({
   equipmentId,
@@ -729,59 +727,32 @@ function EquipmentWorkOrderFormInline({
   onCancel: () => void;
   employees: any[];
 }) {
+  const newWoTitleId = useId();
   const [form, setForm] = useState({
     description: '',
     category: 'maintenance',
     urgency: 'normal',
-    status: 'open',
     assigned_to_user_id: '',
   });
   const [photos, setPhotos] = useState<string[]>([]);
   const [uploading, setUploading] = useState(false);
-  const photoInputRef = useRef<HTMLInputElement>(null);
+  const labelClass = SAFETY_MODAL_FIELD_LABEL;
+  const inputBase = 'w-full border border-gray-200 rounded-lg px-3 py-2 text-sm shadow-sm focus:border-brand-red focus:outline-none focus:ring-2 focus:ring-red-500/15';
+
+  useEffect(() => {
+    document.body.style.overflow = 'hidden';
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onCancel();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => {
+      document.body.style.overflow = '';
+      window.removeEventListener('keydown', onKey);
+    };
+  }, [onCancel]);
 
   const updateField = (field: string, value: any) => {
     setForm((prev) => ({ ...prev, [field]: value }));
-  };
-
-  const uploadFile = async (file: File, category: string): Promise<string> => {
-    const up: any = await api('POST', '/files/upload', {
-      original_name: file.name,
-      content_type: file.type || 'application/octet-stream',
-      employee_id: null,
-      project_id: null,
-      client_id: null,
-      category_id: category,
-    });
-    await fetch(up.upload_url, {
-      method: 'PUT',
-      headers: { 'Content-Type': file.type || 'application/octet-stream', 'x-ms-blob-type': 'BlockBlob' },
-      body: file,
-    });
-    const conf: any = await api('POST', '/files/confirm', {
-      key: up.key,
-      size_bytes: file.size,
-      checksum_sha256: 'na',
-      content_type: file.type || 'application/octet-stream',
-    });
-    return conf.id;
-  };
-
-  const handlePhotoChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = e.target.files;
-    if (!files || files.length === 0) return;
-    setUploading(true);
-    try {
-      const uploadPromises = Array.from(files).map((file) => uploadFile(file, 'fleet-work-order-photos'));
-      const uploadedIds = await Promise.all(uploadPromises);
-      setPhotos((prev) => [...prev, ...uploadedIds]);
-      toast.success('Files uploaded');
-    } catch {
-      toast.error('Failed to upload files');
-    } finally {
-      setUploading(false);
-      if (photoInputRef.current) photoInputRef.current.value = '';
-    }
   };
 
   const createMutation = useMutation({
@@ -792,7 +763,7 @@ function EquipmentWorkOrderFormInline({
         description: form.description.trim(),
         category: form.category,
         urgency: form.urgency,
-        status: form.status,
+        status: 'open',
         assigned_to_user_id: form.assigned_to_user_id || null,
         photos: photos.length > 0 ? photos : null,
         costs: { labor: [], parts: [], other: [], total: 0 },
@@ -807,112 +778,113 @@ function EquipmentWorkOrderFormInline({
     onError: () => toast.error('Failed to create work order'),
   });
 
+  const submitDisabled = !form.description.trim() || createMutation.isPending || uploading;
+
   return (
-    <div className="space-y-4">
-      <div className="grid grid-cols-2 gap-4">
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">Category</label>
-          <select
-            value={form.category}
-            onChange={(e) => updateField('category', e.target.value)}
-            className="w-full px-3 py-2 border rounded-lg"
-          >
-            <option value="maintenance">Maintenance</option>
-            <option value="repair">Repair</option>
-            <option value="inspection">Inspection</option>
-            <option value="other">Other</option>
-          </select>
-        </div>
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">Urgency</label>
-          <select
-            value={form.urgency}
-            onChange={(e) => updateField('urgency', e.target.value)}
-            className="w-full px-3 py-2 border rounded-lg"
-          >
-            <option value="low">Low</option>
-            <option value="normal">Normal</option>
-            <option value="high">High</option>
-            <option value="urgent">Urgent</option>
-          </select>
-        </div>
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">Status</label>
-          <select
-            value={form.status}
-            onChange={(e) => updateField('status', e.target.value)}
-            className="w-full px-3 py-2 border rounded-lg"
-          >
-            <option value="open">Open</option>
-            <option value="in_progress">In Progress</option>
-            <option value="pending_parts">Pending Parts</option>
-            <option value="closed">Closed</option>
-          </select>
-        </div>
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">Assigned To</label>
-          <select
-            value={form.assigned_to_user_id}
-            onChange={(e) => updateField('assigned_to_user_id', e.target.value)}
-            className="w-full px-3 py-2 border rounded-lg"
-          >
-            <option value="">Unassigned</option>
-            {Array.isArray(employees) &&
-              employees.map((emp: any) => (
-                <option key={emp.id} value={emp.id}>
-                  {emp.profile?.preferred_name || emp.profile?.first_name || emp.username}
-                </option>
-              ))}
-          </select>
-        </div>
-      </div>
-      <div>
-        <label className="block text-sm font-medium text-gray-700 mb-1">Description / Notes *</label>
-        <textarea
-          value={form.description}
-          onChange={(e) => updateField('description', e.target.value)}
-          rows={4}
-          className="w-full px-3 py-2 border rounded-lg"
-          placeholder="Describe the issue, work needed, and any additional notes..."
-          required
-        />
-      </div>
-      <div>
-        <label className="block text-sm font-medium text-gray-700 mb-1">Photos & Documents</label>
-        <input
-          ref={photoInputRef}
-          type="file"
-          multiple
-          onChange={handlePhotoChange}
-          disabled={uploading}
-          className="w-full px-3 py-2 border rounded-lg"
-        />
-        {photos.length > 0 && (
-          <div className="flex gap-2 mt-2 flex-wrap">
-            {photos.map((photoId, idx) => (
-              <img
-                key={idx}
-                src={withFileAccessToken(`/files/${photoId}/thumbnail?w=100`)}
-                alt={`File ${idx + 1}`}
-                className="w-16 h-16 object-cover rounded border"
-              />
-            ))}
-          </div>
-        )}
-      </div>
-      <div className="flex gap-3 justify-end">
-        <button type="button" onClick={onCancel} className="px-4 py-2 border rounded-lg hover:bg-gray-50">
-          Cancel
-        </button>
-        <button
-          onClick={() => createMutation.mutate()}
-          disabled={!form.description.trim() || createMutation.isPending || uploading}
-          className="px-4 py-2 bg-brand-red text-white rounded-lg hover:bg-red-700 disabled:opacity-50"
+    <OverlayPortal>
+      <div className={SAFETY_MODAL_OVERLAY} onClick={onCancel}>
+        <SafetyFormModalLayout
+          widthClass="w-[640px]"
+          titleId={newWoTitleId}
+          title="New work order"
+          subtitle="Describe the work needed. Costs and invoice files can be added on the work order after it is created."
+          onClose={onCancel}
+          footer={
+            <>
+              <button type="button" onClick={onCancel} className={SAFETY_MODAL_BTN_CANCEL}>
+                Cancel
+              </button>
+              <button
+                type="submit"
+                form={EQUIPMENT_NEW_WORK_ORDER_FORM_ID}
+                disabled={submitDisabled}
+                className={SAFETY_MODAL_BTN_PRIMARY}
+              >
+                {createMutation.isPending ? 'Creating…' : 'Create work order'}
+              </button>
+            </>
+          }
         >
-          {createMutation.isPending ? 'Creating...' : 'Create Work Order'}
-        </button>
+          <form
+            id={EQUIPMENT_NEW_WORK_ORDER_FORM_ID}
+            className="space-y-4"
+            onSubmit={(e) => {
+              e.preventDefault();
+              if (!form.description.trim()) return;
+              createMutation.mutate();
+            }}
+          >
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <div>
+                <label className={labelClass}>Category</label>
+                <select
+                  value={form.category}
+                  onChange={(e) => updateField('category', e.target.value)}
+                  className={inputBase}
+                >
+                  <option value="maintenance">Maintenance</option>
+                  <option value="repair">Repair</option>
+                  <option value="inspection">Inspection</option>
+                  <option value="other">Other</option>
+                </select>
+              </div>
+              <div>
+                <label className={labelClass}>Urgency</label>
+                <select
+                  value={form.urgency}
+                  onChange={(e) => updateField('urgency', e.target.value)}
+                  className={inputBase}
+                >
+                  <option value="low">Low</option>
+                  <option value="normal">Normal</option>
+                  <option value="high">High</option>
+                  <option value="urgent">Urgent</option>
+                </select>
+              </div>
+              <div>
+                <label className={labelClass}>Assigned to</label>
+                <select
+                  value={form.assigned_to_user_id}
+                  onChange={(e) => updateField('assigned_to_user_id', e.target.value)}
+                  className={inputBase}
+                >
+                  <option value="">Unassigned</option>
+                  {Array.isArray(employees) &&
+                    employees.map((emp: any) => (
+                      <option key={emp.id} value={emp.id}>
+                        {getEmployeeDisplayName(emp)}
+                      </option>
+                    ))}
+                </select>
+              </div>
+            </div>
+            <div>
+              <label className={labelClass}>
+                Description / notes <span className="text-red-600">*</span>
+              </label>
+              <textarea
+                value={form.description}
+                onChange={(e) => updateField('description', e.target.value)}
+                rows={4}
+                className={`${inputBase} resize-y min-h-[5rem]`}
+                placeholder="Describe the issue, work needed, and any additional notes…"
+                required
+              />
+            </div>
+            <WorkOrderAttachmentsPicker
+              fileIds={photos}
+              onFileIdsChange={setPhotos}
+              onUploadingChange={setUploading}
+              disabled={createMutation.isPending || uploading}
+            />
+            <div className="rounded-lg border border-sky-200 bg-sky-50/80 px-3 py-2 text-xs text-gray-700">
+              <strong className="font-medium text-gray-800">Tip:</strong> add line-item costs and invoices from the work
+              order detail page after creation.
+            </div>
+          </form>
+        </SafetyFormModalLayout>
       </div>
-    </div>
+    </OverlayPortal>
   );
 }
 
