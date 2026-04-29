@@ -1026,48 +1026,50 @@ export default function FleetAssetDetail() {
                 inspections.map((inspection) => (
                   <div
                     key={inspection.id}
-                    className="flex flex-col gap-1 border-t border-gray-100 px-3 py-2.5 transition-colors hover:bg-gray-50"
+                    className="flex items-start border-t border-gray-100 transition-colors hover:bg-gray-50"
                   >
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="min-w-0 flex-1">
-                        <div className="text-sm font-semibold text-gray-900">
-                          {new Date(inspection.inspection_date).toLocaleDateString()}
-                        </div>
-                        <div className="text-[11px] text-gray-600">
-                          Result:{' '}
-                          <span className={inspection.result === 'pass' ? 'text-green-600 font-medium' : 'text-red-600 font-medium'}>
-                            {inspection.result}
-                          </span>
-                        </div>
-                        {inspection.notes && (
-                          <p className="mt-1 line-clamp-2 text-xs text-gray-600">{inspection.notes}</p>
-                        )}
-                        {inspection.photos && inspection.photos.length > 0 && (
-                          <div className="mt-2 flex gap-1">
-                            {inspection.photos.map((photoId, idx) => (
-                              <img
-                                key={idx}
-                                src={withFileAccessToken(`/files/${photoId}/thumbnail?w=100`)}
-                                alt=""
-                                className="h-8 w-8 rounded border border-gray-200 object-cover"
-                              />
-                            ))}
-                          </div>
-                        )}
+                    <button
+                      type="button"
+                      onClick={() => nav(`/fleet/inspections/${inspection.id}`)}
+                      className="flex min-w-0 flex-1 flex-col gap-1 px-3 py-2.5 text-left"
+                    >
+                      <div className="text-sm font-semibold text-gray-900">
+                        {new Date(inspection.inspection_date).toLocaleDateString()}
                       </div>
-                      {inspection.auto_generated_work_order_id && (
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setTab('work-orders');
-                            nav(`/fleet/assets/${id}?tab=work-orders`, { replace: true });
-                          }}
-                          className="shrink-0 text-xs font-medium text-brand-red hover:underline"
-                        >
-                          View work order
-                        </button>
+                      <div className="text-[11px] text-gray-600">
+                        Result:{' '}
+                        <span className={inspection.result === 'pass' ? 'text-green-600 font-medium' : 'text-red-600 font-medium'}>
+                          {inspection.result}
+                        </span>
+                      </div>
+                      {inspection.notes && (
+                        <p className="mt-1 line-clamp-2 text-xs text-gray-600">{inspection.notes}</p>
                       )}
-                    </div>
+                      {inspection.photos && inspection.photos.length > 0 && (
+                        <div className="mt-2 flex gap-1">
+                          {inspection.photos.map((photoId, idx) => (
+                            <img
+                              key={idx}
+                              src={withFileAccessToken(`/files/${photoId}/thumbnail?w=100`)}
+                              alt=""
+                              className="h-8 w-8 rounded border border-gray-200 object-cover"
+                            />
+                          ))}
+                        </div>
+                      )}
+                    </button>
+                    {inspection.auto_generated_work_order_id && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setTab('work-orders');
+                          nav(`/fleet/assets/${id}?tab=work-orders`, { replace: true });
+                        }}
+                        className="shrink-0 self-start px-3 py-2.5 text-xs font-medium text-brand-red hover:underline"
+                      >
+                        View work order
+                      </button>
+                    )}
                   </div>
                 ))}
             </div>

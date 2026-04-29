@@ -60,6 +60,7 @@ from sqlalchemy import or_, and_, cast, String, Date
 
 
 from ..services.project_utils import sanitize_division_onsite_leads
+from ..services.project_duplicate import generate_project_code, duplicate_project_deep
 from ..routes.form_templates import _normalize_definition
 
 router = APIRouter(prefix="/projects", tags=["projects"])
@@ -840,47 +841,20 @@ def create_project(payload: dict, db: Session = Depends(get_db), user=Depends(ge
         payload["related_leak_investigation_id"] = None
 
     # Always auto-generate project code: MK-<seq>/<client_code>-<year>
-    # Format: MK-00001/00001-2025 (prefix seq 5 digits + client code 5 digits + year)
-    from datetime import datetime as _dt
-    
-    # Get client to retrieve its code
     client_id = payload.get("client_id")
     if not client_id:
         raise HTTPException(status_code=400, detail="client_id is required")
-    
+
     try:
         client_uuid = uuid.UUID(str(client_id))
     except ValueError:
         raise HTTPException(status_code=400, detail="Invalid client_id format")
-    
+
     client = db.query(Client).filter(Client.id == client_uuid).first()
     if not client:
         raise HTTPException(status_code=404, detail="Client not found")
-    
-    if not client.code:
-        raise HTTPException(status_code=400, detail="Client must have a code. Please update the client first.")
-    
-    client_code = client.code  # Should be 5-digit number (00001, 00002, etc.)
-    
-    # Debug: Ensure we're using the code, not generating from name
-    # If client_code is not a 5-digit number, it means migration didn't work
-    if not (client_code.isdigit() and len(client_code) == 5):
-        # Log warning but still use the code (for backward compatibility during migration)
-        import logging
-        logging.warning(f"Client {client.id} has non-numeric code '{client_code}'. Migration may be incomplete.")
-    year = _dt.utcnow().year
-    
-    # Get sequence number (5 digits: 00001, 00002, etc.)
-    seq = db.query(func.count(Project.id)).scalar() or 0
-    seq += 1
-    code = f"MK-{seq:05d}/{client_code}-{year}"
-    
-    # Ensure uniqueness
-    while db.query(Project).filter(Project.code == code, Project.deleted_at.is_(None)).first():
-        seq += 1
-        code = f"MK-{seq:05d}/{client_code}-{year}"
-    
-    payload["code"] = code
+
+    payload["code"] = generate_project_code(db, client)
     
     # If this is an opportunity or leak investigation, set status to "Prospecting"
     if payload.get("is_bidding", False) or payload.get("is_leak_investigation"):
@@ -1742,6 +1716,23 @@ def restore_project(project_id: str, db: Session = Depends(get_db), user=Depends
     except Exception:
         pass
     return {"status": "ok", "message": "Project restored"}
+
+
+@router.post("/{project_id}/duplicate")
+def duplicate_project(
+    project_id: str,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Admin or users:write only. Deep copy with new MK code (see project_duplicate.duplicate_project_deep)."""
+    if not _has_permission(user, "users:write"):
+        raise HTTPException(status_code=403, detail="Forbidden")
+    src = db.query(Project).filter(Project.id == project_id, Project.deleted_at.is_(None)).first()
+    if not src:
+        raise HTTPException(status_code=404, detail="Not found")
+    _assert_project_line_write(user, src)
+    new_id = duplicate_project_deep(db, src, user)
+    return {"id": str(new_id)}
 
 
 # ---- Files scoped to Project ----

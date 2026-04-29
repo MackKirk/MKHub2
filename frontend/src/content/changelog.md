@@ -18,11 +18,11 @@ date: 2026-04-29
 title: Update 1.1.027 - Week 18
 
 ### New
-- On a **vehicle’s page**, you can see an **activity history** of what changed over time.
-- **Work orders** for fleet and equipment: you can **start** and **finish** service more clearly, see an **activity** list on the order, and admins can **reopen** some closed orders when needed.
-- On **equipment**, a **Work orders** section to view and create orders for that item.
-- **Fleet schedule**: calendar of service and inspections, with buttons to plan a new inspection or work order.
-- **Vehicle list**: filters (like on Opportunities) so you can narrow the list more easily.
+- On a vehicle’s page, you can see an activity history of what changed over time.
+- Work orders for fleet and equipment: you can start and finish service more clearly, see an activity list on the order, and admins can reopen some closed orders when needed.
+- On equipment, a Work orders section to view and create orders for that item.
+- Fleet schedule: calendar of service and inspections, with buttons to plan a new inspection or work order.
+- Vehicle list: filters (like on Opportunities) so you can narrow the list more easily.
 - Training certificates: layout editor (logo position/size, content margins, text sizes, spacing, signature left/right inset) with defaults tuned for the corporate background; reset layout control.
 - Live certificate preview uses the real PDF engine via an unsaved-payload render endpoint so what you adjust matches the exported PDF; optional “final PDF” preview mode.
 - Certificate validity can be set to never expire (no fixed day count).
@@ -30,9 +30,8 @@ title: Update 1.1.027 - Week 18
 - **Human Resources → Overview**: dashboard with summary cards and a list of active employees missing key org data (supervisor, department, project divisions, job title), with links to each user. Pay/compensation gaps are **count-only on the card**—no salary amounts in the table.
 
 ### Improved
-- Service **calendar** is easier to read (vehicle name and unit).
-- **Who can use Fleet** is clearer in your profile permissions (vehicles vs equipment).
-- Certificate backgrounds come only from **System Settings** library presets (legacy bundled course backgrounds removed).
+- Service 'calendar' is easier to read (vehicle name and unit).
+- Certificate backgrounds come from 'System Settings' library presets.
 - Larger organization logo on generated certificates; signatures show instructor/participant names without extra redundant labels; cleaner signature block vs artwork.
 - Instructor and participant names on certificates resolved automatically from course/completion context where applicable.
 - PDF viewer embedded preview: fit-to-page, hides thumbnails/toolbars via viewer params; iframe sizing improves edge cropping in live preview.
@@ -42,9 +41,9 @@ title: Update 1.1.027 - Week 18
 - **User profile (HR)**: **Record audit** shows the last automatic profile change (who/when), separate from **Last Update Sync (Bamboo files)**. Saving profile, departments, or account fields as HR/admin now updates that audit trail on the employee profile.
 
 ### Fixed
-- **Photos and documents** on vehicles save more reliably.
-- **Side menu** and **search lists inside pop-up windows** behave more predictably.
-- **Dates** on your profile’s assets tab show on the correct day.
+- Photos and documents on vehicles save more reliably.
+- Side menu and search lists inside pop-up windows behave more predictably.
+- Date* on your profile’s assets tab show on the correct day.
 - Saving a course draft no longer dropped the selected certificate background back to a default (library selection persists).
 - Reduced mismatch between certificate preview and generated PDF (scaling, spacing, title/body gap behavior).
 
