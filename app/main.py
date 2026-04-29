@@ -1652,6 +1652,85 @@ def create_app() -> FastAPI:
                         except Exception:
                             db.rollback()
 
+                    # LMS certificate PDF: background/logo + wording (align DB with TrainingCourse model)
+                    try:
+                        if db.execute(
+                            text(
+                                "SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'training_courses' LIMIT 1"
+                            )
+                        ).fetchall():
+                            db.execute(
+                                text(
+                                    """
+                                    ALTER TABLE training_courses
+                                    ADD COLUMN IF NOT EXISTS certificate_background_file_id UUID NULL
+                                    REFERENCES file_objects(id) ON DELETE SET NULL
+                                    """
+                                )
+                            )
+                            db.execute(
+                                text(
+                                    """
+                                    ALTER TABLE training_courses
+                                    ADD COLUMN IF NOT EXISTS certificate_background_setting_item_id UUID NULL
+                                    REFERENCES setting_items(id) ON DELETE SET NULL
+                                    """
+                                )
+                            )
+                            db.execute(
+                                text(
+                                    """
+                                    ALTER TABLE training_courses
+                                    ADD COLUMN IF NOT EXISTS certificate_logo_file_id UUID NULL
+                                    REFERENCES file_objects(id) ON DELETE SET NULL
+                                    """
+                                )
+                            )
+                            db.execute(
+                                text(
+                                    """
+                                    ALTER TABLE training_courses
+                                    ADD COLUMN IF NOT EXISTS certificate_logo_setting_item_id UUID NULL
+                                    REFERENCES setting_items(id) ON DELETE SET NULL
+                                    """
+                                )
+                            )
+                            db.execute(
+                                text(
+                                    "ALTER TABLE training_courses ADD COLUMN IF NOT EXISTS certificate_heading_primary VARCHAR(200) NULL"
+                                )
+                            )
+                            db.execute(
+                                text(
+                                    "ALTER TABLE training_courses ADD COLUMN IF NOT EXISTS certificate_heading_secondary VARCHAR(200) NULL"
+                                )
+                            )
+                            db.execute(
+                                text(
+                                    "ALTER TABLE training_courses ADD COLUMN IF NOT EXISTS certificate_body_template TEXT NULL"
+                                )
+                            )
+                            db.execute(
+                                text(
+                                    "ALTER TABLE training_courses ADD COLUMN IF NOT EXISTS certificate_instructor_name VARCHAR(255) NULL"
+                                )
+                            )
+                            db.execute(
+                                text(
+                                    "ALTER TABLE training_courses ADD COLUMN IF NOT EXISTS certificate_background_preset_key VARCHAR(64) NULL"
+                                )
+                            )
+                            db.execute(
+                                text(
+                                    "ALTER TABLE training_courses ADD COLUMN IF NOT EXISTS certificate_layout JSON NULL"
+                                )
+                            )
+                            db.commit()
+                            print("[startup] Ensured training_courses certificate design/wording columns")
+                    except Exception as e:
+                        db.rollback()
+                        print(f"[startup] training_courses certificate columns migration (non-critical): {e}")
+
                     # Corporate credit card inventory (last four + expiry only; no full PAN)
                     rows = db.execute(
                         text(

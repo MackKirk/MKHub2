@@ -109,7 +109,8 @@ export default function AddressAutocomplete({
         }}
         placeholder={placeholder}
         className={className}
-        disabled={disabled || loading}
+        disabled={disabled}
+        aria-busy={loading}
         autoComplete="off"
       />
       {loading && (

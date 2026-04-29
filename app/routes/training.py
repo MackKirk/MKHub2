@@ -1,11 +1,12 @@
 import uuid
 from datetime import datetime
 from typing import List, Optional, Dict, Any
+from types import SimpleNamespace
 from sqlalchemy.orm import Session
 from sqlalchemy import and_, or_, func
 
 from fastapi import APIRouter, Depends, HTTPException, Body, Query
-from fastapi.responses import FileResponse, StreamingResponse
+from fastapi.responses import FileResponse, StreamingResponse, Response
 from io import BytesIO
 
 from ..db import get_db
@@ -71,9 +72,118 @@ from ..storage.provider import StorageProvider
 from ..storage.local_provider import LocalStorageProvider
 from ..storage.blob_provider import BlobStorageProvider
 from ..config import settings
-from ..proposals.pdf_certificate import create_certificate_pdf
-
 router = APIRouter(prefix="/training", tags=["training"])
+
+
+def _normalize_certificate_background_preset_key(raw: Optional[str]) -> Optional[str]:
+    from ..services.training_certificate_assets import is_valid_preset_key
+
+    if raw is None:
+        return None
+    s = raw.strip() if isinstance(raw, str) else ""
+    if not s:
+        return None
+    if not is_valid_preset_key(s):
+        raise HTTPException(status_code=400, detail="Invalid certificate_background_preset_key")
+    return s
+
+
+def _normalize_certificate_logo_setting_item_id(raw: Any, db: Session) -> Optional[uuid.UUID]:
+    from ..services.organization_logos import is_valid_organization_logo_setting_item
+
+    if raw is None or raw == "":
+        return None
+    try:
+        uid = uuid.UUID(str(raw))
+    except (ValueError, TypeError):
+        raise HTTPException(status_code=400, detail="Invalid certificate_logo_setting_item_id")
+    if not is_valid_organization_logo_setting_item(db, uid):
+        raise HTTPException(status_code=400, detail="Unknown organization logo preset")
+    return uid
+
+
+def _normalize_certificate_background_setting_item_id(raw: Any, db: Session) -> Optional[uuid.UUID]:
+    from ..services.certificate_background_library import is_valid_certificate_background_setting_item
+
+    if raw is None or raw == "":
+        return None
+    try:
+        uid = uuid.UUID(str(raw))
+    except (ValueError, TypeError):
+        raise HTTPException(status_code=400, detail="Invalid certificate_background_setting_item_id")
+    if not is_valid_certificate_background_setting_item(db, uid):
+        raise HTTPException(status_code=400, detail="Unknown certificate background preset")
+    return uid
+
+
+@router.get("/certificate-background-presets")
+def list_certificate_background_presets(
+    db: Session = Depends(get_db),
+    _=Depends(require_permissions("training:manage", "users:write")),
+):
+    from ..services.certificate_background_library import list_certificate_background_choices_for_api
+
+    return {"presets": list_certificate_background_choices_for_api(db)}
+
+
+@router.get("/organization-logo-presets")
+def list_organization_logo_presets(
+    db: Session = Depends(get_db),
+    _=Depends(require_permissions("training:manage", "users:write")),
+):
+    from ..services.organization_logos import list_organization_logo_presets_for_api
+
+    return {"logos": list_organization_logo_presets_for_api(db)}
+
+
+@router.get("/certificate-background-assets/{asset_key}.png")
+def get_certificate_background_asset_png(asset_key: str):
+    """
+    Public allowlisted PNGs for certificate backgrounds. No JWT: <img src> cannot send Authorization.
+    Keys are validated against bundled presets only.
+    """
+    from ..services.training_certificate_assets import _preset_png_path
+
+    path = _preset_png_path(asset_key)
+    if not path:
+        raise HTTPException(status_code=404, detail="Unknown certificate background")
+    return FileResponse(
+        path,
+        media_type="image/png",
+        headers={"Cache-Control": "public, max-age=86400"},
+    )
+
+
+@router.get("/certificate-background-library/{item_id}")
+def get_certificate_background_library_image(item_id: str, db: Session = Depends(get_db)):
+    """
+    Public image bytes for library backgrounds (Settings). No JWT: <img src> cannot send Authorization.
+    """
+    try:
+        uid = uuid.UUID(str(item_id).strip())
+    except (ValueError, TypeError):
+        raise HTTPException(status_code=404, detail="Unknown certificate background")
+    from ..services.certificate_background_library import (
+        is_valid_certificate_background_setting_item,
+        resolve_certificate_background_file_id,
+    )
+    from ..services.file_object_read import read_file_object_bytes
+
+    if not is_valid_certificate_background_setting_item(db, uid):
+        raise HTTPException(status_code=404, detail="Unknown certificate background")
+    fid = resolve_certificate_background_file_id(db, uid)
+    if not fid:
+        raise HTTPException(status_code=404, detail="Unknown certificate background")
+    fo = db.query(FileObject).filter(FileObject.id == fid).first()
+    if not fo:
+        raise HTTPException(status_code=404, detail="Unknown certificate background")
+    data = read_file_object_bytes(fo)
+    if not data:
+        raise HTTPException(status_code=404, detail="Unknown certificate background")
+    ct = (fo.content_type or "").strip() or "image/png"
+    if not ct.startswith("image/"):
+        ct = "image/png"
+    return Response(content=data, media_type=ct, headers={"Cache-Control": "public, max-age=3600"})
 
 
 def _validate_matrix_training_id(raw: Optional[str], db: Session) -> Optional[str]:
@@ -697,6 +807,17 @@ def create_course(
 ):
     """Create a new course (starts as draft)"""
     mid = _validate_matrix_training_id(getattr(course_data, "matrix_training_id", None), db)
+    bg_setting_item_id = _normalize_certificate_background_setting_item_id(
+        getattr(course_data, "certificate_background_setting_item_id", None), db
+    )
+    logo_file_id = getattr(course_data, "certificate_logo_file_id", None)
+    logo_setting_item_id = (
+        None
+        if logo_file_id
+        else _normalize_certificate_logo_setting_item_id(
+            getattr(course_data, "certificate_logo_setting_item_id", None), db
+        )
+    )
     course = TrainingCourse(
         title=course_data.title,
         description=course_data.description,
@@ -710,6 +831,16 @@ def create_course(
         generates_certificate=course_data.generates_certificate,
         certificate_validity_days=course_data.certificate_validity_days,
         certificate_text=course_data.certificate_text,
+        certificate_background_file_id=None,
+        certificate_background_setting_item_id=bg_setting_item_id,
+        certificate_background_preset_key=None,
+        certificate_logo_file_id=logo_file_id,
+        certificate_logo_setting_item_id=logo_setting_item_id,
+        certificate_heading_primary=course_data.certificate_heading_primary,
+        certificate_heading_secondary=course_data.certificate_heading_secondary,
+        certificate_body_template=course_data.certificate_body_template,
+        certificate_instructor_name=course_data.certificate_instructor_name,
+        certificate_layout=course_data.certificate_layout,
         matrix_training_id=mid,
         sync_completion_to_employee_record=bool(getattr(course_data, "sync_completion_to_employee_record", False)),
         status="draft",
@@ -821,6 +952,24 @@ def get_admin_course(
         "generates_certificate": course.generates_certificate,
         "certificate_validity_days": course.certificate_validity_days,
         "certificate_text": course.certificate_text,
+        "certificate_background_file_id": str(course.certificate_background_file_id)
+        if getattr(course, "certificate_background_file_id", None)
+        else None,
+        "certificate_background_setting_item_id": str(course.certificate_background_setting_item_id)
+        if getattr(course, "certificate_background_setting_item_id", None)
+        else None,
+        "certificate_background_preset_key": getattr(course, "certificate_background_preset_key", None),
+        "certificate_logo_file_id": str(course.certificate_logo_file_id)
+        if getattr(course, "certificate_logo_file_id", None)
+        else None,
+        "certificate_logo_setting_item_id": str(course.certificate_logo_setting_item_id)
+        if getattr(course, "certificate_logo_setting_item_id", None)
+        else None,
+        "certificate_heading_primary": getattr(course, "certificate_heading_primary", None),
+        "certificate_heading_secondary": getattr(course, "certificate_heading_secondary", None),
+        "certificate_body_template": getattr(course, "certificate_body_template", None),
+        "certificate_instructor_name": getattr(course, "certificate_instructor_name", None),
+        "certificate_layout": getattr(course, "certificate_layout", None),
         "matrix_training_id": getattr(course, "matrix_training_id", None),
         "sync_completion_to_employee_record": bool(getattr(course, "sync_completion_to_employee_record", False)),
         "required_role_ids": [str(r.id) for r in course.required_roles],
@@ -873,12 +1022,48 @@ def update_course(
         course.renewal_frequency_days = course_data.renewal_frequency_days
     if course_data.generates_certificate is not None:
         course.generates_certificate = course_data.generates_certificate
-    if course_data.certificate_validity_days is not None:
-        course.certificate_validity_days = course_data.certificate_validity_days
     if course_data.certificate_text is not None:
         course.certificate_text = course_data.certificate_text
 
     patch = course_data.model_dump(exclude_unset=True)
+    if "certificate_background_setting_item_id" in patch:
+        raw_sit = patch["certificate_background_setting_item_id"]
+        course.certificate_background_setting_item_id = (
+            _normalize_certificate_background_setting_item_id(raw_sit, db)
+            if raw_sit not in (None, "")
+            else None
+        )
+        course.certificate_background_file_id = None
+        course.certificate_background_preset_key = None
+    if "certificate_background_preset_key" in patch:
+        course.certificate_background_preset_key = None
+        course.certificate_background_file_id = None
+    if "certificate_background_file_id" in patch:
+        course.certificate_background_file_id = None
+        course.certificate_background_preset_key = None
+    if "certificate_logo_setting_item_id" in patch:
+        raw_ls = patch["certificate_logo_setting_item_id"]
+        course.certificate_logo_setting_item_id = (
+            _normalize_certificate_logo_setting_item_id(raw_ls, db) if raw_ls not in (None, "") else None
+        )
+        if course.certificate_logo_setting_item_id:
+            course.certificate_logo_file_id = None
+    if "certificate_logo_file_id" in patch:
+        course.certificate_logo_file_id = patch["certificate_logo_file_id"]
+        if patch["certificate_logo_file_id"]:
+            course.certificate_logo_setting_item_id = None
+    if "certificate_heading_primary" in patch:
+        course.certificate_heading_primary = patch["certificate_heading_primary"]
+    if "certificate_heading_secondary" in patch:
+        course.certificate_heading_secondary = patch["certificate_heading_secondary"]
+    if "certificate_body_template" in patch:
+        course.certificate_body_template = patch["certificate_body_template"]
+    if "certificate_instructor_name" in patch:
+        course.certificate_instructor_name = patch["certificate_instructor_name"]
+    if "certificate_validity_days" in patch:
+        course.certificate_validity_days = patch["certificate_validity_days"]
+    if "certificate_layout" in patch:
+        course.certificate_layout = patch["certificate_layout"] if isinstance(patch["certificate_layout"], dict) else None
     if "matrix_training_id" in patch:
         raw = patch["matrix_training_id"]
         course.matrix_training_id = _validate_matrix_training_id(raw, db) if raw not in (None, "") else None
@@ -922,6 +1107,153 @@ def publish_course_endpoint(
         raise HTTPException(status_code=400, detail=error)
     
     return {"status": "published"}
+
+
+@router.get("/admin/courses/{course_id}/certificate-preview.pdf")
+def preview_certificate_pdf(
+    course_id: str,
+    db: Session = Depends(get_db),
+    me: User = Depends(require_permissions("training:manage", "users:write")),
+):
+    """Generate a live PDF preview of certificate settings for this course."""
+    try:
+        course_uuid = uuid.UUID(course_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid course ID")
+
+    course = db.query(TrainingCourse).filter(TrainingCourse.id == course_uuid).first()
+    if not course:
+        raise HTTPException(status_code=404, detail="Course not found")
+
+    if not course.generates_certificate:
+        raise HTTPException(status_code=400, detail="Enable certificate generation first")
+
+    from ..services.file_object_read import read_file_object_bytes
+    from ..services.training_certificate_assets import resolve_course_background_bytes
+    from ..services.organization_logos import resolve_organization_logo_file_id
+    from ..proposals.pdf_certificate import create_certificate_pdf
+
+    bg_bytes = resolve_course_background_bytes(course, db)
+    logo_bytes = None
+    logo_fo_id = getattr(course, "certificate_logo_file_id", None)
+    if not logo_fo_id:
+        sit = getattr(course, "certificate_logo_setting_item_id", None)
+        if sit:
+            logo_fo_id = resolve_organization_logo_file_id(db, sit)
+    if logo_fo_id:
+        fo_logo = db.query(FileObject).filter(FileObject.id == logo_fo_id).first()
+        if fo_logo:
+            logo_bytes = read_file_object_bytes(fo_logo)
+
+    now = datetime.utcnow()
+    preview_user_name = "Participant name"
+    instructor_name = (getattr(course, "certificate_instructor_name", None) or "{instructor_name}").strip() or "{instructor_name}"
+
+    pdf_buffer = create_certificate_pdf(
+        course_title=course.title or "Course title",
+        user_name=preview_user_name,
+        completion_date=now,
+        expiry_date=None,
+        certificate_number="",
+        certificate_text=course.certificate_text,
+        qr_code_data=None,
+        background_image_bytes=bg_bytes,
+        logo_image_bytes=logo_bytes,
+        certificate_heading_primary=getattr(course, "certificate_heading_primary", None),
+        certificate_heading_secondary=getattr(course, "certificate_heading_secondary", None),
+        certificate_body_template=getattr(course, "certificate_body_template", None),
+        certificate_instructor_name=instructor_name,
+        certificate_layout=getattr(course, "certificate_layout", None),
+    )
+    if not pdf_buffer:
+        raise HTTPException(status_code=500, detail="Failed to generate certificate preview")
+
+    return StreamingResponse(
+        pdf_buffer,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'inline; filename="certificate-preview-{course_id}.pdf"'},
+    )
+
+
+@router.post("/admin/courses/{course_id}/certificate-preview-render.pdf")
+def render_certificate_pdf_preview_from_payload(
+    course_id: str,
+    body: dict = Body(default_factory=dict),
+    db: Session = Depends(get_db),
+    _=Depends(require_permissions("training:manage", "users:write")),
+):
+    """
+    Render certificate preview from unsaved editor payload so live preview
+    matches final PDF engine without persisting draft changes.
+    """
+    try:
+        course_uuid = uuid.UUID(course_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid course ID")
+
+    course = db.query(TrainingCourse).filter(TrainingCourse.id == course_uuid).first()
+    if not course:
+        raise HTTPException(status_code=404, detail="Course not found")
+
+    from ..services.file_object_read import read_file_object_bytes
+    from ..services.training_certificate_assets import resolve_course_background_bytes
+    from ..services.organization_logos import resolve_organization_logo_file_id
+    from ..proposals.pdf_certificate import create_certificate_pdf
+
+    bg_setting_item_id = getattr(course, "certificate_background_setting_item_id", None)
+    if "certificate_background_setting_item_id" in body:
+        bg_setting_item_id = _normalize_certificate_background_setting_item_id(
+            body.get("certificate_background_setting_item_id"), db
+        )
+    bg_proxy = SimpleNamespace(
+        certificate_background_file_id=None,
+        certificate_background_setting_item_id=bg_setting_item_id,
+        certificate_background_preset_key=None,
+    )
+    bg_bytes = resolve_course_background_bytes(bg_proxy, db)
+
+    logo_file_id = body.get("certificate_logo_file_id", getattr(course, "certificate_logo_file_id", None))
+    logo_setting_item_id = body.get(
+        "certificate_logo_setting_item_id", getattr(course, "certificate_logo_setting_item_id", None)
+    )
+    if "certificate_logo_setting_item_id" in body:
+        logo_setting_item_id = _normalize_certificate_logo_setting_item_id(logo_setting_item_id, db)
+    logo_bytes = None
+    logo_fo_id = logo_file_id
+    if not logo_fo_id and logo_setting_item_id:
+        logo_fo_id = resolve_organization_logo_file_id(db, logo_setting_item_id)
+    if logo_fo_id:
+        fo_logo = db.query(FileObject).filter(FileObject.id == logo_fo_id).first()
+        if fo_logo:
+            logo_bytes = read_file_object_bytes(fo_logo)
+
+    now = datetime.utcnow()
+    pdf_buffer = create_certificate_pdf(
+        course_title=(body.get("title") or course.title or "Course title"),
+        user_name="Participant name",
+        completion_date=now,
+        expiry_date=None,
+        certificate_number="",
+        certificate_text=body.get("certificate_text", course.certificate_text),
+        qr_code_data=None,
+        background_image_bytes=bg_bytes,
+        logo_image_bytes=logo_bytes,
+        certificate_heading_primary=body.get("certificate_heading_primary", getattr(course, "certificate_heading_primary", None)),
+        certificate_heading_secondary=body.get(
+            "certificate_heading_secondary", getattr(course, "certificate_heading_secondary", None)
+        ),
+        certificate_body_template=body.get("certificate_body_template", getattr(course, "certificate_body_template", None)),
+        certificate_instructor_name=body.get("certificate_instructor_name", "{instructor_name}"),
+        certificate_layout=body.get("certificate_layout", getattr(course, "certificate_layout", None)),
+    )
+    if not pdf_buffer:
+        raise HTTPException(status_code=500, detail="Failed to render certificate preview")
+
+    return StreamingResponse(
+        pdf_buffer,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'inline; filename="certificate-live-preview-{course_id}.pdf"'},
+    )
 
 
 @router.post("/admin/courses/{course_id}/unpublish")

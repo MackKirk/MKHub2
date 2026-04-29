@@ -394,6 +394,22 @@ def generate_certificate_number(course_id: uuid.UUID, user_id: uuid.UUID, db: Se
     return cert_num
 
 
+def resolve_certificate_instructor_name(course: TrainingCourse, db: Session) -> str:
+    """
+    Resolve instructor name for certificate signatures.
+    Priority:
+    1) explicit course.certificate_instructor_name (when not placeholder-like)
+    2) course creator display name
+    3) "Instructor"
+    """
+    raw = (getattr(course, "certificate_instructor_name", None) or "").strip()
+    lower = raw.lower()
+    if raw and lower not in {"{instructor_name}", "instructor name", "instructor"}:
+        return raw
+    creator_name = get_user_display(db, getattr(course, "created_by", None))
+    return (creator_name or "").strip() or "Instructor"
+
+
 def generate_certificate(course_id: uuid.UUID, user_id: uuid.UUID, db: Session) -> Optional[TrainingCertificate]:
     """Generate certificate for completed course"""
     course = db.query(TrainingCourse).filter(TrainingCourse.id == course_id).first()
@@ -420,15 +436,33 @@ def generate_certificate(course_id: uuid.UUID, user_id: uuid.UUID, db: Session) 
     # Generate QR code data (validation URL)
     qr_data = f"MKHUB-CERT-{cert_number}"
     
-    # Get user and employee profile for certificate
     user = db.query(User).filter(User.id == user_id).first()
-    profile = db.query(EmployeeProfile).filter(EmployeeProfile.user_id == user_id).first()
     
     # Get user display name
     user_name = get_user_display(db, user_id) or user.username if user else "Employee"
-    
+
+    from ..services.file_object_read import read_file_object_bytes
+    from ..services.training_certificate_assets import resolve_course_background_bytes
+
+    bg_bytes = resolve_course_background_bytes(course, db)
+    logo_bytes = None
+    from ..services.organization_logos import resolve_organization_logo_file_id
+
+    logo_fo_id = getattr(course, "certificate_logo_file_id", None)
+    if not logo_fo_id:
+        sit = getattr(course, "certificate_logo_setting_item_id", None)
+        if sit:
+            logo_fo_id = resolve_organization_logo_file_id(db, sit)
+    if logo_fo_id:
+        fo_logo = db.query(FileObject).filter(FileObject.id == logo_fo_id).first()
+        if fo_logo:
+            logo_bytes = read_file_object_bytes(fo_logo)
+
     # Generate PDF certificate
     from ..proposals.pdf_certificate import create_certificate_pdf
+
+    instructor_name = resolve_certificate_instructor_name(course, db)
+
     pdf_buffer = create_certificate_pdf(
         course_title=course.title,
         user_name=user_name,
@@ -437,6 +471,13 @@ def generate_certificate(course_id: uuid.UUID, user_id: uuid.UUID, db: Session) 
         certificate_number=cert_number,
         certificate_text=course.certificate_text,
         qr_code_data=qr_data,
+        background_image_bytes=bg_bytes,
+        logo_image_bytes=logo_bytes,
+        certificate_heading_primary=getattr(course, "certificate_heading_primary", None),
+        certificate_heading_secondary=getattr(course, "certificate_heading_secondary", None),
+        certificate_body_template=getattr(course, "certificate_body_template", None),
+        certificate_instructor_name=instructor_name,
+        certificate_layout=getattr(course, "certificate_layout", None),
     )
     
     # Save PDF to storage
@@ -703,6 +744,16 @@ def duplicate_course(course_id: uuid.UUID, new_title: str, created_by: uuid.UUID
         generates_certificate=original.generates_certificate,
         certificate_validity_days=original.certificate_validity_days,
         certificate_text=original.certificate_text,
+        certificate_background_file_id=getattr(original, "certificate_background_file_id", None),
+        certificate_background_setting_item_id=getattr(original, "certificate_background_setting_item_id", None),
+        certificate_background_preset_key=getattr(original, "certificate_background_preset_key", None),
+        certificate_logo_file_id=getattr(original, "certificate_logo_file_id", None),
+        certificate_logo_setting_item_id=getattr(original, "certificate_logo_setting_item_id", None),
+        certificate_heading_primary=getattr(original, "certificate_heading_primary", None),
+        certificate_heading_secondary=getattr(original, "certificate_heading_secondary", None),
+        certificate_body_template=getattr(original, "certificate_body_template", None),
+        certificate_instructor_name=getattr(original, "certificate_instructor_name", None),
+        certificate_layout=getattr(original, "certificate_layout", None),
         matrix_training_id=getattr(original, "matrix_training_id", None),
         sync_completion_to_employee_record=getattr(original, "sync_completion_to_employee_record", False),
         status="draft",
