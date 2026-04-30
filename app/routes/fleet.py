@@ -646,10 +646,21 @@ def get_asset_inspections(
     db: Session = Depends(get_db),
     _=Depends(require_permissions("fleet:read"))
 ):
-    """Get inspections for a fleet asset"""
-    return db.query(FleetInspection).filter(
-        FleetInspection.fleet_asset_id == asset_id
-    ).order_by(FleetInspection.inspection_date.desc()).all()
+    """Get inspections for a fleet asset (same response shape as list inspections, including inspector_name)."""
+    rows = (
+        db.query(FleetInspection)
+        .filter(FleetInspection.fleet_asset_id == asset_id)
+        .order_by(FleetInspection.inspection_date.desc())
+        .all()
+    )
+    return [
+        FleetInspectionResponse.model_validate(r).model_copy(
+            update={
+                "inspector_name": get_user_display(db, r.inspector_user_id) if r.inspector_user_id else None,
+            }
+        )
+        for r in rows
+    ]
 
 
 @router.get("/assets/{asset_id}/work-orders", response_model=List[WorkOrderResponse])

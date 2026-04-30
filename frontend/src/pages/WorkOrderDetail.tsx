@@ -4,7 +4,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api, withFileAccessToken } from '@/lib/api';
 import toast from 'react-hot-toast';
 import { WORK_ORDER_STATUS_OPTIONS, WORK_ORDER_STATUS_COLORS, WORK_ORDER_STATUS_LABELS, URGENCY_COLORS } from '@/lib/fleetBadges';
-import FleetDetailHeader from '@/components/FleetDetailHeader';
+import { FleetEquipmentPageHeader } from '@/components/fleet/FleetEquipmentPageHeader';
 import OverlayPortal from '@/components/OverlayPortal';
 import { useConfirm } from '@/components/ConfirmProvider';
 import {
@@ -343,7 +343,33 @@ export default function WorkOrderDetail() {
   }
 
   if (isLoading) {
-    return <div className="p-4">Loading...</div>;
+    return (
+      <div className="space-y-4 min-w-0 overflow-x-hidden bg-gray-50/40">
+        <FleetEquipmentPageHeader todayLabel={todayLabel} onBack={goBackFromWorkOrder} />
+        <div className="rounded-xl border border-gray-200 bg-white overflow-hidden p-4 animate-pulse">
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-center">
+            <div className="w-48 h-36 bg-gray-100 rounded-xl border border-gray-200/80 mx-auto sm:mx-0 flex-shrink-0" />
+            <div className="flex-1 space-y-4 min-w-0">
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
+                {[1, 2, 3, 4, 5, 6].map((i) => (
+                  <div key={i}>
+                    <div className="h-3 w-14 bg-gray-100 rounded mb-2" />
+                    <div className="h-5 w-24 bg-gray-100 rounded max-w-full" />
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+        <div className="rounded-xl border bg-white p-3">
+          <div className="flex flex-wrap gap-2">
+            {[1, 2, 3, 4].map((i) => (
+              <div key={i} className="h-9 flex-1 min-w-[100px] max-w-[140px] bg-gray-100 rounded-lg" />
+            ))}
+          </div>
+        </div>
+      </div>
+    );
   }
 
   if (!workOrder) {
@@ -356,41 +382,36 @@ export default function WorkOrderDetail() {
   const otherCosts = Array.isArray(costs.other) ? costs.other : [];
 
   return (
-    <div className="space-y-4 min-w-0 overflow-x-hidden">
-      <FleetDetailHeader
+    <div className="space-y-4 min-w-0 overflow-x-hidden bg-gray-50/40">
+      <FleetEquipmentPageHeader
+        todayLabel={todayLabel}
         onBack={goBackFromWorkOrder}
-        title={<span className="text-sm font-semibold text-gray-900">{workOrder.work_order_number}</span>}
-        subtitle={<span className="capitalize">{workOrder.entity_type}</span>}
-        actions={isAdmin ? (
-          <button
-            type="button"
-            onClick={async () => {
-              const result = await confirm({
-                title: 'Delete work order',
-                message: 'Are you sure you want to delete this work order permanently? This action cannot be undone.',
-                confirmText: 'Delete',
-                cancelText: 'Cancel',
-              });
-              if (result !== 'confirm') return;
-              deleteWorkOrderMutation.mutate();
-            }}
-            disabled={deleteWorkOrderMutation.isPending}
-            className="px-3 py-1.5 rounded-lg border border-red-200 bg-red-50 text-red-700 text-xs font-medium hover:bg-red-100 disabled:opacity-50"
-          >
-            {deleteWorkOrderMutation.isPending ? 'Deleting…' : 'Delete'}
-          </button>
-        ) : undefined}
-        right={
-          <div className="text-right">
-            <div className="text-[10px] font-medium text-gray-500 uppercase tracking-wide">Today</div>
-            <div className="text-xs font-semibold text-gray-700 mt-0.5">{todayLabel}</div>
-          </div>
+        headerExtra={
+          isAdmin ? (
+            <button
+              type="button"
+              onClick={async () => {
+                const result = await confirm({
+                  title: 'Delete work order',
+                  message: 'Are you sure you want to delete this work order permanently? This action cannot be undone.',
+                  confirmText: 'Delete',
+                  cancelText: 'Cancel',
+                });
+                if (result !== 'confirm') return;
+                deleteWorkOrderMutation.mutate();
+              }}
+              disabled={deleteWorkOrderMutation.isPending}
+              className="px-3 py-1.5 rounded-lg border border-red-200 bg-red-50 text-red-700 text-xs font-medium hover:bg-red-100 disabled:opacity-50"
+            >
+              {deleteWorkOrderMutation.isPending ? 'Deleting…' : 'Delete'}
+            </button>
+          ) : undefined
         }
       />
 
       {/* Hero section - asset photo + key info (project-like) */}
-      <div className="rounded-xl border bg-white overflow-hidden p-4">
-        <div className="flex flex-col gap-4 lg:flex-row lg:items-start">
+      <div className="rounded-xl border border-gray-200 bg-white overflow-hidden p-4">
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-center">
           {/* Left: asset image when fleet */}
           <div className="w-48 flex-shrink-0">
             <div className="w-48 h-36 rounded-xl border border-gray-200 overflow-hidden bg-gray-100">
@@ -460,7 +481,7 @@ export default function WorkOrderDetail() {
             </div>
 
             {(canStartService || canFinishService || canReopen) && (
-              <div className="mt-4 lg:mt-0 flex flex-wrap gap-3 lg:justify-end lg:self-center lg:shrink-0">
+              <div className="mt-4 flex flex-wrap justify-center gap-3 lg:mt-0 lg:justify-end lg:self-center lg:shrink-0">
                 {canStartService && (
                   <button
                     type="button"
@@ -496,28 +517,41 @@ export default function WorkOrderDetail() {
         </div>
       </div>
 
-      {/* Tabs */}
-      <div className="rounded-xl border border-gray-200 bg-white overflow-hidden">
-        <div className="flex gap-1 border-b border-gray-200 px-4">
-          {(['general', 'costs', 'files', 'activity'] as const).map((tabKey) => (
+      {/* Tabs — pill strip (same as Fleet Asset Detail / opportunities) */}
+      <div className="rounded-xl border bg-white p-3">
+        <div className="flex flex-wrap gap-2">
+          {(
+            [
+              { id: 'general' as const, label: 'General', icon: '📋' },
+              { id: 'costs' as const, label: 'Costs', icon: '💰' },
+              { id: 'files' as const, label: 'Files', icon: '📁' },
+              { id: 'activity' as const, label: 'Activity', icon: '📝' },
+            ] as const
+          ).map(({ id: tabKey, label, icon }) => (
             <button
               key={tabKey}
+              type="button"
               onClick={() => {
                 setTab(tabKey);
                 nav(`/fleet/work-orders/${id}?tab=${tabKey}`, { replace: true });
               }}
-              className={`px-4 py-3 text-sm font-medium transition-colors border-b-2 -mb-[1px] capitalize ${
-                tab === tabKey ? 'border-brand-red text-brand-red' : 'border-transparent text-gray-500 hover:text-gray-900'
+              className={`flex-1 min-w-[120px] px-3 py-1.5 text-sm font-bold rounded-lg border transition-colors flex items-center justify-center gap-1.5 ${
+                tab === tabKey
+                  ? 'bg-red-50 text-red-700 border-red-300 hover:bg-red-100 hover:border-red-400'
+                  : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50 hover:border-gray-400'
               }`}
             >
-              {tabKey}
+              <span className="text-xs leading-none" aria-hidden>
+                {icon}
+              </span>
+              {label}
             </button>
           ))}
         </div>
       </div>
 
       {/* Tab Content */}
-      <div className="rounded-b-xl border border-t-0 border-gray-200 bg-white p-4 min-w-0 overflow-hidden">
+      <div className="rounded-xl border border-gray-200 bg-white p-4 min-w-0 overflow-hidden">
         {tab === 'general' && (
           <div className="space-y-6">
             <div className="rounded-xl border border-gray-200 bg-gray-50/50 p-4">
@@ -1255,6 +1289,9 @@ function WorkOrderFilesTab({ workOrderId }: { workOrderId: string }) {
   const [fileSearchQuery, setFileSearchQuery] = useState('');
   const fileInputRef = useRef<HTMLInputElement>(null);
   const woFilesUploadModalTitleId = useId();
+  const [previewImage, setPreviewImage] = useState<{ url: string; name: string } | null>(null);
+  const [previewPdf, setPreviewPdf] = useState<{ url: string; name: string } | null>(null);
+  const [previewExcel, setPreviewExcel] = useState<{ url: string; name: string } | null>(null);
 
   const { data: files = [], isLoading } = useQuery({
     queryKey: ['workOrderFiles', workOrderId],
@@ -1323,6 +1360,41 @@ function WorkOrderFilesTab({ workOrderId }: { workOrderId: string }) {
     if (['doc', 'docx'].includes(ext) || ct.includes('word')) return { label: 'DOC', color: 'bg-blue-600' };
     if (f.is_image || ct.startsWith('image/')) return { label: 'IMG', color: 'bg-purple-500' };
     return { label: (ext || 'FILE').toUpperCase().slice(0, 4), color: 'bg-gray-600' };
+  };
+
+  const getFileType = (f: WorkOrderFileItem): 'image' | 'pdf' | 'excel' | 'other' => {
+    const name = String(f.original_name || '');
+    const ext = (name.includes('.') ? name.split('.').pop() : '').toLowerCase();
+    const ct = String(f.content_type || '').toLowerCase();
+    const is = (x: string) => ct.includes(x) || ext === x;
+    if (f.is_image || ct.startsWith('image/')) return 'image';
+    if (is('pdf')) return 'pdf';
+    if (['xlsx', 'xls', 'csv'].includes(ext) || ct.includes('excel') || ct.includes('spreadsheet')) return 'excel';
+    return 'other';
+  };
+
+  const handleFilePreview = async (f: WorkOrderFileItem) => {
+    const fileType = getFileType(f);
+    const name = f.original_name || f.file_object_id || 'File';
+    try {
+      const r: any = await api('GET', withFileAccessToken(`/files/${f.file_object_id}/preview`));
+      const url = String(r.preview_url || r.download_url || '');
+      if (!url) {
+        toast.error('Preview not available');
+        return;
+      }
+      if (fileType === 'image') {
+        setPreviewImage({ url, name });
+      } else if (fileType === 'pdf') {
+        setPreviewPdf({ url, name });
+      } else if (fileType === 'excel') {
+        setPreviewExcel({ url, name });
+      } else {
+        window.open(url, '_blank');
+      }
+    } catch {
+      toast.error('Preview not available');
+    }
   };
 
   const uploadFileToBlob = async (file: File): Promise<string> => {
@@ -1586,29 +1658,40 @@ function WorkOrderFilesTab({ workOrderId }: { workOrderId: string }) {
                             >
                               <td className="px-3 py-2">
                                 {isImg ? (
-                                  <a
-                                    href={withFileAccessToken(`/files/${f.file_object_id}/download`)}
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                    className="w-10 h-10 rounded-lg overflow-hidden bg-gray-100 flex-shrink-0 block"
+                                  <button
+                                    type="button"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      void handleFilePreview(f);
+                                    }}
+                                    className="w-10 h-10 rounded-lg overflow-hidden bg-gray-100 flex-shrink-0 block ring-offset-2 hover:ring-2 hover:ring-brand-red/40 focus:outline-none focus:ring-2 focus:ring-brand-red"
                                   >
                                     <img src={withFileAccessToken(`/files/${f.file_object_id}/thumbnail?w=64`)} alt={name} className="w-full h-full object-cover" />
-                                  </a>
+                                  </button>
                                 ) : (
-                                  <div className={`w-8 h-10 rounded-lg ${icon.color} text-white flex items-center justify-center text-[10px] font-extrabold select-none`}>
+                                  <button
+                                    type="button"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      void handleFilePreview(f);
+                                    }}
+                                    className={`w-8 h-10 rounded-lg ${icon.color} text-white flex items-center justify-center text-[10px] font-extrabold select-none hover:opacity-90 ring-offset-2 hover:ring-2 hover:ring-gray-400 focus:outline-none focus:ring-2 focus:ring-brand-red`}
+                                  >
                                     {icon.label}
-                                  </div>
+                                  </button>
                                 )}
                               </td>
                               <td className="px-3 py-2">
-                                <a
-                                  href={withFileAccessToken(`/files/${f.file_object_id}/download`)}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  className="text-xs font-semibold truncate max-w-xs block hover:underline"
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    void handleFilePreview(f);
+                                  }}
+                                  className="text-xs font-semibold truncate max-w-xs block text-left hover:underline text-brand-red"
                                 >
                                   {name}
-                                </a>
+                                </button>
                               </td>
                               <td className="px-3 py-2 text-xs text-gray-600">{getFileTypeLabel(f)}</td>
                               <td className="px-3 py-2 text-xs text-gray-600">
@@ -1618,7 +1701,8 @@ function WorkOrderFilesTab({ workOrderId }: { workOrderId: string }) {
                                 <div className="flex items-center gap-0.5">
                                   <button
                                     type="button"
-                                    onClick={async () => {
+                                    onClick={async (e) => {
+                                      e.stopPropagation();
                                       const url = await fetchDownloadUrl(f.file_object_id);
                                       if (url) window.open(url, '_blank');
                                     }}
@@ -1629,7 +1713,10 @@ function WorkOrderFilesTab({ workOrderId }: { workOrderId: string }) {
                                   </button>
                                   <button
                                     type="button"
-                                    onClick={() => window.confirm('Remove this file?') && deleteMutation.mutate(f)}
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      window.confirm('Remove this file?') && deleteMutation.mutate(f);
+                                    }}
                                     title="Delete"
                                     className="p-1 rounded hover:bg-red-50 text-red-600 text-xs"
                                   >
@@ -1739,6 +1826,161 @@ function WorkOrderFilesTab({ workOrderId }: { workOrderId: string }) {
             ))}
           </div>
         </div>
+      )}
+
+      {/* Image preview (same pattern as Project files tab) */}
+      {previewImage && (
+        <OverlayPortal>
+          <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4" onClick={() => setPreviewImage(null)}>
+            <div
+              className="w-full h-full max-w-[95vw] max-h-[95vh] bg-white rounded-lg overflow-hidden flex flex-col"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="p-3 border-b flex items-center justify-between flex-shrink-0">
+                <h3 className="text-sm font-semibold">{previewImage.name}</h3>
+                <div className="flex items-center gap-2">
+                  <a
+                    href={previewImage.url}
+                    download={previewImage.name}
+                    className="text-xs px-2 py-1 rounded border hover:bg-gray-50"
+                    title="Download"
+                  >
+                    ⬇️
+                  </a>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const printWindow = window.open();
+                      if (printWindow) {
+                        printWindow.document.write(`
+                        <html>
+                          <head><title>${previewImage.name}</title></head>
+                          <body style="margin:0; text-align:center;">
+                            <img src="${previewImage.url}" style="max-width:100%; height:auto;" onload="window.print();" />
+                          </body>
+                        </html>
+                      `);
+                        printWindow.document.close();
+                      }
+                    }}
+                    className="text-xs px-2 py-1 rounded border hover:bg-gray-50"
+                    title="Print"
+                  >
+                    🖨️
+                  </button>
+                  <a
+                    href={previewImage.url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-xs px-2 py-1 rounded border hover:bg-gray-50"
+                    title="Open in new tab"
+                  >
+                    🔗
+                  </a>
+                  <button
+                    type="button"
+                    onClick={() => setPreviewImage(null)}
+                    className="text-lg font-bold text-gray-400 hover:text-gray-600 w-6 h-6"
+                  >
+                    ×
+                  </button>
+                </div>
+              </div>
+              <div className="flex-1 overflow-auto p-3 min-h-0 flex items-center justify-center">
+                <img
+                  src={previewImage.url}
+                  alt={previewImage.name}
+                  className="max-w-full max-h-full h-auto object-contain"
+                />
+              </div>
+            </div>
+          </div>
+        </OverlayPortal>
+      )}
+
+      {previewPdf && (
+        <OverlayPortal>
+          <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4" onClick={() => setPreviewPdf(null)}>
+            <div
+              className="w-full h-full max-w-[95vw] max-h-[95vh] bg-white rounded-lg overflow-hidden flex flex-col"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="p-3 border-b flex items-center justify-between flex-shrink-0">
+                <h3 className="text-sm font-semibold">{previewPdf.name}</h3>
+                <div className="flex items-center gap-2">
+                  <a
+                    href={previewPdf.url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-xs px-2 py-1 rounded border hover:bg-gray-50"
+                    title="Open in new tab"
+                  >
+                    🔗
+                  </a>
+                  <button
+                    type="button"
+                    onClick={() => setPreviewPdf(null)}
+                    className="text-lg font-bold text-gray-400 hover:text-gray-600 w-6 h-6"
+                  >
+                    ×
+                  </button>
+                </div>
+              </div>
+              <div className="flex-1 overflow-hidden min-h-0">
+                <iframe src={previewPdf.url} className="w-full h-full border-0" title={previewPdf.name} />
+              </div>
+            </div>
+          </div>
+        </OverlayPortal>
+      )}
+
+      {previewExcel && (
+        <OverlayPortal>
+          <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4" onClick={() => setPreviewExcel(null)}>
+            <div
+              className="w-full h-full max-w-[95vw] max-h-[95vh] bg-white rounded-lg overflow-hidden flex flex-col"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="p-3 border-b flex items-center justify-between flex-shrink-0">
+                <h3 className="text-sm font-semibold">{previewExcel.name}</h3>
+                <div className="flex items-center gap-2">
+                  <a
+                    href={previewExcel.url}
+                    download={previewExcel.name}
+                    className="text-xs px-2 py-1 rounded border hover:bg-gray-50"
+                    title="Download"
+                  >
+                    ⬇️
+                  </a>
+                  <a
+                    href={previewExcel.url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-xs px-2 py-1 rounded border hover:bg-gray-50"
+                    title="Open in new tab"
+                  >
+                    🔗
+                  </a>
+                  <button
+                    type="button"
+                    onClick={() => setPreviewExcel(null)}
+                    className="text-lg font-bold text-gray-400 hover:text-gray-600 w-6 h-6"
+                  >
+                    ×
+                  </button>
+                </div>
+              </div>
+              <div className="flex-1 overflow-hidden min-h-0">
+                <iframe
+                  src={`https://view.officeapps.live.com/op/embed.aspx?src=${encodeURIComponent(previewExcel.url)}`}
+                  className="w-full h-full border-0"
+                  title={previewExcel.name}
+                  allow="fullscreen"
+                />
+              </div>
+            </div>
+          </div>
+        </OverlayPortal>
       )}
     </div>
   );

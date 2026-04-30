@@ -1,5 +1,15 @@
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
-import { useState, useEffect, useRef, useMemo, useCallback, useId, type ChangeEvent, type ReactNode } from 'react';
+import {
+  useState,
+  useEffect,
+  useRef,
+  useMemo,
+  useCallback,
+  useId,
+  type ChangeEvent,
+  type FormEvent,
+  type ReactNode,
+} from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api, withFileAccessToken } from '@/lib/api';
 import toast from 'react-hot-toast';
@@ -9,17 +19,23 @@ import { imageFilesFromClipboardData, isLikelyImageFile } from '@/utils/imageUpl
 import {
   buildFleetAuditChangeRows,
   buildFleetHistoryDescription,
+  buildFleetHistoryListSummary,
+  fleetHistoryChangeDetailEligible,
   formatFleetAuditActionVerb,
   formatFleetAuditEntityTitle,
+  isFleetAuditDeleteOnlyChanges,
 } from '@/lib/fleetActivityLabels';
 import {
   CATEGORY_LABELS,
+  INSPECTION_RESULT_COLORS,
+  INSPECTION_RESULT_LABELS,
   URGENCY_COLORS,
   URGENCY_LABELS,
   WORK_ORDER_STATUS_COLORS,
   WORK_ORDER_STATUS_LABELS,
 } from '@/lib/fleetBadges';
 import { useUnsavedChangesGuard } from '@/hooks/useUnsavedChangesGuard';
+import { useConfirm } from '@/components/ConfirmProvider';
 import { InspectionScheduleForm } from './InspectionNew';
 import OverlayPortal from '@/components/OverlayPortal';
 import { WorkOrderAttachmentsPicker } from '@/components/fleet/WorkOrderAttachmentsPicker';
@@ -30,6 +46,7 @@ import {
   SAFETY_MODAL_FIELD_LABEL,
   SafetyFormModalLayout,
 } from '@/components/safety/SafetyModalChrome';
+import { FleetEquipmentPageHeader } from '@/components/fleet/FleetEquipmentPageHeader';
 
 type FleetAsset = {
   id: string;
@@ -114,14 +131,118 @@ type Inspection = {
   id: string;
   fleet_asset_id: string;
   inspection_date: string;
+  inspection_type?: string;
+  inspection_schedule_id?: string;
   inspector_user_id?: string;
+  inspector_name?: string;
   checklist_results?: Record<string, any>;
   photos?: string[];
   result: string;
   notes?: string;
+  odometer_reading?: number;
+  hours_reading?: number;
   auto_generated_work_order_id?: string;
   created_at: string;
 };
+
+function inspectionTypeBadgeClass(type: string | undefined): string {
+  if (type === 'body') return 'bg-blue-100 text-blue-800 ring-1 ring-inset ring-blue-200/60';
+  return 'bg-slate-100 text-slate-800 ring-1 ring-inset ring-slate-200/80';
+}
+
+function inspectionTypeLabel(type: string | undefined): string {
+  if (type === 'body') return 'Body / Exterior';
+  if (type === 'mechanical') return 'Mechanical';
+  return type ? type.replace(/_/g, ' ') : 'Mechanical';
+}
+
+/** Primary / subtitle lines for the fleet asset hero (readable fallbacks vs make/model/name/unit). */
+function buildFleetAssetHeroHeading(asset: FleetAsset): { primaryTitle: string; subtitleLine: string | null } {
+  const makeModel = [asset.make, asset.model].filter(Boolean).join(' ').trim();
+  const unitLabel =
+    asset.unit_number != null && String(asset.unit_number).trim() !== ''
+      ? `Unit #${asset.unit_number}`
+      : '';
+
+  let primaryTitle: string;
+  if (makeModel) {
+    primaryTitle = asset.year != null ? `${makeModel} (${asset.year})` : makeModel;
+  } else if (asset.name?.trim()) {
+    primaryTitle = asset.name.trim();
+  } else if (unitLabel) {
+    primaryTitle = unitLabel;
+  } else {
+    primaryTitle = 'Asset';
+  }
+
+  const parts: string[] = [];
+  if (makeModel && asset.name?.trim()) {
+    const n = asset.name.trim();
+    if (n !== makeModel && n !== primaryTitle) parts.push(n);
+  }
+  // Unit is shown in the hero metadata grid; keep subtitle to name/plate only.
+  const plate = asset.license_plate?.trim();
+  if (plate) {
+    parts.push(plate);
+  }
+
+  const subtitleLine = parts.length > 0 ? parts.join(' · ') : null;
+  return { primaryTitle, subtitleLine };
+}
+
+const INSPECTION_LIST_SORT_COLS = [
+  'inspection_date',
+  'inspection_type',
+  'result',
+  'created_at',
+] as const;
+
+type InspectionListSortCol = (typeof INSPECTION_LIST_SORT_COLS)[number];
+
+function parseInspectionListSort(search: string): {
+  sort: InspectionListSortCol;
+  dir: 'asc' | 'desc';
+  q: string;
+  qInput: string;
+} {
+  const p = new URLSearchParams(search);
+  const raw = p.get('insp_sort');
+  const sort: InspectionListSortCol = INSPECTION_LIST_SORT_COLS.includes(raw as InspectionListSortCol)
+    ? (raw as InspectionListSortCol)
+    : 'inspection_date';
+  const dr = p.get('insp_dir');
+  const dir: 'asc' | 'desc' = dr === 'asc' || dr === 'desc' ? dr : 'desc';
+  const qInput = (p.get('insp_q') ?? '').trim();
+  const q = qInput.toLowerCase();
+  return { sort, dir, q, qInput };
+}
+
+function compareFleetAssetInspections(
+  a: Inspection,
+  b: Inspection,
+  sort: InspectionListSortCol,
+  dir: 'asc' | 'desc'
+): number {
+  const m = dir === 'asc' ? 1 : -1;
+  switch (sort) {
+    case 'inspection_date': {
+      const ta = new Date(a.inspection_date).getTime();
+      const tb = new Date(b.inspection_date).getTime();
+      return (ta - tb) * m;
+    }
+    case 'inspection_type':
+      return (a.inspection_type || 'mechanical').localeCompare(b.inspection_type || 'mechanical') * m;
+    case 'result':
+      return (a.result || '').toLowerCase().localeCompare((b.result || '').toLowerCase()) * m;
+    case 'created_at': {
+      const ta = new Date(a.created_at).getTime();
+      const tb = new Date(b.created_at).getTime();
+      return (ta - tb) * m;
+    }
+    default:
+      return 0;
+  }
+}
 
 type WorkOrder = {
   id: string;
@@ -138,14 +259,158 @@ type WorkOrder = {
   created_at: string;
 };
 
-function flattenWorkOrderPhotos(photos: WorkOrder['photos']): string[] {
-  if (!photos) return [];
-  if (Array.isArray(photos)) return photos as string[];
-  const o = photos as { before?: string[]; after?: string[] };
-  return [
-    ...(Array.isArray(o.before) ? o.before : []),
-    ...(Array.isArray(o.after) ? o.after : []),
-  ];
+const FLEET_ASSET_WO_SORT_COLS = [
+  'work_order_number',
+  'description',
+  'category',
+  'urgency',
+  'status',
+  'created_at',
+] as const;
+
+type FleetAssetWorkOrderSortCol = (typeof FLEET_ASSET_WO_SORT_COLS)[number];
+
+const WO_DESC_TABLE_TRUNC = 72;
+
+function parseFleetAssetWorkOrderListSort(search: string): {
+  sort: FleetAssetWorkOrderSortCol;
+  dir: 'asc' | 'desc';
+  q: string;
+  qInput: string;
+} {
+  const p = new URLSearchParams(search);
+  const raw = p.get('wo_sort');
+  const sort: FleetAssetWorkOrderSortCol = FLEET_ASSET_WO_SORT_COLS.includes(raw as FleetAssetWorkOrderSortCol)
+    ? (raw as FleetAssetWorkOrderSortCol)
+    : 'created_at';
+  const dr = p.get('wo_dir');
+  const dir: 'asc' | 'desc' = dr === 'asc' || dr === 'desc' ? dr : 'desc';
+  const qInput = (p.get('wo_q') ?? '').trim();
+  const q = qInput.toLowerCase();
+  return { sort, dir, q, qInput };
+}
+
+function compareFleetAssetWorkOrders(
+  a: WorkOrder,
+  b: WorkOrder,
+  sort: FleetAssetWorkOrderSortCol,
+  dir: 'asc' | 'desc'
+): number {
+  const m = dir === 'asc' ? 1 : -1;
+  switch (sort) {
+    case 'work_order_number':
+      return (
+        (a.work_order_number || '').localeCompare(b.work_order_number || '', undefined, { numeric: true }) * m
+      );
+    case 'description':
+      return (a.description || '').localeCompare(b.description || '', undefined, { sensitivity: 'base' }) * m;
+    case 'category':
+      return (a.category || '').localeCompare(b.category || '') * m;
+    case 'urgency':
+      return (a.urgency || '').localeCompare(b.urgency || '') * m;
+    case 'status':
+      return (a.status || '').localeCompare(b.status || '') * m;
+    case 'created_at': {
+      const ta = new Date(a.created_at).getTime();
+      const tb = new Date(b.created_at).getTime();
+      return (ta - tb) * m;
+    }
+    default:
+      return 0;
+  }
+}
+
+const FLEET_COMPLIANCE_SORT_COLS = [
+  'record_type',
+  'facility',
+  'annual_inspection_date',
+  'expiry_date',
+  'notes',
+] as const;
+
+type FleetComplianceSortCol = (typeof FLEET_COMPLIANCE_SORT_COLS)[number];
+
+const COMP_NOTES_TABLE_TRUNC = 72;
+
+function complianceDateValue(s: string | null | undefined): number | null {
+  if (!s?.trim()) return null;
+  const t = new Date(s.slice(0, 10)).getTime();
+  return Number.isNaN(t) ? null : t;
+}
+
+function cmpComplianceNullableDate(
+  a: number | null,
+  b: number | null,
+  m: number
+): number {
+  if (a === null && b === null) return 0;
+  if (a === null) return 1;
+  if (b === null) return -1;
+  return (a - b) * m;
+}
+
+function parseFleetComplianceListSort(search: string): {
+  sort: FleetComplianceSortCol;
+  dir: 'asc' | 'desc';
+  q: string;
+  qInput: string;
+} {
+  const p = new URLSearchParams(search);
+  const raw = p.get('comp_sort');
+  const sort: FleetComplianceSortCol = FLEET_COMPLIANCE_SORT_COLS.includes(raw as FleetComplianceSortCol)
+    ? (raw as FleetComplianceSortCol)
+    : 'expiry_date';
+  const dr = p.get('comp_dir');
+  const dir: 'asc' | 'desc' = dr === 'asc' || dr === 'desc' ? dr : 'asc';
+  const qInput = (p.get('comp_q') ?? '').trim();
+  const q = qInput.toLowerCase();
+  return { sort, dir, q, qInput };
+}
+
+function compareFleetComplianceRecords(
+  a: FleetComplianceRecord,
+  b: FleetComplianceRecord,
+  sort: FleetComplianceSortCol,
+  dir: 'asc' | 'desc'
+): number {
+  const m = dir === 'asc' ? 1 : -1;
+  switch (sort) {
+    case 'record_type':
+      return (a.record_type || '').localeCompare(b.record_type || '') * m;
+    case 'facility':
+      return (a.facility || '').localeCompare(b.facility || '', undefined, { sensitivity: 'base' }) * m;
+    case 'annual_inspection_date':
+      return cmpComplianceNullableDate(
+        complianceDateValue(a.annual_inspection_date),
+        complianceDateValue(b.annual_inspection_date),
+        m
+      );
+    case 'expiry_date':
+      return cmpComplianceNullableDate(
+        complianceDateValue(a.expiry_date),
+        complianceDateValue(b.expiry_date),
+        m
+      );
+    case 'notes':
+      return (a.notes || '').localeCompare(b.notes || '', undefined, { sensitivity: 'base' }) * m;
+    default:
+      return 0;
+  }
+}
+
+function complianceExpiryStatus(rec: FleetComplianceRecord): {
+  label: string;
+  badgeClass: string;
+} {
+  if (!rec.expiry_date?.trim()) {
+    return { label: 'No expiry', badgeClass: 'bg-slate-100 text-slate-700' };
+  }
+  const exp = new Date(rec.expiry_date.slice(0, 10));
+  const now = new Date();
+  const daysLeft = Math.ceil((exp.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+  if (daysLeft < 0) return { label: 'Overdue', badgeClass: 'bg-red-100 text-red-800' };
+  if (daysLeft <= 30) return { label: 'Due soon', badgeClass: 'bg-amber-100 text-amber-800' };
+  return { label: 'OK', badgeClass: 'bg-green-100 text-green-800' };
 }
 
 type FleetAssetHistoryItem = {
@@ -253,6 +518,7 @@ export default function FleetAssetDetail() {
   const nav = useNavigate();
   const location = useLocation();
   const queryClient = useQueryClient();
+  const confirm = useConfirm();
   
   const searchParams = new URLSearchParams(location.search);
   const initialTab = (searchParams.get('tab') as 'general' | 'inspections' | 'work-orders' | 'logs' | 'compliance' | null) || 'general';
@@ -300,11 +566,115 @@ export default function FleetAssetDetail() {
     enabled: isValidId,
   });
 
+  const inspListParams = useMemo(() => parseInspectionListSort(location.search), [location.search]);
+
+  const sortedFilteredInspections = useMemo(() => {
+    if (!Array.isArray(inspections)) return [];
+    let rows = [...inspections];
+    const { q, sort, dir } = inspListParams;
+    if (q) {
+      rows = rows.filter((i) => {
+        const blob = [
+          i.inspection_date,
+          i.inspection_type,
+          i.result,
+          i.inspector_name ?? '',
+          i.notes ?? '',
+          i.odometer_reading != null ? String(i.odometer_reading) : '',
+          i.hours_reading != null ? String(i.hours_reading) : '',
+        ]
+          .join(' ')
+          .toLowerCase();
+        return blob.includes(q);
+      });
+    }
+    rows.sort((a, b) => compareFleetAssetInspections(a, b, sort, dir));
+    return rows;
+  }, [inspections, inspListParams]);
+
+  const setInspectionTableSort = useCallback(
+    (column: InspectionListSortCol) => {
+      const p = new URLSearchParams(location.search);
+      const curCol = (p.get('insp_sort') as InspectionListSortCol) || 'inspection_date';
+      const curDirRaw = p.get('insp_dir');
+      const curDir: 'asc' | 'desc' =
+        curDirRaw === 'asc' || curDirRaw === 'desc' ? curDirRaw : 'desc';
+      const nextDir = curCol === column && curDir === 'asc' ? 'desc' : 'asc';
+      p.set('tab', 'inspections');
+      p.set('insp_sort', column);
+      p.set('insp_dir', nextDir);
+      nav({ pathname: location.pathname, search: p.toString() }, { replace: true });
+    },
+    [location.pathname, location.search, nav]
+  );
+
+  const setInspectionSearchQuery = useCallback(
+    (value: string) => {
+      const p = new URLSearchParams(location.search);
+      p.set('tab', 'inspections');
+      if (value.trim()) p.set('insp_q', value);
+      else p.delete('insp_q');
+      nav({ pathname: location.pathname, search: p.toString() }, { replace: true });
+    },
+    [location.pathname, location.search, nav]
+  );
+
   const { data: workOrders, isLoading: workOrdersLoading } = useQuery({
     queryKey: ['fleetAssetWorkOrders', id],
     queryFn: () => api<WorkOrder[]>('GET', `/fleet/assets/${id}/work-orders`),
     enabled: isValidId,
   });
+
+  const woListParams = useMemo(() => parseFleetAssetWorkOrderListSort(location.search), [location.search]);
+
+  const sortedFilteredWorkOrders = useMemo(() => {
+    if (!Array.isArray(workOrders)) return [];
+    let rows = [...workOrders];
+    const { q, sort, dir } = woListParams;
+    if (q) {
+      rows = rows.filter((wo) => {
+        const blob = [
+          wo.work_order_number,
+          wo.description ?? '',
+          wo.category,
+          wo.urgency,
+          wo.status,
+        ]
+          .join(' ')
+          .toLowerCase();
+        return blob.includes(q);
+      });
+    }
+    rows.sort((a, b) => compareFleetAssetWorkOrders(a, b, sort, dir));
+    return rows;
+  }, [workOrders, woListParams]);
+
+  const setWorkOrderTableSort = useCallback(
+    (column: FleetAssetWorkOrderSortCol) => {
+      const p = new URLSearchParams(location.search);
+      const curCol = (p.get('wo_sort') as FleetAssetWorkOrderSortCol) || 'created_at';
+      const curDirRaw = p.get('wo_dir');
+      const curDir: 'asc' | 'desc' =
+        curDirRaw === 'asc' || curDirRaw === 'desc' ? curDirRaw : 'desc';
+      const nextDir = curCol === column && curDir === 'asc' ? 'desc' : 'asc';
+      p.set('tab', 'work-orders');
+      p.set('wo_sort', column);
+      p.set('wo_dir', nextDir);
+      nav({ pathname: location.pathname, search: p.toString() }, { replace: true });
+    },
+    [location.pathname, location.search, nav]
+  );
+
+  const setWorkOrderSearchQuery = useCallback(
+    (value: string) => {
+      const p = new URLSearchParams(location.search);
+      p.set('tab', 'work-orders');
+      if (value.trim()) p.set('wo_q', value);
+      else p.delete('wo_q');
+      nav({ pathname: location.pathname, search: p.toString() }, { replace: true });
+    },
+    [location.pathname, location.search, nav]
+  );
 
   const { data: historyResponse } = useQuery({
     queryKey: ['fleetAssetHistory', id],
@@ -319,11 +689,67 @@ export default function FleetAssetDetail() {
     enabled: isValidId,
   });
 
-  const { data: complianceRecords = [] } = useQuery({
+  const { data: complianceRecords = [], isLoading: complianceLoading } = useQuery({
     queryKey: ['fleetAssetCompliance', id],
     queryFn: () => api<FleetComplianceRecord[]>('GET', `/fleet/assets/${id}/compliance`),
     enabled: isValidId,
   });
+
+  const compListParams = useMemo(() => parseFleetComplianceListSort(location.search), [location.search]);
+
+  const sortedFilteredComplianceRecords = useMemo(() => {
+    if (!Array.isArray(complianceRecords)) return [];
+    let rows = [...complianceRecords];
+    const { q, sort, dir } = compListParams;
+    if (q) {
+      rows = rows.filter((rec) => {
+        const blob = [
+          rec.record_type,
+          rec.facility ?? '',
+          rec.completed_by ?? '',
+          rec.equipment_classification ?? '',
+          rec.equipment_make_model ?? '',
+          rec.serial_number ?? '',
+          rec.annual_inspection_date ?? '',
+          rec.expiry_date ?? '',
+          rec.file_reference_number ?? '',
+          rec.notes ?? '',
+        ]
+          .join(' ')
+          .toLowerCase();
+        return blob.includes(q);
+      });
+    }
+    rows.sort((a, b) => compareFleetComplianceRecords(a, b, sort, dir));
+    return rows;
+  }, [complianceRecords, compListParams]);
+
+  const setComplianceTableSort = useCallback(
+    (column: FleetComplianceSortCol) => {
+      const p = new URLSearchParams(location.search);
+      const curCol = (p.get('comp_sort') as FleetComplianceSortCol) || 'expiry_date';
+      const curDirRaw = p.get('comp_dir');
+      const curDir: 'asc' | 'desc' =
+        curDirRaw === 'asc' || curDirRaw === 'desc' ? curDirRaw : 'asc';
+      const nextDir = curCol === column && curDir === 'asc' ? 'desc' : 'asc';
+      p.set('tab', 'compliance');
+      p.set('comp_sort', column);
+      p.set('comp_dir', nextDir);
+      nav({ pathname: location.pathname, search: p.toString() }, { replace: true });
+    },
+    [location.pathname, location.search, nav]
+  );
+
+  const setComplianceSearchQuery = useCallback(
+    (value: string) => {
+      const p = new URLSearchParams(location.search);
+      p.set('tab', 'compliance');
+      if (value.trim()) p.set('comp_q', value);
+      else p.delete('comp_q');
+      nav({ pathname: location.pathname, search: p.toString() }, { replace: true });
+    },
+    [location.pathname, location.search, nav]
+  );
 
   const openAssignment = useMemo(() => assignments.find((a) => !a.returned_at), [assignments]);
 
@@ -615,8 +1041,35 @@ export default function FleetAssetDetail() {
 
   if (isLoading) {
     return (
-      <div className="space-y-4">
-        <div className="h-6 bg-gray-100 animate-pulse rounded" />
+      <div className="space-y-4 min-w-0 overflow-x-hidden bg-gray-50/40">
+        <FleetEquipmentPageHeader todayLabel={todayLabel} onBack={() => nav(-1)} />
+        <div className="rounded-xl border border-gray-200 bg-white overflow-hidden p-4">
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-center animate-pulse">
+            <div className="w-48 flex-shrink-0 mx-auto sm:mx-0">
+              <div className="w-48 h-36 bg-gray-100 rounded-xl border border-gray-200/80" />
+              <div className="h-3 w-16 bg-gray-100 rounded mx-auto mt-2" />
+            </div>
+            <div className="flex-1 min-w-0 lg:flex lg:items-center lg:justify-between lg:gap-4">
+              <div className="flex-1 space-y-4 w-full min-w-0">
+                <div className="space-y-2">
+                  <div className="h-8 w-64 max-w-full bg-gray-100 rounded" />
+                  <div className="h-4 w-48 max-w-full bg-gray-100 rounded" />
+                </div>
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-x-6 gap-y-4">
+                  {[1, 2, 3, 4, 5, 6].map((i) => (
+                    <div key={i}>
+                      <div className="h-3 w-14 bg-gray-100 rounded mb-2" />
+                      <div className="h-5 w-24 max-w-full bg-gray-100 rounded" />
+                    </div>
+                  ))}
+                </div>
+              </div>
+              <div className="mt-4 flex justify-center lg:mt-0 lg:shrink-0 lg:self-center lg:justify-end">
+                <div className="h-24 w-24 sm:h-28 sm:w-28 bg-gray-100 rounded-xl border border-gray-200/80" />
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
     );
   }
@@ -625,10 +1078,10 @@ export default function FleetAssetDetail() {
     return <div className="p-4">Asset not found</div>;
   }
 
-  const headerDisplayName = [asset.make, asset.model].filter(Boolean).join(' ') || asset.name || 'Asset';
+  const { primaryTitle: heroPrimaryTitle, subtitleLine: heroSubtitleLine } = buildFleetAssetHeroHeading(asset);
   const lockedScheduleVehicleLabel =
     [asset.name, asset.unit_number ? `Unit #${asset.unit_number}` : null].filter(Boolean).join(' · ') ||
-    headerDisplayName;
+    heroPrimaryTitle;
   const isAssigned = !!openAssignment;
   const heroPhotoThumbUrl = asset.photos?.[0]
     ? withFileAccessToken(`/files/${encodeURIComponent(asset.photos[0])}/thumbnail?w=400`)
@@ -638,131 +1091,186 @@ export default function FleetAssetDetail() {
     : null;
 
   return (
-    <div className="space-y-4 min-w-0 overflow-x-hidden">
-      {/* Header Summary */}
-      <div className="rounded-xl border bg-white p-4 mb-4">
-        <div className="flex items-center justify-between flex-wrap gap-4">
-          <div className="flex items-center gap-4 flex-1 min-w-0">
-            <button
-              onClick={() => nav(-1)}
-              className="p-2 rounded-lg hover:bg-gray-100 transition-colors flex items-center justify-center text-gray-600 hover:text-gray-900 flex-shrink-0"
-              title="Back"
-            >
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
-              </svg>
-            </button>
-            <div className="relative w-48 flex-shrink-0">
-              <input
-                ref={assetHeroPhotoInputRef}
-                type="file"
-                accept="image/*"
-                className="sr-only"
-                onChange={onHeroPhotoFileChange}
+    <div className="space-y-4 min-w-0 overflow-x-hidden bg-gray-50/40">
+      <FleetEquipmentPageHeader todayLabel={todayLabel} onBack={() => nav(-1)} />
+
+      {/* Hero — photo, identity grid, actions (aligned with WorkOrderDetail hero pattern) */}
+      <div className="rounded-xl border border-gray-200 bg-white overflow-hidden p-4">
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-center">
+          <div className="relative w-48 flex-shrink-0 mx-auto sm:mx-0">
+            <input
+              ref={assetHeroPhotoInputRef}
+              type="file"
+              accept="image/*"
+              className="sr-only"
+              onChange={onHeroPhotoFileChange}
+              disabled={heroPhotoBusy}
+            />
+            <div className="w-48 h-36 rounded-xl border border-gray-200 overflow-hidden bg-gray-100">
+              <button
+                type="button"
                 disabled={heroPhotoBusy}
-              />
-              <div className="w-48 h-36 rounded-xl border border-gray-200 overflow-hidden bg-gray-100">
-                <button
-                  type="button"
-                  disabled={heroPhotoBusy}
-                  onClick={() => {
-                    if (heroPhotoThumbUrl) setShowHeroPhotoViewModal(true);
-                    else assetHeroPhotoInputRef.current?.click();
-                  }}
-                  title={heroPhotoThumbUrl ? 'View photo' : 'Add photo'}
-                  className="relative h-full w-full flex items-center justify-center text-gray-400 transition hover:bg-gray-50/80 disabled:cursor-not-allowed disabled:opacity-60"
-                >
-                  {heroPhotoBusy ? (
-                    <span className="text-xs font-medium text-gray-500">…</span>
-                  ) : heroPhotoThumbUrl ? (
-                    <img src={heroPhotoThumbUrl} alt={asset.name || 'Asset'} className="h-full w-full object-cover" />
-                  ) : (
-                    <div className="flex h-full w-full items-center justify-center">
-                      <svg className="h-12 w-12" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 17a2 2 0 11-4 0 2 2 0 014 0zM19 17a2 2 0 11-4 0 2 2 0 014 0z" />
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M13 16V6a1 1 0 00-1-1H4a1 1 0 00-1 1v10a1 1 0 001 1h1m8-1a1 1 0 01-1 1h-1M4 12a2 2 0 110 4m0-4a2 2 0 100 4m0-4v2m0-4V6m16 4a2 2 0 110 4m0-4a2 2 0 100 4m0-4v2m0-4V6" />
-                      </svg>
-                    </div>
-                  )}
-                </button>
-              </div>
-            </div>
-            <div className="min-w-0 flex-1">
-              <h1 className="text-lg font-bold text-gray-900 truncate">{headerDisplayName}</h1>
-              <div className="flex flex-wrap items-center gap-2 mt-1">
-                {asset.unit_number && (
-                  <span className="text-xs text-gray-600">Unit #{asset.unit_number}</span>
+                onClick={() => {
+                  if (heroPhotoThumbUrl) setShowHeroPhotoViewModal(true);
+                  else assetHeroPhotoInputRef.current?.click();
+                }}
+                title={heroPhotoThumbUrl ? 'View photo' : 'Add photo'}
+                className="relative h-full w-full flex flex-col items-center justify-center text-gray-400 transition hover:bg-gray-50/80 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {heroPhotoBusy ? (
+                  <span className="text-xs font-medium text-gray-500">…</span>
+                ) : heroPhotoThumbUrl ? (
+                  <img src={heroPhotoThumbUrl} alt={asset.name || 'Asset'} className="h-full w-full object-cover" />
+                ) : (
+                  <>
+                    <svg className="h-12 w-12 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 17a2 2 0 11-4 0 2 2 0 014 0zM19 17a2 2 0 11-4 0 2 2 0 014 0z" />
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M13 16V6a1 1 0 00-1-1H4a1 1 0 00-1 1v10a1 1 0 001 1h1m8-1a1 1 0 01-1 1h-1M4 12a2 2 0 110 4m0-4a2 2 0 100 4m0-4v2m0-4V6m16 4a2 2 0 110 4m0-4a2 2 0 100 4m0-4v2m0-4V6" />
+                    </svg>
+                    <span className="mt-2 text-xs font-medium text-gray-500">Add photo</span>
+                  </>
                 )}
-                <span className="text-xs text-gray-500 capitalize">{asset.asset_type.replace('_', ' ')}</span>
-                <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${statusColors[asset.status] || 'bg-gray-100 text-gray-800'}`}>
-                  {asset.status}
-                </span>
-                {asset.condition && (
-                  <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-800 capitalize">
-                    {asset.condition}
-                  </span>
-                )}
-                {(asset.odometer_current != null || asset.hours_current != null) && (
-                  <span className="text-xs text-gray-600">
-                    {asset.odometer_current != null
-                      ? `Odometer: ${asset.odometer_current.toLocaleString()}`
-                      : `Hours: ${asset.hours_current?.toLocaleString() ?? '-'}`}
-                  </span>
-                )}
-                <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${isAssigned ? 'bg-blue-100 text-blue-800' : 'bg-green-100 text-green-800'}`}>
-                  {isAssigned ? 'Assigned' : 'Available'}
-                </span>
-              </div>
+              </button>
             </div>
           </div>
-          <div className="flex items-center gap-2 flex-shrink-0">
-            {openAssignment ? (
-              <button
-                type="button"
-                onClick={() => setShowReturnModal(true)}
-                className="px-4 py-2 border border-gray-300 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50"
-              >
-                Return
-              </button>
-            ) : (
-              <button
-                type="button"
-                onClick={() => setShowAssignModal(true)}
-                className="px-4 py-2 bg-brand-red text-white rounded-lg text-sm font-medium hover:bg-red-700"
-              >
-                Assign
-              </button>
-            )}
-            <div className="text-right pl-4 border-l border-gray-200">
-              <div className="text-[10px] font-medium text-gray-500 uppercase tracking-wide">Today</div>
-              <div className="text-xs font-semibold text-gray-700">{todayLabel}</div>
+
+          <div className="flex-1 min-w-0 lg:flex lg:items-center lg:justify-between lg:gap-4">
+            <div className="flex-1 min-w-0 space-y-4">
+              <div className="min-w-0">
+                <h1 className="text-xl font-bold text-gray-900 tracking-tight truncate sm:text-2xl">{heroPrimaryTitle}</h1>
+                {heroSubtitleLine ? (
+                  <p className="mt-1 text-sm text-gray-600 truncate">{heroSubtitleLine}</p>
+                ) : null}
+              </div>
+
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-x-6 gap-y-4">
+                <div>
+                  <span className="text-[10px] font-medium text-gray-500 uppercase tracking-wide">Unit</span>
+                  <div className="text-sm font-semibold text-gray-900 mt-0.5">
+                    {asset.unit_number != null && String(asset.unit_number).trim() !== '' ? `#${asset.unit_number}` : '—'}
+                  </div>
+                </div>
+                <div>
+                  <span className="text-[10px] font-medium text-gray-500 uppercase tracking-wide">Type</span>
+                  <div className="text-sm font-semibold text-gray-900 mt-0.5 capitalize">
+                    {asset.asset_type.replace('_', ' ')}
+                  </div>
+                </div>
+                <div>
+                  <span className="text-[10px] font-medium text-gray-500 uppercase tracking-wide">Status</span>
+                  <div className="mt-0.5">
+                    <span
+                      className={`inline-block px-2 py-0.5 rounded-full text-xs font-medium ${
+                        statusColors[asset.status] || 'bg-gray-100 text-gray-800'
+                      }`}
+                    >
+                      {asset.status}
+                    </span>
+                  </div>
+                </div>
+                {asset.condition ? (
+                  <div>
+                    <span className="text-[10px] font-medium text-gray-500 uppercase tracking-wide">Condition</span>
+                    <div className="mt-0.5">
+                      <span className="inline-block px-2 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-800 capitalize">
+                        {asset.condition}
+                      </span>
+                    </div>
+                  </div>
+                ) : null}
+                <div>
+                  <span className="text-[10px] font-medium text-gray-500 uppercase tracking-wide">
+                    {asset.asset_type === 'vehicle'
+                      ? 'Odometer'
+                      : asset.asset_type === 'heavy_machinery' || asset.asset_type === 'other'
+                        ? 'Hours'
+                        : 'Odometer / Hours'}
+                  </span>
+                  <div className="text-sm font-semibold text-gray-900 mt-0.5">
+                    {asset.odometer_current != null
+                      ? asset.odometer_current.toLocaleString()
+                      : asset.hours_current != null
+                        ? asset.hours_current.toLocaleString()
+                        : '—'}
+                  </div>
+                </div>
+                <div>
+                  <span className="text-[10px] font-medium text-gray-500 uppercase tracking-wide">Assignment</span>
+                  <div className="mt-0.5">
+                    <span
+                      className={`inline-block px-2 py-0.5 rounded-full text-xs font-medium ${
+                        isAssigned ? 'bg-blue-100 text-blue-800' : 'bg-green-100 text-green-800'
+                      }`}
+                    >
+                      {isAssigned ? 'Assigned' : 'Available'}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div className="mt-4 flex flex-wrap justify-center gap-3 lg:mt-0 lg:justify-end lg:self-center lg:shrink-0">
+              {openAssignment ? (
+                <button
+                  type="button"
+                  onClick={() => setShowReturnModal(true)}
+                  className="h-24 w-24 sm:h-28 sm:w-28 rounded-xl border-2 border-emerald-600 bg-emerald-50 text-emerald-950 text-sm font-semibold shadow-sm hover:bg-emerald-100 active:scale-[0.98] transition flex flex-col items-center justify-center gap-1 px-1 py-2 text-center leading-tight"
+                >
+                  <span>Return</span>
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => setShowAssignModal(true)}
+                  className="h-24 w-24 sm:h-28 sm:w-28 rounded-xl border-2 border-sky-400 bg-sky-50 text-sky-950 text-sm font-semibold shadow-sm hover:bg-sky-100 active:scale-[0.98] transition flex flex-col items-center justify-center gap-1 px-1 py-2 text-center leading-tight"
+                >
+                  <span>Assign</span>
+                </button>
+              )}
             </div>
           </div>
         </div>
       </div>
 
-      {/* Tabs - same style as TaskRequests */}
-      <div className="rounded-xl border border-gray-200 bg-white overflow-hidden">
-        <div className="flex gap-1 border-b border-gray-200 px-4">
-          {(['general', 'inspections', 'work-orders', 'logs', 'compliance'] as const).map(t => (
-            <button
-              key={t}
-              onClick={() => {
-                setTab(t);
-                nav(`/fleet/assets/${id}?tab=${t}`, { replace: true });
-              }}
-              className={`px-3 py-2 text-xs font-medium transition-colors border-b-2 -mb-[1px] capitalize ${
-                tab === t ? 'border-brand-red text-brand-red' : 'border-transparent text-gray-600 hover:text-gray-900'
-              }`}
-            >
-              {t === 'logs' ? 'History' : t.replace('-', ' ')}
-            </button>
-          ))}
+      {/* Tabs — pill strip aligned with ProjectDetail / opportunities (ProjectTabCards) */}
+      <div className="rounded-xl border bg-white p-3">
+        <div className="flex flex-wrap gap-2">
+          {(
+            [
+              { id: 'general' as const, label: 'General', icon: '📋' },
+              { id: 'inspections' as const, label: 'Inspections', icon: '🔍' },
+              { id: 'work-orders' as const, label: 'Work Orders', icon: '🔧' },
+              { id: 'compliance' as const, label: 'Compliance', icon: '📑' },
+              { id: 'logs' as const, label: 'History', icon: '📝' },
+            ] as const
+          ).map(({ id: t, label, icon }) => {
+            const isActive = tab === t;
+            return (
+              <button
+                key={t}
+                type="button"
+                onClick={() => {
+                  setTab(t);
+                  nav(`/fleet/assets/${id}?tab=${t}`, { replace: true });
+                }}
+                className={`flex-1 min-w-[120px] px-3 py-1.5 text-sm font-bold rounded-lg border transition-colors flex items-center justify-center gap-1.5 ${
+                  isActive
+                    ? 'bg-red-50 text-red-700 border-red-300 hover:bg-red-100 hover:border-red-400'
+                    : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50 hover:border-gray-400'
+                }`}
+              >
+                <span className="text-xs leading-none" aria-hidden>
+                  {icon}
+                </span>
+                {label}
+              </button>
+            );
+          })}
         </div>
       </div>
 
       {/* Tab Content */}
-      <div className="rounded-b-xl border border-t-0 border-gray-200 bg-white p-4 min-w-0 overflow-hidden">
+      <div className="rounded-xl border border-gray-200 bg-white p-4 min-w-0 overflow-hidden">
         {tab === 'general' && (
           <div className="space-y-6">
             <h3 className="font-semibold text-lg">General Information</h3>
@@ -994,9 +1502,7 @@ export default function FleetAssetDetail() {
           <div className="space-y-3">
             <div>
               <h3 className="text-lg font-semibold text-gray-900">Inspections</h3>
-              <p className="mt-0.5 text-sm text-gray-600">
-                Schedule an inspection for this asset.
-              </p>
+              <p className="mt-0.5 text-sm text-gray-600">Schedule an inspection for this asset.</p>
             </div>
 
             <div className="min-w-0 overflow-hidden rounded-xl border border-gray-200 bg-white">
@@ -1008,6 +1514,34 @@ export default function FleetAssetDetail() {
                 <span className="mr-2 text-lg text-gray-400">+</span>
                 <span className="text-xs font-medium text-gray-700">Schedule inspection</span>
               </button>
+
+              {!inspectionsLoading && Array.isArray(inspections) && inspections.length > 0 && (
+                <div className="w-full min-w-0 border-t border-gray-200 bg-gray-50/80 px-3 py-2.5">
+                  <div className="relative w-full min-w-0">
+                    <input
+                      type="text"
+                      placeholder="Search inspections…"
+                      value={inspListParams.qInput}
+                      onChange={(e) => setInspectionSearchQuery(e.target.value)}
+                      className="w-full min-w-0 rounded-lg border border-gray-200 bg-white/80 py-2 pl-9 pr-3 text-sm text-gray-900 placeholder:text-gray-400 transition-all duration-150 focus:border-gray-300 focus:bg-white focus:outline-none focus:ring-1 focus:ring-gray-300"
+                    />
+                    <svg
+                      className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                      aria-hidden
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
+                      />
+                    </svg>
+                  </div>
+                </div>
+              )}
 
               {inspectionsLoading && (
                 <div className="border-t border-gray-100 px-4 py-4 text-center text-xs text-gray-500">Loading…</div>
@@ -1021,57 +1555,130 @@ export default function FleetAssetDetail() {
                   </div>
                 )}
 
+              {!inspectionsLoading && Array.isArray(inspections) && inspections.length > 0 && sortedFilteredInspections.length === 0 && (
+                <div className="border-t border-gray-100 px-4 py-6 text-center text-xs text-gray-500">
+                  No inspections match your search.
+                </div>
+              )}
+
               {!inspectionsLoading &&
                 Array.isArray(inspections) &&
-                inspections.map((inspection) => (
-                  <div
-                    key={inspection.id}
-                    className="flex items-start border-t border-gray-100 transition-colors hover:bg-gray-50"
-                  >
-                    <button
-                      type="button"
-                      onClick={() => nav(`/fleet/inspections/${inspection.id}`)}
-                      className="flex min-w-0 flex-1 flex-col gap-1 px-3 py-2.5 text-left"
-                    >
-                      <div className="text-sm font-semibold text-gray-900">
-                        {new Date(inspection.inspection_date).toLocaleDateString()}
+                inspections.length > 0 &&
+                sortedFilteredInspections.length > 0 && (
+                  <>
+                    <div className="min-w-0 overflow-x-auto border-t border-gray-100">
+                      <table className="w-full min-w-0 border-collapse">
+                        <thead>
+                          <tr className="border-b border-gray-200 bg-gray-50 text-[10px] font-semibold text-gray-700">
+                            <th className="px-3 py-2 text-left">
+                              <button
+                                type="button"
+                                onClick={() => setInspectionTableSort('inspection_date')}
+                                className="flex items-center gap-1 rounded py-0.5 outline-none hover:text-gray-900 focus:outline-none"
+                              >
+                                Date of Inspection
+                                {inspListParams.sort === 'inspection_date'
+                                  ? inspListParams.dir === 'asc'
+                                    ? ' ↑'
+                                    : ' ↓'
+                                  : ''}
+                              </button>
+                            </th>
+                            <th className="px-3 py-2 text-left">
+                              <button
+                                type="button"
+                                onClick={() => setInspectionTableSort('inspection_type')}
+                                className="flex items-center gap-1 rounded py-0.5 outline-none hover:text-gray-900 focus:outline-none"
+                              >
+                                Type
+                                {inspListParams.sort === 'inspection_type'
+                                  ? inspListParams.dir === 'asc'
+                                    ? ' ↑'
+                                    : ' ↓'
+                                  : ''}
+                              </button>
+                            </th>
+                            <th className="px-3 py-2 text-left">
+                              <button
+                                type="button"
+                                onClick={() => setInspectionTableSort('result')}
+                                className="flex items-center gap-1 rounded py-0.5 outline-none hover:text-gray-900 focus:outline-none"
+                              >
+                                Result
+                                {inspListParams.sort === 'result'
+                                  ? inspListParams.dir === 'asc'
+                                    ? ' ↑'
+                                    : ' ↓'
+                                  : ''}
+                              </button>
+                            </th>
+                            <th className="px-3 py-2 text-left">
+                              <button
+                                type="button"
+                                onClick={() => setInspectionTableSort('created_at')}
+                                className="flex items-center gap-1 rounded py-0.5 outline-none hover:text-gray-900 focus:outline-none"
+                              >
+                                Created at
+                                {inspListParams.sort === 'created_at'
+                                  ? inspListParams.dir === 'asc'
+                                    ? ' ↑'
+                                    : ' ↓'
+                                  : ''}
+                              </button>
+                            </th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {sortedFilteredInspections.map((inspection) => {
+                            const resultKey = (inspection.result || 'pending').toLowerCase();
+                            const resultLabel = INSPECTION_RESULT_LABELS[resultKey] ?? inspection.result;
+                            const resultColors =
+                              INSPECTION_RESULT_COLORS[resultKey] ?? 'bg-slate-100 text-slate-800';
+                            return (
+                              <tr
+                                key={inspection.id}
+                                className="cursor-pointer border-b border-gray-100 transition-colors last:border-b-0 hover:bg-gray-50"
+                                onClick={() => nav(`/fleet/inspections/${inspection.id}`)}
+                              >
+                                <td className="whitespace-nowrap px-3 py-3 align-top text-xs font-medium tabular-nums text-gray-900">
+                                  <time dateTime={inspection.inspection_date}>
+                                    {formatDateLocal(new Date(inspection.inspection_date))}
+                                  </time>
+                                </td>
+                                <td className="px-3 py-3 align-top">
+                                  <span
+                                    className={`inline-flex items-center rounded-md px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${inspectionTypeBadgeClass(inspection.inspection_type)}`}
+                                  >
+                                    {inspectionTypeLabel(inspection.inspection_type)}
+                                  </span>
+                                </td>
+                                <td className="px-3 py-3 align-top">
+                                  <span
+                                    className={`inline-flex rounded px-2 py-0.5 text-xs font-medium ${resultColors}`}
+                                  >
+                                    {resultLabel}
+                                  </span>
+                                </td>
+                                <td className="whitespace-nowrap px-3 py-3 align-top text-xs tabular-nums text-gray-600">
+                                  {inspection.created_at
+                                    ? formatDateLocal(new Date(inspection.created_at))
+                                    : '—'}
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                    <div className="flex items-center justify-between border-t border-gray-200 px-4 py-2.5">
+                      <div className="text-xs text-gray-600">
+                        {inspListParams.q
+                          ? `Showing ${sortedFilteredInspections.length} of ${inspections.length} inspection${inspections.length === 1 ? '' : 's'}`
+                          : `${sortedFilteredInspections.length} inspection${sortedFilteredInspections.length === 1 ? '' : 's'}`}
                       </div>
-                      <div className="text-[11px] text-gray-600">
-                        Result:{' '}
-                        <span className={inspection.result === 'pass' ? 'text-green-600 font-medium' : 'text-red-600 font-medium'}>
-                          {inspection.result}
-                        </span>
-                      </div>
-                      {inspection.notes && (
-                        <p className="mt-1 line-clamp-2 text-xs text-gray-600">{inspection.notes}</p>
-                      )}
-                      {inspection.photos && inspection.photos.length > 0 && (
-                        <div className="mt-2 flex gap-1">
-                          {inspection.photos.map((photoId, idx) => (
-                            <img
-                              key={idx}
-                              src={withFileAccessToken(`/files/${photoId}/thumbnail?w=100`)}
-                              alt=""
-                              className="h-8 w-8 rounded border border-gray-200 object-cover"
-                            />
-                          ))}
-                        </div>
-                      )}
-                    </button>
-                    {inspection.auto_generated_work_order_id && (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setTab('work-orders');
-                          nav(`/fleet/assets/${id}?tab=work-orders`, { replace: true });
-                        }}
-                        className="shrink-0 self-start px-3 py-2.5 text-xs font-medium text-brand-red hover:underline"
-                      >
-                        View work order
-                      </button>
-                    )}
-                  </div>
-                ))}
+                    </div>
+                  </>
+                )}
             </div>
           </div>
         )}
@@ -1093,6 +1700,34 @@ export default function FleetAssetDetail() {
                 <span className="text-xs font-medium text-gray-700">New Work Order</span>
               </button>
 
+              {!workOrdersLoading && Array.isArray(workOrders) && workOrders.length > 0 && (
+                <div className="w-full min-w-0 border-t border-gray-200 bg-gray-50/80 px-3 py-2.5">
+                  <div className="relative w-full min-w-0">
+                    <input
+                      type="text"
+                      placeholder="Search work orders…"
+                      value={woListParams.qInput}
+                      onChange={(e) => setWorkOrderSearchQuery(e.target.value)}
+                      className="w-full min-w-0 rounded-lg border border-gray-200 bg-white/80 py-2 pl-9 pr-3 text-sm text-gray-900 placeholder:text-gray-400 transition-all duration-150 focus:border-gray-300 focus:bg-white focus:outline-none focus:ring-1 focus:ring-gray-300"
+                    />
+                    <svg
+                      className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                      aria-hidden
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
+                      />
+                    </svg>
+                  </div>
+                </div>
+              )}
+
               {workOrdersLoading && (
                 <div className="border-t border-gray-100 px-4 py-4 text-center text-xs text-gray-500">Loading…</div>
               )}
@@ -1105,55 +1740,164 @@ export default function FleetAssetDetail() {
                   </div>
                 )}
 
+              {!workOrdersLoading && Array.isArray(workOrders) && workOrders.length > 0 && sortedFilteredWorkOrders.length === 0 && (
+                <div className="border-t border-gray-100 px-4 py-6 text-center text-xs text-gray-500">
+                  No work orders match your search.
+                </div>
+              )}
+
               {!workOrdersLoading &&
                 Array.isArray(workOrders) &&
-                workOrders.map((wo) => {
-                  const photoList = flattenWorkOrderPhotos(wo.photos);
-                  const categoryLabel = CATEGORY_LABELS[wo.category] ?? wo.category;
-                  return (
-                    <button
-                      key={wo.id}
-                      type="button"
-                      onClick={() => nav(`/fleet/work-orders/${wo.id}`)}
-                      className="flex w-full flex-col gap-1 border-t border-gray-100 px-3 py-2.5 text-left transition-colors hover:bg-gray-50"
-                    >
-                      <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-0.5 sm:flex-nowrap">
-                        <span className="shrink-0 text-sm font-semibold text-gray-900">{wo.work_order_number}</span>
-                        <span className="hidden text-[10px] text-gray-300 sm:inline">·</span>
-                        <span className="shrink-0 text-[11px] capitalize text-gray-500">{categoryLabel}</span>
-                        <span className="min-w-[4px] flex-1" />
-                        <span
-                          className={`inline-flex shrink-0 rounded px-1.5 py-0.5 text-[10px] font-medium ${URGENCY_COLORS[wo.urgency] || 'bg-gray-100 text-gray-800'}`}
-                        >
-                          {URGENCY_LABELS[wo.urgency] ?? wo.urgency}
-                        </span>
-                        <span
-                          className={`inline-flex shrink-0 rounded px-1.5 py-0.5 text-[10px] font-medium ${WORK_ORDER_STATUS_COLORS[wo.status] || 'bg-gray-100 text-gray-800'}`}
-                        >
-                          {WORK_ORDER_STATUS_LABELS[wo.status] ?? wo.status.replace(/_/g, ' ')}
-                        </span>
-                        <span className="shrink-0 whitespace-nowrap text-[11px] tabular-nums text-gray-500">
-                          {formatDateLocal(new Date(wo.created_at))}
-                        </span>
+                workOrders.length > 0 &&
+                sortedFilteredWorkOrders.length > 0 && (
+                  <>
+                    <div className="min-w-0 overflow-x-auto border-t border-gray-100">
+                      <table className="w-full min-w-0 border-collapse">
+                        <thead>
+                          <tr className="border-b border-gray-200 bg-gray-50 text-[10px] font-semibold text-gray-700">
+                            <th className="px-3 py-2 text-left">
+                              <button
+                                type="button"
+                                onClick={() => setWorkOrderTableSort('work_order_number')}
+                                className="flex items-center gap-1 rounded py-0.5 outline-none hover:text-gray-900 focus:outline-none"
+                              >
+                                WO #
+                                {woListParams.sort === 'work_order_number'
+                                  ? woListParams.dir === 'asc'
+                                    ? ' ↑'
+                                    : ' ↓'
+                                  : ''}
+                              </button>
+                            </th>
+                            <th className="min-w-[120px] px-3 py-2 text-left">
+                              <button
+                                type="button"
+                                onClick={() => setWorkOrderTableSort('description')}
+                                className="flex items-center gap-1 rounded py-0.5 outline-none hover:text-gray-900 focus:outline-none"
+                              >
+                                Description
+                                {woListParams.sort === 'description'
+                                  ? woListParams.dir === 'asc'
+                                    ? ' ↑'
+                                    : ' ↓'
+                                  : ''}
+                              </button>
+                            </th>
+                            <th className="px-3 py-2 text-left">
+                              <button
+                                type="button"
+                                onClick={() => setWorkOrderTableSort('category')}
+                                className="flex items-center gap-1 rounded py-0.5 outline-none hover:text-gray-900 focus:outline-none"
+                              >
+                                Category
+                                {woListParams.sort === 'category'
+                                  ? woListParams.dir === 'asc'
+                                    ? ' ↑'
+                                    : ' ↓'
+                                  : ''}
+                              </button>
+                            </th>
+                            <th className="px-3 py-2 text-left">
+                              <button
+                                type="button"
+                                onClick={() => setWorkOrderTableSort('urgency')}
+                                className="flex items-center gap-1 rounded py-0.5 outline-none hover:text-gray-900 focus:outline-none"
+                              >
+                                Urgency
+                                {woListParams.sort === 'urgency'
+                                  ? woListParams.dir === 'asc'
+                                    ? ' ↑'
+                                    : ' ↓'
+                                  : ''}
+                              </button>
+                            </th>
+                            <th className="px-3 py-2 text-left">
+                              <button
+                                type="button"
+                                onClick={() => setWorkOrderTableSort('status')}
+                                className="flex items-center gap-1 rounded py-0.5 outline-none hover:text-gray-900 focus:outline-none"
+                              >
+                                Status
+                                {woListParams.sort === 'status'
+                                  ? woListParams.dir === 'asc'
+                                    ? ' ↑'
+                                    : ' ↓'
+                                  : ''}
+                              </button>
+                            </th>
+                            <th className="px-3 py-2 text-left">
+                              <button
+                                type="button"
+                                onClick={() => setWorkOrderTableSort('created_at')}
+                                className="flex items-center gap-1 rounded py-0.5 outline-none hover:text-gray-900 focus:outline-none"
+                              >
+                                Created at
+                                {woListParams.sort === 'created_at'
+                                  ? woListParams.dir === 'asc'
+                                    ? ' ↑'
+                                    : ' ↓'
+                                  : ''}
+                              </button>
+                            </th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {sortedFilteredWorkOrders.map((wo) => {
+                            const descRaw = wo.description?.trim() || '';
+                            const descDisplay =
+                              descRaw.length > WO_DESC_TABLE_TRUNC
+                                ? `${descRaw.slice(0, WO_DESC_TABLE_TRUNC)}…`
+                                : descRaw || '—';
+                            const categoryLabel = CATEGORY_LABELS[wo.category] ?? wo.category;
+                            return (
+                              <tr
+                                key={wo.id}
+                                className="cursor-pointer border-b border-gray-100 transition-colors last:border-b-0 hover:bg-gray-50"
+                                onClick={() => nav(`/fleet/work-orders/${wo.id}`)}
+                              >
+                                <td className="whitespace-nowrap px-3 py-3 align-top text-xs font-medium text-gray-900">
+                                  {wo.work_order_number}
+                                </td>
+                                <td className="max-w-[280px] min-w-0 px-3 py-3 align-top text-xs text-gray-600">
+                                  <span className="line-clamp-2" title={descRaw || undefined}>
+                                    {descDisplay}
+                                  </span>
+                                </td>
+                                <td className="whitespace-nowrap px-3 py-3 align-top text-xs capitalize text-gray-600">
+                                  {categoryLabel}
+                                </td>
+                                <td className="px-3 py-3 align-top">
+                                  <span
+                                    className={`inline-flex rounded px-2 py-0.5 text-xs font-medium ${URGENCY_COLORS[wo.urgency] || 'bg-gray-100 text-gray-800'}`}
+                                  >
+                                    {URGENCY_LABELS[wo.urgency] ?? wo.urgency}
+                                  </span>
+                                </td>
+                                <td className="px-3 py-3 align-top">
+                                  <span
+                                    className={`inline-flex rounded px-2 py-0.5 text-xs font-medium ${WORK_ORDER_STATUS_COLORS[wo.status] || 'bg-gray-100 text-gray-800'}`}
+                                  >
+                                    {WORK_ORDER_STATUS_LABELS[wo.status] ?? wo.status.replace(/_/g, ' ')}
+                                  </span>
+                                </td>
+                                <td className="whitespace-nowrap px-3 py-3 align-top text-xs tabular-nums text-gray-600">
+                                  {wo.created_at ? formatDateLocal(new Date(wo.created_at)) : '—'}
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                    <div className="flex items-center justify-between border-t border-gray-200 px-4 py-2.5">
+                      <div className="text-xs text-gray-600">
+                        {woListParams.q
+                          ? `Showing ${sortedFilteredWorkOrders.length} of ${workOrders.length} work order${workOrders.length === 1 ? '' : 's'}`
+                          : `${sortedFilteredWorkOrders.length} work order${sortedFilteredWorkOrders.length === 1 ? '' : 's'}`}
                       </div>
-                      <div className="flex min-w-0 items-center gap-2">
-                        <p className="min-w-0 flex-1 truncate text-xs text-gray-600">{wo.description?.trim() || '—'}</p>
-                        {photoList.length > 0 ? (
-                          <div className="flex shrink-0 gap-0.5">
-                            {photoList.slice(0, 3).map((photoId, idx) => (
-                              <img
-                                key={idx}
-                                src={withFileAccessToken(`/files/${photoId}/thumbnail?w=64`)}
-                                alt=""
-                                className="h-8 w-8 rounded border border-gray-200 object-cover"
-                              />
-                            ))}
-                          </div>
-                        ) : null}
-                      </div>
-                    </button>
-                  );
-                })}
+                    </div>
+                  </>
+                )}
             </div>
           </div>
         )}
@@ -1188,12 +1932,14 @@ export default function FleetAssetDetail() {
                     (isAssignmentAudit &&
                       (item.audit_action === 'CREATE' || item.audit_action === 'UPDATE')));
                 const cj = item.changes_json;
-                const openAuditDetail =
+                const openAuditDetailBase =
                   item.source === 'audit' &&
                   !!cj &&
                   typeof cj === 'object' &&
                   ('before' in cj || 'after' in cj || 'deleted' in cj || Object.keys(cj).length > 0) &&
                   !(isAssignmentAudit && assign);
+                const openAuditDetail =
+                  openAuditDetailBase && fleetHistoryChangeDetailEligible(item);
                 const borderClass =
                   item.source === 'assignment' && item.kind === 'checkout'
                     ? 'border-brand-red'
@@ -1219,7 +1965,11 @@ export default function FleetAssetDetail() {
                           : item.source === 'audit'
                             ? 'Change'
                             : 'Log';
-                const summary = buildFleetHistoryDescription(item);
+                const summaryFull = buildFleetHistoryDescription(item);
+                const summaryList =
+                  openAuditDetail && item.source === 'audit'
+                    ? buildFleetHistoryListSummary(item)
+                    : summaryFull;
                 return (
                   <div
                     key={item.id}
@@ -1240,7 +1990,7 @@ export default function FleetAssetDetail() {
                                 changes: cj as Record<string, unknown>,
                                 entityType: item.entity_type ?? null,
                                 auditAction: item.audit_action ?? null,
-                                summary,
+                                summary: summaryFull,
                                 auditContext: item.audit_context ?? null,
                               })
                           : undefined
@@ -1250,7 +2000,7 @@ export default function FleetAssetDetail() {
                     <div className="flex items-start justify-between gap-3">
                       <div className="min-w-0">
                         <div className="flex flex-wrap items-center gap-2">
-                          <span className="font-medium text-gray-900">{summary}</span>
+                          <span className="font-medium text-gray-900">{summaryList}</span>
                           <span className="text-[10px] uppercase tracking-wide px-1.5 py-0.5 rounded bg-gray-100 text-gray-600">{badge}</span>
                         </div>
                         {item.actor_name && (
@@ -1283,65 +2033,255 @@ export default function FleetAssetDetail() {
         )}
 
         {tab === 'compliance' && (
-          <div className="space-y-4">
-            <div className="flex justify-between items-center">
-              <h3 className="font-semibold text-lg">Compliance (CVIP / CRANE / NDT / PROPANE)</h3>
+          <div className="space-y-3">
+            <div>
+              <h3 className="text-lg font-semibold text-gray-900">Compliance</h3>
+              <p className="mt-0.5 text-sm text-gray-600">
+                CVIP, CRANE, NDT, PROPANE, and other certification records for this asset.
+              </p>
+            </div>
+
+            <div className="min-w-0 overflow-hidden rounded-xl border border-gray-200 bg-white">
               <button
                 type="button"
-                onClick={() => { setEditingComplianceId(null); setShowComplianceModal(true); }}
-                className="px-4 py-2 bg-brand-red text-white rounded-lg hover:bg-red-700 text-sm"
+                onClick={() => {
+                  setEditingComplianceId(null);
+                  setShowComplianceModal(true);
+                }}
+                className="flex min-h-[52px] w-full min-w-0 items-center justify-center rounded-t-xl border-2 border-dashed border-gray-300 bg-white p-2.5 text-center transition-all hover:border-brand-red hover:bg-gray-50"
               >
-                Add record
+                <span className="mr-2 text-lg text-gray-400">+</span>
+                <span className="text-xs font-medium text-gray-700">Add compliance record</span>
               </button>
-            </div>
-            <div className="space-y-2">
-              {Array.isArray(complianceRecords) && complianceRecords.map((rec) => {
-                const exp = rec.expiry_date ? new Date(rec.expiry_date) : null;
-                const now = new Date();
-                const daysLeft = exp ? Math.ceil((exp.getTime() - now.getTime()) / (1000 * 60 * 60 * 24)) : null;
-                let badge = 'bg-gray-100 text-gray-800';
-                if (daysLeft != null) {
-                  if (daysLeft < 0) badge = 'bg-red-100 text-red-800';
-                  else if (daysLeft <= 30) badge = 'bg-amber-100 text-amber-800';
-                }
-                return (
-                  <div key={rec.id} className="border rounded-lg p-4 flex items-center justify-between">
-                    <div>
-                      <span className="font-medium">{rec.record_type}</span>
-                      {rec.expiry_date && (
-                        <span className={`ml-2 px-2 py-0.5 rounded text-xs ${badge}`}>
-                          {daysLeft != null && daysLeft < 0 ? 'Overdue' : daysLeft != null && daysLeft <= 30 ? 'Due soon' : 'OK'} — {rec.expiry_date.slice(0, 10)}
-                        </span>
-                      )}
-                      {rec.facility && <div className="text-sm text-gray-600">{rec.facility}</div>}
-                    </div>
-                    <div className="flex gap-2">
-                      <button type="button" onClick={() => { setEditingComplianceId(rec.id); setShowComplianceModal(true); }} className="text-sm text-brand-red hover:underline">Edit</button>
-                      <button
-                        type="button"
-                        onClick={async () => {
-                          if (!confirm('Delete this compliance record?')) return;
-                          try {
-                            await api('DELETE', `/fleet/compliance/${rec.id}`);
-                            queryClient.invalidateQueries({ queryKey: ['fleetAssetCompliance', id] });
-                            queryClient.invalidateQueries({ queryKey: ['fleetAssetHistory', id] });
-                            toast.success('Record deleted');
-                          } catch (e: any) {
-                            toast.error(e?.message || 'Delete failed');
-                          }
-                        }}
-                        className="text-sm text-red-600 hover:underline"
-                      >
-                        Delete
-                      </button>
-                    </div>
+
+              {!complianceLoading && Array.isArray(complianceRecords) && complianceRecords.length > 0 && (
+                <div className="w-full min-w-0 border-t border-gray-200 bg-gray-50/80 px-3 py-2.5">
+                  <div className="relative w-full min-w-0">
+                    <input
+                      type="text"
+                      placeholder="Search compliance records…"
+                      value={compListParams.qInput}
+                      onChange={(e) => setComplianceSearchQuery(e.target.value)}
+                      className="w-full min-w-0 rounded-lg border border-gray-200 bg-white/80 py-2 pl-9 pr-3 text-sm text-gray-900 placeholder:text-gray-400 transition-all duration-150 focus:border-gray-300 focus:bg-white focus:outline-none focus:ring-1 focus:ring-gray-300"
+                    />
+                    <svg
+                      className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                      aria-hidden
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
+                      />
+                    </svg>
                   </div>
-                );
-              })}
+                </div>
+              )}
+
+              {complianceLoading && (
+                <div className="border-t border-gray-100 px-4 py-4 text-center text-xs text-gray-500">Loading…</div>
+              )}
+
+              {!complianceLoading &&
+                Array.isArray(complianceRecords) &&
+                complianceRecords.length === 0 && (
+                  <div className="border-t border-gray-100 px-4 py-6 text-center text-xs text-gray-500">
+                    No compliance records yet for this asset.
+                  </div>
+                )}
+
+              {!complianceLoading &&
+                Array.isArray(complianceRecords) &&
+                complianceRecords.length > 0 &&
+                sortedFilteredComplianceRecords.length === 0 && (
+                  <div className="border-t border-gray-100 px-4 py-6 text-center text-xs text-gray-500">
+                    No records match your search.
+                  </div>
+                )}
+
+              {!complianceLoading &&
+                Array.isArray(complianceRecords) &&
+                complianceRecords.length > 0 &&
+                sortedFilteredComplianceRecords.length > 0 && (
+                  <>
+                    <div className="min-w-0 overflow-x-auto border-t border-gray-100">
+                      <table className="w-full min-w-0 border-collapse">
+                        <thead>
+                          <tr className="border-b border-gray-200 bg-gray-50 text-[10px] font-semibold text-gray-700">
+                            <th className="px-3 py-2 text-left">
+                              <button
+                                type="button"
+                                onClick={() => setComplianceTableSort('record_type')}
+                                className="flex items-center gap-1 rounded py-0.5 outline-none hover:text-gray-900 focus:outline-none"
+                              >
+                                Type
+                                {compListParams.sort === 'record_type'
+                                  ? compListParams.dir === 'asc'
+                                    ? ' ↑'
+                                    : ' ↓'
+                                  : ''}
+                              </button>
+                            </th>
+                            <th className="min-w-[100px] px-3 py-2 text-left">
+                              <button
+                                type="button"
+                                onClick={() => setComplianceTableSort('facility')}
+                                className="flex items-center gap-1 rounded py-0.5 outline-none hover:text-gray-900 focus:outline-none"
+                              >
+                                Facility
+                                {compListParams.sort === 'facility'
+                                  ? compListParams.dir === 'asc'
+                                    ? ' ↑'
+                                    : ' ↓'
+                                  : ''}
+                              </button>
+                            </th>
+                            <th className="px-3 py-2 text-left">
+                              <button
+                                type="button"
+                                onClick={() => setComplianceTableSort('annual_inspection_date')}
+                                className="flex items-center gap-1 rounded py-0.5 outline-none hover:text-gray-900 focus:outline-none"
+                              >
+                                Annual inspection
+                                {compListParams.sort === 'annual_inspection_date'
+                                  ? compListParams.dir === 'asc'
+                                    ? ' ↑'
+                                    : ' ↓'
+                                  : ''}
+                              </button>
+                            </th>
+                            <th className="px-3 py-2 text-left">
+                              <button
+                                type="button"
+                                onClick={() => setComplianceTableSort('expiry_date')}
+                                className="flex items-center gap-1 rounded py-0.5 outline-none hover:text-gray-900 focus:outline-none"
+                              >
+                                Expiry
+                                {compListParams.sort === 'expiry_date'
+                                  ? compListParams.dir === 'asc'
+                                    ? ' ↑'
+                                    : ' ↓'
+                                  : ''}
+                              </button>
+                            </th>
+                            <th className="px-3 py-2 text-left">Status</th>
+                            <th className="min-w-[120px] px-3 py-2 text-left">
+                              <button
+                                type="button"
+                                onClick={() => setComplianceTableSort('notes')}
+                                className="flex items-center gap-1 rounded py-0.5 outline-none hover:text-gray-900 focus:outline-none"
+                              >
+                                Notes
+                                {compListParams.sort === 'notes'
+                                  ? compListParams.dir === 'asc'
+                                    ? ' ↑'
+                                    : ' ↓'
+                                  : ''}
+                              </button>
+                            </th>
+                            <th className="px-3 py-2 text-right"> </th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {sortedFilteredComplianceRecords.map((rec) => {
+                            const status = complianceExpiryStatus(rec);
+                            const notesRaw = rec.notes?.trim() || '';
+                            const notesDisplay =
+                              notesRaw.length > COMP_NOTES_TABLE_TRUNC
+                                ? `${notesRaw.slice(0, COMP_NOTES_TABLE_TRUNC)}…`
+                                : notesRaw || '—';
+                            return (
+                              <tr
+                                key={rec.id}
+                                className="cursor-pointer border-b border-gray-100 transition-colors last:border-b-0 hover:bg-gray-50"
+                                onClick={() => {
+                                  setEditingComplianceId(rec.id);
+                                  setShowComplianceModal(true);
+                                }}
+                              >
+                                <td className="whitespace-nowrap px-3 py-3 align-top text-xs font-medium text-gray-900">
+                                  {rec.record_type}
+                                </td>
+                                <td className="max-w-[160px] min-w-0 px-3 py-3 align-top text-xs text-gray-700">
+                                  <span className="line-clamp-2" title={rec.facility || undefined}>
+                                    {rec.facility?.trim() || '—'}
+                                  </span>
+                                </td>
+                                <td className="whitespace-nowrap px-3 py-3 align-top text-xs tabular-nums text-gray-600">
+                                  {rec.annual_inspection_date
+                                    ? formatDateLocal(new Date(rec.annual_inspection_date.slice(0, 10)))
+                                    : '—'}
+                                </td>
+                                <td className="whitespace-nowrap px-3 py-3 align-top text-xs tabular-nums text-gray-600">
+                                  {rec.expiry_date
+                                    ? formatDateLocal(new Date(rec.expiry_date.slice(0, 10)))
+                                    : '—'}
+                                </td>
+                                <td className="px-3 py-3 align-top">
+                                  <span
+                                    className={`inline-flex rounded px-2 py-0.5 text-xs font-medium ${status.badgeClass}`}
+                                  >
+                                    {status.label}
+                                  </span>
+                                </td>
+                                <td className="max-w-[220px] min-w-0 px-3 py-3 align-top text-xs text-gray-600">
+                                  <span className="line-clamp-2" title={notesRaw || undefined}>
+                                    {notesDisplay}
+                                  </span>
+                                </td>
+                                <td className="whitespace-nowrap px-3 py-3 text-right align-top">
+                                  <button
+                                    type="button"
+                                    className="text-xs font-medium text-red-600 hover:underline"
+                                    onClick={async (e) => {
+                                      e.stopPropagation();
+                                      const facility = rec.facility?.trim();
+                                      const detail =
+                                        facility && facility.length > 0
+                                          ? `${rec.record_type} · ${facility}`
+                                          : rec.record_type;
+                                      const result = await confirm({
+                                        title: 'Delete compliance record',
+                                        message: `Are you sure you want to delete this compliance record?\n\n${detail}\n\nThis action cannot be undone.`,
+                                        confirmText: 'Delete',
+                                        cancelText: 'Cancel',
+                                      });
+                                      if (result !== 'confirm') return;
+                                      try {
+                                        await api('DELETE', `/fleet/compliance/${rec.id}`);
+                                        queryClient.invalidateQueries({ queryKey: ['fleetAssetCompliance', id] });
+                                        queryClient.invalidateQueries({ queryKey: ['fleetAssetHistory', id] });
+                                        toast.success('Record deleted');
+                                      } catch (err: unknown) {
+                                        toast.error(
+                                          err instanceof Error ? err.message : 'Delete failed'
+                                        );
+                                      }
+                                    }}
+                                  >
+                                    Delete
+                                  </button>
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                    <div className="flex items-center justify-between border-t border-gray-200 px-4 py-2.5">
+                      <div className="text-xs text-gray-600">
+                        {compListParams.q
+                          ? `Showing ${sortedFilteredComplianceRecords.length} of ${complianceRecords.length} record${complianceRecords.length === 1 ? '' : 's'}`
+                          : `${sortedFilteredComplianceRecords.length} record${sortedFilteredComplianceRecords.length === 1 ? '' : 's'}`}
+                      </div>
+                    </div>
+                  </>
+                )}
             </div>
-            {(!complianceRecords || complianceRecords.length === 0) && (
-              <div className="text-center text-gray-500 py-8">No compliance records</div>
-            )}
           </div>
         )}
       </div>
@@ -1456,10 +2396,14 @@ export default function FleetAssetDetail() {
       {/* Compliance create/edit modal - simple inline */}
       {showComplianceModal && (
         <ComplianceModal
+          key={editingComplianceId ?? 'new'}
           assetId={id!}
           recordId={editingComplianceId}
           initialRecord={editingComplianceId ? complianceRecords.find((r) => r.id === editingComplianceId) : undefined}
-          onClose={() => { setShowComplianceModal(false); setEditingComplianceId(null); }}
+          onClose={() => {
+            setShowComplianceModal(false);
+            setEditingComplianceId(null);
+          }}
           onSuccess={() => {
             queryClient.invalidateQueries({ queryKey: ['fleetAssetCompliance', id] });
             queryClient.invalidateQueries({ queryKey: ['fleetAssetHistory', id] });
@@ -1552,6 +2496,8 @@ function ScheduleInspectionModalInline({
 }
 
 const FLEET_NEW_WORK_ORDER_FORM_ID = 'fleet-new-work-order-form';
+
+const FLEET_COMPLIANCE_FORM_ID = 'fleet-compliance-form';
 
 // Inline Work Order Form Component (SafetyFormModalLayout shell)
 function WorkOrderFormInline({ assetId, onSuccess, onCancel, employees }: {
@@ -2279,6 +3225,8 @@ function FleetHistoryAuditChangeModal({
     [detail.entityType, detail.changes, detail.auditContext]
   );
 
+  const deleteOnly = isFleetAuditDeleteOnlyChanges(detail.changes);
+
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') onClose();
@@ -2343,6 +3291,11 @@ function FleetHistoryAuditChangeModal({
                 </tbody>
               </table>
             </div>
+          ) : deleteOnly ? (
+            <p className="text-sm text-gray-600">
+              This entry is a deletion. The summary above describes what was removed; individual fields are not listed
+              here.
+            </p>
           ) : (
             <div className="space-y-3">
               <p className="text-sm text-gray-600">
@@ -2838,19 +3791,40 @@ function ComplianceModal({
   onClose: () => void;
   onSuccess: () => void;
 }) {
+  const titleId = useId();
   const [record_type, setRecordType] = useState(initialRecord?.record_type || 'CVIP');
   const [facility, setFacility] = useState(initialRecord?.facility || '');
   const [completed_by, setCompletedBy] = useState(initialRecord?.completed_by || '');
-  const [equipment_classification, setEquipmentClassification] = useState(initialRecord?.equipment_classification || '');
+  const [equipment_classification, setEquipmentClassification] = useState(
+    initialRecord?.equipment_classification || ''
+  );
   const [equipment_make_model, setEquipmentMakeModel] = useState(initialRecord?.equipment_make_model || '');
   const [serial_number, setSerialNumber] = useState(initialRecord?.serial_number || '');
-  const [annual_inspection_date, setAnnualInspectionDate] = useState(initialRecord?.annual_inspection_date?.slice(0, 10) || '');
+  const [annual_inspection_date, setAnnualInspectionDate] = useState(
+    initialRecord?.annual_inspection_date?.slice(0, 10) || ''
+  );
   const [expiry_date, setExpiryDate] = useState(initialRecord?.expiry_date?.slice(0, 10) || '');
   const [file_reference_number, setFileReferenceNumber] = useState(initialRecord?.file_reference_number || '');
   const [notes, setNotes] = useState(initialRecord?.notes || '');
   const [saving, setSaving] = useState(false);
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const labelClass = SAFETY_MODAL_FIELD_LABEL;
+  const inputBase =
+    'w-full border border-gray-200 rounded-lg px-3 py-2 text-sm shadow-sm focus:border-brand-red focus:outline-none focus:ring-2 focus:ring-red-500/15';
+
+  useEffect(() => {
+    document.body.style.overflow = 'hidden';
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => {
+      document.body.style.overflow = '';
+      window.removeEventListener('keydown', onKey);
+    };
+  }, [onClose]);
+
+  const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
     setSaving(true);
     try {
@@ -2868,77 +3842,162 @@ function ComplianceModal({
         notes: notes || null,
       };
       if (recordId) {
-        await api('PUT', `/fleet/compliance/${recordId}`, { record_type: payload.record_type, facility: payload.facility, completed_by: payload.completed_by, equipment_classification: payload.equipment_classification, equipment_make_model: payload.equipment_make_model, serial_number: payload.serial_number, annual_inspection_date: payload.annual_inspection_date, expiry_date: payload.expiry_date, file_reference_number: payload.file_reference_number, notes: payload.notes });
+        await api('PUT', `/fleet/compliance/${recordId}`, {
+          record_type: payload.record_type,
+          facility: payload.facility,
+          completed_by: payload.completed_by,
+          equipment_classification: payload.equipment_classification,
+          equipment_make_model: payload.equipment_make_model,
+          serial_number: payload.serial_number,
+          annual_inspection_date: payload.annual_inspection_date,
+          expiry_date: payload.expiry_date,
+          file_reference_number: payload.file_reference_number,
+          notes: payload.notes,
+        });
         toast.success('Record updated');
       } else {
         await api('POST', `/fleet/assets/${assetId}/compliance`, payload);
         toast.success('Record created');
       }
       onSuccess();
-    } catch (err: any) {
-      toast.error(err?.message || 'Failed to save');
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : 'Failed to save');
     } finally {
       setSaving(false);
     }
   };
 
   return (
-    <OverlayPortal><div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={onClose}>
-      <div className="bg-white rounded-xl shadow-lg max-w-md w-full max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
-        <div className="p-4 border-b font-semibold">{recordId ? 'Edit compliance record' : 'Add compliance record'}</div>
-        <form onSubmit={handleSubmit} className="p-4 space-y-4">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Record type</label>
-            <select value={record_type} onChange={(e) => setRecordType(e.target.value)} className="w-full px-3 py-2 border rounded-lg">
-              <option value="CVIP">CVIP</option>
-              <option value="CRANE">CRANE</option>
-              <option value="NDT">NDT</option>
-              <option value="PROPANE">PROPANE</option>
-              <option value="OTHER">OTHER</option>
-            </select>
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Facility</label>
-            <input type="text" value={facility} onChange={(e) => setFacility(e.target.value)} className="w-full px-3 py-2 border rounded-lg" />
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Completed by</label>
-            <input type="text" value={completed_by} onChange={(e) => setCompletedBy(e.target.value)} className="w-full px-3 py-2 border rounded-lg" />
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Equipment classification</label>
-            <input type="text" value={equipment_classification} onChange={(e) => setEquipmentClassification(e.target.value)} className="w-full px-3 py-2 border rounded-lg" />
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Equipment make/model</label>
-            <input type="text" value={equipment_make_model} onChange={(e) => setEquipmentMakeModel(e.target.value)} className="w-full px-3 py-2 border rounded-lg" />
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Serial number</label>
-            <input type="text" value={serial_number} onChange={(e) => setSerialNumber(e.target.value)} className="w-full px-3 py-2 border rounded-lg" />
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Annual inspection date</label>
-            <input type="date" value={annual_inspection_date} onChange={(e) => setAnnualInspectionDate(e.target.value)} className="w-full px-3 py-2 border rounded-lg" />
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Expiry date</label>
-            <input type="date" value={expiry_date} onChange={(e) => setExpiryDate(e.target.value)} className="w-full px-3 py-2 border rounded-lg" />
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">File reference number</label>
-            <input type="text" value={file_reference_number} onChange={(e) => setFileReferenceNumber(e.target.value)} className="w-full px-3 py-2 border rounded-lg" />
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Notes</label>
-            <textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={2} className="w-full px-3 py-2 border rounded-lg" />
-          </div>
-          <div className="flex gap-2 justify-end">
-            <button type="button" onClick={onClose} className="px-4 py-2 border rounded-lg hover:bg-gray-50">Cancel</button>
-            <button type="submit" disabled={saving} className="px-4 py-2 bg-brand-red text-white rounded-lg hover:bg-red-700 disabled:opacity-50">{saving ? 'Saving...' : 'Save'}</button>
-          </div>
-        </form>
+    <OverlayPortal>
+      <div
+        className={SAFETY_MODAL_OVERLAY}
+        onClick={(e) => {
+          if (e.target === e.currentTarget) onClose();
+        }}
+      >
+        <SafetyFormModalLayout
+          widthClass="w-[min(880px,95vw)]"
+          titleId={titleId}
+          title={recordId ? 'Edit compliance record' : 'Add compliance record'}
+          subtitle="Certification type, facility, equipment, dates, and file reference."
+          onClose={onClose}
+          footer={
+            <>
+              <button type="button" onClick={onClose} className={SAFETY_MODAL_BTN_CANCEL}>
+                Cancel
+              </button>
+              <button
+                type="submit"
+                form={FLEET_COMPLIANCE_FORM_ID}
+                disabled={saving}
+                className={SAFETY_MODAL_BTN_PRIMARY}
+              >
+                {saving ? 'Saving…' : 'Save'}
+              </button>
+            </>
+          }
+        >
+          <form id={FLEET_COMPLIANCE_FORM_ID} className="space-y-4" onSubmit={handleSubmit}>
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <div>
+                <label className={labelClass}>Record type</label>
+                <select
+                  value={record_type}
+                  onChange={(e) => setRecordType(e.target.value)}
+                  className={inputBase}
+                >
+                  <option value="CVIP">CVIP</option>
+                  <option value="CRANE">CRANE</option>
+                  <option value="NDT">NDT</option>
+                  <option value="PROPANE">PROPANE</option>
+                  <option value="OTHER">OTHER</option>
+                </select>
+              </div>
+              <div>
+                <label className={labelClass}>Equipment make / model</label>
+                <input
+                  type="text"
+                  value={equipment_make_model}
+                  onChange={(e) => setEquipmentMakeModel(e.target.value)}
+                  className={inputBase}
+                />
+              </div>
+              <div>
+                <label className={labelClass}>Facility</label>
+                <input
+                  type="text"
+                  value={facility}
+                  onChange={(e) => setFacility(e.target.value)}
+                  className={inputBase}
+                />
+              </div>
+              <div>
+                <label className={labelClass}>Serial number</label>
+                <input
+                  type="text"
+                  value={serial_number}
+                  onChange={(e) => setSerialNumber(e.target.value)}
+                  className={inputBase}
+                />
+              </div>
+              <div>
+                <label className={labelClass}>Completed by</label>
+                <input
+                  type="text"
+                  value={completed_by}
+                  onChange={(e) => setCompletedBy(e.target.value)}
+                  className={inputBase}
+                />
+              </div>
+              <div>
+                <label className={labelClass}>Annual inspection date</label>
+                <input
+                  type="date"
+                  value={annual_inspection_date}
+                  onChange={(e) => setAnnualInspectionDate(e.target.value)}
+                  className={inputBase}
+                />
+              </div>
+              <div>
+                <label className={labelClass}>Equipment classification</label>
+                <input
+                  type="text"
+                  value={equipment_classification}
+                  onChange={(e) => setEquipmentClassification(e.target.value)}
+                  className={inputBase}
+                />
+              </div>
+              <div>
+                <label className={labelClass}>Expiry date</label>
+                <input
+                  type="date"
+                  value={expiry_date}
+                  onChange={(e) => setExpiryDate(e.target.value)}
+                  className={inputBase}
+                />
+              </div>
+            </div>
+            <div>
+              <label className={labelClass}>File reference number</label>
+              <input
+                type="text"
+                value={file_reference_number}
+                onChange={(e) => setFileReferenceNumber(e.target.value)}
+                className={inputBase}
+              />
+            </div>
+            <div>
+              <label className={labelClass}>Notes</label>
+              <textarea
+                value={notes}
+                onChange={(e) => setNotes(e.target.value)}
+                rows={3}
+                className={`${inputBase} resize-y min-h-[4.5rem]`}
+              />
+            </div>
+          </form>
+        </SafetyFormModalLayout>
       </div>
-    </div></OverlayPortal>
+    </OverlayPortal>
   );
 }
