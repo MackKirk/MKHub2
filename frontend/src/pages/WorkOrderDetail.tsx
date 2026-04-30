@@ -1,9 +1,14 @@
-import { useParams, useNavigate, useLocation } from 'react-router-dom';
+import { useParams, useNavigate, useLocation, Link } from 'react-router-dom';
 import { useState, useRef, useEffect, useMemo, useId } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api, withFileAccessToken } from '@/lib/api';
 import toast from 'react-hot-toast';
-import { WORK_ORDER_STATUS_OPTIONS, WORK_ORDER_STATUS_COLORS, WORK_ORDER_STATUS_LABELS, URGENCY_COLORS } from '@/lib/fleetBadges';
+import {
+  WORK_ORDER_STATUS_OPTIONS,
+  WORK_ORDER_STATUS_COLORS,
+  WORK_ORDER_STATUS_LABELS,
+  URGENCY_COLORS,
+} from '@/lib/fleetBadges';
 import { FleetEquipmentPageHeader } from '@/components/fleet/FleetEquipmentPageHeader';
 import OverlayPortal from '@/components/OverlayPortal';
 import { useConfirm } from '@/components/ConfirmProvider';
@@ -71,6 +76,34 @@ const MANUAL_STATUS_TRANSITIONS: Record<string, string[]> = {
   pending_parts: ['in_progress', 'cancelled'],
 };
 
+type WoHeroFleetAsset = { make?: string | null; model?: string | null; name?: string | null; unit_number?: string | null };
+type WoHeroEquipment = { brand?: string | null; model?: string | null; name?: string | null; unit_number?: string | null };
+
+function buildWoHeroAssetOneLine(
+  entityType: string,
+  fleet: WoHeroFleetAsset | undefined,
+  equipment: WoHeroEquipment | undefined,
+): string {
+  const unitPart = (u: unknown) => {
+    if (u == null) return '';
+    const s = String(u).trim();
+    return s ? `Unit #${s}` : '';
+  };
+  if (entityType === 'fleet' && fleet) {
+    const mm = [fleet.make, fleet.model].filter(Boolean).join(' ').trim();
+    const u = unitPart(fleet.unit_number);
+    const core = mm || (fleet.name?.trim() ?? '');
+    return [core, u].filter(Boolean).join(' ');
+  }
+  if (entityType === 'equipment' && equipment) {
+    const bm = [equipment.brand, equipment.model].filter(Boolean).join(' ').trim();
+    const u = unitPart(equipment.unit_number);
+    const core = bm || (equipment.name?.trim() ?? '');
+    return [core, u].filter(Boolean).join(' ');
+  }
+  return '';
+}
+
 export default function WorkOrderDetail() {
   const { id } = useParams();
   const nav = useNavigate();
@@ -80,12 +113,15 @@ export default function WorkOrderDetail() {
   const woCheckInModalTitleId = useId();
   const woCheckOutModalTitleId = useId();
   const woStatusReasonModalTitleId = useId();
+  const woEditStatusModalTitleId = useId();
   const woReopenModalTitleId = useId();
   const [showCostForm, setShowCostForm] = useState(false);
   const [editingCost, setEditingCost] = useState<{ category: string; index?: number } | null>(null);
   const [showCheckInModal, setShowCheckInModal] = useState(false);
   const [showCheckOutModal, setShowCheckOutModal] = useState(false);
   const [showStatusReasonModal, setShowStatusReasonModal] = useState(false);
+  const [showEditStatusModal, setShowEditStatusModal] = useState(false);
+  const [statusEditDraft, setStatusEditDraft] = useState('');
   const [showReopenModal, setShowReopenModal] = useState(false);
   const [statusTarget, setStatusTarget] = useState<string>('');
   const [statusReason, setStatusReason] = useState('');
@@ -122,13 +158,32 @@ export default function WorkOrderDetail() {
     }
   }, [location.search]);
 
-  const { data: asset } = useQuery({
+  const { data: asset, isPending: fleetAssetPending } = useQuery({
     queryKey: ['fleetAsset', workOrder?.entity_id],
-    queryFn: () => api<{ id: string; name?: string; unit_number?: string; photos?: string[] }>('GET', `/fleet/assets/${workOrder!.entity_id}`),
+    queryFn: () =>
+      api<{ id: string; make?: string | null; model?: string | null; name?: string | null; unit_number?: string | null; photos?: string[] }>(
+        'GET',
+        `/fleet/assets/${workOrder!.entity_id}`,
+      ),
     enabled: !!workOrder?.entity_id && workOrder?.entity_type === 'fleet',
   });
 
+  const { data: equipment, isPending: equipmentHeroPending } = useQuery({
+    queryKey: ['fleetEquipment', workOrder?.entity_id],
+    queryFn: () =>
+      api<WoHeroEquipment & { id: string }>('GET', `/fleet/equipment/${workOrder!.entity_id}`),
+    enabled: !!workOrder?.entity_id && workOrder?.entity_type === 'equipment',
+  });
+
   const assetPhotoUrl = asset?.photos?.[0] ? withFileAccessToken(`/files/${asset.photos[0]}/thumbnail?w=400`) : null;
+
+  const woHeroAssetLine = useMemo(
+    () => (workOrder ? buildWoHeroAssetOneLine(workOrder.entity_type, asset, equipment) : ''),
+    [workOrder, asset, equipment],
+  );
+
+  const woHeroAssetLinePending =
+    (workOrder?.entity_type === 'fleet' && fleetAssetPending) || (workOrder?.entity_type === 'equipment' && equipmentHeroPending);
 
   const { data: me } = useQuery({ queryKey: ['me'], queryFn: () => api<any>('GET', '/auth/me') });
   const isAdmin = (me?.roles || []).includes('admin');
@@ -169,6 +224,7 @@ export default function WorkOrderDetail() {
       queryClient.invalidateQueries({ queryKey: ['workOrderActivity', id] });
       toast.success('Status updated');
       setShowStatusReasonModal(false);
+      setShowEditStatusModal(false);
       setStatusTarget('');
       setStatusReason('');
     },
@@ -332,10 +388,20 @@ export default function WorkOrderDetail() {
     if (nextStatus === 'cancelled') {
       setStatusTarget(nextStatus);
       setStatusReason('');
+      setShowEditStatusModal(false);
       setShowStatusReasonModal(true);
       return;
     }
     updateStatusMutation.mutate({ status: nextStatus });
+  };
+
+  const applyWorkOrderStatusEdit = () => {
+    if (!workOrder) return;
+    if (statusEditDraft === workOrder.status) {
+      setShowEditStatusModal(false);
+      return;
+    }
+    requestStatusChange(statusEditDraft);
   };
 
   if (!isValidId) {
@@ -426,43 +492,55 @@ export default function WorkOrderDetail() {
                 </div>
               )}
             </div>
-            {workOrder.entity_type === 'fleet' && asset && (
-              <button
-                type="button"
-                onClick={() => nav(`/fleet/assets/${workOrder.entity_id}`)}
-                className="mt-2 text-xs font-medium text-brand-red hover:underline"
-              >
-                View asset
-              </button>
-            )}
           </div>
           {/* Right: info + actions */}
           <div className="flex-1 min-w-0 lg:flex lg:items-center lg:justify-between lg:gap-4">
-            <div className="grid flex-1 grid-cols-2 sm:grid-cols-3 gap-x-6 gap-y-4">
-              <div>
+            <div className="grid flex-1 grid-cols-2 sm:grid-cols-4 gap-x-4 sm:gap-x-6 gap-y-4">
+              {/* Row 1: Number | Category | Entity | Created */}
+              <div className="min-w-0">
                 <span className="text-[10px] font-medium text-gray-500 uppercase tracking-wide">Number</span>
-                <div className="text-sm font-semibold text-gray-900 mt-0.5">{workOrder.work_order_number}</div>
+                <div className="text-sm font-semibold text-gray-900 mt-0.5 truncate">{workOrder.work_order_number}</div>
               </div>
-              <div>
-                <span className="text-[10px] font-medium text-gray-500 uppercase tracking-wide">Status</span>
-                <div className="mt-1">
-                  <select
-                    value={workOrder.status}
-                    onChange={(e) => requestStatusChange(e.target.value)}
-                    disabled={updateStatusMutation.isPending || statusOptionsForCurrent.length <= 1}
-                    className={`block w-full max-w-[180px] rounded-lg border border-gray-300 px-2.5 py-1.5 text-sm font-medium focus:ring-2 focus:ring-brand-red focus:border-brand-red ${statusColors[workOrder.status] || 'bg-gray-100 text-gray-800'}`}
-                  >
-                    {WORK_ORDER_STATUS_OPTIONS.filter((opt) => statusOptionsForCurrent.includes(opt.value)).map((opt) => (
-                      <option key={opt.value} value={opt.value}>{opt.label}</option>
-                    ))}
-                  </select>
-                </div>
-              </div>
-              <div>
+              <div className="min-w-0">
                 <span className="text-[10px] font-medium text-gray-500 uppercase tracking-wide">Category</span>
-                <div className="text-sm font-semibold text-gray-900 mt-0.5 capitalize">{workOrder.category}</div>
+                <div className="text-sm font-semibold text-gray-900 mt-0.5 capitalize truncate">{workOrder.category}</div>
               </div>
-              <div>
+              <div className="min-w-0">
+                <span className="text-[10px] font-medium text-gray-500 uppercase tracking-wide">Entity</span>
+                <div className="text-sm font-semibold text-gray-900 mt-0.5 capitalize truncate">{workOrder.entity_type}</div>
+              </div>
+              <div className="min-w-0">
+                <span className="text-[10px] font-medium text-gray-500 uppercase tracking-wide">Created</span>
+                <div className="text-sm font-semibold text-gray-900 mt-0.5">{new Date(workOrder.created_at).toLocaleDateString()}</div>
+              </div>
+              {/* Row 2: Status | Urgency | Asset (spans 2 cols) */}
+              <div className="min-w-0">
+                <div className="flex items-center gap-1.5 mb-1.5">
+                  <span className="text-[10px] font-medium text-gray-500 uppercase tracking-wide">Status</span>
+                  {statusOptionsForCurrent.length > 1 && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setStatusEditDraft(workOrder.status);
+                        setShowEditStatusModal(true);
+                      }}
+                      disabled={updateStatusMutation.isPending}
+                      className="p-0.5 text-gray-400 hover:text-[#7f1010] transition-colors disabled:opacity-50"
+                      title="Edit Status"
+                    >
+                      <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                      </svg>
+                    </button>
+                  )}
+                </div>
+                <span
+                  className={`inline-block px-2 py-0.5 rounded text-xs font-medium ${statusColors[workOrder.status] || 'bg-gray-100 text-gray-800'}`}
+                >
+                  {WORK_ORDER_STATUS_LABELS[workOrder.status] || workOrder.status}
+                </span>
+              </div>
+              <div className="min-w-0">
                 <span className="text-[10px] font-medium text-gray-500 uppercase tracking-wide">Urgency</span>
                 <div className="mt-0.5">
                   <span className={`inline-block px-2 py-0.5 rounded text-xs font-medium ${urgencyColors[workOrder.urgency] || 'bg-gray-100 text-gray-800'}`}>
@@ -470,13 +548,27 @@ export default function WorkOrderDetail() {
                   </span>
                 </div>
               </div>
-              <div>
-                <span className="text-[10px] font-medium text-gray-500 uppercase tracking-wide">Entity</span>
-                <div className="text-sm font-semibold text-gray-900 mt-0.5 capitalize">{workOrder.entity_type}</div>
-              </div>
-              <div>
-                <span className="text-[10px] font-medium text-gray-500 uppercase tracking-wide">Created</span>
-                <div className="text-sm font-semibold text-gray-900 mt-0.5">{new Date(workOrder.created_at).toLocaleDateString()}</div>
+              <div className="col-span-2 min-w-0">
+                <span className="text-[10px] font-medium text-gray-500 uppercase tracking-wide">Asset</span>
+                {workOrder.entity_type === 'fleet' || workOrder.entity_type === 'equipment' ? (
+                  woHeroAssetLinePending ? (
+                    <div className="text-sm font-semibold text-gray-500 mt-0.5">Loading…</div>
+                  ) : (
+                    <Link
+                      to={
+                        workOrder.entity_type === 'fleet'
+                          ? `/fleet/assets/${encodeURIComponent(workOrder.entity_id)}`
+                          : `/company-assets/equipment/${encodeURIComponent(workOrder.entity_id)}`
+                      }
+                      className="text-sm font-semibold text-[#7f1010] hover:text-[#a31414] hover:underline break-words mt-0.5 block"
+                      title={woHeroAssetLine || undefined}
+                    >
+                      {woHeroAssetLine || 'Open record'}
+                    </Link>
+                  )
+                ) : (
+                  <div className="text-sm font-semibold text-gray-400 mt-0.5">—</div>
+                )}
               </div>
             </div>
 
@@ -1032,6 +1124,62 @@ export default function WorkOrderDetail() {
                     className={WO_MODAL_FIELD_INPUT}
                   />
                 </div>
+              </div>
+            </SafetyFormModalLayout>
+          </div>
+        </OverlayPortal>
+      )}
+
+      {showEditStatusModal && workOrder && (
+        <OverlayPortal>
+          <div
+            className={SAFETY_MODAL_OVERLAY}
+            onClick={(e) => e.target === e.currentTarget && !updateStatusMutation.isPending && setShowEditStatusModal(false)}
+          >
+            <SafetyFormModalLayout
+              widthClass="w-[480px]"
+              titleId={woEditStatusModalTitleId}
+              title="Edit status"
+              subtitle="Choose a new status for this work order."
+              onClose={() => !updateStatusMutation.isPending && setShowEditStatusModal(false)}
+              footer={
+                <>
+                  <button
+                    type="button"
+                    onClick={() => setShowEditStatusModal(false)}
+                    disabled={updateStatusMutation.isPending}
+                    className={SAFETY_MODAL_BTN_CANCEL}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    onClick={applyWorkOrderStatusEdit}
+                    disabled={updateStatusMutation.isPending}
+                    className={SAFETY_MODAL_BTN_PRIMARY}
+                  >
+                    {updateStatusMutation.isPending ? 'Saving…' : 'Save'}
+                  </button>
+                </>
+              }
+            >
+              <div>
+                <label className={SAFETY_MODAL_FIELD_LABEL} htmlFor={`${woEditStatusModalTitleId}-status`}>
+                  Status
+                </label>
+                <select
+                  id={`${woEditStatusModalTitleId}-status`}
+                  value={statusEditDraft}
+                  onChange={(e) => setStatusEditDraft(e.target.value)}
+                  disabled={updateStatusMutation.isPending}
+                  className={WO_MODAL_FIELD_INPUT}
+                >
+                  {WORK_ORDER_STATUS_OPTIONS.filter((opt) => statusOptionsForCurrent.includes(opt.value)).map((opt) => (
+                    <option key={opt.value} value={opt.value}>
+                      {opt.label}
+                    </option>
+                  ))}
+                </select>
               </div>
             </SafetyFormModalLayout>
           </div>

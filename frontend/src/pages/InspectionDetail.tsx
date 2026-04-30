@@ -2,9 +2,36 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api, withFileAccessToken } from '@/lib/api';
 import toast from 'react-hot-toast';
-import { useMemo, useState, useEffect } from 'react';
+import { useMemo, useState, useEffect, useRef } from 'react';
 import { INSPECTION_RESULT_LABELS, INSPECTION_RESULT_COLORS } from '@/lib/fleetBadges';
 import FleetDetailHeader from '@/components/FleetDetailHeader';
+import WorkOrderNewModal from '@/components/fleet/WorkOrderNewModal';
+import { useConfirm } from '@/components/ConfirmProvider';
+import {
+  BODY_CONDITION_OPTIONS,
+  buildBodyFormFromInspection,
+  buildMechanicalFormFromInspection,
+  computeResultFromConditions,
+  isBodyChecklistComplete,
+  isMechanicalChecklistComplete,
+  isValidInspectionCondition,
+  resolveBodyResultForSubmit,
+  resolveMechanicalResultForSubmit,
+  type BodyFormState,
+  type MechanicalFormState,
+} from '@/pages/fleetInspectionFormShared';
+
+function scrollDetailFirstIncompleteBody(areas: Array<{ key: string; condition: string }>) {
+  const gap = areas.find((a) => !isValidInspectionCondition(a.condition));
+  if (!gap) return;
+  document.getElementById(`inspection-detail-body-${gap.key}`)?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+}
+
+function scrollDetailFirstIncompleteMech(items: Array<{ key: string; condition: string }>) {
+  const gap = items.find((i) => !isValidInspectionCondition(i.condition));
+  if (!gap) return;
+  document.getElementById(`inspection-detail-mech-${gap.key}`)?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+}
 
 type Inspection = {
   id: string;
@@ -43,92 +70,11 @@ type ChecklistTemplate = {
   quote_fields?: boolean;
 };
 
-const BODY_CONDITION_OPTIONS = [
-  { value: 'ok', label: 'OK', icon: '✓', title: 'OK', className: 'bg-green-100 text-green-800 border-green-400 hover:bg-green-200' },
-  { value: 'damage', label: 'Damage', icon: '✗', title: 'Damage', className: 'bg-red-100 text-red-800 border-red-400 hover:bg-red-200' },
-  { value: 'conditional', label: 'Conditional', icon: '⚠', title: 'Conditional', className: 'bg-amber-100 text-amber-800 border-amber-400 hover:bg-amber-200' },
-];
-
-function computeResultFromConditions(conditions: Array<{ condition: string }>): string {
-  if (conditions.some((a) => a.condition === 'damage')) return 'fail';
-  if (conditions.some((a) => a.condition === 'conditional')) return 'conditional';
-  return 'pass';
-}
-
-type BodyFormState = {
-  _metadata: Record<string, string>;
-  areas: Array<{ key: string; condition: string }>;
-  notes: string;
-};
-
-function buildBodyFormFromInspection(
-  inspection: Inspection,
-  templateAreas: Array<{ key: string; label: string; description?: string }>,
-  asset?: { unit_number?: string | null; name?: string | null; odometer_current?: number | null }
-): BodyFormState {
-  const cr = inspection.checklist_results as any;
-  const metadata = cr?._metadata && typeof cr._metadata === 'object' ? { ...cr._metadata } : {};
-  if (asset) {
-    const hasUnit = metadata.unit_number != null && String(metadata.unit_number).trim() !== '';
-    if (!hasUnit && asset.unit_number != null && String(asset.unit_number).trim() !== '') metadata.unit_number = asset.unit_number;
-    if (!hasUnit && asset.name != null && String(asset.name).trim() !== '') metadata.unit_number = (metadata.unit_number as string) || asset.name;
-    if ((metadata.km == null || String(metadata.km).trim() === '') && asset.odometer_current != null) metadata.km = String(asset.odometer_current);
-  }
-  if (!metadata.date || String(metadata.date).trim() === '') metadata.date = new Date().toISOString().slice(0, 10);
-  const areas = (templateAreas || []).map((area) => {
-    const existing = cr?.areas?.find((a: any) => a.key === area.key);
-    return {
-      key: area.key,
-      condition: existing?.condition ?? '',
-    };
-  });
-  return {
-    _metadata: metadata,
-    areas,
-    notes: inspection.notes ?? '',
-  };
-}
-
-type MechanicalFormState = {
-  _metadata: Record<string, string>;
-  items: Array<{ key: string; condition: string }>;
-  notes: string;
-};
-
-function buildMechanicalFormFromInspection(
-  inspection: Inspection,
-  templateSections: Array<{ id: string; title: string; items: Array<{ key: string; label: string; category: string }> }>,
-  asset?: { unit_number?: string | null; name?: string | null; odometer_current?: number | null }
-): MechanicalFormState {
-  const cr = inspection.checklist_results as any;
-  const metadata = cr?._metadata && typeof cr._metadata === 'object' ? { ...cr._metadata } : {};
-  if (asset) {
-    const hasUnit = metadata.unit_number != null && String(metadata.unit_number).trim() !== '';
-    if (!hasUnit && asset.unit_number != null && String(asset.unit_number).trim() !== '') metadata.unit_number = asset.unit_number;
-    if (!hasUnit && asset.name != null && String(asset.name).trim() !== '') metadata.unit_number = (metadata.unit_number as string) || asset.name;
-    if ((metadata.km == null || String(metadata.km).trim() === '') && asset.odometer_current != null) metadata.km = String(asset.odometer_current);
-  }
-  if (!metadata.date || String(metadata.date).trim() === '') metadata.date = new Date().toISOString().slice(0, 10);
-  const items: Array<{ key: string; condition: string }> = [];
-  (templateSections || []).forEach((section) => {
-    section.items.forEach((item) => {
-      const val = cr?.[item.key];
-      const condition = typeof val === 'object' ? (val?.status || val?.condition || '') : (val || '');
-      const norm = condition === 'ok' || condition === 'damage' || condition === 'conditional' ? condition : '';
-      items.push({ key: item.key, condition: norm });
-    });
-  });
-  return {
-    _metadata: metadata,
-    items,
-    notes: inspection.notes ?? '',
-  };
-}
-
 export default function InspectionDetail() {
   const { id } = useParams();
   const nav = useNavigate();
   const queryClient = useQueryClient();
+  const confirm = useConfirm();
 
   const goBackFromInspection = () => {
     if (window.history.length > 1) {
@@ -167,14 +113,31 @@ export default function InspectionDetail() {
   const [mechanicalEditMode, setMechanicalEditMode] = useState(false);
   const [mechanicalForm, setMechanicalForm] = useState<MechanicalFormState | null>(null);
 
+  /** Open edit mode once per inspection after load; do not reopen after Save draft / Save (mutation closes edit). */
+  const lastAutoOpenedInspectionIdRef = useRef<string | null>(null);
   useEffect(() => {
-    if (isBody && (hasWorkOrder || isResultFinal)) setBodyEditMode(false);
-    else if (isBody) setBodyEditMode(true);
-  }, [isBody, hasWorkOrder, isResultFinal]);
+    lastAutoOpenedInspectionIdRef.current = null;
+  }, [id]);
+
   useEffect(() => {
-    if (isMechanical && (hasWorkOrder || isResultFinal)) setMechanicalEditMode(false);
-    else if (isMechanical) setMechanicalEditMode(true);
-  }, [isMechanical, hasWorkOrder, isResultFinal]);
+    if (!inspection?.id) return;
+    if (isBody && (hasWorkOrder || isResultFinal)) {
+      setBodyEditMode(false);
+      return;
+    }
+    if (isMechanical && (hasWorkOrder || isResultFinal)) {
+      setMechanicalEditMode(false);
+      return;
+    }
+    if (isBody && lastAutoOpenedInspectionIdRef.current !== inspection.id) {
+      lastAutoOpenedInspectionIdRef.current = inspection.id;
+      setBodyEditMode(true);
+    }
+    if (isMechanical && lastAutoOpenedInspectionIdRef.current !== inspection.id) {
+      lastAutoOpenedInspectionIdRef.current = inspection.id;
+      setMechanicalEditMode(true);
+    }
+  }, [inspection?.id, isBody, isMechanical, hasWorkOrder, isResultFinal]);
 
   const { data: fleetAsset } = useQuery({
     queryKey: ['fleetAsset', inspection?.fleet_asset_id],
@@ -224,6 +187,7 @@ export default function InspectionDetail() {
 
   const [bodyPhotoIds, setBodyPhotoIds] = useState<string[]>([]);
   const [photoUploading, setPhotoUploading] = useState(false);
+  const [workOrderModalOpen, setWorkOrderModalOpen] = useState(false);
   useEffect(() => {
     if ((isBody || isMechanical) && inspection?.id != null) {
       setBodyPhotoIds(inspection.photos && Array.isArray(inspection.photos) ? inspection.photos : []);
@@ -270,10 +234,21 @@ export default function InspectionDetail() {
   };
 
   const updateInspectionMutation = useMutation({
-    mutationFn: (payload: { checklist_results?: Record<string, any>; result?: string; notes?: string; photos?: string[] }) =>
-      api<Inspection>('PUT', `/fleet/inspections/${id}`, payload),
-    onSuccess: (updated) => {
-      toast.success('Inspection saved');
+    mutationFn: (vars: {
+      checklist_results?: Record<string, any>;
+      result?: string;
+      notes?: string;
+      photos?: string[];
+      finish: boolean;
+    }) =>
+      api<Inspection>('PUT', `/fleet/inspections/${id}`, {
+        checklist_results: vars.checklist_results,
+        result: vars.result,
+        notes: vars.notes,
+        photos: vars.photos,
+      }).then((data) => ({ data, finish: vars.finish })),
+    onSuccess: ({ data: updated, finish }) => {
+      toast.success(finish ? 'Inspection finished' : 'Progress saved');
       queryClient.invalidateQueries({ queryKey: ['inspection', id] });
       queryClient.invalidateQueries({ queryKey: ['inspection-schedules'] });
       queryClient.invalidateQueries({ queryKey: ['fleet-inspection-schedules-calendar'] });
@@ -288,36 +263,23 @@ export default function InspectionDetail() {
     },
   });
 
-  const handleSaveBody = () => {
-    if (!bodyForm || !id) return;
-    const result = computeResultFromConditions(bodyForm.areas);
+  const detailBodyChecklistPayload = (form: BodyFormState) => {
     const _metadata: Record<string, string> = {};
     if (fleetAsset) {
       if (fleetAsset.unit_number || fleetAsset.name) _metadata.unit_number = fleetAsset.unit_number || fleetAsset.name || '';
       if (fleetAsset.odometer_current != null) _metadata.km = String(fleetAsset.odometer_current);
       _metadata.date = new Date().toISOString().slice(0, 10);
     }
-    const checklist_results: Record<string, any> = {
+    return {
       _metadata: Object.keys(_metadata).length ? _metadata : undefined,
-      areas: bodyForm.areas.map((a) => ({
+      areas: form.areas.map((a) => ({
         key: a.key,
         ...(a.condition ? { condition: a.condition } : {}),
       })),
-    };
-    updateInspectionMutation.mutate({
-      checklist_results,
-      result,
-      notes: bodyForm.notes.trim() || undefined,
-      photos: bodyPhotoIds.length ? bodyPhotoIds : undefined,
-    });
+    } as Record<string, any>;
   };
 
-  const computedResult = bodyForm ? computeResultFromConditions(bodyForm.areas) : inspection?.result;
-  const computedMechanicalResult = mechanicalForm ? computeResultFromConditions(mechanicalForm.items) : inspection?.result;
-
-  const handleSaveMechanical = () => {
-    if (!mechanicalForm || !id) return;
-    const result = computeResultFromConditions(mechanicalForm.items);
+  const detailMechanicalChecklistPayload = (form: MechanicalFormState) => {
     const _metadata: Record<string, string> = {};
     if (fleetAsset) {
       if (fleetAsset.unit_number || fleetAsset.name) _metadata.unit_number = fleetAsset.unit_number || fleetAsset.name || '';
@@ -325,31 +287,92 @@ export default function InspectionDetail() {
       if (fleetAsset.hours_current != null) _metadata.hours = String(fleetAsset.hours_current);
       _metadata.date = new Date().toISOString().slice(0, 10);
     }
-    const checklist_results: Record<string, any> = {
+    return {
       _metadata: Object.keys(_metadata).length ? _metadata : undefined,
-      ...Object.fromEntries(mechanicalForm.items.filter((i) => i.condition).map((i) => [i.key, i.condition])),
-    };
+      ...Object.fromEntries(form.items.filter((i) => i.condition).map((i) => [i.key, i.condition])),
+    } as Record<string, any>;
+  };
+
+  const handleSaveBodyDraft = () => {
+    if (!bodyForm || !id) return;
+    const resolved = resolveBodyResultForSubmit('draft', bodyForm.areas);
+    if (!resolved.ok) return;
     updateInspectionMutation.mutate({
-      checklist_results,
-      result,
-      notes: mechanicalForm.notes.trim() || undefined,
+      checklist_results: detailBodyChecklistPayload(bodyForm),
+      result: resolved.result,
+      notes: bodyForm.notes.trim() || undefined,
       photos: bodyPhotoIds.length ? bodyPhotoIds : undefined,
+      finish: false,
     });
   };
 
-  const generateWOMutation = useMutation({
-    mutationFn: () => {
-      if (!isValidId) throw new Error('Invalid inspection ID');
-      return api('POST', `/fleet/inspections/${id}/generate-work-order`);
-    },
-    onSuccess: () => {
-      toast.success('Work order generated');
-      queryClient.invalidateQueries({ queryKey: ['inspection', id] });
-    },
-    onError: () => {
-      toast.error('Failed to generate work order');
-    },
-  });
+  const handleFinishBody = async () => {
+    if (!bodyForm || !id) return;
+    const resolved = resolveBodyResultForSubmit('finish', bodyForm.areas);
+    if (!resolved.ok) {
+      toast.error(resolved.message);
+      scrollDetailFirstIncompleteBody(bodyForm.areas);
+      return;
+    }
+    const finalResult = resolved.result;
+    const resultLabel =
+      INSPECTION_RESULT_LABELS[finalResult as keyof typeof INSPECTION_RESULT_LABELS] ??
+      finalResult.charAt(0).toUpperCase() + finalResult.slice(1);
+    let message = `Finalize this Body / Exterior inspection with result: ${resultLabel}? This locks in the checklist.\n`;
+    if (finalResult === 'fail') message += 'A work order may be created automatically for a failed inspection.';
+    const dlg = await confirm({ title: 'Finish inspection', message, confirmText: 'Finish', cancelText: 'Cancel' });
+    if (dlg !== 'confirm') return;
+    updateInspectionMutation.mutate({
+      checklist_results: detailBodyChecklistPayload(bodyForm),
+      result: finalResult,
+      notes: bodyForm.notes.trim() || undefined,
+      photos: bodyPhotoIds.length ? bodyPhotoIds : undefined,
+      finish: true,
+    });
+  };
+
+  const bodyComplete = !!(bodyForm && isBodyChecklistComplete(bodyForm.areas));
+  const computedFinalBodyResult = bodyForm && bodyComplete ? computeResultFromConditions(bodyForm.areas) : null;
+  const mechComplete = !!(mechanicalForm && isMechanicalChecklistComplete(mechanicalForm.items));
+  const computedFinalMechResult = mechanicalForm && mechComplete ? computeResultFromConditions(mechanicalForm.items) : null;
+
+  const handleSaveMechanicalDraft = () => {
+    if (!mechanicalForm || !id) return;
+    const resolved = resolveMechanicalResultForSubmit('draft', mechanicalForm.items);
+    if (!resolved.ok) return;
+    updateInspectionMutation.mutate({
+      checklist_results: detailMechanicalChecklistPayload(mechanicalForm),
+      result: resolved.result,
+      notes: mechanicalForm.notes.trim() || undefined,
+      photos: bodyPhotoIds.length ? bodyPhotoIds : undefined,
+      finish: false,
+    });
+  };
+
+  const handleFinishMechanical = async () => {
+    if (!mechanicalForm || !id) return;
+    const resolved = resolveMechanicalResultForSubmit('finish', mechanicalForm.items);
+    if (!resolved.ok) {
+      toast.error(resolved.message);
+      scrollDetailFirstIncompleteMech(mechanicalForm.items);
+      return;
+    }
+    const finalResult = resolved.result;
+    const resultLabel =
+      INSPECTION_RESULT_LABELS[finalResult as keyof typeof INSPECTION_RESULT_LABELS] ??
+      finalResult.charAt(0).toUpperCase() + finalResult.slice(1);
+    let message = `Finalize this Mechanical inspection with result: ${resultLabel}? This locks in the checklist.\n`;
+    if (finalResult === 'fail') message += 'A work order may be created automatically for a failed inspection.';
+    const dlg = await confirm({ title: 'Finish inspection', message, confirmText: 'Finish', cancelText: 'Cancel' });
+    if (dlg !== 'confirm') return;
+    updateInspectionMutation.mutate({
+      checklist_results: detailMechanicalChecklistPayload(mechanicalForm),
+      result: finalResult,
+      notes: mechanicalForm.notes.trim() || undefined,
+      photos: bodyPhotoIds.length ? bodyPhotoIds : undefined,
+      finish: true,
+    });
+  };
 
   const deleteInspectionMutation = useMutation({
     mutationFn: () => {
@@ -389,6 +412,9 @@ export default function InspectionDetail() {
     return <div className="p-4">Inspection not found</div>;
   }
 
+  const inspectionResultLower = (inspection.result || '').toLowerCase();
+  const isInspectionFinal = ['pass', 'fail', 'conditional'].includes(inspectionResultLower);
+
   return (
     <div className="space-y-4 min-w-0 overflow-x-hidden">
       <FleetDetailHeader
@@ -398,7 +424,16 @@ export default function InspectionDetail() {
         actions={isAdmin ? (
           <button
             type="button"
-            onClick={() => window.confirm('Delete this inspection permanently?') && deleteInspectionMutation.mutate()}
+            onClick={async () => {
+              const result = await confirm({
+                title: 'Delete inspection',
+                message: 'Are you sure you want to delete this inspection permanently? This action cannot be undone.',
+                confirmText: 'Delete',
+                cancelText: 'Cancel',
+              });
+              if (result !== 'confirm') return;
+              deleteInspectionMutation.mutate();
+            }}
             disabled={deleteInspectionMutation.isPending}
             className="px-3 py-1.5 rounded-lg border border-red-200 bg-red-50 text-red-700 text-xs font-medium hover:bg-red-100 disabled:opacity-50"
           >
@@ -476,10 +511,14 @@ export default function InspectionDetail() {
                 <div className="mt-0.5">
                   <button
                     type="button"
-                    onClick={() => nav(`/fleet/inspection-schedules/${inspection.inspection_schedule_id}`)}
+                    onClick={() => {
+                      const t = (inspection.inspection_type || 'mechanical').toLowerCase();
+                      const focus = t === 'body' ? 'body' : 'mechanical';
+                      nav(`/fleet/inspections/${inspection.inspection_schedule_id}?focus=${focus}`);
+                    }}
                     className="text-xs font-medium text-brand-red hover:underline"
                   >
-                    View schedule
+                    Inspection overview
                   </button>
                 </div>
               </div>
@@ -528,6 +567,7 @@ export default function InspectionDetail() {
                     {checklistTemplate.areas.map((area, index) => (
                       <div
                         key={area.key}
+                        id={`inspection-detail-body-${area.key}`}
                         className={`p-4 transition-colors ${index % 2 === 0 ? 'bg-white hover:bg-gray-50' : 'bg-gray-50 hover:bg-gray-100'}`}
                       >
                         {/* Row: Bloco A (title + description) | Bloco B (buttons) */}
@@ -607,53 +647,77 @@ export default function InspectionDetail() {
                   </div>
                 </div>
 
-                {/* Result - expressive summary */}
-                <div
-                  className={`rounded-xl border-2 p-5 flex items-center justify-between gap-4 ${
-                    computedResult === 'fail'
-                      ? 'bg-red-50 border-red-200'
-                      : computedResult === 'conditional'
-                        ? 'bg-amber-50 border-amber-200'
-                        : 'bg-green-50 border-green-200'
-                  }`}
-                >
-                  <span className="text-sm font-medium text-gray-700">Inspection result</span>
-                  <div className="flex items-center gap-2">
-                    <span
-                      className={`text-3xl ${
-                        computedResult === 'fail'
-                          ? 'text-red-600'
-                          : computedResult === 'conditional'
-                            ? 'text-amber-600'
-                            : 'text-green-600'
-                      }`}
-                    >
-                      {computedResult === 'fail' ? '✗' : computedResult === 'conditional' ? '⚠' : '✓'}
-                    </span>
-                    <span
-                      className={`text-xl font-bold uppercase tracking-wide ${
-                        computedResult === 'fail'
-                          ? 'text-red-800'
-                          : computedResult === 'conditional'
-                            ? 'text-amber-800'
-                            : 'text-green-800'
-                      }`}
-                    >
-                      {computedResult === 'fail' ? 'Fail' : computedResult === 'conditional' ? 'Conditional' : 'Pass'}
-                    </span>
+                {!bodyComplete ? (
+                  <div className="rounded-xl border-2 border-dashed border-gray-300 bg-gray-50 p-5 flex items-center justify-between gap-4">
+                    <span className="text-sm font-medium text-gray-700">Inspection result</span>
+                    <div className="text-right">
+                      <span className="text-xl font-semibold text-gray-700">Draft</span>
+                      <p className="text-xs text-gray-500 mt-1 max-w-[16rem] sm:max-w-none">
+                        Answer every area, then Finish to submit Pass / Conditional / Fail.
+                      </p>
+                    </div>
                   </div>
-                </div>
+                ) : (
+                  <div
+                    className={`rounded-xl border-2 p-5 flex items-center justify-between gap-4 ${
+                      computedFinalBodyResult === 'fail'
+                        ? 'bg-red-50 border-red-200'
+                        : computedFinalBodyResult === 'conditional'
+                          ? 'bg-amber-50 border-amber-200'
+                          : 'bg-green-50 border-green-200'
+                    }`}
+                  >
+                    <span className="text-sm font-medium text-gray-700">Result if you finish now</span>
+                    <div className="flex items-center gap-2">
+                      <span
+                        className={`text-3xl ${
+                          computedFinalBodyResult === 'fail'
+                            ? 'text-red-600'
+                            : computedFinalBodyResult === 'conditional'
+                              ? 'text-amber-600'
+                              : 'text-green-600'
+                        }`}
+                      >
+                        {computedFinalBodyResult === 'fail' ? '✗' : computedFinalBodyResult === 'conditional' ? '⚠' : '✓'}
+                      </span>
+                      <span
+                        className={`text-xl font-bold uppercase tracking-wide ${
+                          computedFinalBodyResult === 'fail'
+                            ? 'text-red-800'
+                            : computedFinalBodyResult === 'conditional'
+                              ? 'text-amber-800'
+                              : 'text-green-800'
+                        }`}
+                      >
+                        {computedFinalBodyResult === 'fail'
+                          ? 'Fail'
+                          : computedFinalBodyResult === 'conditional'
+                            ? 'Conditional'
+                            : 'Pass'}
+                      </span>
+                    </div>
+                  </div>
+                )}
 
-                {/* Save */}
                 <div className="rounded-xl border border-gray-200 bg-white p-4">
                   <div className="flex flex-wrap items-center gap-3">
                     <button
                       type="button"
-                      onClick={handleSaveBody}
+                      onClick={handleFinishBody}
                       disabled={updateInspectionMutation.isPending}
                       className="px-5 py-2.5 bg-blue-600 text-white rounded-lg font-medium text-sm hover:bg-blue-700 disabled:opacity-50"
+                      aria-label="Finish inspection"
                     >
-                      {updateInspectionMutation.isPending ? 'Saving...' : 'Save inspection'}
+                      {updateInspectionMutation.isPending ? 'Saving…' : 'Finish inspection'}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleSaveBodyDraft}
+                      disabled={updateInspectionMutation.isPending}
+                      className="px-5 py-2.5 border border-gray-300 bg-white rounded-lg font-medium text-sm text-gray-800 hover:bg-gray-50 disabled:opacity-50"
+                      aria-label="Save draft"
+                    >
+                      Save draft
                     </button>
                     <button
                       type="button"
@@ -790,6 +854,7 @@ export default function InspectionDetail() {
                           return (
                             <div
                               key={item.key}
+                              id={`inspection-detail-mech-${item.key}`}
                               className={`p-4 transition-colors ${idxInSection % 2 === 0 ? 'bg-white hover:bg-gray-50' : 'bg-gray-50 hover:bg-gray-100'}`}
                             >
                               <div className="flex flex-wrap items-center gap-4">
@@ -870,53 +935,77 @@ export default function InspectionDetail() {
                   </div>
                 </div>
 
-                {/* Result */}
-                <div
-                  className={`rounded-xl border-2 p-5 flex items-center justify-between gap-4 ${
-                    computedMechanicalResult === 'fail'
-                      ? 'bg-red-50 border-red-200'
-                      : computedMechanicalResult === 'conditional'
-                        ? 'bg-amber-50 border-amber-200'
-                        : 'bg-green-50 border-green-200'
-                  }`}
-                >
-                  <span className="text-sm font-medium text-gray-700">Inspection result</span>
-                  <div className="flex items-center gap-2">
-                    <span
-                      className={`text-3xl ${
-                        computedMechanicalResult === 'fail'
-                          ? 'text-red-600'
-                          : computedMechanicalResult === 'conditional'
-                            ? 'text-amber-600'
-                            : 'text-green-600'
-                      }`}
-                    >
-                      {computedMechanicalResult === 'fail' ? '✗' : computedMechanicalResult === 'conditional' ? '⚠' : '✓'}
-                    </span>
-                    <span
-                      className={`text-xl font-bold uppercase tracking-wide ${
-                        computedMechanicalResult === 'fail'
-                          ? 'text-red-800'
-                          : computedMechanicalResult === 'conditional'
-                            ? 'text-amber-800'
-                            : 'text-green-800'
-                      }`}
-                    >
-                      {computedMechanicalResult === 'fail' ? 'Fail' : computedMechanicalResult === 'conditional' ? 'Conditional' : 'Pass'}
-                    </span>
+                {!mechComplete ? (
+                  <div className="rounded-xl border-2 border-dashed border-gray-300 bg-gray-50 p-5 flex items-center justify-between gap-4">
+                    <span className="text-sm font-medium text-gray-700">Inspection result</span>
+                    <div className="text-right">
+                      <span className="text-xl font-semibold text-gray-700">Draft</span>
+                      <p className="text-xs text-gray-500 mt-1 max-w-[16rem] sm:max-w-none">
+                        Answer every checklist item, then Finish to submit Pass / Conditional / Fail.
+                      </p>
+                    </div>
                   </div>
-                </div>
+                ) : (
+                  <div
+                    className={`rounded-xl border-2 p-5 flex items-center justify-between gap-4 ${
+                      computedFinalMechResult === 'fail'
+                        ? 'bg-red-50 border-red-200'
+                        : computedFinalMechResult === 'conditional'
+                          ? 'bg-amber-50 border-amber-200'
+                          : 'bg-green-50 border-green-200'
+                    }`}
+                  >
+                    <span className="text-sm font-medium text-gray-700">Result if you finish now</span>
+                    <div className="flex items-center gap-2">
+                      <span
+                        className={`text-3xl ${
+                          computedFinalMechResult === 'fail'
+                            ? 'text-red-600'
+                            : computedFinalMechResult === 'conditional'
+                              ? 'text-amber-600'
+                              : 'text-green-600'
+                        }`}
+                      >
+                        {computedFinalMechResult === 'fail' ? '✗' : computedFinalMechResult === 'conditional' ? '⚠' : '✓'}
+                      </span>
+                      <span
+                        className={`text-xl font-bold uppercase tracking-wide ${
+                          computedFinalMechResult === 'fail'
+                            ? 'text-red-800'
+                            : computedFinalMechResult === 'conditional'
+                              ? 'text-amber-800'
+                              : 'text-green-800'
+                        }`}
+                      >
+                        {computedFinalMechResult === 'fail'
+                          ? 'Fail'
+                          : computedFinalMechResult === 'conditional'
+                            ? 'Conditional'
+                            : 'Pass'}
+                      </span>
+                    </div>
+                  </div>
+                )}
 
-                {/* Save */}
                 <div className="rounded-xl border border-gray-200 bg-white p-4">
                   <div className="flex flex-wrap items-center gap-3">
                     <button
                       type="button"
-                      onClick={handleSaveMechanical}
+                      onClick={handleFinishMechanical}
                       disabled={updateInspectionMutation.isPending}
                       className="px-5 py-2.5 bg-blue-600 text-white rounded-lg font-medium text-sm hover:bg-blue-700 disabled:opacity-50"
+                      aria-label="Finish inspection"
                     >
-                      {updateInspectionMutation.isPending ? 'Saving...' : 'Save inspection'}
+                      {updateInspectionMutation.isPending ? 'Saving…' : 'Finish inspection'}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleSaveMechanicalDraft}
+                      disabled={updateInspectionMutation.isPending}
+                      className="px-5 py-2.5 border border-gray-300 bg-white rounded-lg font-medium text-sm text-gray-800 hover:bg-gray-50 disabled:opacity-50"
+                      aria-label="Save draft"
+                    >
+                      Save draft
                     </button>
                     <button
                       type="button"
@@ -1028,19 +1117,62 @@ export default function InspectionDetail() {
           </div>
         )}
 
-        {inspection.result === 'fail' && !inspection.auto_generated_work_order_id && (
-          <div className="border rounded-lg p-4 bg-yellow-50">
-            <div className="font-medium mb-2">Failed Inspection</div>
-            <div className="text-sm text-gray-600 mb-3">
-              This inspection failed. Generate a work order to address the issues.
+        {isInspectionFinal &&
+          !inspection.auto_generated_work_order_id &&
+          !inspection.inspection_schedule_id && (
+          <div
+            className={`border rounded-lg p-4 ${
+              inspection.result === 'fail' ? 'bg-yellow-50 border-yellow-200' : 'bg-slate-50 border-slate-200'
+            }`}
+          >
+            <div className="font-medium mb-2 text-gray-900">
+              {inspection.result === 'fail' ? 'Failed inspection' : 'Create work order'}
             </div>
+            <p className="text-sm text-gray-600 mb-3">
+              {inspection.result === 'fail'
+                ? 'This inspection failed. Create a linked work order to track repairs in the shop.'
+                : 'This inspection is complete. You can still create a linked work order for follow-up or shop coordination.'}
+            </p>
             <button
-              onClick={() => generateWOMutation.mutate()}
-              disabled={generateWOMutation.isPending}
+              type="button"
+              onClick={() => setWorkOrderModalOpen(true)}
               className="px-4 py-2 bg-brand-red text-white rounded-lg hover:bg-red-700 text-sm"
             >
-              {generateWOMutation.isPending ? 'Generating...' : 'Generate Work Order'}
+              Create work order
             </button>
+          </div>
+        )}
+
+        {isInspectionFinal &&
+          !inspection.auto_generated_work_order_id &&
+          !!inspection.inspection_schedule_id && (
+          <div className="border rounded-lg p-4 bg-slate-50 border-slate-200">
+            <div className="font-medium mb-2 text-gray-900">Create work order</div>
+            <p className="text-sm text-gray-600 mb-3">
+              {inspection.result === 'fail'
+                ? 'This inspection failed. Create a work order from this checklist, or open the overview to see Body and Mechanical together.'
+                : 'This inspection is finished. Optionally create a linked work order for shop or follow-up work.'}
+            </p>
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={() => setWorkOrderModalOpen(true)}
+                className="px-4 py-2 bg-brand-red text-white rounded-lg hover:bg-red-700 text-sm"
+              >
+                Create work order
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  const t = (inspection.inspection_type || 'mechanical').toLowerCase();
+                  const focus = t === 'body' ? 'body' : 'mechanical';
+                  nav(`/fleet/inspections/${inspection.inspection_schedule_id}?focus=${focus}`);
+                }}
+                className="px-4 py-2 border border-gray-300 rounded-lg text-sm text-gray-800 hover:bg-gray-50"
+              >
+                Open inspection overview
+              </button>
+            </div>
           </div>
         )}
 
@@ -1064,6 +1196,21 @@ export default function InspectionDetail() {
             View Asset
           </button>
         </div>
+
+        <WorkOrderNewModal
+          isOpen={workOrderModalOpen}
+          onClose={() => setWorkOrderModalOpen(false)}
+          onCreated={(data) => {
+            setWorkOrderModalOpen(false);
+            queryClient.invalidateQueries({ queryKey: ['inspection', id] });
+            queryClient.invalidateQueries({ queryKey: ['inspection-schedules'] });
+            queryClient.invalidateQueries({ queryKey: ['fleet-inspection-schedules-calendar'] });
+            queryClient.invalidateQueries({ queryKey: ['inspection-schedule'] });
+            nav(`/fleet/work-orders/${data.id}`);
+          }}
+          inspectionId={inspection.id}
+          fleetAssetId={inspection.fleet_asset_id}
+        />
       </div>
     </div>
   );

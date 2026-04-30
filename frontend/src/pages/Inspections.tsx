@@ -211,7 +211,7 @@ export default function Inspections() {
                     return (
                       <tr
                         key={s.id}
-                        onClick={() => nav(`/fleet/inspection-schedules/${s.id}`)}
+                        onClick={() => nav(`/fleet/inspections/${s.id}`)}
                         className="border-b border-gray-100 last:border-b-0 hover:bg-gray-50 transition-colors min-h-[52px] cursor-pointer"
                       >
                         <td className="px-3 py-3 text-xs font-medium text-gray-900 align-top whitespace-nowrap">

@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { api } from '@/lib/api';
@@ -20,6 +20,11 @@ const scheduleSelectClass = [
   'cursor-pointer appearance-none bg-[length:1rem_1rem] bg-[right_0.65rem_center] bg-no-repeat pr-10',
   "bg-[url(data:image/svg+xml;charset=utf-8,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%2216%22%20height%3D%2216%22%20fill%3D%22none%22%20viewBox%3D%220%200%2024%2024%22%20stroke%3D%22%236b7280%22%3E%3Cpath%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%20stroke-width%3D%222%22%20d%3D%22M19%209l-7%207-7-7%22%2F%3E%3C%2Fsvg%3E)]",
 ].join(' ');
+
+/** Read-only fields linked to an inspection: clearly non-editable, gray chrome. */
+const lockedFieldBoxClass =
+  'w-full min-h-[2.75rem] rounded-xl border-2 border-gray-200 bg-gray-100 px-3 py-2 text-sm text-gray-600 ' +
+  'shadow-inner cursor-not-allowed select-none ring-1 ring-inset ring-gray-300/40';
 
 const FLEET_ASSETS_PAGE_LIMIT = 100;
 
@@ -74,6 +79,12 @@ export function WorkOrderNewForm({
   formId = 'work-order-new-form',
   /** Searchable A–Z vehicle list (e.g. fleet schedule modal). Implies fleet entity. */
   vehiclePickerSearchable = false,
+  /** Lock entity type to Fleet and vehicle to `initialEntityId` (no edits). */
+  lockEntityAndVehicle = false,
+  /** Prefill description (e.g. from inspection checklist summary). */
+  initialDescription,
+  /** When set, POST includes `origin_source: inspection` and `origin_id`. */
+  originInspectionId,
 }: {
   initialEntityType?: string;
   initialEntityId?: string;
@@ -82,6 +93,9 @@ export function WorkOrderNewForm({
   onValidationChange?: (canSubmit: boolean, isPending: boolean) => void;
   formId?: string;
   vehiclePickerSearchable?: boolean;
+  lockEntityAndVehicle?: boolean;
+  initialDescription?: string;
+  originInspectionId?: string;
 }) {
   const { data: employees = [] } = useQuery({
     queryKey: ['employees'],
@@ -114,7 +128,7 @@ export function WorkOrderNewForm({
   } = useQuery({
     queryKey: ['fleetAssetsSchedulePicker'],
     queryFn: fetchAllFleetAssetsAlphabetical,
-    enabled: vehiclePickerSearchable || form.entity_type === 'fleet',
+    enabled: vehiclePickerSearchable || form.entity_type === 'fleet' || lockEntityAndVehicle,
     staleTime: 60_000,
   });
 
@@ -143,6 +157,21 @@ export function WorkOrderNewForm({
     setForm((prev) => ({ ...prev, entity_id: initialEntityId.trim() }));
   }, [initialEntityId]);
 
+  useEffect(() => {
+    if (!lockEntityAndVehicle) return;
+    const eid = initialEntityId?.trim() || '';
+    setForm((prev) => ({ ...prev, entity_type: 'fleet', entity_id: eid }));
+  }, [lockEntityAndVehicle, initialEntityId]);
+
+  const lastSyncedInitialDescription = useRef<string | null>(null);
+  useEffect(() => {
+    if (initialDescription === undefined || initialDescription === null) return;
+    const t = String(initialDescription);
+    if (lastSyncedInitialDescription.current === t) return;
+    lastSyncedInitialDescription.current = t;
+    setForm((prev) => ({ ...prev, description: t }));
+  }, [initialDescription]);
+
   const createMutation = useMutation({
     mutationFn: async () => {
       const costs: any = {};
@@ -162,8 +191,13 @@ export function WorkOrderNewForm({
         status: 'open',
         assigned_to_user_id: form.assigned_to_user_id || null,
         costs: Object.keys(costs).length > 0 ? costs : null,
-        origin_source: 'manual',
       };
+      if (originInspectionId?.trim()) {
+        payload.origin_source = 'inspection';
+        payload.origin_id = originInspectionId.trim();
+      } else {
+        payload.origin_source = 'manual';
+      }
       if (form.entity_type === 'fleet') {
         if (form.scheduled_date) {
           const dateTime = form.scheduled_time
@@ -201,12 +235,26 @@ export function WorkOrderNewForm({
   const checkboxClass =
     'h-4 w-4 shrink-0 rounded border-2 border-gray-300 text-brand-red focus:ring-2 focus:ring-brand-red/30 focus:ring-offset-0';
 
+  const lockedVehicleLabel = useMemo(() => {
+    if (!lockEntityAndVehicle || !form.entity_id) return '';
+    const row = vehiclePickerRows.find((r) => r.value === form.entity_id);
+    return row?.label || form.entity_id;
+  }, [lockEntityAndVehicle, form.entity_id, vehiclePickerRows]);
+
   const fleetVehicleField = (
     <div className="min-w-0">
       <label className={labelClass}>
-        Vehicle <span className="text-red-600">*</span>
+        Vehicle {!lockEntityAndVehicle && <span className="text-red-600">*</span>}
       </label>
-      {fleetAssetsLoading ? (
+      {lockEntityAndVehicle ? (
+        fleetAssetsLoading ? (
+          <div className={`${lockedFieldBoxClass} text-gray-500 flex items-center`}>Loading vehicles…</div>
+        ) : (
+          <div className={`${lockedFieldBoxClass} flex items-center`}>
+            <span className="min-w-0 truncate text-gray-700">{lockedVehicleLabel || '—'}</span>
+          </div>
+        )
+      ) : fleetAssetsLoading ? (
         <div className={`${scheduleFieldClass} bg-gray-50 text-gray-500`}>Loading vehicles…</div>
       ) : fleetAssetsError ? (
         <div className="space-y-2">
@@ -254,6 +302,13 @@ export function WorkOrderNewForm({
         <div className="grid grid-cols-2 gap-4">
           {vehiclePickerSearchable ? (
             fleetVehicleField
+          ) : lockEntityAndVehicle ? (
+            <div>
+              <label className={labelClass}>Entity type</label>
+              <div className={`${lockedFieldBoxClass} flex items-center`}>
+                <span className="text-gray-700">Fleet asset</span>
+              </div>
+            </div>
           ) : (
             <div>
               <label className={labelClass}>Entity Type</label>

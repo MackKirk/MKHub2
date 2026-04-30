@@ -1638,7 +1638,16 @@ export default function FleetAssetDetail() {
                               <tr
                                 key={inspection.id}
                                 className="cursor-pointer border-b border-gray-100 transition-colors last:border-b-0 hover:bg-gray-50"
-                                onClick={() => nav(`/fleet/inspections/${inspection.id}`)}
+                                onClick={() => {
+                                  const sched = inspection.inspection_schedule_id;
+                                  const t = (inspection.inspection_type || 'mechanical').toLowerCase();
+                                  const focus = t === 'body' ? 'body' : 'mechanical';
+                                  if (sched) {
+                                    nav(`/fleet/inspections/${sched}?focus=${focus}`);
+                                  } else {
+                                    nav(`/fleet/inspections/${inspection.id}`);
+                                  }
+                                }}
                               >
                                 <td className="whitespace-nowrap px-3 py-3 align-top text-xs font-medium tabular-nums text-gray-900">
                                   <time dateTime={inspection.inspection_date}>

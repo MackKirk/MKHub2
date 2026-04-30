@@ -79,8 +79,7 @@ import WorkOrders from './pages/WorkOrders';
 import WorkOrderNew from './pages/WorkOrderNew';
 import Inspections from './pages/Inspections';
 import InspectionNew from './pages/InspectionNew';
-import InspectionScheduleDetail from './pages/InspectionScheduleDetail';
-import InspectionDetail from './pages/InspectionDetail';
+import FleetInspectionsIdGate, { FleetInspectionScheduleLegacyRedirect } from './pages/FleetInspectionsIdGate';
 import FleetSchedulePage from './pages/FleetSchedulePage';
 import SafetyInspectionsPage from './pages/SafetyInspectionsPage';
 import SafetyInspectionSignPage from './pages/SafetyInspectionSignPage';
@@ -233,13 +232,13 @@ export default function App(){
           <Route path="/fleet/equipment/:id" element={<LegacyFleetEquipmentDetailRedirect />} />
           <Route path="/fleet/calendar" element={<AppShell><FleetSchedulePage/></AppShell>} />
           <Route path="/fleet/inspection-schedules" element={<Navigate to="/fleet/calendar" replace />} />
-          <Route path="/fleet/inspection-schedules/:id" element={<AppShell><InspectionScheduleDetail/></AppShell>} />
+          <Route path="/fleet/inspection-schedules/:id" element={<FleetInspectionScheduleLegacyRedirect />} />
           <Route path="/fleet/work-orders" element={<AppShell><WorkOrders/></AppShell>} />
           <Route path="/fleet/work-orders/new" element={<AppShell><WorkOrderNew/></AppShell>} />
           <Route path="/fleet/work-orders/:id" element={<AppShell><WorkOrderDetail/></AppShell>} />
           <Route path="/fleet/inspections" element={<AppShell><Inspections/></AppShell>} />
           <Route path="/fleet/inspections/new" element={<AppShell><InspectionNew/></AppShell>} />
-          <Route path="/fleet/inspections/:id" element={<AppShell><InspectionDetail/></AppShell>} />
+          <Route path="/fleet/inspections/:id" element={<AppShell><FleetInspectionsIdGate /></AppShell>} />
           <Route path="/training" element={<AppShell><Training/></AppShell>} />
           <Route path="/training/certificates" element={<Navigate to="/training?tab=certificates" replace />} />
           <Route path="/training/:courseId" element={<AppShell><TrainingCourse/></AppShell>} />
