@@ -11,12 +11,49 @@ from pydantic import BaseModel, Field
 from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
-from ..auth.security import get_current_user, require_permissions
+from ..auth.security import get_current_user, _has_permission
 from ..services.safety_sign_request_access import assert_safety_read_or_pending_sign_session
 from ..db import get_db
 from ..models.models import FormCustomList, FormTemplate, FleetAsset, User
 
 router = APIRouter(prefix="/form-templates", tags=["form-templates"])
+
+# Employee review templates (same JSON definition as safety; distinct category)
+EMPLOYEE_REVIEW_CATEGORY = "employee_review"
+
+
+def _hr_can_manage_employee_review_templates(user: User) -> bool:
+    return _has_permission(user, "hr:reviews:admin") or _has_permission(user, "reviews:admin")
+
+
+def _ensure_form_template_read(
+    user: User,
+    db: Session,
+    t: FormTemplate,
+    *,
+    sign_project_id: Optional[str],
+    sign_inspection_id: Optional[str],
+) -> None:
+    """Safety users (or sign session) for inspection templates; HR admins for employee_review only."""
+    cat = (t.category or "").strip().lower()
+    if cat == EMPLOYEE_REVIEW_CATEGORY:
+        if _has_permission(user, "business:projects:safety:read") or _hr_can_manage_employee_review_templates(user):
+            return
+        raise HTTPException(status_code=403, detail="Forbidden")
+    assert_safety_read_or_pending_sign_session(
+        user, db, sign_project_id=sign_project_id, sign_inspection_id=sign_inspection_id
+    )
+
+
+def _ensure_form_template_write(user: User, t: Optional[FormTemplate], *, new_category: Optional[str] = None) -> None:
+    if _has_permission(user, "business:projects:safety:write"):
+        return
+    if not _hr_can_manage_employee_review_templates(user):
+        raise HTTPException(status_code=403, detail="Forbidden")
+    if t is not None and (t.category or "").strip().lower() != EMPLOYEE_REVIEW_CATEGORY:
+        raise HTTPException(status_code=403, detail="HR can only edit employee review templates")
+    if new_category is not None and new_category.strip().lower() != EMPLOYEE_REVIEW_CATEGORY:
+        raise HTTPException(status_code=403, detail="HR templates must use category employee_review")
 
 ALLOWED_FIELD_TYPES = frozenset(
     {
@@ -232,13 +269,16 @@ def _definition_has_sections(definition: dict) -> bool:
 def list_form_templates(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
-    _=Depends(require_permissions("business:projects:safety:read")),
     category: Optional[str] = Query(None),
     status: Optional[str] = Query(None),
     schedulable: bool = Query(False, description="If true, only templates usable for new inspections"),
     sort: str = Query("name", description="name | created_at | updated_at"),
     sort_dir: str = Query("asc", description="asc | desc"),
 ):
+    if not _has_permission(user, "business:projects:safety:read"):
+        if not _hr_can_manage_employee_review_templates(user):
+            raise HTTPException(status_code=403, detail="Forbidden")
+        category = EMPLOYEE_REVIEW_CATEGORY
     q = db.query(FormTemplate)
     if category and category.strip():
         q = q.filter(FormTemplate.category == category.strip())
@@ -266,8 +306,11 @@ def create_form_template(
     body: FormTemplateCreate,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
-    _=Depends(require_permissions("business:projects:safety:write")),
 ):
+    if _has_permission(user, "business:projects:safety:write"):
+        pass
+    else:
+        _ensure_form_template_write(user, None, new_category=body.category or "")
     st = (body.status or "active").strip().lower()
     if st not in ("active", "inactive"):
         raise HTTPException(status_code=400, detail="status must be active or inactive")
@@ -328,12 +371,15 @@ def duplicate_form_template(
     template_id: str,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
-    _=Depends(require_permissions("business:projects:safety:write")),
 ):
     tid = uuid.UUID(str(template_id))
     src = db.query(FormTemplate).filter(FormTemplate.id == tid).first()
     if not src:
         raise HTTPException(status_code=404, detail="Template not found")
+    if _has_permission(user, "business:projects:safety:write"):
+        pass
+    else:
+        _ensure_form_template_write(user, src)
     base_name = (src.name or "Untitled").strip() or "Untitled"
     dup = FormTemplate(
         name=f"{base_name} (copy)",
@@ -358,13 +404,11 @@ def get_form_template(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    assert_safety_read_or_pending_sign_session(
-        user, db, sign_project_id=sign_project_id, sign_inspection_id=sign_inspection_id
-    )
     tid = uuid.UUID(str(template_id))
     t = db.query(FormTemplate).filter(FormTemplate.id == tid).first()
     if not t:
         raise HTTPException(status_code=404, detail="Template not found")
+    _ensure_form_template_read(user, db, t, sign_project_id=sign_project_id, sign_inspection_id=sign_inspection_id)
     return _template_to_dict(t, include_definition=True)
 
 
@@ -374,12 +418,17 @@ def update_form_template(
     body: FormTemplateUpdate,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
-    _=Depends(require_permissions("business:projects:safety:write")),
 ):
     tid = uuid.UUID(str(template_id))
     t = db.query(FormTemplate).filter(FormTemplate.id == tid).first()
     if not t:
         raise HTTPException(status_code=404, detail="Template not found")
+    if _has_permission(user, "business:projects:safety:write"):
+        pass
+    else:
+        _ensure_form_template_write(user, t)
+        if body.category is not None and body.category.strip().lower() != EMPLOYEE_REVIEW_CATEGORY:
+            raise HTTPException(status_code=403, detail="HR templates must remain category employee_review")
     if body.name is not None:
         t.name = body.name.strip()
     if body.description is not None:
@@ -409,12 +458,15 @@ def delete_form_template(
     template_id: str,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
-    _=Depends(require_permissions("business:projects:safety:write")),
 ):
     tid = uuid.UUID(str(template_id))
     t = db.query(FormTemplate).filter(FormTemplate.id == tid).first()
     if not t:
         raise HTTPException(status_code=404, detail="Template not found")
+    if _has_permission(user, "business:projects:safety:write"):
+        pass
+    else:
+        _ensure_form_template_write(user, t)
     db.delete(t)
     db.commit()
     return {"ok": True}

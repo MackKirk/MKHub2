@@ -73,6 +73,7 @@ def list_employees(q: Optional[str] = None, db: Session = Depends(get_db), _=Dep
         dept_from_divisions = ", ".join(d["label"] for d in divisions if d.get("label")) if divisions else None
         department = dept_from_divisions or ((getattr(ep, 'division', None) or '').strip() or None if ep else None)
 
+        pdivs = list(getattr(ep, "project_division_ids", None) or []) if ep else []
         out.append({
             "id": str(u.id),
             "username": u.username,
@@ -84,6 +85,7 @@ def list_employees(q: Optional[str] = None, db: Session = Depends(get_db), _=Dep
             "address": address,
             "department": department,
             "divisions": divisions,
+            "project_division_ids": [str(x) for x in pdivs if x is not None],
             "job_title": getattr(ep, 'job_title', None) if ep else None,
             "profile_photo_file_id": str(getattr(ep, 'profile_photo_file_id')) if (ep and getattr(ep, 'profile_photo_file_id', None)) else None,
             "roles": [r.name for r in getattr(u, 'roles', [])] if hasattr(u, 'roles') else [],

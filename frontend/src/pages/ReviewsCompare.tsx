@@ -1,11 +1,19 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import { sortByLabel } from '@/lib/sortOptions';
 
 export default function ReviewsCompare(){
+  const [searchParams, setSearchParams] = useSearchParams();
+  const paramCycle = searchParams.get('cycle') || '';
   const { data:cycles } = useQuery({ queryKey:['review-cycles'], queryFn: ()=> api<any[]>('GET','/reviews/cycles') });
-  const [cycleId, setCycleId] = useState<string>('');
+  const [cycleId, setCycleId] = useState<string>(paramCycle);
+
+  useEffect(() => {
+    const c = searchParams.get('cycle') || '';
+    if (c) setCycleId(c);
+  }, [searchParams]);
   const { data:rows } = useQuery({ queryKey:['review-compare', cycleId], queryFn: ()=> cycleId? api<any[]>('GET', `/reviews/cycles/${cycleId}/compare`) : Promise.resolve([]) });
   const [q, setQ] = useState('');
   const [onlyDiff, setOnlyDiff] = useState(false);
@@ -42,7 +50,16 @@ export default function ReviewsCompare(){
       </div>
       <div className="flex items-center gap-2 mb-3 flex-wrap">
         <span className="text-sm text-gray-600">Cycle</span>
-        <select className="border rounded px-2 py-1" value={cycleId} onChange={e=> setCycleId(e.target.value)}>
+        <select
+          className="border rounded px-2 py-1"
+          value={cycleId}
+          onChange={(e) => {
+            const id = e.target.value;
+            setCycleId(id);
+            if (id) setSearchParams({ cycle: id }, { replace: true });
+            else setSearchParams({}, { replace: true });
+          }}
+        >
           <option value="">Select...</option>
           {sortByLabel(cycles||[], (c:any)=> (c.name||'').toString()).map((c:any)=> <option key={c.id} value={c.id}>{c.name}</option>)}
         </select>
@@ -65,7 +82,7 @@ export default function ReviewsCompare(){
         <table className="min-w-full border text-sm">
           <thead>
             <tr className="bg-gray-50">
-              <th className="border px-2 py-1 text-left w-9">\u25BC</th>
+              <th className="border px-2 py-1 text-left w-9"> </th>
               <th className="border px-2 py-1 text-left">Employee</th>
               <th className="border px-2 py-1 text-left">Status</th>
               {headers.map(h=> (

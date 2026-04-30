@@ -1,10 +1,11 @@
 // Service Worker for MK Hub PWA
-// Version: 1.0.1
+// Version: 1.0.2 — do not cache per-URL HTML navigations (stale shell breaks F5 on deep routes after deploy).
 // Cache static assets only - DO NOT cache API responses
 
-const CACHE_NAME = 'mkhub-v2';
-const STATIC_CACHE_NAME = 'mkhub-static-v2';
+const CACHE_NAME = 'mkhub-v3';
+const STATIC_CACHE_NAME = 'mkhub-static-v3';
 const OFFLINE_PAGE = '/offline.html';
+const INDEX_SHELL = '/index.html';
 
 // Assets to cache on install
 const STATIC_ASSETS = [
@@ -79,31 +80,21 @@ self.addEventListener('fetch', (event) => {
       event.respondWith(fetch(request));
       return;
     }
-    
+
+    // Network-only for HTML: never cache navigate responses keyed by full URL.
+    // Cached SPA shells under /reviews/... etc. kept old <script src="/assets/index-OLDHASH.js"> after deploys → F5 stuck on loading.
     event.respondWith(
       fetch(request)
-        .then((response) => {
-          // Cache successful HTML responses (except /install) - only GET requests
-          if (response.ok && url.pathname !== '/install' && request.method === 'GET') {
-            const responseClone = response.clone();
-            caches.open(STATIC_CACHE_NAME).then((cache) => {
-              cache.put(request, responseClone);
-            });
-          }
-          return response;
-        })
+        .then((response) => response)
         .catch(() => {
-          // Offline fallback (but not for /install)
           if (url.pathname === '/install') {
             return fetch(request);
           }
-          return caches.match(request).then((cachedResponse) => {
-            if (cachedResponse) {
-              return cachedResponse;
-            }
-            // Return offline page if available
-            return caches.match(OFFLINE_PAGE);
-          });
+          // SPA: same index for all client routes; URL bar stays on deep path for React Router.
+          return caches
+            .match(INDEX_SHELL)
+            .then((r) => r || caches.match('/'))
+            .then((r) => r || caches.match(OFFLINE_PAGE));
         })
     );
     return;

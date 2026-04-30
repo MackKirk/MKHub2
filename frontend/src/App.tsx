@@ -52,9 +52,10 @@ import Users from './pages/Users';
 import HrDataQualityOverview from './pages/HrDataQualityOverview';
 import UserInfo from './pages/UserInfo';
 import EmployeeReviews from './pages/EmployeeReviews';
+import ReviewCyclesPage from './pages/ReviewCyclesPage';
+import ReviewCycleDetailPage from './pages/ReviewCycleDetailPage';
 import MyReviews from './pages/MyReviews';
 import ReviewsCompare from './pages/ReviewsCompare';
-import UserDetail from './pages/UserDetail';
 import LogHours from './pages/LogHours';
 import CompanyFiles from './pages/CompanyFiles';
 import TaskRequests from './pages/TaskRequests';
@@ -202,9 +203,12 @@ export default function App(){
           <Route path="/community/insights" element={<AppShell><CommunityInsights/></AppShell>} />
           <Route path="/community/new-post" element={<AppShell><CommunityNewPost/></AppShell>} />
           <Route path="/reviews/admin" element={<AppShell><EmployeeReviews/></AppShell>} />
+          <Route path="/reviews/cycles" element={<AppShell><ReviewCyclesPage /></AppShell>} />
+          <Route path="/reviews/cycles/:cycleId" element={<AppShell><ReviewCycleDetailPage /></AppShell>} />
+          <Route path="/reviews/form-templates" element={<AppShell><FormTemplatesPage variant="employee_review" /></AppShell>} />
+          <Route path="/reviews/form-templates/:id" element={<AppShell><FormTemplateEditorPage /></AppShell>} />
           <Route path="/reviews/compare" element={<AppShell><ReviewsCompare/></AppShell>} />
           <Route path="/reviews/my" element={<AppShell><MyReviews/></AppShell>} />
-          <Route path="/users/:id" element={<AppShell><UserDetail/></AppShell>} />
           <Route path="/safety/inspections" element={<AppShell><SafetyInspectionsPage /></AppShell>} />
           <Route path="/safety/sign/:projectId/:inspectionId" element={<AppShell><SafetyInspectionSignPage /></AppShell>} />
           <Route path="/safety/calendar" element={<AppShell><SafetySchedulePage /></AppShell>} />

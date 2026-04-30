@@ -8,6 +8,7 @@ import { useConfirm } from '@/components/ConfirmProvider';
 import { formatDateLocal, getCurrentMonthLocal } from '@/lib/dateUtils';
 import UserLoans from '@/components/UserLoans';
 import OverlayPortal from '@/components/OverlayPortal';
+import UserEmployeeReviewsTab from '@/components/UserEmployeeReviewsTab';
 
 // Helper function to convert 24h time (HH:MM:SS or HH:MM) to 12h format (h:mm AM/PM)
 function formatTime12h(timeStr: string | null | undefined): string {
@@ -30,7 +31,7 @@ export default function UserDetail(){
   const { data:roles } = useQuery({ queryKey:['rolesAll'], queryFn: ()=> api<any[]>('GET', '/users/roles/all') });
   const { data:me } = useQuery({ queryKey:['me'], queryFn: ()=> api<any>('GET','/auth/me') });
   const [sel, setSel] = useState<string>('');
-  const [tab, setTab] = useState<'general'|'timesheet'|'loans'|'permissions'>('general');
+  const [tab, setTab] = useState<'general'|'timesheet'|'loans'|'permissions'|'reviews'>('general');
   const [deletingUser, setDeletingUser] = useState(false);
   const isAdministrator = !!(me?.roles || []).some((r: string) => String(r || '').toLowerCase() === 'admin');
   const isSelfProfile = !!(me && id && String(me.id) === String(id));
@@ -80,7 +81,14 @@ export default function UserDetail(){
     (me?.permissions || []).includes('hr:users:edit:permissions') ||
     (me?.permissions || []).includes('users:write')
   );
-  
+
+  const canViewReviews = !!(
+    (me?.roles || []).some((r: string) => String(r || '').toLowerCase() === 'admin') ||
+    (me?.permissions || []).includes('reviews:read') ||
+    (me?.permissions || []).includes('reviews:admin') ||
+    (me?.permissions || []).includes('hr:reviews:admin')
+  );
+
   if(!user) return <div className="h-24 bg-gray-100 animate-pulse rounded"/>;
   
   // If user doesn't have permission to view anything, show error
@@ -135,8 +143,17 @@ export default function UserDetail(){
             ...(canViewGeneral ? ['general'] : []),
             ...(canViewTimesheet ? ['timesheet'] : []),
             ...(canViewLoans ? ['loans'] : []),
-            ...(canViewPermissions ? ['permissions'] : [])
-          ] as const).map(k=> (<button key={k} onClick={()=>setTab(k)} className={`px-3 py-1.5 rounded-full text-sm ${tab===k?'bg-black text-white':'bg-white border'}`}>{k[0].toUpperCase()+k.slice(1)}</button>))}
+            ...(canViewPermissions ? ['permissions'] : []),
+            ...(canViewReviews ? ['reviews'] : []),
+          ] as const).map((k) => (
+            <button
+              key={k}
+              onClick={() => setTab(k)}
+              className={`px-3 py-1.5 rounded-full text-sm ${tab === k ? 'bg-black text-white' : 'bg-white border'}`}
+            >
+              {k === 'reviews' ? 'Reviews' : k[0].toUpperCase() + k.slice(1)}
+            </button>
+          ))}
         </div>
       </div>
 
@@ -222,6 +239,12 @@ export default function UserDetail(){
 
       {tab==='permissions' && canViewPermissions && (
         <UserPermissions userId={String(id)} user={user} canEdit={canEditPermissions} />
+      )}
+
+      {tab === 'reviews' && canViewReviews && id && (
+        <div className="rounded-xl border bg-white p-4">
+          <UserEmployeeReviewsTab userId={String(id)} enabled={tab === 'reviews'} />
+        </div>
       )}
     </div>
   );

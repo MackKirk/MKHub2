@@ -699,6 +699,97 @@ def create_app() -> FastAPI:
                         db.rollback()
                         print(f"[startup] form_custom_lists include_other migration (non-critical): {e}")
 
+                    # Employee review: assignment snapshot + review_cycles.form_template_id (additive only)
+                    try:
+                        db.execute(
+                            text(
+                                "ALTER TABLE review_assignments ADD COLUMN IF NOT EXISTS form_definition_snapshot JSONB NULL"
+                            )
+                        )
+                        db.commit()
+                    except Exception as e:
+                        db.rollback()
+                        print(f"[startup] review_assignments.form_definition_snapshot (non-critical): {e}")
+                    try:
+                        rows_rc_ft = db.execute(
+                            text(
+                                """
+                                SELECT 1 FROM information_schema.columns
+                                WHERE table_schema = 'public' AND table_name = 'review_cycles'
+                                  AND column_name = 'form_template_id'
+                                LIMIT 1
+                                """
+                            )
+                        ).fetchall()
+                        if not rows_rc_ft:
+                            db.execute(text("ALTER TABLE review_cycles ADD COLUMN IF NOT EXISTS form_template_id UUID NULL"))
+                            db.commit()
+                            print("[startup] Added review_cycles.form_template_id (populate via scripts/migrate_review_templates_to_form_templates.sql if upgrading)")
+                    except Exception as e:
+                        db.rollback()
+                        print(f"[startup] review_cycles.form_template_id (non-critical): {e}")
+                    try:
+                        db.execute(
+                            text(
+                                "ALTER TABLE review_cycles ADD COLUMN IF NOT EXISTS participant_scope JSONB NULL"
+                            )
+                        )
+                        db.commit()
+                    except Exception as e:
+                        db.rollback()
+                        print(f"[startup] review_cycles.participant_scope (non-critical): {e}")
+                    try:
+                        db.execute(
+                            text(
+                                "ALTER TABLE review_cycles ADD COLUMN IF NOT EXISTS template_by_department JSONB NULL"
+                            )
+                        )
+                        db.commit()
+                    except Exception as e:
+                        db.rollback()
+                        print(f"[startup] review_cycles.template_by_department (non-critical): {e}")
+                    # ORM uses form_template_id only; legacy NOT NULL template_id breaks INSERTs if the column remains
+                    try:
+                        rows_legacy_tid = db.execute(
+                            text(
+                                """
+                                SELECT 1 FROM information_schema.columns
+                                WHERE table_schema = 'public' AND table_name = 'review_cycles'
+                                  AND column_name = 'template_id'
+                                LIMIT 1
+                                """
+                            )
+                        ).fetchall()
+                        if rows_legacy_tid:
+                            rows_ft2 = db.execute(
+                                text(
+                                    """
+                                    SELECT 1 FROM information_schema.columns
+                                    WHERE table_schema = 'public' AND table_name = 'review_cycles'
+                                      AND column_name = 'form_template_id'
+                                    LIMIT 1
+                                    """
+                                )
+                            ).fetchall()
+                            if rows_ft2:
+                                db.execute(
+                                    text(
+                                        """
+                                        UPDATE review_cycles
+                                        SET form_template_id = template_id
+                                        WHERE form_template_id IS NULL AND template_id IS NOT NULL
+                                        """
+                                    )
+                                )
+                            db.execute(
+                                text("ALTER TABLE review_cycles DROP COLUMN IF EXISTS template_id CASCADE")
+                            )
+                            db.commit()
+                            print("[startup] Dropped legacy review_cycles.template_id (use form_template_id)")
+                    except Exception as e:
+                        db.rollback()
+                        print(f"[startup] review_cycles.template_id legacy drop (non-critical): {e}")
+
                     # Check for source_attendance_id column in project_time_entries
                     rows = db.execute(
                         text(

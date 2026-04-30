@@ -16,6 +16,7 @@ import UserReports from '@/components/UserReports';
 import { DivisionIcon } from '@/components/DivisionIcon';
 import OverlayPortal from '@/components/OverlayPortal';
 import { CanadianDriversLicenseSection } from '@/components/CanadianDriversLicenseSection';
+import UserEmployeeReviewsTab from '@/components/UserEmployeeReviewsTab';
 
 // List of implemented permissions (permissions that are actually checked in the codebase)
 const IMPLEMENTED_PERMISSIONS = new Set([
@@ -2636,7 +2637,7 @@ function UserActivityLogTab({ userId }: { userId: string }) {
 export default function UserInfo(){
   const { userId } = useParams();
   const [sp] = useSearchParams();
-  const tabParam = sp.get('tab') as ('personal'|'job'|'docs'|'timesheet'|'loans'|'training'|'assets'|'reports'|'permissions'|'activity') | null;
+  const tabParam = sp.get('tab') as ('personal'|'job'|'docs'|'timesheet'|'loans'|'training'|'assets'|'reports'|'reviews'|'permissions'|'activity') | null;
   const [tab, setTab] = useState<typeof tabParam | 'personal'>(tabParam || 'personal');
   const confirm = useConfirm();
   const queryClient = useQueryClient();
@@ -2769,6 +2770,14 @@ export default function UserInfo(){
     return perms.includes('hr:users:view:activity');
   }, [me]);
 
+  const canViewReviews = useMemo(() => {
+    if (!me) return false;
+    const isAdminRole = (me?.roles || []).some((r: string) => String(r || '').toLowerCase() === 'admin');
+    if (isAdminRole) return true;
+    const perms = me?.permissions || [];
+    return perms.includes('reviews:read') || perms.includes('reviews:admin') || perms.includes('hr:reviews:admin');
+  }, [me]);
+
   useEffect(() => {
     if (tab !== 'activity' || canViewActivity) return;
     if (canViewGeneral || canSelfEdit) setTab('personal');
@@ -2785,6 +2794,7 @@ export default function UserInfo(){
       training: !!canViewTraining,
       assets: !!canViewAssets,
       reports: !!canViewReports,
+      reviews: !!canViewReviews,
       permissions: !!canViewPermissions,
       activity: !!canViewActivity,
     };
@@ -2799,6 +2809,7 @@ export default function UserInfo(){
     canViewTraining,
     canViewAssets,
     canViewReports,
+    canViewReviews,
     canViewPermissions,
     canViewActivity,
   ]);
@@ -2906,8 +2917,13 @@ export default function UserInfo(){
     const isReportsTab = newTab === 'reports';
     const isPermissionsTab = newTab === 'permissions';
     const isActivityTab = newTab === 'activity';
+    const isReviewsTab = newTab === 'reviews';
 
     if (isActivityTab && !canViewActivity) {
+      toast.error('You do not have permission to view this tab');
+      return;
+    }
+    if (isReviewsTab && !canViewReviews) {
       toast.error('You do not have permission to view this tab');
       return;
     }
@@ -3305,6 +3321,7 @@ export default function UserInfo(){
               ...(canViewTraining ? ['training'] : []),
               ...(canViewAssets ? ['assets'] : []),
               ...(canViewReports ? ['reports'] : []),
+              ...(canViewReviews ? ['reviews'] : []),
               ...(canViewPermissions ? ['permissions'] : []),
               ...(canViewActivity ? ['activity'] : [])
             ] as const).map((k)=> (
@@ -3317,7 +3334,7 @@ export default function UserInfo(){
                     : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50 hover:border-gray-400'
                 }`}
               >
-                {k === 'activity' ? 'Activity' : String(k).replace(/^./, (s) => s.toUpperCase())}
+                {k === 'activity' ? 'Activity' : k === 'reviews' ? 'Reviews' : String(k).replace(/^./, (s) => s.toUpperCase())}
               </button>
             ))}
           </div>
@@ -3329,7 +3346,7 @@ export default function UserInfo(){
         <div className="p-5">
           {isLoading? <div className="h-24 animate-pulse bg-gray-100 rounded"/> : (
             <>
-              {!canViewGeneral && !canViewTimesheet && !canViewLoans && !canViewTraining && !canViewAssets && !canViewReports && !canViewPermissions && !canViewActivity && !canSelfEdit && (
+              {!canViewGeneral && !canViewTimesheet && !canViewLoans && !canViewTraining && !canViewAssets && !canViewReports && !canViewReviews && !canViewPermissions && !canViewActivity && !canSelfEdit && (
                 <div className="text-center py-12">
                   <div className="text-red-600 font-semibold mb-2">Access Denied</div>
                   <div className="text-gray-600">You do not have permission to view this user's information.</div>
@@ -3431,6 +3448,9 @@ export default function UserInfo(){
                 />
               )}
               {tab==='reports' && canViewReports && <UserReports userId={String(userId)} canEdit={canEditGeneral || (me?.roles || []).some((r: string) => String(r || '').toLowerCase() === 'admin') || (me?.permissions || []).includes('hr:users:write') || (me?.permissions || []).includes('users:write')} />}
+              {tab === 'reviews' && canViewReviews && userId && (
+                <UserEmployeeReviewsTab userId={String(userId)} enabled={tab === 'reviews'} />
+              )}
               {tab==='permissions' && canViewPermissions && <UserPermissions ref={permissionsRef} userId={String(userId)} onDirtyChange={setPermissionsDirty} canEdit={canEditPermissions} />}
               {tab === 'activity' && canViewActivity && userId && <UserActivityLogTab userId={String(userId)} />}
             </>

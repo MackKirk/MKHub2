@@ -40,12 +40,22 @@ function DuplicateIcon({ className }: { className?: string }) {
 
 type SortCol = 'name' | 'created_at' | 'updated_at';
 
-export default function FormTemplatesPage() {
+export type FormTemplatesPageVariant = 'safety' | 'employee_review';
+
+type FormTemplatesPageProps = {
+  variant?: FormTemplatesPageVariant;
+  /** When true, omit the page header (e.g. embedded in Employee Review → Admin → Templates tab). */
+  embedded?: boolean;
+};
+
+export default function FormTemplatesPage({ variant = 'safety', embedded = false }: FormTemplatesPageProps) {
   const qc = useQueryClient();
   const nav = useNavigate();
   const confirm = useConfirm();
   const [searchParams, setSearchParams] = useSearchParams();
   const [searchQuery, setSearchQuery] = useState('');
+  const isHr = variant === 'employee_review';
+  const editorBasePath = isHr ? '/reviews/form-templates' : '/safety/form-templates';
 
   const sortBy = (searchParams.get('sort') as SortCol) || 'name';
   const sortDir = searchParams.get('dir') === 'desc' ? 'desc' : 'asc';
@@ -59,12 +69,14 @@ export default function FormTemplatesPage() {
   };
 
   const { data: rows = [], isLoading } = useQuery({
-    queryKey: ['formTemplates', sortBy, sortDir],
-    queryFn: () =>
-      api<TemplateRow[]>(
-        'GET',
-        `/form-templates?sort=${encodeURIComponent(sortBy)}&sort_dir=${encodeURIComponent(sortDir)}`
-      ),
+    queryKey: ['formTemplates', sortBy, sortDir, variant],
+    queryFn: () => {
+      const params = new URLSearchParams();
+      params.set('sort', sortBy);
+      params.set('sort_dir', sortDir);
+      if (isHr) params.set('category', 'employee_review');
+      return api<TemplateRow[]>('GET', `/form-templates?${params.toString()}`);
+    },
   });
 
   const filteredRows = useMemo(() => {
@@ -82,14 +94,14 @@ export default function FormTemplatesPage() {
   const createMut = useMutation({
     mutationFn: () =>
       api<{ id: string }>('POST', '/form-templates', {
-        name: 'New form template',
-        category: 'inspection',
+        name: isHr ? 'New employee review template' : 'New form template',
+        category: isHr ? 'employee_review' : 'inspection',
         status: 'active',
       }),
     onSuccess: (r) => {
       qc.invalidateQueries({ queryKey: ['formTemplates'] });
       toast.success('Template created');
-      nav(`/safety/form-templates/${encodeURIComponent(r.id)}`);
+      nav(`${editorBasePath}/${encodeURIComponent(r.id)}`);
     },
     onError: () => toast.error('Could not create template'),
   });
@@ -108,7 +120,7 @@ export default function FormTemplatesPage() {
     onSuccess: (r) => {
       qc.invalidateQueries({ queryKey: ['formTemplates'] });
       toast.success('Template duplicated');
-      nav(`/safety/form-templates/${encodeURIComponent(r.id)}`);
+      nav(`${editorBasePath}/${encodeURIComponent(r.id)}`);
     },
     onError: () => toast.error('Could not duplicate template'),
   });
@@ -135,11 +147,17 @@ export default function FormTemplatesPage() {
   };
 
   return (
-    <div className="space-y-4 min-w-0 pb-16">
-      <PageHeaderBar
-        title="Form Templates"
-        subtitle="Build reusable safety forms. Save in the editor updates what users see when starting inspections."
-      />
+    <div className={`space-y-4 min-w-0 ${embedded ? 'pb-2' : 'pb-16'}`}>
+      {!embedded && (
+        <PageHeaderBar
+          title={isHr ? 'Employee review form templates' : 'Form Templates'}
+          subtitle={
+            isHr
+              ? 'Build reusable employee review forms (same builder as Safety). Save in the editor updates what employees see for review cycles.'
+              : 'Build reusable safety forms. Save in the editor updates what users see when starting inspections.'
+          }
+        />
+      )}
 
       <div className="rounded-xl border border-gray-200 bg-white overflow-hidden">
         {isLoading ? (
@@ -230,7 +248,7 @@ export default function FormTemplatesPage() {
                       className="grid grid-cols-[minmax(0,2.2fr)_minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)_auto_auto] gap-2 sm:gap-3 items-center px-4 py-3 hover:bg-gray-50/80"
                     >
                       <Link
-                        to={`/safety/form-templates/${encodeURIComponent(r.id)}`}
+                        to={`${editorBasePath}/${encodeURIComponent(r.id)}`}
                         className="min-w-0 font-medium text-sm text-gray-900 truncate hover:text-brand-red hover:underline"
                       >
                         {r.name}

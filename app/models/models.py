@@ -734,29 +734,6 @@ class Quote(Base):
     deleted_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True, index=True)
     deleted_by_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
 
-class ReviewTemplate(Base):
-    __tablename__ = "review_templates"
-
-    id: Mapped[uuid.UUID] = uuid_pk()
-    name: Mapped[str] = mapped_column(String(255), nullable=False)
-    version: Mapped[int] = mapped_column(Integer, default=1)
-    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
-
-
-class ReviewTemplateQuestion(Base):
-    __tablename__ = "review_template_questions"
-
-    id: Mapped[uuid.UUID] = uuid_pk()
-    template_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("review_templates.id", ondelete="CASCADE"))
-    order_index: Mapped[int] = mapped_column(Integer, default=0)
-    key: Mapped[str] = mapped_column(String(100), nullable=False)
-    label: Mapped[str] = mapped_column(String(1000), nullable=False)
-    type: Mapped[str] = mapped_column(String(50), nullable=False)
-    options: Mapped[Optional[dict]] = mapped_column(JSON)
-    required: Mapped[bool] = mapped_column(Boolean, default=False)
-
-
 class ReviewCycle(Base):
     __tablename__ = "review_cycles"
 
@@ -764,12 +741,19 @@ class ReviewCycle(Base):
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     period_start: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
     period_end: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
-    template_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("review_templates.id", ondelete="RESTRICT"))
-    template_by_department: Mapped[Optional[dict]] = mapped_column(JSON)  # division name -> template_id (str)
+    form_template_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("form_templates.id", ondelete="RESTRICT"), nullable=False
+    )
+    template_by_department: Mapped[Optional[dict]] = mapped_column(JSON)  # division name -> form_template_id (str)
+    # Who gets review assignments: null = entire company. explicit = union of user_ids, department_ids (HR divisions),
+    # project_division_ids (EmployeeProfile.project_division_ids overlap).
+    participant_scope: Mapped[Optional[dict]] = mapped_column(JSON)
     status: Mapped[str] = mapped_column(String(50), default="draft")
 
 
 class ReviewAssignment(Base):
+    """Review assignment; form_definition_snapshot copies FormTemplate.definition at creation."""
+
     __tablename__ = "review_assignments"
 
     id: Mapped[uuid.UUID] = uuid_pk()
@@ -779,6 +763,7 @@ class ReviewAssignment(Base):
     status: Mapped[str] = mapped_column(String(50), default="pending")
     due_date: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
+    form_definition_snapshot: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
 
 
 class ReviewAnswer(Base):

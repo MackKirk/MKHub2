@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import { Link, useParams } from 'react-router-dom';
+import { Link, useLocation, useParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
 import {
@@ -252,6 +252,9 @@ function SortableFieldRow({
 
 export default function FormTemplateEditorPage() {
   const { id: templateId } = useParams<{ id: string }>();
+  const location = useLocation();
+  const isEmployeeReviewEditor = location.pathname.startsWith('/reviews/form-templates');
+  const listPath = isEmployeeReviewEditor ? '/reviews/form-templates' : '/safety/form-templates';
   const qc = useQueryClient();
   const confirm = useConfirm();
   const [localName, setLocalName] = useState('');
@@ -324,6 +327,8 @@ export default function FormTemplateEditorPage() {
     setSigRequired(Boolean(wr?.required));
   }, [tmpl?.id, tmpl?.name, tmpl?.version_label, tmpl?.description, tmpl?.category, tmpl?.status, tmpl?.definition]);
 
+  const categoryForSave = isEmployeeReviewEditor ? 'employee_review' : category.trim() || 'inspection';
+
   const saveFormMut = useMutation({
     mutationFn: async () => {
       if (!templateId) throw new Error('No template');
@@ -343,7 +348,7 @@ export default function FormTemplateEditorPage() {
         version_label: versionLabel.trim(),
         name: localName.trim() || 'Untitled',
         description: description.trim() || null,
-        category: category.trim() || 'inspection',
+        category: categoryForSave,
         status,
       });
     },
@@ -362,7 +367,8 @@ export default function FormTemplateEditorPage() {
       api('PUT', `/form-templates/${encodeURIComponent(templateId!)}`, {
         name: patch?.name !== undefined ? patch.name.trim() || 'Untitled' : localName.trim() || 'Untitled',
         description: patch?.description !== undefined ? patch.description : description.trim() || null,
-        category: patch?.category !== undefined ? patch.category : category.trim() || 'inspection',
+        category:
+          patch?.category !== undefined ? patch.category : categoryForSave,
         status: patch?.status !== undefined ? patch.status : status,
         version_label: patch?.version_label !== undefined ? patch.version_label : versionLabel.trim(),
       }),
@@ -496,12 +502,12 @@ export default function FormTemplateEditorPage() {
       sigRequired,
       localName,
       description,
-      category,
+      categoryForSave,
       status,
       versionLabel
     );
     return local !== remote;
-  }, [tmpl, definition, sigRequired, localName, description, category, status, versionLabel]);
+  }, [tmpl, definition, sigRequired, localName, description, categoryForSave, status, versionLabel]);
 
   const flushSaveAll = useCallback(async () => {
     if (!templateId) throw new Error('Cannot save');
@@ -882,7 +888,7 @@ export default function FormTemplateEditorPage() {
           <PageHeaderBar
             leading={
               <Link
-                to="/safety/form-templates"
+                to={listPath}
                 className="p-1.5 rounded hover:bg-gray-100 transition-colors flex items-center justify-center shrink-0"
                 title="Back to form templates"
                 aria-label="Back to form templates"
@@ -892,8 +898,12 @@ export default function FormTemplateEditorPage() {
                 </svg>
               </Link>
             }
-            title="Form Templates"
-            subtitle="Build sections in the Builder tab. Save Form stores the current definition for inspections."
+            title={isEmployeeReviewEditor ? 'Employee review templates' : 'Form Templates'}
+            subtitle={
+              isEmployeeReviewEditor
+                ? 'Build sections in the Builder tab. Save Form stores the definition used for employee reviews.'
+                : 'Build sections in the Builder tab. Save Form stores the current definition for inspections.'
+            }
           />
           <div className="rounded-xl border bg-white overflow-hidden">
               <div className="px-4 py-3 border-b border-gray-100">

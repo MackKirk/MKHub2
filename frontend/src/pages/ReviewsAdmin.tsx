@@ -1,26 +1,18 @@
+import { Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import { useState, useMemo } from 'react';
 import toast from 'react-hot-toast';
 
-const QUESTION_TYPES = [
-  { value: 'text', label: 'Open text' },
-  { value: 'scale', label: 'Scale (1–5)' },
-] as const;
-
 export default function ReviewsAdmin() {
   const { data: templates, refetch: refetchTemplates } = useQuery({
-    queryKey: ['review-templates'],
-    queryFn: () => api<any[]>('GET', '/reviews/templates'),
+    queryKey: ['form-templates', 'employee_review'],
+    queryFn: () => api<any[]>('GET', '/form-templates?category=employee_review&sort=name&sort_dir=asc'),
   });
   const { data: cycles, refetch: refetchCycles } = useQuery({
     queryKey: ['review-cycles'],
     queryFn: () => api<any[]>('GET', '/reviews/cycles'),
   });
-  const [name, setName] = useState('Semiannual Review');
-  const [questions, setQuestions] = useState<any[]>([
-    { key: 'performance', label: 'Overall performance', type: 'scale', options: { min: 1, max: 5 }, required: true },
-  ]);
   const [cycleName, setCycleName] = useState('H1 Review');
   const [periodStart, setPeriodStart] = useState('');
   const [periodEnd, setPeriodEnd] = useState('');
@@ -35,36 +27,6 @@ export default function ReviewsAdmin() {
       day: 'numeric',
     });
   }, []);
-
-  const addQuestion = () => {
-    setQuestions((qs) => [
-      ...qs,
-      { key: `q${qs.length + 1}`, label: '', type: 'text', options: null, required: false },
-    ]);
-  };
-
-  const updateQuestion = (idx: number, field: string, value: any) => {
-    setQuestions((qs) => {
-      const v = [...qs];
-      v[idx] = { ...v[idx], [field]: value };
-      if (field === 'type' && value === 'scale') {
-        v[idx].options = { min: 1, max: 5 };
-      }
-      if (field === 'type' && value === 'text') {
-        v[idx].options = null;
-      }
-      return v;
-    });
-  };
-
-  const updateQuestionOptions = (idx: number, key: 'min' | 'max', value: number) => {
-    setQuestions((qs) => {
-      const v = [...qs];
-      const opts = { ...(v[idx].options || { min: 1, max: 5 }), [key]: value };
-      v[idx] = { ...v[idx], options: opts };
-      return v;
-    });
-  };
 
   const addTemplateByDepartmentRow = () => {
     setTemplateByDepartment((prev) => [...prev, { department: '', template_id: '' }]);
@@ -91,6 +53,9 @@ export default function ReviewsAdmin() {
     return Object.keys(out).length ? out : undefined;
   };
 
+  const templateOptionLabel = (t: any) =>
+    `${t.name || 'Untitled'}${(t.version_label || '').trim() ? ` — ${(t.version_label || '').trim()}` : ''}`;
+
   return (
     <div className="max-w-5xl">
       <div className="bg-slate-200/50 rounded-[12px] border border-slate-200 flex items-center justify-between py-4 px-6 mb-6">
@@ -105,103 +70,34 @@ export default function ReviewsAdmin() {
       </div>
       <div className="grid md:grid-cols-2 gap-6">
         <div className="rounded-xl border bg-white p-4">
-          <div className="font-semibold mb-2">Create Template</div>
-          <div className="space-y-2 text-sm">
-            <div>
-              <div className="text-gray-600">Name</div>
-              <input className="w-full border rounded px-3 py-2" value={name} onChange={(e) => setName(e.target.value)} />
-            </div>
-            <div>
-              <div className="text-gray-600">Questions (scale 1–5 or open text)</div>
-              <div className="space-y-2">
-                {questions.map((q, idx) => (
-                  <div key={idx} className="border rounded p-2 space-y-1">
-                    <div className="grid grid-cols-2 gap-2">
-                      <input
-                        className="border rounded px-2 py-1"
-                        value={q.key}
-                        onChange={(e) => updateQuestion(idx, 'key', e.target.value)}
-                        placeholder="key"
-                      />
-                      <select
-                        className="border rounded px-2 py-1"
-                        value={q.type || 'text'}
-                        onChange={(e) => updateQuestion(idx, 'type', e.target.value)}
-                      >
-                        {QUESTION_TYPES.map((opt) => (
-                          <option key={opt.value} value={opt.value}>
-                            {opt.label}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-                    <input
-                      className="w-full border rounded px-2 py-1"
-                      value={q.label}
-                      onChange={(e) => updateQuestion(idx, 'label', e.target.value)}
-                      placeholder="Question label"
-                    />
-                    {q.type === 'scale' && (
-                      <div className="flex items-center gap-2 text-xs">
-                        <span className="text-gray-600">Scale:</span>
-                        <input
-                          type="number"
-                          min={1}
-                          max={10}
-                          className="w-14 border rounded px-1 py-0.5"
-                          value={q.options?.min ?? 1}
-                          onChange={(e) => updateQuestionOptions(idx, 'min', parseInt(e.target.value, 10) || 1)}
-                        />
-                        <span>to</span>
-                        <input
-                          type="number"
-                          min={1}
-                          max={10}
-                          className="w-14 border rounded px-1 py-0.5"
-                          value={q.options?.max ?? 5}
-                          onChange={(e) => updateQuestionOptions(idx, 'max', parseInt(e.target.value, 10) || 5)}
-                        />
-                      </div>
-                    )}
-                    <label className="flex items-center gap-1 text-xs">
-                      <input
-                        type="checkbox"
-                        checked={!!q.required}
-                        onChange={(e) => updateQuestion(idx, 'required', e.target.checked)}
-                      />
-                      Required
-                    </label>
-                  </div>
-                ))}
-                <button onClick={addQuestion} className="px-2 py-1 rounded border text-xs">
-                  Add question
-                </button>
-              </div>
-            </div>
-            <button
-              onClick={async () => {
-                try {
-                  await api('POST', '/reviews/templates', { name, questions });
-                  toast.success('Template created');
-                  setName('');
-                  await refetchTemplates();
-                } catch (_e) {
-                  toast.error('Failed');
-                }
-              }}
-              className="px-3 py-2 rounded bg-brand-red text-white"
-            >
-              Create
-            </button>
-          </div>
+          <div className="font-semibold mb-2">Form templates</div>
+          <p className="text-sm text-gray-600 mb-3">
+            Create and edit employee review forms with the same builder used for Safety inspections.
+          </p>
+          <Link
+            to="/reviews/form-templates"
+            className="inline-flex px-4 py-2 rounded-lg bg-brand-red text-white text-sm font-medium hover:opacity-90 mb-4"
+          >
+            Open template library
+          </Link>
           <div className="mt-4">
-            <div className="font-semibold mb-1">Templates</div>
-            <div className="divide-y rounded border">
-              {(templates || []).map((t: any) => (
-                <div key={t.id} className="px-3 py-2 text-sm">
-                  {t.name} v{t.version}
-                </div>
-              ))}
+            <div className="font-semibold mb-1 text-sm">Existing templates</div>
+            <div className="divide-y rounded border max-h-48 overflow-y-auto">
+              {(templates || []).length === 0 ? (
+                <div className="px-3 py-3 text-sm text-gray-500">No templates yet.</div>
+              ) : (
+                (templates || []).map((t: any) => (
+                  <div key={t.id} className="px-3 py-2 text-sm flex items-center justify-between gap-2">
+                    <span className="truncate">{templateOptionLabel(t)}</span>
+                    <Link
+                      to={`/reviews/form-templates/${encodeURIComponent(t.id)}`}
+                      className="text-xs text-brand-red shrink-0 hover:underline"
+                    >
+                      Edit
+                    </Link>
+                  </div>
+                ))
+              )}
             </div>
           </div>
         </div>
@@ -245,7 +141,7 @@ export default function ReviewsAdmin() {
                 <option value="">Select...</option>
                 {(templates || []).map((t: any) => (
                   <option key={t.id} value={t.id}>
-                    {t.name} v{t.version}
+                    {templateOptionLabel(t)}
                   </option>
                 ))}
               </select>
@@ -270,7 +166,7 @@ export default function ReviewsAdmin() {
                       <option value="">Select template...</option>
                       {(templates || []).map((t: any) => (
                         <option key={t.id} value={t.id}>
-                          {t.name}
+                          {templateOptionLabel(t)}
                         </option>
                       ))}
                     </select>
@@ -283,11 +179,7 @@ export default function ReviewsAdmin() {
                     </button>
                   </div>
                 ))}
-                <button
-                  type="button"
-                  onClick={addTemplateByDepartmentRow}
-                  className="px-2 py-1 rounded border text-xs"
-                >
+                <button type="button" onClick={addTemplateByDepartmentRow} className="px-2 py-1 rounded border text-xs">
                   Add department mapping
                 </button>
               </div>
@@ -300,7 +192,7 @@ export default function ReviewsAdmin() {
                       name: cycleName,
                       period_start: periodStart,
                       period_end: periodEnd,
-                      template_id: templateId,
+                      form_template_id: templateId,
                       template_by_department: buildTemplateByDepartment(),
                       activate: true,
                     });
@@ -311,6 +203,7 @@ export default function ReviewsAdmin() {
                     setTemplateId('');
                     setTemplateByDepartment([]);
                     await refetchCycles();
+                    await refetchTemplates();
                   } catch (_e) {
                     toast.error('Failed');
                   }
@@ -339,14 +232,14 @@ export default function ReviewsAdmin() {
                     onClick={async () => {
                       try {
                         await api('POST', `/reviews/cycles/${c.id}/assign`, {});
-                        toast.success('Assignments generated');
+                        toast.success('Review tasks created');
                       } catch (_e) {
                         toast.error('Failed');
                       }
                     }}
                     className="px-2 py-1 rounded border text-xs"
                   >
-                    Assign
+                    Create tasks
                   </button>
                 </div>
               ))}

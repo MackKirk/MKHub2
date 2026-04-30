@@ -271,11 +271,6 @@ export default function AppShell({ children }: PropsWithChildren){
     enabled: !!userId
   });
 
-  const { data: reviewsAvailable } = useQuery({
-    queryKey: ['reviews-me-available'],
-    queryFn: () => api<{ available?: boolean }>('GET', '/reviews/me/available'),
-  });
-
   const isProfileComplete = useMemo(
     () =>
       computeIsProfileComplete(meProfile, emergencyContactsData, userId, emergencyContactsLoading),
@@ -541,6 +536,41 @@ export default function AppShell({ children }: PropsWithChildren){
       ]
     },
     {
+      id: 'employee-review',
+      label: 'Employee Review',
+      icon: <IconStar />,
+      items: [
+        ...(((me?.roles || []).includes('admin') ||
+          (me?.permissions || []).includes('hr:reviews:admin') ||
+          (me?.permissions || []).includes('reviews:admin')) ? [
+          { id: 'employee-review-admin', label: 'Admin', path: '/reviews/admin', icon: <IconOverview />, requiredPermission: 'hr:reviews:admin' },
+          {
+            id: 'employee-review-cycles',
+            label: 'Review cycles',
+            path: '/reviews/cycles',
+            icon: <IconCalendar />,
+            requiredPermission: 'hr:reviews:admin',
+          },
+          {
+            id: 'employee-review-form-templates',
+            label: 'Form templates',
+            path: '/reviews/form-templates',
+            icon: <IconDocument />,
+            requiredPermission: 'hr:reviews:admin',
+          },
+        ] : []),
+        ...(((me?.roles || []).includes('admin') || (me?.permissions || []).includes('reviews:read')) ? [
+          {
+            id: 'employee-review-compare',
+            label: 'Comparison',
+            path: '/reviews/compare',
+            icon: <IconClipboardCheck />,
+            requiredPermission: 'reviews:read',
+          },
+        ] : []),
+      ],
+    },
+    {
       id: 'human-resources',
       label: 'Human Resources',
       icon: <IconHumanResources />,
@@ -552,9 +582,6 @@ export default function AppShell({ children }: PropsWithChildren){
           { id: 'onboarding-admin', label: 'Onboarding', path: '/onboarding/admin', icon: <IconDocument />, requiredPermission: 'hr:users:read' },
           { id: 'attendance', label: 'Attendance', path: '/settings/attendance', icon: <IconCalendar />, requiredPermission: 'hr:attendance:read' },
           { id: 'community', label: 'Community', path: '/community', icon: <IconUsersGroup />, requiredPermission: 'hr:community:read' },
-          ...(((me?.roles||[]).includes('admin') || (me?.permissions||[]).includes('hr:reviews:admin') || (me?.permissions||[]).includes('reviews:admin')) ? [
-            { id: 'employee-reviews', label: 'Employee Reviews', path: '/reviews/admin', icon: <IconStar />, requiredPermission: 'hr:reviews:admin' }
-          ] : []),
         ] : [],
       ]
     },
@@ -1249,9 +1276,7 @@ export default function AppShell({ children }: PropsWithChildren){
               {open && (
                 <div className="absolute right-0 top-full mt-2 w-56 rounded-lg border border-gray-200/20 bg-white text-black shadow-xl z-50">
                   <Link to="/profile" onClick={()=>setOpen(false)} className="block px-4 py-2.5 hover:bg-gray-50 transition-colors duration-150">My Information</Link>
-                  {reviewsAvailable?.available && (
-                    <Link to="/reviews/my" onClick={()=>setOpen(false)} className="block px-4 py-2.5 hover:bg-gray-50 transition-colors duration-150">Employee Review</Link>
-                  )}
+                  <Link to="/reviews/my" onClick={()=>setOpen(false)} className="block px-4 py-2.5 hover:bg-gray-50 transition-colors duration-150">Employee review</Link>
                   <button onClick={handleLogout} className="w-full text-left px-4 py-2.5 hover:bg-gray-50 transition-colors duration-150">Logout</button>
                 </div>
               )}
