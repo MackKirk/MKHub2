@@ -5,6 +5,7 @@ import { useMemo, useState } from 'react';
 import { FleetAssetNewForm } from './FleetAssetNew';
 import { EquipmentNewForm } from './EquipmentNew';
 import OverlayPortal from '@/components/OverlayPortal';
+import { FleetEquipmentPageHeader } from '@/components/fleet/FleetEquipmentPageHeader';
 
 type DashboardData = {
   total_fleet_assets: number;
@@ -25,6 +26,7 @@ type DashboardData = {
 };
 
 type KpiStatus = 'ok' | 'attention' | 'critical' | 'info' | 'coming_soon';
+type DashboardIcon = React.FC<{ className?: string }>;
 
 // --- Helpers ---
 function getKpiState(
@@ -46,54 +48,42 @@ function buildAssetLink(id: string): string {
   return `/fleet/assets/${id}`;
 }
 
-function buildEquipmentLink(id: string): string {
-  return `/company-assets/equipment/${id}`;
-}
-
 // --- Icons (inline SVGs) ---
-const IconFleet = () => (
-  <svg className="w-6 h-6 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+const IconFleet: DashboardIcon = ({ className = 'w-6 h-6 text-gray-500' }) => (
+  <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24">
     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 002-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
   </svg>
 );
-const IconUserCheck = () => (
-  <svg className="w-6 h-6 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+const IconUserCheck: DashboardIcon = ({ className = 'w-6 h-6 text-gray-500' }) => (
+  <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24">
     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14v7m0 0v-7m0 7h4" />
   </svg>
 );
-const IconAlertCircle = () => (
-  <svg className="w-6 h-6 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+const IconAlertCircle: DashboardIcon = ({ className = 'w-6 h-6 text-gray-500' }) => (
+  <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24">
     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
   </svg>
 );
-const IconWrench = () => (
-  <svg className="w-6 h-6 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+const IconWrench: DashboardIcon = ({ className = 'w-6 h-6 text-gray-500' }) => (
+  <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24">
     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
   </svg>
 );
-const IconEmpty = () => (
-  <svg className="w-10 h-10 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+const IconHeavy: DashboardIcon = ({ className = 'w-6 h-6 text-gray-500' }) => (
+  <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16h16M6 16l2-6h8l2 6M8 10V7h8v3M7 19a2 2 0 100-4 2 2 0 000 4zm10 0a2 2 0 100-4 2 2 0 000 4z" />
   </svg>
 );
-
-// --- DashboardHeader ---
-function DashboardHeader({ todayLabel }: { todayLabel: string }) {
+const IconCalendar: DashboardIcon = ({ className = 'w-6 h-6 text-gray-500' }) => (
+  <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3M5 11h14M5 7h14a2 2 0 012 2v10a2 2 0 01-2 2H5a2 2 0 01-2-2V9a2 2 0 012-2z" />
+  </svg>
+);
+function SectionLabel({ children }: { children: React.ReactNode }) {
   return (
-    <div className="rounded-xl border bg-white p-4 mb-4">
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-3 flex-1">
-          <div>
-            <div className="text-sm font-semibold text-gray-900">Fleet & Equipment</div>
-            <div className="text-xs text-gray-500 mt-0.5">Executive overview</div>
-          </div>
-        </div>
-        <div className="text-right">
-          <div className="text-[10px] font-medium text-gray-500 uppercase tracking-wide">Today</div>
-          <div className="text-xs font-semibold text-gray-700 mt-0.5">{todayLabel}</div>
-        </div>
-      </div>
+    <div className="px-1 pb-2 text-[11px] font-semibold uppercase tracking-widest text-gray-400">
+      {children}
     </div>
   );
 }
@@ -107,14 +97,16 @@ function KPIStatCard({
   status,
   onClick,
   tooltipTitle,
+  iconTone = 'bg-gray-50 text-gray-600',
 }: {
   title: string;
   value: number | string;
   subtext: string;
-  icon: React.FC;
+  icon: DashboardIcon;
   status: KpiStatus;
   onClick?: () => void;
   tooltipTitle?: string;
+  iconTone?: string;
 }) {
   const accentMap: Record<KpiStatus, string> = {
     ok: 'border-l-green-500',
@@ -139,16 +131,18 @@ function KPIStatCard({
       role={onClick ? 'button' : undefined}
       onClick={onClick}
       title={tooltipTitle}
-      className={`rounded-xl border border-gray-200 bg-white p-5 min-h-[120px] flex flex-col relative border-l-4 ${accent} ${onClick ? 'cursor-pointer hover:bg-gray-50/50 hover:border-gray-300 transition-all' : ''}`}
+      className={`relative flex h-[130px] flex-col rounded-xl border border-gray-200 bg-white p-5 shadow-sm border-l-4 ${accent} ${onClick ? 'cursor-pointer transition-all hover:-translate-y-0.5 hover:border-gray-300 hover:bg-gray-50/50 hover:shadow' : ''}`}
     >
-      <div className="absolute top-3 right-3">
-        <span className={`inline-flex px-2 py-0.5 rounded text-[10px] font-medium ${pill.className}`}>
-          {pill.label}
-        </span>
-      </div>
+      {status !== 'ok' && (
+        <div className="absolute top-3 right-3">
+          <span className={`inline-flex px-2 py-0.5 rounded text-[10px] font-medium ${pill.className}`}>
+            {pill.label}
+          </span>
+        </div>
+      )}
       <div className="flex items-start gap-3 flex-1">
-        <div className="flex-shrink-0 mt-0.5">
-          <Icon />
+        <div className={`mt-0.5 flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-xl ${iconTone}`}>
+          <Icon className="h-5 w-5" />
         </div>
         <div className="min-w-0 flex-1">
           <div className="text-[10px] font-medium text-gray-500 uppercase tracking-wide">{title}</div>
@@ -156,85 +150,6 @@ function KPIStatCard({
           <div className="text-xs text-gray-500 mt-2">{subtext}</div>
         </div>
       </div>
-    </div>
-  );
-}
-
-// --- RiskCompliancePanel ---
-function RiskCompliancePanel({
-  overdueEquipment,
-  inspectionsDue,
-  onViewAsset,
-  onViewEquipment,
-}: {
-  overdueEquipment: DashboardData['overdue_equipment'];
-  inspectionsDue: DashboardData['inspections_due'];
-  onViewAsset: (id: string) => void;
-  onViewEquipment: (id: string) => void;
-}) {
-  const merged = useMemo(() => {
-    const items: Array<{ key: string; name: string; type: string; status: 'Overdue' | 'Due'; link: () => void }> = [];
-    overdueEquipment.slice(0, 4).forEach((item) => {
-      items.push({
-        key: `eq-${item.id}`,
-        name: item.equipment_name,
-        type: 'Equipment',
-        status: 'Overdue',
-        link: () => onViewEquipment(item.equipment_id),
-      });
-    });
-    inspectionsDue.slice(0, 4).forEach((item) => {
-      items.push({
-        key: `in-${item.id}`,
-        name: item.name,
-        type: item.asset_type.replace(/_/g, ' '),
-        status: 'Due',
-        link: () => onViewAsset(item.id),
-      });
-    });
-    return items.slice(0, 7);
-  }, [overdueEquipment, inspectionsDue, onViewAsset, onViewEquipment]);
-
-  return (
-    <div className="rounded-xl border border-gray-200 bg-white p-5 min-w-0">
-      <h2 className="text-sm font-semibold text-gray-900 mb-4">Risk & Compliance</h2>
-      {merged.length === 0 ? (
-        <div className="py-8 flex flex-col items-center justify-center text-center">
-          <IconEmpty />
-          <p className="text-xs text-gray-500 mt-2">No items requiring attention</p>
-        </div>
-      ) : (
-        <ul className="space-y-2">
-          {merged.map((item) => (
-            <li
-              key={item.key}
-              className="flex items-center justify-between gap-3 py-2 px-3 rounded-lg hover:bg-gray-50 transition-colors"
-            >
-              <div className="min-w-0 flex-1">
-                <div className="text-xs font-medium text-gray-900 truncate">{item.name}</div>
-                <div className="text-[10px] text-gray-500 capitalize">{item.type}</div>
-              </div>
-              <span
-                className={`flex-shrink-0 px-2 py-0.5 rounded text-[10px] font-medium ${
-                  item.status === 'Overdue' ? 'bg-red-100 text-red-800' : 'bg-amber-100 text-amber-800'
-                }`}
-              >
-                {item.status}
-              </span>
-              <button
-                type="button"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  item.link();
-                }}
-                className="text-xs font-medium text-brand-red hover:underline flex-shrink-0"
-              >
-                View
-              </button>
-            </li>
-          ))}
-        </ul>
-      )}
     </div>
   );
 }
@@ -253,94 +168,36 @@ function FleetMixPanel({
 }) {
   const pct = (n: number) => (total > 0 ? Math.round((n / total) * 100) : 0);
   const rows = [
-    { label: 'Vehicles', count: vehicles, pct: pct(vehicles) },
-    { label: 'Heavy', count: heavy, pct: pct(heavy) },
-    { label: 'Other', count: other, pct: pct(other) },
+    { label: 'Vehicles', count: vehicles, pct: pct(vehicles), color: 'bg-blue-500' },
+    { label: 'Heavy', count: heavy, pct: pct(heavy), color: 'bg-slate-500' },
+    { label: 'Other', count: other, pct: pct(other), color: 'bg-violet-400' },
   ];
 
   return (
-    <div className="rounded-xl border border-gray-200 bg-white p-5 min-w-0">
+    <div className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm min-w-0">
       <h2 className="text-sm font-semibold text-gray-900 mb-4">Fleet Mix</h2>
       <div className="space-y-4">
-        {rows.map(({ label, count, pct }) => (
+        {rows.map(({ label, count, pct, color }) => (
           <div key={label}>
             <div className="flex justify-between text-xs mb-1">
               <span className="font-medium text-gray-700">{label}</span>
-              <span className="text-gray-500 tabular-nums">{count}</span>
+              <span className="text-gray-500 tabular-nums">{count} ({pct}%)</span>
             </div>
             <div className="h-2 bg-gray-200 rounded-full overflow-hidden">
               <div
-                className="h-full bg-gray-400 rounded-full transition-all"
+                className={`h-full rounded-full transition-all ${color}`}
                 style={{ width: `${Math.max(pct, 2)}%` }}
               />
             </div>
           </div>
         ))}
       </div>
-    </div>
-  );
-}
-
-// --- DueInspectionsPanel ---
-function DueInspectionsPanel({
-  items,
-  total,
-  onViewAll,
-  onOpen,
-}: {
-  items: DashboardData['inspections_due'];
-  total?: number;
-  onViewAll: () => void;
-  onOpen: (id: string) => void;
-}) {
-  const list = items.slice(0, 5);
-  return (
-    <div className="rounded-xl border border-gray-200 bg-white p-5 min-w-0">
-      <div className="flex items-center justify-between mb-4">
-        <h2 className="text-sm font-semibold text-gray-900">
-          Inspections Due{total !== undefined && total > 0 ? ` (${total})` : ''}
-        </h2>
-        <button
-          type="button"
-          onClick={onViewAll}
-          className="text-xs font-medium text-brand-red hover:underline"
-        >
-          View All
-        </button>
-      </div>
-      {list.length === 0 ? (
-        <div className="py-8 flex flex-col items-center justify-center text-center">
-          <IconEmpty />
-          <p className="text-xs text-gray-500 mt-2">No inspections due</p>
+      <div className="mt-4 border-t border-gray-100 pt-3 text-xs">
+        <div className="flex justify-between">
+          <span className="font-medium text-gray-600">Total</span>
+          <span className="font-semibold text-gray-900 tabular-nums">{total.toLocaleString()}</span>
         </div>
-      ) : (
-        <ul className="space-y-0">
-          {list.map((item, i) => (
-            <li
-              key={item.id}
-              className={`flex items-center justify-between gap-3 py-3 px-3 rounded-lg hover:bg-gray-50 transition-colors ${i % 2 === 1 ? 'bg-gray-50/50' : ''}`}
-            >
-              <div className="min-w-0 flex-1">
-                <div className="text-xs font-semibold text-gray-900 truncate">{item.name}</div>
-                <div className="text-[10px] text-gray-500 capitalize">{item.asset_type.replace(/_/g, ' ')}</div>
-              </div>
-              <span className="flex-shrink-0 px-2 py-0.5 rounded text-[10px] font-medium bg-amber-100 text-amber-800">
-                Due
-              </span>
-              <button
-                type="button"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onOpen(item.id);
-                }}
-                className="flex-shrink-0 text-xs font-medium text-brand-red hover:underline"
-              >
-                Open
-              </button>
-            </li>
-          ))}
-        </ul>
-      )}
+      </div>
     </div>
   );
 }
@@ -359,7 +216,7 @@ function ComplianceExpiringPanel({
 }) {
   const list = items.slice(0, 5);
   return (
-    <div className="rounded-xl border border-gray-200 bg-white p-5 min-w-0">
+    <div className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm min-w-0">
       <div className="flex items-center justify-between mb-4">
         <h2 className="text-sm font-semibold text-gray-900">
           Compliance expiring{total > 0 ? ` (${total})` : ''}
@@ -414,22 +271,31 @@ function WorkOrdersPanel({
   pendingPartsCount: number;
   onViewAll: () => void;
 }) {
+  const total = Math.max(openCount + inProgressCount + pendingPartsCount, 1);
+  const rows = [
+    { label: 'Open', count: openCount, color: 'bg-blue-500' },
+    { label: 'In progress', count: inProgressCount, color: 'bg-amber-500' },
+    { label: 'Pending parts', count: pendingPartsCount, color: 'bg-orange-400' },
+  ];
+
   return (
-    <div className="rounded-xl border border-gray-200 bg-white p-5 min-w-0">
+    <div className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm min-w-0">
       <h2 className="text-sm font-semibold text-gray-900 mb-4">Work Orders Snapshot</h2>
-      <div className="space-y-3">
-        <div className="flex justify-between text-xs">
-          <span className="text-gray-600">Open</span>
-          <span className="font-semibold text-gray-900 tabular-nums">{openCount}</span>
-        </div>
-        <div className="flex justify-between text-xs">
-          <span className="text-gray-600">In progress</span>
-          <span className="font-semibold text-gray-900 tabular-nums">{inProgressCount}</span>
-        </div>
-        <div className="flex justify-between text-xs">
-          <span className="text-gray-600">Pending parts</span>
-          <span className="font-semibold text-gray-900 tabular-nums">{pendingPartsCount}</span>
-        </div>
+      <div className="space-y-3.5">
+        {rows.map((row) => {
+          const pct = row.count > 0 ? Math.max(Math.round((row.count / total) * 100), 4) : 0;
+          return (
+            <div key={row.label}>
+              <div className="mb-1 flex justify-between text-xs">
+                <span className="text-gray-600">{row.label}</span>
+                <span className="font-semibold text-gray-900 tabular-nums">{row.count}</span>
+              </div>
+              <div className="h-2 overflow-hidden rounded-full bg-gray-100">
+                <div className={`h-full rounded-full ${row.color}`} style={{ width: `${pct}%` }} />
+              </div>
+            </div>
+          );
+        })}
       </div>
       <div className="mt-4 pt-3 border-t border-gray-100">
         <button
@@ -446,29 +312,42 @@ function WorkOrdersPanel({
 
 // --- PendingInspectionsCard ---
 function PendingInspectionsCard({
-  title,
-  icon: Icon,
-  items,
+  bodyItems,
+  mechanicalItems,
   onViewAll,
   onOpen,
-  emptyMessage,
 }: {
-  title: string;
-  icon: React.FC;
-  items: Array<{ id: string; fleet_asset_name?: string; inspection_date?: string }>;
-  onViewAll: () => void;
+  bodyItems: Array<{ id: string; fleet_asset_name?: string; inspection_date?: string }>;
+  mechanicalItems: Array<{ id: string; fleet_asset_name?: string; inspection_date?: string }>;
+  onViewAll: (type: 'body' | 'mechanical') => void;
   onOpen: (id: string) => void;
-  emptyMessage: string;
 }) {
+  const [activeType, setActiveType] = useState<'body' | 'mechanical'>('body');
+  const items = activeType === 'body' ? bodyItems : mechanicalItems;
   const list = items.slice(0, 5);
+  const emptyMessage = activeType === 'body' ? 'No pending body inspections' : 'No pending mechanical inspections';
   return (
-    <div className="rounded-xl border border-gray-200 bg-white p-5 min-w-0">
+    <div className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm min-w-0">
       <div className="flex items-center justify-between mb-4">
         <div className="flex items-center gap-2">
-          <Icon />
-          <h2 className="text-sm font-semibold text-gray-900">{title}</h2>
+          <IconAlertCircle className="h-5 w-5 text-amber-600" />
+          <h2 className="text-sm font-semibold text-gray-900">Pending Inspections</h2>
         </div>
-        <span className="text-xs font-semibold text-gray-700 tabular-nums">{items.length}</span>
+        <span className="text-xs font-semibold text-gray-700 tabular-nums">{bodyItems.length + mechanicalItems.length}</span>
+      </div>
+      <div className="mb-3 flex rounded-lg bg-gray-100 p-1">
+        {(['body', 'mechanical'] as const).map((type) => (
+          <button
+            key={type}
+            type="button"
+            onClick={() => setActiveType(type)}
+            className={`flex-1 rounded-md px-2 py-1 text-xs font-medium capitalize transition-colors ${
+              activeType === type ? 'bg-white text-brand-red shadow-sm' : 'text-gray-600 hover:text-gray-900'
+            }`}
+          >
+            {type} <span className="tabular-nums">({type === 'body' ? bodyItems.length : mechanicalItems.length})</span>
+          </button>
+        ))}
       </div>
       {list.length === 0 ? (
         <p className="text-xs text-gray-500 py-4">{emptyMessage}</p>
@@ -497,7 +376,7 @@ function PendingInspectionsCard({
         </ul>
       )}
       <div className="mt-3 pt-3 border-t border-gray-100">
-        <button type="button" onClick={onViewAll} className="text-xs font-medium text-brand-red hover:underline">
+        <button type="button" onClick={() => onViewAll(activeType)} className="text-xs font-medium text-brand-red hover:underline">
           View all →
         </button>
       </div>
@@ -519,7 +398,7 @@ function OpenWorkOrdersCard({
 }) {
   const list = items.slice(0, 5);
   return (
-    <div className="rounded-xl border border-gray-200 bg-white p-5 min-w-0">
+    <div className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm min-w-0">
       <div className="flex items-center justify-between mb-4">
         <h2 className="text-sm font-semibold text-gray-900">Open Work Orders</h2>
         <span className="text-xs font-semibold text-gray-700 tabular-nums">{total}</span>
@@ -577,16 +456,21 @@ function RevisionsCalendarPanel({ onViewCalendar }: { onViewCalendar: () => void
     queryFn: () => api<any[]>('GET', `/fleet/work-orders/calendar?start=${today}&end=${nextWeek}`),
   });
   return (
-    <div className="rounded-xl border border-gray-200 bg-white p-5 min-w-0">
-      <h2 className="text-sm font-semibold text-gray-900 mb-4">Scheduled services</h2>
-      <div className="space-y-3">
-        <div className="flex justify-between text-xs">
-          <span className="text-gray-600">Today</span>
-          <span className="font-semibold text-gray-900 tabular-nums">{todayEvents.length}</span>
+    <div className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm min-w-0">
+      <div className="mb-4 flex items-center gap-2">
+        <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-blue-50 text-blue-700">
+          <IconCalendar className="h-4 w-4" />
         </div>
-        <div className="flex justify-between text-xs">
-          <span className="text-gray-600">Próximos 7 dias</span>
-          <span className="font-semibold text-gray-900 tabular-nums">{weekEvents.length}</span>
+        <h2 className="text-sm font-semibold text-gray-900">Scheduled services</h2>
+      </div>
+      <div className="grid grid-cols-2 gap-3">
+        <div className="rounded-lg bg-blue-50 p-3">
+          <div className="text-[10px] font-medium uppercase tracking-wide text-blue-700">Today</div>
+          <div className="mt-1 text-2xl font-bold tabular-nums text-blue-900">{todayEvents.length}</div>
+        </div>
+        <div className="rounded-lg bg-gray-50 p-3">
+          <div className="text-[10px] font-medium uppercase tracking-wide text-gray-500">Next 7 days</div>
+          <div className="mt-1 text-2xl font-bold tabular-nums text-gray-900">{weekEvents.length}</div>
         </div>
       </div>
       <div className="mt-4 pt-3 border-t border-gray-100">
@@ -611,6 +495,7 @@ function QuickActionCard({
   onManage,
   onAddNew,
   icon: Icon,
+  iconTone = 'bg-gray-100 text-gray-600',
 }: {
   title: string;
   subtitle: string;
@@ -618,20 +503,23 @@ function QuickActionCard({
   manageLabel: string;
   onManage: () => void;
   onAddNew: () => void;
-  icon: React.FC;
+  icon: DashboardIcon;
+  iconTone?: string;
 }) {
   return (
-    <div className="rounded-xl border border-gray-200 bg-white p-5 min-w-0 flex flex-col">
+    <div className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm min-w-0 flex flex-col">
       <div className="flex items-start gap-3 mb-4">
-        <div className="flex-shrink-0">
-          <Icon />
+        <div className={`flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-xl ${iconTone}`}>
+          <Icon className="h-5 w-5" />
         </div>
-        <div>
+        <div className="min-w-0 flex-1">
           <h3 className="text-sm font-semibold text-gray-900">{title}</h3>
           <p className="text-xs text-gray-500 mt-0.5">{subtitle}</p>
         </div>
+        <span className="rounded-full bg-gray-100 px-2 py-0.5 text-[10px] font-semibold text-gray-700">
+          {statsLine}
+        </span>
       </div>
-      <p className="text-xs text-gray-600 mb-4">{statsLine}</p>
       <div className="mt-auto flex flex-wrap items-center gap-2">
         <button
           type="button"
@@ -660,12 +548,15 @@ const DEFAULT_STATS: DashboardData = {
   total_other_assets: 0,
   assigned_now_count: 0,
   inspections_due_count: 0,
+  inspections_due_total: 0,
   inspections_due: [],
   open_work_orders_count: 0,
   in_progress_work_orders_count: 0,
   pending_parts_work_orders_count: 0,
   overdue_equipment_count: 0,
   overdue_equipment: [],
+  compliance_expiring_count: 0,
+  compliance_expiring: [],
 };
 
 export default function FleetDashboard() {
@@ -727,16 +618,28 @@ export default function FleetDashboard() {
 
   if (isLoading) {
     return (
-      <div className="space-y-6 min-w-0 overflow-x-hidden">
-        <div className="rounded-xl border bg-white p-4 mb-4">
+      <div className="space-y-4 min-w-0 overflow-x-hidden bg-gray-50/40">
+        <div className="rounded-xl border bg-white p-4 shadow-sm">
           <div className="h-5 w-48 bg-gray-100 animate-pulse rounded" />
           <div className="h-3 w-40 mt-2 bg-gray-100 animate-pulse rounded" />
         </div>
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
           {[1, 2, 3, 4].map((i) => (
-            <div key={i} className="rounded-xl border border-gray-200 bg-white p-5 min-h-[120px]">
+            <div key={i} className="rounded-xl border border-gray-200 bg-white p-5 h-[130px] shadow-sm">
               <div className="h-4 w-24 bg-gray-100 animate-pulse rounded mb-3" />
               <div className="h-8 w-16 bg-gray-100 animate-pulse rounded" />
+            </div>
+          ))}
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          {[1, 2, 3].map((i) => (
+            <div key={i} className="rounded-xl border border-gray-200 bg-white p-5 min-h-[220px] shadow-sm">
+              <div className="h-4 w-32 bg-gray-100 animate-pulse rounded mb-4" />
+              <div className="space-y-3">
+                <div className="h-10 bg-gray-100 animate-pulse rounded" />
+                <div className="h-10 bg-gray-100 animate-pulse rounded" />
+                <div className="h-10 bg-gray-100 animate-pulse rounded" />
+              </div>
             </div>
           ))}
         </div>
@@ -745,11 +648,12 @@ export default function FleetDashboard() {
   }
 
   return (
-    <div className="space-y-4 min-w-0 overflow-x-hidden">
-      <DashboardHeader todayLabel={todayLabel} />
+    <div className="space-y-5 min-w-0 overflow-x-hidden bg-gray-50/40">
+      <FleetEquipmentPageHeader todayLabel={todayLabel} />
 
       {/* Row 1 — Operational Snapshot */}
       <section>
+        <SectionLabel>Operational Snapshot</SectionLabel>
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
           <KPIStatCard
             title="Total Assets"
@@ -760,6 +664,7 @@ export default function FleetDashboard() {
               stats.total_other_assets
             )}
             icon={IconFleet}
+            iconTone="bg-blue-50 text-blue-600"
             status="ok"
             onClick={() => nav('/fleet/vehicles')}
           />
@@ -768,6 +673,7 @@ export default function FleetDashboard() {
             value={stats.assigned_now_count}
             subtext="Currently in the field"
             icon={IconUserCheck}
+            iconTone="bg-emerald-50 text-emerald-600"
             status="ok"
             onClick={() => nav('/fleet/assets?assigned=true')}
           />
@@ -776,6 +682,7 @@ export default function FleetDashboard() {
             value={stats.inspections_due_count}
             subtext="Requires attention"
             icon={IconAlertCircle}
+            iconTone="bg-amber-50 text-amber-600"
             status={stats.inspections_due_count >= 10 ? 'critical' : inspectionsStatus}
             onClick={() => nav('/fleet/inspections')}
           />
@@ -784,30 +691,22 @@ export default function FleetDashboard() {
             value={openWorkOrdersTotal}
             subtext={`${stats.in_progress_work_orders_count} in progress • ${stats.pending_parts_work_orders_count} pending parts`}
             icon={IconWrench}
+            iconTone="bg-purple-50 text-purple-600"
             status={workOrdersStatus}
             onClick={() => nav('/fleet/work-orders')}
           />
         </div>
       </section>
 
-      {/* Row 1b — Pending inspections & open work orders */}
+      {/* Row 2 — Attention Required */}
       <section>
+        <SectionLabel>Attention Required</SectionLabel>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <PendingInspectionsCard
-            title="Pending Body Inspections"
-            icon={IconFleet}
-            items={pendingBodyInspections}
-            onViewAll={() => nav('/fleet/inspections?type=body')}
+            bodyItems={pendingBodyInspections}
+            mechanicalItems={pendingMechanicalInspections}
+            onViewAll={(type) => nav(`/fleet/inspections?type=${type}`)}
             onOpen={(id) => nav(`/fleet/inspections/${id}`)}
-            emptyMessage="No pending body inspections"
-          />
-          <PendingInspectionsCard
-            title="Pending Mechanical Inspections"
-            icon={IconWrench}
-            items={pendingMechanicalInspections}
-            onViewAll={() => nav('/fleet/inspections?type=mechanical')}
-            onOpen={(id) => nav(`/fleet/inspections/${id}`)}
-            emptyMessage="No pending mechanical inspections"
           />
           <OpenWorkOrdersCard
             items={openWorkOrdersData?.items ?? []}
@@ -815,55 +714,6 @@ export default function FleetDashboard() {
             onViewAll={() => nav('/fleet/work-orders')}
             onOpen={(id) => nav(`/fleet/work-orders/${id}`)}
           />
-        </div>
-      </section>
-
-      {/* Row 2 — Compliance & Utilization */}
-      <section className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-        <div className="lg:col-span-2">
-          <RiskCompliancePanel
-            overdueEquipment={stats.overdue_equipment}
-            inspectionsDue={stats.inspections_due}
-            onViewAsset={(id) => nav(buildAssetLink(id))}
-            onViewEquipment={(id) => nav(buildEquipmentLink(id))}
-          />
-        </div>
-        <div>
-          <FleetMixPanel
-            vehicles={stats.total_vehicles}
-            heavy={stats.total_heavy_machinery}
-            other={stats.total_other_assets}
-            total={stats.total_fleet_assets}
-          />
-        </div>
-      </section>
-
-      {/* Row 3 — Operations */}
-      <section className="grid grid-cols-1 lg:grid-cols-4 gap-4">
-        <div className="lg:col-span-2">
-          <DueInspectionsPanel
-            items={stats.inspections_due}
-            total={stats.inspections_due_total}
-            onViewAll={() => nav('/fleet/inspections')}
-            onOpen={(id) => nav(buildAssetLink(id))}
-          />
-        </div>
-        <div>
-          <WorkOrdersPanel
-            openCount={stats.open_work_orders_count}
-            inProgressCount={stats.in_progress_work_orders_count}
-            pendingPartsCount={stats.pending_parts_work_orders_count}
-            onViewAll={() => nav('/fleet/work-orders')}
-          />
-        </div>
-        <div>
-          <RevisionsCalendarPanel onViewCalendar={() => nav('/fleet/calendar')} />
-        </div>
-      </section>
-
-      {/* Row 3b — Compliance expiring */}
-      <section className="grid grid-cols-1 lg:grid-cols-4 gap-4">
-        <div className="lg:col-span-2">
           <ComplianceExpiringPanel
             items={stats.compliance_expiring}
             total={stats.compliance_expiring_count}
@@ -873,8 +723,29 @@ export default function FleetDashboard() {
         </div>
       </section>
 
+      {/* Row 3 — Fleet & Services */}
+      <section>
+        <SectionLabel>Fleet & Services</SectionLabel>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <FleetMixPanel
+            vehicles={stats.total_vehicles}
+            heavy={stats.total_heavy_machinery}
+            other={stats.total_other_assets}
+            total={stats.total_fleet_assets}
+          />
+          <WorkOrdersPanel
+            openCount={stats.open_work_orders_count}
+            inProgressCount={stats.in_progress_work_orders_count}
+            pendingPartsCount={stats.pending_parts_work_orders_count}
+            onViewAll={() => nav('/fleet/work-orders')}
+          />
+          <RevisionsCalendarPanel onViewCalendar={() => nav('/fleet/calendar')} />
+        </div>
+      </section>
+
       {/* Row 4 — Quick Actions */}
       <section>
+        <SectionLabel>Quick Access</SectionLabel>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <QuickActionCard
             title="Vehicles"
@@ -884,6 +755,7 @@ export default function FleetDashboard() {
             onManage={() => nav('/fleet/vehicles')}
             onAddNew={() => setNewAssetModalType('vehicle')}
             icon={IconFleet}
+            iconTone="bg-blue-50 text-blue-600"
           />
           <QuickActionCard
             title="Heavy Machinery"
@@ -892,7 +764,8 @@ export default function FleetDashboard() {
             manageLabel="Manage"
             onManage={() => nav('/fleet/heavy-machinery')}
             onAddNew={() => setNewAssetModalType('heavy_machinery')}
-            icon={IconFleet}
+            icon={IconHeavy}
+            iconTone="bg-slate-100 text-slate-700"
           />
           <QuickActionCard
             title="Equipment"
@@ -902,6 +775,7 @@ export default function FleetDashboard() {
             onManage={() => nav('/company-assets/equipment')}
             onAddNew={() => setNewEquipmentModalOpen(true)}
             icon={IconWrench}
+            iconTone="bg-amber-50 text-amber-700"
           />
         </div>
       </section>

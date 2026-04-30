@@ -201,8 +201,7 @@ export default function Inspections() {
                     </th>
                     <th className="px-3 py-2 text-left">Status</th>
                     <th className="px-3 py-2 text-left">Body</th>
-                    <th className="px-3 py-2 text-left">Mechanical</th>
-                    <th className="px-3 py-2 text-right rounded-tr-lg">Actions</th>
+                    <th className="px-3 py-2 text-left rounded-tr-lg">Mechanical</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -269,17 +268,6 @@ export default function Inspections() {
                           ) : (
                             <span className="text-gray-400 text-xs">—</span>
                           )}
-                        </td>
-                        <td className="px-3 py-3 align-top text-right" onClick={(e) => e.stopPropagation()}>
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              nav(`/fleet/inspection-schedules/${s.id}`);
-                            }}
-                            className="px-3 py-1.5 text-xs font-medium text-blue-600 hover:text-blue-800 border border-blue-200 rounded-lg hover:bg-blue-50 transition-colors"
-                          >
-                            Open
-                          </button>
                         </td>
                       </tr>
                     );
