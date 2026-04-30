@@ -5,6 +5,7 @@ from sqlalchemy import or_, and_, func, case, cast, BigInteger
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Body
 from sqlalchemy.orm import Session, joinedload
+from sqlalchemy.exc import IntegrityError
 
 from ..db import get_db
 from ..auth.security import get_current_user, require_permissions, require_roles
@@ -105,19 +106,110 @@ from ..schemas.fleet import (
 router = APIRouter(prefix="/fleet", tags=["fleet"])
 
 
-# Helper function to generate work order number
+_WO_GEN_MAX_ATTEMPTS = 32
+
+
 def generate_work_order_number(db: Session) -> str:
-    """Generate a unique work order number"""
+    """Next WO number for current year based on highest existing suffix for WO-{year}-*.
+
+    Uses max suffix (not COUNT) so gaps or manual numbers do not produce duplicates."""
     prefix = "WO"
     year = datetime.now().year
-    # Get count of work orders this year
-    count = db.query(WorkOrder).filter(
-        WorkOrder.work_order_number.like(f"{prefix}-{year}-%")
-    ).count()
-    return f"{prefix}-{year}-{count + 1:05d}"
+    pattern = f"{prefix}-{year}-%"
+    latest = (
+        db.query(WorkOrder.work_order_number)
+        .filter(WorkOrder.work_order_number.like(pattern))
+        .order_by(WorkOrder.work_order_number.desc())
+        .limit(1)
+        .scalar()
+    )
+    next_seq = 1
+    if latest:
+        parts = latest.split("-")
+        if len(parts) >= 3:
+            try:
+                next_seq = int(parts[2], 10) + 1
+            except ValueError:
+                next_seq = 1
+    return f"{prefix}-{year}-{next_seq:05d}"
 
 
-# Helper function to create work order from failed inspection
+def _inspection_condition_word(cond: str) -> str:
+    c = (cond or "").strip().lower()
+    return {"ok": "OK", "damage": "Damage", "conditional": "Conditional"}.get(c, (cond or "—").strip() or "—")
+
+
+def _mechanical_item_condition_from_results(checklist_results: Dict[str, Any], item_key: str) -> str:
+    val = checklist_results.get(item_key)
+    if isinstance(val, dict):
+        raw = val.get("status") or val.get("condition")
+    else:
+        raw = val
+    return str(raw).strip().lower() if raw is not None else ""
+
+
+def _inspection_checklist_summary_for_work_order(inspection: FleetInspection) -> str:
+    """Build a readable list of checklist items that need follow-up (damage / conditional + body issues)."""
+    cr = inspection.checklist_results
+    lines: List[str] = []
+    if isinstance(cr, dict):
+        itype = (inspection.inspection_type or "mechanical").lower()
+        if itype == "body":
+            tpl = _body_checklist_template()
+            label_by_key = {a["key"]: str(a.get("label") or a["key"]) for a in tpl.get("areas") or []}
+            areas = cr.get("areas")
+            if isinstance(areas, list):
+                for row in areas:
+                    if not isinstance(row, dict):
+                        continue
+                    key = row.get("key")
+                    cond = str(row.get("condition") or "").strip().lower()
+                    if cond not in ("damage", "conditional"):
+                        continue
+                    label = label_by_key.get(str(key), str(key))
+                    issues = str(row.get("issues") or "").strip()
+                    extra = f" — {issues}" if issues else ""
+                    lines.append(f"• {label}: {_inspection_condition_word(cond)}{extra}")
+        else:
+            tpl = _mechanical_checklist_template()
+            for sec in tpl.get("sections") or []:
+                sec_title = str(sec.get("title") or sec.get("id") or "").strip()
+                for it in sec.get("items") or []:
+                    key = it.get("key")
+                    if not key:
+                        continue
+                    label = str(it.get("label") or key)
+                    cond = _mechanical_item_condition_from_results(cr, str(key))
+                    if cond not in ("damage", "conditional"):
+                        continue
+                    prefix = f"[{sec_title}] " if sec_title else ""
+                    lines.append(f"• {prefix}{label}: {_inspection_condition_word(cond)}")
+
+    notes = (getattr(inspection, "notes", None) or "").strip()
+    if notes:
+        lines.append(f"Inspector notes: {notes}")
+
+    if not lines:
+        if str(getattr(inspection, "result", "") or "").lower() == "fail":
+            return "See the linked inspection in the app for the full checklist and photos."
+        return ""
+
+    return "Checklist — items needing attention:\n" + "\n".join(lines)
+
+
+def _work_order_description_from_inspection(inspection: FleetInspection) -> str:
+    insp_type = getattr(inspection, "inspection_type", None) or "mechanical"
+    type_label = "Body" if insp_type == "body" else "Mechanical"
+    date_s = inspection.inspection_date.strftime("%Y-%m-%d")
+    base = f"Work order from {type_label} inspection on {date_s}."
+    detail = _inspection_checklist_summary_for_work_order(inspection)
+    text = f"{base}\n\n{detail}" if detail else base
+    max_len = 12000
+    if len(text) > max_len:
+        return text[: max_len - 3] + "..."
+    return text
+
+
 def create_work_order_from_inspection(
     inspection: FleetInspection,
     db: Session,
@@ -125,21 +217,42 @@ def create_work_order_from_inspection(
 ) -> WorkOrder:
     """Create a work order automatically from a failed inspection (body or mechanical)."""
     insp_type = getattr(inspection, "inspection_type", None) or "mechanical"
-    type_label = "Body" if insp_type == "body" else "Mechanical"
-    wo = WorkOrder(
-        work_order_number=generate_work_order_number(db),
-        entity_type="fleet",
-        entity_id=inspection.fleet_asset_id,
-        description=f"Work order from {type_label} inspection on {inspection.inspection_date.strftime('%Y-%m-%d')}",
-        category="repair",
-        urgency="high" if inspection.result == "fail" else "normal",
-        status="open",
-        origin_source="inspection",
-        origin_id=inspection.id,
-        created_by=user_id,
-    )
-    db.add(wo)
-    db.flush()
+    wo: Optional[WorkOrder] = None
+    last_conflict: Optional[IntegrityError] = None
+    for _ in range(_WO_GEN_MAX_ATTEMPTS):
+        wo = WorkOrder(
+            work_order_number=generate_work_order_number(db),
+            entity_type="fleet",
+            entity_id=inspection.fleet_asset_id,
+            description=_work_order_description_from_inspection(inspection),
+            category="repair",
+            urgency="high" if inspection.result == "fail" else "normal",
+            status="open",
+            origin_source="inspection",
+            origin_id=inspection.id,
+            created_by=user_id,
+        )
+        db.add(wo)
+        try:
+            with db.begin_nested():
+                db.flush()
+            break
+        except IntegrityError as e:
+            last_conflict = e
+            db.expunge(wo)
+            wo = None
+            err_txt = ""
+            orig = getattr(e, "orig", None)
+            if orig is not None:
+                err_txt = str(orig)
+            if "work_order_number" not in err_txt and "work_orders_work_order_number" not in err_txt.lower():
+                raise
+    else:
+        if last_conflict is not None:
+            raise last_conflict
+        raise RuntimeError("could not allocate work_order_number")
+
+    assert wo is not None
     _log_work_order_activity(
         db,
         wo.id,
@@ -2528,6 +2641,52 @@ def create_inspection(
     return new_inspection
 
 
+_VALID_INSPECTION_CONDITIONS = frozenset({"ok", "damage", "conditional"})
+
+
+def _validate_fleet_inspection_final_checklist(inspection_type: str, checklist_results: Optional[dict]) -> None:
+    """Require every template item answered before pass/fail/conditional (aligned with frontend)."""
+    if not checklist_results:
+        raise HTTPException(status_code=400, detail="Cannot finalize inspection with an empty checklist.")
+    itype = (inspection_type or "mechanical").lower()
+    if itype == "body":
+        tpl = _body_checklist_template()
+        required = {a["key"] for a in tpl["areas"]}
+        areas = checklist_results.get("areas") or []
+        if not isinstance(areas, list):
+            raise HTTPException(status_code=400, detail="Body checklist areas are invalid.")
+        by_key: Dict[str, Any] = {}
+        for a in areas:
+            if isinstance(a, dict) and a.get("key"):
+                by_key[a["key"]] = a
+        for k in required:
+            row = by_key.get(k)
+            cond = (row or {}).get("condition")
+            c = str(cond).lower() if cond is not None else ""
+            if c not in _VALID_INSPECTION_CONDITIONS:
+                raise HTTPException(
+                    status_code=400,
+                    detail="Body checklist is incomplete: every area must have OK, Damage, or Conditional.",
+                )
+        return
+    tpl = _mechanical_checklist_template()
+    for sec in tpl.get("sections") or []:
+        for it in sec.get("items") or []:
+            key = it.get("key")
+            if not key:
+                continue
+            val = checklist_results.get(key)
+            cond = val
+            if isinstance(val, dict):
+                cond = val.get("status") or val.get("condition")
+            c = str(cond).lower() if cond is not None else ""
+            if c not in _VALID_INSPECTION_CONDITIONS:
+                raise HTTPException(
+                    status_code=400,
+                    detail="Mechanical checklist is incomplete: every item must have OK, Damage, or Conditional.",
+                )
+
+
 @router.put("/inspections/{inspection_id}", response_model=FleetInspectionResponse)
 def update_inspection(
     inspection_id: uuid.UUID,
@@ -2546,6 +2705,10 @@ def update_inspection(
     update_data = inspection_update.model_dump(exclude_unset=True)
     for key, value in update_data.items():
         setattr(inspection, key, value)
+
+    _result_lower = (inspection.result or "").lower()
+    if _result_lower in ("pass", "fail", "conditional"):
+        _validate_fleet_inspection_final_checklist(inspection.inspection_type or "mechanical", inspection.checklist_results)
     
     # Update fleet asset's last service odometer/hours if readings are provided
     if inspection_update.odometer_reading is not None or inspection_update.hours_reading is not None:
@@ -2558,8 +2721,15 @@ def update_inspection(
     
     # If result changed to fail and no work order exists, create one automatically
     if inspection_update.result and (inspection_update.result == InspectionResult.fail.value or inspection_update.result == "fail") and not inspection.auto_generated_work_order_id:
-        wo = create_work_order_from_inspection(inspection, db, user.id)
-        inspection.auto_generated_work_order_id = wo.id
+        existing_origin = db.query(WorkOrder).filter(
+            WorkOrder.origin_source == "inspection",
+            WorkOrder.origin_id == inspection.id,
+        ).first()
+        if existing_origin:
+            inspection.auto_generated_work_order_id = existing_origin.id
+        else:
+            wo = create_work_order_from_inspection(inspection, db, user.id)
+            inspection.auto_generated_work_order_id = wo.id
     
     # If this inspection is part of a schedule and now has a final result, check if schedule can be marked completed
     if inspection.inspection_schedule_id and inspection.result and inspection.result.lower() in ("pass", "fail", "conditional"):
@@ -2594,6 +2764,20 @@ def update_inspection(
     return inspection
 
 
+@router.get("/inspections/{inspection_id}/suggested-work-order-description")
+def get_suggested_work_order_description_from_inspection(
+    inspection_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    user=Depends(get_current_user),
+    _=Depends(require_permissions("inspections:read")),
+):
+    """Suggested WO description text (same builder as auto-generated WOs) for prefilling the New Work Order form."""
+    inspection = db.query(FleetInspection).filter(FleetInspection.id == inspection_id).first()
+    if not inspection:
+        raise HTTPException(status_code=404, detail="Inspection not found")
+    return {"description": _work_order_description_from_inspection(inspection)}
+
+
 @router.post("/inspections/{inspection_id}/generate-work-order", response_model=WorkOrderResponse)
 def generate_work_order_from_inspection(
     inspection_id: uuid.UUID,
@@ -2601,11 +2785,18 @@ def generate_work_order_from_inspection(
     user=Depends(get_current_user),
     _=Depends(require_permissions("work_orders:write"))
 ):
-    """Manually generate a work order from a failed inspection"""
+    """Manually create a work order linked to this inspection. Inspection must be finished (pass/fail/conditional)."""
     inspection = db.query(FleetInspection).filter(FleetInspection.id == inspection_id).first()
     if not inspection:
         raise HTTPException(status_code=404, detail="Inspection not found")
-    
+
+    _result_lower = (inspection.result or "").lower()
+    if _result_lower not in ("pass", "fail", "conditional"):
+        raise HTTPException(
+            status_code=400,
+            detail="Finish the inspection (pass, fail, or conditional) before creating a work order.",
+        )
+
     if inspection.auto_generated_work_order_id:
         # Return existing work order
         wo = db.query(WorkOrder).filter(WorkOrder.id == inspection.auto_generated_work_order_id).first()
@@ -2905,6 +3096,11 @@ def create_work_order(
     )
     db.add(wo)
     db.flush()
+
+    if getattr(wo, "origin_source", None) == "inspection" and getattr(wo, "origin_id", None):
+        linked_insp = db.query(FleetInspection).filter(FleetInspection.id == wo.origin_id).first()
+        if linked_insp and linked_insp.auto_generated_work_order_id is None:
+            linked_insp.auto_generated_work_order_id = wo.id
     
     # Update fleet asset's last service odometer/hours if readings are provided and entity is fleet
     if work_order.entity_type == "fleet" and (work_order.odometer_reading is not None or work_order.hours_reading is not None):

@@ -3,11 +3,10 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useState, useEffect, useMemo } from 'react';
 import { api } from '@/lib/api';
 import { formatDateLocal } from '@/lib/dateUtils';
-import { WorkOrderNewForm } from './WorkOrderNew';
+import WorkOrderNewModal from '@/components/fleet/WorkOrderNewModal';
 import FilterBuilderModal from '@/components/FilterBuilder/FilterBuilderModal';
 import FilterChip from '@/components/FilterBuilder/FilterChip';
 import { FilterRule, FieldConfig } from '@/components/FilterBuilder/types';
-import OverlayPortal from '@/components/OverlayPortal';
 
 type WorkOrder = {
   id: string;
@@ -170,8 +169,6 @@ export default function WorkOrders() {
   const search = searchParams.get('search') ?? '';
   const [isFilterModalOpen, setIsFilterModalOpen] = useState(false);
   const [showNewWorkOrderModal, setShowNewWorkOrderModal] = useState(false);
-  const [newWorkOrderCanSubmit, setNewWorkOrderCanSubmit] = useState(false);
-  const [newWorkOrderIsPending, setNewWorkOrderIsPending] = useState(false);
 
   const pageParam = parseInt(searchParams.get('page') || '1', 10);
   const [page, setPage] = useState(pageParam);
@@ -510,72 +507,16 @@ export default function WorkOrders() {
         getFieldData={() => null}
       />
 
-      {/* New Work Order Modal */}
-      {showNewWorkOrderModal && (
-        <OverlayPortal><div
-          className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center overflow-y-auto p-4"
-          onClick={() => setShowNewWorkOrderModal(false)}
-        >
-          <div
-            className="w-[900px] max-w-[95vw] max-h-[90vh] bg-gray-100 rounded-xl overflow-hidden flex flex-col border border-gray-200 shadow-xl"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="rounded-t-xl border-b border-gray-200 bg-white p-4 flex-shrink-0">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <button
-                    type="button"
-                    onClick={() => setShowNewWorkOrderModal(false)}
-                    className="p-1.5 rounded hover:bg-gray-100 transition-colors flex items-center justify-center"
-                    title="Close"
-                  >
-                    <svg className="w-4 h-4 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
-                    </svg>
-                  </button>
-                  <div>
-                    <div className="text-sm font-semibold text-gray-900">New Work Order</div>
-                    <div className="text-xs text-gray-500 mt-0.5">Create a new work order</div>
-                  </div>
-                </div>
-              </div>
-            </div>
-            <div className="overflow-y-auto flex-1 p-4">
-              <WorkOrderNewForm
-                formId="work-order-new-form-modal"
-                onSuccess={(data) => {
-                  setShowNewWorkOrderModal(false);
-                  queryClient.invalidateQueries({ queryKey: ['workOrders'] });
-                  queryClient.invalidateQueries({ queryKey: ['fleet-work-orders-calendar'] });
-                  nav(`/fleet/work-orders/${data.id}`);
-                }}
-                onCancel={() => setShowNewWorkOrderModal(false)}
-                onValidationChange={(canSubmit, isPending) => {
-                  setNewWorkOrderCanSubmit(canSubmit);
-                  setNewWorkOrderIsPending(isPending);
-                }}
-              />
-            </div>
-            <div className="flex-shrink-0 px-4 py-4 border-t border-gray-200 bg-white flex items-center justify-end gap-3 rounded-b-xl">
-              <button
-                type="button"
-                onClick={() => setShowNewWorkOrderModal(false)}
-                className="px-3 py-1.5 rounded-lg text-sm font-medium text-gray-700 border border-gray-200 hover:bg-gray-50"
-              >
-                Cancel
-              </button>
-              <button
-                type="submit"
-                form="work-order-new-form-modal"
-                disabled={!newWorkOrderCanSubmit || newWorkOrderIsPending}
-                className="px-4 py-2 rounded-lg text-sm font-semibold text-white bg-brand-red hover:bg-[#aa1212] disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                {newWorkOrderIsPending ? 'Creating...' : 'Create Work Order'}
-              </button>
-            </div>
-          </div>
-        </div></OverlayPortal>
-      )}
+      <WorkOrderNewModal
+        isOpen={showNewWorkOrderModal}
+        onClose={() => setShowNewWorkOrderModal(false)}
+        onCreated={(data) => {
+          setShowNewWorkOrderModal(false);
+          queryClient.invalidateQueries({ queryKey: ['workOrders'] });
+          queryClient.invalidateQueries({ queryKey: ['fleet-work-orders-calendar'] });
+          nav(`/fleet/work-orders/${data.id}`);
+        }}
+      />
     </div>
   );
 }

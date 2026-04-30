@@ -5,6 +5,7 @@ import { formatDateLocal } from '@/lib/dateUtils';
 import { useState } from 'react';
 import toast from 'react-hot-toast';
 import { SCHEDULE_STATUS_LABELS, URGENCY_LABELS, CATEGORY_LABELS, INSPECTION_RESULT_LABELS } from '@/lib/fleetBadges';
+import { useConfirm } from '@/components/ConfirmProvider';
 
 type Schedule = {
   id: string;
@@ -25,6 +26,7 @@ type Schedule = {
 export default function InspectionSchedules() {
   const nav = useNavigate();
   const queryClient = useQueryClient();
+  const confirm = useConfirm();
   const [statusFilter, setStatusFilter] = useState<string>('');
 
   const { data: me } = useQuery({ queryKey: ['me'], queryFn: () => api<any>('GET', '/auth/me') });
@@ -43,11 +45,11 @@ export default function InspectionSchedules() {
   const startBodyMutation = useMutation({
     mutationFn: (scheduleId: string) =>
       api<{ body_inspection_id: string }>('POST', `/fleet/inspection-schedules/${scheduleId}/start-body`),
-    onSuccess: (data) => {
+    onSuccess: (_data, scheduleId) => {
       queryClient.invalidateQueries({ queryKey: ['inspection-schedules'] });
       queryClient.invalidateQueries({ queryKey: ['fleet-inspection-schedules-calendar'] });
       queryClient.invalidateQueries({ queryKey: ['inspections'] });
-      nav(`/fleet/inspections/${data.body_inspection_id}`);
+      nav(`/fleet/inspections/${scheduleId}?focus=body`);
     },
     onError: () => {
       toast.error('Failed to open body inspection');
@@ -57,11 +59,11 @@ export default function InspectionSchedules() {
   const startMechanicalMutation = useMutation({
     mutationFn: (scheduleId: string) =>
       api<{ mechanical_inspection_id: string }>('POST', `/fleet/inspection-schedules/${scheduleId}/start-mechanical`),
-    onSuccess: (data) => {
+    onSuccess: (_data, scheduleId) => {
       queryClient.invalidateQueries({ queryKey: ['inspection-schedules'] });
       queryClient.invalidateQueries({ queryKey: ['fleet-inspection-schedules-calendar'] });
       queryClient.invalidateQueries({ queryKey: ['inspections'] });
-      nav(`/fleet/inspections/${data.mechanical_inspection_id}`);
+      nav(`/fleet/inspections/${scheduleId}?focus=mechanical`);
     },
     onError: () => {
       toast.error('Failed to open mechanical inspection');
@@ -162,7 +164,7 @@ export default function InspectionSchedules() {
                               {s.body_inspection_id ? (
                                 <button
                                   type="button"
-                                  onClick={() => nav(`/fleet/inspections/${s.body_inspection_id}`)}
+                                  onClick={() => nav(`/fleet/inspections/${s.id}?focus=body`)}
                                   className="px-3 py-1.5 text-sm font-medium text-blue-600 border border-blue-200 rounded-lg hover:bg-blue-50"
                                 >
                                   Open Body
@@ -180,7 +182,7 @@ export default function InspectionSchedules() {
                               {s.mechanical_inspection_id ? (
                                 <button
                                   type="button"
-                                  onClick={() => nav(`/fleet/inspections/${s.mechanical_inspection_id}`)}
+                                  onClick={() => nav(`/fleet/inspections/${s.id}?focus=mechanical`)}
                                   className="px-3 py-1.5 text-sm font-medium text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50"
                                 >
                                   Open Mechanical
@@ -200,7 +202,17 @@ export default function InspectionSchedules() {
                           {isAdmin && (
                             <button
                               type="button"
-                              onClick={() => window.confirm('Delete this schedule permanently? Linked inspections will also be removed.') && deleteScheduleMutation.mutate(s.id)}
+                              onClick={async () => {
+                                const result = await confirm({
+                                  title: 'Delete schedule',
+                                  message:
+                                    'Delete this schedule permanently? Linked inspections will also be removed. This action cannot be undone.',
+                                  confirmText: 'Delete',
+                                  cancelText: 'Cancel',
+                                });
+                                if (result !== 'confirm') return;
+                                deleteScheduleMutation.mutate(s.id);
+                              }}
                               disabled={deleteScheduleMutation.isPending}
                               className="px-3 py-1.5 text-sm font-medium text-red-700 bg-red-50 border border-red-200 rounded-lg hover:bg-red-100 disabled:opacity-50"
                             >

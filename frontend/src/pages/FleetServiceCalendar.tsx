@@ -355,7 +355,7 @@ export default function FleetServiceCalendar({
                       <button
                         key={`sched-${ev.id}`}
                         type="button"
-                        onClick={() => navigate(`/fleet/inspection-schedules/${ev.id}`)}
+                        onClick={() => navigate(`/fleet/inspections/${ev.id}`)}
                         className="w-full text-left text-xs px-2 py-1.5 rounded-lg border shadow-sm bg-violet-50 hover:bg-violet-100 border-violet-200/80 text-violet-900"
                         title={`Inspection schedule — ${inLines.hint} · ${formatTime(ev.scheduled_at)}`}
                       >
