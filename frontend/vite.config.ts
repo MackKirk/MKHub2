@@ -5,6 +5,58 @@ import { fileURLToPath, URL } from 'node:url';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
+/** Same-origin API paths served by FastAPI (localhost:8000). Must match app/routes * APIRouter prefixes so `npm run dev` proxies JSON to the backend instead of returning SPA HTML. */
+const BACKEND_DEV_TARGET = 'http://localhost:8000';
+const backendProxyPrefixes = [
+  '/admin',
+  '/api',
+  '/auth',
+  '/bug-report',
+  '/calendar',
+  '/chat',
+  '/clients',
+  '/community',
+  '/company',
+  '/company-credit-cards',
+  '/dispatch',
+  '/document-creator',
+  '/employees',
+  '/estimate',
+  '/files',
+  '/fleet',
+  '/form-custom-lists',
+  '/form-templates',
+  '/integrations',
+  '/inventory',
+  '/notifications',
+  '/onboarding',
+  '/orders',
+  '/permissions',
+  '/projects',
+  '/proposals',
+  '/quotes',
+  '/reviews',
+  '/safety',
+  '/search',
+  '/settings',
+  '/task-requests',
+  '/tasks',
+  '/training',
+  '/ui',
+  '/users',
+] as const;
+
+const backendDevProxy = Object.fromEntries(
+  backendProxyPrefixes.map((prefix) => [
+    prefix,
+    {
+      target: BACKEND_DEV_TARGET,
+      changeOrigin: true,
+      ...(prefix === '/chat' ? { ws: true as const } : {}),
+    },
+  ])
+);
+
 export default defineConfig({
   plugins: [react()],
   resolve: {
@@ -21,66 +73,7 @@ export default defineConfig({
   server: { 
     port: 5173, 
     host: true,
-    proxy: {
-      // Proxy para APIs do backend durante desenvolvimento
-      '/api': {
-        target: 'http://localhost:8000',
-        changeOrigin: true,
-      },
-      '/auth': {
-        target: 'http://localhost:8000',
-        changeOrigin: true,
-      },
-      '/fleet': {
-        target: 'http://localhost:8000',
-        changeOrigin: true,
-      },
-      '/files': {
-        target: 'http://localhost:8000',
-        changeOrigin: true,
-      },
-      '/ui': {
-        target: 'http://localhost:8000',
-        changeOrigin: true,
-      },
-      '/users': {
-        target: 'http://localhost:8000',
-        changeOrigin: true,
-      },
-      '/projects': {
-        target: 'http://localhost:8000',
-        changeOrigin: true,
-      },
-      '/tasks': {
-        target: 'http://localhost:8000',
-        changeOrigin: true,
-      },
-      '/quotes': {
-        target: 'http://localhost:8000',
-        changeOrigin: true,
-      },
-      '/admin': {
-        target: 'http://localhost:8000',
-        changeOrigin: true,
-      },
-      '/onboarding': {
-        target: 'http://localhost:8000',
-        changeOrigin: true,
-      },
-      '/chat': {
-        target: 'http://localhost:8000',
-        changeOrigin: true,
-        ws: true,
-      },
-      '/company-credit-cards': {
-        target: 'http://localhost:8000',
-        changeOrigin: true,
-      },
-      '/training': {
-        target: 'http://localhost:8000',
-        changeOrigin: true,
-      },
-    }
+    proxy: backendDevProxy,
   },
   build: { 
     outDir: 'dist',
