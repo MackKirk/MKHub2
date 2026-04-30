@@ -1,9 +1,20 @@
 # Script para modo integrado (build frontend + backend - simula Render)
+# Uso:
+#   .\scripts\dev-full.ps1           → npm run build + uvicorn (igual produção local)
+#   .\scripts\dev-full.ps1 -Dev      → Vite dev server (HMR) + uvicorn --reload (sem build)
+#
+# Em -Dev abra o app em http://localhost:5173 (proxy para API em :8000). Ctrl+C encerra o backend e o Vite.
+
+[CmdletBinding()]
+param(
+    [switch]$Dev
+)
 
 $ErrorActionPreference = "Stop"
 
+$modeLabel = if ($Dev) { "Desenvolvimento (Vite HMR + API)" } else { "Integrado (Simula Render)" }
 Write-Host "========================================" -ForegroundColor Cyan
-Write-Host "MK Hub - Modo Integrado (Simula Render)" -ForegroundColor Cyan
+Write-Host "MK Hub - $modeLabel" -ForegroundColor Cyan
 Write-Host "========================================" -ForegroundColor Cyan
 Write-Host ""
 
@@ -94,30 +105,55 @@ if (-not (Test-Path "frontend\node_modules")) {
 }
 Write-Host ""
 
-# Build do frontend
-Write-Host "Construindo frontend (isso pode levar alguns minutos)..." -ForegroundColor Yellow
-Set-Location frontend
-npm run build
-if ($LASTEXITCODE -ne 0) {
-    Write-Host "Erro ao construir frontend" -ForegroundColor Red
-    Write-Host "Verifique os erros acima" -ForegroundColor Yellow
-    Set-Location ..
-    exit 1
-}
-Set-Location ..
-Write-Host ""
+$viteRootProcess = $null
 
-Write-Host "Frontend construído com sucesso!" -ForegroundColor Green
-Write-Host ""
+if ($Dev) {
+    Write-Host "Modo -Dev: sem npm run build; iniciando Vite (HMR)..." -ForegroundColor Yellow
+    $frontendPath = (Resolve-Path "frontend").Path
+    # Janela separada para logs do Vite; encerrada com taskkill /T ao sair do uvicorn
+    $viteCmd = "Set-Location -LiteralPath '$frontendPath'; npm run dev"
+    $viteRootProcess = Start-Process -FilePath "powershell.exe" `
+        -ArgumentList @("-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", $viteCmd) `
+        -PassThru
+    Write-Host "Vite iniciado (PID $($viteRootProcess.Id)). Aguarde alguns segundos antes de abrir o browser." -ForegroundColor Green
+    Write-Host ""
+} else {
+    # Build do frontend
+    Write-Host "Construindo frontend (isso pode levar alguns minutos)..." -ForegroundColor Yellow
+    Set-Location frontend
+    npm run build
+    if ($LASTEXITCODE -ne 0) {
+        Write-Host "Erro ao construir frontend" -ForegroundColor Red
+        Write-Host "Verifique os erros acima" -ForegroundColor Yellow
+        Set-Location ..
+        exit 1
+    }
+    Set-Location ..
+    Write-Host ""
+    Write-Host "Frontend construído com sucesso!" -ForegroundColor Green
+    Write-Host ""
+}
+
 Write-Host "========================================" -ForegroundColor Green
 Write-Host "Iniciando backend..." -ForegroundColor Green
 Write-Host "========================================" -ForegroundColor Green
 Write-Host ""
-Write-Host "Backend: http://localhost:8000" -ForegroundColor Cyan
-Write-Host "Documentação: http://localhost:8000/docs" -ForegroundColor Cyan
-Write-Host "Pressione Ctrl+C para parar" -ForegroundColor Yellow
+if ($Dev) {
+    Write-Host "SPA (dev):   http://localhost:5173" -ForegroundColor Cyan
+    Write-Host "API/docs:    http://localhost:8000  e  /docs" -ForegroundColor Cyan
+} else {
+    Write-Host "App:         http://localhost:8000" -ForegroundColor Cyan
+    Write-Host "Documentação: http://localhost:8000/docs" -ForegroundColor Cyan
+}
+Write-Host "Pressione Ctrl+C para parar o backend$(if ($Dev) { ' e o Vite' })." -ForegroundColor Yellow
 Write-Host ""
 
-# Iniciar backend
-uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
-
+try {
+    uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+} finally {
+    if ($null -ne $viteRootProcess -and -not $viteRootProcess.HasExited) {
+        Write-Host ""
+        Write-Host "Encerrando Vite (processo $($viteRootProcess.Id))..." -ForegroundColor Yellow
+        taskkill /PID $viteRootProcess.Id /T /F 2>$null | Out-Null
+    }
+}

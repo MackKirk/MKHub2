@@ -33,10 +33,17 @@ type MenuCategory = {
   items: MenuItem[];
 };
 
+/** Personal → My Training: hub + course pages only (not /training/dashboard or /training/admin). */
+function pathnameIsLearnerTraining(pathname: string): boolean {
+  if (pathname === '/training') return true;
+  if (!pathname.startsWith('/training/')) return false;
+  const parts = pathname.split('/').filter(Boolean);
+  const seg = parts[1];
+  if (seg === 'dashboard' || seg === 'admin' || seg === 'hr-records') return false;
+  return true;
+}
+
 function menuChildMatchesLocation(child: MenuItem, pathname: string, search: string): boolean {
-  if (child.id === 'personal-my-certificates') {
-    return pathname === '/training' && new URLSearchParams(search).get('tab') === 'certificates';
-  }
   if (child.id === 'fleet-assets') {
     return ['/fleet/assets', '/fleet/vehicles', '/fleet/heavy-machinery', '/fleet/other-assets'].some(
       (p) => pathname === p || pathname.startsWith(p + '/')
@@ -436,20 +443,7 @@ export default function AppShell({ children }: PropsWithChildren){
         { id: 'clock-in-out', label: 'Clock in/out', path: '/clock-in-out', icon: <IconClock /> },
         { id: 'task-requests', label: 'Requests', path: '/task-requests', icon: <IconRequest /> },
         { id: 'tasks', label: 'Tasks', path: '/tasks', icon: <IconClipboard /> },
-        {
-          id: 'my-training',
-          label: 'My Training',
-          path: '/training',
-          icon: <IconAcademic />,
-          children: [
-            {
-              id: 'personal-my-certificates',
-              label: 'My certificates',
-              path: '/training?tab=certificates',
-              icon: <IconDocument />,
-            },
-          ],
-        },
+        { id: 'my-training', label: 'My Training', path: '/training', icon: <IconAcademic /> },
       ]
     },
     {
@@ -773,6 +767,9 @@ export default function AppShell({ children }: PropsWithChildren){
           return true;
         }
       }
+      if (item.id === 'my-training' && item.path === '/training') {
+        return pathnameIsLearnerTraining(location.pathname);
+      }
       const isSelfActive = location.pathname === item.path || location.pathname.startsWith(item.path + '/');
       if (isSelfActive) return true;
       if (Array.isArray(item.children) && item.children.some((child) => menuChildMatchesLocation(child, location.pathname, location.search))) {
@@ -1057,6 +1054,9 @@ export default function AppShell({ children }: PropsWithChildren){
                           else if (item.id === 'fleet-assets') {
                             isItemActive = ['/fleet/assets', '/fleet/vehicles', '/fleet/heavy-machinery', '/fleet/other-assets'].some(p => location.pathname === p || location.pathname.startsWith(p + '/'));
                           }
+                          else if (item.id === 'my-training' && item.path === '/training') {
+                            isItemActive = pathnameIsLearnerTraining(location.pathname);
+                          }
                           else {
                             isItemActive = location.pathname === item.path || location.pathname.startsWith(item.path + '/');
                           }
@@ -1144,6 +1144,11 @@ export default function AppShell({ children }: PropsWithChildren){
                           );
                         }
 
+                        const leafLinkActive = (navActive: boolean) =>
+                          item.id === 'my-training'
+                            ? pathnameIsLearnerTraining(location.pathname)
+                            : isItemActive || navActive;
+
                         return (
                           <NavLink
                             key={item.id}
@@ -1151,19 +1156,27 @@ export default function AppShell({ children }: PropsWithChildren){
                             // Dashboards should only be active on the exact route (/fleet, /business),
                             // otherwise they stay highlighted on sub-routes like /fleet/assets.
                             end={item.id === 'fleet-dashboard' || item.id === 'business-dashboard' || item.id === 'rm-business-dashboard'}
-                            className={({isActive: navActive}) =>
-                              `relative flex items-center gap-3 px-3 py-2 rounded-lg transition-all duration-200 ${
-                                (isItemActive || navActive) 
-                                  ? 'bg-brand-red/80 text-white font-medium shadow-md shadow-brand-red/10' 
+                            className={({ isActive: navActive }) => {
+                              const on = leafLinkActive(navActive);
+                              return `relative flex items-center gap-3 px-3 py-2 rounded-lg transition-all duration-200 ${
+                                on
+                                  ? 'bg-brand-red/80 text-white font-medium shadow-md shadow-brand-red/10'
                                   : 'text-gray-400 hover:text-white hover:bg-gray-700/50'
-                              }`
-                            }
+                              }`;
+                            }}
                           >
-                            {isItemActive && (
-                              <div className="absolute left-0 top-1/2 -translate-y-1/2 w-0.5 h-5 bg-white rounded-r-full" />
-                            )}
-                            <span className={`flex-shrink-0 ${isItemActive ? 'opacity-100' : 'opacity-60'}`}>{item.icon}</span>
-                            <span className="text-xs font-semibold">{item.label}</span>
+                            {({ isActive: navActive }) => {
+                              const on = leafLinkActive(navActive);
+                              return (
+                                <>
+                                  {on && (
+                                    <div className="absolute left-0 top-1/2 -translate-y-1/2 w-0.5 h-5 bg-white rounded-r-full" />
+                                  )}
+                                  <span className={`flex-shrink-0 ${on ? 'opacity-100' : 'opacity-60'}`}>{item.icon}</span>
+                                  <span className="text-xs font-semibold">{item.label}</span>
+                                </>
+                              );
+                            }}
                           </NavLink>
                         );
                       })}
