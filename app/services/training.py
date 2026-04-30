@@ -31,6 +31,19 @@ from ..storage.blob_provider import BlobStorageProvider
 from ..config import settings
 
 
+def effective_max_attempts(quiz: TrainingQuiz) -> Optional[int]:
+    """Maximum quiz submissions per user. None = unlimited until pass."""
+    if getattr(quiz, "max_attempts", None) is not None:
+        return quiz.max_attempts
+    return None if quiz.allow_retry else 1
+
+
+def sync_allow_retry_flag(quiz: TrainingQuiz) -> None:
+    """Keep legacy allow_retry aligned with max_attempts for older readers."""
+    mx = getattr(quiz, "max_attempts", None)
+    quiz.allow_retry = mx is None or mx > 1
+
+
 LMS_PROVIDER_LABEL = "MKHub LMS"
 LMS_NOTE_PREFIX = "[MKHub LMS]"
 
@@ -826,7 +839,9 @@ def duplicate_quiz(quiz: TrainingQuiz, new_lesson_id: uuid.UUID, db: Session) ->
         title=quiz.title,
         passing_score_percent=quiz.passing_score_percent,
         allow_retry=quiz.allow_retry,
+        max_attempts=getattr(quiz, "max_attempts", None),
     )
+    sync_allow_retry_flag(new_quiz)
     db.add(new_quiz)
     db.flush()
     

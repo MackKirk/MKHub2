@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime
-from typing import Optional, List, Dict, Any
-from pydantic import BaseModel, field_validator
+from typing import Optional, List, Dict, Any, Tuple
+from pydantic import BaseModel, field_validator, model_validator
 
 
 # Course Schemas
@@ -165,6 +165,15 @@ class QuizBase(BaseModel):
     title: str
     passing_score_percent: int = 70
     allow_retry: bool = True
+    # None = unlimited attempts until passing score; integer = max submissions total
+    max_attempts: Optional[int] = None
+
+    @field_validator("max_attempts")
+    @classmethod
+    def validate_max_attempts(cls, v: Optional[int]) -> Optional[int]:
+        if v is not None and v < 1:
+            raise ValueError("max_attempts must be at least 1 when set")
+        return v
 
 
 class QuizCreate(QuizBase):
@@ -175,6 +184,14 @@ class QuizUpdate(BaseModel):
     title: Optional[str] = None
     passing_score_percent: Optional[int] = None
     allow_retry: Optional[bool] = None
+    max_attempts: Optional[int] = None
+
+    @field_validator("max_attempts")
+    @classmethod
+    def validate_max_attempts_update(cls, v: Optional[int]) -> Optional[int]:
+        if v is not None and v < 1:
+            raise ValueError("max_attempts must be at least 1 when set")
+        return v
 
 
 class QuizResponse(QuizBase):
@@ -187,25 +204,95 @@ class QuizResponse(QuizBase):
         from_attributes = True
 
 
+# Quiz question types:
+# - single_choice: one correct option (index string "0", "1", …)
+# - multiple_choice: legacy alias for single_choice (existing rows)
+# - multiple_select: several correct options; correct_answer is sorted comma-separated indices "0,2"
+# - true_false: correct_answer is "true" or "false"
+
+
+def validate_and_normalize_quiz_question(
+    question_type: str,
+    correct_answer: str,
+    options: Optional[List[str]],
+) -> Tuple[str, Optional[List[str]]]:
+    """Validate fields together; return normalized correct_answer and options list."""
+    ca = (correct_answer or "").strip()
+    raw_opts = options or []
+    opts = [str(o).strip() for o in raw_opts if o is not None and str(o).strip()]
+
+    if question_type == "true_false":
+        low = ca.lower()
+        if low not in ("true", "false"):
+            raise ValueError('For true/false questions, correct_answer must be "true" or "false"')
+        return (low, None)
+
+    if question_type in ("single_choice", "multiple_choice"):
+        if len(opts) < 2:
+            raise ValueError("Single-choice questions need at least 2 options")
+        try:
+            idx = int(ca)
+        except ValueError as e:
+            raise ValueError("correct_answer must be the zero-based index of the correct option") from e
+        if idx < 0 or idx >= len(opts):
+            raise ValueError("correct_answer index is out of range for the options list")
+        return (str(idx), opts)
+
+    if question_type == "multiple_select":
+        if len(opts) < 2:
+            raise ValueError("Multiple-select questions need at least 2 options")
+        parts = [p.strip() for p in ca.split(",") if p.strip()]
+        indices: List[int] = []
+        for p in parts:
+            try:
+                indices.append(int(p))
+            except ValueError as e:
+                raise ValueError(
+                    "correct_answer must be comma-separated indices of correct options (e.g. 0,2)"
+                ) from e
+        if len(indices) < 1:
+            raise ValueError("Select at least one correct option")
+        if len(set(indices)) != len(indices):
+            raise ValueError("Duplicate indices in correct_answer")
+        for idx in indices:
+            if idx < 0 or idx >= len(opts):
+                raise ValueError("correct_answer index out of range")
+        normalized = ",".join(str(x) for x in sorted(indices))
+        return (normalized, opts)
+
+    raise ValueError(f"Unknown question_type: {question_type}")
+
+
+QUIZ_QUESTION_TYPES = frozenset({"single_choice", "multiple_choice", "multiple_select", "true_false"})
+
+
 # Quiz Question Schemas
 class QuizQuestionBase(BaseModel):
     question_text: str
-    question_type: str  # multiple_choice|true_false
+    question_type: str
     order_index: int = 0
     correct_answer: str
     options: Optional[List[str]] = None
-    
-    @field_validator('question_type')
+
+    @field_validator("question_type")
     @classmethod
-    def validate_question_type(cls, v):
-        allowed = ['multiple_choice', 'true_false']
-        if v not in allowed:
-            raise ValueError(f'question_type must be one of {allowed}')
+    def validate_question_type(cls, v: str) -> str:
+        if v not in QUIZ_QUESTION_TYPES:
+            raise ValueError(f"question_type must be one of {sorted(QUIZ_QUESTION_TYPES)}")
         return v
 
 
 class QuizQuestionCreate(QuizQuestionBase):
-    pass
+    order_index: Optional[int] = None  # type: ignore[assignment]
+
+    @model_validator(mode="after")
+    def normalize_fields(self) -> "QuizQuestionCreate":
+        ca, opts = validate_and_normalize_quiz_question(
+            self.question_type, self.correct_answer, self.options
+        )
+        self.correct_answer = ca
+        self.options = opts
+        return self
 
 
 class QuizQuestionUpdate(BaseModel):
@@ -214,6 +301,15 @@ class QuizQuestionUpdate(BaseModel):
     order_index: Optional[int] = None
     correct_answer: Optional[str] = None
     options: Optional[List[str]] = None
+
+    @field_validator("question_type")
+    @classmethod
+    def validate_question_type_opt(cls, v: Optional[str]) -> Optional[str]:
+        if v is None:
+            return v
+        if v not in QUIZ_QUESTION_TYPES:
+            raise ValueError(f"question_type must be one of {sorted(QUIZ_QUESTION_TYPES)}")
+        return v
 
 
 class QuizQuestionResponse(QuizQuestionBase):
@@ -267,11 +363,14 @@ class QuizSubmissionRequest(BaseModel):
 
 class QuizSubmissionResponse(BaseModel):
     passed: bool
-    score_percent: int
-    correct_count: int
+    score_percent: Optional[int] = None
+    correct_count: Optional[int] = None
     total_count: int
     can_retry: bool
-    results: Optional[Dict[str, bool]] = None  # question_id -> is_correct
+    results: Optional[Dict[str, bool]] = None  # question_id -> is_correct (omitted when results_hidden)
+    results_hidden: bool = False
+    attempts_used: int = 0
+    attempts_remaining: Optional[int] = None  # None when unlimited
 
 
 # Bulk Reorder Schemas

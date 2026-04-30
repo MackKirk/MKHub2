@@ -34,11 +34,41 @@ type QuizQuestion = {
   options?: string[];
 };
 
+function isQuizSingleChoice(t: string) {
+  return t === 'single_choice' || t === 'multiple_choice';
+}
+
+function isQuizMultiSelect(t: string) {
+  return t === 'multiple_select';
+}
+
+function parseAnswerIndices(s: string | undefined): Set<number> {
+  const out = new Set<number>();
+  if (!s) return out;
+  for (const p of s.split(',')) {
+    const n = parseInt(p.trim(), 10);
+    if (!Number.isNaN(n)) out.add(n);
+  }
+  return out;
+}
+
+function sortAnswerIndices(ids: Set<number>): string {
+  return [...ids]
+    .sort((a, b) => a - b)
+    .map(String)
+    .join(',');
+}
+
 type Quiz = {
   id: string;
   title: string;
   passing_score_percent: number;
   allow_retry: boolean;
+  max_attempts?: number | null;
+  attempts_used?: number;
+  attempts_remaining?: number | null;
+  /** False when the learner used all submissions without passing */
+  can_submit?: boolean;
   questions: QuizQuestion[];
 };
 
@@ -163,18 +193,27 @@ export default function TrainingCourse() {
     onSuccess: (data, variables) => {
       setQuizResult(data);
       setQuizSubmitted(true);
+      queryClient.invalidateQueries({
+        queryKey: ['training-lesson-quiz', courseId, variables.moduleId, variables.lessonId],
+      });
       if (data.passed) {
-        toast.success(`Quiz passed! Score: ${data.score_percent}%`);
+        toast.success(
+          `Quiz passed!${data.score_percent != null ? ` Score: ${data.score_percent}%` : ''}`,
+        );
         queryClient.invalidateQueries({ queryKey: ['training-course', courseId] });
         queryClient.invalidateQueries({ queryKey: ['training'] });
+      } else if (data.results_hidden) {
+        toast.error(
+          `You did not pass.${data.attempts_remaining != null ? ` Attempts left: ${data.attempts_remaining}.` : ''} Question-by-question feedback is hidden until your last attempt.`,
+        );
       } else {
         toast.error(
-          `Quiz failed. Score: ${data.score_percent}%. Minimum: ${variables.passingScorePercent}%`,
+          `Quiz failed. Score: ${data.score_percent ?? '—'}%. Minimum: ${variables.passingScorePercent}%`,
         );
       }
     },
-    onError: () => {
-      toast.error('Failed to submit quiz');
+    onError: (err: Error) => {
+      toast.error(err?.message || 'Failed to submit quiz');
     },
   });
 
@@ -197,18 +236,38 @@ export default function TrainingCourse() {
 
   const handleSubmitQuiz = () => {
     if (!selectedLesson || !lessonQuiz || !selectedModule) return;
+    const normalized: Record<string, string> = { ...quizAnswers };
+    for (const q of lessonQuiz.questions) {
+      if (isQuizMultiSelect(q.question_type) && normalized[q.id]) {
+        normalized[q.id] = sortAnswerIndices(parseAnswerIndices(normalized[q.id]));
+      }
+    }
     submitQuizMutation.mutate({
       moduleId: selectedModule.id,
       lessonId: selectedLesson.id,
-      answers: quizAnswers,
+      answers: normalized,
       passingScorePercent: lessonQuiz.passing_score_percent,
     });
   };
+
+  const quizFullyAnswered =
+    !!lessonQuiz &&
+    lessonQuiz.questions.every((q) => {
+      const a = quizAnswers[q.id];
+      if (a === undefined || a === '') return false;
+      if (isQuizMultiSelect(q.question_type)) {
+        return a.split(',').some((x) => x.trim() !== '');
+      }
+      return true;
+    });
 
   const handleRetryQuiz = () => {
     setQuizAnswers({});
     setQuizSubmitted(false);
     setQuizResult(null);
+    queryClient.invalidateQueries({
+      queryKey: ['training-lesson-quiz', courseId, selectedModule?.id, selectedLesson?.id],
+    });
   };
 
   return (
@@ -372,18 +431,38 @@ export default function TrainingCourse() {
                   {lessonQuiz && (
                     <>
                   <h3 className="text-xl font-bold mb-4">{lessonQuiz.title}</h3>
-                  <p className="text-sm text-gray-600 mb-6">
+                  <p className="text-sm text-gray-600 mb-2">
                     Passing score: {lessonQuiz.passing_score_percent}%
                   </p>
+                  {lessonQuiz.max_attempts != null && (
+                    <p className="text-sm text-gray-600 mb-6">
+                      Submissions used: {lessonQuiz.attempts_used ?? 0} / {lessonQuiz.max_attempts}
+                      {lessonQuiz.attempts_remaining != null && lessonQuiz.attempts_remaining > 0 ? (
+                        <span className="text-gray-500"> ({lessonQuiz.attempts_remaining} remaining)</span>
+                      ) : null}
+                    </p>
+                  )}
+                  {lessonQuiz.max_attempts == null && (lessonQuiz.attempts_used ?? 0) > 0 && (
+                    <p className="text-sm text-gray-600 mb-6">
+                      Keep trying until you pass — unlimited attempts.
+                    </p>
+                  )}
 
-                  {!quizSubmitted ? (
+                  {selectedLesson.completed ? (
+                    <p className="rounded-lg bg-green-50 px-4 py-3 text-green-900">You completed this lesson.</p>
+                  ) : lessonQuiz.can_submit === false ? (
+                    <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+                      You have used all attempts for this quiz without reaching the passing score. Contact your
+                      administrator if you need access again.
+                    </div>
+                  ) : !quizSubmitted ? (
                     <div className="space-y-6">
                       {lessonQuiz.questions.map((question, idx) => (
                         <div key={question.id} className="border-b pb-4">
                           <p className="font-semibold mb-3">
                             {idx + 1}. {question.question_text}
                           </p>
-                          {question.question_type === 'multiple_choice' && question.options ? (
+                          {isQuizSingleChoice(question.question_type) && question.options ? (
                             <div className="space-y-2">
                               {question.options.map((option, optIdx) => (
                                 <label
@@ -403,6 +482,36 @@ export default function TrainingCourse() {
                                   <span>{option}</span>
                                 </label>
                               ))}
+                            </div>
+                          ) : isQuizMultiSelect(question.question_type) && question.options ? (
+                            <div className="space-y-2">
+                              <p className="text-xs text-gray-500 mb-1">Select all that apply</p>
+                              {question.options.map((option, optIdx) => {
+                                const picked = parseAnswerIndices(quizAnswers[question.id]);
+                                const checked = picked.has(optIdx);
+                                return (
+                                  <label
+                                    key={optIdx}
+                                    className="flex items-center gap-2 p-2 hover:bg-gray-50 rounded cursor-pointer"
+                                  >
+                                    <input
+                                      type="checkbox"
+                                      checked={checked}
+                                      onChange={() => {
+                                        const next = new Set(picked);
+                                        if (next.has(optIdx)) next.delete(optIdx);
+                                        else next.add(optIdx);
+                                        setQuizAnswers({
+                                          ...quizAnswers,
+                                          [question.id]: sortAnswerIndices(next),
+                                        });
+                                      }}
+                                      className="w-4 h-4 rounded border-gray-300"
+                                    />
+                                    <span>{option}</span>
+                                  </label>
+                                );
+                              })}
                             </div>
                           ) : question.question_type === 'true_false' ? (
                             <div className="space-y-2">
@@ -439,10 +548,7 @@ export default function TrainingCourse() {
 
                       <button
                         onClick={handleSubmitQuiz}
-                        disabled={
-                          submitQuizMutation.isPending ||
-                          Object.keys(quizAnswers).length < lessonQuiz.questions.length
-                        }
+                        disabled={submitQuizMutation.isPending || !quizFullyAnswered}
                         className="w-full px-6 py-3 bg-[#7f1010] text-white rounded-lg font-semibold hover:bg-[#a31414] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                       >
                         {submitQuizMutation.isPending ? 'Submitting...' : 'Submit Quiz'}
@@ -458,16 +564,30 @@ export default function TrainingCourse() {
                         <p className="font-bold text-lg">
                           {quizResult.passed ? '✓ Quiz Passed!' : '✗ Quiz Failed'}
                         </p>
-                        <p className="text-sm mt-1">
-                          Score: {quizResult.score_percent}% ({quizResult.correct_count}/
-                          {quizResult.total_count} correct)
-                        </p>
-                        <p className="text-sm">
-                          Minimum required: {lessonQuiz.passing_score_percent}%
-                        </p>
+                        {quizResult.results_hidden ? (
+                          <>
+                            <p className="text-sm mt-2">
+                              You did not reach the minimum score. Your answers are not shown so you can retry fairly.
+                            </p>
+                            {quizResult.attempts_remaining != null && (
+                              <p className="text-sm mt-1 font-medium">Attempts remaining: {quizResult.attempts_remaining}</p>
+                            )}
+                            <p className="text-xs mt-2 text-amber-900/90">
+                              Score and per-question feedback appear after your last attempt or when you pass.
+                            </p>
+                          </>
+                        ) : (
+                          <>
+                            <p className="text-sm mt-1">
+                              Score: {quizResult.score_percent ?? '—'}% ({quizResult.correct_count ?? '—'}/
+                              {quizResult.total_count} correct)
+                            </p>
+                            <p className="text-sm">Minimum required: {lessonQuiz.passing_score_percent}%</p>
+                          </>
+                        )}
                       </div>
 
-                      {quizResult.results && (
+                      {quizResult.results && !quizResult.results_hidden && (
                         <div className="space-y-3">
                           <p className="font-semibold">Results:</p>
                           {lessonQuiz.questions.map((question, idx) => {
@@ -496,7 +616,7 @@ export default function TrainingCourse() {
                           onClick={handleRetryQuiz}
                           className="w-full px-6 py-3 bg-blue-600 text-white rounded-lg font-semibold hover:bg-blue-700 transition-colors"
                         >
-                          Retry Quiz
+                          {quizResult.results_hidden ? 'Try Again' : 'Retry Quiz'}
                         </button>
                       )}
 

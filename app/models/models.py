@@ -2903,6 +2903,8 @@ class TrainingQuiz(Base):
     title: Mapped[str] = mapped_column(String(255), nullable=False)
     passing_score_percent: Mapped[int] = mapped_column(Integer, default=70)
     allow_retry: Mapped[bool] = mapped_column(Boolean, default=True)
+    # NULL = unlimited attempts until pass; integer = max submissions (including failures)
+    max_attempts: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
     
     # Relationships
@@ -2912,6 +2914,22 @@ class TrainingQuiz(Base):
     # Indexes
     __table_args__ = (
         Index('idx_training_quiz_lesson', 'lesson_id'),
+    )
+
+
+class TrainingQuizUserAttempt(Base):
+    """Tracks how many times a user submitted answers for a quiz (for attempt limits)."""
+
+    __tablename__ = "training_quiz_user_attempts"
+
+    id: Mapped[uuid.UUID] = uuid_pk()
+    user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    quiz_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("training_quizzes.id", ondelete="CASCADE"), nullable=False, index=True)
+    submission_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+
+    __table_args__ = (
+        UniqueConstraint("user_id", "quiz_id", name="uq_training_quiz_user_attempt"),
+        Index("idx_training_quiz_attempt_quiz", "quiz_id"),
     )
 
 

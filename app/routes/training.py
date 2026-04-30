@@ -17,6 +17,7 @@ from ..models.models import (
     TrainingLesson,
     TrainingQuiz,
     TrainingQuizQuestion,
+    TrainingQuizUserAttempt,
     TrainingProgress,
     TrainingCompletedLesson,
     TrainingCertificate,
@@ -53,6 +54,7 @@ from ..schemas.training import (
     ReorderModulesRequest,
     ReorderLessonsRequest,
     ReorderQuestionsRequest,
+    validate_and_normalize_quiz_question,
 )
 from ..services.training import (
     get_required_courses_for_user,
@@ -64,6 +66,8 @@ from ..services.training import (
     validate_course_for_publishing,
     check_renewal_requirements,
     reconcile_training_progress_row,
+    effective_max_attempts,
+    sync_allow_retry_flag,
 )
 from ..services.training_matrix_slots import is_valid_matrix_training_id
 from ..training_matrix_catalog import normalize_matrix_training_id
@@ -73,6 +77,29 @@ from ..storage.local_provider import LocalStorageProvider
 from ..storage.blob_provider import BlobStorageProvider
 from ..config import settings
 router = APIRouter(prefix="/training", tags=["training"])
+
+
+def _normalize_multi_answer_indices(s: Optional[str]) -> str:
+    if not s or not str(s).strip():
+        return ""
+    parts = [p.strip() for p in str(s).split(",") if p.strip()]
+    try:
+        return ",".join(str(x) for x in sorted(int(p) for p in parts))
+    except ValueError:
+        return str(s).strip()
+
+
+def _grade_quiz_answer(question: TrainingQuizQuestion, user_answer: Optional[str]) -> bool:
+    ua = (user_answer if user_answer is not None else "").strip()
+    ca = (question.correct_answer or "").strip()
+    qt = question.question_type
+    if qt == "multiple_select":
+        return _normalize_multi_answer_indices(ua) == _normalize_multi_answer_indices(ca)
+    if qt in ("single_choice", "multiple_choice"):
+        return ua == ca
+    if qt == "true_false":
+        return ua.lower() == ca.lower()
+    return False
 
 
 def _normalize_certificate_background_preset_key(raw: Optional[str]) -> Optional[str]:
@@ -500,6 +527,15 @@ def get_lesson_quiz(
     
     if not quiz:
         raise HTTPException(status_code=404, detail="Quiz not found")
+
+    attempt_row = db.query(TrainingQuizUserAttempt).filter(
+        TrainingQuizUserAttempt.user_id == me.id,
+        TrainingQuizUserAttempt.quiz_id == quiz.id,
+    ).first()
+    attempts_used = attempt_row.submission_count if attempt_row else 0
+    mx = effective_max_attempts(quiz)
+    attempts_remaining = None if mx is None else max(0, mx - attempts_used)
+    can_submit = mx is None or attempts_used < mx
     
     # Get questions (without correct answers for security)
     questions = db.query(TrainingQuizQuestion).filter(
@@ -511,6 +547,10 @@ def get_lesson_quiz(
         "title": quiz.title,
         "passing_score_percent": quiz.passing_score_percent,
         "allow_retry": quiz.allow_retry,
+        "max_attempts": getattr(quiz, "max_attempts", None),
+        "attempts_used": attempts_used,
+        "attempts_remaining": attempts_remaining,
+        "can_submit": can_submit,
         "questions": [{
             "id": str(q.id),
             "question_text": q.question_text,
@@ -599,6 +639,19 @@ def submit_quiz(
     
     if not quiz:
         raise HTTPException(status_code=404, detail="Quiz not found")
+
+    attempt_row = db.query(TrainingQuizUserAttempt).filter(
+        TrainingQuizUserAttempt.user_id == me.id,
+        TrainingQuizUserAttempt.quiz_id == quiz.id,
+    ).first()
+    if not attempt_row:
+        attempt_row = TrainingQuizUserAttempt(user_id=me.id, quiz_id=quiz.id, submission_count=0)
+        db.add(attempt_row)
+        db.flush()
+
+    mx = effective_max_attempts(quiz)
+    if mx is not None and attempt_row.submission_count >= mx:
+        raise HTTPException(status_code=403, detail="Maximum quiz attempts reached")
     
     # Get questions
     questions = db.query(TrainingQuizQuestion).filter(
@@ -612,13 +665,19 @@ def submit_quiz(
     
     for question in questions:
         user_answer = submission.answers.get(str(question.id))
-        is_correct = user_answer == question.correct_answer
+        is_correct = _grade_quiz_answer(question, user_answer)
         results[str(question.id)] = is_correct
         if is_correct:
             correct_count += 1
     
     score_percent = int((correct_count / total_count) * 100) if total_count > 0 else 0
     passed = score_percent >= quiz.passing_score_percent
+
+    attempt_row.submission_count += 1
+    attempts_used = attempt_row.submission_count
+    can_retry = not passed and (mx is None or attempts_used < mx)
+    results_hidden = not passed and can_retry
+    attempts_remaining = None if mx is None else max(0, mx - attempts_used)
     
     # Get progress
     progress = db.query(TrainingProgress).filter(
@@ -644,13 +703,29 @@ def submit_quiz(
     progress.last_accessed_at = datetime.utcnow()
     db.commit()
     
+    if results_hidden:
+        return QuizSubmissionResponse(
+            passed=False,
+            score_percent=None,
+            correct_count=None,
+            total_count=total_count,
+            can_retry=True,
+            results=None,
+            results_hidden=True,
+            attempts_used=attempts_used,
+            attempts_remaining=attempts_remaining,
+        )
+
     return QuizSubmissionResponse(
         passed=passed,
         score_percent=score_percent,
         correct_count=correct_count,
         total_count=total_count,
-        can_retry=quiz.allow_retry and not passed,
+        can_retry=can_retry,
         results=results,
+        results_hidden=False,
+        attempts_used=attempts_used,
+        attempts_remaining=attempts_remaining,
     )
 
 
@@ -910,6 +985,7 @@ def get_admin_course(
                         "title": quiz.title,
                         "passing_score_percent": quiz.passing_score_percent,
                         "allow_retry": quiz.allow_retry,
+                        "max_attempts": getattr(quiz, "max_attempts", None),
                         "questions": [{
                             "id": str(q.id),
                             "question_text": q.question_text,
@@ -1409,7 +1485,7 @@ def reorder_modules(
     
     for index, module_id in enumerate(reorder_data.module_ids):
         try:
-            module_uuid = uuid.UUID(module_id)
+            module_uuid = uuid.UUID(str(module_id))
             module = db.query(TrainingModule).filter(
                 TrainingModule.id == module_uuid,
                 TrainingModule.course_id == course_uuid
@@ -1494,6 +1570,7 @@ def create_lesson(
                     title=lesson_data.title or "Quiz",
                     passing_score_percent=70,
                     allow_retry=True,
+                    max_attempts=None,
                 )
             )
 
@@ -1553,7 +1630,7 @@ def reorder_lessons(
     
     for index, lesson_id in enumerate(reorder_data.lesson_ids):
         try:
-            lesson_uuid = uuid.UUID(lesson_id)
+            lesson_uuid = uuid.UUID(str(lesson_id))
             lesson = db.query(TrainingLesson).filter(
                 TrainingLesson.id == lesson_uuid,
                 TrainingLesson.module_id == module_uuid
@@ -1602,8 +1679,10 @@ def create_quiz(
         title=quiz_data.title,
         passing_score_percent=quiz_data.passing_score_percent,
         allow_retry=quiz_data.allow_retry,
+        max_attempts=quiz_data.max_attempts,
     )
-    
+    sync_allow_retry_flag(quiz)
+
     db.add(quiz)
     db.commit()
     db.refresh(quiz)
@@ -1637,6 +1716,7 @@ def get_quiz(
         "title": quiz.title,
         "passing_score_percent": quiz.passing_score_percent,
         "allow_retry": quiz.allow_retry,
+        "max_attempts": getattr(quiz, "max_attempts", None),
         "questions": [{
             "id": str(q.id),
             "question_text": q.question_text,
@@ -1665,12 +1745,17 @@ def update_quiz(
     if not quiz:
         raise HTTPException(status_code=404, detail="Quiz not found")
     
-    if quiz_data.title is not None:
+    payload = quiz_data.model_dump(exclude_unset=True)
+    if "title" in payload:
         quiz.title = quiz_data.title
-    if quiz_data.passing_score_percent is not None:
+    if "passing_score_percent" in payload:
         quiz.passing_score_percent = quiz_data.passing_score_percent
-    if quiz_data.allow_retry is not None:
+    if "max_attempts" in payload:
+        quiz.max_attempts = quiz_data.max_attempts
+        sync_allow_retry_flag(quiz)
+    elif "allow_retry" in payload:
         quiz.allow_retry = quiz_data.allow_retry
+        quiz.max_attempts = None if quiz_data.allow_retry else 1
     
     db.commit()
     return {"status": "updated"}
@@ -1693,16 +1778,19 @@ def add_quiz_question(
     if not quiz:
         raise HTTPException(status_code=404, detail="Quiz not found")
     
-    # Get max order_index
     max_order = db.query(func.max(TrainingQuizQuestion.order_index)).filter(
         TrainingQuizQuestion.quiz_id == quiz_uuid
-    ).scalar() or 0
-    
+    ).scalar()
+    next_order = (max_order or 0) + 1
+    order_idx = (
+        question_data.order_index if question_data.order_index is not None else next_order
+    )
+
     question = TrainingQuizQuestion(
         quiz_id=quiz_uuid,
         question_text=question_data.question_text,
         question_type=question_data.question_type,
-        order_index=question_data.order_index if question_data.order_index is not None else max_order + 1,
+        order_index=order_idx,
         correct_answer=question_data.correct_answer,
         options=question_data.options,
     )
@@ -1731,18 +1819,34 @@ def update_quiz_question(
     question = db.query(TrainingQuizQuestion).filter(TrainingQuizQuestion.id == question_uuid).first()
     if not question:
         raise HTTPException(status_code=404, detail="Question not found")
-    
-    if question_data.question_text is not None:
-        question.question_text = question_data.question_text
-    if question_data.question_type is not None:
-        question.question_type = question_data.question_type
-    if question_data.order_index is not None:
-        question.order_index = question_data.order_index
-    if question_data.correct_answer is not None:
-        question.correct_answer = question_data.correct_answer
-    if question_data.options is not None:
-        question.options = question_data.options
-    
+
+    merged_type = (
+        question_data.question_type if question_data.question_type is not None else question.question_type
+    )
+    merged_text = (
+        question_data.question_text if question_data.question_text is not None else question.question_text
+    )
+    merged_order = (
+        question_data.order_index if question_data.order_index is not None else question.order_index
+    )
+    merged_ca = (
+        question_data.correct_answer if question_data.correct_answer is not None else question.correct_answer
+    )
+    merged_opts = question_data.options if question_data.options is not None else question.options
+
+    try:
+        norm_ca, norm_opts = validate_and_normalize_quiz_question(
+            merged_type, merged_ca, merged_opts
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+
+    question.question_text = merged_text
+    question.question_type = merged_type
+    question.order_index = merged_order
+    question.correct_answer = norm_ca
+    question.options = norm_opts
+
     db.commit()
     return {"status": "updated"}
 
@@ -1762,7 +1866,7 @@ def reorder_questions(
     
     for index, question_id in enumerate(reorder_data.question_ids):
         try:
-            question_uuid = uuid.UUID(question_id)
+            question_uuid = uuid.UUID(str(question_id))
             question = db.query(TrainingQuizQuestion).filter(
                 TrainingQuizQuestion.id == question_uuid,
                 TrainingQuizQuestion.quiz_id == quiz_uuid

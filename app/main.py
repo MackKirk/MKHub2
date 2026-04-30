@@ -1731,6 +1731,45 @@ def create_app() -> FastAPI:
                         db.rollback()
                         print(f"[startup] training_courses certificate columns migration (non-critical): {e}")
 
+                    # LMS: quiz submission limits (max_attempts) + per-user submission counts
+                    try:
+                        tq = db.execute(
+                            text(
+                                """
+                                SELECT 1 FROM information_schema.tables
+                                WHERE table_schema = 'public' AND table_name = 'training_quizzes'
+                                LIMIT 1
+                                """
+                            )
+                        ).fetchall()
+                        if tq:
+                            db.execute(
+                                text(
+                                    """
+                                    ALTER TABLE training_quizzes
+                                    ADD COLUMN IF NOT EXISTS max_attempts INTEGER NULL
+                                    """
+                                )
+                            )
+                            db.execute(
+                                text(
+                                    """
+                                    UPDATE training_quizzes
+                                    SET max_attempts = CASE WHEN allow_retry THEN NULL ELSE 1 END
+                                    WHERE max_attempts IS NULL
+                                    """
+                                )
+                            )
+                            db.commit()
+                            from .models.models import TrainingQuizUserAttempt
+
+                            Base.metadata.create_all(bind=engine, tables=[TrainingQuizUserAttempt.__table__])
+                            db.commit()
+                            print("[startup] Ensured training_quizzes.max_attempts and training_quiz_user_attempts")
+                    except Exception as e:
+                        db.rollback()
+                        print(f"[startup] training_quizzes max_attempts migration (non-critical): {e}")
+
                     # Corporate credit card inventory (last four + expiry only; no full PAN)
                     rows = db.execute(
                         text(
