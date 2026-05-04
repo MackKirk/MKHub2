@@ -4,6 +4,7 @@ import {
   Alert,
   FlatList,
   Image,
+  Linking,
   Modal,
   RefreshControl,
   ScrollView,
@@ -27,11 +28,42 @@ import {
   getPostComments,
   createPostComment
 } from "../../services/community";
-import { toApiError } from "../../services/api";
+import { api, toApiError } from "../../services/api";
 import type { CommunityPost, CommunityComment } from "../../types/community";
 import { stripHtmlToPlain } from "../../utils/stripHtml";
 
 type Filter = "all" | "unread" | "required" | "announcements" | "urgent";
+
+function postDownloadAttachments(post: CommunityPost): { key: string; url: string; name: string }[] {
+  if (Array.isArray(post.attachments) && post.attachments.length > 0) {
+    return post.attachments.map((a) => ({
+      key: a.file_id || a.url,
+      url: a.url,
+      name: a.original_name || "Attachment",
+    }));
+  }
+  if (post.document_url) {
+    return [
+      {
+        key: post.document_file_id || post.document_url,
+        url: post.document_url,
+        name: post.document_original_name || "Attachment",
+      },
+    ];
+  }
+  return [];
+}
+
+function fileUrlWithAccessToken(relativePath: string): string {
+  const base = api.defaults.baseURL || "";
+  const path = relativePath.startsWith("/") ? relativePath : `/${relativePath}`;
+  const u = new URL(path, base);
+  const auth = api.defaults.headers.common.Authorization;
+  if (typeof auth === "string" && auth.startsWith("Bearer ")) {
+    u.searchParams.set("access_token", auth.slice(7).trim());
+  }
+  return u.toString();
+}
 
 export const CommunityScreen: React.FC = () => {
   const [posts, setPosts] = useState<CommunityPost[]>([]);
@@ -185,10 +217,6 @@ export const CommunityScreen: React.FC = () => {
           {stripHtmlToPlain(item.content)}
         </Text>
 
-        {item.photo_url && (
-          <Image source={{ uri: item.photo_url }} style={styles.postImage} />
-        )}
-
         {hasTags && (
           <View style={styles.tagsContainer}>
             {item.tags?.slice(0, 3).map((tag, idx) => (
@@ -326,13 +354,17 @@ export const CommunityScreen: React.FC = () => {
 
               <Text style={styles.modalContentText}>{stripHtmlToPlain(selectedPost.content)}</Text>
 
-              {selectedPost.photo_url && (
-                <Image
-                  source={{ uri: selectedPost.photo_url }}
-                  style={styles.modalImage}
-                  resizeMode="contain"
-                />
-              )}
+              {postDownloadAttachments(selectedPost).map((att) => (
+                <TouchableOpacity
+                  key={att.key}
+                  style={styles.downloadAttachment}
+                  onPress={() => {
+                    void Linking.openURL(fileUrlWithAccessToken(att.url));
+                  }}
+                >
+                  <Text style={styles.downloadAttachmentText}>⬇ Download ({att.name})</Text>
+                </TouchableOpacity>
+              ))}
 
               <View style={styles.modalActions}>
                 <TouchableOpacity
@@ -517,12 +549,6 @@ const styles = StyleSheet.create({
     lineHeight: 20,
     marginBottom: spacing.sm
   },
-  postImage: {
-    width: "100%",
-    height: 200,
-    borderRadius: 8,
-    marginBottom: spacing.sm
-  },
   tagsContainer: {
     flexDirection: "row",
     flexWrap: "wrap",
@@ -655,11 +681,20 @@ const styles = StyleSheet.create({
     lineHeight: 24,
     marginBottom: spacing.lg
   },
-  modalImage: {
-    width: "100%",
-    height: 300,
+  downloadAttachment: {
+    alignSelf: "flex-start",
+    marginBottom: spacing.lg,
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.md,
     borderRadius: 8,
-    marginBottom: spacing.lg
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: "#f3f4f6"
+  },
+  downloadAttachmentText: {
+    ...typography.body,
+    fontWeight: "600",
+    color: colors.primary
   },
   modalActions: {
     flexDirection: "row",

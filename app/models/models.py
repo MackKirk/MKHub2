@@ -2118,11 +2118,14 @@ class CommunityPost(Base):
     author_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
     photo_file_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), ForeignKey("file_objects.id", ondelete="SET NULL"), index=True)
     document_file_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), ForeignKey("file_objects.id", ondelete="SET NULL"), index=True)
+    # Multiple downloadable attachments: [{"file_id": "<uuid>", "name": "report.pdf"}, ...]
+    attachment_files: Mapped[Optional[list]] = mapped_column(JSON, default=list)
     is_urgent: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
     is_required: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
     requires_read_confirmation: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
-    target_type: Mapped[str] = mapped_column(String(20), default="all", index=True)  # all|divisions
+    target_type: Mapped[str] = mapped_column(String(20), default="all", index=True)  # all|divisions|users
     target_division_ids: Mapped[Optional[list]] = mapped_column(JSON, default=list)  # List of division UUIDs as strings
+    target_user_ids: Mapped[Optional[list]] = mapped_column(JSON, default=list)  # List of user UUIDs as strings (when target_type == users)
     tags: Mapped[Optional[list]] = mapped_column(JSON, default=list)  # List of tags like ['Announcement', 'Mack Kirk News', 'Image']
     likes_count: Mapped[int] = mapped_column(Integer, default=0)
     comments_count: Mapped[int] = mapped_column(Integer, default=0)

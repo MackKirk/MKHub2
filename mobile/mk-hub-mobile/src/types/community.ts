@@ -7,6 +7,9 @@ export interface CommunityPost {
   author_avatar?: string;
   photo_url?: string;
   document_url?: string;
+  document_file_id?: string;
+  document_original_name?: string | null;
+  attachments?: { file_id: string; url: string; original_name: string }[];
   created_at: string;
   publish_at?: string;
   status?: string;

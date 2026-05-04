@@ -1,5 +1,4 @@
 import OverlayPortal from '@/components/OverlayPortal';
-import { withFileAccessToken } from '@/lib/api';
 import { CommunityPostBody } from '@/components/community/CommunityPostBody';
 
 const AREA_LABELS: Record<string, string> = {
@@ -22,11 +21,11 @@ type Props = {
   priority: string;
   relatedArea: string;
   requiresReadConfirmation: boolean;
-  photoFileId: string | null;
-  documentFileId: string | null;
-  documentFileName?: string | null;
-  targetType: 'all' | 'divisions';
+  attachments: { fileId: string; name: string }[];
+  targetType: 'all' | 'divisions' | 'users';
   divisionCount: number;
+  /** When targetType is users */
+  selectedEmployeeCount: number;
   publishMode: 'now' | 'scheduled' | 'draft';
 };
 
@@ -38,11 +37,10 @@ export function CommunityNewPostPreviewModal({
   priority,
   relatedArea,
   requiresReadConfirmation,
-  photoFileId,
-  documentFileId,
-  documentFileName,
+  attachments,
   targetType,
   divisionCount,
+  selectedEmployeeCount,
   publishMode,
 }: Props) {
   if (!open) return null;
@@ -83,8 +81,12 @@ export function CommunityNewPostPreviewModal({
             {publishMode === 'draft' && <span className="font-medium text-amber-800">Draft — </span>}
             {publishMode === 'scheduled' && <span className="font-medium text-blue-800">Scheduled — </span>}
             {publishMode === 'now' && <span className="font-medium text-gray-700">Publish now — </span>}
-            {targetType === 'all' ? 'All employees' : `${divisionCount} division${divisionCount === 1 ? '' : 's'}`}
-            {documentFileId ? ' · PDF attached' : ''}
+            {targetType === 'all'
+              ? 'All employees'
+              : targetType === 'users'
+                ? `${selectedEmployeeCount} selected employee${selectedEmployeeCount === 1 ? '' : 's'}`
+                : `${divisionCount} division${divisionCount === 1 ? '' : 's'}`}
+            {attachments.length > 0 ? ` · ${attachments.length} file${attachments.length === 1 ? '' : 's'} for download` : ''}
           </div>
           <div className="p-4 overflow-y-auto">
             <div
@@ -130,18 +132,18 @@ export function CommunityNewPostPreviewModal({
                   <div className={`text-sm mb-3 leading-relaxed break-words ${isUrgent || isRequired ? 'text-gray-600' : 'text-gray-500'}`}>
                     {content.trim() ? <CommunityPostBody html={content} /> : <span className="text-gray-400">…</span>}
                   </div>
-                  {photoFileId && (
-                    <img
-                      src={withFileAccessToken(`/files/${photoFileId}/thumbnail?w=560`)}
-                      alt=""
-                      className="rounded-lg border border-gray-200 max-h-48 object-contain mb-3"
-                    />
-                  )}
-                  {documentFileId && (
-                    <div className="text-xs text-gray-600 flex items-center gap-2 mb-2">
-                      <span className="text-red-600">PDF</span>
-                      <span className="truncate">{documentFileName || 'Document'}</span>
-                    </div>
+                  {attachments.length > 0 && (
+                    <ul className="text-xs text-gray-600 mb-2 space-y-1 max-w-full">
+                      {attachments.map((a) => (
+                        <li
+                          key={a.fileId}
+                          className="flex items-center gap-2 rounded-lg border border-gray-200 bg-gray-50 px-2 py-1.5"
+                        >
+                          <span className="font-medium text-gray-700 shrink-0">Download</span>
+                          <span className="truncate">{a.name}</span>
+                        </li>
+                      ))}
+                    </ul>
                   )}
                   <div className="flex items-center gap-4 text-sm text-gray-400">
                     <span>🤍 0</span>

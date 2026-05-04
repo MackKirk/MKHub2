@@ -23,6 +23,25 @@ def audience_user_ids(db: Session, post: CommunityPost) -> List[uuid.UUID]:
     if post.target_type == "all":
         rows = db.query(User.id).filter(User.is_active == True).all()
         return [r[0] for r in rows]
+    if post.target_type == "users":
+        raw = getattr(post, "target_user_ids", None) or []
+        if isinstance(raw, str):
+            try:
+                raw = json.loads(raw)
+            except Exception:
+                raw = []
+        if not isinstance(raw, list) or not raw:
+            return []
+        uuids: List[uuid.UUID] = []
+        for x in raw:
+            try:
+                uuids.append(uuid.UUID(str(x)))
+            except Exception:
+                continue
+        if not uuids:
+            return []
+        rows = db.query(User.id).filter(User.id.in_(uuids), User.is_active == True).all()
+        return [r[0] for r in rows]
     division_ids = post.target_division_ids or []
     if isinstance(division_ids, str):
         try:

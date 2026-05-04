@@ -24,6 +24,7 @@ from ..models.models import (
     user_divisions,
     SettingList,
     SettingItem,
+    FileObject,
 )
 from ..auth.security import get_current_user, require_permissions, _has_permission
 
@@ -68,9 +69,19 @@ def _is_feed_visible_post(post: CommunityPost, now_utc: datetime) -> bool:
     return pa <= now_utc
 
 
-def _user_audience_match(post: CommunityPost, user_division_ids: List[str]) -> bool:
+def _user_audience_match(post: CommunityPost, viewer_id: uuid.UUID, user_division_ids: List[str]) -> bool:
     if post.target_type == "all":
         return True
+    if post.target_type == "users":
+        raw = getattr(post, "target_user_ids", None) or []
+        if isinstance(raw, str):
+            try:
+                raw = json.loads(raw)
+            except Exception:
+                raw = []
+        if not isinstance(raw, list):
+            return False
+        return str(viewer_id) in {str(x) for x in raw if x is not None}
     if not user_division_ids:
         return False
     raw = post.target_division_ids or []
@@ -96,8 +107,123 @@ def _assert_reader_can_access_post(db: Session, post: CommunityPost, viewer: Use
     if not _is_feed_visible_post(post, now_utc):
         raise HTTPException(status_code=404, detail="Post not found")
     div_ids = _get_reader_division_ids(db, viewer.id)
-    if not _user_audience_match(post, div_ids):
+    if not _user_audience_match(post, viewer.id, div_ids):
         raise HTTPException(status_code=404, detail="Post not found")
+
+
+MAX_COMMUNITY_ATTACHMENTS = 30
+MAX_COMMUNITY_TARGET_USERS = 400
+
+
+def _normalize_target_user_ids_payload(db: Session, raw: Any) -> List[str]:
+    """Return unique active user id strings; raises 400 if empty after validation."""
+    if raw is None:
+        raise HTTPException(status_code=400, detail="target_user_ids is required when target_type is users")
+    if not isinstance(raw, list) or len(raw) == 0:
+        raise HTTPException(status_code=400, detail="target_user_ids must be a non-empty list when target_type is users")
+    out: List[str] = []
+    seen: Set[str] = set()
+    for x in raw:
+        try:
+            u = uuid.UUID(str(x).strip())
+        except Exception:
+            continue
+        sid = str(u)
+        if sid in seen:
+            continue
+        seen.add(sid)
+        user = db.query(User).filter(User.id == u, User.is_active == True).first()
+        if user:
+            out.append(sid)
+        if len(out) >= MAX_COMMUNITY_TARGET_USERS:
+            break
+    if not out:
+        raise HTTPException(status_code=400, detail="Select at least one active employee")
+    return out
+
+
+def _parse_attachment_files_raw(post: CommunityPost) -> List[Dict[str, str]]:
+    """Normalized [{file_id, name}, ...] from JSON column or legacy document_file_id."""
+    raw = getattr(post, "attachment_files", None) or []
+    if isinstance(raw, str):
+        try:
+            raw = json.loads(raw)
+        except Exception:
+            raw = []
+    if not isinstance(raw, list):
+        raw = []
+    out: List[Dict[str, str]] = []
+    seen: Set[str] = set()
+    for item in raw:
+        if not isinstance(item, dict):
+            continue
+        fid = item.get("file_id") or item.get("id")
+        if not fid:
+            continue
+        try:
+            u = uuid.UUID(str(fid))
+        except Exception:
+            continue
+        sid = str(u)
+        if sid in seen:
+            continue
+        seen.add(sid)
+        nm = (item.get("name") or item.get("original_name") or "").strip() or "Attachment"
+        out.append({"file_id": sid, "name": nm[:255]})
+        if len(out) >= MAX_COMMUNITY_ATTACHMENTS:
+            break
+    if not out and post.document_file_id:
+        out.append({"file_id": str(post.document_file_id), "name": "Attachment"})
+    return out
+
+
+def _apply_attachments_payload(payload_list: Any) -> List[Dict[str, str]]:
+    if payload_list is None:
+        return []
+    if not isinstance(payload_list, list):
+        raise HTTPException(status_code=400, detail="attachments must be a list")
+    out: List[Dict[str, str]] = []
+    seen: Set[str] = set()
+    for item in payload_list:
+        if not isinstance(item, dict):
+            raise HTTPException(status_code=400, detail="Each attachment must be an object")
+        fid = item.get("file_id") or item.get("id")
+        if not fid:
+            raise HTTPException(status_code=400, detail="Each attachment needs file_id")
+        try:
+            u = uuid.UUID(str(fid))
+        except Exception:
+            raise HTTPException(status_code=400, detail="Invalid attachment file_id")
+        sid = str(u)
+        if sid in seen:
+            continue
+        seen.add(sid)
+        nm = str(item.get("name") or item.get("original_name") or "Attachment").strip() or "Attachment"
+        out.append({"file_id": sid, "name": nm[:255]})
+        if len(out) > MAX_COMMUNITY_ATTACHMENTS:
+            raise HTTPException(status_code=400, detail=f"At most {MAX_COMMUNITY_ATTACHMENTS} attachments")
+    return out
+
+
+def _sync_attachment_storage(post: CommunityPost, normalized: List[Dict[str, str]]) -> None:
+    post.attachment_files = list(normalized)
+    post.document_file_id = uuid.UUID(normalized[0]["file_id"]) if normalized else None
+
+
+def _attachments_response(db: Session, post: CommunityPost) -> List[Dict[str, Any]]:
+    rows = _parse_attachment_files_raw(post)
+    result: List[Dict[str, Any]] = []
+    for rec in rows:
+        fid = rec["file_id"]
+        url = f"/files/{fid}"
+        disp = rec["name"]
+        fo = db.query(FileObject).filter(FileObject.id == uuid.UUID(fid)).first()
+        if fo and getattr(fo, "key", None):
+            key_bn = str(fo.key).rsplit("/", 1)[-1]
+            if disp == "Attachment" or not disp:
+                disp = key_bn
+        result.append({"file_id": fid, "url": url, "original_name": disp})
+    return result
 
 
 def _serialize_community_post(db: Session, post: CommunityPost, viewer: User) -> Dict[str, Any]:
@@ -125,16 +251,15 @@ def _serialize_community_post(db: Session, post: CommunityPost, viewer: User) ->
     if post.photo_file_id:
         photo_url = f"/files/{post.photo_file_id}/thumbnail?w=800"
 
-    document_url = None
-    document_file_id = None
-    if post.document_file_id:
-        document_url = f"/files/{post.document_file_id}"
-        document_file_id = str(post.document_file_id)
+    attachments = _attachments_response(db, post)
+    document_url = attachments[0]["url"] if attachments else None
+    document_file_id = attachments[0]["file_id"] if attachments else None
+    document_original_name = attachments[0]["original_name"] if attachments else None
 
     post_tags = post.tags or []
     if post.photo_file_id and "Image" not in post_tags:
         post_tags = post_tags + ["Image"]
-    if post.document_file_id and "Document" not in post_tags:
+    if attachments and "Document" not in post_tags:
         post_tags = post_tags + ["Document"]
     if post.requires_read_confirmation and "Required" not in post_tags:
         post_tags = post_tags + ["Required"]
@@ -161,6 +286,29 @@ def _serialize_community_post(db: Session, post: CommunityPost, viewer: User) ->
 
     is_urgent_legacy = bool(post.is_urgent or post.priority in ("urgent", "critical"))
 
+    target_users_preview: List[Dict[str, str]] = []
+    if getattr(post, "target_type", None) == "users":
+        raw_u = getattr(post, "target_user_ids", None) or []
+        if isinstance(raw_u, str):
+            try:
+                raw_u = json.loads(raw_u)
+            except Exception:
+                raw_u = []
+        if isinstance(raw_u, list):
+            for sid in raw_u[:MAX_COMMUNITY_TARGET_USERS]:
+                try:
+                    uid = uuid.UUID(str(sid).strip())
+                except Exception:
+                    continue
+                u = db.query(User).filter(User.id == uid).first()
+                ep = db.query(EmployeeProfile).filter(EmployeeProfile.user_id == uid).first() if u else None
+                nm = None
+                if ep:
+                    nm = (ep.preferred_name or "").strip() or f"{(ep.first_name or '').strip()} {(ep.last_name or '').strip()}".strip()
+                if not nm and u:
+                    nm = u.username
+                target_users_preview.append({"id": str(uid), "name": nm or "Unknown"})
+
     return {
         "id": str(post.id),
         "title": post.title,
@@ -171,6 +319,8 @@ def _serialize_community_post(db: Session, post: CommunityPost, viewer: User) ->
         "photo_url": photo_url,
         "document_url": document_url,
         "document_file_id": document_file_id,
+        "document_original_name": document_original_name,
+        "attachments": attachments,
         "created_at": post.created_at.isoformat() if post.created_at else None,
         "updated_at": post.updated_at.isoformat() if post.updated_at else None,
         "publish_at": post.publish_at.isoformat() if post.publish_at else None,
@@ -188,6 +338,8 @@ def _serialize_community_post(db: Session, post: CommunityPost, viewer: User) ->
         "user_has_liked": user_has_liked,
         "target_type": post.target_type,
         "target_division_ids": post.target_division_ids or [],
+        "target_user_ids": getattr(post, "target_user_ids", None) or [],
+        "target_users_preview": target_users_preview,
     }
 
 
@@ -316,6 +468,11 @@ def list_posts(
         )
     )
 
+    uid_s = str(current_user.id)
+    user_target_filter = and_(
+        CommunityPost.target_type == "users",
+        cast(CommunityPost.target_user_ids, String).like(f"%{uid_s}%"),
+    )
     if user_division_ids:
         division_filters = []
         for div_id in user_division_ids:
@@ -323,11 +480,17 @@ def list_posts(
         query = query.filter(
             or_(
                 CommunityPost.target_type == "all",
+                user_target_filter,
                 *division_filters if division_filters else [CommunityPost.id == None],
             )
         )
     else:
-        query = query.filter(CommunityPost.target_type == "all")
+        query = query.filter(
+            or_(
+                CommunityPost.target_type == "all",
+                user_target_filter,
+            )
+        )
 
     eff_unread = unread_only or filter == "unread"
     eff_required = required_only or filter == "required"
@@ -491,6 +654,7 @@ def create_post(
     document_file_id = payload.get("document_file_id")
     target_type = payload.get("target_type", "all")
     target_division_ids = payload.get("target_division_ids", [])
+    target_user_ids: List[str] = []
     publish_mode = (payload.get("publish_mode") or "now").strip().lower()
     if publish_mode not in ("now", "scheduled", "draft"):
         raise HTTPException(status_code=400, detail="publish_mode must be now, scheduled, or draft")
@@ -515,13 +679,18 @@ def create_post(
     if not content:
         raise HTTPException(status_code=400, detail="Content is required")
 
-    if target_type not in ["all", "divisions"]:
-        raise HTTPException(status_code=400, detail="target_type must be 'all' or 'divisions'")
+    if target_type not in ["all", "divisions", "users"]:
+        raise HTTPException(status_code=400, detail="target_type must be 'all', 'divisions', or 'users'")
 
     if target_type == "divisions":
         if not target_division_ids or not isinstance(target_division_ids, list) or len(target_division_ids) == 0:
             raise HTTPException(status_code=400, detail="target_division_ids must be a non-empty list when target_type is 'divisions'")
         target_division_ids = [str(did) for did in target_division_ids]
+    elif target_type == "users":
+        target_user_ids = _normalize_target_user_ids_payload(db, payload.get("target_user_ids"))
+        target_division_ids = []
+    else:
+        target_division_ids = []
 
     if photo_file_id:
         try:
@@ -529,18 +698,22 @@ def create_post(
         except Exception:
             raise HTTPException(status_code=400, detail="Invalid photo_file_id format")
 
-    if document_file_id:
+    att_norm: List[Dict[str, str]] = []
+    if "attachments" in payload:
+        att_norm = _apply_attachments_payload(payload.get("attachments"))
+    elif document_file_id:
         try:
-            uuid.UUID(str(document_file_id))
+            du = uuid.UUID(str(document_file_id))
         except Exception:
             raise HTTPException(status_code=400, detail="Invalid document_file_id format")
+        att_norm = [{"file_id": str(du), "name": str(payload.get("document_original_name") or "Attachment")[:255]}]
 
     tags = ["Announcement"]
     if is_urgent or priority in ("urgent", "critical"):
         tags.append("Urgent")
     if photo_file_id:
         tags.append("Image")
-    if document_file_id:
+    if att_norm:
         tags.append("Document")
 
     custom_tags = payload.get("tags", [])
@@ -573,12 +746,14 @@ def create_post(
         content=content,
         author_id=current_user.id,
         photo_file_id=uuid.UUID(str(photo_file_id)) if photo_file_id else None,
-        document_file_id=uuid.UUID(str(document_file_id)) if document_file_id else None,
+        document_file_id=uuid.UUID(att_norm[0]["file_id"]) if att_norm else None,
+        attachment_files=list(att_norm),
         is_urgent=is_urgent,
         is_required=payload.get("is_required", False),
         requires_read_confirmation=payload.get("requires_read_confirmation", False),
         target_type=target_type,
         target_division_ids=target_division_ids if target_type == "divisions" else [],
+        target_user_ids=target_user_ids if target_type == "users" else [],
         tags=tags,
         created_at=now,
         updated_at=now,
@@ -645,17 +820,15 @@ def list_my_posts(
         if post.photo_file_id:
             photo_url = f"/files/{post.photo_file_id}/thumbnail?w=800"
 
-        # Build document URL if exists
-        document_url = None
-        document_file_id = None
-        if post.document_file_id:
-            document_url = f"/files/{post.document_file_id}"
-            document_file_id = str(post.document_file_id)
+        attachments = _attachments_response(db, post)
+        document_url = attachments[0]["url"] if attachments else None
+        document_file_id = attachments[0]["file_id"] if attachments else None
+        document_original_name = attachments[0]["original_name"] if attachments else None
 
         post_tags = post.tags or []
         if post.photo_file_id and 'Image' not in post_tags:
             post_tags = post_tags + ['Image']
-        if post.document_file_id and 'Document' not in post_tags:
+        if attachments and 'Document' not in post_tags:
             post_tags = post_tags + ['Document']
 
         # Add Required tag if requires read confirmation
@@ -677,6 +850,8 @@ def list_my_posts(
         if post.target_type == 'all':
             # Count all active users
             total_recipients = db.query(User).filter(User.is_active == True).count()
+        elif post.target_type == 'users':
+            total_recipients = len(audience_user_ids(db, post))
         elif post.target_type == 'divisions' and post.target_division_ids:
             # Count users in the specified divisions
             # Parse target_division_ids (JSON array)
@@ -715,6 +890,8 @@ def list_my_posts(
             "photo_url": photo_url,
             "document_url": document_url,
             "document_file_id": document_file_id,
+            "document_original_name": document_original_name,
+            "attachments": attachments,
             "created_at": post.created_at.isoformat() if post.created_at else None,
             "publish_at": pa.isoformat() if pa else None,
             "status": getattr(post, "status", "published"),
@@ -722,6 +899,7 @@ def list_my_posts(
             "related_area": getattr(post, "related_area", "general"),
             "target_type": post.target_type,
             "target_division_ids": post.target_division_ids or [],
+            "target_user_ids": getattr(post, "target_user_ids", None) or [],
             "tags": post_tags,
             "likes_count": post.likes_count or 0,
             "comments_count": post.comments_count or 0,
@@ -786,22 +964,34 @@ def patch_community_post(
     if "photo_file_id" in payload:
         pf = payload.get("photo_file_id")
         post.photo_file_id = uuid.UUID(str(pf)) if pf else None
-    if "document_file_id" in payload:
+    if "attachments" in payload:
+        att_norm = _apply_attachments_payload(payload.get("attachments"))
+        _sync_attachment_storage(post, att_norm)
+    elif "document_file_id" in payload:
         df = payload.get("document_file_id")
         post.document_file_id = uuid.UUID(str(df)) if df else None
+        if not df:
+            post.attachment_files = []
+        else:
+            post.attachment_files = [{"file_id": str(post.document_file_id), "name": "Attachment"}]
 
-    if "target_type" in payload:
-        tt = payload.get("target_type")
-        if tt not in ("all", "divisions"):
+    if any(k in payload for k in ("target_type", "target_division_ids", "target_user_ids")):
+        tt = str(payload.get("target_type", post.target_type) or "all").lower()
+        if tt not in ("all", "divisions", "users"):
             raise HTTPException(status_code=400, detail="Invalid target_type")
         post.target_type = tt
-    if "target_division_ids" in payload and post.target_type == "divisions":
-        tdi = payload.get("target_division_ids") or []
-        if not isinstance(tdi, list) or len(tdi) == 0:
-            raise HTTPException(status_code=400, detail="target_division_ids required for divisions")
-        post.target_division_ids = [str(x) for x in tdi]
-    elif post.target_type == "all":
-        post.target_division_ids = []
+        if tt == "all":
+            post.target_division_ids = []
+            post.target_user_ids = []
+        elif tt == "divisions":
+            tdi = payload.get("target_division_ids") or []
+            if not isinstance(tdi, list) or len(tdi) == 0:
+                raise HTTPException(status_code=400, detail="target_division_ids required for divisions")
+            post.target_division_ids = [str(x) for x in tdi]
+            post.target_user_ids = []
+        else:
+            post.target_user_ids = _normalize_target_user_ids_payload(db, payload.get("target_user_ids"))
+            post.target_division_ids = []
 
     if "priority" in payload:
         pr = str(payload.get("priority") or "").lower()
@@ -889,7 +1079,7 @@ def _rebuild_post_tags(post: CommunityPost) -> None:
         tags.append("Urgent")
     if post.photo_file_id:
         tags.append("Image")
-    if post.document_file_id:
+    if _parse_attachment_files_raw(post):
         tags.append("Document")
     old = post.tags or []
     for t in old:

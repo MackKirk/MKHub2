@@ -1,10 +1,9 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import type { Editor } from '@tiptap/core';
 import { useMutation, useQueryClient, useQuery } from '@tanstack/react-query';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import toast from 'react-hot-toast';
-import { api, withFileAccessToken } from '@/lib/api';
-import ImagePicker from '@/components/ImagePicker';
+import { api } from '@/lib/api';
 import CommunityPostRichTextEditor from '@/components/community/CommunityPostRichTextEditor';
 import { CommunityPageHeader } from '@/components/community/CommunityPageHeader';
 import { CommunityNewPostPreviewModal } from '@/components/community/CommunityNewPostPreviewModal';
@@ -39,7 +38,23 @@ const PRIORITIES: { value: string; label: string }[] = [
 const TITLE_SOFT_MAX = 200;
 const CONTENT_SOFT_MAX = 20000;
 
+/** Hero/cover image is deprecated; downloadable files (stored as attachment_files JSON + legacy document_file_id = first). */
+const ATTACHMENT_MAX_BYTES = 45 * 1024 * 1024;
+const MAX_COMMUNITY_ATTACHMENTS = 30;
+const ALLOWED_ATTACHMENT_NAME = /\.(pdf|doc|docx|xls|xlsx|ppt|pptx|csv|txt|zip|7z|rar|png|jpe?g|gif|webp|svg|mp3|wav|mp4|mov|webm|json|xml)$/i;
+
+type CommunityPostLocalAttachment = { fileId: string; name: string };
+
+function isAllowedCommunityAttachment(file: File): boolean {
+  if (file.size > ATTACHMENT_MAX_BYTES) return false;
+  return ALLOWED_ATTACHMENT_NAME.test(file.name);
+}
+
 type PublishMode = 'now' | 'scheduled' | 'draft';
+
+type AudienceEmployee = { id: string; name: string };
+
+const MAX_AUDIENCE_EMPLOYEES = 400;
 
 function sectionCardClass() {
   return 'rounded-xl border border-gray-200/80 bg-white shadow-sm';
@@ -60,19 +75,21 @@ export default function CommunityNewPost() {
   const { postId } = useParams<{ postId?: string }>();
   const isEdit = Boolean(postId);
   const queryClient = useQueryClient();
-  const pdfInputRef = useRef<HTMLInputElement>(null);
+  const attachmentInputRef = useRef<HTMLInputElement>(null);
   const dropRef = useRef<HTMLDivElement>(null);
 
   const [title, setTitle] = useState('');
   const [content, setContent] = useState('<p></p>');
   const [priority, setPriority] = useState<string>('normal');
   const [requiresReadConfirmation, setRequiresReadConfirmation] = useState(false);
-  const [photoFileId, setPhotoFileId] = useState<string | null>(null);
-  const [documentFileId, setDocumentFileId] = useState<string | null>(null);
-  const [documentFileName, setDocumentFileName] = useState<string | null>(null);
-  const [targetType, setTargetType] = useState<'all' | 'divisions'>('all');
+  const [attachments, setAttachments] = useState<CommunityPostLocalAttachment[]>([]);
+  const [targetType, setTargetType] = useState<'all' | 'divisions' | 'users'>('all');
   const [selectedDivisions, setSelectedDivisions] = useState<string[]>([]);
-  const [imagePickerOpen, setImagePickerOpen] = useState(false);
+  const [selectedAudienceUsers, setSelectedAudienceUsers] = useState<AudienceEmployee[]>([]);
+  const [employeeSearchInput, setEmployeeSearchInput] = useState('');
+  const [debouncedEmployeeQ, setDebouncedEmployeeQ] = useState('');
+  const [employeeAudienceOpen, setEmployeeAudienceOpen] = useState(false);
+  const employeeAudienceRef = useRef<HTMLDivElement>(null);
   const [publishMode, setPublishMode] = useState<PublishMode>('now');
   const [scheduledAt, setScheduledAt] = useState('');
   const [relatedArea, setRelatedArea] = useState('general');
@@ -91,6 +108,51 @@ export default function CommunityNewPost() {
 
   const divisions = (settings?.divisions || []) as Array<{ id: string; label: string; meta?: { abbr?: string; color?: string } }>;
 
+  useEffect(() => {
+    if (!employeeAudienceOpen) return;
+    const q = employeeSearchInput.trim();
+    const delay = q.length === 0 ? 0 : 300;
+    const t = setTimeout(() => setDebouncedEmployeeQ(q), delay);
+    return () => clearTimeout(t);
+  }, [employeeSearchInput, employeeAudienceOpen]);
+
+  useEffect(() => {
+    if (targetType !== 'users') {
+      setEmployeeAudienceOpen(false);
+    }
+  }, [targetType]);
+
+  useEffect(() => {
+    if (!employeeAudienceOpen) return;
+    const onDoc = (e: MouseEvent) => {
+      if (employeeAudienceRef.current && !employeeAudienceRef.current.contains(e.target as Node)) {
+        setEmployeeAudienceOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', onDoc);
+    return () => document.removeEventListener('mousedown', onDoc);
+  }, [employeeAudienceOpen]);
+
+  const { data: employeeSearchRows = [] } = useQuery({
+    queryKey: ['employees-audience', debouncedEmployeeQ],
+    queryFn: () => {
+      const q = debouncedEmployeeQ.trim();
+      if (q.length >= 2) {
+        return api<any[]>('GET', `/employees?q=${encodeURIComponent(q)}`);
+      }
+      return api<any[]>('GET', '/employees');
+    },
+    enabled: employeeAudienceOpen,
+  });
+
+  const employeesSortedAlphabetically = useMemo(() => {
+    const rows = Array.isArray(employeeSearchRows) ? [...employeeSearchRows] : [];
+    const sortKey = (r: { name?: string; username?: string }) =>
+      String(r.name || r.username || '').trim().toLocaleLowerCase();
+    rows.sort((a, b) => sortKey(a).localeCompare(sortKey(b), undefined, { sensitivity: 'base' }));
+    return rows;
+  }, [employeeSearchRows]);
+
   const { data: existingPost, isLoading: loadingExisting } = useQuery({
     queryKey: ['community-post-one', postId],
     queryFn: () => api<any>('GET', `/community/posts/${postId}`),
@@ -107,21 +169,44 @@ export default function CommunityNewPost() {
     setRequiresReadConfirmation(!!existingPost.requires_read_confirmation);
     setRelatedArea(existingPost.related_area || 'general');
 
-    const doc = existingPost.document_file_id;
-    setDocumentFileId(doc ? String(doc) : null);
-    setDocumentFileName(existingPost.document_original_name || null);
-
-    let pId: string | null = null;
-    if (existingPost.photo_url) {
-      const m = String(existingPost.photo_url).match(/\/files\/([a-f0-9-]{36})\//i);
-      if (m) pId = m[1];
+    const fromApi: CommunityPostLocalAttachment[] = Array.isArray(existingPost.attachments)
+      ? (existingPost.attachments as { file_id?: string; original_name?: string }[]).map((a) => ({
+          fileId: String(a.file_id || ''),
+          name: String(a.original_name || 'Attachment'),
+        }))
+      : [];
+    const dedup = fromApi.filter((a) => a.fileId);
+    if (dedup.length > 0) {
+      setAttachments(dedup);
+    } else if (existingPost.document_file_id) {
+      setAttachments([
+        {
+          fileId: String(existingPost.document_file_id),
+          name: String(existingPost.document_original_name || 'Attachment'),
+        },
+      ]);
+    } else {
+      setAttachments([]);
     }
-    setPhotoFileId(pId);
 
-    setTargetType(existingPost.target_type === 'divisions' ? 'divisions' : 'all');
+    const tt = String(existingPost.target_type || 'all');
+    setTargetType(tt === 'divisions' ? 'divisions' : tt === 'users' ? 'users' : 'all');
     setSelectedDivisions(
       Array.isArray(existingPost.target_division_ids) ? existingPost.target_division_ids.map(String) : []
     );
+    const fromPreview = Array.isArray(existingPost.target_users_preview)
+      ? (existingPost.target_users_preview as { id?: string; name?: string }[]).map((x) => ({
+          id: String(x.id || ''),
+          name: String(x.name || 'Unknown'),
+        }))
+      : [];
+    const fromIds = Array.isArray(existingPost.target_user_ids)
+      ? (existingPost.target_user_ids as string[]).map((id) => ({
+          id: String(id),
+          name: 'Employee',
+        }))
+      : [];
+    setSelectedAudienceUsers(fromPreview.length > 0 ? fromPreview.filter((x) => x.id) : fromIds.filter((x) => x.id));
 
     const st = existingPost.status as string | undefined;
     if (st === 'draft') setPublishMode('draft');
@@ -171,10 +256,13 @@ export default function CommunityNewPost() {
         content: sanitizeCommunityPostHtml(content),
         is_urgent: isUrgent,
         requires_read_confirmation: requiresReadConfirmation,
-        photo_file_id: photoFileId || undefined,
-        document_file_id: documentFileId || undefined,
+        /* Cover/hero image removed — always clear legacy photo_file_id when saving from this form */
+        photo_file_id: null,
+        document_file_id: null,
+        attachments: attachments.map((a) => ({ file_id: a.fileId, name: a.name })),
         target_type: targetType,
-        target_division_ids: targetType === 'divisions' ? selectedDivisions : undefined,
+        target_division_ids: targetType === 'divisions' ? selectedDivisions : [],
+        target_user_ids: targetType === 'users' ? selectedAudienceUsers.map((u) => u.id) : [],
         priority,
         related_area: relatedArea,
         mentions: extractMentionsFromEditor(editorRef.current),
@@ -204,10 +292,10 @@ export default function CommunityNewPost() {
       content,
       priority,
       requiresReadConfirmation,
-      photoFileId,
-      documentFileId,
+      attachments,
       targetType,
       selectedDivisions,
+      selectedAudienceUsers,
       relatedArea,
       publishMode,
       scheduledAt,
@@ -222,6 +310,9 @@ export default function CommunityNewPost() {
       if (targetType === 'divisions' && selectedDivisions.length === 0) {
         return { ok: false as const, message: 'Select at least one division' };
       }
+      if (targetType === 'users' && selectedAudienceUsers.length === 0) {
+        return { ok: false as const, message: 'Select at least one employee' };
+      }
       if (!isEdit && mode === 'scheduled' && !scheduledAt) {
         return { ok: false as const, message: 'Choose a date and time for the scheduled post' };
       }
@@ -230,7 +321,7 @@ export default function CommunityNewPost() {
       }
       return { ok: true as const };
     },
-    [title, content, targetType, selectedDivisions, isEdit, publishMode, scheduledAt],
+    [title, content, targetType, selectedDivisions, selectedAudienceUsers, isEdit, publishMode, scheduledAt],
   );
 
   const submitPayload = (opts?: { publishModeOverride?: PublishMode }) => {
@@ -259,105 +350,50 @@ export default function CommunityNewPost() {
     submitPayload({ publishModeOverride: 'draft' });
   };
 
-  const handleImageConfirm = async (blob: Blob, originalFileObjectId?: string) => {
-    if (originalFileObjectId) {
-      setPhotoFileId(originalFileObjectId);
-      setImagePickerOpen(false);
-      toast.success('Image added successfully');
-      return;
-    }
-
-    try {
-      const file = new File([blob], 'community-photo.jpg', { type: 'image/jpeg' });
-      const formData = new FormData();
-      formData.append('file', file);
-      formData.append('original_name', file.name);
-      formData.append('content_type', 'image/jpeg');
-      formData.append('project_id', '');
-      formData.append('client_id', '');
-      formData.append('employee_id', '');
-      formData.append('category_id', 'community-photo');
-
-      const conf = await api('POST', '/files/upload-proxy', formData);
-
-      if (!conf || !conf.id) {
-        throw new Error('Invalid upload response');
-      }
-
-      setPhotoFileId(conf.id);
-      setImagePickerOpen(false);
-      toast.success('Image added successfully');
-    } catch (error: any) {
-      console.error('Failed to upload image:', error);
-      const errorMessage = error?.response?.data?.detail || error?.message || 'Failed to upload image';
-      toast.error(errorMessage);
-    }
-  };
-
-  const uploadPdfFile = async (file: File) => {
-    if (file.type !== 'application/pdf' && !file.name.toLowerCase().endsWith('.pdf')) {
-      toast.error('Please use a PDF file');
-      return;
+  const appendUploadedAttachment = async (file: File): Promise<boolean> => {
+    if (!isAllowedCommunityAttachment(file)) {
+      toast.error(
+        `Unsupported or too large file (max ${Math.round(ATTACHMENT_MAX_BYTES / (1024 * 1024))} MB). Use common office/media types (PDF, Office, ZIP, images, etc.).`
+      );
+      return false;
     }
     const formData = new FormData();
     formData.append('file', file);
     formData.append('original_name', file.name);
-    formData.append('content_type', 'application/pdf');
+    formData.append('content_type', file.type || 'application/octet-stream');
     formData.append('project_id', '');
     formData.append('client_id', '');
     formData.append('employee_id', '');
-    formData.append('category_id', 'community-document');
+    formData.append('category_id', 'community-attachment');
 
-    const conf = await api('POST', '/files/upload-proxy', formData);
+    const conf = await api<{ id: string }>('POST', '/files/upload-proxy', formData);
 
     if (!conf || !conf.id) {
       throw new Error('Invalid upload response');
     }
-
-    setDocumentFileId(conf.id);
-    setDocumentFileName(file.name);
-    toast.success('Document added');
+    const id = String(conf.id);
+    let added = false;
+    setAttachments((prev) => {
+      if (prev.length >= MAX_COMMUNITY_ATTACHMENTS) return prev;
+      if (prev.some((p) => p.fileId === id)) return prev;
+      added = true;
+      return [...prev, { fileId: id, name: file.name }];
+    });
+    return added;
   };
 
-  const uploadImageFileQuick = async (file: File) => {
-    if (!file.type.startsWith('image/')) {
-      toast.error('Drop a PDF or an image file');
-      return;
-    }
+  const handleAttachmentUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files || []);
+    if (files.length === 0) return;
+    let ok = 0;
     try {
-      const bitmap = await createImageBitmap(file);
-      const maxW = 1200;
-      const maxH = 800;
-      let w = bitmap.width;
-      let h = bitmap.height;
-      const scale = Math.min(maxW / w, maxH / h, 1);
-      w = Math.round(w * scale);
-      h = Math.round(h * scale);
-      const canvas = document.createElement('canvas');
-      canvas.width = w;
-      canvas.height = h;
-      const ctx = canvas.getContext('2d');
-      if (!ctx) throw new Error('Could not prepare image');
-      ctx.drawImage(bitmap, 0, 0, w, h);
-      bitmap.close?.();
-      const blob = await new Promise<Blob>((resolve, reject) => {
-        canvas.toBlob((b) => (b ? resolve(b) : reject(new Error('Export failed'))), 'image/jpeg', 0.88);
-      });
-      await handleImageConfirm(blob);
-    } catch (e: any) {
-      console.error(e);
-      toast.error(e?.message || 'Could not process image — try “Edit & crop”');
-    }
-  };
-
-  const handleDocumentUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    try {
-      await uploadPdfFile(file);
-    } catch (error: any) {
-      console.error('Failed to upload document:', error);
-      toast.error(error?.response?.data?.detail || error?.message || 'Failed to upload document');
+      for (const file of files) {
+        if (await appendUploadedAttachment(file)) ok += 1;
+      }
+      if (ok > 0) toast.success(ok === 1 ? 'Attachment added' : `${ok} attachments added`);
+    } catch (error: unknown) {
+      console.error('Failed to upload attachment:', error);
+      toast.error(error instanceof Error ? error.message : 'Failed to upload attachment');
     }
     e.target.value = '';
   };
@@ -365,29 +401,21 @@ export default function CommunityNewPost() {
   const handleDrop = async (e: React.DragEvent) => {
     e.preventDefault();
     setDropActive(false);
-    const file = e.dataTransfer.files?.[0];
-    if (!file) return;
-    if (photoFileId || documentFileId) {
-      toast.error('Remove the current attachment before adding another');
-      return;
-    }
+    const files = Array.from(e.dataTransfer.files || []);
+    if (files.length === 0) return;
+    let ok = 0;
     try {
-      if (file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf')) {
-        await uploadPdfFile(file);
-      } else if (file.type.startsWith('image/')) {
-        await uploadImageFileQuick(file);
-      } else {
-        toast.error('Drop a PDF or an image');
+      for (const file of files) {
+        if (await appendUploadedAttachment(file)) ok += 1;
       }
-    } catch (error: any) {
-      toast.error(error?.response?.data?.detail || error?.message || 'Upload failed');
+      if (ok > 0) toast.success(ok === 1 ? 'Attachment added' : `${ok} attachments added`);
+    } catch (error: unknown) {
+      toast.error(error instanceof Error ? error.message : 'Upload failed');
     }
   };
 
-  const handleRemovePhoto = () => setPhotoFileId(null);
-  const handleRemoveDocument = () => {
-    setDocumentFileId(null);
-    setDocumentFileName(null);
+  const removeAttachment = (fileId: string) => {
+    setAttachments((prev) => prev.filter((a) => a.fileId !== fileId));
   };
 
   const toggleDivision = (divisionId: string) => {
@@ -396,16 +424,37 @@ export default function CommunityNewPost() {
     );
   };
 
+  const toggleAudienceUserRow = (row: { id: string; name?: string; username?: string }) => {
+    const id = String(row.id);
+    const name = String(row.name || row.username || 'Employee');
+    setSelectedAudienceUsers((prev) => {
+      if (prev.some((p) => p.id === id)) {
+        return prev.filter((p) => p.id !== id);
+      }
+      if (prev.length >= MAX_AUDIENCE_EMPLOYEES) return prev;
+      return [...prev, { id, name }];
+    });
+  };
+
+  const removeAudienceUser = (id: string) => {
+    setSelectedAudienceUsers((prev) => prev.filter((u) => u.id !== id));
+  };
+
   const busy = createPostMutation.isLoading || patchPostMutation.isLoading;
 
   const audienceSummary =
     targetType === 'all'
       ? 'All employees'
-      : selectedDivisions.length === 0
-        ? 'No divisions selected yet'
-        : `${selectedDivisions.length} division${selectedDivisions.length === 1 ? '' : 's'}`;
+      : targetType === 'users'
+        ? selectedAudienceUsers.length === 0
+          ? 'No employees selected yet'
+          : `${selectedAudienceUsers.length} employee${selectedAudienceUsers.length === 1 ? '' : 's'}`
+        : selectedDivisions.length === 0
+          ? 'No divisions selected yet'
+          : `${selectedDivisions.length} division${selectedDivisions.length === 1 ? '' : 's'}`;
 
   const divisionError = triedSubmit && targetType === 'divisions' && selectedDivisions.length === 0;
+  const usersAudienceError = triedSubmit && targetType === 'users' && selectedAudienceUsers.length === 0;
   const scheduleError =
     triedSubmit &&
     publishMode === 'scheduled' &&
@@ -440,6 +489,7 @@ export default function CommunityNewPost() {
     !title.trim() ||
     isCommunityEditorHtmlEmpty(content) ||
     (targetType === 'divisions' && selectedDivisions.length === 0) ||
+    (targetType === 'users' && selectedAudienceUsers.length === 0) ||
     (!isEdit && publishMode === 'scheduled' && !scheduledAt) ||
     (isEdit && publishMode === 'scheduled' && !scheduledAt && showPublicationControls);
 
@@ -506,45 +556,39 @@ export default function CommunityNewPost() {
       </div>
 
       <div>
-        <div className="flex items-center justify-between gap-2 mb-2">
-          <span className="text-sm font-medium text-gray-800">Media & documents</span>
-          <span className="text-xs text-gray-500">One attachment · PDF or image</span>
+        <div className="flex flex-col gap-0.5 sm:flex-row sm:items-center sm:justify-between mb-2">
+          <span className="text-sm font-medium text-gray-800">Attachments (optional)</span>
+          <span className="text-xs text-gray-500">
+            Up to {MAX_COMMUNITY_ATTACHMENTS} files 
+          </span>
         </div>
 
-        {photoFileId && (
-          <div className="relative inline-block max-w-full mb-3">
-            <img
-              src={withFileAccessToken(`/files/${photoFileId}/thumbnail?w=560`)}
-              alt="Attachment preview"
-              className="max-w-full h-auto rounded-lg border border-gray-200 max-h-56 object-contain"
-            />
-            <button
-              type="button"
-              onClick={handleRemovePhoto}
-              className="absolute top-2 right-2 rounded-md bg-gray-900/85 px-2 py-1 text-xs font-medium text-white hover:bg-gray-900"
-            >
-              Remove
-            </button>
-          </div>
+        {attachments.length > 0 && (
+          <ul className="space-y-2 mb-3">
+            {attachments.map((a) => (
+              <li
+                key={a.fileId}
+                className="flex items-center gap-3 p-3 rounded-lg border border-gray-200 bg-gray-50/80 max-w-2xl"
+              >
+                <svg className="w-7 h-7 text-gray-600 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" />
+                </svg>
+                <span className="flex-1 text-sm text-gray-800 truncate" title={a.name}>
+                  {a.name}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => removeAttachment(a.fileId)}
+                  className="rounded-md px-2 py-1 text-xs font-medium text-red-700 hover:bg-red-50 flex-shrink-0"
+                >
+                  Remove
+                </button>
+              </li>
+            ))}
+          </ul>
         )}
 
-        {documentFileId && (
-          <div className="flex items-center gap-3 p-3 rounded-lg border border-gray-200 bg-gray-50/80 mb-3 max-w-md">
-            <svg className="w-8 h-8 text-red-600 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
-            </svg>
-            <span className="flex-1 text-sm text-gray-800 truncate">{documentFileName || 'PDF document'}</span>
-            <button
-              type="button"
-              onClick={handleRemoveDocument}
-              className="rounded-md px-2 py-1 text-xs font-medium text-red-700 hover:bg-red-50"
-            >
-              Remove
-            </button>
-          </div>
-        )}
-
-        {!photoFileId && !documentFileId && (
+        {attachments.length < MAX_COMMUNITY_ATTACHMENTS && (
           <div
             ref={dropRef}
             onDragEnter={(e) => {
@@ -563,25 +607,28 @@ export default function CommunityNewPost() {
               dropActive ? 'border-brand-red bg-red-50/40' : 'border-gray-200 bg-gray-50/50 hover:border-gray-300'
             }`}
           >
-            <p className="text-sm font-medium text-gray-800">Drop a PDF or image here</p>
-            <p className="text-xs text-gray-500 mt-1">or choose how to add a file</p>
+            <p className="text-sm font-medium text-gray-800">Drop files here to attach</p>
+            <p className="text-xs text-gray-500 mt-1 max-w-lg mx-auto">
+              You can drop or select multiple files at once (max{' '}
+              {Math.round(ATTACHMENT_MAX_BYTES / (1024 * 1024))} MB each).
+            </p>
             <div className="mt-4 flex flex-wrap items-center justify-center gap-2">
               <button
                 type="button"
-                onClick={() => setImagePickerOpen(true)}
+                onClick={() => attachmentInputRef.current?.click()}
                 className="rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm font-medium text-gray-800 shadow-sm hover:bg-gray-50"
               >
-                Edit & crop image
-              </button>
-              <button
-                type="button"
-                onClick={() => pdfInputRef.current?.click()}
-                className="rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm font-medium text-gray-800 shadow-sm hover:bg-gray-50"
-              >
-                Choose PDF
+                Choose files
               </button>
             </div>
-            <input ref={pdfInputRef} type="file" accept=".pdf,application/pdf" onChange={handleDocumentUpload} className="hidden" />
+            <input
+              ref={attachmentInputRef}
+              type="file"
+              multiple
+              accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.csv,.txt,.zip,.7z,.rar,.png,.jpg,.jpeg,.gif,.webp,.svg,.mp3,.wav,.mp4,.mov,.webm,.json,.xml"
+              onChange={handleAttachmentUpload}
+              className="hidden"
+            />
           </div>
         )}
       </div>
@@ -698,6 +745,7 @@ export default function CommunityNewPost() {
               onChange={() => {
                 setTargetType('all');
                 setSelectedDivisions([]);
+                setSelectedAudienceUsers([]);
               }}
               className="h-4 w-4 border-gray-300 text-brand-red focus:ring-brand-red"
             />
@@ -715,12 +763,35 @@ export default function CommunityNewPost() {
               type="radio"
               name="target"
               checked={targetType === 'divisions'}
-              onChange={() => setTargetType('divisions')}
+              onChange={() => {
+                setTargetType('divisions');
+                setSelectedAudienceUsers([]);
+              }}
               className="h-4 w-4 border-gray-300 text-brand-red focus:ring-brand-red"
             />
             <div>
               <div className="text-sm font-medium text-gray-900">Specific divisions</div>
               <div className="text-xs text-gray-500">Limit to selected teams</div>
+            </div>
+          </label>
+          <label
+            className={`flex cursor-pointer items-center gap-3 rounded-lg border p-3 transition ${
+              targetType === 'users' ? 'border-brand-red/40 bg-red-50/30' : 'border-gray-200 hover:bg-gray-50/80'
+            }`}
+          >
+            <input
+              type="radio"
+              name="target"
+              checked={targetType === 'users'}
+              onChange={() => {
+                setTargetType('users');
+                setSelectedDivisions([]);
+              }}
+              className="h-4 w-4 border-gray-300 text-brand-red focus:ring-brand-red"
+            />
+            <div>
+              <div className="text-sm font-medium text-gray-900">Specific employees</div>
+              <div className="text-xs text-gray-500">Only selected people see this in the feed</div>
             </div>
           </label>
         </div>
@@ -781,6 +852,153 @@ export default function CommunityNewPost() {
               </div>
             )}
             {divisionError && <p className="text-xs text-red-600 mt-2">Select at least one division.</p>}
+          </div>
+        )}
+
+        {targetType === 'users' && (
+          <div
+            className={`rounded-lg border p-3 ${usersAudienceError ? 'border-red-300 bg-red-50/20' : 'border-gray-100 bg-gray-50/80'}`}
+          >
+            <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
+              <span className="text-xs font-medium text-gray-600">Employees</span>
+              {selectedAudienceUsers.length > 0 && (
+                <button
+                  type="button"
+                  onClick={() => setSelectedAudienceUsers([])}
+                  className="text-xs font-medium text-gray-600 hover:underline"
+                >
+                  Clear all
+                </button>
+              )}
+            </div>
+
+            <div className="relative" ref={employeeAudienceRef}>
+              <button
+                type="button"
+                id="audience-employee-dropdown-trigger"
+                aria-expanded={employeeAudienceOpen}
+                aria-haspopup="listbox"
+                aria-controls="audience-employee-dropdown-panel"
+                onClick={() => {
+                  setEmployeeAudienceOpen((o) => {
+                    if (!o) setDebouncedEmployeeQ(employeeSearchInput.trim());
+                    return !o;
+                  });
+                }}
+                className="flex w-full items-center justify-between gap-2 rounded-lg border border-gray-200 bg-white px-3 py-2.5 text-left text-sm shadow-sm hover:border-gray-300 focus:outline-none focus:ring-2 focus:ring-brand-red/30 focus:border-brand-red"
+              >
+                <span className={selectedAudienceUsers.length === 0 ? 'text-gray-500' : 'text-gray-900 font-medium'}>
+                  {selectedAudienceUsers.length === 0
+                    ? 'Select employees…'
+                    : `${selectedAudienceUsers.length} selected`}
+                </span>
+                <svg
+                  className={`h-4 w-4 shrink-0 text-gray-500 transition-transform ${employeeAudienceOpen ? 'rotate-180' : ''}`}
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                  aria-hidden
+                >
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                </svg>
+              </button>
+
+              {employeeAudienceOpen && (
+                <div
+                  id="audience-employee-dropdown-panel"
+                  role="listbox"
+                  aria-multiselectable="true"
+                  className="absolute left-0 right-0 top-full z-40 mt-1 rounded-lg border border-gray-200 bg-white shadow-lg ring-1 ring-black/5"
+                >
+                  <div className="border-b border-gray-100 p-2">
+                    <label htmlFor="audience-employee-search" className="sr-only">
+                      Search employees
+                    </label>
+                    <input
+                      id="audience-employee-search"
+                      type="search"
+                      value={employeeSearchInput}
+                      onChange={(e) => setEmployeeSearchInput(e.target.value)}
+                      placeholder="Search by name…"
+                      autoComplete="off"
+                      className="w-full rounded-md border border-gray-200 px-2.5 py-2 text-sm focus:border-brand-red focus:outline-none focus:ring-1 focus:ring-brand-red/30"
+                      onClick={(e) => e.stopPropagation()}
+                    />
+                  </div>
+                  <ul className="max-h-56 overflow-y-auto py-1">
+                    {employeesSortedAlphabetically.length === 0 ? (
+                      <li className="px-3 py-3 text-xs text-gray-500">No employees found.</li>
+                    ) : (
+                      employeesSortedAlphabetically.slice(0, 200).map((row: { id: string; name?: string; username?: string }) => {
+                        const id = String(row.id);
+                        const label = String(row.name || row.username || 'Employee');
+                        const checked = selectedAudienceUsers.some((s) => s.id === id);
+                        const atCap = selectedAudienceUsers.length >= MAX_AUDIENCE_EMPLOYEES && !checked;
+                        return (
+                          <li key={id} role="option" aria-selected={checked}>
+                            <label
+                              className={`flex cursor-pointer items-center gap-3 px-3 py-2 text-sm ${
+                                atCap ? 'cursor-not-allowed opacity-50' : 'hover:bg-gray-50'
+                              }`}
+                            >
+                              <input
+                                type="checkbox"
+                                checked={checked}
+                                disabled={atCap}
+                                onChange={() => toggleAudienceUserRow(row)}
+                                className="h-4 w-4 rounded border-gray-300 text-brand-red focus:ring-brand-red"
+                              />
+                              <span className="min-w-0 flex-1">
+                                <span className="font-medium text-gray-900">{label}</span>
+                                {row.username && row.name ? (
+                                  <span className="block truncate text-xs text-gray-500">{row.username}</span>
+                                ) : null}
+                              </span>
+                            </label>
+                          </li>
+                        );
+                      })
+                    )}
+                  </ul>
+                  <div className="border-t border-gray-100 px-2 py-2 flex justify-end">
+                    <button
+                      type="button"
+                      onClick={() => setEmployeeAudienceOpen(false)}
+                      className="rounded-md bg-gray-900 px-3 py-1.5 text-xs font-semibold text-white hover:bg-gray-800"
+                    >
+                      Done
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {selectedAudienceUsers.length > 0 && (
+              <div className="mt-3 flex flex-wrap gap-2">
+                {selectedAudienceUsers.map((u) => (
+                  <span
+                    key={u.id}
+                    className="inline-flex items-center gap-1.5 rounded-full border border-gray-200 bg-white pl-2.5 pr-1 py-1 text-xs font-medium text-gray-800"
+                  >
+                    <span className="max-w-[10rem] truncate" title={u.name}>
+                      {u.name}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => removeAudienceUser(u.id)}
+                      className="rounded-full p-0.5 text-gray-500 hover:bg-gray-100 hover:text-gray-800"
+                      aria-label={`Remove ${u.name}`}
+                    >
+                      ×
+                    </button>
+                  </span>
+                ))}
+              </div>
+            )}
+            <p className="text-[11px] text-gray-500 mt-2">
+              Open the list, search, tick several people, then Done. Up to {MAX_AUDIENCE_EMPLOYEES} recipients.
+            </p>
+            {usersAudienceError && <p className="text-xs text-red-600 mt-2">Select at least one employee.</p>}
           </div>
         )}
       </div>
@@ -861,16 +1079,6 @@ export default function CommunityNewPost() {
         </div>
       </form>
 
-      <ImagePicker
-        isOpen={imagePickerOpen}
-        onClose={() => setImagePickerOpen(false)}
-        onConfirm={handleImageConfirm}
-        clientId={undefined}
-        targetWidth={1200}
-        targetHeight={800}
-        allowEdit={true}
-      />
-
       <CommunityNewPostPreviewModal
         open={previewOpen}
         onClose={() => setPreviewOpen(false)}
@@ -879,11 +1087,10 @@ export default function CommunityNewPost() {
         priority={priority}
         relatedArea={relatedArea}
         requiresReadConfirmation={requiresReadConfirmation}
-        photoFileId={photoFileId}
-        documentFileId={documentFileId}
-        documentFileName={documentFileName}
+        attachments={attachments}
         targetType={targetType}
         divisionCount={selectedDivisions.length}
+        selectedEmployeeCount={selectedAudienceUsers.length}
         publishMode={publishMode}
       />
 

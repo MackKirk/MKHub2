@@ -1,11 +1,14 @@
 import React, { useState, useMemo, useRef, useEffect } from 'react';
+import type { Editor } from '@tiptap/core';
 import { useSearchParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api, withFileAccessTokenIfNeeded } from '@/lib/api';
 import toast from 'react-hot-toast';
 import OverlayPortal from '@/components/OverlayPortal';
-import MentionPicker, { type MentionEntity } from '@/components/community/MentionPicker';
 import { CommunityPostBody } from '@/components/community/CommunityPostBody';
+import CommunityCommentRichTextEditor from '@/components/community/CommunityCommentRichTextEditor';
+import { extractMentionsFromEditor } from '@/lib/communityPostEditorUtils';
+import { isCommunityEditorHtmlEmpty, sanitizeCommunityPostHtml } from '@/lib/communityPostHtml';
 
 type CommunityPost = {
   id: string;
@@ -17,6 +20,8 @@ type CommunityPost = {
   photo_url?: string;
   document_url?: string;
   document_file_id?: string;
+  document_original_name?: string | null;
+  attachments?: { file_id: string; url: string; original_name: string }[];
   created_at: string;
   publish_at?: string;
   status?: string;
@@ -79,13 +84,24 @@ export default function EmployeeCommunity({ expanded = false, feedMode = false }
   const [priorityFilter, setPriorityFilter] = useState('');
   const [confirmedOnly, setConfirmedOnly] = useState(false);
   const [modalPost, setModalPost] = useState<CommunityPost | null>(null);
-  const [commentText, setCommentText] = useState('');
-  const [commentMentions, setCommentMentions] = useState<MentionEntity[]>([]);
+  const [commentDraftHtml, setCommentDraftHtml] = useState('<p></p>');
+  const [commentEditorSeq, setCommentEditorSeq] = useState(0);
+  const commentEditorRef = useRef<Editor | null>(null);
   const [replyParentId, setReplyParentId] = useState<string | null>(null);
   const commentsRef = useRef<HTMLDivElement>(null);
   const [visiblePostsCount, setVisiblePostsCount] = useState(feedMode ? 3 : Infinity);
   const feedContainerRef = useRef<HTMLDivElement>(null);
   const deepLinkHandled = useRef<string | null>(null);
+  const lastCommentResetKey = useRef<string>('__init__');
+
+  useEffect(() => {
+    const key = modalPost?.id ? String(modalPost.id) : '';
+    if (key === lastCommentResetKey.current) return;
+    lastCommentResetKey.current = key;
+    setCommentDraftHtml('<p></p>');
+    setCommentEditorSeq(0);
+    commentEditorRef.current = null;
+  }, [modalPost?.id]);
 
   const listParams = useMemo(() => {
     const p: Record<string, string | undefined> = { filter: filter === 'urgent' ? 'urgent' : filter };
@@ -257,8 +273,8 @@ export default function EmployeeCommunity({ expanded = false, feedMode = false }
         mentions: mentions?.length ? mentions : undefined,
       }),
     onSuccess: (data: any) => {
-      setCommentText('');
-      setCommentMentions([]);
+      setCommentDraftHtml('<p></p>');
+      setCommentEditorSeq((s) => s + 1);
       setReplyParentId(null);
       refetchComments();
       queryClient.invalidateQueries({ queryKey: ['community-posts'] });
@@ -311,14 +327,21 @@ export default function EmployeeCommunity({ expanded = false, feedMode = false }
 
   const handleSubmitComment = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!modalPost || !commentText.trim()) return;
+    const ed = commentEditorRef.current;
+    if (!modalPost || !ed) return;
+    const content = sanitizeCommunityPostHtml(ed.getHTML());
+    if (isCommunityEditorHtmlEmpty(content)) return;
+    const mentions = extractMentionsFromEditor(ed);
     createCommentMutation.mutate({
       postId: modalPost.id,
-      content: commentText.trim(),
+      content,
       parent_comment_id: replyParentId,
-      mentions: commentMentions.map((m) => ({ entity_type: m.entity_type, entity_id: m.entity_id })),
+      mentions: mentions.length ? mentions : undefined,
     });
   };
+
+  const commentSubmitDisabled =
+    isCommunityEditorHtmlEmpty(sanitizeCommunityPostHtml(commentDraftHtml)) || createCommentMutation.isLoading;
 
   const formatTimeAgo = (dateString: string) => {
     const date = new Date(dateString);
@@ -524,7 +547,11 @@ export default function EmployeeCommunity({ expanded = false, feedMode = false }
                       isUrgent || isRequired ? 'text-gray-500' : 'text-gray-400'
                     }`}>
                       {post.author_name || 'Unknown'} · {formatTimeAgo(post.created_at)}
-                      {post.target_type === 'all' ? ' · All employees' : ' · Divisions'}
+                      {post.target_type === 'all'
+                        ? ' · All employees'
+                        : post.target_type === 'users'
+                          ? ' · Specific employees'
+                          : ' · Divisions'}
                       {post.user_has_confirmed && (
                         <span className="ml-2 text-green-700 font-semibold">· Confirmed</span>
                       )}
@@ -622,9 +649,10 @@ export default function EmployeeCommunity({ expanded = false, feedMode = false }
                       <button
                         onClick={() => {
                           setModalPost(null);
-                          setCommentText('');
-                          setCommentMentions([]);
+                          setCommentDraftHtml('<p></p>');
+                          setCommentEditorSeq((s) => s + 1);
                           setReplyParentId(null);
+                          commentEditorRef.current = null;
                         }}
                         className="text-gray-400 hover:text-gray-600 transition flex-shrink-0 mt-0.5"
                       >
@@ -643,7 +671,11 @@ export default function EmployeeCommunity({ expanded = false, feedMode = false }
                         </span>
                       )}
                       <span className="text-xs text-gray-500">
-                        {modalPost.target_type === 'all' ? 'Everyone' : 'Division audience'}
+                        {modalPost.target_type === 'all'
+                          ? 'Everyone'
+                          : modalPost.target_type === 'users'
+                            ? 'Selected employees'
+                            : 'Division audience'}
                       </span>
                       {modalPost.priority && modalPost.priority !== 'normal' && (
                         <span className="text-xs font-semibold text-red-800 capitalize">{modalPost.priority}</span>
@@ -652,37 +684,43 @@ export default function EmployeeCommunity({ expanded = false, feedMode = false }
                   </div>
                 </div>
 
-                {/* Photo - with padding */}
-                {modalPost.photo_url && (
-                  <div className="mb-4">
-                    <img
-                      src={withFileAccessTokenIfNeeded(modalPost.photo_url)}
-                      alt={modalPost.title}
-                      className="w-full h-auto rounded-lg object-contain"
-                    />
-                  </div>
-                )}
-
-                {/* Content text - right after photo */}
                 <div className="text-base text-gray-900 mb-4 leading-relaxed">
                   <CommunityPostBody html={modalPost.content} />
                 </div>
 
-                {/* Document - after text, with small icon on the right */}
-                {modalPost.document_url && (
-                  <div className="mb-4 flex justify-end">
-                    <a
-                      href={withFileAccessTokenIfNeeded(modalPost.document_url)}
-                      download
-                      className="flex items-center gap-2 text-sm text-gray-700 hover:text-gray-900 transition-colors"
-                    >
-                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
-                      </svg>
-                      <span className="font-medium">Download Document</span>
-                    </a>
-                  </div>
-                )}
+                {(() => {
+                  const atts =
+                    Array.isArray(modalPost.attachments) && modalPost.attachments.length > 0
+                      ? modalPost.attachments
+                      : modalPost.document_url
+                        ? [
+                            {
+                              file_id: modalPost.document_file_id || '',
+                              url: modalPost.document_url,
+                              original_name: modalPost.document_original_name || 'Attachment',
+                            },
+                          ]
+                        : [];
+                  if (atts.length === 0) return null;
+                  return (
+                    <div className="mb-4 space-y-2">
+                      {atts.map((att) => (
+                        <div key={att.file_id || att.url} className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2.5">
+                          <a
+                            href={withFileAccessTokenIfNeeded(att.url)}
+                            download={att.original_name || undefined}
+                            className="inline-flex items-center gap-2 text-sm font-medium text-blue-700 hover:text-blue-900"
+                          >
+                            <svg className="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                            </svg>
+                            <span className="truncate">Download: {att.original_name}</span>
+                          </a>
+                        </div>
+                      ))}
+                    </div>
+                  );
+                })()}
 
                 {/* Engagement - likes count */}
                 <div className="flex items-center gap-4 mb-4 pb-4 border-b border-gray-200">
@@ -738,7 +776,10 @@ export default function EmployeeCommunity({ expanded = false, feedMode = false }
                             <div className="flex items-center gap-2 mb-1">
                               <span className="font-semibold text-sm text-gray-900">{comment.user_name || 'Unknown'}</span>
                             </div>
-                            <p className="text-sm text-gray-900 mb-1 whitespace-pre-wrap leading-relaxed">{comment.content}</p>
+                            <CommunityPostBody
+                              html={comment.content}
+                              className="text-sm text-gray-900 mb-1 leading-relaxed"
+                            />
                             <div className="flex items-center gap-3 text-xs text-gray-500">
                               <span>{formatTimeAgo(comment.created_at)}</span>
                               <button
@@ -791,26 +832,21 @@ export default function EmployeeCommunity({ expanded = false, feedMode = false }
                   </button>
                 </div>
               )}
-              <MentionPicker mentions={commentMentions} onChange={setCommentMentions} />
               <form onSubmit={handleSubmitComment} className="flex gap-2 items-start">
-                <div className="flex-1">
-                  <textarea
-                    value={commentText}
-                    onChange={(e) => setCommentText(e.target.value)}
-                    placeholder="Add Comment"
-                    rows={1}
-                    className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#7f1010] focus:border-transparent resize-none text-sm"
-                    style={{ minHeight: '40px', maxHeight: '120px' }}
-                    onInput={(e) => {
-                      const target = e.target as HTMLTextAreaElement;
-                      target.style.height = 'auto';
-                      target.style.height = `${target.scrollHeight}px`;
+                <div className="flex-1 min-w-0">
+                  <CommunityCommentRichTextEditor
+                    editorKey={`${modalPost.id}-c-${commentEditorSeq}`}
+                    initialHtml={commentDraftHtml}
+                    onChangeHtml={setCommentDraftHtml}
+                    onEditorReady={(ed) => {
+                      commentEditorRef.current = ed;
                     }}
+                    placeholder="Add comment… Type @ to mention someone"
                   />
                 </div>
                 <button
                   type="submit"
-                  disabled={!commentText.trim() || createCommentMutation.isLoading}
+                  disabled={commentSubmitDisabled}
                   className="px-6 py-2.5 bg-gradient-to-r from-[#7f1010] to-[#a31414] text-white rounded-lg hover:opacity-90 transition disabled:opacity-50 disabled:cursor-not-allowed font-medium text-sm flex items-center gap-2"
                   style={{ height: '40px', marginTop: '0' }}
                 >

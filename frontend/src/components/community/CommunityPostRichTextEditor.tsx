@@ -11,11 +11,14 @@ import TextStyle from '@tiptap/extension-text-style';
 import { Color } from '@tiptap/extension-color';
 import Highlight from '@tiptap/extension-highlight';
 import Youtube from '@tiptap/extension-youtube';
-import Mention from '@tiptap/extension-mention';
-import type { SuggestionKeyDownProps, SuggestionProps } from '@tiptap/suggestion';
 import toast from 'react-hot-toast';
 import { api } from '@/lib/api';
 import { CommunityEditorColorToolbar } from '@/components/community/CommunityEditorColorToolbar';
+import {
+  CommunityMention,
+  createMentionSuggestionRender,
+  fetchMentionItems,
+} from '@/components/community/communityEditorMentions';
 import '@/pages/training/LessonRichTextEditor.css';
 
 async function uploadCommunityPhotoFile(file: File): Promise<string> {
@@ -34,14 +37,6 @@ async function uploadCommunityPhotoFile(file: File): Promise<string> {
   }
   return conf.id;
 }
-
-export type CommunityMentionItem = {
-  id: string;
-  label: string;
-  subtitle?: string;
-  entityType: 'user' | 'division' | 'community_group';
-  entityId: string;
-};
 
 function ToolbarButton({
   onClick,
@@ -147,165 +142,6 @@ function RedoIcon() {
   );
 }
 
-const CommunityMention = Mention.extend({
-  addAttributes() {
-    return {
-      ...this.parent?.(),
-      entityType: {
-        default: null,
-        parseHTML: (element) => element.getAttribute('data-entity-type'),
-        renderHTML: (attributes) =>
-          attributes.entityType ? { 'data-entity-type': attributes.entityType } : {},
-      },
-      entityId: {
-        default: null,
-        parseHTML: (element) => element.getAttribute('data-entity-id'),
-        renderHTML: (attributes) => (attributes.entityId ? { 'data-entity-id': attributes.entityId } : {}),
-      },
-    };
-  },
-});
-
-async function fetchMentionItems(query: string): Promise<CommunityMentionItem[]> {
-  const list = await api<
-    Array<{ entity_type: string; entity_id: string; label: string; subtitle?: string }>
-  >('GET', `/community/posts/mentions/suggest?q=${encodeURIComponent(query)}&limit=24`).catch(() => []);
-  const allowed = new Set(['user', 'division', 'community_group']);
-  return (Array.isArray(list) ? list : [])
-    .filter((s) => allowed.has(s.entity_type) && s.entity_id)
-    .map((s) => ({
-      id: s.entity_id,
-      label: s.label,
-      subtitle: s.subtitle,
-      entityType: s.entity_type as CommunityMentionItem['entityType'],
-      entityId: s.entity_id,
-    }));
-}
-
-function createMentionSuggestionRender() {
-  let root: HTMLDivElement | null = null;
-  let propsRef: SuggestionProps<CommunityMentionItem, CommunityMentionItem> | null = null;
-  let selectedIndex = 0;
-
-  function destroyRoot() {
-    root?.remove();
-    root = null;
-    propsRef = null;
-  }
-
-  function positionEl(clientRect: (() => DOMRect | null) | null | undefined) {
-    if (!root || !clientRect) return;
-    const rect = clientRect();
-    if (!rect) return;
-    root.style.position = 'fixed';
-    root.style.left = `${Math.max(8, rect.left)}px`;
-    root.style.top = `${rect.bottom + 6}px`;
-    root.style.zIndex = '200';
-  }
-
-  function renderButtons() {
-    if (!root || !propsRef) return;
-    root.innerHTML = '';
-    root.setAttribute('role', 'listbox');
-
-    if (propsRef.items.length === 0) {
-      const empty = document.createElement('div');
-      empty.className = 'px-3 py-2 text-xs text-gray-500';
-      empty.textContent = 'No matches';
-      root.appendChild(empty);
-      return;
-    }
-
-    propsRef.items.forEach((item, index) => {
-      const btn = document.createElement('button');
-      btn.type = 'button';
-      btn.setAttribute('role', 'option');
-      btn.className =
-        'community-mention-suggest__item w-full border-b border-gray-100 px-3 py-2 text-left text-sm last:border-0 hover:bg-gray-50';
-      if (index === selectedIndex) btn.classList.add('bg-red-50');
-
-      const t1 = document.createElement('div');
-      t1.className = 'font-medium text-gray-900';
-      t1.textContent = item.label;
-      btn.appendChild(t1);
-      if (item.subtitle) {
-        const t2 = document.createElement('div');
-        t2.className = 'text-xs text-gray-500 mt-0.5';
-        t2.textContent = item.subtitle;
-        btn.appendChild(t2);
-      }
-
-      btn.addEventListener('mousedown', (e) => e.preventDefault());
-      btn.addEventListener('click', () => {
-        propsRef?.command(item);
-      });
-      root.appendChild(btn);
-    });
-  }
-
-  function updateHighlight() {
-    if (!root) return;
-    const buttons = root.querySelectorAll('.community-mention-suggest__item');
-    buttons.forEach((b, i) => {
-      b.classList.toggle('bg-red-50', i === selectedIndex);
-    });
-  }
-
-  return {
-    onStart: (props: SuggestionProps<CommunityMentionItem, CommunityMentionItem>) => {
-      destroyRoot();
-      root = document.createElement('div');
-      root.className =
-        'community-mention-suggest overflow-hidden rounded-lg border border-gray-200 bg-white shadow-xl min-w-[220px] max-w-[min(100vw-16px,360px)] max-h-56 overflow-y-auto';
-      document.body.appendChild(root);
-      propsRef = props;
-      selectedIndex = 0;
-      positionEl(props.clientRect);
-      renderButtons();
-    },
-    onUpdate: (props: SuggestionProps<CommunityMentionItem, CommunityMentionItem>) => {
-      propsRef = props;
-      selectedIndex = Math.min(selectedIndex, Math.max(0, props.items.length - 1));
-      if (!root) {
-        root = document.createElement('div');
-        root.className =
-          'community-mention-suggest overflow-hidden rounded-lg border border-gray-200 bg-white shadow-xl min-w-[220px] max-w-[min(100vw-16px,360px)] max-h-56 overflow-y-auto';
-        document.body.appendChild(root);
-      }
-      positionEl(props.clientRect);
-      renderButtons();
-    },
-    onExit: () => {
-      destroyRoot();
-    },
-    onKeyDown: ({ event }: SuggestionKeyDownProps) => {
-      if (!propsRef || !root) return false;
-      const n = propsRef.items.length;
-      if (event.key === 'Escape') {
-        return false;
-      }
-      if (event.key === 'ArrowDown') {
-        if (n === 0) return false;
-        selectedIndex = (selectedIndex + 1) % n;
-        updateHighlight();
-        return true;
-      }
-      if (event.key === 'ArrowUp') {
-        if (n === 0) return false;
-        selectedIndex = selectedIndex <= 0 ? n - 1 : selectedIndex - 1;
-        updateHighlight();
-        return true;
-      }
-      if (event.key === 'Enter') {
-        const item = propsRef.items[selectedIndex];
-        if (item) propsRef.command(item);
-        return true;
-      }
-      return false;
-    },
-  };
-}
-
 type Props = {
   editorKey: string;
   initialHtml: string;
@@ -320,7 +156,7 @@ export default function CommunityPostRichTextEditor({
   initialHtml,
   onChangeHtml,
   onEditorReady,
-  placeholder = 'Write your announcement… Type @ to mention someone.',
+  placeholder = 'Write your announcement…',
   className = '',
 }: Props) {
   const onChangeHtmlRef = useRef(onChangeHtml);
@@ -427,8 +263,9 @@ export default function CommunityPostRichTextEditor({
           },
           suggestion: {
             char: '@',
+            allowedPrefixes: null,
             items: async ({ query }) => fetchMentionItems(query),
-            render: createMentionSuggestionRender,
+            render: () => createMentionSuggestionRender(),
           },
         }),
       ],
@@ -612,7 +449,7 @@ export default function CommunityPostRichTextEditor({
       </div>
       <EditorContent editor={editor} className="lesson-richtext-editor-content max-h-[min(520px,55vh)] overflow-y-auto bg-white" />
       <p className="text-[11px] text-gray-500 px-3 py-2 border-t border-gray-100 bg-slate-50">
-        Type <strong>@</strong> to mention someone (notifications when you publish). Paste or drop images, or use <strong>Image</strong>. Click an image and drag any edge or corner to resize; shrink it to fit text on the same line.
+        Type <strong>@</strong> to mention someone. Paste or drop images, or use <strong>Image</strong>.
       </p>
 
       <dialog

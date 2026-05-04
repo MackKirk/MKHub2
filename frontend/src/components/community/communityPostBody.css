@@ -125,6 +125,19 @@
   padding: 0 0.15rem;
 }
 
+.community-post-body span[data-type='mention'][data-entity-type='user'],
+.community-post-body span[data-type='mention'][data-entity-type='division'],
+.community-post-body span[data-type='mention'][data-entity-type='community_group'] {
+  cursor: pointer;
+}
+
+.community-post-body span[data-type='mention'][data-entity-type='user']:hover,
+.community-post-body span[data-type='mention'][data-entity-type='division']:hover,
+.community-post-body span[data-type='mention'][data-entity-type='community_group']:hover {
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
 .community-post-body div[data-youtube-video] {
   position: relative;
   aspect-ratio: 16 / 9;
