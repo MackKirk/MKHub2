@@ -70,6 +70,12 @@ export default function UserEmployeeReviewsTab({ userId, enabled = true }: Props
     [reviewSubmission?.definition]
   );
 
+  const viewingAssignmentRow = useMemo(
+    () => userReviewAssignments?.find((r) => r.assignment_id === reviewViewId),
+    [userReviewAssignments, reviewViewId]
+  );
+  const hidePerFieldSideCommentsOnView = viewingAssignmentRow?.is_self_review === true;
+
   return (
     <>
       <div className="space-y-3 pb-6">
@@ -137,11 +143,11 @@ export default function UserEmployeeReviewsTab({ userId, enabled = true }: Props
       {reviewViewId && enabled ? (
         <OverlayPortal>
           <div
-            className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4"
+            className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-3 sm:p-4"
             style={{ touchAction: 'none' }}
           >
             <div
-              className="bg-white rounded-xl w-full max-w-3xl max-h-[90vh] flex flex-col"
+              className="bg-white rounded-xl w-full max-w-[min(1200px,calc(100vw-1.5rem))] max-h-[92vh] flex flex-col"
               style={{ touchAction: 'auto' }}
             >
               <div className="flex-shrink-0 p-4 border-b flex items-start justify-between gap-2">
@@ -189,6 +195,10 @@ export default function UserEmployeeReviewsTab({ userId, enabled = true }: Props
                       readOnly
                       projectId=""
                       signerDisplayName="View only"
+                      hideAdditionalCommentsBlock
+                      hideWorkerSignatureBlock
+                      hidePerFieldSideComments={hidePerFieldSideCommentsOnView}
+                      fieldCommentTextOnly={!hidePerFieldSideCommentsOnView}
                     />
                     {Object.keys(reviewViewPayload).some((k) => k.endsWith(SUPERVISOR_COMMENT_KEY_SUFFIX)) ? (
                       <div className="mt-8 pt-6 border-t border-gray-200 space-y-3">

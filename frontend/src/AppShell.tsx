@@ -438,6 +438,7 @@ export default function AppShell({ children }: PropsWithChildren){
         { id: 'clock-in-out', label: 'Clock in/out', path: '/clock-in-out', icon: <IconClock /> },
         { id: 'task-requests', label: 'Requests', path: '/task-requests', icon: <IconRequest /> },
         { id: 'tasks', label: 'Tasks', path: '/tasks', icon: <IconClipboard /> },
+        { id: 'my-reviews', label: 'My reviews', path: '/reviews/my', icon: <IconStar /> },
         { id: 'my-training', label: 'My Training', path: '/training', icon: <IconAcademic /> },
       ]
     },
@@ -1276,7 +1277,7 @@ export default function AppShell({ children }: PropsWithChildren){
               {open && (
                 <div className="absolute right-0 top-full mt-2 w-56 rounded-lg border border-gray-200/20 bg-white text-black shadow-xl z-50">
                   <Link to="/profile" onClick={()=>setOpen(false)} className="block px-4 py-2.5 hover:bg-gray-50 transition-colors duration-150">My Information</Link>
-                  <Link to="/reviews/my" onClick={()=>setOpen(false)} className="block px-4 py-2.5 hover:bg-gray-50 transition-colors duration-150">Employee review</Link>
+                  <Link to="/reviews/my" onClick={()=>setOpen(false)} className="block px-4 py-2.5 hover:bg-gray-50 transition-colors duration-150">My reviews</Link>
                   <button onClick={handleLogout} className="w-full text-left px-4 py-2.5 hover:bg-gray-50 transition-colors duration-150">Logout</button>
                 </div>
               )}

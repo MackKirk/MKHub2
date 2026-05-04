@@ -15,6 +15,8 @@ type Props = {
   onImageIdsChange: Dispatch<SetStateAction<string[]>>;
   projectId: string;
   uploadFile: (file: File) => Promise<string | null>;
+  /** When true, only the text field (no image upload, paste, or thumbnails). */
+  textCommentsOnly?: boolean;
 };
 
 function ImageThumbStrip({
@@ -61,6 +63,7 @@ export function SafetyFieldCommentPanel({
   onImageIdsChange,
   projectId,
   uploadFile,
+  textCommentsOnly = false,
 }: Props) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [busy, setBusy] = useState(false);
@@ -111,7 +114,7 @@ export function SafetyFieldCommentPanel({
     [onImageIdsChange]
   );
 
-  const has = text.trim().length > 0 || imageIds.length > 0;
+  const has = textCommentsOnly ? text.trim().length > 0 : text.trim().length > 0 || imageIds.length > 0;
 
   if (!disabled && expanded) {
     return (
@@ -119,78 +122,86 @@ export function SafetyFieldCommentPanel({
         <textarea
           value={text}
           onChange={(e) => onTextChange(e.target.value)}
-          onPaste={(e) => {
-            if (disabled || busy || !projectId) return;
-            const files = imageFilesFromClipboardData(e.clipboardData);
-            if (!files.length) return;
-            e.preventDefault();
-            void addImageFiles(files);
-          }}
-          placeholder="Comments / details (optional)"
-          rows={3}
+          onPaste={
+            textCommentsOnly
+              ? undefined
+              : (e) => {
+                  if (disabled || busy || !projectId) return;
+                  const files = imageFilesFromClipboardData(e.clipboardData);
+                  if (!files.length) return;
+                  e.preventDefault();
+                  void addImageFiles(files);
+                }
+          }
+          placeholder={textCommentsOnly ? 'Comment (optional)' : 'Comments / details (optional)'}
+          rows={textCommentsOnly ? 2 : 3}
           disabled={disabled}
           className="w-full px-3 py-2 border-2 border-gray-200 rounded-xl text-sm resize-y disabled:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-brand-red/20 focus:border-brand-red"
         />
-        <div
-          tabIndex={disabled || busy || !projectId ? -1 : 0}
-          onPaste={(e) => {
-            if (disabled || busy || !projectId) return;
-            const files = imageFilesFromClipboardData(e.clipboardData);
-            if (!files.length) return;
-            e.preventDefault();
-            void addImageFiles(files);
-          }}
-          onDragEnter={(e) => {
-            e.preventDefault();
-            e.stopPropagation();
-            setDragOver(true);
-          }}
-          onDragLeave={(e) => {
-            e.preventDefault();
-            e.stopPropagation();
-            if (e.currentTarget === e.target) setDragOver(false);
-          }}
-          onDragOver={(e) => {
-            e.preventDefault();
-            e.stopPropagation();
-          }}
-          onDrop={(e) => {
-            e.preventDefault();
-            e.stopPropagation();
-            setDragOver(false);
-            void addImageFiles(e.dataTransfer.files);
-          }}
-          className={`rounded-xl border-2 border-dashed px-3 py-4 text-center transition-colors outline-none focus-visible:ring-2 focus-visible:ring-brand-red/25 ${
-            dragOver ? 'border-brand-red bg-red-50/50' : 'border-gray-200 bg-gray-50/80'
-          } ${!projectId || busy ? 'opacity-60 pointer-events-none' : ''}`}
-        >
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept="image/*"
-            multiple
-            className="sr-only"
-            disabled={disabled || busy || !projectId}
-            onChange={(e) => {
-              void addImageFiles(e.target.files);
-              e.target.value = '';
-            }}
-          />
-          <p className="text-xs text-gray-600 mb-2">Images (optional)</p>
-          <button
-            type="button"
-            disabled={disabled || busy || !projectId}
-            onClick={() => fileInputRef.current?.click()}
-            className="text-sm font-medium text-brand-red hover:underline disabled:opacity-50 disabled:no-underline"
-          >
-            Upload images
-          </button>
-          <p className="text-xs text-gray-500 mt-1">or drag and drop here, or paste (Ctrl+V) in this box or in the comment field above</p>
-          {!projectId ? (
-            <p className="text-xs text-amber-700 mt-2">Open this inspection from a project to attach images.</p>
-          ) : null}
-        </div>
-        <ImageThumbStrip ids={imageIds} disabled={false} onRemove={removeImage} />
+        {textCommentsOnly ? null : (
+          <>
+            <div
+              tabIndex={disabled || busy || !projectId ? -1 : 0}
+              onPaste={(e) => {
+                if (disabled || busy || !projectId) return;
+                const files = imageFilesFromClipboardData(e.clipboardData);
+                if (!files.length) return;
+                e.preventDefault();
+                void addImageFiles(files);
+              }}
+              onDragEnter={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                setDragOver(true);
+              }}
+              onDragLeave={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                if (e.currentTarget === e.target) setDragOver(false);
+              }}
+              onDragOver={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+              }}
+              onDrop={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                setDragOver(false);
+                void addImageFiles(e.dataTransfer.files);
+              }}
+              className={`rounded-xl border-2 border-dashed px-3 py-4 text-center transition-colors outline-none focus-visible:ring-2 focus-visible:ring-brand-red/25 ${
+                dragOver ? 'border-brand-red bg-red-50/50' : 'border-gray-200 bg-gray-50/80'
+              } ${!projectId || busy ? 'opacity-60 pointer-events-none' : ''}`}
+            >
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/*"
+                multiple
+                className="sr-only"
+                disabled={disabled || busy || !projectId}
+                onChange={(e) => {
+                  void addImageFiles(e.target.files);
+                  e.target.value = '';
+                }}
+              />
+              <p className="text-xs text-gray-600 mb-2">Images (optional)</p>
+              <button
+                type="button"
+                disabled={disabled || busy || !projectId}
+                onClick={() => fileInputRef.current?.click()}
+                className="text-sm font-medium text-brand-red hover:underline disabled:opacity-50 disabled:no-underline"
+              >
+                Upload images
+              </button>
+              <p className="text-xs text-gray-500 mt-1">or drag and drop here, or paste (Ctrl+V) in this box or in the comment field above</p>
+              {!projectId ? (
+                <p className="text-xs text-amber-700 mt-2">Open this inspection from a project to attach images.</p>
+              ) : null}
+            </div>
+            <ImageThumbStrip ids={imageIds} disabled={false} onRemove={removeImage} />
+          </>
+        )}
       </div>
     );
   }
@@ -199,7 +210,7 @@ export function SafetyFieldCommentPanel({
     return (
       <div className="mt-3 w-full">
         {text.trim() ? <p className="text-sm text-gray-700 whitespace-pre-wrap break-words">{text}</p> : null}
-        <ImageThumbStrip ids={imageIds} disabled />
+        {textCommentsOnly ? null : <ImageThumbStrip ids={imageIds} disabled />}
       </div>
     );
   }
@@ -208,7 +219,7 @@ export function SafetyFieldCommentPanel({
     return (
       <div className="mt-3 w-full">
         {text.trim() ? <p className="text-sm text-gray-600 whitespace-pre-wrap break-words">{text}</p> : null}
-        <ImageThumbStrip ids={imageIds} disabled />
+        {textCommentsOnly ? null : <ImageThumbStrip ids={imageIds} disabled />}
       </div>
     );
   }

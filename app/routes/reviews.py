@@ -27,6 +27,22 @@ router = APIRouter(prefix="/reviews", tags=["reviews"])
 SUPERVISOR_COMMENT_SUFFIX = "__supervisor_comment"
 
 
+def _display_name_from_user_profile(user: Optional[User], ep: Optional[EmployeeProfile]) -> Optional[str]:
+    """Preferred name, else first + last from profile, else username (matches /employees list)."""
+    if ep:
+        pn = (getattr(ep, "preferred_name", None) or "").strip()
+        if pn:
+            return pn
+        first = (getattr(ep, "first_name", None) or "").strip()
+        last = (getattr(ep, "last_name", None) or "").strip()
+        full = " ".join(x for x in [first, last] if x)
+        if full:
+            return full
+    if user and getattr(user, "username", None):
+        return str(user.username)
+    return None
+
+
 def _uuid_or_none(value):
     if value is None:
         return None
@@ -132,6 +148,10 @@ def _extract_numeric_score(value: Any) -> Optional[int]:
         return value
     if isinstance(value, float):
         return int(value)
+    if isinstance(value, str):
+        s = value.strip()
+        if s in ("1", "2", "3", "4", "5"):
+            return int(s)
     return None
 
 
@@ -532,10 +552,19 @@ def assignment_submission(
 
 
 @router.get("/assignments/{assignment_id}/questions")
-def assignment_questions(assignment_id: str, db: Session = Depends(get_db), _=Depends(require_permissions("reviews:read"))):
-    a = db.query(ReviewAssignment).filter(ReviewAssignment.id == assignment_id).first()
+def assignment_questions(assignment_id: str, db: Session = Depends(get_db), user=Depends(get_current_user)):
+    aid = _uuid_or_none(assignment_id)
+    if not aid:
+        raise HTTPException(status_code=400, detail="Invalid assignment_id")
+    a = db.query(ReviewAssignment).filter(ReviewAssignment.id == aid).first()
     if not a:
         raise HTTPException(status_code=404, detail="Assignment not found")
+    is_reviewer = str(a.reviewer_user_id) == str(user.id)
+    is_hr = _has_permission(user, "reviews:read") or _has_permission(user, "reviews:admin") or _has_permission(
+        user, "hr:reviews:admin"
+    )
+    if not is_reviewer and not is_hr:
+        raise HTTPException(status_code=403, detail="Forbidden")
     cycle = db.query(ReviewCycle).filter(ReviewCycle.id == a.cycle_id).first()
     if not cycle:
         raise HTTPException(status_code=404, detail="Cycle not found")
@@ -654,13 +683,36 @@ def my_assignments(status: Optional[str] = None, db: Session = Depends(get_db), 
         q = q.filter(ReviewAssignment.status == status)
     rows = q.all()
     direct_reports = set(get_direct_reports(str(user.id), db))
+    cycle_by_id = {}
+    if rows:
+        cids = list({a.cycle_id for a in rows})
+        for c in db.query(ReviewCycle).filter(ReviewCycle.id.in_(cids)).all():
+            cycle_by_id[c.id] = c
+
+    reviewee_ids = list({a.reviewee_user_id for a in rows}) if rows else []
+    users_by_id: Dict[Any, User] = {}
+    ep_by_uid: Dict[Any, EmployeeProfile] = {}
+    if reviewee_ids:
+        for u in db.query(User).filter(User.id.in_(reviewee_ids)).all():
+            users_by_id[u.id] = u
+        for ep in db.query(EmployeeProfile).filter(EmployeeProfile.user_id.in_(reviewee_ids)).all():
+            ep_by_uid[ep.user_id] = ep
+
     out = []
     for a in rows:
         reviewee_id = str(a.reviewee_user_id)
         is_self = reviewee_id == str(user.id)
+        cyc = cycle_by_id.get(a.cycle_id)
+        rev = users_by_id.get(a.reviewee_user_id)
+        ep = ep_by_uid.get(a.reviewee_user_id)
+        display_name = _display_name_from_user_profile(rev, ep)
         rec = {
             "id": str(a.id),
             "cycle_id": str(a.cycle_id),
+            "cycle_name": getattr(cyc, "name", None) if cyc else None,
+            "cycle_status": getattr(cyc, "status", None) if cyc else None,
+            "cycle_period_start": cyc.period_start.isoformat() if cyc and cyc.period_start else None,
+            "cycle_period_end": cyc.period_end.isoformat() if cyc and cyc.period_end else None,
             "reviewee_user_id": reviewee_id,
             "reviewer_user_id": str(a.reviewer_user_id),
             "status": a.status,
@@ -668,11 +720,9 @@ def my_assignments(status: Optional[str] = None, db: Session = Depends(get_db), 
             "is_self": is_self,
             "is_subordinate": not is_self and reviewee_id in direct_reports,
         }
-        try:
-            rev = db.query(User).filter(User.id == a.reviewee_user_id).first()
+        if rev:
             rec["reviewee_username"] = getattr(rev, "username", None)
-        except Exception:
-            pass
+        rec["reviewee_display_name"] = display_name or rec.get("reviewee_username") or reviewee_id
         out.append(rec)
     return out
 

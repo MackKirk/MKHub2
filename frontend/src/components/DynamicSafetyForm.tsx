@@ -5,6 +5,7 @@ import {
   useCallback,
   useState,
   useRef,
+  type ComponentProps,
   type SetStateAction,
 } from 'react';
 import { useQuery, useQueries } from '@tanstack/react-query';
@@ -51,6 +52,17 @@ const YNA = [
   { v: 'no' as const, label: 'N', title: 'No', cls: 'bg-red-100 text-red-800 border-red-400' },
   { v: 'na' as const, label: 'NA', title: 'N/A', cls: 'bg-gray-100 text-gray-700 border-gray-300' },
 ];
+
+/** Likert-style 1–5; values stored as string keys in the payload. */
+const SCALE_1_5 = (
+  [
+    { v: '1', title: '1', cls: 'bg-rose-50 text-rose-900 border-rose-400' },
+    { v: '2', title: '2', cls: 'bg-orange-50 text-orange-900 border-orange-400' },
+    { v: '3', title: '3', cls: 'bg-amber-50 text-amber-900 border-amber-400' },
+    { v: '4', title: '4', cls: 'bg-lime-50 text-lime-900 border-lime-400' },
+    { v: '5', title: '5', cls: 'bg-green-100 text-green-900 border-green-500' },
+  ] as const
+).map((x) => ({ ...x, label: x.v }));
 
 /** Same outer box as `CommentIconOnly` (2.75rem) so P/F/NA and Y/N/NA tiles match the comment button. */
 const STATUS_CHOICE_BTN =
@@ -246,7 +258,23 @@ type Props = {
   signSession?: SafetySignSession | null;
   /** Keys of required fields that failed validation (e.g. finalize); shown with a red outline */
   highlightRequiredFieldKeys?: readonly string[];
+  /** Hide inspection-style global "Additional Comments / Photos" (e.g. employee reviews). */
+  hideAdditionalCommentsBlock?: boolean;
+  /** Hide worker signature UI even when the template defines signature_policy.worker (e.g. employee reviews). */
+  hideWorkerSignatureBlock?: boolean;
+  /** Hide per-field comment bubble + panel (safety inspections); employee self-review can turn this off. */
+  hidePerFieldSideComments?: boolean;
+  /** Per-field comment panels: text only, no images (e.g. employee review supervisor flow). */
+  fieldCommentTextOnly?: boolean;
 };
+
+function MaybeSafetyFieldCommentPanel({
+  show,
+  ...rest
+}: { show: boolean } & ComponentProps<typeof SafetyFieldCommentPanel>) {
+  if (!show) return null;
+  return <SafetyFieldCommentPanel {...rest} />;
+}
 
 function PassFailTotalAggregateSync({
   fieldKey,
@@ -288,8 +316,13 @@ export default function DynamicSafetyForm({
   signerUserId,
   signSession = null,
   highlightRequiredFieldKeys,
+  hideAdditionalCommentsBlock = false,
+  hideWorkerSignatureBlock = false,
+  hidePerFieldSideComments = false,
+  fieldCommentTextOnly = false,
 }: Props) {
   const disabled = !canWrite || readOnly;
+  const showPerFieldSideComments = !hidePerFieldSideComments;
   const highlightKeySet = useMemo(
     () => (highlightRequiredFieldKeys?.length ? new Set(highlightRequiredFieldKeys) : null),
     [highlightRequiredFieldKeys]
@@ -571,7 +604,7 @@ export default function DynamicSafetyForm({
                 );
               })}
             </div>
-            {!disabled && (
+            {!disabled && showPerFieldSideComments && (
               <div className="shrink-0 ml-auto">
                 <CommentIconOnly
                   expanded={commentExpanded}
@@ -581,7 +614,7 @@ export default function DynamicSafetyForm({
               </div>
             )}
           </div>
-          <SafetyFieldCommentPanel
+          <MaybeSafetyFieldCommentPanel show={showPerFieldSideComments} textCommentsOnly={fieldCommentTextOnly}
             expanded={commentExpanded}
             disabled={disabled}
             text={sideComment.text}
@@ -616,7 +649,7 @@ export default function DynamicSafetyForm({
               placeholder={field.placeholder}
               className={CONTROL_INPUT_FLEX}
             />
-            {!disabled && (
+            {!disabled && showPerFieldSideComments && (
               <CommentIconOnly
                 expanded={commentExpanded}
                 hasComment={sideCommentFilled}
@@ -624,7 +657,7 @@ export default function DynamicSafetyForm({
               />
             )}
           </div>
-          <SafetyFieldCommentPanel
+          <MaybeSafetyFieldCommentPanel show={showPerFieldSideComments} textCommentsOnly={fieldCommentTextOnly}
             expanded={commentExpanded}
             disabled={disabled}
             text={sideComment.text}
@@ -651,7 +684,7 @@ export default function DynamicSafetyForm({
               rows={4}
               className={CONTROL_TEXTAREA}
             />
-            {!disabled && (
+            {!disabled && showPerFieldSideComments && (
               <CommentIconOnly
                 expanded={commentExpanded}
                 hasComment={sideCommentFilled}
@@ -660,7 +693,7 @@ export default function DynamicSafetyForm({
               />
             )}
           </div>
-          <SafetyFieldCommentPanel
+          <MaybeSafetyFieldCommentPanel show={showPerFieldSideComments} textCommentsOnly={fieldCommentTextOnly}
             expanded={commentExpanded}
             disabled={disabled}
             text={sideComment.text}
@@ -692,7 +725,7 @@ export default function DynamicSafetyForm({
               placeholder={field.placeholder}
               className={CONTROL_INPUT_FLEX}
             />
-            {!disabled && (
+            {!disabled && showPerFieldSideComments && (
               <CommentIconOnly
                 expanded={commentExpanded}
                 hasComment={sideCommentFilled}
@@ -700,7 +733,7 @@ export default function DynamicSafetyForm({
               />
             )}
           </div>
-          <SafetyFieldCommentPanel
+          <MaybeSafetyFieldCommentPanel show={showPerFieldSideComments} textCommentsOnly={fieldCommentTextOnly}
             expanded={commentExpanded}
             disabled={disabled}
             text={sideComment.text}
@@ -730,7 +763,7 @@ export default function DynamicSafetyForm({
                 className="w-full min-h-[2.5rem] bg-transparent text-sm text-gray-900 disabled:opacity-60 focus:outline-none"
               />
             </div>
-            {!disabled && (
+            {!disabled && showPerFieldSideComments && (
               <CommentIconOnly
                 expanded={commentExpanded}
                 hasComment={sideCommentFilled}
@@ -738,7 +771,7 @@ export default function DynamicSafetyForm({
               />
             )}
           </div>
-          <SafetyFieldCommentPanel
+          <MaybeSafetyFieldCommentPanel show={showPerFieldSideComments} textCommentsOnly={fieldCommentTextOnly}
             expanded={commentExpanded}
             disabled={disabled}
             text={sideComment.text}
@@ -766,7 +799,7 @@ export default function DynamicSafetyForm({
                 className="w-full min-h-[2.5rem] bg-transparent text-sm text-gray-900 disabled:opacity-60 focus:outline-none"
               />
             </div>
-            {!disabled && (
+            {!disabled && showPerFieldSideComments && (
               <CommentIconOnly
                 expanded={commentExpanded}
                 hasComment={sideCommentFilled}
@@ -774,7 +807,7 @@ export default function DynamicSafetyForm({
               />
             )}
           </div>
-          <SafetyFieldCommentPanel
+          <MaybeSafetyFieldCommentPanel show={showPerFieldSideComments} textCommentsOnly={fieldCommentTextOnly}
             expanded={commentExpanded}
             disabled={disabled}
             text={sideComment.text}
@@ -811,7 +844,7 @@ export default function DynamicSafetyForm({
                 className={`${FIELD_QUESTION_INLINE} text-left`}
               />
             </label>
-            {!disabled && (
+            {!disabled && showPerFieldSideComments && (
               <CommentIconOnly
                 expanded={commentExpanded}
                 hasComment={sideCommentFilled}
@@ -819,7 +852,7 @@ export default function DynamicSafetyForm({
               />
             )}
           </div>
-          <SafetyFieldCommentPanel
+          <MaybeSafetyFieldCommentPanel show={showPerFieldSideComments} textCommentsOnly={fieldCommentTextOnly}
             expanded={commentExpanded}
             disabled={disabled}
             text={sideComment.text}
@@ -885,7 +918,7 @@ export default function DynamicSafetyForm({
                 />
               </div>
             )}
-            {!disabled && (
+            {!disabled && showPerFieldSideComments && (
               <CommentIconOnly
                 expanded={commentExpanded}
                 hasComment={sideCommentFilled}
@@ -893,7 +926,7 @@ export default function DynamicSafetyForm({
               />
             )}
           </div>
-          <SafetyFieldCommentPanel
+          <MaybeSafetyFieldCommentPanel show={showPerFieldSideComments} textCommentsOnly={fieldCommentTextOnly}
             expanded={commentExpanded}
             disabled={disabled}
             text={sideComment.text}
@@ -951,7 +984,7 @@ export default function DynamicSafetyForm({
                 />
               )}
             </div>
-            {!disabled && (
+            {!disabled && showPerFieldSideComments && (
               <CommentIconOnly
                 expanded={commentExpanded}
                 hasComment={sideCommentFilled}
@@ -959,7 +992,7 @@ export default function DynamicSafetyForm({
               />
             )}
           </div>
-          <SafetyFieldCommentPanel
+          <MaybeSafetyFieldCommentPanel show={showPerFieldSideComments} textCommentsOnly={fieldCommentTextOnly}
             expanded={commentExpanded}
             disabled={disabled}
             text={sideComment.text}
@@ -995,7 +1028,7 @@ export default function DynamicSafetyForm({
                   {opt.label}
                 </button>
               ))}
-              {!disabled && (
+              {!disabled && showPerFieldSideComments && (
                 <CommentIconOnly
                   expanded={commentExpanded}
                   hasComment={sideCommentFilled}
@@ -1004,7 +1037,52 @@ export default function DynamicSafetyForm({
               )}
             </div>
           </div>
-          <SafetyFieldCommentPanel
+          <MaybeSafetyFieldCommentPanel show={showPerFieldSideComments} textCommentsOnly={fieldCommentTextOnly}
+            expanded={commentExpanded}
+            disabled={disabled}
+            text={sideComment.text}
+            imageIds={sideComment.imageIds}
+            onTextChange={(s) => updateSideComment(k, { text: s })}
+            onImageIdsChange={setSideCommentImageIds(k)}
+            projectId={projectId}
+            uploadFile={uploadFile}
+          />
+        </div>
+      );
+    }
+
+    if (field.type === 'scale_1_5') {
+      const cur = formPayload[k];
+      const st = cur === '1' || cur === '2' || cur === '3' || cur === '4' || cur === '5' ? cur : '';
+      return (
+        <div key={field.id} data-safety-field-key={k} className={rowWrapClass}>
+          <div className="flex flex-wrap items-center gap-4">
+            <FieldQuestionLabel field={field} className={`flex-1 min-w-0 ${FIELD_QUESTION_INLINE}`} />
+            <div className="flex gap-2 shrink-0 items-center flex-wrap" aria-label="Scale 1 to 5">
+              {SCALE_1_5.map((opt) => (
+                <button
+                  key={opt.v}
+                  type="button"
+                  title={opt.title}
+                  disabled={disabled}
+                  onClick={() => setKey(k, opt.v)}
+                  className={`${STATUS_CHOICE_BTN} ${
+                    st === opt.v ? opt.cls + ' scale-105 shadow-md' : 'bg-white text-gray-300 border-gray-200'
+                  }`}
+                >
+                  {opt.label}
+                </button>
+              ))}
+              {!disabled && showPerFieldSideComments && (
+                <CommentIconOnly
+                  expanded={commentExpanded}
+                  hasComment={sideCommentFilled}
+                  onToggle={toggleFieldComment}
+                />
+              )}
+            </div>
+          </div>
+          <MaybeSafetyFieldCommentPanel show={showPerFieldSideComments} textCommentsOnly={fieldCommentTextOnly}
             expanded={commentExpanded}
             disabled={disabled}
             text={sideComment.text}
@@ -1041,7 +1119,7 @@ export default function DynamicSafetyForm({
                   {opt.label}
                 </button>
               ))}
-              {!disabled && (
+              {!disabled && showPerFieldSideComments && (
                 <CommentIconOnly
                   expanded={commentExpanded}
                   hasComment={ynCommentFilled}
@@ -1050,7 +1128,7 @@ export default function DynamicSafetyForm({
               )}
             </div>
           </div>
-          <SafetyFieldCommentPanel
+          <MaybeSafetyFieldCommentPanel show={showPerFieldSideComments} textCommentsOnly={fieldCommentTextOnly}
             expanded={commentExpanded}
             disabled={disabled}
             text={yn.comments}
@@ -1082,7 +1160,7 @@ export default function DynamicSafetyForm({
                 searchPlaceholder="Search workers…"
               />
             </div>
-            {!disabled && (
+            {!disabled && showPerFieldSideComments && (
               <CommentIconOnly
                 expanded={commentExpanded}
                 hasComment={sideCommentFilled}
@@ -1090,7 +1168,7 @@ export default function DynamicSafetyForm({
               />
             )}
           </div>
-          <SafetyFieldCommentPanel
+          <MaybeSafetyFieldCommentPanel show={showPerFieldSideComments} textCommentsOnly={fieldCommentTextOnly}
             expanded={commentExpanded}
             disabled={disabled}
             text={sideComment.text}
@@ -1122,7 +1200,7 @@ export default function DynamicSafetyForm({
                 searchPlaceholder="Search workers…"
               />
             </div>
-            {!disabled && (
+            {!disabled && showPerFieldSideComments && (
               <CommentIconOnly
                 expanded={commentExpanded}
                 hasComment={sideCommentFilled}
@@ -1130,7 +1208,7 @@ export default function DynamicSafetyForm({
               />
             )}
           </div>
-          <SafetyFieldCommentPanel
+          <MaybeSafetyFieldCommentPanel show={showPerFieldSideComments} textCommentsOnly={fieldCommentTextOnly}
             expanded={commentExpanded}
             disabled={disabled}
             text={sideComment.text}
@@ -1187,7 +1265,7 @@ export default function DynamicSafetyForm({
                 Use location
               </button>
             </div>
-            {!disabled && (
+            {!disabled && showPerFieldSideComments && (
               <CommentIconOnly
                 expanded={commentExpanded}
                 hasComment={sideCommentFilled}
@@ -1195,7 +1273,7 @@ export default function DynamicSafetyForm({
               />
             )}
           </div>
-          <SafetyFieldCommentPanel
+          <MaybeSafetyFieldCommentPanel show={showPerFieldSideComments} textCommentsOnly={fieldCommentTextOnly}
             expanded={commentExpanded}
             disabled={disabled}
             text={sideComment.text}
@@ -1227,7 +1305,7 @@ export default function DynamicSafetyForm({
                 searchPlaceholder="Search equipment…"
               />
             </div>
-            {!disabled && (
+            {!disabled && showPerFieldSideComments && (
               <CommentIconOnly
                 expanded={commentExpanded}
                 hasComment={sideCommentFilled}
@@ -1235,7 +1313,7 @@ export default function DynamicSafetyForm({
               />
             )}
           </div>
-          <SafetyFieldCommentPanel
+          <MaybeSafetyFieldCommentPanel show={showPerFieldSideComments} textCommentsOnly={fieldCommentTextOnly}
             expanded={commentExpanded}
             disabled={disabled}
             text={sideComment.text}
@@ -1267,7 +1345,7 @@ export default function DynamicSafetyForm({
                 searchPlaceholder="Search equipment…"
               />
             </div>
-            {!disabled && (
+            {!disabled && showPerFieldSideComments && (
               <CommentIconOnly
                 expanded={commentExpanded}
                 hasComment={sideCommentFilled}
@@ -1275,7 +1353,7 @@ export default function DynamicSafetyForm({
               />
             )}
           </div>
-          <SafetyFieldCommentPanel
+          <MaybeSafetyFieldCommentPanel show={showPerFieldSideComments} textCommentsOnly={fieldCommentTextOnly}
             expanded={commentExpanded}
             disabled={disabled}
             text={sideComment.text}
@@ -1296,7 +1374,7 @@ export default function DynamicSafetyForm({
             field={field}
             rowBg=""
             trailingSlot={
-              !disabled ? (
+              !disabled && showPerFieldSideComments ? (
                 <CommentIconOnly
                   expanded={commentExpanded}
                   hasComment={sideCommentFilled}
@@ -1305,7 +1383,7 @@ export default function DynamicSafetyForm({
               ) : undefined
             }
           />
-          <SafetyFieldCommentPanel
+          <MaybeSafetyFieldCommentPanel show={showPerFieldSideComments} textCommentsOnly={fieldCommentTextOnly}
             expanded={commentExpanded}
             disabled={disabled}
             text={sideComment.text}
@@ -1334,7 +1412,7 @@ export default function DynamicSafetyForm({
             projectId={projectId}
             uploadFile={uploadFile}
             trailingSlot={
-              !disabled ? (
+              !disabled && showPerFieldSideComments ? (
                 <CommentIconOnly
                   expanded={commentExpanded}
                   hasComment={sideCommentFilled}
@@ -1343,7 +1421,7 @@ export default function DynamicSafetyForm({
               ) : undefined
             }
           />
-          <SafetyFieldCommentPanel
+          <MaybeSafetyFieldCommentPanel show={showPerFieldSideComments} textCommentsOnly={fieldCommentTextOnly}
             expanded={commentExpanded}
             disabled={disabled}
             text={sideComment.text}
@@ -1406,27 +1484,29 @@ export default function DynamicSafetyForm({
           </div>
         );
       })}
-      <div
-        data-safety-field-key="_additionalComments"
-        className="rounded-xl border border-gray-200 bg-white overflow-visible"
-      >
-        <div className="px-4 py-3 border-b border-gray-200 bg-gray-200">
-          <h3 className="text-sm font-semibold text-gray-700">Additional Comments / Photos</h3>
+      {!hideAdditionalCommentsBlock && (
+        <div
+          data-safety-field-key="_additionalComments"
+          className="rounded-xl border border-gray-200 bg-white overflow-visible"
+        >
+          <div className="px-4 py-3 border-b border-gray-200 bg-gray-200">
+            <h3 className="text-sm font-semibold text-gray-700">Additional Comments / Photos</h3>
+          </div>
+          <div className="p-4">
+            <SafetyFieldCommentPanel
+              expanded={!disabled}
+              disabled={disabled}
+              text={additionalComments.text}
+              imageIds={additionalComments.imageIds}
+              onTextChange={(s) => updateAdditionalComments({ text: s })}
+              onImageIdsChange={setAdditionalCommentImageIds}
+              projectId={projectId}
+              uploadFile={uploadFile}
+            />
+          </div>
         </div>
-        <div className="p-4">
-          <SafetyFieldCommentPanel
-            expanded={!disabled}
-            disabled={disabled}
-            text={additionalComments.text}
-            imageIds={additionalComments.imageIds}
-            onTextChange={(s) => updateAdditionalComments({ text: s })}
-            onImageIdsChange={setAdditionalCommentImageIds}
-            projectId={projectId}
-            uploadFile={uploadFile}
-          />
-        </div>
-      </div>
-      {workerSig != null && (
+      )}
+      {workerSig != null && !hideWorkerSignatureBlock && (
         <div
           data-safety-field-key={DYNAMIC_FORM_WORKER_SIGNATURE_HIGHLIGHT_KEY}
           className={`rounded-xl border border-gray-200 bg-white p-4 space-y-3 ${

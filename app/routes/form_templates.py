@@ -66,6 +66,7 @@ ALLOWED_FIELD_TYPES = frozenset(
         "dropdown_multi",
         "yes_no_na",
         "pass_fail_total",
+        "scale_1_5",
         "number",
         "date",
         "time",
