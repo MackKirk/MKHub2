@@ -8,7 +8,7 @@ from typing import Any, List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
-from sqlalchemy import or_
+from sqlalchemy import func, or_
 from sqlalchemy.orm import Session
 
 from ..auth.security import get_current_user, _has_permission
@@ -283,6 +283,15 @@ def list_form_templates(
     q = db.query(FormTemplate)
     if category and category.strip():
         q = q.filter(FormTemplate.category == category.strip())
+    elif _has_permission(user, "business:projects:safety:read"):
+        # General safety lists (e.g. /safety/form-templates, schedulable picker) must not include
+        # HR employee-review templates — same URL stores both; only explicit ?category=employee_review shows them.
+        q = q.filter(
+            or_(
+                FormTemplate.category.is_(None),
+                func.lower(FormTemplate.category) != EMPLOYEE_REVIEW_CATEGORY,
+            )
+        )
     if status and status.strip():
         q = q.filter(FormTemplate.status == status.strip())
     rows: List[FormTemplate] = q.all()

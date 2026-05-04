@@ -131,7 +131,9 @@ export default function EmployeeReviews() {
                   ) : (
                     filteredRows.map((r: any) => (
                       <tr key={r.user_id} className="hover:bg-gray-50">
-                        <td className="px-4 py-2 text-sm font-medium text-gray-900">{r.name || r.user_id}</td>
+                        <td className="px-4 py-2 text-sm font-medium text-gray-900">
+                          {r.display_name || r.name || r.user_id}
+                        </td>
                         <td className="px-4 py-2 text-sm">{r.employee_self_done ? 'Yes' : 'No'}</td>
                         <td className="px-4 py-2 text-sm">{r.supervisor_done ? 'Yes' : 'No'}</td>
                         <td className="px-4 py-2 text-sm">

@@ -446,32 +446,71 @@ def cycle_hr_status(cycle_id: str, db: Session = Depends(get_db), _=Depends(requ
     by_reviewee = defaultdict(list)
     for a in assigns:
         by_reviewee[str(a.reviewee_user_id)].append(a)
+
+    all_uids: Set[uuid.UUID] = set()
+    for rid, arr in by_reviewee.items():
+        u = _uuid_or_none(rid)
+        if u:
+            all_uids.add(u)
+        for a in arr:
+            all_uids.add(a.reviewee_user_id)
+            all_uids.add(a.reviewer_user_id)
+
+    users_by_id: Dict[uuid.UUID, User] = {}
+    if all_uids:
+        for urow in db.query(User).filter(User.id.in_(list(all_uids))).all():
+            users_by_id[urow.id] = urow
+    ep_by_uid: Dict[uuid.UUID, EmployeeProfile] = {}
+    if all_uids:
+        for ep in db.query(EmployeeProfile).filter(EmployeeProfile.user_id.in_(list(all_uids))).all():
+            ep_by_uid[ep.user_id] = ep
+
+    def _label(uid: Optional[uuid.UUID]) -> Optional[str]:
+        if not uid:
+            return None
+        u = users_by_id.get(uid)
+        ep = ep_by_uid.get(uid)
+        return _display_name_from_user_profile(u, ep) or (getattr(u, "username", None) if u else None)
+
     out = []
     for reviewee_id, arr in by_reviewee.items():
+        rid = _uuid_or_none(reviewee_id)
+        if not rid:
+            continue
         self_a = next((a for a in arr if str(a.reviewee_user_id) == str(a.reviewer_user_id)), None)
         mgr_a = next((a for a in arr if str(a.reviewee_user_id) != str(a.reviewer_user_id)), None)
-        employee_self_done = self_a is not None and self_a.status == "submitted"
-        supervisor_done = mgr_a is not None and mgr_a.status == "submitted"
+        st_self = (self_a.status or "").lower() if self_a else ""
+        st_mgr = (mgr_a.status or "").lower() if mgr_a else ""
+        employee_self_done = self_a is not None and st_self == "submitted"
+        supervisor_done = mgr_a is not None and st_mgr == "submitted"
         both_done = employee_self_done and supervisor_done
         missing_employee = not employee_self_done
         missing_supervisor = not supervisor_done
-        display_name = None
-        try:
-            u = db.query(User).filter(User.id == reviewee_id).first()
-            display_name = getattr(u, "username", None) or (getattr(u, "email", None) if u else None)
-        except Exception:
-            pass
+        disp = _label(rid) or str(rid)
+        sup_uid = mgr_a.reviewer_user_id if mgr_a else None
         out.append(
             {
-                "user_id": reviewee_id,
-                "name": display_name,
+                "user_id": str(rid),
+                "name": disp,
+                "display_name": disp,
+                "supervisor_user_id": str(sup_uid) if sup_uid else None,
+                "supervisor_display_name": _label(sup_uid) if sup_uid else None,
                 "employee_self_done": employee_self_done,
                 "supervisor_done": supervisor_done,
                 "both_done": both_done,
                 "missing_employee": missing_employee,
                 "missing_supervisor": missing_supervisor,
+                "self_assignment_id": str(self_a.id) if self_a else None,
+                "supervisor_assignment_id": str(mgr_a.id) if mgr_a else None,
+                "self_status": self_a.status if self_a else None,
+                "supervisor_status": mgr_a.status if mgr_a else None,
+                "self_due_date": self_a.due_date.isoformat() if self_a and self_a.due_date else None,
+                "supervisor_due_date": mgr_a.due_date.isoformat() if mgr_a and mgr_a.due_date else None,
+                "has_self_assignment": self_a is not None,
+                "has_supervisor_assignment": mgr_a is not None,
             }
         )
+    out.sort(key=lambda r: (r.get("display_name") or "").lower())
     return out
 
 

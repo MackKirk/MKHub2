@@ -27,15 +27,6 @@ type CycleDetail = {
   assignment_supervisor_rows: number;
 };
 
-type AssignmentRow = {
-  id: string;
-  cycle_id: string;
-  reviewee_user_id: string;
-  reviewer_user_id: string;
-  status: string;
-  due_date: string | null;
-};
-
 type EmpRow = ReviewParticipantEmp & { name?: string; username?: string };
 
 function formatIsoDate(s: string | null | undefined) {
@@ -53,6 +44,68 @@ function formatIsoDate(s: string | null | undefined) {
   }
 }
 
+function formatDueShort(s: string | null | undefined) {
+  if (!s) return '—';
+  try {
+    const d = new Date(s);
+    if (Number.isNaN(d.getTime())) return s;
+    return d.toLocaleString(undefined, {
+      month: 'short',
+      day: 'numeric',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+    });
+  } catch {
+    return s;
+  }
+}
+
+type HrStatusRow = {
+  user_id: string;
+  name?: string | null;
+  display_name?: string | null;
+  supervisor_user_id?: string | null;
+  supervisor_display_name?: string | null;
+  employee_self_done: boolean;
+  supervisor_done: boolean;
+  both_done: boolean;
+  missing_employee: boolean;
+  missing_supervisor: boolean;
+  self_due_date?: string | null;
+  supervisor_due_date?: string | null;
+  has_self_assignment?: boolean;
+  has_supervisor_assignment?: boolean;
+};
+
+function CompletionGlyph({ ok, absent }: { ok: boolean; absent?: boolean }) {
+  if (absent) {
+    return <span className="text-xs text-gray-400">No task</span>;
+  }
+  if (ok) {
+    return (
+      <span
+        className="inline-flex h-8 w-8 items-center justify-center rounded-lg bg-emerald-50 text-emerald-700 shadow-sm ring-1 ring-emerald-200/80"
+        title="Submitted"
+      >
+        <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" />
+        </svg>
+      </span>
+    );
+  }
+  return (
+    <span
+      className="inline-flex h-8 w-8 items-center justify-center rounded-lg bg-rose-50 text-rose-600 shadow-sm ring-1 ring-rose-200/80"
+      title="Not submitted"
+    >
+      <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M6 18L18 6M6 6l12 12" />
+      </svg>
+    </span>
+  );
+}
+
 export default function ReviewCycleDetailPage() {
   const { cycleId } = useParams<{ cycleId: string }>();
   const navigate = useNavigate();
@@ -60,6 +113,11 @@ export default function ReviewCycleDetailPage() {
   const confirm = useConfirm();
   const [deleting, setDeleting] = useState(false);
   const [generatingTasks, setGeneratingTasks] = useState(false);
+  const [cycleTab, setCycleTab] = useState<'details' | 'progress'>('progress');
+  const [progressFilter, setProgressFilter] = useState<
+    'all' | 'both_done' | 'missing_employee' | 'missing_supervisor'
+  >('all');
+  const [progressSearch, setProgressSearch] = useState('');
   const id = cycleId || '';
 
   const { data: me } = useQuery({
@@ -104,12 +162,6 @@ export default function ReviewCycleDetailPage() {
   const { data: hrStatus = [] } = useQuery({
     queryKey: ['review-hr-status', id],
     queryFn: () => api<any[]>('GET', `/reviews/cycles/${id}/hr-status`),
-    enabled: !!id,
-  });
-
-  const { data: assignments = [] } = useQuery({
-    queryKey: ['review-cycle-assignments', id],
-    queryFn: () => api<AssignmentRow[]>('GET', `/reviews/cycles/${id}/assignments`),
     enabled: !!id,
   });
 
@@ -163,13 +215,30 @@ export default function ReviewCycleDetailPage() {
   }, [projectDivisionOptions]);
 
   const hrSummary = useMemo(() => {
-    const rows = hrStatus as any[];
+    const rows = hrStatus as HrStatusRow[];
     if (!rows.length) return null;
     const both = rows.filter((r) => r.both_done).length;
     const missE = rows.filter((r) => r.missing_employee).length;
     const missS = rows.filter((r) => r.missing_supervisor).length;
     return { total: rows.length, both, missE, missS };
   }, [hrStatus]);
+
+  const filteredProgressRows = useMemo(() => {
+    const rows = [...(hrStatus as HrStatusRow[])];
+    let out = rows;
+    if (progressFilter === 'both_done') out = out.filter((r) => r.both_done);
+    else if (progressFilter === 'missing_employee') out = out.filter((r) => r.missing_employee);
+    else if (progressFilter === 'missing_supervisor') out = out.filter((r) => r.missing_supervisor);
+    const q = progressSearch.trim().toLowerCase();
+    if (q) {
+      out = out.filter((r) => {
+        const a = (r.display_name || r.name || '').toLowerCase();
+        const b = (r.supervisor_display_name || '').toLowerCase();
+        return a.includes(q) || b.includes(q);
+      });
+    }
+    return out;
+  }, [hrStatus, progressFilter, progressSearch]);
 
   const scopePeopleStats = useMemo(
     () => countEmployeesMatchingCycleScope(employees as ReviewParticipantEmp[], cycle?.participant_scope),
@@ -229,17 +298,6 @@ export default function ReviewCycleDetailPage() {
     return { kind: 'explicit' as const, lines };
   }, [cycle, empName, divisionLabelById, projDivLabel]);
 
-  const assignmentPreview = useMemo(() => {
-    const rows = [...(assignments as AssignmentRow[])];
-    rows.sort((a, b) => (a.due_date || '').localeCompare(b.due_date || ''));
-    return rows.slice(0, 80).map((a) => ({
-      ...a,
-      reviewee: empName.get(a.reviewee_user_id) || a.reviewee_user_id,
-      reviewer: empName.get(a.reviewer_user_id) || a.reviewer_user_id,
-      isSelf: a.reviewee_user_id === a.reviewer_user_id,
-    }));
-  }, [assignments, empName]);
-
   const statusBadgeClass = (s: string) => {
     const x = (s || '').toLowerCase();
     if (x === 'active') return 'bg-green-100 text-green-800';
@@ -275,7 +333,7 @@ export default function ReviewCycleDetailPage() {
   }
 
   return (
-    <div className="max-w-5xl pb-10">
+    <div className="max-w-6xl pb-10">
       <div className="rounded-xl border bg-white p-4 mb-4">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div className="flex items-start gap-3 min-w-0">
@@ -336,6 +394,33 @@ export default function ReviewCycleDetailPage() {
         </div>
       </div>
 
+      <div className="flex flex-wrap gap-1 border-b border-gray-200 mb-4">
+        <button
+          type="button"
+          onClick={() => setCycleTab('progress')}
+          className={`px-4 py-2.5 text-sm font-medium rounded-t border-b-2 -mb-px transition-colors ${
+            cycleTab === 'progress'
+              ? 'border-brand-red text-brand-red bg-white'
+              : 'border-transparent text-gray-600 hover:text-gray-900'
+          }`}
+        >
+          Team progress
+        </button>
+        <button
+          type="button"
+          onClick={() => setCycleTab('details')}
+          className={`px-4 py-2.5 text-sm font-medium rounded-t border-b-2 -mb-px transition-colors ${
+            cycleTab === 'details'
+              ? 'border-brand-red text-brand-red bg-white'
+              : 'border-transparent text-gray-600 hover:text-gray-900'
+          }`}
+        >
+          Cycle details
+        </button>
+      </div>
+
+      {cycleTab === 'details' && (
+        <>
       {cycle.assignment_count === 0 && (
         <div className="rounded-xl border border-amber-200 bg-amber-50/90 p-4 mb-4">
           <h2 className="text-sm font-semibold text-amber-950 mb-1">Next step: create review tasks</h2>
@@ -451,71 +536,6 @@ export default function ReviewCycleDetailPage() {
         </div>
       )}
 
-      <div className="rounded-xl border border-gray-200 bg-white p-4 mb-4">
-        <h2 className="text-sm font-semibold text-gray-900 mb-2">Progress (HR view)</h2>
-        {hrSummary ? (
-          <p className="text-sm text-gray-700">
-            <span className="font-semibold tabular-nums">{hrSummary.total}</span> reviewees (one summary row per
-            person who has at least one task) · <span className="text-green-700">{hrSummary.both} complete</span>
-            {' (self + manager) · '}
-            <span className="text-amber-700">{hrSummary.missE} missing self</span>
-            {' · '}
-            <span className="text-amber-700">{hrSummary.missS} missing supervisor</span>
-          </p>
-        ) : (
-          <p className="text-sm text-gray-500">
-            No reviewees yet — this list is built from assignment rows after you create review tasks.
-          </p>
-        )}
-      </div>
-
-      <div className="rounded-xl border border-gray-200 bg-white p-4">
-        <div className="flex items-center justify-between gap-2 mb-3">
-          <h2 className="text-sm font-semibold text-gray-900">Assignment rows</h2>
-          {(assignments as AssignmentRow[]).length > assignmentPreview.length && (
-            <span className="text-[11px] text-gray-500">
-              Showing first {assignmentPreview.length} of {(assignments as AssignmentRow[]).length}
-            </span>
-          )}
-        </div>
-        {(assignments as AssignmentRow[]).length === 0 ? (
-          <div className="rounded-lg border border-dashed border-gray-200 bg-gray-50/80 p-4 text-sm text-gray-600">
-            <p className="font-medium text-gray-800 mb-1">No assignment rows yet</p>
-            <p>
-              Use <span className="font-medium text-gray-900">Create review tasks</span> in the header (or the amber
-              banner) to generate self and supervisor rows for people in this cycle&apos;s scope.
-            </p>
-          </div>
-        ) : (
-          <div className="overflow-x-auto max-h-[420px] overflow-y-auto rounded-lg border border-gray-100">
-            <table className="min-w-full text-xs">
-              <thead className="sticky top-0 bg-gray-50 border-b border-gray-200">
-                <tr className="text-left text-[10px] font-medium uppercase tracking-wide text-gray-500">
-                  <th className="py-2 px-2">Reviewee</th>
-                  <th className="py-2 px-2">Reviewer</th>
-                  <th className="py-2 px-2">Kind</th>
-                  <th className="py-2 px-2">Status</th>
-                  <th className="py-2 px-2">Due</th>
-                </tr>
-              </thead>
-              <tbody>
-                {assignmentPreview.map((a) => (
-                  <tr key={a.id} className="border-b border-gray-50 hover:bg-gray-50/80">
-                    <td className="py-1.5 px-2 text-gray-900">{a.reviewee}</td>
-                    <td className="py-1.5 px-2 text-gray-700">{a.reviewer}</td>
-                    <td className="py-1.5 px-2 text-gray-600">{a.isSelf ? 'Self' : 'Supervisor'}</td>
-                    <td className="py-1.5 px-2">
-                      <span className="rounded bg-gray-100 px-1.5 py-0.5 font-medium text-gray-800">{a.status}</span>
-                    </td>
-                    <td className="py-1.5 px-2 text-gray-500 whitespace-nowrap">{formatIsoDate(a.due_date)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </div>
-
       {canDeleteCycle && cycle && (
         <div className="mt-6 rounded-xl border border-red-200 bg-red-50 p-4">
           <h3 className="text-sm font-semibold text-red-900 mb-3">Danger Zone</h3>
@@ -554,6 +574,190 @@ export default function ReviewCycleDetailPage() {
           >
             {deleting ? 'Deleting…' : 'Delete review cycle'}
           </button>
+        </div>
+      )}
+        </>
+      )}
+
+      {cycleTab === 'progress' && (
+        <div className="space-y-4">
+          <div className="rounded-xl border border-gray-200 bg-gradient-to-br from-slate-50/90 to-white p-5 shadow-sm">
+            <h2 className="text-base font-semibold text-gray-900">Who has finished?</h2>
+            <p className="text-sm text-gray-600 mt-1 max-w-3xl leading-relaxed">
+              One row per employee in this cycle. Self-review is their own form; supervisor review is the manager form
+              about them. Icons mirror your legacy board: green check when submitted, red mark when still pending.
+            </p>
+          </div>
+
+          {hrSummary ? (
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+              <div className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
+                <div className="text-[10px] font-semibold uppercase tracking-wide text-gray-500">In cycle</div>
+                <div className="text-2xl font-bold text-gray-900 tabular-nums mt-1">{hrSummary.total}</div>
+                <div className="text-xs text-gray-500 mt-0.5">reviewees with tasks</div>
+              </div>
+              <div className="rounded-xl border border-emerald-200/80 bg-emerald-50/60 p-4 shadow-sm">
+                <div className="text-[10px] font-semibold uppercase tracking-wide text-emerald-800">Both done</div>
+                <div className="text-2xl font-bold text-emerald-900 tabular-nums mt-1">{hrSummary.both}</div>
+                <div className="text-xs text-emerald-800/80 mt-0.5">self + supervisor submitted</div>
+              </div>
+              <div className="rounded-xl border border-amber-200/80 bg-amber-50/60 p-4 shadow-sm">
+                <div className="text-[10px] font-semibold uppercase tracking-wide text-amber-900">Needs self</div>
+                <div className="text-2xl font-bold text-amber-950 tabular-nums mt-1">{hrSummary.missE}</div>
+                <div className="text-xs text-amber-900/80 mt-0.5">employee review open</div>
+              </div>
+              <div className="rounded-xl border border-amber-200/80 bg-amber-50/60 p-4 shadow-sm">
+                <div className="text-[10px] font-semibold uppercase tracking-wide text-amber-900">Needs supervisor</div>
+                <div className="text-2xl font-bold text-amber-950 tabular-nums mt-1">{hrSummary.missS}</div>
+                <div className="text-xs text-amber-900/80 mt-0.5">manager review open</div>
+              </div>
+            </div>
+          ) : (
+            <div className="rounded-xl border border-dashed border-gray-200 bg-gray-50/80 p-6 text-sm text-gray-600">
+              <p className="font-medium text-gray-800 mb-1">No people in the progress list yet</p>
+              <p>
+                Use <span className="font-semibold text-gray-900">Create review tasks</span> on the Cycle details tab
+                so assignments exist; this table then fills automatically.
+              </p>
+            </div>
+          )}
+
+          {hrSummary ? (
+            <>
+              <div className="flex flex-col sm:flex-row sm:items-center gap-3 flex-wrap">
+                <div className="flex flex-wrap gap-2">
+                  {(
+                    [
+                      ['all', 'All'],
+                      ['both_done', 'Both done'],
+                      ['missing_employee', 'Needs self'],
+                      ['missing_supervisor', 'Needs supervisor'],
+                    ] as const
+                  ).map(([k, lab]) => (
+                    <button
+                      key={k}
+                      type="button"
+                      onClick={() => setProgressFilter(k)}
+                      className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors ${
+                        progressFilter === k
+                          ? 'border-brand-red bg-red-50 text-brand-red'
+                          : 'border-gray-200 bg-white text-gray-700 hover:bg-gray-50'
+                      }`}
+                    >
+                      {lab}
+                    </button>
+                  ))}
+                </div>
+                <div className="flex-1 min-w-[12rem]">
+                  <label className="sr-only" htmlFor="progress-search">
+                    Search by name
+                  </label>
+                  <input
+                    id="progress-search"
+                    type="search"
+                    placeholder="Search employee or supervisor…"
+                    value={progressSearch}
+                    onChange={(e) => setProgressSearch(e.target.value)}
+                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-brand-red/15 focus:border-brand-red/40"
+                  />
+                </div>
+              </div>
+
+              <div className="rounded-xl border border-gray-200 bg-white overflow-hidden shadow-sm">
+                <div className="overflow-x-auto">
+                  <table className="min-w-full text-sm">
+                    <thead>
+                      <tr className="bg-slate-100/90 border-b border-gray-200 text-left text-[11px] font-semibold uppercase tracking-wide text-slate-600">
+                        <th className="py-3 px-4">Employee</th>
+                        <th className="py-3 px-4">Supervisor</th>
+                        <th className="py-3 px-4 whitespace-nowrap">Self due</th>
+                        <th className="py-3 px-4 text-center">Self</th>
+                        <th className="py-3 px-4 text-center">Supervisor</th>
+                        <th className="py-3 px-4">Overall</th>
+                        <th className="py-3 px-4 w-24">Open</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-100">
+                      {filteredProgressRows.length === 0 ? (
+                        <tr>
+                          <td colSpan={7} className="py-10 px-4 text-center text-sm text-gray-500">
+                            No rows match this filter or search.
+                          </td>
+                        </tr>
+                      ) : (
+                        filteredProgressRows.map((r) => {
+                          const label = (r.display_name || r.name || r.user_id).trim();
+                          const sup = (r.supervisor_display_name || '').trim();
+                          const overall =
+                            r.both_done ? (
+                              <span className="inline-flex items-center rounded-full bg-emerald-100 px-2.5 py-0.5 text-xs font-medium text-emerald-900">
+                                Complete
+                              </span>
+                            ) : r.missing_employee ? (
+                              <span className="inline-flex items-center rounded-full bg-amber-100 px-2.5 py-0.5 text-xs font-medium text-amber-950">
+                                Needs self
+                              </span>
+                            ) : (
+                              <span className="inline-flex items-center rounded-full bg-amber-100 px-2.5 py-0.5 text-xs font-medium text-amber-950">
+                                Needs supervisor
+                              </span>
+                            );
+                          return (
+                            <tr key={r.user_id} className="hover:bg-slate-50/80 transition-colors">
+                              <td className="py-3 px-4">
+                                <Link
+                                  to={`/users/${encodeURIComponent(r.user_id)}`}
+                                  className="font-medium text-brand-red hover:underline"
+                                >
+                                  {label}
+                                </Link>
+                              </td>
+                              <td className="py-3 px-4 text-gray-700">
+                                {r.supervisor_user_id ? (
+                                  <Link
+                                    to={`/users/${encodeURIComponent(r.supervisor_user_id)}`}
+                                    className="text-gray-800 hover:text-brand-red hover:underline"
+                                  >
+                                    {sup || 'Supervisor'}
+                                  </Link>
+                                ) : (
+                                  <span className="text-gray-400">—</span>
+                                )}
+                              </td>
+                              <td className="py-3 px-4 text-gray-600 tabular-nums whitespace-nowrap text-xs">
+                                {formatDueShort(r.self_due_date)}
+                              </td>
+                              <td className="py-3 px-4 text-center">
+                                <CompletionGlyph
+                                  ok={r.employee_self_done}
+                                  absent={r.has_self_assignment === false}
+                                />
+                              </td>
+                              <td className="py-3 px-4 text-center">
+                                <CompletionGlyph
+                                  ok={r.supervisor_done}
+                                  absent={r.has_supervisor_assignment === false}
+                                />
+                              </td>
+                              <td className="py-3 px-4">{overall}</td>
+                              <td className="py-3 px-4">
+                                <Link
+                                  to={`/users/${encodeURIComponent(r.user_id)}`}
+                                  className="text-xs font-medium text-gray-600 hover:text-brand-red"
+                                >
+                                  Profile →
+                                </Link>
+                              </td>
+                            </tr>
+                          );
+                        })
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </>
+          ) : null}
         </div>
       )}
     </div>
