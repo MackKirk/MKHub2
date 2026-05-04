@@ -20,6 +20,17 @@ function readLessonImageWidthFromDom(wrap: HTMLElement | null, img: HTMLElement)
   return im ? im[1].trim().replace(/^["']|["']$/g, '') : null;
 }
 
+function readLessonImageHeightFromDom(img: HTMLElement): string | null {
+  const dh = img.getAttribute('data-height')?.trim();
+  if (dh) return dh;
+  const ist = img.getAttribute('style') || '';
+  const m = ist.match(/(?:^|;)\s*height:\s*([^;]+)/i);
+  if (m) return m[1].trim().replace(/^["']|["']$/g, '').replace(/\s*!important\s*$/i, '');
+  const ha = img.getAttribute('height');
+  if (ha && /^\d+$/.test(ha)) return `${ha}px`;
+  return null;
+}
+
 export const LessonImage = Image.extend({
   name: 'image',
 
@@ -38,7 +49,22 @@ export const LessonImage = Image.extend({
         default: null as string | null,
         parseHTML: (element: HTMLElement) => {
           const wrap = element.closest?.('[data-lesson-img-wrap]') as HTMLElement | null;
-          return readLessonImageWidthFromDom(wrap, element);
+          const img =
+            element.tagName === 'IMG' ? element : (wrap?.querySelector('img') as HTMLElement | null);
+          if (!img) return readLessonImageWidthFromDom(wrap, element);
+          return readLessonImageWidthFromDom(wrap, img);
+        },
+      },
+      height: {
+        default: null as string | null,
+        parseHTML: (element: HTMLElement) => {
+          const img =
+            element.tagName === 'IMG'
+              ? element
+              : (element.querySelector?.('img') as HTMLElement | null) ||
+                (element.closest?.('[data-lesson-img-wrap]') as HTMLElement | null)?.querySelector?.('img');
+          if (!img) return null;
+          return readLessonImageHeightFromDom(img);
         },
       },
     };
@@ -57,7 +83,8 @@ export const LessonImage = Image.extend({
           const alt = img.getAttribute('alt') || '';
           const title = img.getAttribute('title') || '';
           const width = readLessonImageWidthFromDom(dom, img);
-          return { src, alt, title, align, width };
+          const height = readLessonImageHeightFromDom(img);
+          return { src, alt, title, align, width, height };
         },
       },
       {
@@ -71,7 +98,8 @@ export const LessonImage = Image.extend({
           const alt = img.getAttribute('alt') || '';
           const title = img.getAttribute('title') || '';
           const width = readLessonImageWidthFromDom(dom, img);
-          return { src, alt, title, align, width };
+          const height = readLessonImageHeightFromDom(img);
+          return { src, alt, title, align, width, height };
         },
       },
       {
@@ -81,12 +109,14 @@ export const LessonImage = Image.extend({
           const src = canonicalTrainingFileSrc(dom.getAttribute('src') || '');
           const wrap = dom.closest?.('[data-lesson-img-wrap]') as HTMLElement | null;
           const width = readLessonImageWidthFromDom(wrap, dom);
+          const height = readLessonImageHeightFromDom(dom);
           return {
             src,
             alt: dom.getAttribute('alt'),
             title: dom.getAttribute('title'),
             align: 'left' as ImageAlign,
             width,
+            height,
           };
         },
       },
@@ -97,14 +127,26 @@ export const LessonImage = Image.extend({
     const align = (node.attrs.align as ImageAlign) || 'left';
     const imgAttrs = mergeAttributes(this.options.HTMLAttributes, HTMLAttributes);
     const w = node.attrs.width as string | null | undefined;
-    const wrapParts = ['display:inline-block', 'vertical-align:top', 'max-width:100%'];
+    const h = node.attrs.height as string | null | undefined;
+    const wrapParts = ['display:inline-block', 'vertical-align:bottom', 'max-width:100%'];
     if (w) {
       wrapParts.push(`width:${w}`);
       imgAttrs['data-width'] = w;
-      const prev = typeof imgAttrs.style === 'string' ? imgAttrs.style : '';
-      const imgBlock = 'width:100%;max-width:100%;height:auto;display:block;';
-      imgAttrs.style = prev ? `${prev}; ${imgBlock}` : imgBlock;
     }
+    const prev = typeof imgAttrs.style === 'string' ? imgAttrs.style : '';
+    let imgBlock: string;
+    if (w && h) {
+      imgAttrs['data-height'] = h;
+      imgBlock = `width:100%;max-width:100%;height:${h};object-fit:fill;display:block;`;
+    } else if (w) {
+      imgBlock = 'width:100%;max-width:100%;height:auto;object-fit:contain;display:block;';
+    } else if (h) {
+      imgAttrs['data-height'] = h;
+      imgBlock = `max-width:100%;height:${h};object-fit:fill;display:block;`;
+    } else {
+      imgBlock = 'max-width:100%;height:auto;object-fit:contain;display:block;';
+    }
+    imgAttrs.style = prev ? `${prev}; ${imgBlock}` : imgBlock;
     return [
       'span',
       {
@@ -118,7 +160,24 @@ export const LessonImage = Image.extend({
   },
 
   addNodeView() {
-    return ReactNodeViewRenderer(LessonImageNodeView);
+    return ReactNodeViewRenderer(LessonImageNodeView, {
+      /**
+       * TipTap's default NodeView.stopEvent returns true for drag* on inner targets (e.g. <img>),
+       * so ProseMirror never runs dragstart/drop (eventBelongsToView becomes false). We must let
+       * PM handle drag/drop for moving inline images; keep true only on resize handles.
+       */
+      stopEvent: ({ event }) => {
+        const t = event.target;
+        if (!(t instanceof HTMLElement)) return false;
+        if (event.type.startsWith('drag') || event.type === 'drop') return false;
+        if (t.closest('.lesson-img-resize-handle')) {
+          if (event.type === 'mousedown' || event.type === 'pointerdown' || event.type === 'click') {
+            return true;
+          }
+        }
+        return false;
+      },
+    });
   },
 
   addCommands() {
@@ -127,7 +186,12 @@ export const LessonImage = Image.extend({
       setImage:
         (options) =>
         ({ state, dispatch }) => {
-          const attrs = { align: 'left' as ImageAlign, width: null as string | null, ...options };
+          const attrs = {
+            align: 'left' as ImageAlign,
+            width: null as string | null,
+            height: null as string | null,
+            ...options,
+          };
           const type = state.schema.nodes[this.name];
           if (!type) return false;
           const node = type.create(attrs);

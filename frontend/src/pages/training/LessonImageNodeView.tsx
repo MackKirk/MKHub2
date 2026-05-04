@@ -1,86 +1,81 @@
-import { useCallback, useEffect, useRef, type FC } from 'react';
+import { useCallback, useEffect, useRef } from 'react';
+import type { CSSProperties } from 'react';
 import type { Editor } from '@tiptap/core';
-import type { Node as PMNode } from '@tiptap/pm/model';
 import { NodeViewWrapper } from '@tiptap/react';
 import type { ReactNodeViewProps } from '@tiptap/react';
 import { withFileAccessToken } from '@/lib/api';
 
 type ImageAlign = 'left' | 'center' | 'right';
 
-function IconAlignLeft({ className }: { className?: string }) {
-  return (
-    <svg className={className} width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden>
-      <path
-        d="M3 6h18M3 12h12M3 18h18"
-        stroke="currentColor"
-        strokeWidth="2"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </svg>
-  );
-}
+type ResizeHandleId = 'nw' | 'n' | 'ne' | 'e' | 'se' | 's' | 'sw' | 'w';
 
-function IconAlignCenter({ className }: { className?: string }) {
-  return (
-    <svg className={className} width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden>
-      <path
-        d="M3 6h18M6 12h12M3 18h18"
-        stroke="currentColor"
-        strokeWidth="2"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </svg>
-  );
-}
-
-function IconAlignRight({ className }: { className?: string }) {
-  return (
-    <svg className={className} width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden>
-      <path
-        d="M3 6h18M9 12h12M3 18h18"
-        stroke="currentColor"
-        strokeWidth="2"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </svg>
-  );
-}
-
-const ALIGN_ICONS: Record<ImageAlign, FC<{ className?: string }>> = {
-  left: IconAlignLeft,
-  center: IconAlignCenter,
-  right: IconAlignRight,
-};
-
-function paragraphContainsOnlyImages(parent: PMNode): boolean {
-  if (!parent.isTextblock || parent.childCount === 0) return false;
-  let ok = true;
-  parent.forEach((child) => {
-    if (child.type.name !== 'image') ok = false;
-  });
-  return ok;
-}
-
-function applyImageAlign(editor: Editor, imagePos: number, a: ImageAlign) {
-  const node = editor.state.doc.nodeAt(imagePos);
-  if (!node || node.type.name !== 'image') return;
-  let tr = editor.state.tr.setNodeMarkup(imagePos, undefined, { ...node.attrs, align: a });
-  const $pos = tr.doc.resolve(imagePos);
-  const parent = $pos.parent;
-  const parentPos = $pos.before($pos.depth);
-  if (parent.type.name === 'paragraph' && paragraphContainsOnlyImages(parent)) {
-    tr = tr.setNodeMarkup(parentPos, undefined, { ...parent.attrs, textAlign: a });
-  }
-  editor.view.dispatch(tr);
-}
+const MAX_EDGE_HEIGHT_PX = 4000;
 
 function displaySrc(raw: string): string {
   const base = raw.split('?')[0];
   if (base.startsWith('/files/')) return withFileAccessToken(base);
   return raw;
+}
+
+/** Word-style corners: uniform scale vs opposite anchor (frozen rect). */
+function cornerUniformScale(
+  handle: 'nw' | 'ne' | 'sw' | 'se',
+  cx: number,
+  cy: number,
+  L0: number,
+  T0: number,
+  R0: number,
+  B0: number,
+  w0: number,
+  h0: number,
+): number {
+  const W = Math.max(w0, 1);
+  const H = Math.max(h0, 1);
+  switch (handle) {
+    case 'se':
+      return Math.max(0.02, Math.min((cx - L0) / W, (cy - T0) / H));
+    case 'nw':
+      return Math.max(0.02, Math.min((R0 - cx) / W, (B0 - cy) / H));
+    case 'ne':
+      return Math.max(0.02, Math.min((cx - L0) / W, (B0 - cy) / H));
+    case 'sw':
+      return Math.max(0.02, Math.min((R0 - cx) / W, (cy - T0) / H));
+    default:
+      return 1;
+  }
+}
+
+function edgeWidthPx(handle: 'e' | 'w', cx: number, L0: number, R0: number): number {
+  if (handle === 'e') return Math.max(8, cx - L0);
+  return Math.max(8, R0 - cx);
+}
+
+function edgeHeightPx(handle: 'n' | 's', cy: number, T0: number, B0: number): number {
+  if (handle === 'n') return Math.max(16, B0 - cy);
+  return Math.max(16, cy - T0);
+}
+
+const RESIZE_HANDLES: Array<{
+  id: ResizeHandleId;
+  cursor: string;
+  label: string;
+  style: CSSProperties;
+}> = [
+  { id: 'nw', cursor: 'nwse-resize', label: 'Resize from top left', style: { top: 0, left: 0, transform: 'translate(-50%, -50%)' } },
+  { id: 'n', cursor: 'ns-resize', label: 'Resize from top', style: { top: 0, left: '50%', transform: 'translate(-50%, -50%)' } },
+  { id: 'ne', cursor: 'nesw-resize', label: 'Resize from top right', style: { top: 0, right: 0, transform: 'translate(50%, -50%)' } },
+  { id: 'e', cursor: 'ew-resize', label: 'Resize from right', style: { top: '50%', right: 0, transform: 'translate(50%, -50%)' } },
+  { id: 'se', cursor: 'nwse-resize', label: 'Resize from bottom right', style: { bottom: 0, right: 0, transform: 'translate(50%, 50%)' } },
+  { id: 's', cursor: 'ns-resize', label: 'Resize from bottom', style: { bottom: 0, left: '50%', transform: 'translate(-50%, 50%)' } },
+  { id: 'sw', cursor: 'nesw-resize', label: 'Resize from bottom left', style: { bottom: 0, left: 0, transform: 'translate(-50%, 50%)' } },
+  { id: 'w', cursor: 'ew-resize', label: 'Resize from left', style: { top: '50%', left: 0, transform: 'translate(-50%, -50%)' } },
+];
+
+function applyImageAttrs(editor: Editor, pos: number, attrs: Record<string, unknown>) {
+  const nodeAt = editor.state.doc.nodeAt(pos);
+  if (!nodeAt || nodeAt.type.name !== 'image') return;
+  const tr = editor.state.tr.setNodeMarkup(pos, undefined, { ...nodeAt.attrs, ...attrs });
+  editor.view.dispatch(tr);
 }
 
 export function LessonImageNodeView({ node, editor, getPos, selected }: ReactNodeViewProps) {
@@ -90,21 +85,11 @@ export function LessonImageNodeView({ node, editor, getPos, selected }: ReactNod
   const alt = (node.attrs.alt as string) || '';
   const align = ((node.attrs.align as ImageAlign) || 'left') as ImageAlign;
   const width = (node.attrs.width as string | null | undefined) ?? null;
-
-  const updateAttrs = useCallback(
-    (patch: Record<string, unknown>) => {
-      const pos = getPos();
-      if (typeof pos !== 'number') return;
-      const nodeAt = editor.state.doc.nodeAt(pos);
-      if (!nodeAt || nodeAt.type.name !== 'image') return;
-      const tr = editor.state.tr.setNodeMarkup(pos, undefined, { ...nodeAt.attrs, ...patch });
-      editor.view.dispatch(tr);
-    },
-    [editor, getPos],
-  );
+  const height = (node.attrs.height as string | null | undefined) ?? null;
+  const hasExplicitHeight = Boolean(height && height !== 'auto');
 
   const onResizePointerDown = useCallback(
-    (e: React.PointerEvent<HTMLButtonElement>) => {
+    (e: React.PointerEvent<HTMLButtonElement>, handle: ResizeHandleId) => {
       e.preventDefault();
       e.stopPropagation();
       const pos = getPos();
@@ -113,27 +98,58 @@ export function LessonImageNodeView({ node, editor, getPos, selected }: ReactNod
       const editorW = Math.max(200, pm?.getBoundingClientRect().width ?? 720);
       const imgEl = imgRef.current;
       if (!imgEl) return;
-      const startX = e.clientX;
-      const startW = imgEl.getBoundingClientRect().width;
 
-      const applyWidth = (clampedPct: number) => {
-        const nodeAt = editor.state.doc.nodeAt(pos);
-        if (!nodeAt || nodeAt.type.name !== 'image') return;
-        const tr = editor.state.tr.setNodeMarkup(pos, undefined, {
-          ...nodeAt.attrs,
-          width: `${clampedPct}%`,
-        });
-        editor.view.dispatch(tr);
-      };
+      const r0 = imgEl.getBoundingClientRect();
+      const L0 = r0.left;
+      const T0 = r0.top;
+      const R0 = r0.right;
+      const B0 = r0.bottom;
+      /** Layout height on screen — used to lock vertical size during E/W-only resize (Word-style). */
+      const displayHForHorizontalLock = Math.max(1, r0.height || imgEl.clientHeight || 1);
+      let W0 = r0.width;
+      let H0 = r0.height;
+      if (H0 < 2 && imgEl.naturalHeight > 0) {
+        W0 = imgEl.naturalWidth;
+        H0 = imgEl.naturalHeight;
+      }
+      const lockHeightPxForEw = Math.round(
+        Math.max(16, Math.min(MAX_EDGE_HEIGHT_PX, displayHForHorizontalLock)),
+      );
+
+      const nodeStart = editor.state.doc.nodeAt(pos);
+      const startWidthAttr = (nodeStart?.attrs?.width as string | null) ?? null;
+
+      let widthPctForVertical = startWidthAttr;
+      if ((handle === 'n' || handle === 's') && !widthPctForVertical) {
+        widthPctForVertical = `${Math.min(100, Math.max(5, Math.round((W0 / editorW) * 100)))}%`;
+      }
 
       const onMove = (ev: PointerEvent) => {
         ev.preventDefault();
-        const dx = ev.clientX - startX;
-        let newW = Math.round(startW + dx);
-        newW = Math.max(24, Math.min(editorW - 8, newW));
-        const pct = Math.round((newW / editorW) * 100);
-        const clamped = Math.min(100, Math.max(5, pct));
-        applyWidth(clamped);
+
+        if (handle === 'e' || handle === 'w') {
+          const newWpx = edgeWidthPx(handle, ev.clientX, L0, R0);
+          const clampedW = Math.max(24, Math.min(editorW - 8, newWpx));
+          const pct = Math.min(100, Math.max(5, Math.round((clampedW / editorW) * 100)));
+          /* Fixed height in px so only width changes visually (height:auto would keep aspect ratio). */
+          applyImageAttrs(editor, pos, { width: `${pct}%`, height: `${lockHeightPxForEw}px` });
+          return;
+        }
+
+        if (handle === 'n' || handle === 's') {
+          const newHpx = Math.min(MAX_EDGE_HEIGHT_PX, edgeHeightPx(handle, ev.clientY, T0, B0));
+          applyImageAttrs(editor, pos, {
+            width: widthPctForVertical,
+            height: `${Math.round(newHpx)}px`,
+          });
+          return;
+        }
+
+        const scale = cornerUniformScale(handle, ev.clientX, ev.clientY, L0, T0, R0, B0, W0, H0);
+        const newWpx = W0 * scale;
+        const clampedW = Math.max(24, Math.min(editorW - 8, newWpx));
+        const pct = Math.min(100, Math.max(5, Math.round((clampedW / editorW) * 100)));
+        applyImageAttrs(editor, pos, { width: `${pct}%`, height: null });
       };
 
       const onUp = () => {
@@ -142,7 +158,6 @@ export function LessonImageNodeView({ node, editor, getPos, selected }: ReactNod
         window.removeEventListener('pointercancel', onUp);
       };
 
-      /* Listeners on window: dispatch re-mounts the handle, so pointer capture on the button is lost mid-drag. */
       window.addEventListener('pointermove', onMove, { passive: false });
       window.addEventListener('pointerup', onUp);
       window.addEventListener('pointercancel', onUp);
@@ -161,72 +176,59 @@ export function LessonImageNodeView({ node, editor, getPos, selected }: ReactNod
     return () => window.removeEventListener('keydown', onKey);
   }, [selected, editor]);
 
+  const imgStyle: CSSProperties = width
+    ? {
+        width: '100%',
+        maxWidth: '100%',
+        height: hasExplicitHeight ? height : 'auto',
+        display: 'block',
+        objectFit: hasExplicitHeight ? 'fill' : 'contain',
+      }
+    : {
+        maxWidth: '100%',
+        height: hasExplicitHeight ? height : 'auto',
+        display: 'block',
+        objectFit: hasExplicitHeight ? 'fill' : 'contain',
+      };
+
   return (
     <NodeViewWrapper
       as="span"
-      className={`lesson-img-node lesson-img-wrap lesson-img-wrap--inline mr-2 mb-2 align-top ${
+      className={`lesson-img-node lesson-img-wrap lesson-img-wrap--inline mr-2 mb-2 align-bottom ${
         selected ? 'lesson-img-node--selected' : ''
       }`}
       data-lesson-img-wrap=""
       data-align={align}
       style={{
         display: 'inline-block',
-        verticalAlign: 'top',
+        verticalAlign: 'bottom',
         maxWidth: '100%',
         boxSizing: 'border-box',
         ...(width ? { width } : {}),
       }}
     >
       <span className="relative block w-full min-w-0 align-middle" contentEditable={false}>
-        {selected && (
-          <div className="absolute -top-9 left-1/2 z-10 flex -translate-x-1/2 gap-0.5 rounded-md border border-gray-200 bg-white p-0.5 shadow-md">
-            {(['left', 'center', 'right'] as const).map((a) => {
-              const Icon = ALIGN_ICONS[a];
-              return (
-                <button
-                  key={a}
-                  type="button"
-                  title={
-                    a === 'left' ? 'Align row left' : a === 'center' ? 'Align row center' : 'Align row right'
-                  }
-                  className={`rounded p-1.5 leading-none ${
-                    align === a ? 'bg-[#7f1010] text-white' : 'text-gray-600 hover:bg-gray-100'
-                  }`}
-                  onPointerDown={(e) => {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    const pos = getPos();
-                    if (typeof pos !== 'number') return;
-                    applyImageAlign(editor, pos, a);
-                  }}
-                >
-                  <Icon className="block" />
-                </button>
-              );
-            })}
-          </div>
-        )}
         <img
           ref={imgRef}
           src={src}
           alt={alt}
-          draggable={false}
-          className="h-auto rounded-lg object-contain select-none"
-          style={
-            width
-              ? { width: '100%', maxWidth: '100%', height: 'auto', display: 'block' }
-              : { maxWidth: '100%', height: 'auto', display: 'block' }
-          }
+          draggable
+          className={`h-auto rounded-lg select-none ${hasExplicitHeight ? 'object-fill' : 'object-contain'}`}
+          style={imgStyle}
         />
-        {selected && (
-          <button
-            type="button"
-            aria-label="Resize image"
-            title="Drag the corner to resize; drag left to shrink"
-            className="absolute bottom-0 right-0 z-10 h-5 w-5 min-h-[20px] min-w-[20px] cursor-nwse-resize rounded-br-md border border-[#7f1010] bg-white shadow touch-none"
-            onPointerDown={onResizePointerDown}
-          />
-        )}
+        {selected &&
+          RESIZE_HANDLES.map((h) => (
+            <button
+              key={h.id}
+              type="button"
+              draggable={false}
+              className="lesson-img-resize-handle absolute z-10 box-border h-2.5 w-2.5 min-h-[10px] min-w-[10px] touch-none rounded-sm border border-[#7f1010] bg-white p-0 shadow"
+              aria-label={h.label}
+              title={h.label}
+              style={{ ...h.style, cursor: h.cursor }}
+              onPointerDown={(ev) => onResizePointerDown(ev, h.id)}
+            />
+          ))}
       </span>
     </NodeViewWrapper>
   );

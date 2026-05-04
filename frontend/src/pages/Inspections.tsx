@@ -100,13 +100,6 @@ export default function Inspections() {
             <div className="text-xs text-gray-500 mt-0.5">Manage inspection schedules. Open a schedule to start Body or Mechanical inspection.</div>
           </div>
           <div className="flex items-center gap-3">
-            <button
-              type="button"
-              onClick={() => nav('/fleet/calendar')}
-              className="px-3 py-2 text-xs font-medium text-gray-700 border border-gray-200 rounded-lg bg-white hover:bg-gray-50 transition-colors"
-            >
-              Calendar
-            </button>
             <div className="text-right">
               <div className="text-[10px] font-medium text-gray-500 uppercase tracking-wide">Today</div>
               <div className="text-xs font-semibold text-gray-700 mt-0.5">{todayLabel}</div>

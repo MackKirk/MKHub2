@@ -29,8 +29,9 @@ import {
 } from "../../services/community";
 import { toApiError } from "../../services/api";
 import type { CommunityPost, CommunityComment } from "../../types/community";
+import { stripHtmlToPlain } from "../../utils/stripHtml";
 
-type Filter = "all" | "unread" | "required" | "announcements";
+type Filter = "all" | "unread" | "required" | "announcements" | "urgent";
 
 export const CommunityScreen: React.FC = () => {
   const [posts, setPosts] = useState<CommunityPost[]>([]);
@@ -143,7 +144,11 @@ export const CommunityScreen: React.FC = () => {
 
   const renderPost = ({ item }: { item: CommunityPost }) => {
     const hasTags = item.tags && item.tags.length > 0;
-    const isUrgent = item.is_urgent || item.tags?.includes("Urgent");
+    const isUrgent =
+      item.priority === "urgent" ||
+      item.priority === "critical" ||
+      item.is_urgent ||
+      item.tags?.includes("Urgent");
     const cardStyle: ViewStyle = item.is_unread 
       ? StyleSheet.flatten([styles.postCard, styles.postCardUnread])
       : styles.postCard;
@@ -177,7 +182,7 @@ export const CommunityScreen: React.FC = () => {
 
         <Text style={styles.postTitle}>{item.title}</Text>
         <Text style={styles.postContent} numberOfLines={3}>
-          {item.content}
+          {stripHtmlToPlain(item.content)}
         </Text>
 
         {item.photo_url && (
@@ -233,7 +238,7 @@ export const CommunityScreen: React.FC = () => {
   return (
     <ScreenLayout title="Community" scroll={false}>
       <View style={styles.filterRow}>
-        {(["all", "unread", "required", "announcements"] as Filter[]).map((f) => (
+        {(["all", "unread", "urgent", "required", "announcements"] as Filter[]).map((f) => (
           <TouchableOpacity
             key={f}
             style={[styles.filterChip, filter === f && styles.filterChipActive]}
@@ -319,7 +324,7 @@ export const CommunityScreen: React.FC = () => {
                 </View>
               </View>
 
-              <Text style={styles.modalContentText}>{selectedPost.content}</Text>
+              <Text style={styles.modalContentText}>{stripHtmlToPlain(selectedPost.content)}</Text>
 
               {selectedPost.photo_url && (
                 <Image

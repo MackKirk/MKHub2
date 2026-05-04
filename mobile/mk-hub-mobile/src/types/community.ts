@@ -8,6 +8,11 @@ export interface CommunityPost {
   photo_url?: string;
   document_url?: string;
   created_at: string;
+  publish_at?: string;
+  status?: string;
+  priority?: string;
+  related_area?: string;
+  target_type?: string;
   tags?: string[];
   likes_count: number;
   comments_count: number;
@@ -25,5 +30,6 @@ export interface CommunityComment {
   user_avatar?: string;
   content: string;
   created_at: string;
+  parent_comment_id?: string | null;
 }
 

@@ -102,6 +102,14 @@ export default function NotificationBell() {
         return '💬';
       case 'attendance':
         return '⏰';
+      case 'community_post':
+      case 'community_mention':
+      case 'community_comment_reply':
+        return '📣';
+      case 'community_urgent':
+        return '⚠️';
+      case 'community_required':
+        return '📋';
       default:
         return '🔔';
     }

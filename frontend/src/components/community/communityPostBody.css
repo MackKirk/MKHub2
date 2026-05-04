@@ -1,0 +1,145 @@
+/* Read-only HTML bodies for community posts (no @tailwind typography). */
+.community-post-body {
+  word-break: break-word;
+}
+
+.community-post-body p {
+  margin: 0 0 0.5rem;
+}
+
+.community-post-body p:last-child {
+  margin-bottom: 0;
+}
+
+.community-post-body h1 {
+  font-size: 1.25rem;
+  font-weight: 700;
+  margin: 0.75rem 0 0.35rem;
+}
+
+.community-post-body h2 {
+  font-size: 1.1rem;
+  font-weight: 700;
+  margin: 0.65rem 0 0.3rem;
+}
+
+.community-post-body h3 {
+  font-size: 1rem;
+  font-weight: 600;
+  margin: 0.5rem 0 0.25rem;
+}
+
+.community-post-body ul,
+.community-post-body ol {
+  margin: 0.35rem 0 0.5rem;
+  padding-left: 1.25rem;
+  list-style-position: outside;
+}
+
+.community-post-body ul {
+  list-style-type: disc;
+}
+
+.community-post-body ol {
+  list-style-type: decimal;
+}
+
+.community-post-body li {
+  margin: 0.15rem 0;
+  display: list-item;
+}
+
+.community-post-body li > p {
+  display: inline;
+  margin: 0;
+}
+
+.community-post-body a {
+  color: #d11616;
+  text-decoration: underline;
+}
+
+.community-post-body img {
+  max-width: 100%;
+  height: auto;
+  border-radius: 0.375rem;
+  margin: 0.35rem 0;
+  vertical-align: middle;
+}
+
+/* Inline image wrappers (LessonImage / same line as text) */
+.community-post-body span.lesson-img-wrap--inline[data-lesson-img-wrap] {
+  display: inline-block !important;
+  vertical-align: bottom;
+  max-width: 100%;
+  min-width: 0;
+  margin: 0.2rem 0.35rem 0.35rem 0;
+  box-sizing: border-box;
+}
+
+.community-post-body span.lesson-img-wrap--inline img {
+  margin: 0;
+  vertical-align: bottom;
+}
+
+.community-post-body p:has(> .lesson-img-wrap--inline ~ .lesson-img-wrap--inline) {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 0.25rem 0.35rem;
+}
+
+.community-post-body p:has(> .lesson-img-wrap--inline ~ .lesson-img-wrap--inline) .lesson-img-wrap--inline {
+  flex: none;
+  align-self: flex-end;
+  min-width: 0;
+}
+
+.community-post-body blockquote {
+  border-left: 3px solid #e5e7eb;
+  margin: 0.5rem 0;
+  padding-left: 0.75rem;
+  color: #4b5563;
+}
+
+.community-post-body pre {
+  font-size: 0.75rem;
+  background: #f3f4f6;
+  padding: 0.5rem;
+  border-radius: 0.375rem;
+  overflow-x: auto;
+  margin: 0.5rem 0;
+}
+
+.community-post-body hr {
+  margin: 0.75rem 0;
+  border: 0;
+  border-top: 1px solid #e5e7eb;
+}
+
+.community-post-body span[data-type='mention'] {
+  font-weight: 600;
+  color: #a90f0f;
+  background: #fef2f2;
+  border-radius: 0.25rem;
+  padding: 0 0.15rem;
+}
+
+.community-post-body div[data-youtube-video] {
+  position: relative;
+  aspect-ratio: 16 / 9;
+  width: 100%;
+  max-width: 100%;
+  margin: 0.5rem 0;
+  border-radius: 0.5rem;
+  overflow: hidden;
+  background: #0f172a;
+}
+
+.community-post-body div[data-youtube-video] iframe {
+  position: absolute;
+  inset: 0;
+  width: 100% !important;
+  height: 100% !important;
+  border: 0;
+}

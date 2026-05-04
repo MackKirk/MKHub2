@@ -1,8 +1,11 @@
 import React, { useState, useMemo, useRef, useEffect } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api, withFileAccessTokenIfNeeded } from '@/lib/api';
 import toast from 'react-hot-toast';
 import OverlayPortal from '@/components/OverlayPortal';
+import MentionPicker, { type MentionEntity } from '@/components/community/MentionPicker';
+import { CommunityPostBody } from '@/components/community/CommunityPostBody';
 
 type CommunityPost = {
   id: string;
@@ -15,6 +18,12 @@ type CommunityPost = {
   document_url?: string;
   document_file_id?: string;
   created_at: string;
+  publish_at?: string;
+  status?: string;
+  priority?: string;
+  related_area?: string;
+  target_type?: string;
+  target_division_ids?: string[];
   tags?: string[];
   likes_count?: number;
   comments_count?: number;
@@ -33,7 +42,29 @@ type Comment = {
   content: string;
   created_at: string;
   updated_at?: string;
+  parent_comment_id?: string | null;
 };
+
+const AREA_LABELS: Record<string, string> = {
+  general: 'General',
+  projects: 'Projects',
+  opportunities: 'Opportunities',
+  repairs_maintenance: 'Repairs & Maintenance',
+  safety: 'Safety',
+  fleet: 'Fleet',
+  hr: 'HR',
+  payroll: 'Payroll',
+  training: 'Training',
+};
+
+function buildPostsQuery(params: Record<string, string | undefined>): string {
+  const sp = new URLSearchParams();
+  Object.entries(params).forEach(([k, v]) => {
+    if (v !== undefined && v !== '') sp.set(k, v);
+  });
+  const q = sp.toString();
+  return q ? `/community/posts?${q}` : '/community/posts';
+}
 
 type EmployeeCommunityProps = {
   expanded?: boolean;
@@ -41,56 +72,73 @@ type EmployeeCommunityProps = {
 };
 
 export default function EmployeeCommunity({ expanded = false, feedMode = false }: EmployeeCommunityProps) {
+  const [searchParams, setSearchParams] = useSearchParams();
   const [filter, setFilter] = useState<'all' | 'unread' | 'required' | 'announcements' | 'urgent'>('all');
+  const [searchQ, setSearchQ] = useState('');
+  const [relatedAreaFilter, setRelatedAreaFilter] = useState('');
+  const [priorityFilter, setPriorityFilter] = useState('');
+  const [confirmedOnly, setConfirmedOnly] = useState(false);
   const [modalPost, setModalPost] = useState<CommunityPost | null>(null);
   const [commentText, setCommentText] = useState('');
+  const [commentMentions, setCommentMentions] = useState<MentionEntity[]>([]);
+  const [replyParentId, setReplyParentId] = useState<string | null>(null);
   const commentsRef = useRef<HTMLDivElement>(null);
   const [visiblePostsCount, setVisiblePostsCount] = useState(feedMode ? 3 : Infinity);
   const feedContainerRef = useRef<HTMLDivElement>(null);
+  const deepLinkHandled = useRef<string | null>(null);
 
-  // Fetch community posts
+  const listParams = useMemo(() => {
+    const p: Record<string, string | undefined> = { filter: filter === 'urgent' ? 'urgent' : filter };
+    if (searchQ.trim()) p.q = searchQ.trim();
+    if (relatedAreaFilter) p.related_area = relatedAreaFilter;
+    if (priorityFilter) p.priority = priorityFilter;
+    if (confirmedOnly) p.confirmed_only = 'true';
+    return p;
+  }, [filter, searchQ, relatedAreaFilter, priorityFilter, confirmedOnly]);
+
   const { data: posts = [], refetch: refetchPosts } = useQuery({
-    queryKey: ['community-posts', filter],
+    queryKey: ['community-posts', listParams],
     queryFn: async () => {
-      const result = await api<any>('GET', `/community/posts?filter=${filter || 'all'}`);
-      // Ensure we return an array
-      if (Array.isArray(result)) {
-        return result;
-      }
-      // If result is an object with a data property, use that
-      if (result && Array.isArray(result.data)) {
-        return result.data;
-      }
-      // Default to empty array
+      const result = await api<any>('GET', buildPostsQuery(listParams));
+      if (Array.isArray(result)) return result;
+      if (result && Array.isArray(result.data)) return result.data;
       return [];
     },
   });
 
-  const filteredPosts = useMemo(() => {
-    // Ensure posts is always an array
-    if (!Array.isArray(posts)) return [];
-    
-    let filtered: CommunityPost[] = [];
-    if (filter === 'all') filtered = posts;
-    else if (filter === 'unread') filtered = posts.filter(p => p.is_unread);
-    else if (filter === 'required') filtered = posts.filter(p => p.requires_read_confirmation);
-    else if (filter === 'announcements') filtered = posts.filter(p => p.tags?.includes('Announcement'));
-    else if (filter === 'urgent') filtered = posts.filter(p => p.tags?.includes('Urgent'));
-    else filtered = posts;
-    
-    // In feed mode, limit visible posts
-    if (feedMode && visiblePostsCount < filtered.length) {
-      return filtered.slice(0, visiblePostsCount);
+  useEffect(() => {
+    if (!Array.isArray(posts) || posts.length === 0) return;
+    let raw: string[] = [];
+    try {
+      raw = JSON.parse(sessionStorage.getItem('communityHighPriToastIds') || '[]');
+    } catch {
+      raw = [];
     }
-    return filtered;
-  }, [posts, filter, feedMode, visiblePostsCount]);
+    const seen = new Set(raw);
+    for (const p of posts as CommunityPost[]) {
+      const pr = p.priority || '';
+      if ((pr === 'urgent' || pr === 'critical') && p.is_unread && !seen.has(p.id)) {
+        toast(pr === 'critical' ? `Critical: ${p.title}` : `Urgent: ${p.title}`, { duration: 6500 });
+        seen.add(p.id);
+      }
+    }
+    sessionStorage.setItem('communityHighPriToastIds', JSON.stringify([...seen].slice(-120)));
+  }, [posts]);
+
+  const filteredPosts = useMemo(() => {
+    if (!Array.isArray(posts)) return [];
+    if (feedMode && visiblePostsCount < posts.length) {
+      return posts.slice(0, visiblePostsCount);
+    }
+    return posts;
+  }, [posts, feedMode, visiblePostsCount]);
 
   // Reset visible posts count when filter changes
   useEffect(() => {
     if (feedMode) {
       setVisiblePostsCount(3);
     }
-  }, [filter, feedMode]);
+  }, [filter, feedMode, searchQ, relatedAreaFilter, priorityFilter, confirmedOnly]);
 
   // Infinite scroll handler for feed mode
   useEffect(() => {
@@ -101,37 +149,60 @@ export default function EmployeeCommunity({ expanded = false, feedMode = false }
       const { scrollTop, scrollHeight, clientHeight } = container;
       // Load more when user scrolls to within 100px of the bottom
       if (scrollHeight - scrollTop - clientHeight < 100) {
-        setVisiblePostsCount(prev => {
-          const filtered = filter === 'all' ? posts : 
-            filter === 'unread' ? posts.filter((p: CommunityPost) => p.is_unread) :
-            filter === 'required' ? posts.filter((p: CommunityPost) => p.requires_read_confirmation) :
-            filter === 'announcements' ? posts.filter((p: CommunityPost) => p.tags?.includes('Announcement')) :
-            posts;
-          // Load 3 more posts at a time
-          return Math.min(prev + 3, filtered.length);
-        });
+        setVisiblePostsCount(prev => Math.min(prev + 3, posts.length));
       }
     };
 
     container.addEventListener('scroll', handleScroll);
     return () => container.removeEventListener('scroll', handleScroll);
-  }, [feedMode, posts, filter]);
+  }, [feedMode, posts, listParams]);
 
   const queryClient = useQueryClient();
 
   const markViewedMutation = useMutation({
     mutationFn: (postId: string) => api('POST', `/community/posts/${postId}/mark-viewed`),
     onSuccess: () => {
-      // Mark as viewed silently, don't show toast
       queryClient.invalidateQueries({ queryKey: ['community-posts'] });
-      // Also invalidate my-posts to update views count in My Announcements
       queryClient.invalidateQueries({ queryKey: ['my-community-posts'] });
     },
     onError: (err: any) => {
-      // Silently fail, don't show error
       console.error('Failed to mark post as viewed:', err);
     },
   });
+
+  useEffect(() => {
+    const pid = searchParams.get('communityPost');
+    if (!pid || deepLinkHandled.current === pid) return;
+    const run = async () => {
+      try {
+        const found = (posts as CommunityPost[]).find((p) => p.id === pid);
+        if (found) {
+          deepLinkHandled.current = pid;
+          setModalPost(found);
+          markViewedMutation.mutate(found.id);
+          setSearchParams((prev) => {
+            const next = new URLSearchParams(prev);
+            next.delete('communityPost');
+            return next;
+          }, { replace: true });
+          return;
+        }
+        const one = await api<CommunityPost>('GET', `/community/posts/${pid}`);
+        deepLinkHandled.current = pid;
+        setModalPost(one);
+        markViewedMutation.mutate(one.id);
+        setSearchParams((prev) => {
+          const next = new URLSearchParams(prev);
+          next.delete('communityPost');
+          return next;
+        }, { replace: true });
+      } catch {
+        /* ignore */
+      }
+    };
+    void run();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- stable mutate
+  }, [searchParams, posts, setSearchParams]);
 
   const confirmReadMutation = useMutation({
     mutationFn: (postId: string) => api('POST', `/community/posts/${postId}/confirm-read`),
@@ -169,10 +240,26 @@ export default function EmployeeCommunity({ expanded = false, feedMode = false }
   });
 
   const createCommentMutation = useMutation({
-    mutationFn: ({ postId, content }: { postId: string; content: string }) =>
-      api('POST', `/community/posts/${postId}/comments`, { content }),
+    mutationFn: ({
+      postId,
+      content,
+      parent_comment_id,
+      mentions,
+    }: {
+      postId: string;
+      content: string;
+      parent_comment_id?: string | null;
+      mentions?: { entity_type: string; entity_id: string }[];
+    }) =>
+      api('POST', `/community/posts/${postId}/comments`, {
+        content,
+        parent_comment_id: parent_comment_id || undefined,
+        mentions: mentions?.length ? mentions : undefined,
+      }),
     onSuccess: (data: any) => {
       setCommentText('');
+      setCommentMentions([]);
+      setReplyParentId(null);
       refetchComments();
       queryClient.invalidateQueries({ queryKey: ['community-posts'] });
       if (modalPost) {
@@ -225,7 +312,12 @@ export default function EmployeeCommunity({ expanded = false, feedMode = false }
   const handleSubmitComment = (e: React.FormEvent) => {
     e.preventDefault();
     if (!modalPost || !commentText.trim()) return;
-    createCommentMutation.mutate({ postId: modalPost.id, content: commentText.trim() });
+    createCommentMutation.mutate({
+      postId: modalPost.id,
+      content: commentText.trim(),
+      parent_comment_id: replyParentId,
+      mentions: commentMentions.map((m) => ({ entity_type: m.entity_type, entity_id: m.entity_id })),
+    });
   };
 
   const formatTimeAgo = (dateString: string) => {
@@ -292,10 +384,11 @@ export default function EmployeeCommunity({ expanded = false, feedMode = false }
       </div>
 
       {/* Filter tabs */}
-      <div className="flex gap-2 mb-5 overflow-x-auto flex-shrink-0">
+      <div className="flex gap-2 mb-3 overflow-x-auto flex-shrink-0">
         {(['all', 'unread', 'urgent', 'required', 'announcements'] as const).map((f) => (
           <button
             key={f}
+            type="button"
             onClick={() => setFilter(f)}
             className={`
               px-4 py-2 rounded-lg text-sm whitespace-nowrap transition-all duration-150 font-medium
@@ -310,6 +403,43 @@ export default function EmployeeCommunity({ expanded = false, feedMode = false }
         ))}
       </div>
 
+      <div className="flex flex-wrap gap-2 mb-4 items-end flex-shrink-0">
+        <input
+          type="search"
+          placeholder="Search title or content…"
+          value={searchQ}
+          onChange={(e) => setSearchQ(e.target.value)}
+          className="min-w-[140px] flex-1 rounded-lg border border-gray-300 px-3 py-2 text-sm"
+        />
+        <select
+          value={relatedAreaFilter}
+          onChange={(e) => setRelatedAreaFilter(e.target.value)}
+          className="rounded-lg border border-gray-300 px-2 py-2 text-sm"
+        >
+          <option value="">All areas</option>
+          {Object.entries(AREA_LABELS).map(([k, lab]) => (
+            <option key={k} value={k}>
+              {lab}
+            </option>
+          ))}
+        </select>
+        <select
+          value={priorityFilter}
+          onChange={(e) => setPriorityFilter(e.target.value)}
+          className="rounded-lg border border-gray-300 px-2 py-2 text-sm"
+        >
+          <option value="">All priorities</option>
+          <option value="normal">Normal</option>
+          <option value="important">Important</option>
+          <option value="urgent">Urgent</option>
+          <option value="critical">Critical</option>
+        </select>
+        <label className="flex items-center gap-1 text-xs text-gray-600 whitespace-nowrap">
+          <input type="checkbox" checked={confirmedOnly} onChange={(e) => setConfirmedOnly(e.target.checked)} />
+          Confirmed by me
+        </label>
+      </div>
+
       {/* Posts feed */}
       <div 
         ref={feedContainerRef}
@@ -322,17 +452,23 @@ export default function EmployeeCommunity({ expanded = false, feedMode = false }
           </div>
         ) : (
           filteredPosts.map((post) => {
-            // Check if post is Urgent or Required
-            const isUrgent = post.tags?.includes('Urgent') || false;
+            const pr = post.priority || '';
+            const isUrgent =
+              pr === 'urgent' || pr === 'critical' || post.tags?.includes('Urgent') || false;
+            const isCritical = pr === 'critical';
             const isRequired = post.requires_read_confirmation || post.tags?.includes('Required') || false;
-            
+
             return (
               <div
                 key={post.id}
                 className={`group border rounded-[12px] p-4 hover:shadow-md hover:-translate-y-0.5 transition-all duration-200 cursor-pointer overflow-hidden ${
-                  isUrgent ? 'border-red-300/60 bg-red-50/50 shadow-sm' :
-                  isRequired ? 'border-orange-300/60 bg-orange-50/50 shadow-sm' :
-                  'border-gray-200/50 bg-gray-50/30 shadow-sm'
+                  isCritical
+                    ? 'border-red-700/50 bg-red-100/40 shadow-md ring-1 ring-red-200'
+                    : isUrgent
+                      ? 'border-red-300/60 bg-red-50/50 shadow-sm'
+                      : isRequired
+                        ? 'border-orange-300/60 bg-orange-50/50 shadow-sm'
+                        : 'border-gray-200/50 bg-gray-50/30 shadow-sm'
                 }`}
                 onClick={(e) => {
                   e.stopPropagation();
@@ -368,12 +504,18 @@ export default function EmployeeCommunity({ expanded = false, feedMode = false }
                       {post.is_unread && (
                         <div className="w-2 h-2 rounded-full bg-red-500 flex-shrink-0"></div>
                       )}
-                      {(isUrgent || isRequired) && (
-                        <span className={`px-2 py-0.5 rounded text-xs font-bold flex-shrink-0 tracking-wide ${
-                          isUrgent ? 'bg-red-600 text-white' :
-                          'bg-orange-600 text-white'
-                        }`}>
-                          {isUrgent ? 'URGENT' : 'REQUIRED'}
+                      {(isCritical || isUrgent || isRequired) && (
+                        <span
+                          className={`px-2 py-0.5 rounded text-xs font-bold flex-shrink-0 tracking-wide ${
+                            isCritical ? 'bg-red-900 text-white' : isUrgent ? 'bg-red-600 text-white' : 'bg-orange-600 text-white'
+                          }`}
+                        >
+                          {isCritical ? 'CRITICAL' : isUrgent ? 'URGENT' : 'REQUIRED'}
+                        </span>
+                      )}
+                      {post.related_area && (
+                        <span className="text-[10px] px-2 py-0.5 rounded bg-blue-50 text-blue-800 border border-blue-100">
+                          {AREA_LABELS[post.related_area] || post.related_area}
                         </span>
                       )}
                     </div>
@@ -382,6 +524,10 @@ export default function EmployeeCommunity({ expanded = false, feedMode = false }
                       isUrgent || isRequired ? 'text-gray-500' : 'text-gray-400'
                     }`}>
                       {post.author_name || 'Unknown'} · {formatTimeAgo(post.created_at)}
+                      {post.target_type === 'all' ? ' · All employees' : ' · Divisions'}
+                      {post.user_has_confirmed && (
+                        <span className="ml-2 text-green-700 font-semibold">· Confirmed</span>
+                      )}
                     </div>
 
                     {/* Tags */}
@@ -399,11 +545,13 @@ export default function EmployeeCommunity({ expanded = false, feedMode = false }
                     )}
 
                     {/* Content preview - 2 lines max in feed mode */}
-                    <p className={`text-sm mb-3 leading-relaxed ${feedMode ? 'line-clamp-2' : 'truncate'} ${
-                      isUrgent || isRequired ? 'text-gray-600' : 'text-gray-500'
-                    }`}>
-                      {post.content}
-                    </p>
+                    <div
+                      className={`text-sm mb-3 leading-relaxed max-w-full overflow-hidden ${
+                        feedMode ? 'line-clamp-2' : 'line-clamp-1'
+                      } ${isUrgent || isRequired ? 'text-gray-600' : 'text-gray-500'}`}
+                    >
+                      <CommunityPostBody html={post.content} />
+                    </div>
 
                     {/* Engagement */}
                     <div className="flex items-center gap-4 text-sm">
@@ -475,6 +623,8 @@ export default function EmployeeCommunity({ expanded = false, feedMode = false }
                         onClick={() => {
                           setModalPost(null);
                           setCommentText('');
+                          setCommentMentions([]);
+                          setReplyParentId(null);
                         }}
                         className="text-gray-400 hover:text-gray-600 transition flex-shrink-0 mt-0.5"
                       >
@@ -483,11 +633,20 @@ export default function EmployeeCommunity({ expanded = false, feedMode = false }
                         </svg>
                       </button>
                     </div>
-                    <div className="text-sm text-gray-600 mt-0.5">
-                      {modalPost.author_name || 'Unknown'} · {formatTimeAgo(modalPost.created_at)}
-                      {Array.isArray(modalPost.tags) && modalPost.tags.length > 0 && modalPost.tags.includes('Announcement') && ' in '}
-                      {Array.isArray(modalPost.tags) && modalPost.tags.length > 0 && modalPost.tags.includes('Announcement') && modalPost.tags.find(t => t !== 'Announcement' && t !== 'Image' && t !== 'Document' && t !== 'Urgent' && t !== 'Required') && (
-                        <span className="capitalize">{modalPost.tags.find(t => t !== 'Announcement' && t !== 'Image' && t !== 'Document' && t !== 'Urgent' && t !== 'Required')}</span>
+                    <div className="text-sm text-gray-600 mt-0.5 flex flex-wrap gap-2 items-center">
+                      <span>
+                        {modalPost.author_name || 'Unknown'} · {formatTimeAgo(modalPost.created_at)}
+                      </span>
+                      {modalPost.related_area && (
+                        <span className="text-xs px-2 py-0.5 rounded bg-blue-50 text-blue-800 border border-blue-100">
+                          {AREA_LABELS[modalPost.related_area] || modalPost.related_area}
+                        </span>
+                      )}
+                      <span className="text-xs text-gray-500">
+                        {modalPost.target_type === 'all' ? 'Everyone' : 'Division audience'}
+                      </span>
+                      {modalPost.priority && modalPost.priority !== 'normal' && (
+                        <span className="text-xs font-semibold text-red-800 capitalize">{modalPost.priority}</span>
                       )}
                     </div>
                   </div>
@@ -505,8 +664,8 @@ export default function EmployeeCommunity({ expanded = false, feedMode = false }
                 )}
 
                 {/* Content text - right after photo */}
-                <div className="text-base text-gray-900 whitespace-pre-wrap mb-4 leading-relaxed">
-                  {modalPost.content}
+                <div className="text-base text-gray-900 mb-4 leading-relaxed">
+                  <CommunityPostBody html={modalPost.content} />
                 </div>
 
                 {/* Document - after text, with small icon on the right */}
@@ -558,7 +717,10 @@ export default function EmployeeCommunity({ expanded = false, feedMode = false }
                       </div>
                     ) : (
                       comments.map((comment: Comment) => (
-                        <div key={comment.id} className="flex gap-3">
+                        <div
+                          key={comment.id}
+                          className={`flex gap-3 ${comment.parent_comment_id ? 'ml-6 pl-3 border-l-2 border-gray-100' : ''}`}
+                        >
                           <div className="w-10 h-10 rounded-full bg-gray-200 flex items-center justify-center flex-shrink-0">
                             {comment.user_avatar ? (
                               <img
@@ -579,6 +741,16 @@ export default function EmployeeCommunity({ expanded = false, feedMode = false }
                             <p className="text-sm text-gray-900 mb-1 whitespace-pre-wrap leading-relaxed">{comment.content}</p>
                             <div className="flex items-center gap-3 text-xs text-gray-500">
                               <span>{formatTimeAgo(comment.created_at)}</span>
+                              <button
+                                type="button"
+                                className="text-blue-600 hover:underline"
+                                onClick={() => {
+                                  setReplyParentId(comment.id);
+                                  toast.success('Replying — add your message below');
+                                }}
+                              >
+                                Reply
+                              </button>
                             </div>
                           </div>
                         </div>
@@ -610,7 +782,16 @@ export default function EmployeeCommunity({ expanded = false, feedMode = false }
             </div>
 
             {/* Fixed comment input at bottom */}
-            <div className="border-t border-gray-200 p-4 bg-white">
+            <div className="border-t border-gray-200 p-4 bg-white space-y-3">
+              {replyParentId && (
+                <div className="flex items-center justify-between text-xs text-gray-600 bg-gray-50 px-2 py-1 rounded">
+                  <span>Replying to thread</span>
+                  <button type="button" className="text-blue-600" onClick={() => setReplyParentId(null)}>
+                    Cancel
+                  </button>
+                </div>
+              )}
+              <MentionPicker mentions={commentMentions} onChange={setCommentMentions} />
               <form onSubmit={handleSubmitComment} className="flex gap-2 items-start">
                 <div className="flex-1">
                   <textarea

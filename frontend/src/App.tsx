@@ -201,6 +201,7 @@ export default function App(){
           <Route path="/community/groups" element={<AppShell><CommunityGroups/></AppShell>} />
           <Route path="/community/insights" element={<AppShell><CommunityInsights/></AppShell>} />
           <Route path="/community/new-post" element={<AppShell><CommunityNewPost/></AppShell>} />
+          <Route path="/community/posts/:postId/edit" element={<AppShell><CommunityNewPost/></AppShell>} />
           <Route path="/reviews/admin" element={<AppShell><EmployeeReviews/></AppShell>} />
           <Route path="/reviews/cycles" element={<AppShell><ReviewCyclesPage /></AppShell>} />
           <Route path="/reviews/cycles/:cycleId" element={<AppShell><ReviewCycleDetailPage /></AppShell>} />

@@ -12,6 +12,7 @@ const TRAINING_RICH_TEXT_SANITIZE: Config = {
     'data-color',
     'data-highlight',
     'data-width',
+    'data-height',
     'data-lesson-img-wrap',
     'data-align',
     'data-youtube-video',

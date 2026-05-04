@@ -2128,6 +2128,12 @@ class CommunityPost(Base):
     comments_count: Mapped[int] = mapped_column(Integer, default=0)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow, nullable=False, index=True)
     updated_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    # Publication workflow (Communication Hub)
+    status: Mapped[str] = mapped_column(String(20), default="published", index=True)  # draft|scheduled|published|cancelled
+    publish_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), index=True)
+    priority: Mapped[str] = mapped_column(String(20), default="normal", index=True)  # normal|important|urgent|critical
+    related_area: Mapped[str] = mapped_column(String(40), default="general", index=True)
+    notifications_sent_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
 
     author: Mapped["User"] = relationship("User", foreign_keys=[author_id], backref="community_posts")
     read_confirmations: Mapped[List["CommunityPostReadConfirmation"]] = relationship("CommunityPostReadConfirmation", back_populates="post", cascade="all, delete-orphan")
@@ -2187,12 +2193,30 @@ class CommunityPostComment(Base):
     id: Mapped[uuid.UUID] = uuid_pk()
     post_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("community_posts.id", ondelete="CASCADE"), nullable=False, index=True)
     user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    parent_comment_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("community_post_comments.id", ondelete="SET NULL"), nullable=True, index=True
+    )
     content: Mapped[str] = mapped_column(Text, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow, nullable=False, index=True)
     updated_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
 
     post: Mapped["CommunityPost"] = relationship("CommunityPost", foreign_keys=[post_id])
     user: Mapped["User"] = relationship("User", foreign_keys=[user_id])
+
+
+class CommunityMention(Base):
+    __tablename__ = "community_mentions"
+
+    id: Mapped[uuid.UUID] = uuid_pk()
+    post_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("community_posts.id", ondelete="CASCADE"), nullable=True, index=True
+    )
+    comment_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("community_post_comments.id", ondelete="CASCADE"), nullable=True, index=True
+    )
+    entity_type: Mapped[str] = mapped_column(String(32), nullable=False)  # user|division|community_group
+    entity_id: Mapped[str] = mapped_column(String(64), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow, nullable=False)
 
 
 # Association table for many-to-many CommunityGroup<->User (members)

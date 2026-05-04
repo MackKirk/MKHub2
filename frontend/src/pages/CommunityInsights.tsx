@@ -1,7 +1,8 @@
-import { useState, useMemo } from 'react';
+import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { api } from '@/lib/api';
+import { CommunityPageHeader } from '@/components/community/CommunityPageHeader';
 
 export default function CommunityInsights() {
   const navigate = useNavigate();
@@ -14,62 +15,18 @@ export default function CommunityInsights() {
     return new Date().toISOString().split('T')[0];
   });
 
-  // Fetch insights data - placeholder for now
-  const { data: insights, isLoading } = useQuery({
+  const { data: insights, isLoading, isError } = useQuery({
     queryKey: ['community-insights', dateFrom, dateTo],
-    queryFn: () => api<any>('GET', `/community/insights?from=${dateFrom}&to=${dateTo}`).catch(() => ({
-      posts_made: 0,
-      post_views: 0,
-      active_members: 0,
-      comments_made: 0,
-      views_via_website: 0,
-      views_via_email: 0,
-      views_via_mobile: 0,
-      email_opened: 0,
-      email_clicked: 0,
-      posting_activity: [],
-      member_distribution: {
-        active_percentage: 0,
-        active_count: 0,
-        total_members: 0,
-        avg_posts_per_user: 0,
-        avg_comments_per_user: 0,
-      },
-    })),
+    queryFn: () => api<any>('GET', `/community/insights?from=${dateFrom}&to=${dateTo}`),
   });
-
-  const todayLabel = useMemo(() => {
-    return new Date().toLocaleDateString('en-CA', {
-      weekday: 'long',
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric',
-    });
-  }, []);
 
   return (
     <div className="space-y-4">
-      <div className="bg-slate-200/50 rounded-[12px] border border-slate-200 flex items-center justify-between py-4 px-6 mb-6">
-        <div className="flex items-center gap-4 flex-1">
-          <button
-            onClick={() => navigate('/community')}
-            className="p-2 rounded-lg hover:bg-gray-200 transition-colors flex items-center justify-center"
-            title="Back to Community"
-          >
-            <svg className="w-5 h-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
-            </svg>
-          </button>
-          <div>
-            <div className="text-xl font-bold text-gray-900 tracking-tight mb-0.5">Insights</div>
-            <div className="text-sm text-gray-500 font-medium">Analytics and metrics for community engagement.</div>
-          </div>
-        </div>
-        <div className="text-right">
-          <div className="text-xs text-gray-400 mb-1.5 font-medium uppercase tracking-wide">Today</div>
-          <div className="text-sm font-semibold text-gray-700">{todayLabel}</div>
-        </div>
-      </div>
+      <CommunityPageHeader
+        title="Insights"
+        subtitle="Analytics and metrics for community engagement."
+        onBack={() => navigate('/community')}
+      />
 
       {/* Date Range Selector */}
       <div className="rounded-xl border bg-white p-4">
@@ -102,6 +59,10 @@ export default function CommunityInsights() {
 
       {isLoading ? (
         <div className="text-center text-gray-500 py-8">Loading insights...</div>
+      ) : isError ? (
+        <div className="rounded-xl border border-red-200 bg-red-50 text-red-800 p-4 text-sm">
+          Unable to load insights. You need <strong>hr:community:write</strong> permission.
+        </div>
       ) : (
         <>
           {/* Key Metrics */}
@@ -181,9 +142,82 @@ export default function CommunityInsights() {
           {/* Posting Activity Over Time */}
           <div className="rounded-xl border bg-white p-4">
             <h3 className="font-semibold mb-4">Posting Activity Over Time</h3>
-            <div className="text-center text-gray-500 py-8">
-              Chart visualization coming soon...
+            <div className="space-y-1 text-sm max-h-48 overflow-y-auto">
+              {(insights?.posting_activity || []).length === 0 ? (
+                <p className="text-gray-500">No posts in this range.</p>
+              ) : (
+                (insights.posting_activity as { date: string; count: number }[]).map((row) => (
+                  <div key={row.date} className="flex justify-between border-b border-gray-100 py-1">
+                    <span className="text-gray-600">{row.date}</span>
+                    <span className="font-medium">{row.count}</span>
+                  </div>
+                ))
+              )}
             </div>
+          </div>
+
+          {/* Top posts */}
+          <div className="rounded-xl border bg-white p-4 overflow-x-auto">
+            <h3 className="font-semibold mb-4">Top posts (engagement)</h3>
+            <table className="min-w-full text-sm">
+              <thead>
+                <tr className="text-left text-gray-500 border-b">
+                  <th className="py-2 pr-4">Title</th>
+                  <th className="py-2 pr-4">Area</th>
+                  <th className="py-2 pr-2">Views</th>
+                  <th className="py-2 pr-2">Likes</th>
+                  <th className="py-2 pr-2">Comments</th>
+                  <th className="py-2">Read %</th>
+                </tr>
+              </thead>
+              <tbody>
+                {(insights?.top_posts || []).map((row: any) => (
+                  <tr key={row.post_id} className="border-b border-gray-50">
+                    <td className="py-2 pr-4 max-w-xs truncate">{row.title}</td>
+                    <td className="py-2 pr-4">{row.related_area}</td>
+                    <td className="py-2 pr-2">{row.views}</td>
+                    <td className="py-2 pr-2">{row.likes}</td>
+                    <td className="py-2 pr-2">{row.comments}</td>
+                    <td className="py-2">{row.read_rate_pct}%</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          {/* Engagement by area */}
+          <div className="rounded-xl border bg-white p-4">
+            <h3 className="font-semibold mb-4">Engagement by area</h3>
+            <div className="space-y-2 text-sm">
+              {Object.entries(insights?.engagement_by_area || {}).map(([area, stats]: [string, any]) => (
+                <div key={area} className="flex justify-between border-b border-gray-100 py-1">
+                  <span className="text-gray-700 capitalize">{area.replace(/_/g, ' ')}</span>
+                  <span className="text-gray-600">
+                    {stats.posts} posts · {stats.views} views · {stats.likes} likes · {stats.comments} comments
+                  </span>
+                </div>
+              ))}
+              {Object.keys(insights?.engagement_by_area || {}).length === 0 && (
+                <p className="text-gray-500">No data.</p>
+              )}
+            </div>
+          </div>
+
+          {/* Posts needing confirmations */}
+          <div className="rounded-xl border bg-white p-4">
+            <h3 className="font-semibold mb-4">Required-read posts with pending confirmations</h3>
+            <ul className="text-sm space-y-1">
+              {(insights?.ignored_posts || []).length === 0 ? (
+                <li className="text-gray-500">None in this date range.</li>
+              ) : (
+                insights.ignored_posts.map((row: any) => (
+                  <li key={row.post_id} className="flex justify-between gap-2">
+                    <span className="truncate">{row.title}</span>
+                    <span className="text-gray-600 whitespace-nowrap">{row.pending_confirmations} pending</span>
+                  </li>
+                ))
+              )}
+            </ul>
           </div>
 
           {/* Member Distribution */}
