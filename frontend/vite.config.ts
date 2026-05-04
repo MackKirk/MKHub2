@@ -2,8 +2,29 @@ import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import path from 'node:path';
 import { fileURLToPath, URL } from 'node:url';
+import type { IncomingMessage } from 'node:http';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
+
+/**
+ * Browser refresh / address-bar navigation to SPA routes like `/reviews/compare` sends
+ * `GET /reviews/...` with `Accept: text/html`. Without this bypass, the dev proxy forwards
+ * that request to FastAPI (same `/reviews` prefix as the JSON API), so the shell HTML never
+ * loads — users stay stuck on the static "Loading MK Hub..." from index.html or see API errors.
+ * Client code uses `fetch` with `Accept: application/json` (see `src/lib/api.ts`), so real API
+ * calls still hit the backend.
+ */
+function spaDocumentBypass(req: IncomingMessage): string | undefined {
+  if (req.method !== 'GET' && req.method !== 'HEAD') return undefined;
+  const dest = String(req.headers['sec-fetch-dest'] ?? '');
+  if (dest === 'document') return '/index.html';
+  const accept = String(req.headers.accept ?? '');
+  if (accept.includes('text/html')) return '/index.html';
+  return undefined;
+}
+
+/** Proxies that must always reach the backend (file downloads, bundled UI, etc.). */
+const PROXY_NO_SPA_BYPASS = new Set(['/files', '/ui']);
 
 /** Same-origin API paths served by FastAPI (localhost:8000). Must match app/routes * APIRouter prefixes so `npm run dev` proxies JSON to the backend instead of returning SPA HTML. */
 const BACKEND_DEV_TARGET = 'http://localhost:8000';
@@ -47,14 +68,20 @@ const backendProxyPrefixes = [
 ] as const;
 
 const backendDevProxy = Object.fromEntries(
-  backendProxyPrefixes.map((prefix) => [
-    prefix,
-    {
+  backendProxyPrefixes.map((prefix) => {
+    const cfg: {
+      target: string;
+      changeOrigin: boolean;
+      ws?: boolean;
+      bypass?: typeof spaDocumentBypass;
+    } = {
       target: BACKEND_DEV_TARGET,
       changeOrigin: true,
-      ...(prefix === '/chat' ? { ws: true as const } : {}),
-    },
-  ])
+    };
+    if (prefix === '/chat') cfg.ws = true;
+    if (!PROXY_NO_SPA_BYPASS.has(prefix)) cfg.bypass = spaDocumentBypass;
+    return [prefix, cfg];
+  })
 );
 
 export default defineConfig({
