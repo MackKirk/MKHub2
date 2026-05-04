@@ -67,6 +67,12 @@ export default function SafetyFieldTypeIcon({ type, className = 'w-5 h-5' }: Pro
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 7h6m0 10v-3m-3 3h.01M9 17h.01M9 14h.01M12 14h.01M15 11h.01M12 11h.01M9 11h.01M7 21h10a2 2 0 002-2V5a2 2 0 00-2-2H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
         </svg>
       );
+    case 'scale_1_5':
+      return (
+        <svg className={cn} fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 19h2v-8H4v8zm5 0h2V9H9v10zm5 0h2V5h-2v14zm5 0h2v-6h-2v6z" />
+        </svg>
+      );
     case 'number':
       return (
         <svg className={cn} fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>

@@ -10,6 +10,7 @@ export type SafetyFormFieldType =
   | 'dropdown_multi'
   | 'yes_no_na'
   | 'pass_fail_total'
+  | 'scale_1_5'
   | 'number'
   | 'date'
   | 'time'
@@ -91,6 +92,7 @@ export const FIELD_TYPE_OPTIONS: FieldTypeOption[] = [
   { type: 'dropdown_multi', label: 'Drop-down List: Select Multiple' },
   { type: 'yes_no_na', label: 'Yes / No / NA' },
   { type: 'pass_fail_total', label: 'Pass / Fail Total' },
+  { type: 'scale_1_5', label: 'Scale 1–5' },
   { type: 'number', label: 'Number Only' },
   { type: 'date', label: 'Select Date' },
   { type: 'time', label: 'Select Time' },
@@ -292,6 +294,10 @@ function isEmptyValue(field: SafetyFormField, v: unknown): boolean {
     const o = v as { lat?: unknown; lng?: unknown };
     return typeof o.lat !== 'number' || typeof o.lng !== 'number' || Number.isNaN(o.lat) || Number.isNaN(o.lng);
   }
+  if (field.type === 'scale_1_5') {
+    const s = typeof v === 'string' ? v.trim() : '';
+    return s !== '1' && s !== '2' && s !== '3' && s !== '4' && s !== '5';
+  }
   if (typeof v === 'string') return !v.trim();
   return false;
 }
@@ -331,6 +337,10 @@ export function validateDynamicFormMissing(
       }
       if (field.type === 'pass_fail_na') {
         if (v !== 'pass' && v !== 'fail' && v !== 'na') push(field.key, label);
+        continue;
+      }
+      if (field.type === 'scale_1_5') {
+        if (v !== '1' && v !== '2' && v !== '3' && v !== '4' && v !== '5') push(field.key, label);
         continue;
       }
       if (isEmptyValue(field, v)) push(field.key, label);
