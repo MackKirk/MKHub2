@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type MutableRefObject } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type MutableRefObject } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
 import { api, withFileAccessToken } from '@/lib/api';
@@ -140,6 +140,123 @@ function getYnRaw(
 function formatInspectionSignedAt(iso: string | undefined | null): string {
   if (!iso || Number.isNaN(Date.parse(iso))) return '—';
   return new Date(iso).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
+}
+
+type SafetySignRequestRow = NonNullable<SafetyInspectionRow['sign_requests']>[number];
+
+function additionalSignerLabel(r: SafetySignRequestRow): string {
+  const snap = (r.signer_display_name_snapshot || '').trim();
+  if (snap) return snap;
+  const id = (r.signer_user_id || '').trim();
+  if (!id) return 'Unknown signer';
+  return id.length > 10 ? `User ${id.slice(0, 8)}…` : `User ${id}`;
+}
+
+function isSignRequestComplete(r: SafetySignRequestRow): boolean {
+  return (r.status || '').toLowerCase() === 'signed';
+}
+
+/** Body for the “signature status” modal (additional signers). */
+function AdditionalSignersSummaryModalBody({ signRequests }: { signRequests: SafetyInspectionRow['sign_requests'] }) {
+  const list = signRequests ?? [];
+  if (list.length === 0) {
+    return (
+      <div className="space-y-2 text-sm text-gray-600 leading-relaxed">
+        <p>No additional signers were designated for this inspection.</p>
+        <p className="text-xs text-gray-500">
+          If a list should appear here, confirm that signers were selected when the inspection was submitted, then refresh
+          the page.
+        </p>
+      </div>
+    );
+  }
+
+  const signed = list.filter(isSignRequestComplete);
+  const pending = list.filter((r) => !isSignRequestComplete(r));
+  const rows = [...list].sort((a, b) => {
+    const ap = isSignRequestComplete(a) ? 1 : 0;
+    const bp = isSignRequestComplete(b) ? 1 : 0;
+    if (ap !== bp) return ap - bp;
+    return additionalSignerLabel(a).localeCompare(additionalSignerLabel(b), undefined, { sensitivity: 'base' });
+  });
+
+  return (
+    <div className="space-y-4 max-h-[min(70vh,30rem)] overflow-y-auto pr-0.5">
+      <p className="text-sm text-gray-700 leading-relaxed">
+        The following people were{' '}
+        <span className="font-medium text-gray-900">designated to provide an additional signature</span> when this
+        inspection was submitted. The inspection cannot be finalized until every outstanding signature is completed.
+      </p>
+
+      <dl className="grid grid-cols-3 gap-2 rounded-lg border border-gray-200 bg-gray-50/90 p-3 text-center">
+        <div className="px-1">
+          <dt className="text-[10px] font-semibold uppercase tracking-wide text-gray-500">Requested</dt>
+          <dd className="mt-1 text-xl font-semibold tabular-nums text-gray-900">{list.length}</dd>
+        </div>
+        <div className="px-1 border-x border-gray-200/80">
+          <dt className="text-[10px] font-semibold uppercase tracking-wide text-gray-500">Completed</dt>
+          <dd className="mt-1 text-xl font-semibold tabular-nums text-emerald-800">{signed.length}</dd>
+        </div>
+        <div className="px-1">
+          <dt className="text-[10px] font-semibold uppercase tracking-wide text-gray-500">Outstanding</dt>
+          <dd className="mt-1 text-xl font-semibold tabular-nums text-amber-900">{pending.length}</dd>
+        </div>
+      </dl>
+
+      <div>
+        <h4 className="text-xs font-semibold text-gray-600 uppercase tracking-wide mb-2">Designated signers</h4>
+        <div className="overflow-x-auto rounded-lg border border-gray-200 shadow-sm">
+          <table className="w-full min-w-[280px] text-sm text-left border-collapse">
+            <thead>
+              <tr className="border-b border-gray-200 bg-gray-50">
+                <th scope="col" className="px-3 py-2.5 text-xs font-semibold uppercase tracking-wide text-gray-600">
+                  Signer
+                </th>
+                <th
+                  scope="col"
+                  className="px-3 py-2.5 text-xs font-semibold uppercase tracking-wide text-gray-600 w-[7.5rem]"
+                >
+                  Status
+                </th>
+                <th scope="col" className="px-3 py-2.5 text-xs font-semibold uppercase tracking-wide text-gray-600">
+                  Signed on
+                </th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-100 bg-white">
+              {rows.map((r) => {
+                const done = isSignRequestComplete(r);
+                return (
+                  <tr key={r.id} className="hover:bg-gray-50/90">
+                    <td className="px-3 py-2.5 font-medium text-gray-900 align-middle">{additionalSignerLabel(r)}</td>
+                    <td className="px-3 py-2.5 align-middle">
+                      {done ? (
+                        <span className="inline-flex items-center rounded-md bg-emerald-50 px-2 py-0.5 text-xs font-medium text-emerald-900 ring-1 ring-inset ring-emerald-600/15">
+                          Signed
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center rounded-md bg-amber-50 px-2 py-0.5 text-xs font-medium text-amber-950 ring-1 ring-inset ring-amber-700/20">
+                          Pending
+                        </span>
+                      )}
+                    </td>
+                    <td className="px-3 py-2.5 text-gray-600 tabular-nums align-middle">
+                      {done ? formatInspectionSignedAt(r.signed_at) : '—'}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <p className="text-xs text-gray-500 leading-relaxed border-t border-gray-100 pt-3">
+        Each outstanding signer must complete their own signature. The <span className="font-medium text-gray-600">Signed on</span>{' '}
+        column shows a timestamp once their submission is recorded.
+      </p>
+    </div>
+  );
 }
 
 /** Worker + co-signers who completed a drawn signature on this inspection. */
@@ -401,7 +518,7 @@ function YnCommentPhotoDropzone({
   return (
     <div
       className="w-full"
-      tabIndex={disabled || uploading ? -1 : 0}
+      tabIndex={-1}
       onPaste={(e) => {
         if (disabled || uploading) return;
         const files = imageFilesFromClipboardData(e.clipboardData);
@@ -494,9 +611,23 @@ export default function ProjectSafetyTab({
   const [pickedTemplateId, setPickedTemplateId] = useState('');
   /** Y/N item keys whose optional comment field is expanded for editing */
   const [ynCommentOpen, setYnCommentOpen] = useState<Record<string, boolean>>({});
+  const ynCommentTextareaRefs = useRef<Record<string, HTMLTextAreaElement | null>>({});
+  const ynCommentOpenPrev = useRef<Record<string, boolean>>({});
+  /** Keep focus off the comment toggle button so Space types into the textarea (see SafetyFieldCommentPanel). */
+  useLayoutEffect(() => {
+    const prev = ynCommentOpenPrev.current;
+    ynCommentOpenPrev.current = { ...ynCommentOpen };
+    for (const key of Object.keys(ynCommentOpen)) {
+      if (ynCommentOpen[key] && !prev[key]) {
+        ynCommentTextareaRefs.current[key]?.focus({ preventScroll: true });
+        break;
+      }
+    }
+  }, [ynCommentOpen]);
   /** Which Y/N row is currently uploading an image (shows inline status). */
   const [ynImageUploadingFor, setYnImageUploadingFor] = useState<string | null>(null);
   const [finalizeModalOpen, setFinalizeModalOpen] = useState(false);
+  const [signersStatusModalOpen, setSignersStatusModalOpen] = useState(false);
   const [extraSignerQuery, setExtraSignerQuery] = useState('');
   const [extraSignerIds, setExtraSignerIds] = useState<string[]>([]);
   /** Field keys (or synthetic worker-signature key) to outline in red after finalize validation fails */
@@ -762,6 +893,10 @@ export default function ProjectSafetyTab({
       setCommittedJson(null);
     }
   }, [selectedId]);
+
+  useEffect(() => {
+    setSignersStatusModalOpen(false);
+  }, [selectedId, detail?.status]);
 
   useEffect(() => {
     if (!detail?.id) return;
@@ -1198,6 +1333,9 @@ export default function ProjectSafetyTab({
                 title={commentExpanded ? 'Close comment' : hasCommentOrMedia ? 'Edit comment' : 'Add comment'}
                 aria-expanded={commentExpanded}
                 aria-label={commentExpanded ? 'Close comment' : hasCommentOrMedia ? 'Edit comment' : 'Add comment'}
+                onMouseDown={(e) => {
+                  e.preventDefault();
+                }}
                 onClick={() =>
                   setYnCommentOpen((prev) => ({
                     ...prev,
@@ -1218,6 +1356,9 @@ export default function ProjectSafetyTab({
         {item.commentsField && w && commentExpanded && (
           <div className="mt-3 space-y-3">
             <textarea
+              ref={(el) => {
+                ynCommentTextareaRefs.current[item.key] = el;
+              }}
               value={yn.comments}
               onChange={(e) => setYnComments(item.key, e.target.value)}
               placeholder="Comments / details"
@@ -1457,21 +1598,24 @@ export default function ProjectSafetyTab({
             {detail && (
               <div className="flex items-center gap-2 shrink-0 flex-wrap justify-end">
                 <span className="text-xs text-gray-500">Status</span>
-                <span
-                  className={`text-xs font-semibold px-2.5 py-1 rounded-full ${
-                    detail.status === 'finalized'
-                      ? 'bg-green-100 text-green-800'
-                      : detail.status === 'pending_signatures'
-                        ? 'bg-sky-100 text-sky-900'
-                        : 'bg-amber-100 text-amber-900'
-                  }`}
-                >
-                  {detail.status === 'finalized'
-                    ? 'Finalized'
-                    : detail.status === 'pending_signatures'
-                      ? 'Awaiting signatures'
-                      : 'Draft'}
-                </span>
+                {detail.status === 'pending_signatures' ? (
+                  <button
+                    type="button"
+                    onClick={() => setSignersStatusModalOpen(true)}
+                    title="View who was asked to sign and who is still pending"
+                    className="text-xs font-semibold px-2.5 py-1 rounded-full bg-sky-100 text-sky-900 border border-sky-200/80 shadow-sm hover:bg-sky-200/90 hover:border-sky-300 focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-500/50 focus-visible:ring-offset-1 transition-colors"
+                  >
+                    Awaiting signatures
+                  </button>
+                ) : (
+                  <span
+                    className={`text-xs font-semibold px-2.5 py-1 rounded-full ${
+                      detail.status === 'finalized' ? 'bg-green-100 text-green-800' : 'bg-amber-100 text-amber-900'
+                    }`}
+                  >
+                    {detail.status === 'finalized' ? 'Finalized' : 'Draft'}
+                  </span>
+                )}
                 {showInspectionPdfAction && (inspectionPdfFileObjectId || canRegenerateInspectionPdf) ? (
                   <button
                     type="button"
@@ -1502,6 +1646,35 @@ export default function ProjectSafetyTab({
                 {myPendingSignRequest ? ' Sign at the bottom when you have reviewed the form.' : ''}
               </p>
             </div>
+          )}
+
+          {signersStatusModalOpen && detail?.status === 'pending_signatures' && (
+            <OverlayPortal>
+              <div
+                className="fixed inset-0 z-[200] bg-black/50 flex items-center justify-center overflow-y-auto p-4"
+                onClick={() => setSignersStatusModalOpen(false)}
+                role="presentation"
+              >
+                <SafetyFormModalLayout
+                  widthClass="w-full max-w-xl"
+                  titleId="safety-signers-status-title"
+                  title="Additional signers"
+                  subtitle="Who was requested, who has signed, and what is still outstanding."
+                  onClose={() => setSignersStatusModalOpen(false)}
+                  footer={
+                    <button
+                      type="button"
+                      className={SAFETY_MODAL_BTN_CANCEL}
+                      onClick={() => setSignersStatusModalOpen(false)}
+                    >
+                      Close
+                    </button>
+                  }
+                >
+                  <AdditionalSignersSummaryModalBody signRequests={detail.sign_requests} />
+                </SafetyFormModalLayout>
+              </div>
+            </OverlayPortal>
           )}
 
           {isDynamicInspection && dynamicDefinition ? (

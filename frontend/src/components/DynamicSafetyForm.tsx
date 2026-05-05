@@ -131,9 +131,9 @@ function parseSideCommentRaw(raw: unknown): SideCommentEntry {
 }
 
 function serializeSideCommentEntry(entry: SideCommentEntry): unknown | undefined {
-  const text = entry.text.trim();
+  const text = entry.text;
   const ids = [...new Set(entry.imageIds.filter(Boolean))];
-  if (!text && ids.length === 0) return undefined;
+  if (!text.trim() && ids.length === 0) return undefined;
   if (ids.length === 0) return text;
   return { text, imageIds: ids };
 }
@@ -181,6 +181,14 @@ function CommentIconOnly({
       title={expanded ? 'Close comment' : hasComment ? 'Edit comment' : 'Add comment'}
       aria-expanded={expanded}
       aria-label={expanded ? 'Close comment' : hasComment ? 'Edit comment' : 'Add comment'}
+      tabIndex={-1}
+      onPointerDown={(e) => {
+        e.preventDefault();
+      }}
+      onMouseDown={(e) => {
+        // Keep focus from landing on this button so Space types in the comment textarea after opening.
+        e.preventDefault();
+      }}
       onClick={onToggle}
       className={`min-w-[2.75rem] min-h-[2.75rem] flex items-center justify-center rounded-xl border-2 transition-all shrink-0 ${
         expanded || hasComment

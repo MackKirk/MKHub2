@@ -656,6 +656,42 @@ class _CheckboxFlowable(Flowable):
         c.restoreState()
 
 
+class _SizedCellFlowable(Flowable):
+    """Wraps nested flowables inside a ``Table`` cell when the parent uses ``splitInRow``.
+
+    ReportLab's ``_splitCell`` reads ``flowable.height`` for each stacked item. Some
+    flowables (notably ``Image`` and ``Table``) only expose sizes via ``wrap`` return
+    values or ``drawWidth``/``drawHeight``, which raises ``AttributeError`` during splits.
+    """
+
+    def __init__(self, inner: Flowable) -> None:
+        super().__init__()
+        self._inner = inner
+
+    def wrap(self, availWidth: float, availHeight: float) -> Tuple[float, float]:
+        w, h = self._inner.wrap(availWidth, availHeight)
+        self.width = w
+        self.height = h
+        return w, h
+
+    def split(self, availWidth: float, availHeight: float) -> List[Any]:
+        parts = self._inner.split(availWidth, availHeight)
+        if not parts:
+            return []
+        return [_SizedCellFlowable(p) for p in parts]
+
+    def draw(self) -> None:
+        self._inner.drawOn(self.canv, 0, 0)
+
+
+def _coerce_cell_flowable_for_split(f: Any) -> Any:
+    if isinstance(f, _SizedCellFlowable):
+        return f
+    if isinstance(f, (Table, Image)):
+        return _SizedCellFlowable(f)
+    return f
+
+
 def _checkbox_badge(checked: bool, badge_style: ParagraphStyle) -> _CheckboxFlowable:
     """Paper-style checkbox: empty square or square with checkmark."""
     return _CheckboxFlowable(checked, size=16.0)
@@ -1036,45 +1072,45 @@ def build_safety_inspection_pdf_bytes(
 
             value_stack: List[Any] = [val_flow]
             value_stack.extend(extra_flows)
-            if img_ids:
-                for fid in img_ids:
-                    im = _load_image_flowable(db, fid, max_w=min(col_val_w * 0.95, 3.2 * inch))
-                    if im:
-                        value_stack.append(Spacer(1, 6))
-                        value_stack.append(im)
 
+            # Stack multiple value flowables as a list in the cell (not a nested Table):
+            # nested Tables break in-row splits (ReportLab reads ``flowable.height``).
             if len(value_stack) == 1:
-                value_cell: Any = value_stack[0]
+                value_cell: Any = _coerce_cell_flowable_for_split(value_stack[0])
             else:
-                inner_data = [[v] for v in value_stack]
-                value_cell = Table(inner_data, colWidths=[col_val_w])
-                value_cell.setStyle(
-                    TableStyle(
-                        [
-                            ("VALIGN", (0, 0), (-1, -1), "TOP"),
-                            ("LEFTPADDING", (0, 0), (-1, -1), 0),
-                            ("RIGHTPADDING", (0, 0), (-1, -1), 0),
-                            ("TOPPADDING", (0, 0), (-1, -1), 0),
-                            ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
-                        ]
-                    )
-                )
+                value_cell = [_coerce_cell_flowable_for_split(v) for v in value_stack]
 
-            row_tbl = Table([[label_p, value_cell]], colWidths=[col_label_w, col_val_w])
-            row_tbl.setStyle(
-                TableStyle(
-                    [
-                        ("BACKGROUND", (0, 0), (-1, -1), colors.HexColor("#f9fafb")),
-                        ("BOX", (0, 0), (-1, -1), 0.5, colors.HexColor("#e5e7eb")),
-                        ("INNERGRID", (0, 0), (-1, -1), 0.25, colors.HexColor("#e5e7eb")),
-                        ("VALIGN", (0, 0), (-1, -1), "TOP"),
-                        ("LEFTPADDING", (0, 0), (-1, -1), 8),
-                        ("RIGHTPADDING", (0, 0), (-1, -1), 8),
-                        ("TOPPADDING", (0, 0), (-1, -1), 6),
-                        ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
-                    ]
-                )
+            image_rows: List[List[Any]] = []
+            for fid in img_ids:
+                im = _load_image_flowable(db, fid, max_w=min(frame_w * 0.82, 3.6 * inch))
+                if im:
+                    image_rows.append([_coerce_cell_flowable_for_split(im), ""])
+
+            item_rows: List[List[Any]] = [[label_p, value_cell]]
+            item_rows.extend(image_rows)
+
+            table_cmds: List[Tuple[Any, ...]] = [
+                ("BACKGROUND", (0, 0), (-1, -1), colors.HexColor("#f9fafb")),
+                ("BOX", (0, 0), (-1, -1), 0.5, colors.HexColor("#e5e7eb")),
+                ("INNERGRID", (0, 0), (-1, -1), 0.25, colors.HexColor("#e5e7eb")),
+                ("VALIGN", (0, 0), (-1, -1), "TOP"),
+                ("LEFTPADDING", (0, 0), (-1, -1), 8),
+                ("RIGHTPADDING", (0, 0), (-1, -1), 8),
+                ("TOPPADDING", (0, 0), (-1, -1), 6),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
+            ]
+            for row_idx in range(1, len(item_rows)):
+                # Comment photos belong to the item box but split as separate table rows.
+                table_cmds.append(("SPAN", (0, row_idx), (1, row_idx)))
+
+            # Long labels/values in one row can exceed frame height; image rows stay
+            # inside the same item box while allowing page breaks between photos.
+            row_tbl = Table(
+                item_rows,
+                colWidths=[col_label_w, col_val_w],
+                splitInRow=1,
             )
+            row_tbl.setStyle(TableStyle(table_cmds))
             block.append(row_tbl)
             block.append(Spacer(1, 8))
             has_content = True
@@ -1086,7 +1122,11 @@ def build_safety_inspection_pdf_bytes(
             else:
                 # Push the section to the next page only if there is not enough room for the title + first row.
                 first_h = block[0].wrap(frame_w, frame_h)[1]
-                story.append(CondPageBreak(first_h + h2.leading + 8))
+                needed_h = first_h + h2.leading + 8
+                # If the first item itself spans more than a page, CondPageBreak would
+                # fire on an empty frame and create a blank first page.
+                if needed_h < frame_h:
+                    story.append(CondPageBreak(needed_h))
                 story.append(h2_flow)
                 story.extend(block)
 

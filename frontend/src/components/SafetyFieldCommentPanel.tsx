@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState, type Dispatch, type SetStateAction } from 'react';
+import { useCallback, useLayoutEffect, useRef, useState, type Dispatch, type KeyboardEvent, type SetStateAction } from 'react';
 import toast from 'react-hot-toast';
 import { withFileAccessToken } from '@/lib/api';
 import { imageFilesFromClipboardData, isLikelyImageFile } from '@/utils/imageUploadHelpers';
@@ -66,8 +66,28 @@ export function SafetyFieldCommentPanel({
   textCommentsOnly = false,
 }: Props) {
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
   const [busy, setBusy] = useState(false);
   const [dragOver, setDragOver] = useState(false);
+
+  /** After "Add comment", move focus into the textarea so Space types a space (not a focused toggle button). */
+  useLayoutEffect(() => {
+    if (!expanded || disabled) return;
+    let cancelled = false;
+    const focusTa = () => {
+      if (cancelled) return;
+      textareaRef.current?.focus({ preventScroll: true });
+    };
+    // Defer past the click/focus chain so we reliably beat any ancestor or browser default focus.
+    queueMicrotask(() => {
+      requestAnimationFrame(() => {
+        requestAnimationFrame(focusTa);
+      });
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [expanded, disabled]);
 
   const acceptFile = useCallback((file: File) => isLikelyImageFile(file), []);
 
@@ -114,14 +134,52 @@ export function SafetyFieldCommentPanel({
     [onImageIdsChange]
   );
 
+  const insertTextareaText = useCallback(
+    (inserted: string) => {
+      const ta = textareaRef.current;
+      if (!ta) {
+        onTextChange(`${text}${inserted}`);
+        return;
+      }
+      const current = ta.value;
+      const start = ta.selectionStart ?? current.length;
+      const end = ta.selectionEnd ?? start;
+      const next = current.slice(0, start) + inserted + current.slice(end);
+      const caret = start + inserted.length;
+      onTextChange(next);
+      requestAnimationFrame(() => {
+        ta.focus({ preventScroll: true });
+        ta.setSelectionRange(caret, caret);
+      });
+    },
+    [onTextChange, text]
+  );
+
+  const handleTextareaKeyDownCapture = useCallback(
+    (e: KeyboardEvent<HTMLTextAreaElement>) => {
+      e.stopPropagation();
+      if (e.key !== ' ' && e.code !== 'Space') return;
+      // Some page-level handlers prevent the native Space default before the textarea sees it.
+      e.preventDefault();
+      insertTextareaText(' ');
+    },
+    [insertTextareaText]
+  );
+
   const has = textCommentsOnly ? text.trim().length > 0 : text.trim().length > 0 || imageIds.length > 0;
 
   if (!disabled && expanded) {
     return (
       <div className="mt-3 w-full space-y-3">
         <textarea
+          ref={textareaRef}
           value={text}
           onChange={(e) => onTextChange(e.target.value)}
+          onKeyDownCapture={handleTextareaKeyDownCapture}
+          onKeyDown={(e) => {
+            // Stop Space/other keys bubbling to page-level shortcuts or sibling buttons.
+            e.stopPropagation();
+          }}
           onPaste={
             textCommentsOnly
               ? undefined
@@ -141,7 +199,7 @@ export function SafetyFieldCommentPanel({
         {textCommentsOnly ? null : (
           <>
             <div
-              tabIndex={disabled || busy || !projectId ? -1 : 0}
+              tabIndex={-1}
               onPaste={(e) => {
                 if (disabled || busy || !projectId) return;
                 const files = imageFilesFromClipboardData(e.clipboardData);
