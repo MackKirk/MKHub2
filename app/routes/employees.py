@@ -53,10 +53,18 @@ def _employee_directory_payload(u: User, ep: Optional[EmployeeProfile], division
     pdivs = list(getattr(ep, "project_division_ids", None) or []) if ep else []
     corp = (getattr(u, "email_corporate", None) or "").strip() or None
 
+    hire_iso = None
+    if ep and getattr(ep, "hire_date", None):
+        try:
+            hire_iso = ep.hire_date.isoformat()
+        except Exception:
+            hire_iso = None
+
     return {
         "id": str(u.id),
         "username": u.username,
         "name": name,
+        "hire_date": hire_iso,
         "first_name": (getattr(ep, "first_name", None) or "").strip() if ep else None,
         "last_name": (getattr(ep, "last_name", None) or "").strip() if ep else None,
         "email": u.email_personal,

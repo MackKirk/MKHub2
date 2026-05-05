@@ -3,9 +3,9 @@ import { api } from '@/lib/api';
 import { useState, useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import ReviewTemplatesTab from './ReviewTemplatesTab';
-import ReviewsCompare from './ReviewsCompare';
+import DirectorMeetingScheduleTab from './DirectorMeetingScheduleTab';
 
-type TabId = 'status' | 'templates' | 'compare';
+type TabId = 'status' | 'templates' | 'schedule';
 
 export default function EmployeeReviews() {
   const [tab, setTab] = useState<TabId>('status');
@@ -162,7 +162,14 @@ export default function EmployeeReviews() {
       )}
 
       {tab === 'templates' && <ReviewTemplatesTab />}
-      {tab === 'compare' && <ReviewsCompare />}
+      {tab === 'schedule' && (
+        <DirectorMeetingScheduleTab
+          cycleId={cycleId}
+          setCycleId={setCycleId}
+          cycles={cycles}
+          activeCycles={activeCycles}
+        />
+      )}
     </div>
   );
 }

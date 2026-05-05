@@ -55,6 +55,7 @@ import EmployeeReviews from './pages/EmployeeReviews';
 import ReviewCyclesPage from './pages/ReviewCyclesPage';
 import ReviewCycleDetailPage from './pages/ReviewCycleDetailPage';
 import MyReviews from './pages/MyReviews';
+import DirectorMeetingsPage from './pages/DirectorMeetingsPage';
 import ReviewsCompare from './pages/ReviewsCompare';
 import LogHours from './pages/LogHours';
 import CompanyFiles from './pages/CompanyFiles';
@@ -209,6 +210,7 @@ export default function App(){
           <Route path="/reviews/form-templates/:id" element={<AppShell><FormTemplateEditorPage /></AppShell>} />
           <Route path="/reviews/compare" element={<AppShell><ReviewsCompare/></AppShell>} />
           <Route path="/reviews/my" element={<AppShell><MyReviews/></AppShell>} />
+          <Route path="/reviews/director-meetings" element={<AppShell><DirectorMeetingsPage /></AppShell>} />
           <Route path="/safety/inspections" element={<AppShell><SafetyInspectionsPage /></AppShell>} />
           <Route path="/safety/sign/:projectId/:inspectionId" element={<AppShell><SafetyInspectionSignPage /></AppShell>} />
           <Route path="/safety/calendar" element={<AppShell><SafetySchedulePage /></AppShell>} />

@@ -3,7 +3,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import or_
 import uuid
 from typing import Optional, List, Dict, Any, Set
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 
 from ..db import get_db
 from ..models.models import (
@@ -22,6 +22,96 @@ from ..routes.form_templates import _normalize_definition, EMPLOYEE_REVIEW_CATEG
 
 
 router = APIRouter(prefix="/reviews", tags=["reviews"])
+
+
+def _parse_iso_dt(value: Any) -> Optional[datetime]:
+    if value is None:
+        return None
+    if isinstance(value, datetime):
+        return value.astimezone(timezone.utc) if value.tzinfo else value.replace(tzinfo=timezone.utc)
+    if not isinstance(value, str):
+        return None
+    s = value.strip()
+    if not s:
+        return None
+    try:
+        if s.endswith("Z"):
+            s = s[:-1] + "+00:00"
+        d = datetime.fromisoformat(s)
+        if d.tzinfo is None:
+            d = d.replace(tzinfo=timezone.utc)
+        return d.astimezone(timezone.utc)
+    except Exception:
+        return None
+
+
+def _iso_utc_z(dt: datetime) -> str:
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return dt.astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
+
+
+def _clamp_duration_minutes(raw: Any) -> int:
+    try:
+        d = int(raw or 30)
+        return max(15, min(480, d))
+    except Exception:
+        return 30
+
+
+def _get_cycle_slot_duration(c: ReviewCycle) -> int:
+    cfg = getattr(c, "director_1on1_slot_config", None) or {}
+    if isinstance(cfg, dict):
+        return _clamp_duration_minutes(cfg.get("duration_minutes"))
+    return 30
+
+
+def _derive_slots_from_windows(duration_minutes: int, windows: Any) -> List[Dict[str, str]]:
+    dur = timedelta(minutes=max(1, duration_minutes))
+    slots: List[Dict[str, str]] = []
+    if not isinstance(windows, list):
+        return slots
+    for w in windows:
+        if not isinstance(w, dict):
+            continue
+        ws = _parse_iso_dt(w.get("starts_at"))
+        we = _parse_iso_dt(w.get("ends_at"))
+        if ws is None or we is None or ws >= we:
+            continue
+        cur = ws
+        while cur + dur <= we:
+            slot_end = cur + dur
+            slots.append({"starts_at": _iso_utc_z(cur), "ends_at": _iso_utc_z(slot_end)})
+            cur = slot_end
+    slots.sort(key=lambda x: x["starts_at"])
+    return slots
+
+
+def _booking_blocks_slot(
+    entry: Dict[str, Any],
+    slot_start: datetime,
+    slot_end: datetime,
+    duration_minutes: int,
+) -> bool:
+    bs = _parse_iso_dt(entry.get("scheduled_at"))
+    if bs is None:
+        return False
+    be = _parse_iso_dt(entry.get("scheduled_until"))
+    if be is None:
+        be = bs + timedelta(minutes=duration_minutes)
+    return bs < slot_end and be > slot_start
+
+
+def _sched_reviewee_entries(sched_map: Dict[str, Any]) -> Dict[str, Dict[str, Any]]:
+    out: Dict[str, Dict[str, Any]] = {}
+    for k, v in sched_map.items():
+        if not isinstance(k, str):
+            continue
+        if not isinstance(v, dict):
+            continue
+        out[k] = v
+    return out
+
 
 # Parallel form_payload keys for supervisor evaluation of a direct report (not used on self-review)
 SUPERVISOR_COMMENT_SUFFIX = "__supervisor_comment"
@@ -138,6 +228,30 @@ def _collect_compare_rows(definition: dict) -> List[Dict[str, str]]:
             k = f.get("key")
             if isinstance(k, str) and k.strip():
                 rows.append({"key": k.strip(), "label": ((f.get("label") or k) or "").strip() or k.strip()})
+    return rows
+
+
+def _collect_compare_fields(definition: dict) -> List[Dict[str, Any]]:
+    """Field metadata for compare UI (scale grouping, section headings)."""
+    rows: List[Dict[str, Any]] = []
+    for sec in definition.get("sections") or []:
+        if not isinstance(sec, dict):
+            continue
+        sec_title = ((sec.get("title") or sec.get("section_title") or "") or "").strip() or "General"
+        for f in sec.get("fields") or []:
+            if not isinstance(f, dict):
+                continue
+            k = f.get("key")
+            if isinstance(k, str) and k.strip():
+                ft = f.get("type")
+                rows.append(
+                    {
+                        "key": k.strip(),
+                        "label": ((f.get("label") or k) or "").strip() or k.strip(),
+                        "field_type": (ft or "").strip() if isinstance(ft, str) else "",
+                        "section_title": sec_title,
+                    }
+                )
     return rows
 
 
@@ -323,6 +437,8 @@ def get_cycle(cycle_id: str, db: Session = Depends(get_db), _=Depends(require_pe
         "assignments_by_status": dict(status_ct),
         "assignment_self_rows": self_rows,
         "assignment_supervisor_rows": len(assigns) - self_rows,
+        "director_1on1_schedule": getattr(c, "director_1on1_schedule", None),
+        "director_1on1_slot_config": getattr(c, "director_1on1_slot_config", None),
     }
 
 
@@ -465,6 +581,9 @@ def cycle_hr_status(cycle_id: str, db: Session = Depends(get_db), _=Depends(requ
         for ep in db.query(EmployeeProfile).filter(EmployeeProfile.user_id.in_(list(all_uids))).all():
             ep_by_uid[ep.user_id] = ep
 
+    sched_raw = getattr(c, "director_1on1_schedule", None) or {}
+    sched_map: Dict[str, Any] = sched_raw if isinstance(sched_raw, dict) else {}
+
     def _label(uid: Optional[uuid.UUID]) -> Optional[str]:
         if not uid:
             return None
@@ -488,6 +607,14 @@ def cycle_hr_status(cycle_id: str, db: Session = Depends(get_db), _=Depends(requ
         missing_supervisor = not supervisor_done
         disp = _label(rid) or str(rid)
         sup_uid = mgr_a.reviewer_user_id if mgr_a else None
+        meet = sched_map.get(str(rid))
+        if not isinstance(meet, dict):
+            meet = {}
+        until_out = meet.get("scheduled_until")
+        if not until_out and meet.get("scheduled_at"):
+            st = _parse_iso_dt(meet.get("scheduled_at"))
+            if st:
+                until_out = _iso_utc_z(st + timedelta(minutes=_get_cycle_slot_duration(c)))
         out.append(
             {
                 "user_id": str(rid),
@@ -508,10 +635,321 @@ def cycle_hr_status(cycle_id: str, db: Session = Depends(get_db), _=Depends(requ
                 "supervisor_due_date": mgr_a.due_date.isoformat() if mgr_a and mgr_a.due_date else None,
                 "has_self_assignment": self_a is not None,
                 "has_supervisor_assignment": mgr_a is not None,
+                "director_meeting_scheduled_at": meet.get("scheduled_at"),
+                "director_meeting_scheduled_until": until_out,
+                "director_meeting_notes": meet.get("notes"),
             }
         )
     out.sort(key=lambda r: (r.get("display_name") or "").lower())
     return out
+
+
+@router.put("/cycles/{cycle_id}/director-meetings/{reviewee_user_id}")
+def upsert_director_meeting(
+    cycle_id: str,
+    reviewee_user_id: str,
+    payload: Dict[str, Any],
+    db: Session = Depends(get_db),
+    user: User = Depends(require_permissions("reviews:admin", "hr:reviews:admin")),
+):
+    """Schedule or update the closing director–employee 1:1 for this cycle/reviewee (after self + supervisor reviews)."""
+    cid = _uuid_or_none(cycle_id)
+    rid = _uuid_or_none(reviewee_user_id)
+    if not cid or not rid:
+        raise HTTPException(status_code=400, detail="Invalid cycle_id or reviewee_user_id")
+    c = db.query(ReviewCycle).filter(ReviewCycle.id == cid).first()
+    if not c:
+        raise HTTPException(status_code=404, detail="Cycle not found")
+    assigns = db.query(ReviewAssignment).filter(
+        ReviewAssignment.cycle_id == cid, ReviewAssignment.reviewee_user_id == rid
+    ).all()
+    if not assigns:
+        raise HTTPException(status_code=404, detail="No assignments for this employee in this cycle")
+
+    sat_raw = payload.get("scheduled_at")
+    if sat_raw is None or sat_raw == "":
+        sat = None
+    else:
+        sat = str(sat_raw).strip() or None
+
+    prev = getattr(c, "director_1on1_schedule", None)
+    sched: Dict[str, Any] = dict(prev) if isinstance(prev, dict) else {}
+    key = str(rid)
+    prev_entry = sched.get(key)
+    prev_notes = prev_entry.get("notes") if isinstance(prev_entry, dict) else None
+
+    if "notes" in payload:
+        notes_val = payload.get("notes")
+        if notes_val is not None:
+            notes_val = str(notes_val).strip() or None
+    else:
+        notes_val = prev_notes
+
+    sun_raw = payload.get("scheduled_until")
+    suntil: Optional[str] = None
+    if sun_raw is not None and sun_raw != "":
+        suntil = str(sun_raw).strip() or None
+
+    if sat is None and not notes_val:
+        sched.pop(key, None)
+    else:
+        row: Dict[str, Any] = {
+            "scheduled_at": sat,
+            "notes": notes_val,
+            "updated_at": datetime.now(timezone.utc).isoformat(),
+            "updated_by_user_id": str(user.id),
+        }
+        if suntil:
+            row["scheduled_until"] = suntil
+        elif sat:
+            st = _parse_iso_dt(sat)
+            if st:
+                row["scheduled_until"] = _iso_utc_z(st + timedelta(minutes=_get_cycle_slot_duration(c)))
+        sched[key] = row
+
+    c.director_1on1_schedule = sched
+    db.add(c)
+    db.commit()
+    db.refresh(c)
+    entry = sched.get(key) or {}
+    return {
+        "ok": True,
+        "reviewee_user_id": key,
+        "director_meeting_scheduled_at": entry.get("scheduled_at"),
+        "director_meeting_scheduled_until": entry.get("scheduled_until"),
+        "director_meeting_notes": entry.get("notes"),
+    }
+
+
+def _build_director_meeting_board(c: ReviewCycle, db: Session) -> Dict[str, Any]:
+    cfg = getattr(c, "director_1on1_slot_config", None) or {}
+    duration = _clamp_duration_minutes(cfg.get("duration_minutes") if isinstance(cfg, dict) else 30)
+    windows: Any = cfg.get("windows") if isinstance(cfg, dict) else []
+    if not isinstance(windows, list):
+        windows = []
+    slots_raw = _derive_slots_from_windows(duration, windows)
+    sched_src = getattr(c, "director_1on1_schedule", None) or {}
+    sched_map = sched_src if isinstance(sched_src, dict) else {}
+    sched_rev = _sched_reviewee_entries(sched_map)
+
+    uids: Set[uuid.UUID] = set()
+    for uid_s in sched_rev.keys():
+        u = _uuid_or_none(uid_s)
+        if u:
+            uids.add(u)
+    users_by_id: Dict[uuid.UUID, User] = {}
+    ep_by_uid: Dict[uuid.UUID, EmployeeProfile] = {}
+    if uids:
+        for urow in db.query(User).filter(User.id.in_(list(uids))).all():
+            users_by_id[urow.id] = urow
+        for ep in db.query(EmployeeProfile).filter(EmployeeProfile.user_id.in_(list(uids))).all():
+            ep_by_uid[ep.user_id] = ep
+
+    def _disp(uid: uuid.UUID) -> str:
+        u = users_by_id.get(uid)
+        ep = ep_by_uid.get(uid)
+        return (
+            _display_name_from_user_profile(u, ep)
+            or (getattr(u, "username", None) if u else None)
+            or str(uid)
+        )
+
+    slots_out: List[Dict[str, Any]] = []
+    for s in slots_raw:
+        ss = _parse_iso_dt(s["starts_at"])
+        se = _parse_iso_dt(s["ends_at"])
+        if ss is None or se is None:
+            continue
+        booked_for: Optional[str] = None
+        booked_name: Optional[str] = None
+        for uid_str, entry in sched_rev.items():
+            if not isinstance(entry, dict):
+                continue
+            if _booking_blocks_slot(entry, ss, se, duration):
+                booked_for = uid_str
+                bu = _uuid_or_none(uid_str)
+                booked_name = _disp(bu) if bu else uid_str
+                break
+        slots_out.append(
+            {
+                "starts_at": s["starts_at"],
+                "ends_at": s["ends_at"],
+                "booked_reviewee_user_id": booked_for,
+                "booked_reviewee_name": booked_name,
+            }
+        )
+
+    return {
+        "duration_minutes": duration,
+        "windows": windows,
+        "slots": slots_out,
+    }
+
+
+@router.get("/cycles/{cycle_id}/director-meeting-board")
+def get_director_meeting_board(
+    cycle_id: str,
+    db: Session = Depends(get_db),
+    _: User = Depends(get_current_user),
+):
+    cid = _uuid_or_none(cycle_id)
+    if not cid:
+        raise HTTPException(status_code=400, detail="Invalid cycle_id")
+    c = db.query(ReviewCycle).filter(ReviewCycle.id == cid).first()
+    if not c:
+        raise HTTPException(status_code=404, detail="Cycle not found")
+    return _build_director_meeting_board(c, db)
+
+
+@router.put("/cycles/{cycle_id}/director-meeting-config")
+def put_director_meeting_config(
+    cycle_id: str,
+    payload: Dict[str, Any],
+    db: Session = Depends(get_db),
+    user: User = Depends(require_permissions("reviews:admin", "hr:reviews:admin")),
+):
+    cid = _uuid_or_none(cycle_id)
+    if not cid:
+        raise HTTPException(status_code=400, detail="Invalid cycle_id")
+    c = db.query(ReviewCycle).filter(ReviewCycle.id == cid).first()
+    if not c:
+        raise HTTPException(status_code=404, detail="Cycle not found")
+    duration = _clamp_duration_minutes(payload.get("duration_minutes"))
+    windows_in = payload.get("windows")
+    windows_out: List[Dict[str, Any]] = []
+    if isinstance(windows_in, list):
+        for w in windows_in:
+            if not isinstance(w, dict):
+                continue
+            ws = w.get("starts_at")
+            we = w.get("ends_at")
+            if not ws or not we:
+                continue
+            wid = w.get("id")
+            if not wid or not isinstance(wid, str):
+                wid = str(uuid.uuid4())
+            windows_out.append({"id": wid, "starts_at": str(ws).strip(), "ends_at": str(we).strip()})
+    c.director_1on1_slot_config = {
+        "duration_minutes": duration,
+        "windows": windows_out,
+        "updated_at": datetime.now(timezone.utc).isoformat(),
+        "updated_by_user_id": str(user.id),
+    }
+    db.add(c)
+    db.commit()
+    db.refresh(c)
+    return _build_director_meeting_board(c, db)
+
+
+@router.post("/cycles/{cycle_id}/director-meetings/book")
+def book_director_meeting_slot(
+    cycle_id: str,
+    payload: Dict[str, Any],
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    cid = _uuid_or_none(cycle_id)
+    rid = _uuid_or_none(payload.get("reviewee_user_id"))
+    if not cid or not rid:
+        raise HTTPException(status_code=400, detail="Invalid cycle_id or reviewee_user_id")
+    c = db.query(ReviewCycle).filter(ReviewCycle.id == cid).first()
+    if not c:
+        raise HTTPException(status_code=404, detail="Cycle not found")
+
+    is_self = str(user.id) == str(rid)
+    is_hr = _has_permission(user, "reviews:admin") or _has_permission(user, "hr:reviews:admin")
+    if not is_self and not is_hr:
+        raise HTTPException(status_code=403, detail="Only the employee or HR/review admin can book this meeting")
+
+    assigns = db.query(ReviewAssignment).filter(
+        ReviewAssignment.cycle_id == cid, ReviewAssignment.reviewee_user_id == rid
+    ).all()
+    if not assigns:
+        raise HTTPException(status_code=404, detail="No assignments for this employee in this cycle")
+
+    slot_raw = payload.get("slot_starts_at")
+    if slot_raw is None or slot_raw == "":
+        prev = getattr(c, "director_1on1_schedule", None)
+        sched_m: Dict[str, Any] = dict(prev) if isinstance(prev, dict) else {}
+        key = str(rid)
+        ent = sched_m.get(key)
+        if isinstance(ent, dict):
+            ent = dict(ent)
+            ent.pop("scheduled_at", None)
+            ent.pop("scheduled_until", None)
+            ent.pop("booked_by_user_id", None)
+            ent["updated_at"] = datetime.now(timezone.utc).isoformat()
+            ent["updated_by_user_id"] = str(user.id)
+            notes_kept = (ent.get("notes") or "").strip()
+            if notes_kept:
+                sched_m[key] = ent
+            else:
+                sched_m.pop(key, None)
+        else:
+            sched_m.pop(key, None)
+        c.director_1on1_schedule = sched_m
+        db.add(c)
+        db.commit()
+        return {"ok": True, "cancelled": True, "reviewee_user_id": key}
+
+    duration = _get_cycle_slot_duration(c)
+    cfg = getattr(c, "director_1on1_slot_config", None) or {}
+    wind = cfg.get("windows") if isinstance(cfg, dict) else []
+    slots = _derive_slots_from_windows(duration, wind)
+    want = _parse_iso_dt(str(slot_raw).strip())
+    if want is None:
+        raise HTTPException(status_code=400, detail="Invalid slot_starts_at")
+    want_norm = _iso_utc_z(want)
+
+    matched: Optional[Dict[str, str]] = None
+    for s in slots:
+        sdt = _parse_iso_dt(s["starts_at"])
+        if sdt is not None and _iso_utc_z(sdt) == want_norm:
+            matched = s
+            break
+
+    if matched is None:
+        raise HTTPException(status_code=400, detail="That time slot is not available")
+
+    ss = _parse_iso_dt(matched["starts_at"])
+    se = _parse_iso_dt(matched["ends_at"])
+    if ss is None or se is None:
+        raise HTTPException(status_code=400, detail="Invalid slot configuration")
+
+    prev = getattr(c, "director_1on1_schedule", None)
+    sched = dict(prev) if isinstance(prev, dict) else {}
+    sched_rev = _sched_reviewee_entries(sched)
+    key = str(rid)
+
+    for uid_str, entry in sched_rev.items():
+        if uid_str == key:
+            continue
+        if isinstance(entry, dict) and _booking_blocks_slot(entry, ss, se, duration):
+            raise HTTPException(status_code=409, detail="This slot is already booked")
+
+    prev_ent = sched.get(key)
+    prev_notes = prev_ent.get("notes") if isinstance(prev_ent, dict) else None
+
+    sched[key] = {
+        "scheduled_at": matched["starts_at"],
+        "scheduled_until": matched["ends_at"],
+        "notes": prev_notes,
+        "booked_by_user_id": str(user.id),
+        "updated_at": datetime.now(timezone.utc).isoformat(),
+        "updated_by_user_id": str(user.id),
+    }
+    c.director_1on1_schedule = sched
+    db.add(c)
+    db.commit()
+    db.refresh(c)
+    ent = sched.get(key) or {}
+    return {
+        "ok": True,
+        "reviewee_user_id": key,
+        "director_meeting_scheduled_at": ent.get("scheduled_at"),
+        "director_meeting_scheduled_until": ent.get("scheduled_until"),
+        "director_meeting_notes": ent.get("notes"),
+    }
 
 
 @router.get("/users/{user_id}/reviewee-assignments")
@@ -795,7 +1233,7 @@ def compare_cycle(
                 definition = _normalize_definition(first.form_definition_snapshot)
             else:
                 definition = _definition_for_reviewee(cyc, reviewee_uuid, db)
-        qs = _collect_compare_rows(definition)
+        qs = _collect_compare_fields(definition)
 
         self_a = next((a for a in arr if str(a.reviewee_user_id) == str(a.reviewer_user_id)), None)
         mgr_a = next((a for a in arr if str(a.reviewee_user_id) != str(a.reviewer_user_id)), None)
@@ -811,11 +1249,24 @@ def compare_cycle(
         comp = []
         for qrow in qs:
             k = qrow["key"]
-            comp.append({"key": k, "label": qrow["label"], "self": self_ans.get(k), "manager": mgr_ans.get(k)})
+            comp.append(
+                {
+                    "key": k,
+                    "label": qrow["label"],
+                    "field_type": qrow.get("field_type") or "",
+                    "section_title": qrow.get("section_title") or "",
+                    "self": self_ans.get(k),
+                    "manager": mgr_ans.get(k),
+                }
+            )
         display_name = None
         try:
-            rev = db.query(User).filter(User.id == rid).first()
-            display_name = getattr(rev, "username", None)
+            uid = _uuid_or_none(rid) or rid
+            rev = db.query(User).filter(User.id == uid).first()
+            ep = db.query(EmployeeProfile).filter(EmployeeProfile.user_id == uid).first() if rev else None
+            display_name = _display_name_from_user_profile(rev, ep)
+            if not display_name and rev:
+                display_name = getattr(rev, "username", None)
         except Exception:
             display_name = None
         out.append(

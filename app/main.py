@@ -748,6 +748,26 @@ def create_app() -> FastAPI:
                     except Exception as e:
                         db.rollback()
                         print(f"[startup] review_cycles.template_by_department (non-critical): {e}")
+                    try:
+                        db.execute(
+                            text(
+                                "ALTER TABLE review_cycles ADD COLUMN IF NOT EXISTS director_1on1_schedule JSONB NULL"
+                            )
+                        )
+                        db.commit()
+                    except Exception as e:
+                        db.rollback()
+                        print(f"[startup] review_cycles.director_1on1_schedule (non-critical): {e}")
+                    try:
+                        db.execute(
+                            text(
+                                "ALTER TABLE review_cycles ADD COLUMN IF NOT EXISTS director_1on1_slot_config JSONB NULL"
+                            )
+                        )
+                        db.commit()
+                    except Exception as e:
+                        db.rollback()
+                        print(f"[startup] review_cycles.director_1on1_slot_config (non-critical): {e}")
                     # ORM uses form_template_id only; legacy NOT NULL template_id breaks INSERTs if the column remains
                     try:
                         rows_legacy_tid = db.execute(

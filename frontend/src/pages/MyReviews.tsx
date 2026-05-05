@@ -14,6 +14,7 @@ import {
   collectEmployeeReviewFieldRows,
   mergeSupervisorSideCommentsForSubmit,
 } from '@/lib/employeeReviewForm';
+import MyReviewsDirectorMeetingTab from '@/components/MyReviewsDirectorMeetingTab';
 
 type AssignmentQuestionsResponse = {
   definition: SafetyFormDefinition;
@@ -429,8 +430,11 @@ function PageHeaderBar({
   );
 }
 
+type MainTab = 'reviews' | 'director';
+
 export default function MyReviews() {
   const navigate = useNavigate();
+  const [mainTab, setMainTab] = useState<MainTab>('reviews');
   const todayLabel = useMemo(
     () =>
       new Date().toLocaleDateString(undefined, {
@@ -542,8 +546,8 @@ export default function MyReviews() {
         <div className="rounded-xl border bg-white shadow-sm">
           <div className="p-5">
             <p className="mb-4 text-sm text-gray-600">
-              HR runs review cycles by team. When a cycle is active and you are included, tasks appear here and under{' '}
-              <span className="font-medium text-gray-800">Personal → My reviews</span> in the sidebar.
+              HR runs review cycles by team. When a cycle is active and you are included, tasks appear here — open{' '}
+              <span className="font-medium text-gray-800">My reviews</span> from the sidebar.
             </p>
             <div className="rounded-lg border border-dashed border-gray-200 bg-gray-50/80 px-4 py-10 text-center text-sm text-gray-600">
               There is no employee review available for you at this time.
@@ -563,6 +567,38 @@ export default function MyReviews() {
         onBack={() => navigate('/overview')}
       />
 
+      <div className="flex flex-wrap gap-2 border-b border-gray-200 pb-2">
+        <button
+          type="button"
+          onClick={() => setMainTab('reviews')}
+          className={`rounded-t-lg px-4 py-2 text-sm font-semibold transition-colors ${
+            mainTab === 'reviews'
+              ? 'border-b-2 border-brand-red text-brand-red'
+              : 'text-gray-600 hover:text-gray-900'
+          }`}
+        >
+          Reviews
+        </button>
+        <button
+          type="button"
+          onClick={() => setMainTab('director')}
+          className={`rounded-t-lg px-4 py-2 text-sm font-semibold transition-colors ${
+            mainTab === 'director'
+              ? 'border-b-2 border-brand-red text-brand-red'
+              : 'text-gray-600 hover:text-gray-900'
+          }`}
+        >
+          Director 1:1
+        </button>
+      </div>
+
+      {mainTab === 'director' ? (
+        <div className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
+          <MyReviewsDirectorMeetingTab />
+        </div>
+      ) : null}
+
+      {mainTab === 'reviews' ? (
       <div className="rounded-xl border bg-white shadow-sm">
         <div className="space-y-6 p-5">
           {assignmentsLoading ? (
@@ -613,6 +649,7 @@ export default function MyReviews() {
           )}
         </div>
       </div>
+      ) : null}
 
       {openId && (
         <OverlayPortal>

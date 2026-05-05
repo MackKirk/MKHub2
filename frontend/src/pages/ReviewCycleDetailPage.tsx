@@ -131,6 +131,8 @@ export default function ReviewCycleDetailPage() {
     isAdminRole || perms.includes('reviews:admin') || perms.includes('hr:reviews:admin');
   const canManageReviewTasks =
     isAdminRole || perms.includes('reviews:admin') || perms.includes('hr:reviews:admin');
+  /** Future admin-only review step (column on Team progress); same gate as other HR review admin tools. */
+  const canSeeAdminReviewColumn = canDeleteCycle;
 
   const { data: cycle, isLoading: cycleLoading, error: cycleError } = useQuery({
     queryKey: ['review-cycle', id],
@@ -379,12 +381,6 @@ export default function ReviewCycleDetailPage() {
               </button>
             )}
             <Link
-              to={`/reviews/compare?cycle=${encodeURIComponent(id)}`}
-              className="px-3 py-1.5 rounded-lg border border-gray-300 text-xs font-medium text-gray-800 bg-white hover:bg-gray-50 inline-block text-center"
-            >
-              Comparison
-            </Link>
-            <Link
               to="/reviews/admin"
               className="px-3 py-1.5 rounded-lg text-xs font-medium bg-gray-900 text-white hover:bg-gray-800 inline-block text-center"
             >
@@ -582,11 +578,33 @@ export default function ReviewCycleDetailPage() {
       {cycleTab === 'progress' && (
         <div className="space-y-4">
           <div className="rounded-xl border border-gray-200 bg-gradient-to-br from-slate-50/90 to-white p-5 shadow-sm">
-            <h2 className="text-base font-semibold text-gray-900">Who has finished?</h2>
-            <p className="text-sm text-gray-600 mt-1 max-w-3xl leading-relaxed">
-              One row per employee in this cycle. Self-review is their own form; supervisor review is the manager form
-              about them. Icons mirror your legacy board: green check when submitted, red mark when still pending.
-            </p>
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+              <div className="min-w-0">
+                <h2 className="text-base font-semibold text-gray-900">Who has finished?</h2>
+                <p className="text-sm text-gray-600 mt-1 max-w-3xl leading-relaxed">
+                  One row per employee in this cycle. Self-review is their own form; supervisor review is the manager
+                  form about them.
+                  {canSeeAdminReviewColumn ? (
+                    <>
+                      {' '}
+                      The <span className="font-medium text-gray-800">Admin</span> column (HR/admin only) is reserved
+                      for a future third step.
+                    </>
+                  ) : null}
+                </p>
+              </div>
+              {hrSummary && hrSummary.both > 0 ? (
+                <Link
+                  to={`/reviews/compare?cycle=${encodeURIComponent(id)}`}
+                  className="shrink-0 inline-flex items-center justify-center gap-2 rounded-xl border border-gray-300 bg-white px-4 py-2.5 text-sm font-semibold text-gray-900 shadow-sm hover:bg-gray-50"
+                >
+                  <svg className="h-4 w-4 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+                  </svg>
+                  Compare cycle
+                </Link>
+              ) : null}
+            </div>
           </div>
 
           {hrSummary ? (
@@ -671,16 +689,27 @@ export default function ReviewCycleDetailPage() {
                         <th className="py-3 px-4">Employee</th>
                         <th className="py-3 px-4">Supervisor</th>
                         <th className="py-3 px-4 whitespace-nowrap">Self due</th>
+                        {canSeeAdminReviewColumn ? (
+                          <th className="py-3 px-4 text-center whitespace-nowrap">
+                            Admin
+                            <span className="block font-normal normal-case text-[10px] text-slate-500 tracking-normal">
+                              HR / admin
+                            </span>
+                          </th>
+                        ) : null}
                         <th className="py-3 px-4 text-center">Self</th>
-                        <th className="py-3 px-4 text-center">Supervisor</th>
+                        <th className="py-3 px-4 text-center">Mgr review</th>
                         <th className="py-3 px-4">Overall</th>
-                        <th className="py-3 px-4 w-24">Open</th>
+                        <th className="py-3 px-4 min-w-[9rem]">Actions</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-100">
                       {filteredProgressRows.length === 0 ? (
                         <tr>
-                          <td colSpan={7} className="py-10 px-4 text-center text-sm text-gray-500">
+                          <td
+                            colSpan={canSeeAdminReviewColumn ? 8 : 7}
+                            className="py-10 px-4 text-center text-sm text-gray-500"
+                          >
                             No rows match this filter or search.
                           </td>
                         </tr>
@@ -727,6 +756,16 @@ export default function ReviewCycleDetailPage() {
                               <td className="py-3 px-4 text-gray-600 tabular-nums whitespace-nowrap text-xs">
                                 {formatDueShort(r.self_due_date)}
                               </td>
+                              {canSeeAdminReviewColumn ? (
+                                <td className="py-3 px-4 text-center align-middle">
+                                  <span
+                                    className="inline-flex text-xs text-gray-400"
+                                    title="Reserved for a future admin-only review step"
+                                  >
+                                    —
+                                  </span>
+                                </td>
+                              ) : null}
                               <td className="py-3 px-4 text-center">
                                 <CompletionGlyph
                                   ok={r.employee_self_done}
@@ -742,10 +781,19 @@ export default function ReviewCycleDetailPage() {
                               <td className="py-3 px-4">{overall}</td>
                               <td className="py-3 px-4">
                                 <Link
-                                  to={`/users/${encodeURIComponent(r.user_id)}`}
-                                  className="text-xs font-medium text-gray-600 hover:text-brand-red"
+                                  to={`/reviews/compare?cycle=${encodeURIComponent(id)}&reviewee=${encodeURIComponent(r.user_id)}`}
+                                  className={`inline-flex items-center gap-1 rounded-lg px-2.5 py-1 text-xs font-semibold ${
+                                    r.both_done
+                                      ? 'bg-gray-900 text-white hover:bg-gray-800'
+                                      : 'border border-gray-300 bg-white text-gray-900 shadow-sm hover:bg-gray-50'
+                                  }`}
+                                  title={
+                                    r.both_done
+                                      ? 'Open side-by-side comparison for this employee'
+                                      : 'Open comparison — submitted answers only until both reviews are in'
+                                  }
                                 >
-                                  Profile →
+                                  Compare
                                 </Link>
                               </td>
                             </tr>

@@ -749,6 +749,10 @@ class ReviewCycle(Base):
     # project_division_ids (EmployeeProfile.project_division_ids overlap).
     participant_scope: Mapped[Optional[dict]] = mapped_column(JSON)
     status: Mapped[str] = mapped_column(String(50), default="draft")
+    # Per-reviewee: director–employee closing 1:1 after HR/director compare (ISO scheduled_at, optional notes).
+    director_1on1_schedule: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
+    # Admin: meeting length + availability windows; slots are derived as non-overlapping segments of duration_minutes.
+    director_1on1_slot_config: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
 
 
 class ReviewAssignment(Base):
