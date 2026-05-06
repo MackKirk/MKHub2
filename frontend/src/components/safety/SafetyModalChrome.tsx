@@ -1,7 +1,32 @@
 import type { HTMLAttributes, ReactNode } from 'react';
 import OverlayPortal from '@/components/OverlayPortal';
 
-/** Match New Supplier (`NewSupplierModal`) — overlay + shell */
+/**
+ * Scroll-safe modal backdrop: outer scrolls, inner `min-h-full flex` keeps the dialog
+ * vertically centered so wheel on the dimmed area doesn't "slide" the modal off-screen.
+ */
+export function SafetyModalOverlayBackdrop({
+  children,
+  onBackdropClick,
+  overlayClassName,
+}: {
+  children: ReactNode;
+  onBackdropClick?: () => void;
+  /** e.g. `z-[200]` — defaults to `z-50` when omitted */
+  overlayClassName?: string;
+}) {
+  return (
+    <div
+      className={`fixed inset-0 overflow-y-auto bg-black/50 p-4 overscroll-contain ${overlayClassName ?? 'z-50'}`}
+      onClick={onBackdropClick}
+      role="presentation"
+    >
+      <div className="flex min-h-full items-center justify-center">{children}</div>
+    </div>
+  );
+}
+
+/** @deprecated Prefer `SafetyModalOverlayBackdrop` — avoids scroll+jump with centered modals */
 export const SAFETY_MODAL_OVERLAY =
   'fixed inset-0 z-50 bg-black/50 flex items-center justify-center overflow-y-auto p-4';
 
@@ -115,11 +140,7 @@ export function SafetyFormPdfPreviewShell({
 }) {
   return (
     <OverlayPortal>
-      <div
-        className={`fixed inset-0 ${overlayZClass} bg-black/50 flex items-center justify-center overflow-y-auto p-4`}
-        onClick={onClose}
-        role="presentation"
-      >
+      <SafetyModalOverlayBackdrop onBackdropClick={onClose} overlayClassName={overlayZClass}>
         <div
           className="w-full max-w-[95vw] max-h-[90vh] bg-gray-100 rounded-xl overflow-hidden flex flex-col border border-gray-200 shadow-xl"
           onClick={(e) => e.stopPropagation()}
@@ -148,7 +169,7 @@ export function SafetyFormPdfPreviewShell({
             </div>
           </div>
         </div>
-      </div>
+      </SafetyModalOverlayBackdrop>
     </OverlayPortal>
   );
 }

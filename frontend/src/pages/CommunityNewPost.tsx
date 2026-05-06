@@ -15,6 +15,7 @@ import {
   stripHtmlToPlain,
 } from '@/lib/communityPostHtml';
 import { extractMentionsFromEditor } from '@/lib/communityPostEditorUtils';
+import { useUnsavedChangesGuard } from '@/hooks/useUnsavedChangesGuard';
 
 const RELATED_AREAS: { value: string; label: string }[] = [
   { value: 'general', label: 'General' },
@@ -54,7 +55,145 @@ type PublishMode = 'now' | 'scheduled' | 'draft';
 
 type AudienceEmployee = { id: string; name: string };
 
+type AudienceTargetType = 'all' | 'divisions' | 'users' | 'groups';
+
 const MAX_AUDIENCE_EMPLOYEES = 400;
+
+type CommunityPostFormBaseline = {
+  title: string;
+  content: string;
+  priority: string;
+  requiresReadConfirmation: boolean;
+  attachments: CommunityPostLocalAttachment[];
+  targetType: AudienceTargetType;
+  selectedDivisions: string[];
+  selectedAudienceUsers: AudienceEmployee[];
+  selectedCommunityGroupIds: string[];
+  publishMode: PublishMode;
+  scheduledAt: string;
+  relatedArea: string;
+};
+
+const NEW_POST_FORM_BASELINE: CommunityPostFormBaseline = {
+  title: '',
+  content: '<p></p>',
+  priority: 'normal',
+  requiresReadConfirmation: false,
+  attachments: [],
+  targetType: 'all',
+  selectedDivisions: [],
+  selectedAudienceUsers: [],
+  selectedCommunityGroupIds: [],
+  publishMode: 'now',
+  scheduledAt: '',
+  relatedArea: 'general',
+};
+
+function serializeCommunityPostFormBaseline(b: CommunityPostFormBaseline): string {
+  const divs = [...b.selectedDivisions].map(String).sort();
+  const groups = [...b.selectedCommunityGroupIds].map(String).sort();
+  const users = [...b.selectedAudienceUsers]
+    .map((u) => ({ id: u.id, name: u.name }))
+    .sort((a, c) => a.id.localeCompare(c.id));
+  const atts = [...b.attachments]
+    .map((a) => ({ fileId: a.fileId, name: a.name }))
+    .sort((a, c) => a.fileId.localeCompare(c.fileId));
+  const sanitizedBody = sanitizeCommunityPostHtml(b.content);
+  const contentKey = isCommunityEditorHtmlEmpty(sanitizedBody) ? '' : sanitizedBody;
+  return JSON.stringify({
+    title: (b.title || '').trim(),
+    content: contentKey,
+    priority: b.priority,
+    requiresReadConfirmation: b.requiresReadConfirmation,
+    relatedArea: b.relatedArea,
+    targetType: b.targetType,
+    divisions: divs,
+    groups,
+    users,
+    attachments: atts,
+    publishMode: b.publishMode,
+    scheduledAt: b.scheduledAt,
+  });
+}
+
+function deriveBaselineFromExistingPost(existingPost: Record<string, unknown>): CommunityPostFormBaseline {
+  const title = String(existingPost.title || '');
+  const raw = String(existingPost.content || '');
+  const content = communityContentLooksLikeHtml(raw) ? raw : legacyPlainToEditorHtml(raw);
+  const priority = String(existingPost.priority || 'normal');
+  const requiresReadConfirmation = !!existingPost.requires_read_confirmation;
+  const relatedArea = String(existingPost.related_area || 'general');
+
+  let attachments: CommunityPostLocalAttachment[] = [];
+  const fromApi: CommunityPostLocalAttachment[] = Array.isArray(existingPost.attachments)
+    ? (existingPost.attachments as { file_id?: string; original_name?: string }[]).map((a) => ({
+        fileId: String(a.file_id || ''),
+        name: String(a.original_name || 'Attachment'),
+      }))
+    : [];
+  const dedup = fromApi.filter((a) => a.fileId);
+  if (dedup.length > 0) {
+    attachments = dedup;
+  } else if (existingPost.document_file_id) {
+    attachments = [
+      {
+        fileId: String(existingPost.document_file_id),
+        name: String(existingPost.document_original_name || 'Attachment'),
+      },
+    ];
+  }
+
+  const tt = String(existingPost.target_type || 'all');
+  const targetType: AudienceTargetType =
+    tt === 'divisions' ? 'divisions' : tt === 'users' ? 'users' : 'all';
+
+  const selectedDivisions = Array.isArray(existingPost.target_division_ids)
+    ? (existingPost.target_division_ids as unknown[]).map(String)
+    : [];
+
+  const fromPreview = Array.isArray(existingPost.target_users_preview)
+    ? (existingPost.target_users_preview as { id?: string; name?: string }[]).map((x) => ({
+        id: String(x.id || ''),
+        name: String(x.name || 'Unknown'),
+      }))
+    : [];
+  const fromIds = Array.isArray(existingPost.target_user_ids)
+    ? (existingPost.target_user_ids as string[]).map((id) => ({
+        id: String(id),
+        name: 'Employee',
+      }))
+    : [];
+  const selectedAudienceUsers =
+    fromPreview.length > 0 ? fromPreview.filter((x) => x.id) : fromIds.filter((x) => x.id);
+
+  let publishMode: PublishMode = 'now';
+  let scheduledAt = '';
+  const st = existingPost.status as string | undefined;
+  if (st === 'draft') publishMode = 'draft';
+  else if (st === 'scheduled') {
+    publishMode = 'scheduled';
+    if (existingPost.publish_at) {
+      const d = new Date(String(existingPost.publish_at));
+      const pad = (n: number) => String(n).padStart(2, '0');
+      scheduledAt = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+    }
+  }
+
+  return {
+    title,
+    content,
+    priority,
+    requiresReadConfirmation,
+    attachments,
+    targetType,
+    selectedDivisions,
+    selectedAudienceUsers,
+    selectedCommunityGroupIds: [],
+    publishMode,
+    scheduledAt,
+    relatedArea,
+  };
+}
 
 function sectionCardClass() {
   return 'rounded-xl border border-gray-200/80 bg-white shadow-sm';
@@ -83,9 +222,10 @@ export default function CommunityNewPost() {
   const [priority, setPriority] = useState<string>('normal');
   const [requiresReadConfirmation, setRequiresReadConfirmation] = useState(false);
   const [attachments, setAttachments] = useState<CommunityPostLocalAttachment[]>([]);
-  const [targetType, setTargetType] = useState<'all' | 'divisions' | 'users'>('all');
+  const [targetType, setTargetType] = useState<AudienceTargetType>('all');
   const [selectedDivisions, setSelectedDivisions] = useState<string[]>([]);
   const [selectedAudienceUsers, setSelectedAudienceUsers] = useState<AudienceEmployee[]>([]);
+  const [selectedCommunityGroupIds, setSelectedCommunityGroupIds] = useState<string[]>([]);
   const [employeeSearchInput, setEmployeeSearchInput] = useState('');
   const [debouncedEmployeeQ, setDebouncedEmployeeQ] = useState('');
   const [employeeAudienceOpen, setEmployeeAudienceOpen] = useState(false);
@@ -100,6 +240,7 @@ export default function CommunityNewPost() {
   const [triedSubmit, setTriedSubmit] = useState(false);
   const [mobileComposerOpen, setMobileComposerOpen] = useState(true);
   const [mobileAudienceOpen, setMobileAudienceOpen] = useState(false);
+  const [savedFormSnapshot, setSavedFormSnapshot] = useState<string | null>(null);
 
   const { data: settings } = useQuery({
     queryKey: ['settings-bundle'],
@@ -107,6 +248,32 @@ export default function CommunityNewPost() {
   });
 
   const divisions = (settings?.divisions || []) as Array<{ id: string; label: string; meta?: { abbr?: string; color?: string } }>;
+
+  const { data: communityGroupsRaw } = useQuery({
+    queryKey: ['community-groups'],
+    queryFn: () => api<any>('GET', '/community/groups').catch(() => []),
+  });
+
+  const communityGroups = useMemo(() => {
+    const rows = Array.isArray(communityGroupsRaw) ? [...communityGroupsRaw] : [];
+    rows.sort((a, b) =>
+      String(a.name || '')
+        .trim()
+        .toLocaleLowerCase()
+        .localeCompare(String(b.name || '').trim().toLocaleLowerCase(), undefined, { sensitivity: 'base' })
+    );
+    return rows as Array<{ id: string; name: string; member_count?: number }>;
+  }, [communityGroupsRaw]);
+
+  const approxGroupAudienceMembers = useMemo(() => {
+    if (targetType !== 'groups') return 0;
+    let n = 0;
+    for (const id of selectedCommunityGroupIds) {
+      const g = communityGroups.find((x) => x.id === id);
+      if (g?.member_count != null) n += Number(g.member_count);
+    }
+    return n;
+  }, [targetType, selectedCommunityGroupIds, communityGroups]);
 
   useEffect(() => {
     if (!employeeAudienceOpen) return;
@@ -160,65 +327,32 @@ export default function CommunityNewPost() {
   });
 
   useEffect(() => {
-    if (!existingPost || !isEdit) return;
-    setTitle(existingPost.title || '');
-    const raw = existingPost.content || '';
-    setContent(communityContentLooksLikeHtml(raw) ? raw : legacyPlainToEditorHtml(raw));
-    setEditorSession((s) => s + 1);
-    setPriority(existingPost.priority || 'normal');
-    setRequiresReadConfirmation(!!existingPost.requires_read_confirmation);
-    setRelatedArea(existingPost.related_area || 'general');
-
-    const fromApi: CommunityPostLocalAttachment[] = Array.isArray(existingPost.attachments)
-      ? (existingPost.attachments as { file_id?: string; original_name?: string }[]).map((a) => ({
-          fileId: String(a.file_id || ''),
-          name: String(a.original_name || 'Attachment'),
-        }))
-      : [];
-    const dedup = fromApi.filter((a) => a.fileId);
-    if (dedup.length > 0) {
-      setAttachments(dedup);
-    } else if (existingPost.document_file_id) {
-      setAttachments([
-        {
-          fileId: String(existingPost.document_file_id),
-          name: String(existingPost.document_original_name || 'Attachment'),
-        },
-      ]);
-    } else {
-      setAttachments([]);
+    if (!isEdit) return;
+    if (loadingExisting || !existingPost) {
+      setSavedFormSnapshot(null);
+      return;
     }
+    const b = deriveBaselineFromExistingPost(existingPost as Record<string, unknown>);
+    setTitle(b.title);
+    setContent(b.content);
+    setEditorSession((s) => s + 1);
+    setPriority(b.priority);
+    setRequiresReadConfirmation(b.requiresReadConfirmation);
+    setRelatedArea(b.relatedArea);
+    setAttachments(b.attachments);
+    setTargetType(b.targetType);
+    setSelectedDivisions(b.selectedDivisions);
+    setSelectedAudienceUsers(b.selectedAudienceUsers);
+    setSelectedCommunityGroupIds(b.selectedCommunityGroupIds);
+    setPublishMode(b.publishMode);
+    setScheduledAt(b.scheduledAt);
+    setSavedFormSnapshot(serializeCommunityPostFormBaseline(b));
+  }, [isEdit, existingPost, loadingExisting]);
 
-    const tt = String(existingPost.target_type || 'all');
-    setTargetType(tt === 'divisions' ? 'divisions' : tt === 'users' ? 'users' : 'all');
-    setSelectedDivisions(
-      Array.isArray(existingPost.target_division_ids) ? existingPost.target_division_ids.map(String) : []
-    );
-    const fromPreview = Array.isArray(existingPost.target_users_preview)
-      ? (existingPost.target_users_preview as { id?: string; name?: string }[]).map((x) => ({
-          id: String(x.id || ''),
-          name: String(x.name || 'Unknown'),
-        }))
-      : [];
-    const fromIds = Array.isArray(existingPost.target_user_ids)
-      ? (existingPost.target_user_ids as string[]).map((id) => ({
-          id: String(id),
-          name: 'Employee',
-        }))
-      : [];
-    setSelectedAudienceUsers(fromPreview.length > 0 ? fromPreview.filter((x) => x.id) : fromIds.filter((x) => x.id));
-
-    const st = existingPost.status as string | undefined;
-    if (st === 'draft') setPublishMode('draft');
-    else if (st === 'scheduled') {
-      setPublishMode('scheduled');
-      if (existingPost.publish_at) {
-        const d = new Date(existingPost.publish_at);
-        const pad = (n: number) => String(n).padStart(2, '0');
-        setScheduledAt(`${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`);
-      }
-    } else setPublishMode('now');
-  }, [existingPost, isEdit]);
+  useEffect(() => {
+    if (isEdit) return;
+    setSavedFormSnapshot(serializeCommunityPostFormBaseline(NEW_POST_FORM_BASELINE));
+  }, [isEdit]);
 
   const createPostMutation = useMutation({
     mutationFn: (payload: Record<string, unknown>) => api('POST', '/community/posts', payload),
@@ -260,13 +394,17 @@ export default function CommunityNewPost() {
         photo_file_id: null,
         document_file_id: null,
         attachments: attachments.map((a) => ({ file_id: a.fileId, name: a.name })),
-        target_type: targetType,
+        target_type: targetType === 'groups' ? 'users' : targetType,
         target_division_ids: targetType === 'divisions' ? selectedDivisions : [],
-        target_user_ids: targetType === 'users' ? selectedAudienceUsers.map((u) => u.id) : [],
         priority,
         related_area: relatedArea,
         mentions: extractMentionsFromEditor(editorRef.current),
       };
+      if (targetType === 'users') {
+        base.target_user_ids = selectedAudienceUsers.map((u) => u.id);
+      } else if (targetType === 'groups') {
+        base.target_community_group_ids = [...selectedCommunityGroupIds];
+      }
 
       if (!isEdit) {
         base.publish_mode = mode;
@@ -296,6 +434,7 @@ export default function CommunityNewPost() {
       targetType,
       selectedDivisions,
       selectedAudienceUsers,
+      selectedCommunityGroupIds,
       relatedArea,
       publishMode,
       scheduledAt,
@@ -313,6 +452,9 @@ export default function CommunityNewPost() {
       if (targetType === 'users' && selectedAudienceUsers.length === 0) {
         return { ok: false as const, message: 'Select at least one employee' };
       }
+      if (targetType === 'groups' && selectedCommunityGroupIds.length === 0) {
+        return { ok: false as const, message: 'Select at least one community group' };
+      }
       if (!isEdit && mode === 'scheduled' && !scheduledAt) {
         return { ok: false as const, message: 'Choose a date and time for the scheduled post' };
       }
@@ -321,7 +463,7 @@ export default function CommunityNewPost() {
       }
       return { ok: true as const };
     },
-    [title, content, targetType, selectedDivisions, selectedAudienceUsers, isEdit, publishMode, scheduledAt],
+    [title, content, targetType, selectedDivisions, selectedAudienceUsers, selectedCommunityGroupIds, isEdit, publishMode, scheduledAt],
   );
 
   const submitPayload = (opts?: { publishModeOverride?: PublishMode }) => {
@@ -424,6 +566,12 @@ export default function CommunityNewPost() {
     );
   };
 
+  const toggleCommunityGroup = (groupId: string) => {
+    setSelectedCommunityGroupIds((prev) =>
+      prev.includes(groupId) ? prev.filter((id) => id !== groupId) : [...prev, groupId]
+    );
+  };
+
   const toggleAudienceUserRow = (row: { id: string; name?: string; username?: string }) => {
     const id = String(row.id);
     const name = String(row.name || row.username || 'Employee');
@@ -442,6 +590,84 @@ export default function CommunityNewPost() {
 
   const busy = createPostMutation.isLoading || patchPostMutation.isLoading;
 
+  const currentFormSnapshot = useMemo(
+    () =>
+      serializeCommunityPostFormBaseline({
+        title,
+        content,
+        priority,
+        requiresReadConfirmation,
+        attachments,
+        targetType,
+        selectedDivisions,
+        selectedAudienceUsers,
+        selectedCommunityGroupIds,
+        publishMode,
+        scheduledAt,
+        relatedArea,
+      }),
+    [
+      title,
+      content,
+      priority,
+      requiresReadConfirmation,
+      attachments,
+      targetType,
+      selectedDivisions,
+      selectedAudienceUsers,
+      selectedCommunityGroupIds,
+      publishMode,
+      scheduledAt,
+      relatedArea,
+    ]
+  );
+
+  const hasUnsavedFormChanges = savedFormSnapshot !== null && currentFormSnapshot !== savedFormSnapshot;
+
+  const handleGuardDiscard = useCallback(() => {
+    setTriedSubmit(false);
+    const b =
+      isEdit && existingPost
+        ? deriveBaselineFromExistingPost(existingPost as Record<string, unknown>)
+        : NEW_POST_FORM_BASELINE;
+    setTitle(b.title);
+    setContent(b.content);
+    setEditorSession((s) => s + 1);
+    setPriority(b.priority);
+    setRequiresReadConfirmation(b.requiresReadConfirmation);
+    setRelatedArea(b.relatedArea);
+    setAttachments(b.attachments);
+    setTargetType(b.targetType);
+    setSelectedDivisions(b.selectedDivisions);
+    setSelectedAudienceUsers(b.selectedAudienceUsers);
+    setSelectedCommunityGroupIds(b.selectedCommunityGroupIds);
+    setPublishMode(b.publishMode);
+    setScheduledAt(b.scheduledAt);
+  }, [isEdit, existingPost]);
+
+  const guardFlushSave = useCallback(async () => {
+    // Leaving mid-compose: never auto-publish a new announcement (Save and Leave / Save and Reload).
+    if (!isEdit) {
+      const v = validate('draft');
+      if (!v.ok) {
+        toast.error(v.message);
+        throw new Error(v.message);
+      }
+      const payload = buildPayload({ publishModeOverride: 'draft' });
+      await createPostMutation.mutateAsync(payload);
+      return;
+    }
+    const v = validate();
+    if (!v.ok) {
+      toast.error(v.message);
+      throw new Error(v.message);
+    }
+    const payload = buildPayload();
+    await patchPostMutation.mutateAsync(payload);
+  }, [validate, buildPayload, isEdit, patchPostMutation, createPostMutation]);
+
+  useUnsavedChangesGuard(hasUnsavedFormChanges, guardFlushSave, handleGuardDiscard);
+
   const audienceSummary =
     targetType === 'all'
       ? 'All employees'
@@ -449,12 +675,21 @@ export default function CommunityNewPost() {
         ? selectedAudienceUsers.length === 0
           ? 'No employees selected yet'
           : `${selectedAudienceUsers.length} employee${selectedAudienceUsers.length === 1 ? '' : 's'}`
-        : selectedDivisions.length === 0
-          ? 'No divisions selected yet'
-          : `${selectedDivisions.length} division${selectedDivisions.length === 1 ? '' : 's'}`;
+        : targetType === 'groups'
+          ? selectedCommunityGroupIds.length === 0
+            ? 'No community groups selected yet'
+            : `${selectedCommunityGroupIds.length} group${selectedCommunityGroupIds.length === 1 ? '' : 's'}${
+                approxGroupAudienceMembers > 0
+                  ? ` (~${approxGroupAudienceMembers} member${approxGroupAudienceMembers === 1 ? '' : 's'}, approximate)`
+                  : ''
+              }`
+          : selectedDivisions.length === 0
+            ? 'No divisions selected yet'
+            : `${selectedDivisions.length} division${selectedDivisions.length === 1 ? '' : 's'}`;
 
   const divisionError = triedSubmit && targetType === 'divisions' && selectedDivisions.length === 0;
   const usersAudienceError = triedSubmit && targetType === 'users' && selectedAudienceUsers.length === 0;
+  const groupsAudienceError = triedSubmit && targetType === 'groups' && selectedCommunityGroupIds.length === 0;
   const scheduleError =
     triedSubmit &&
     publishMode === 'scheduled' &&
@@ -490,6 +725,7 @@ export default function CommunityNewPost() {
     isCommunityEditorHtmlEmpty(content) ||
     (targetType === 'divisions' && selectedDivisions.length === 0) ||
     (targetType === 'users' && selectedAudienceUsers.length === 0) ||
+    (targetType === 'groups' && selectedCommunityGroupIds.length === 0) ||
     (!isEdit && publishMode === 'scheduled' && !scheduledAt) ||
     (isEdit && publishMode === 'scheduled' && !scheduledAt && showPublicationControls);
 
@@ -503,15 +739,10 @@ export default function CommunityNewPost() {
   }
 
   const composerBlock = (
-    <div className={`p-5 sm:p-6 space-y-5 ${sectionCardClass()}`}>
-      <div className="flex items-start justify-between gap-2 border-b border-gray-100 pb-3">
-        <div>
-          <h2 className="text-sm font-semibold text-gray-900">Compose</h2>
-          <p className="text-xs text-gray-500 mt-0.5">Title and message body</p>
-        </div>
-      </div>
-
-      <div>
+    <div
+      className={`flex flex-col gap-5 p-5 sm:p-6 lg:min-h-0 lg:flex-1 ${sectionCardClass()}`}
+    >
+      <div className="shrink-0">
         <div className="flex items-baseline justify-between gap-2 mb-2">
           <label htmlFor="title" className="text-sm font-medium text-gray-800">
             Title <span className="text-red-500">*</span>
@@ -534,8 +765,8 @@ export default function CommunityNewPost() {
         />
       </div>
 
-      <div>
-        <div className="flex items-baseline justify-between gap-2 mb-2">
+      <div className="flex min-h-[18rem] flex-1 flex-col gap-2 lg:min-h-0">
+        <div className="flex shrink-0 items-baseline justify-between gap-2">
           <label htmlFor="content" className="text-sm font-medium text-gray-800">
             Announcement <span className="text-red-500">*</span>
           </label>
@@ -545,17 +776,21 @@ export default function CommunityNewPost() {
             {plainBodyLen.toLocaleString()} chars
           </span>
         </div>
-        <CommunityPostRichTextEditor
-          editorKey={`${postId || 'new'}-${editorSession}`}
-          initialHtml={content || '<p></p>'}
-          onChangeHtml={setContent}
-          onEditorReady={(ed) => {
-            editorRef.current = ed;
-          }}
-        />
+        <div className="min-h-0 flex-1">
+          <CommunityPostRichTextEditor
+            editorKey={`${postId || 'new'}-${editorSession}`}
+            initialHtml={content || '<p></p>'}
+            onChangeHtml={setContent}
+            fillHeight
+            className="h-full min-h-0"
+            onEditorReady={(ed) => {
+              editorRef.current = ed;
+            }}
+          />
+        </div>
       </div>
 
-      <div>
+      <div className="shrink-0">
         <div className="flex flex-col gap-0.5 sm:flex-row sm:items-center sm:justify-between mb-2">
           <span className="text-sm font-medium text-gray-800">Attachments (optional)</span>
           <span className="text-xs text-gray-500">
@@ -686,6 +921,43 @@ export default function CommunityNewPost() {
         </div>
       )}
 
+      <div className={`flex items-center p-5 sm:p-6 ${sectionCardClass()}`}>
+        <label htmlFor="read-confirmation" className="group flex w-full cursor-pointer items-center gap-3">
+          <input
+            id="read-confirmation"
+            type="checkbox"
+            className="peer sr-only"
+            checked={requiresReadConfirmation}
+            onChange={(e) => setRequiresReadConfirmation(e.target.checked)}
+          />
+          <span
+            aria-hidden
+            className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-md border-2 shadow-sm transition-all duration-200 ease-out outline-none ring-offset-2 peer-focus-visible:ring-2 peer-focus-visible:ring-brand-red/40 group-hover:border-gray-400 ${
+              requiresReadConfirmation
+                ? 'border-brand-red bg-brand-red shadow-md'
+                : 'border-gray-300 bg-white'
+            }`}
+          >
+            <svg
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth={3}
+              className={`h-3 w-3 text-white transition duration-200 ease-out ${
+                requiresReadConfirmation ? 'scale-100 opacity-100' : 'scale-75 opacity-0'
+              }`}
+              aria-hidden
+            >
+              <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+            </svg>
+          </span>
+          <div className="min-w-0">
+            <span className="text-sm font-medium text-gray-900">Request read confirmation</span>
+            <p className="text-xs text-gray-500 mt-0.5">Recipients must acknowledge they have read this post.</p>
+          </div>
+        </label>
+      </div>
+
       <div className={`p-5 sm:p-6 space-y-4 ${sectionCardClass()}`}>
         <div className="border-b border-gray-100 pb-3">
           <h2 className="text-sm font-semibold text-gray-900">Priority & topic</h2>
@@ -746,6 +1018,7 @@ export default function CommunityNewPost() {
                 setTargetType('all');
                 setSelectedDivisions([]);
                 setSelectedAudienceUsers([]);
+                setSelectedCommunityGroupIds([]);
               }}
               className="h-4 w-4 border-gray-300 text-brand-red focus:ring-brand-red"
             />
@@ -766,6 +1039,7 @@ export default function CommunityNewPost() {
               onChange={() => {
                 setTargetType('divisions');
                 setSelectedAudienceUsers([]);
+                setSelectedCommunityGroupIds([]);
               }}
               className="h-4 w-4 border-gray-300 text-brand-red focus:ring-brand-red"
             />
@@ -786,12 +1060,34 @@ export default function CommunityNewPost() {
               onChange={() => {
                 setTargetType('users');
                 setSelectedDivisions([]);
+                setSelectedCommunityGroupIds([]);
               }}
               className="h-4 w-4 border-gray-300 text-brand-red focus:ring-brand-red"
             />
             <div>
               <div className="text-sm font-medium text-gray-900">Specific employees</div>
               <div className="text-xs text-gray-500">Only selected people see this in the feed</div>
+            </div>
+          </label>
+          <label
+            className={`flex cursor-pointer items-center gap-3 rounded-lg border p-3 transition ${
+              targetType === 'groups' ? 'border-brand-red/40 bg-red-50/30' : 'border-gray-200 hover:bg-gray-50/80'
+            }`}
+          >
+            <input
+              type="radio"
+              name="target"
+              checked={targetType === 'groups'}
+              onChange={() => {
+                setTargetType('groups');
+                setSelectedDivisions([]);
+                setSelectedAudienceUsers([]);
+              }}
+              className="h-4 w-4 border-gray-300 text-brand-red focus:ring-brand-red"
+            />
+            <div>
+              <div className="text-sm font-medium text-gray-900">Community groups</div>
+              <div className="text-xs text-gray-500">Everyone in the selected groups</div>
             </div>
           </label>
         </div>
@@ -1001,22 +1297,78 @@ export default function CommunityNewPost() {
             {usersAudienceError && <p className="text-xs text-red-600 mt-2">Select at least one employee.</p>}
           </div>
         )}
-      </div>
 
-      <div className={`p-5 sm:p-6 ${sectionCardClass()}`}>
-        <label className="flex cursor-pointer items-start gap-3">
-          <input
-            id="read-confirmation"
-            type="checkbox"
-            checked={requiresReadConfirmation}
-            onChange={(e) => setRequiresReadConfirmation(e.target.checked)}
-            className="mt-0.5 h-4 w-4 rounded border-gray-300 text-brand-red focus:ring-brand-red"
-          />
-          <div>
-            <span className="text-sm font-medium text-gray-900">Request read confirmation</span>
-            <p className="text-xs text-gray-500 mt-0.5">Recipients must acknowledge they have read this post.</p>
+        {targetType === 'groups' && (
+          <div
+            className={`rounded-lg border p-3 ${groupsAudienceError ? 'border-red-300 bg-red-50/20' : 'border-gray-100 bg-gray-50/80'}`}
+          >
+            <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
+              <span className="text-xs font-medium text-gray-600">Groups</span>
+              <div className="flex flex-wrap items-center gap-2">
+                {communityGroups.length > 0 && (
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setSelectedCommunityGroupIds(communityGroups.map((g) => g.id))}
+                      className="text-xs font-medium text-brand-red hover:underline"
+                    >
+                      Select all
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setSelectedCommunityGroupIds([])}
+                      className="text-xs font-medium text-gray-600 hover:underline"
+                    >
+                      Clear
+                    </button>
+                  </div>
+                )}
+                <Link
+                  to="/community/groups"
+                  className="text-xs font-medium text-brand-red hover:underline"
+                >
+                  Manage groups
+                </Link>
+              </div>
+            </div>
+            {communityGroups.length === 0 ? (
+              <p className="text-xs text-gray-500">
+                No community groups yet.{' '}
+                <Link to="/community/groups" className="font-medium text-brand-red underline">
+                  Create a group
+                </Link>
+              </p>
+            ) : (
+              <div className="flex flex-wrap gap-2">
+                {communityGroups.map((g) => {
+                  const isSelected = selectedCommunityGroupIds.includes(g.id);
+                  return (
+                    <button
+                      key={g.id}
+                      type="button"
+                      onClick={() => toggleCommunityGroup(g.id)}
+                      className={`inline-flex max-w-full items-center gap-2 rounded-full border px-3 py-1.5 text-xs font-medium transition ${
+                        isSelected
+                          ? 'border-brand-red bg-white text-brand-red shadow-sm'
+                          : 'border-gray-200 bg-white text-gray-700 hover:border-gray-300'
+                      }`}
+                      title={g.name}
+                    >
+                      <span className="truncate">{g.name}</span>
+                      {g.member_count != null ? (
+                        <span className="shrink-0 text-[10px] font-normal text-gray-500">({g.member_count})</span>
+                      ) : null}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+            <p className="text-[11px] text-gray-500 mt-2">
+              Recipients are fixed when you publish (up to {MAX_AUDIENCE_EMPLOYEES} active members across selected groups).
+            </p>
+            {groupsAudienceError && <p className="text-xs text-red-600 mt-2">Select at least one community group.</p>}
           </div>
-        </label>
+        )}
       </div>
     </div>
   );
@@ -1027,23 +1379,6 @@ export default function CommunityNewPost() {
         title={isEdit ? 'Edit announcement' : 'New announcement'}
         subtitle="Compose once, control audience and timing, then publish to the community feed."
         onBack={() => navigate('/community')}
-        actions={
-          <>
-            <Link
-              to="/community?myAnnouncements=1"
-              className="rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-xs font-medium text-gray-700 shadow-sm hover:bg-gray-50"
-            >
-              My announcements
-            </Link>
-            <button
-              type="button"
-              onClick={() => setPreviewOpen(true)}
-              className="rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-xs font-medium text-gray-700 shadow-sm hover:bg-gray-50"
-            >
-              Preview
-            </button>
-          </>
-        }
       />
 
       <form id="community-post-form" onSubmit={handleSubmit} className="space-y-4" noValidate>
@@ -1073,9 +1408,9 @@ export default function CommunityNewPost() {
           {mobileAudienceOpen && sidebarBlock}
         </div>
 
-        <div className="hidden lg:grid lg:grid-cols-12 lg:gap-6 lg:items-start">
-          <div className="lg:col-span-8 space-y-6">{composerBlock}</div>
-          <div className="lg:col-span-4 space-y-4">{sidebarBlock}</div>
+        <div className="hidden lg:grid lg:grid-cols-12 lg:items-stretch lg:gap-6">
+          <div className="flex min-h-0 flex-col lg:col-span-8">{composerBlock}</div>
+          <div className="flex min-h-0 flex-col lg:col-span-4">{sidebarBlock}</div>
         </div>
       </form>
 
@@ -1091,6 +1426,12 @@ export default function CommunityNewPost() {
         targetType={targetType}
         divisionCount={selectedDivisions.length}
         selectedEmployeeCount={selectedAudienceUsers.length}
+        selectedGroupCount={selectedCommunityGroupIds.length}
+        groupAudienceHint={
+          targetType === 'groups' && approxGroupAudienceMembers > 0
+            ? `~${approxGroupAudienceMembers} members in groups, approximate`
+            : undefined
+        }
         publishMode={publishMode}
       />
 
@@ -1102,6 +1443,13 @@ export default function CommunityNewPost() {
             className="rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm font-medium text-gray-700 shadow-sm hover:bg-gray-50"
           >
             Cancel
+          </button>
+          <button
+            type="button"
+            onClick={() => setPreviewOpen(true)}
+            className="rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm font-medium text-gray-800 shadow-sm hover:bg-gray-50"
+          >
+            Preview
           </button>
           {!isEdit && publishMode !== 'draft' && (
             <button

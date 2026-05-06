@@ -7,7 +7,7 @@ import {
   SAFETY_MODAL_BTN_CANCEL,
   SAFETY_MODAL_BTN_PRIMARY,
   SAFETY_MODAL_FIELD_LABEL,
-  SAFETY_MODAL_OVERLAY,
+  SafetyModalOverlayBackdrop,
   SafetyFormModalLayout,
 } from '@/components/safety/SafetyModalChrome';
 import PageHeaderBar from '@/components/PageHeaderBar';
@@ -158,7 +158,7 @@ export default function SafetySchedulePage() {
 
       {showModal && canSchedule && (
         <OverlayPortal>
-          <div className={SAFETY_MODAL_OVERLAY} onClick={() => setShowModal(false)} role="presentation">
+          <SafetyModalOverlayBackdrop onBackdropClick={() => setShowModal(false)}>
             <SafetyFormModalLayout
               widthClass="w-full max-w-lg"
               titleId="schedule-safety-inspection-title"
@@ -284,7 +284,7 @@ export default function SafetySchedulePage() {
                 </div>
               </div>
             </SafetyFormModalLayout>
-          </div>
+          </SafetyModalOverlayBackdrop>
         </OverlayPortal>
       )}
     </div>

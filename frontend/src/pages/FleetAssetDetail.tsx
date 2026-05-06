@@ -40,7 +40,7 @@ import { InspectionScheduleForm } from './InspectionNew';
 import OverlayPortal from '@/components/OverlayPortal';
 import { WorkOrderAttachmentsPicker } from '@/components/fleet/WorkOrderAttachmentsPicker';
 import {
-  SAFETY_MODAL_OVERLAY,
+  SafetyModalOverlayBackdrop,
   SAFETY_MODAL_BTN_CANCEL,
   SAFETY_MODAL_BTN_PRIMARY,
   SAFETY_MODAL_FIELD_LABEL,
@@ -2323,10 +2323,7 @@ export default function FleetAssetDetail() {
       )}
       {showHeroPhotoViewModal && heroPhotoLargeUrl && (
         <OverlayPortal>
-          <div
-            className={SAFETY_MODAL_OVERLAY}
-            onClick={(e) => e.target === e.currentTarget && setShowHeroPhotoViewModal(false)}
-          >
+          <SafetyModalOverlayBackdrop onBackdropClick={() => setShowHeroPhotoViewModal(false)}>
             <SafetyFormModalLayout
               widthClass="w-[min(720px,95vw)]"
               titleId={assetHeroPhotoModalTitleId}
@@ -2368,7 +2365,7 @@ export default function FleetAssetDetail() {
                 className="max-h-[min(65vh,560px)] w-full max-w-full rounded-lg object-contain shadow-sm"
               />
             </SafetyFormModalLayout>
-          </div>
+          </SafetyModalOverlayBackdrop>
         </OverlayPortal>
       )}
       {/* Assign Modal */}
@@ -2463,7 +2460,7 @@ function ScheduleInspectionModalInline({
 
   return (
     <OverlayPortal>
-      <div className={SAFETY_MODAL_OVERLAY} onClick={onCancel}>
+      <SafetyModalOverlayBackdrop onBackdropClick={onCancel}>
         <SafetyFormModalLayout
           widthClass="w-[640px]"
           titleId={titleId}
@@ -2499,7 +2496,7 @@ function ScheduleInspectionModalInline({
             onValidationChange={handleValidationChange}
           />
         </SafetyFormModalLayout>
-      </div>
+      </SafetyModalOverlayBackdrop>
     </OverlayPortal>
   );
 }
@@ -2572,7 +2569,7 @@ function WorkOrderFormInline({ assetId, onSuccess, onCancel, employees }: {
 
   return (
     <OverlayPortal>
-      <div className={SAFETY_MODAL_OVERLAY} onClick={onCancel}>
+      <SafetyModalOverlayBackdrop onBackdropClick={onCancel}>
         <SafetyFormModalLayout
           widthClass="w-[640px]"
           titleId={newWoTitleId}
@@ -2676,7 +2673,7 @@ function WorkOrderFormInline({ assetId, onSuccess, onCancel, employees }: {
             </div>
           </form>
         </SafetyFormModalLayout>
-      </div>
+      </SafetyModalOverlayBackdrop>
     </OverlayPortal>
   );
 }
@@ -3016,7 +3013,7 @@ function AssignModal({
 
   return (
     <OverlayPortal>
-      <div className={SAFETY_MODAL_OVERLAY}>
+      <SafetyModalOverlayBackdrop>
         <SafetyFormModalLayout
           widthClass="w-[900px]"
           titleId="fleet-assign-modal-title"
@@ -3209,7 +3206,7 @@ function AssignModal({
               </div>
           </form>
         </SafetyFormModalLayout>
-      </div>
+      </SafetyModalOverlayBackdrop>
     </OverlayPortal>
   );
 }
@@ -3255,7 +3252,7 @@ function FleetHistoryAuditChangeModal({
 
   return (
     <OverlayPortal>
-      <div className={SAFETY_MODAL_OVERLAY}>
+      <SafetyModalOverlayBackdrop>
         <SafetyFormModalLayout
           widthClass="w-[720px]"
           titleId="fleet-history-audit-change-title"
@@ -3319,7 +3316,7 @@ function FleetHistoryAuditChangeModal({
             </div>
           )}
         </SafetyFormModalLayout>
-      </div>
+      </SafetyModalOverlayBackdrop>
     </OverlayPortal>
   );
 }
@@ -3486,7 +3483,7 @@ function AssignmentLogDetailModal({
   return (
     <>
       <OverlayPortal>
-        <div className={SAFETY_MODAL_OVERLAY}>
+        <SafetyModalOverlayBackdrop>
           <SafetyFormModalLayout
             widthClass="w-[640px]"
             titleId="fleet-assignment-log-detail-title"
@@ -3626,7 +3623,7 @@ function AssignmentLogDetailModal({
               )}
             </div>
           </SafetyFormModalLayout>
-        </div>
+        </SafetyModalOverlayBackdrop>
       </OverlayPortal>
       {lightbox && (
         <AssignmentImageLightbox
@@ -3707,7 +3704,7 @@ function ReturnModal({
 
   return (
     <OverlayPortal>
-      <div className={SAFETY_MODAL_OVERLAY}>
+      <SafetyModalOverlayBackdrop>
         <SafetyFormModalLayout
           widthClass="w-[640px]"
           titleId="fleet-return-modal-title"
@@ -3782,7 +3779,7 @@ function ReturnModal({
             </div>
           </form>
         </SafetyFormModalLayout>
-      </div>
+      </SafetyModalOverlayBackdrop>
     </OverlayPortal>
   );
 }
@@ -3878,12 +3875,7 @@ function ComplianceModal({
 
   return (
     <OverlayPortal>
-      <div
-        className={SAFETY_MODAL_OVERLAY}
-        onClick={(e) => {
-          if (e.target === e.currentTarget) onClose();
-        }}
-      >
+      <SafetyModalOverlayBackdrop onBackdropClick={onClose}>
         <SafetyFormModalLayout
           widthClass="w-[min(880px,95vw)]"
           titleId={titleId}
@@ -4006,7 +3998,7 @@ function ComplianceModal({
             </div>
           </form>
         </SafetyFormModalLayout>
-      </div>
+      </SafetyModalOverlayBackdrop>
     </OverlayPortal>
   );
 }

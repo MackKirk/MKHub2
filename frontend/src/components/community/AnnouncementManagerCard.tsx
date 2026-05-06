@@ -1,10 +1,9 @@
 import { useState, useEffect, useRef, type SVGProps } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { api, withFileAccessTokenIfNeeded } from '@/lib/api';
+import { api } from '@/lib/api';
 import toast from 'react-hot-toast';
-import OverlayPortal from '@/components/OverlayPortal';
-import { CommunityPostBody } from '@/components/community/CommunityPostBody';
+import { CommunityNewPostPreviewModal } from '@/components/community/CommunityNewPostPreviewModal';
 import { useConfirm } from '@/components/ConfirmProvider';
 import { stripHtmlToPlain } from '@/lib/communityPostHtml';
 
@@ -37,6 +36,42 @@ const PRI_LABELS: Record<string, string> = {
   critical: 'Critical',
 };
 
+function mapStatusToPreviewPublishMode(st: string): 'now' | 'scheduled' | 'draft' | 'cancelled' {
+  if (st === 'draft') return 'draft';
+  if (st === 'scheduled') return 'scheduled';
+  if (st === 'cancelled') return 'cancelled';
+  return 'now';
+}
+
+function postToSavedAttachments(p: Record<string, unknown>): { fileId: string; name: string; url: string }[] {
+  const raw = Array.isArray(p.attachments) ? p.attachments : [];
+  if (raw.length > 0) {
+    return (raw as { file_id?: string; original_name?: string; url?: string }[])
+      .map((a) => ({
+        fileId: String(a.file_id || ''),
+        name: String(a.original_name || 'Attachment'),
+        url: String(a.url || ''),
+      }))
+      .filter((a) => a.fileId || a.url);
+  }
+  if (p.document_url) {
+    return [
+      {
+        fileId: String(p.document_file_id || ''),
+        name: String(p.document_original_name || 'Attachment'),
+        url: String(p.document_url),
+      },
+    ];
+  }
+  return [];
+}
+
+function authorInitialFromName(name: unknown): string | undefined {
+  const s = String(name || '').trim();
+  if (!s) return undefined;
+  return s.charAt(0).toUpperCase();
+}
+
 function IconUsers(props: SVGProps<SVGSVGElement>) {
   return (
     <svg className="shrink-0" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden {...props}>
@@ -66,14 +101,6 @@ function IconCheckCircle(props: SVGProps<SVGSVGElement>) {
   return (
     <svg className="shrink-0" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden {...props}>
       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-    </svg>
-  );
-}
-
-function CloseIcon() {
-  return (
-    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
-      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
     </svg>
   );
 }
@@ -206,6 +233,10 @@ export function AnnouncementManagerCard({ post }: { post: any }) {
   const showPublishNow = ['draft', 'scheduled', 'cancelled'].includes(status);
   const showCancelOrUnpublish = ['draft', 'scheduled', 'published'].includes(status);
   const displayPost = detailPost || post;
+
+  const ttRaw = String(displayPost.target_type || 'all');
+  const previewAudienceTarget: 'all' | 'divisions' | 'users' | 'groups' =
+    ttRaw === 'divisions' ? 'divisions' : ttRaw === 'users' ? 'users' : ttRaw === 'groups' ? 'groups' : 'all';
 
   const busyUnpublishOrCancel = unpublishToDraftMut.isPending || cancelMut.isPending;
 
@@ -521,72 +552,30 @@ export function AnnouncementManagerCard({ post }: { post: any }) {
         )}
         </div>
 
-        {viewOpen && (
-          <OverlayPortal>
-            <div
-              className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4"
-              onClick={() => setViewOpen(false)}
-              role="presentation"
-            >
-              <div
-                className="bg-white rounded-xl shadow-xl max-w-2xl w-full max-h-[90vh] overflow-hidden flex flex-col"
-                onClick={(e) => e.stopPropagation()}
-                role="dialog"
-                aria-modal="true"
-                aria-labelledby={`announcement-view-${post.id}`}
-              >
-                <div className="p-4 border-b flex items-start justify-between gap-3">
-                  <h3 id={`announcement-view-${post.id}`} className="text-lg font-semibold text-gray-900 pr-2">
-                    {displayPost.title || 'Announcement'}
-                  </h3>
-                  <button
-                    type="button"
-                    onClick={() => setViewOpen(false)}
-                    className="flex-shrink-0 p-2 rounded-lg text-gray-600 hover:text-gray-900 hover:bg-gray-100 transition-colors"
-                    aria-label="Close"
-                  >
-                    <CloseIcon />
-                  </button>
-                </div>
-                <div className="overflow-y-auto p-4 space-y-4 flex-1 min-h-0">
-                  {(() => {
-                    const p = displayPost as any;
-                    const atts =
-                      Array.isArray(p.attachments) && p.attachments.length > 0
-                        ? p.attachments
-                        : p.document_url
-                          ? [
-                              {
-                                file_id: p.document_file_id || '',
-                                url: p.document_url,
-                                original_name: p.document_original_name || 'Attachment',
-                              },
-                            ]
-                          : [];
-                    if (atts.length === 0) return null;
-                    return (
-                      <div className="space-y-2">
-                        {atts.map((att: { file_id: string; url: string; original_name: string }) => (
-                          <a
-                            key={att.file_id || att.url}
-                            href={withFileAccessTokenIfNeeded(String(att.url))}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            download={att.original_name || undefined}
-                            className="inline-flex items-center gap-2 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm font-medium text-blue-700 hover:bg-gray-100"
-                          >
-                            Download: {att.original_name}
-                          </a>
-                        ))}
-                      </div>
-                    );
-                  })()}
-                  <CommunityPostBody html={String(displayPost.content || '')} className="text-sm text-gray-800" />
-                </div>
-              </div>
-            </div>
-          </OverlayPortal>
-        )}
+        <CommunityNewPostPreviewModal
+          open={viewOpen}
+          onClose={() => setViewOpen(false)}
+          title={String(displayPost.title || '')}
+          content={String(displayPost.content || '')}
+          priority={String(displayPost.priority || 'normal')}
+          relatedArea={String(displayPost.related_area || 'general')}
+          requiresReadConfirmation={!!displayPost.requires_read_confirmation}
+          attachments={[]}
+          savedAttachments={postToSavedAttachments(displayPost as Record<string, unknown>)}
+          targetType={previewAudienceTarget}
+          divisionCount={(displayPost.target_division_ids || []).length}
+          selectedEmployeeCount={(displayPost.target_user_ids || []).length}
+          selectedGroupCount={0}
+          publishMode={mapStatusToPreviewPublishMode(String(displayPost.status || status))}
+          authorDisplayName={displayPost.author_name ? String(displayPost.author_name) : undefined}
+          dateDisplayLabel={
+            displayPost.updated_at || displayPost.created_at
+              ? formatTimeAgo(String(displayPost.updated_at || displayPost.created_at))
+              : undefined
+          }
+          authorInitial={authorInitialFromName(displayPost.author_name)}
+          titleId={`announcement-preview-${post.id}`}
+        />
       </div>
     </div>
   );

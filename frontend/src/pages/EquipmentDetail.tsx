@@ -8,7 +8,7 @@ import { formatDateLocal } from '@/lib/dateUtils';
 import OverlayPortal from '@/components/OverlayPortal';
 import { WorkOrderAttachmentsPicker } from '@/components/fleet/WorkOrderAttachmentsPicker';
 import {
-  SAFETY_MODAL_OVERLAY,
+  SafetyModalOverlayBackdrop,
   SAFETY_MODAL_BTN_CANCEL,
   SAFETY_MODAL_BTN_PRIMARY,
   SAFETY_MODAL_FIELD_LABEL,
@@ -782,7 +782,7 @@ function EquipmentWorkOrderFormInline({
 
   return (
     <OverlayPortal>
-      <div className={SAFETY_MODAL_OVERLAY} onClick={onCancel}>
+      <SafetyModalOverlayBackdrop onBackdropClick={onCancel}>
         <SafetyFormModalLayout
           widthClass="w-[640px]"
           titleId={newWoTitleId}
@@ -883,7 +883,7 @@ function EquipmentWorkOrderFormInline({
             </div>
           </form>
         </SafetyFormModalLayout>
-      </div>
+      </SafetyModalOverlayBackdrop>
     </OverlayPortal>
   );
 }

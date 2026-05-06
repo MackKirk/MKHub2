@@ -1,6 +1,6 @@
 import json
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta, date as _date
 from typing import Any, Dict, List, Optional, Set
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -18,7 +18,6 @@ from ..models.models import (
     CommunityMention,
     CommunityGroup,
     community_group_members,
-    CommunityGroupTopic,
     User,
     EmployeeProfile,
     user_divisions,
@@ -31,6 +30,7 @@ from ..auth.security import get_current_user, require_permissions, _has_permissi
 from ..services.community_fanout import (
     audience_user_ids,
     fanout_new_post_notifications,
+    group_member_ids,
     process_due_scheduled_notifications,
     resolve_mention_user_ids,
     notify_users_for_mentions,
@@ -45,6 +45,8 @@ VALID_RELATED_AREAS = frozenset({
     "safety", "fleet", "hr", "payroll", "training",
 })
 VALID_POST_STATUS = frozenset({"draft", "scheduled", "published", "cancelled"})
+
+COMMUNITY_GROUP_DESCRIPTION_MAX_LEN = 8000
 
 
 def _can_manage_post(user: User, post: CommunityPost) -> bool:
@@ -140,6 +142,64 @@ def _normalize_target_user_ids_payload(db: Session, raw: Any) -> List[str]:
     if not out:
         raise HTTPException(status_code=400, detail="Select at least one active employee")
     return out
+
+
+def _parse_community_group_ids_payload(raw: Any) -> List[str]:
+    if not isinstance(raw, list) or len(raw) == 0:
+        raise HTTPException(status_code=400, detail="target_community_group_ids must be a non-empty list")
+    out: List[str] = []
+    seen: Set[str] = set()
+    for x in raw:
+        try:
+            u = uuid.UUID(str(x).strip())
+        except Exception:
+            raise HTTPException(status_code=400, detail="Invalid community group id")
+        sid = str(u)
+        if sid in seen:
+            continue
+        seen.add(sid)
+        out.append(sid)
+    return out
+
+
+def _target_user_ids_from_community_group_ids(db: Session, group_id_strs: List[str]) -> List[str]:
+    """Union of active members of the given groups, capped at MAX_COMMUNITY_TARGET_USERS."""
+    member_ids: Set[uuid.UUID] = set()
+    for sid in group_id_strs:
+        gid = uuid.UUID(sid)
+        g = db.query(CommunityGroup).filter(CommunityGroup.id == gid).first()
+        if not g:
+            raise HTTPException(status_code=400, detail="Community group not found")
+        member_ids |= group_member_ids(db, gid)
+    if not member_ids:
+        raise HTTPException(status_code=400, detail="Selected community groups have no members")
+    rows = (
+        db.query(User.id)
+        .filter(User.id.in_(member_ids), User.is_active == True)
+        .order_by(User.id)
+        .limit(MAX_COMMUNITY_TARGET_USERS)
+        .all()
+    )
+    out = [str(r[0]) for r in rows]
+    if not out:
+        raise HTTPException(status_code=400, detail="Selected community groups have no active members")
+    return out
+
+
+def _resolve_users_target_for_create(db: Session, payload: dict) -> List[str]:
+    raw_g = payload.get("target_community_group_ids")
+    raw_u = payload.get("target_user_ids")
+    has_g = isinstance(raw_g, list) and len(raw_g) > 0
+    has_u = isinstance(raw_u, list) and len(raw_u) > 0
+    if has_g and has_u:
+        raise HTTPException(
+            status_code=400,
+            detail="Send either target_community_group_ids or target_user_ids, not both",
+        )
+    if has_g:
+        gids = _parse_community_group_ids_payload(raw_g)
+        return _target_user_ids_from_community_group_ids(db, gids)
+    return _normalize_target_user_ids_payload(db, raw_u)
 
 
 def _parse_attachment_files_raw(post: CommunityPost) -> List[Dict[str, str]]:
@@ -687,7 +747,7 @@ def create_post(
             raise HTTPException(status_code=400, detail="target_division_ids must be a non-empty list when target_type is 'divisions'")
         target_division_ids = [str(did) for did in target_division_ids]
     elif target_type == "users":
-        target_user_ids = _normalize_target_user_ids_payload(db, payload.get("target_user_ids"))
+        target_user_ids = _resolve_users_target_for_create(db, payload)
         target_division_ids = []
     else:
         target_division_ids = []
@@ -975,7 +1035,7 @@ def patch_community_post(
         else:
             post.attachment_files = [{"file_id": str(post.document_file_id), "name": "Attachment"}]
 
-    if any(k in payload for k in ("target_type", "target_division_ids", "target_user_ids")):
+    if any(k in payload for k in ("target_type", "target_division_ids", "target_user_ids", "target_community_group_ids")):
         tt = str(payload.get("target_type", post.target_type) or "all").lower()
         if tt not in ("all", "divisions", "users"):
             raise HTTPException(status_code=400, detail="Invalid target_type")
@@ -990,7 +1050,27 @@ def patch_community_post(
             post.target_division_ids = [str(x) for x in tdi]
             post.target_user_ids = []
         else:
-            post.target_user_ids = _normalize_target_user_ids_payload(db, payload.get("target_user_ids"))
+            raw_g = payload.get("target_community_group_ids")
+            raw_u = payload.get("target_user_ids")
+            key_g = "target_community_group_ids" in payload
+            key_u = "target_user_ids" in payload
+            has_g = key_g and isinstance(raw_g, list) and len(raw_g) > 0
+            has_u = key_u and isinstance(raw_u, list) and len(raw_u) > 0
+            if has_g and has_u:
+                raise HTTPException(
+                    status_code=400,
+                    detail="Send either target_community_group_ids or target_user_ids, not both",
+                )
+            if has_g:
+                gids = _parse_community_group_ids_payload(raw_g)
+                post.target_user_ids = _target_user_ids_from_community_group_ids(db, gids)
+            elif has_u:
+                post.target_user_ids = _normalize_target_user_ids_payload(db, raw_u)
+            elif key_g or key_u:
+                raise HTTPException(
+                    status_code=400,
+                    detail="When target_type is users, provide non-empty target_community_group_ids or target_user_ids",
+                )
             post.target_division_ids = []
 
     if "priority" in payload:
@@ -1362,6 +1442,48 @@ def toggle_like(
     }
 
 
+def _serialize_community_comment(db: Session, comment: CommunityPostComment) -> Dict[str, Any]:
+    user = db.query(User).filter(User.id == comment.user_id).first()
+    user_profile = db.query(EmployeeProfile).filter(EmployeeProfile.user_id == comment.user_id).first() if user else None
+    user_name = None
+    user_avatar = None
+    if user_profile:
+        user_name = user_profile.preferred_name or f"{user_profile.first_name or ''} {user_profile.last_name or ''}".strip()
+        if user_profile.profile_photo_file_id:
+            user_avatar = f"/files/{user_profile.profile_photo_file_id}/thumbnail?w=96"
+    if not user_name and user:
+        user_name = user.username
+    return {
+        "id": str(comment.id),
+        "user_id": str(comment.user_id),
+        "user_name": user_name,
+        "user_avatar": user_avatar,
+        "content": comment.content,
+        "parent_comment_id": str(comment.parent_comment_id) if getattr(comment, "parent_comment_id", None) else None,
+        "created_at": comment.created_at.isoformat() if comment.created_at else None,
+        "updated_at": comment.updated_at.isoformat() if comment.updated_at else None,
+    }
+
+
+def _delete_comment_subtree(db: Session, comment_id: uuid.UUID, post_uuid: uuid.UUID) -> int:
+    """Delete a comment and all replies beneath it. Returns number of comments removed."""
+    children = db.query(CommunityPostComment).filter(
+        CommunityPostComment.post_id == post_uuid,
+        CommunityPostComment.parent_comment_id == comment_id,
+    ).all()
+    deleted = 0
+    for ch in children:
+        deleted += _delete_comment_subtree(db, ch.id, post_uuid)
+    row = db.query(CommunityPostComment).filter(
+        CommunityPostComment.id == comment_id,
+        CommunityPostComment.post_id == post_uuid,
+    ).first()
+    if row:
+        db.delete(row)
+        deleted += 1
+    return deleted
+
+
 @router.get("/posts/{post_id}/comments")
 def list_comments(
     post_id: str,
@@ -1384,35 +1506,8 @@ def list_comments(
     comments = db.query(CommunityPostComment).filter(
         CommunityPostComment.post_id == post_uuid
     ).order_by(CommunityPostComment.created_at.asc()).all()
-    
-    result = []
-    for comment in comments:
-        user = db.query(User).filter(User.id == comment.user_id).first()
-        user_profile = db.query(EmployeeProfile).filter(EmployeeProfile.user_id == comment.user_id).first() if user else None
-        
-        user_name = None
-        user_avatar = None
-        
-        if user_profile:
-            user_name = user_profile.preferred_name or f"{user_profile.first_name or ''} {user_profile.last_name or ''}".strip()
-            if user_profile.profile_photo_file_id:
-                user_avatar = f"/files/{user_profile.profile_photo_file_id}/thumbnail?w=96"
-        
-        if not user_name and user:
-            user_name = user.username
-        
-        result.append({
-            "id": str(comment.id),
-            "user_id": str(comment.user_id),
-            "user_name": user_name,
-            "user_avatar": user_avatar,
-            "content": comment.content,
-            "parent_comment_id": str(comment.parent_comment_id) if getattr(comment, "parent_comment_id", None) else None,
-            "created_at": comment.created_at.isoformat() if comment.created_at else None,
-            "updated_at": comment.updated_at.isoformat() if comment.updated_at else None,
-        })
-    
-    return result
+
+    return [_serialize_community_comment(db, c) for c in comments]
 
 
 @router.post("/posts/{post_id}/comments")
@@ -1480,38 +1575,106 @@ def create_comment(
 
     if payload.get("mentions"):
         _replace_comment_mentions(db, comment.id, post_uuid, payload.get("mentions"), current_user.id)
-    
-    # Get comment author info
-    user = db.query(User).filter(User.id == current_user.id).first()
-    user_profile = db.query(EmployeeProfile).filter(EmployeeProfile.user_id == current_user.id).first() if user else None
-    
-    user_name = None
-    user_avatar = None
-    
-    if user_profile:
-        user_name = user_profile.preferred_name or f"{user_profile.first_name or ''} {user_profile.last_name or ''}".strip()
-        if user_profile.profile_photo_file_id:
-            user_avatar = f"/files/{user_profile.profile_photo_file_id}/thumbnail?w=96"
-    
-    if not user_name and user:
-        user_name = user.username
-    
-    # Get updated comments count
+
+    db.refresh(comment)
+
     comments_count = db.query(CommunityPostComment).filter(
         CommunityPostComment.post_id == post_uuid
     ).count()
-    
-    return {
-        "id": str(comment.id),
-        "user_id": str(comment.user_id),
-        "user_name": user_name,
-        "user_avatar": user_avatar,
-        "content": comment.content,
-        "parent_comment_id": str(comment.parent_comment_id) if comment.parent_comment_id else None,
-        "created_at": comment.created_at.isoformat() if comment.created_at else None,
-        "updated_at": comment.updated_at.isoformat() if comment.updated_at else None,
-        "comments_count": comments_count,
-    }
+
+    out = _serialize_community_comment(db, comment)
+    out["comments_count"] = comments_count
+    return out
+
+
+@router.patch("/posts/{post_id}/comments/{comment_id}")
+def update_comment(
+    post_id: str,
+    comment_id: str,
+    payload: dict,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Edit own comment on a post."""
+    try:
+        post_uuid = uuid.UUID(str(post_id))
+        comment_uuid = uuid.UUID(str(comment_id))
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid id format")
+
+    post = db.query(CommunityPost).filter(CommunityPost.id == post_uuid).first()
+    if not post:
+        raise HTTPException(status_code=404, detail="Post not found")
+    _assert_reader_can_access_post(db, post, current_user)
+
+    comment = db.query(CommunityPostComment).filter(
+        CommunityPostComment.id == comment_uuid,
+        CommunityPostComment.post_id == post_uuid,
+    ).first()
+    if not comment:
+        raise HTTPException(status_code=404, detail="Comment not found")
+    if comment.user_id != current_user.id:
+        raise HTTPException(status_code=403, detail="You can only edit your own comments")
+
+    content = payload.get("content", "")
+    if isinstance(content, str):
+        content = content.strip()
+    if not content:
+        raise HTTPException(status_code=400, detail="Comment content is required")
+
+    comment.content = content
+    comment.updated_at = datetime.now(timezone.utc)
+    db.add(comment)
+    db.commit()
+    db.refresh(comment)
+
+    _replace_comment_mentions(db, comment.id, post_uuid, payload.get("mentions"), current_user.id)
+
+    db.refresh(comment)
+
+    comments_count = db.query(CommunityPostComment).filter(
+        CommunityPostComment.post_id == post_uuid
+    ).count()
+    out = _serialize_community_comment(db, comment)
+    out["comments_count"] = comments_count
+    return out
+
+
+@router.delete("/posts/{post_id}/comments/{comment_id}")
+def delete_comment(
+    post_id: str,
+    comment_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Delete own comment (and any replies under it)."""
+    try:
+        post_uuid = uuid.UUID(str(post_id))
+        comment_uuid = uuid.UUID(str(comment_id))
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid id format")
+
+    post = db.query(CommunityPost).filter(CommunityPost.id == post_uuid).first()
+    if not post:
+        raise HTTPException(status_code=404, detail="Post not found")
+    _assert_reader_can_access_post(db, post, current_user)
+
+    comment = db.query(CommunityPostComment).filter(
+        CommunityPostComment.id == comment_uuid,
+        CommunityPostComment.post_id == post_uuid,
+    ).first()
+    if not comment:
+        raise HTTPException(status_code=404, detail="Comment not found")
+    if comment.user_id != current_user.id:
+        raise HTTPException(status_code=403, detail="You can only delete your own comments")
+
+    removed = _delete_comment_subtree(db, comment_uuid, post_uuid)
+    db.commit()
+
+    comments_count = db.query(CommunityPostComment).filter(
+        CommunityPostComment.post_id == post_uuid
+    ).count()
+    return {"removed": removed, "comments_count": comments_count}
 
 
 @router.get("/posts/{post_id}/recipients-pending")
@@ -1556,6 +1719,176 @@ def list_recipients_pending(
     return {"pending": out, "total_audience": len(audience), "pending_count": len(out)}
 
 
+def _parse_insights_range(date_from: Optional[str], date_to: Optional[str]) -> tuple[datetime, datetime, int]:
+    if not date_from or not date_to:
+        raise HTTPException(status_code=400, detail="from and to query params are required (YYYY-MM-DD)")
+    try:
+        df_raw = datetime.fromisoformat(date_from.replace("Z", "+00:00"))
+        dt_raw = datetime.fromisoformat(date_to.replace("Z", "+00:00"))
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid date range")
+    # Normalize to inclusive day boundaries in UTC so the [from, to] range covers the
+    # full calendar days the user picked, regardless of timezone the input came in with.
+    df = datetime(df_raw.year, df_raw.month, df_raw.day, 0, 0, 0, tzinfo=timezone.utc)
+    dt = datetime(dt_raw.year, dt_raw.month, dt_raw.day, 23, 59, 59, 999999, tzinfo=timezone.utc)
+    if dt < df:
+        raise HTTPException(status_code=400, detail="`to` must be on or after `from`")
+    span_days = max(1, (dt.date() - df.date()).days + 1)
+    return df, dt, span_days
+
+
+def _kpi_block(db: Session, df: datetime, dt: datetime) -> Dict[str, Any]:
+    """Compute the headline KPIs for the [df, dt] window. All counts are scoped to the window."""
+    posts_published = (
+        db.query(func.count(CommunityPost.id))
+        .filter(
+            CommunityPost.status == "published",
+            func.coalesce(CommunityPost.publish_at, CommunityPost.created_at) >= df,
+            func.coalesce(CommunityPost.publish_at, CommunityPost.created_at) <= dt,
+        )
+        .scalar()
+        or 0
+    )
+    post_views = (
+        db.query(func.count(CommunityPostView.id))
+        .filter(CommunityPostView.viewed_at >= df, CommunityPostView.viewed_at <= dt)
+        .scalar()
+        or 0
+    )
+    comments_made = (
+        db.query(func.count(CommunityPostComment.id))
+        .filter(CommunityPostComment.created_at >= df, CommunityPostComment.created_at <= dt)
+        .scalar()
+        or 0
+    )
+    likes_total = (
+        db.query(func.count(CommunityPostLike.id))
+        .filter(CommunityPostLike.liked_at >= df, CommunityPostLike.liked_at <= dt)
+        .scalar()
+        or 0
+    )
+
+    # Active members = distinct users with any view/like/comment in the window.
+    view_users = db.query(CommunityPostView.user_id).filter(
+        CommunityPostView.viewed_at >= df, CommunityPostView.viewed_at <= dt
+    )
+    like_users = db.query(CommunityPostLike.user_id).filter(
+        CommunityPostLike.liked_at >= df, CommunityPostLike.liked_at <= dt
+    )
+    comment_users = db.query(CommunityPostComment.user_id).filter(
+        CommunityPostComment.created_at >= df, CommunityPostComment.created_at <= dt
+    )
+    active_user_ids = {row[0] for row in view_users.union(like_users, comment_users).all()}
+    active_members = len(active_user_ids)
+
+    engagement_rate_pct = round(((likes_total + comments_made) / post_views) * 100.0, 1) if post_views else 0.0
+
+    return {
+        "posts_published": int(posts_published),
+        "post_views": int(post_views),
+        "comments_made": int(comments_made),
+        "likes_total": int(likes_total),
+        "active_members": int(active_members),
+        "engagement_rate_pct": engagement_rate_pct,
+    }
+
+
+def _daily_series(db: Session, df: datetime, dt: datetime) -> Dict[str, List[Dict[str, Any]]]:
+    """Per-day arrays of {date, count} aligned across all metrics for the window."""
+    # Build the full date axis so charts have continuous bars even on zero-traffic days.
+    start_d = df.date()
+    end_d = dt.date()
+    days: List[str] = []
+    cur = start_d
+    while cur <= end_d:
+        days.append(cur.isoformat())
+        cur = cur + timedelta(days=1)
+
+    def _bucketize(rows: List[tuple], default_zero: bool = True) -> List[Dict[str, Any]]:
+        by_day: Dict[str, int] = {d: 0 for d in days} if default_zero else {}
+        for row_date, row_count in rows:
+            if row_date is None:
+                continue
+            key = row_date if isinstance(row_date, str) else row_date.isoformat()
+            by_day[key] = by_day.get(key, 0) + int(row_count or 0)
+        return [{"date": d, "count": by_day.get(d, 0)} for d in days]
+
+    publish_col = func.coalesce(CommunityPost.publish_at, CommunityPost.created_at)
+    posts_rows = (
+        db.query(func.date(publish_col).label("d"), func.count(CommunityPost.id))
+        .filter(
+            CommunityPost.status == "published",
+            publish_col >= df,
+            publish_col <= dt,
+        )
+        .group_by(func.date(publish_col))
+        .all()
+    )
+    views_rows = (
+        db.query(func.date(CommunityPostView.viewed_at), func.count(CommunityPostView.id))
+        .filter(CommunityPostView.viewed_at >= df, CommunityPostView.viewed_at <= dt)
+        .group_by(func.date(CommunityPostView.viewed_at))
+        .all()
+    )
+    likes_rows = (
+        db.query(func.date(CommunityPostLike.liked_at), func.count(CommunityPostLike.id))
+        .filter(CommunityPostLike.liked_at >= df, CommunityPostLike.liked_at <= dt)
+        .group_by(func.date(CommunityPostLike.liked_at))
+        .all()
+    )
+    comments_rows = (
+        db.query(func.date(CommunityPostComment.created_at), func.count(CommunityPostComment.id))
+        .filter(CommunityPostComment.created_at >= df, CommunityPostComment.created_at <= dt)
+        .group_by(func.date(CommunityPostComment.created_at))
+        .all()
+    )
+    # Active users per day = distinct (user_id) across views/likes/comments on that day.
+    view_users_rows = (
+        db.query(func.date(CommunityPostView.viewed_at), CommunityPostView.user_id)
+        .filter(CommunityPostView.viewed_at >= df, CommunityPostView.viewed_at <= dt)
+        .all()
+    )
+    like_users_rows = (
+        db.query(func.date(CommunityPostLike.liked_at), CommunityPostLike.user_id)
+        .filter(CommunityPostLike.liked_at >= df, CommunityPostLike.liked_at <= dt)
+        .all()
+    )
+    comment_users_rows = (
+        db.query(func.date(CommunityPostComment.created_at), CommunityPostComment.user_id)
+        .filter(CommunityPostComment.created_at >= df, CommunityPostComment.created_at <= dt)
+        .all()
+    )
+    by_day_users: Dict[str, set] = {d: set() for d in days}
+    for ds, uid in list(view_users_rows) + list(like_users_rows) + list(comment_users_rows):
+        if ds is None or uid is None:
+            continue
+        key = ds if isinstance(ds, str) else ds.isoformat()
+        by_day_users.setdefault(key, set()).add(uid)
+    active_users_series = [{"date": d, "count": len(by_day_users.get(d, set()))} for d in days]
+
+    return {
+        "posts_published": _bucketize(posts_rows),
+        "views": _bucketize(views_rows),
+        "likes": _bucketize(likes_rows),
+        "comments": _bucketize(comments_rows),
+        "active_users": active_users_series,
+    }
+
+
+def _author_display(db: Session, user_id: uuid.UUID) -> Dict[str, Optional[str]]:
+    user = db.query(User).filter(User.id == user_id).first()
+    profile = db.query(EmployeeProfile).filter(EmployeeProfile.user_id == user_id).first() if user else None
+    name: Optional[str] = None
+    avatar_url: Optional[str] = None
+    if profile:
+        name = (profile.preferred_name or f"{profile.first_name or ''} {profile.last_name or ''}".strip()) or None
+        if profile.profile_photo_file_id:
+            avatar_url = f"/files/{profile.profile_photo_file_id}/thumbnail?w=96"
+    if not name and user:
+        name = user.username
+    return {"name": name or "Unknown", "avatar_url": avatar_url}
+
+
 @router.get("/insights")
 def community_insights(
     date_from: Optional[str] = Query(None, alias="from"),
@@ -1563,116 +1896,319 @@ def community_insights(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_permissions("hr:community:write")),
 ):
-    """Aggregate community metrics for HR (published posts in date range)."""
-    if not date_from or not date_to:
-        raise HTTPException(status_code=400, detail="from and to query params are required (YYYY-MM-DD)")
-    try:
-        df = datetime.fromisoformat(date_from.replace("Z", "+00:00"))
-        dt = datetime.fromisoformat(date_to.replace("Z", "+00:00"))
-    except Exception:
-        raise HTTPException(status_code=400, detail="Invalid date range")
+    """Aggregate community metrics for HR for the [from, to] window.
 
-    posts = (
+    All counts are date-scoped to the window. A `previous` block returns the
+    same KPIs computed over the immediately-preceding window of equal length so
+    the frontend can render delta chips. `daily` provides per-day series for
+    sparklines and the activity timeline.
+    """
+    df, dt, span_days = _parse_insights_range(date_from, date_to)
+
+    prev_dt = df - timedelta(microseconds=1)
+    prev_df = datetime(
+        (df - timedelta(days=span_days)).year,
+        (df - timedelta(days=span_days)).month,
+        (df - timedelta(days=span_days)).day,
+        0, 0, 0, tzinfo=timezone.utc,
+    )
+
+    # ------------------------------------------------------------------
+    # Posts in the current window (used for top posts, area/priority breakdowns,
+    # read-confirmation health, and avg read rate).
+    # ------------------------------------------------------------------
+    publish_col = func.coalesce(CommunityPost.publish_at, CommunityPost.created_at)
+    posts_in_range = (
         db.query(CommunityPost)
         .filter(
-            CommunityPost.status.in_(["published", "scheduled", "cancelled"]),
-            func.coalesce(CommunityPost.publish_at, CommunityPost.created_at) >= df,
-            func.coalesce(CommunityPost.publish_at, CommunityPost.created_at) <= dt,
+            CommunityPost.status == "published",
+            publish_col >= df,
+            publish_col <= dt,
         )
         .all()
     )
 
-    posts_made = len([p for p in posts if p.status == "published"])
-    post_views = db.query(CommunityPostView).count()
-    comments_made = db.query(CommunityPostComment).count()
-    likes_total = db.query(CommunityPostLike).count()
+    # Pre-aggregate per-post counts in batch (avoid N+1).
+    post_ids = [p.id for p in posts_in_range]
+    views_by_post: Dict[uuid.UUID, int] = {}
+    likes_by_post: Dict[uuid.UUID, int] = {}
+    comments_by_post: Dict[uuid.UUID, int] = {}
+    confirmations_by_post: Dict[uuid.UUID, int] = {}
+    if post_ids:
+        for pid, n in (
+            db.query(CommunityPostView.post_id, func.count(CommunityPostView.id))
+            .filter(CommunityPostView.post_id.in_(post_ids))
+            .group_by(CommunityPostView.post_id)
+            .all()
+        ):
+            views_by_post[pid] = int(n or 0)
+        for pid, n in (
+            db.query(CommunityPostLike.post_id, func.count(CommunityPostLike.id))
+            .filter(CommunityPostLike.post_id.in_(post_ids))
+            .group_by(CommunityPostLike.post_id)
+            .all()
+        ):
+            likes_by_post[pid] = int(n or 0)
+        for pid, n in (
+            db.query(CommunityPostComment.post_id, func.count(CommunityPostComment.id))
+            .filter(CommunityPostComment.post_id.in_(post_ids))
+            .group_by(CommunityPostComment.post_id)
+            .all()
+        ):
+            comments_by_post[pid] = int(n or 0)
+        for pid, n in (
+            db.query(CommunityPostReadConfirmation.post_id, func.count(CommunityPostReadConfirmation.id))
+            .filter(CommunityPostReadConfirmation.post_id.in_(post_ids))
+            .group_by(CommunityPostReadConfirmation.post_id)
+            .all()
+        ):
+            confirmations_by_post[pid] = int(n or 0)
 
-    active_members = db.query(CommunityPostView.user_id).distinct().count()
+    # Audience size per post (uses the existing helper; cached locally).
+    audience_by_post: Dict[uuid.UUID, int] = {p.id: len(audience_user_ids(db, p)) for p in posts_in_range}
 
-    posting_activity = []
-    by_day: Dict[str, int] = {}
-    for p in posts:
-        if p.status != "published":
+    # ------------------------------------------------------------------
+    # Headline KPIs + previous-period block + daily series.
+    # ------------------------------------------------------------------
+    kpis = _kpi_block(db, df, dt)
+    previous = _kpi_block(db, prev_df, prev_dt)
+    daily = _daily_series(db, df, dt)
+
+    # Average read rate across published posts in the window (only posts with audience).
+    read_rates = []
+    for p in posts_in_range:
+        aud = audience_by_post.get(p.id, 0)
+        if aud <= 0:
             continue
-        key = (p.publish_at or p.created_at).strftime("%Y-%m-%d") if (p.publish_at or p.created_at) else ""
-        by_day[key] = by_day.get(key, 0) + 1
-    for k in sorted(by_day.keys()):
-        posting_activity.append({"date": k, "count": by_day[k]})
+        read_rates.append((views_by_post.get(p.id, 0) / aud) * 100.0)
+    avg_read_rate_pct = round(sum(read_rates) / len(read_rates), 1) if read_rates else 0.0
+    kpis["avg_read_rate_pct"] = avg_read_rate_pct
 
-    top_posts = []
-    for p in posts:
-        if p.status != "published":
-            continue
-        vc = db.query(CommunityPostView).filter(CommunityPostView.post_id == p.id).count()
-        cc = db.query(CommunityPostComment).filter(CommunityPostComment.post_id == p.id).count()
-        lc = db.query(CommunityPostLike).filter(CommunityPostLike.post_id == p.id).count()
-        rc = db.query(CommunityPostReadConfirmation).filter(CommunityPostReadConfirmation.post_id == p.id).count()
+    # Same metric for the previous window (so the KPI card can show a delta).
+    prev_publish_col = func.coalesce(CommunityPost.publish_at, CommunityPost.created_at)
+    prev_posts = (
+        db.query(CommunityPost)
+        .filter(
+            CommunityPost.status == "published",
+            prev_publish_col >= prev_df,
+            prev_publish_col <= prev_dt,
+        )
+        .all()
+    )
+    prev_read_rates = []
+    for p in prev_posts:
         aud = len(audience_user_ids(db, p))
-        read_rate = (vc / aud * 100.0) if aud else 0.0
+        if aud <= 0:
+            continue
+        vc = (
+            db.query(func.count(CommunityPostView.id))
+            .filter(CommunityPostView.post_id == p.id)
+            .scalar()
+            or 0
+        )
+        prev_read_rates.append((int(vc) / aud) * 100.0)
+    previous["avg_read_rate_pct"] = round(sum(prev_read_rates) / len(prev_read_rates), 1) if prev_read_rates else 0.0
+
+    # ------------------------------------------------------------------
+    # Engagement breakdowns by area and priority (covers all valid keys, even with 0).
+    # ------------------------------------------------------------------
+    def _empty_bucket() -> Dict[str, float]:
+        return {"posts": 0, "views": 0, "likes": 0, "comments": 0, "read_rate_sum": 0.0, "read_rate_n": 0}
+
+    area_buckets: Dict[str, Dict[str, float]] = {a: _empty_bucket() for a in VALID_RELATED_AREAS}
+    priority_buckets: Dict[str, Dict[str, float]] = {pr: _empty_bucket() for pr in VALID_PRIORITIES}
+
+    for p in posts_in_range:
+        area = (getattr(p, "related_area", None) or "general")
+        if area not in area_buckets:
+            area_buckets[area] = _empty_bucket()
+        priority = (getattr(p, "priority", None) or "normal")
+        if priority not in priority_buckets:
+            priority_buckets[priority] = _empty_bucket()
+
+        v = views_by_post.get(p.id, 0)
+        l = likes_by_post.get(p.id, 0)
+        c = comments_by_post.get(p.id, 0)
+        aud = audience_by_post.get(p.id, 0)
+        rate = (v / aud) * 100.0 if aud else None
+
+        for bucket in (area_buckets[area], priority_buckets[priority]):
+            bucket["posts"] += 1
+            bucket["views"] += v
+            bucket["likes"] += l
+            bucket["comments"] += c
+            if rate is not None:
+                bucket["read_rate_sum"] += rate
+                bucket["read_rate_n"] += 1
+
+    def _finalize_buckets(buckets: Dict[str, Dict[str, float]]) -> Dict[str, Dict[str, float]]:
+        out: Dict[str, Dict[str, float]] = {}
+        for k, b in buckets.items():
+            n = b["read_rate_n"]
+            out[k] = {
+                "posts": int(b["posts"]),
+                "views": int(b["views"]),
+                "likes": int(b["likes"]),
+                "comments": int(b["comments"]),
+                "read_rate_pct": round(b["read_rate_sum"] / n, 1) if n else 0.0,
+            }
+        return out
+
+    engagement_by_area = _finalize_buckets(area_buckets)
+    engagement_by_priority = _finalize_buckets(priority_buckets)
+
+    # ------------------------------------------------------------------
+    # Top posts (rich rows for the UI).
+    # ------------------------------------------------------------------
+    enriched_posts: List[Dict[str, Any]] = []
+    author_cache: Dict[uuid.UUID, Dict[str, Optional[str]]] = {}
+    for p in posts_in_range:
+        if p.author_id not in author_cache:
+            author_cache[p.author_id] = _author_display(db, p.author_id)
+        author = author_cache[p.author_id]
+
+        v = views_by_post.get(p.id, 0)
+        l = likes_by_post.get(p.id, 0)
+        c = comments_by_post.get(p.id, 0)
+        rc = confirmations_by_post.get(p.id, 0)
+        aud = audience_by_post.get(p.id, 0)
+        read_rate = (v / aud * 100.0) if aud else 0.0
         conf_rate = (rc / aud * 100.0) if aud and p.requires_read_confirmation else None
-        top_posts.append({
+        published_at = p.publish_at or p.created_at
+
+        enriched_posts.append({
             "post_id": str(p.id),
             "title": p.title,
-            "related_area": getattr(p, "related_area", "general"),
-            "priority": getattr(p, "priority", "normal"),
-            "views": vc,
-            "comments": cc,
-            "likes": lc,
+            "author_name": author.get("name"),
+            "author_avatar_url": author.get("avatar_url"),
+            "related_area": getattr(p, "related_area", "general") or "general",
+            "priority": getattr(p, "priority", "normal") or "normal",
+            "tags": list(p.tags or []),
+            "views": v,
+            "likes": l,
+            "comments": c,
             "confirmations": rc,
             "audience": aud,
             "read_rate_pct": round(read_rate, 1),
             "confirmation_rate_pct": round(conf_rate, 1) if conf_rate is not None else None,
-            "requires_read_confirmation": p.requires_read_confirmation,
+            "requires_read_confirmation": bool(p.requires_read_confirmation),
+            "published_at": published_at.isoformat() if published_at else None,
         })
-    top_posts.sort(key=lambda x: (x["likes"] + x["comments"], x["views"]), reverse=True)
-    top_posts = top_posts[:25]
 
-    area_engagement: Dict[str, Dict[str, float]] = {}
-    for row in top_posts:
-        area = row["related_area"]
-        area_engagement.setdefault(area, {"posts": 0, "views": 0, "likes": 0, "comments": 0})
-        area_engagement[area]["posts"] += 1
-        area_engagement[area]["views"] += row["views"]
-        area_engagement[area]["likes"] += row["likes"]
-        area_engagement[area]["comments"] += row["comments"]
+    top_posts = sorted(
+        enriched_posts,
+        key=lambda x: (x["likes"] + x["comments"], x["views"]),
+        reverse=True,
+    )[:10]
 
-    ignored_posts = []
-    for p in posts:
-        if p.status != "published" or not p.requires_read_confirmation:
+    # ------------------------------------------------------------------
+    # Top contributors (authors who published in the window).
+    # ------------------------------------------------------------------
+    contributors_agg: Dict[uuid.UUID, Dict[str, Any]] = {}
+    for p in posts_in_range:
+        bucket = contributors_agg.setdefault(
+            p.author_id,
+            {
+                "user_id": str(p.author_id),
+                "posts_count": 0,
+                "views_total": 0,
+                "likes_total": 0,
+                "comments_total": 0,
+            },
+        )
+        bucket["posts_count"] += 1
+        bucket["views_total"] += views_by_post.get(p.id, 0)
+        bucket["likes_total"] += likes_by_post.get(p.id, 0)
+        bucket["comments_total"] += comments_by_post.get(p.id, 0)
+
+    top_contributors: List[Dict[str, Any]] = []
+    for author_id, agg in contributors_agg.items():
+        if author_id not in author_cache:
+            author_cache[author_id] = _author_display(db, author_id)
+        author = author_cache[author_id]
+        agg["user_name"] = author.get("name")
+        agg["user_avatar_url"] = author.get("avatar_url")
+        agg["engagement_score"] = int(agg["likes_total"]) + int(agg["comments_total"])
+        top_contributors.append(agg)
+
+    top_contributors.sort(
+        key=lambda x: (x["posts_count"], x["engagement_score"], x["views_total"]),
+        reverse=True,
+    )
+    top_contributors = top_contributors[:10]
+
+    # ------------------------------------------------------------------
+    # Read-confirmation health (only required posts with an audience).
+    # ------------------------------------------------------------------
+    pending_posts: List[Dict[str, Any]] = []
+    confirmation_rates: List[float] = []
+    total_pending = 0
+    required_count = 0
+    for p in posts_in_range:
+        if not p.requires_read_confirmation:
             continue
-        aud = len(audience_user_ids(db, p))
-        rc = db.query(CommunityPostReadConfirmation).filter(CommunityPostReadConfirmation.post_id == p.id).count()
-        if aud and rc < aud:
-            ignored_posts.append({
+        aud = audience_by_post.get(p.id, 0)
+        if aud <= 0:
+            continue
+        required_count += 1
+        rc = confirmations_by_post.get(p.id, 0)
+        rate = (rc / aud) * 100.0
+        confirmation_rates.append(rate)
+        pending = max(0, aud - rc)
+        total_pending += pending
+        if pending > 0:
+            pending_posts.append({
                 "post_id": str(p.id),
                 "title": p.title,
-                "pending_confirmations": aud - rc,
+                "audience": aud,
+                "confirmed": rc,
+                "pending": pending,
+                "confirmation_rate_pct": round(rate, 1),
             })
+    pending_posts.sort(key=lambda x: x["pending"], reverse=True)
+    avg_confirmation_rate_pct = round(sum(confirmation_rates) / len(confirmation_rates), 1) if confirmation_rates else 0.0
 
-    total_members = db.query(User).filter(User.is_active == True).count()
+    # ------------------------------------------------------------------
+    # Workforce reach.
+    # ------------------------------------------------------------------
+    total_members = db.query(func.count(User.id)).filter(User.is_active == True).scalar() or 0  # noqa: E712
+    active_members = kpis["active_members"]
+    active_pct = round((active_members / total_members) * 100.0, 1) if total_members else 0.0
 
     return {
-        "posts_made": posts_made,
-        "post_views": post_views,
-        "active_members": active_members,
-        "comments_made": comments_made,
-        "likes_total": likes_total,
-        "views_via_website": post_views,
-        "views_via_email": 0,
-        "views_via_mobile": 0,
-        "email_opened": 0,
-        "email_clicked": 0,
-        "posting_activity": posting_activity,
-        "top_posts": top_posts,
-        "ignored_posts": ignored_posts[:50],
-        "member_distribution": {
-            "active_percentage": round((active_members / total_members * 100.0), 1) if total_members else 0,
-            "active_count": active_members,
-            "total_members": total_members,
-            "avg_posts_per_user": round(posts_made / max(active_members, 1), 2),
-            "avg_comments_per_user": round(comments_made / max(active_members, 1), 2),
+        "range": {
+            "from": df.date().isoformat(),
+            "to": dt.date().isoformat(),
+            "days": span_days,
         },
-        "engagement_by_area": area_engagement,
+        "previous_range": {
+            "from": prev_df.date().isoformat(),
+            "to": prev_dt.date().isoformat(),
+            "days": span_days,
+        },
+        "kpis": kpis,
+        "previous": previous,
+        "daily": daily,
+        "engagement_by_area": engagement_by_area,
+        "engagement_by_priority": engagement_by_priority,
+        "top_posts": top_posts,
+        "top_contributors": top_contributors,
+        "read_health": {
+            "required_posts_count": required_count,
+            "avg_confirmation_rate_pct": avg_confirmation_rate_pct,
+            "total_pending_confirmations": total_pending,
+            "pending_posts": pending_posts[:25],
+        },
+        "workforce_reach": {
+            "total_members": int(total_members),
+            "active_members": int(active_members),
+            "active_percentage": active_pct,
+            "posts_per_active_user": round(kpis["posts_published"] / max(active_members, 1), 2),
+            "views_per_active_user": round(kpis["post_views"] / max(active_members, 1), 2),
+            "engagement_per_active_user": round(
+                (kpis["likes_total"] + kpis["comments_made"]) / max(active_members, 1), 2
+            ),
+        },
     }
 
 
@@ -1685,23 +2221,27 @@ def list_groups(
     List all community groups.
     """
     groups = db.query(CommunityGroup).order_by(CommunityGroup.created_at.desc()).all()
-    
+
     result = []
     for group in groups:
         # Count members
         member_count = db.query(community_group_members).filter(
             community_group_members.c.group_id == group.id
         ).count()
-        
+        cid = getattr(current_user, "id", None)
+        creator_id = group.created_by_id
         result.append({
             "id": str(group.id),
             "name": group.name,
             "description": group.description,
             "photo_file_id": str(group.photo_file_id) if group.photo_file_id else None,
             "member_count": member_count,
+            "created_by_id": str(creator_id) if creator_id else None,
+            "is_owner": bool(cid and creator_id and creator_id == cid),
             "created_at": group.created_at.isoformat() if group.created_at else None,
+            "updated_at": group.updated_at.isoformat() if group.updated_at else None,
         })
-    
+
     return result
 
 
@@ -1718,9 +2258,14 @@ def create_group(
     """
     name = payload.get("name", "").strip()
     description = payload.get("description", "").strip() or None
-    
+
     if not name:
         raise HTTPException(status_code=400, detail="Name is required")
+    if description and len(description) > COMMUNITY_GROUP_DESCRIPTION_MAX_LEN:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Description exceeds {COMMUNITY_GROUP_DESCRIPTION_MAX_LEN} characters",
+        )
     
     # Check if group with same name already exists
     existing = db.query(CommunityGroup).filter(CommunityGroup.name == name).first()
@@ -1746,13 +2291,6 @@ def create_group(
         )
     )
     
-    # Create default "General" topic automatically
-    general_topic = CommunityGroupTopic(
-        group_id=group.id,
-        name="General",
-        created_at=datetime.now(timezone.utc),
-    )
-    db.add(general_topic)
     db.commit()
     
     return {
@@ -1793,6 +2331,8 @@ def get_group(
     # Count members
     member_count = len(member_ids)
     
+    cid = getattr(current_user, "id", None)
+    creator_id = group.created_by_id
     return {
         "id": str(group.id),
         "name": group.name,
@@ -1800,7 +2340,10 @@ def get_group(
         "photo_file_id": str(group.photo_file_id) if group.photo_file_id else None,
         "member_count": member_count,
         "member_ids": member_ids,
+        "created_by_id": str(creator_id) if creator_id else None,
+        "is_owner": bool(cid and creator_id and creator_id == cid),
         "created_at": group.created_at.isoformat() if group.created_at else None,
+        "updated_at": group.updated_at.isoformat() if group.updated_at else None,
     }
 
 
@@ -1900,7 +2443,23 @@ def update_group(
         if existing:
             raise HTTPException(status_code=400, detail="A group with this name already exists")
         group.name = name
-    
+
+    if "description" in payload:
+        desc_raw = payload.get("description")
+        if desc_raw is None:
+            group.description = None
+        else:
+            ds = str(desc_raw).strip() or ""
+            if not ds:
+                group.description = None
+            elif len(ds) > COMMUNITY_GROUP_DESCRIPTION_MAX_LEN:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Description exceeds {COMMUNITY_GROUP_DESCRIPTION_MAX_LEN} characters",
+                )
+            else:
+                group.description = ds
+
     # Update photo if provided
     if "photo_file_id" in payload:
         photo_file_id = payload.get("photo_file_id")
@@ -1911,7 +2470,7 @@ def update_group(
                 raise HTTPException(status_code=400, detail="Invalid photo_file_id format")
         else:
             group.photo_file_id = None
-    
+
     group.updated_at = datetime.now(timezone.utc)
     db.commit()
     db.refresh(group)
@@ -1928,99 +2487,7 @@ def update_group(
         "photo_file_id": str(group.photo_file_id) if group.photo_file_id else None,
         "member_count": member_count,
         "created_at": group.created_at.isoformat() if group.created_at else None,
-    }
-
-
-@router.get("/groups/{group_id}/topics")
-def list_group_topics(
-    group_id: str,
-    db: Session = Depends(get_db),
-    current_user = Depends(get_current_user)
-):
-    """
-    List all topics for a group.
-    """
-    try:
-        group_uuid = uuid.UUID(str(group_id))
-    except Exception:
-        raise HTTPException(status_code=400, detail="Invalid group_id format")
-    
-    group = db.query(CommunityGroup).filter(CommunityGroup.id == group_uuid).first()
-    if not group:
-        raise HTTPException(status_code=404, detail="Group not found")
-    
-    topics = db.query(CommunityGroupTopic).filter(
-        CommunityGroupTopic.group_id == group_uuid
-    ).order_by(CommunityGroupTopic.created_at.asc()).all()
-    
-    # Sort topics: "General" first, then others by creation date
-    topics_sorted = sorted(topics, key=lambda t: (t.name != "General", t.created_at or datetime.min.replace(tzinfo=timezone.utc)))
-    
-    result = []
-    for topic in topics_sorted:
-        # Count posts in this topic (placeholder - implement when posts are linked to topics)
-        posts_count = 0  # TODO: count posts with this topic_id
-        
-        result.append({
-            "id": str(topic.id),
-            "name": topic.name,
-            "posts_count": posts_count,
-            "created_at": topic.created_at.isoformat() if topic.created_at else None,
-        })
-    
-    return result
-
-
-@router.post("/groups/{group_id}/topics")
-def create_group_topic(
-    group_id: str,
-    payload: dict,
-    db: Session = Depends(get_db),
-    current_user = Depends(get_current_user)
-):
-    """
-    Create a new topic for a group.
-    """
-    try:
-        group_uuid = uuid.UUID(str(group_id))
-    except Exception:
-        raise HTTPException(status_code=400, detail="Invalid group_id format")
-    
-    group = db.query(CommunityGroup).filter(CommunityGroup.id == group_uuid).first()
-    if not group:
-        raise HTTPException(status_code=404, detail="Group not found")
-    
-    # Only group creator can create topics (or admin in the future)
-    if group.created_by_id != current_user.id:
-        raise HTTPException(status_code=403, detail="Only group creator can create topics")
-    
-    name = payload.get("name", "").strip()
-    if not name:
-        raise HTTPException(status_code=400, detail="Topic name is required")
-    
-    # Check if topic with same name already exists in this group
-    existing = db.query(CommunityGroupTopic).filter(
-        CommunityGroupTopic.group_id == group_uuid,
-        CommunityGroupTopic.name == name
-    ).first()
-    if existing:
-        raise HTTPException(status_code=400, detail="A topic with this name already exists in this group")
-    
-    topic = CommunityGroupTopic(
-        group_id=group_uuid,
-        name=name,
-        created_at=datetime.now(timezone.utc),
-    )
-    
-    db.add(topic)
-    db.commit()
-    db.refresh(topic)
-    
-    return {
-        "id": str(topic.id),
-        "name": topic.name,
-        "posts_count": 0,
-        "created_at": topic.created_at.isoformat() if topic.created_at else None,
+        "updated_at": group.updated_at.isoformat() if group.updated_at else None,
     }
 
 
@@ -2046,9 +2513,6 @@ def delete_group(
     if group.created_by_id != current_user.id:
         raise HTTPException(status_code=403, detail="Only group creator can delete the group")
     
-    # Delete all topics (cascade should handle this, but being explicit)
-    db.query(CommunityGroupTopic).filter(CommunityGroupTopic.group_id == group_uuid).delete()
-    
     # Delete all memberships (cascade should handle this)
     db.execute(
         community_group_members.delete().where(
@@ -2061,112 +2525,3 @@ def delete_group(
     db.commit()
     
     return {"status": "deleted"}
-
-
-@router.put("/groups/{group_id}/topics/{topic_id}")
-def update_group_topic(
-    group_id: str,
-    topic_id: str,
-    payload: dict,
-    db: Session = Depends(get_db),
-    current_user = Depends(get_current_user)
-):
-    """
-    Update a topic in a group (rename).
-    """
-    try:
-        group_uuid = uuid.UUID(str(group_id))
-        topic_uuid = uuid.UUID(str(topic_id))
-    except Exception:
-        raise HTTPException(status_code=400, detail="Invalid group_id or topic_id format")
-    
-    group = db.query(CommunityGroup).filter(CommunityGroup.id == group_uuid).first()
-    if not group:
-        raise HTTPException(status_code=404, detail="Group not found")
-    
-    # Only group creator can update topics
-    if group.created_by_id != current_user.id:
-        raise HTTPException(status_code=403, detail="Only group creator can update topics")
-    
-    topic = db.query(CommunityGroupTopic).filter(
-        CommunityGroupTopic.id == topic_uuid,
-        CommunityGroupTopic.group_id == group_uuid
-    ).first()
-    
-    if not topic:
-        raise HTTPException(status_code=404, detail="Topic not found")
-    
-    # Prevent renaming "General" topic
-    if topic.name == "General":
-        raise HTTPException(status_code=400, detail="Cannot rename the 'General' topic (Main Topic)")
-    
-    name = payload.get("name", "").strip()
-    if not name:
-        raise HTTPException(status_code=400, detail="Topic name is required")
-    
-    # Check if topic with same name already exists in this group (excluding current topic)
-    existing = db.query(CommunityGroupTopic).filter(
-        CommunityGroupTopic.group_id == group_uuid,
-        CommunityGroupTopic.name == name,
-        CommunityGroupTopic.id != topic_uuid
-    ).first()
-    if existing:
-        raise HTTPException(status_code=400, detail="A topic with this name already exists in this group")
-    
-    topic.name = name
-    topic.updated_at = datetime.now(timezone.utc)
-    db.commit()
-    db.refresh(topic)
-    
-    # Count posts in this topic (placeholder - implement when posts are linked to topics)
-    posts_count = 0  # TODO: count posts with this topic_id
-    
-    return {
-        "id": str(topic.id),
-        "name": topic.name,
-        "posts_count": posts_count,
-        "created_at": topic.created_at.isoformat() if topic.created_at else None,
-    }
-
-
-@router.delete("/groups/{group_id}/topics/{topic_id}")
-def delete_group_topic(
-    group_id: str,
-    topic_id: str,
-    db: Session = Depends(get_db),
-    current_user = Depends(get_current_user)
-):
-    """
-    Delete a topic from a group.
-    """
-    try:
-        group_uuid = uuid.UUID(str(group_id))
-        topic_uuid = uuid.UUID(str(topic_id))
-    except Exception:
-        raise HTTPException(status_code=400, detail="Invalid group_id or topic_id format")
-    
-    group = db.query(CommunityGroup).filter(CommunityGroup.id == group_uuid).first()
-    if not group:
-        raise HTTPException(status_code=404, detail="Group not found")
-    
-    # Only group creator can delete topics
-    if group.created_by_id != current_user.id:
-        raise HTTPException(status_code=403, detail="Only group creator can delete topics")
-    
-    topic = db.query(CommunityGroupTopic).filter(
-        CommunityGroupTopic.id == topic_uuid,
-        CommunityGroupTopic.group_id == group_uuid
-    ).first()
-    
-    if not topic:
-        raise HTTPException(status_code=404, detail="Topic not found")
-    
-    # Prevent deletion of the "General" topic (Main Topic)
-    if topic.name == "General":
-        raise HTTPException(status_code=400, detail="Cannot delete the 'General' topic (Main Topic)")
-    
-    db.delete(topic)
-    db.commit()
-    
-    return {"status": "deleted"}
-

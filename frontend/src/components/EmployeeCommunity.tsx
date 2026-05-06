@@ -1,4 +1,5 @@
 import React, { useState, useMemo, useRef, useEffect } from 'react';
+import { motion, AnimatePresence, useReducedMotion } from 'framer-motion';
 import type { Editor } from '@tiptap/core';
 import { useSearchParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -6,7 +7,10 @@ import { api, withFileAccessTokenIfNeeded } from '@/lib/api';
 import toast from 'react-hot-toast';
 import OverlayPortal from '@/components/OverlayPortal';
 import { CommunityPostBody } from '@/components/community/CommunityPostBody';
+import { CommunityFeedPostSnippet } from '@/components/community/CommunityFeedPostSnippet';
+import CommunityDirectoryUserPeekModal from '@/components/community/CommunityDirectoryUserPeekModal';
 import CommunityCommentRichTextEditor from '@/components/community/CommunityCommentRichTextEditor';
+import { useConfirm } from '@/components/ConfirmProvider';
 import { extractMentionsFromEditor } from '@/lib/communityPostEditorUtils';
 import { isCommunityEditorHtmlEmpty, sanitizeCommunityPostHtml } from '@/lib/communityPostHtml';
 
@@ -78,17 +82,28 @@ type EmployeeCommunityProps = {
 
 export default function EmployeeCommunity({ expanded = false, feedMode = false }: EmployeeCommunityProps) {
   const [searchParams, setSearchParams] = useSearchParams();
-  const [filter, setFilter] = useState<'all' | 'unread' | 'required' | 'announcements' | 'urgent'>('all');
+  const [filter, setFilter] = useState<'all' | 'unread' | 'required' | 'urgent'>('all');
   const [searchQ, setSearchQ] = useState('');
   const [relatedAreaFilter, setRelatedAreaFilter] = useState('');
   const [priorityFilter, setPriorityFilter] = useState('');
   const [confirmedOnly, setConfirmedOnly] = useState(false);
   const [modalPost, setModalPost] = useState<CommunityPost | null>(null);
+  const [directoryCardUserId, setDirectoryCardUserId] = useState<string | null>(null);
   const [commentDraftHtml, setCommentDraftHtml] = useState('<p></p>');
   const [commentEditorSeq, setCommentEditorSeq] = useState(0);
   const commentEditorRef = useRef<Editor | null>(null);
+  const replyInlineEditorRef = useRef<Editor | null>(null);
   const [replyParentId, setReplyParentId] = useState<string | null>(null);
-  const commentsRef = useRef<HTMLDivElement>(null);
+  const [replyDraftHtml, setReplyDraftHtml] = useState('<p></p>');
+  const [replyInlineEditorSeq, setReplyInlineEditorSeq] = useState(0);
+  const [editingCommentId, setEditingCommentId] = useState<string | null>(null);
+  const [editDraftHtml, setEditDraftHtml] = useState('<p></p>');
+  const [editEditorSeq, setEditEditorSeq] = useState(0);
+  const editCommentEditorRef = useRef<Editor | null>(null);
+  const [activePostPanel, setActivePostPanel] = useState<'comments' | 'attachments' | null>(null);
+  const commentsPanelScrollRef = useRef<HTMLDivElement>(null);
+  const attachmentsPanelScrollRef = useRef<HTMLDivElement>(null);
+  const prefersReducedMotion = useReducedMotion();
   const [visiblePostsCount, setVisiblePostsCount] = useState(feedMode ? 3 : Infinity);
   const feedContainerRef = useRef<HTMLDivElement>(null);
   const deepLinkHandled = useRef<string | null>(null);
@@ -101,7 +116,28 @@ export default function EmployeeCommunity({ expanded = false, feedMode = false }
     setCommentDraftHtml('<p></p>');
     setCommentEditorSeq(0);
     commentEditorRef.current = null;
+    setReplyParentId(null);
+    setReplyDraftHtml('<p></p>');
+    setReplyInlineEditorSeq((s) => s + 1);
+    replyInlineEditorRef.current = null;
+    setEditingCommentId(null);
+    setEditDraftHtml('<p></p>');
+    setEditEditorSeq((s) => s + 1);
+    editCommentEditorRef.current = null;
   }, [modalPost?.id]);
+
+  useEffect(() => {
+    if (!modalPost || !activePostPanel) return;
+    const snapTop = () => {
+      if (activePostPanel === 'comments') {
+        commentsPanelScrollRef.current?.scrollTo({ top: 0, behavior: 'auto' });
+      }
+      if (activePostPanel === 'attachments') {
+        attachmentsPanelScrollRef.current?.scrollTo({ top: 0, behavior: 'auto' });
+      }
+    };
+    requestAnimationFrame(() => requestAnimationFrame(snapTop));
+  }, [modalPost?.id, activePostPanel]);
 
   const listParams = useMemo(() => {
     const p: Record<string, string | undefined> = { filter: filter === 'urgent' ? 'urgent' : filter };
@@ -174,6 +210,16 @@ export default function EmployeeCommunity({ expanded = false, feedMode = false }
   }, [feedMode, posts, listParams]);
 
   const queryClient = useQueryClient();
+  const confirm = useConfirm();
+
+  const { data: currentUser } = useQuery({
+    queryKey: ['auth-me'],
+    queryFn: () => api<{ id?: string }>('GET', '/auth/me'),
+    staleTime: 60_000,
+  });
+
+  const isOwnComment = (c: Comment) =>
+    Boolean(currentUser?.id && String(c.user_id) === String(currentUser.id));
 
   const markViewedMutation = useMutation({
     mutationFn: (postId: string) => api('POST', `/community/posts/${postId}/mark-viewed`),
@@ -276,35 +322,102 @@ export default function EmployeeCommunity({ expanded = false, feedMode = false }
       setCommentDraftHtml('<p></p>');
       setCommentEditorSeq((s) => s + 1);
       setReplyParentId(null);
+      setReplyDraftHtml('<p></p>');
+      setReplyInlineEditorSeq((s) => s + 1);
+      replyInlineEditorRef.current = null;
       refetchComments();
       queryClient.invalidateQueries({ queryKey: ['community-posts'] });
       if (modalPost) {
         setModalPost({ ...modalPost, comments_count: data.comments_count });
       }
-      // Scroll to bottom of comments
       setTimeout(() => {
-        if (commentsRef.current) {
-          commentsRef.current.scrollIntoView({ behavior: 'smooth', block: 'end' });
-        }
-      }, 100);
+        const el = commentsPanelScrollRef.current;
+        if (el) el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' });
+      }, 120);
     },
     onError: (err: any) => {
       toast.error(err.response?.data?.detail || 'Failed to create comment');
     },
   });
 
+  const updateCommentMutation = useMutation({
+    mutationFn: ({
+      postId,
+      commentId,
+      content,
+      mentions,
+    }: {
+      postId: string;
+      commentId: string;
+      content: string;
+      mentions?: { entity_type: string; entity_id: string }[];
+    }) =>
+      api<{ comments_count?: number }>('PATCH', `/community/posts/${postId}/comments/${commentId}`, {
+        content,
+        mentions: mentions?.length ? mentions : [],
+      }),
+    onSuccess: (data: any) => {
+      setEditingCommentId(null);
+      setEditDraftHtml('<p></p>');
+      setEditEditorSeq((s) => s + 1);
+      editCommentEditorRef.current = null;
+      refetchComments();
+      queryClient.invalidateQueries({ queryKey: ['community-posts'] });
+      if (modalPost && typeof data?.comments_count === 'number') {
+        setModalPost({ ...modalPost, comments_count: data.comments_count });
+      }
+      toast.success('Comment updated');
+    },
+    onError: (err: any) => {
+      toast.error(err.response?.data?.detail || 'Failed to update comment');
+    },
+  });
+
+  const deleteCommentMutation = useMutation({
+    mutationFn: ({ postId, commentId }: { postId: string; commentId: string }) =>
+      api<{ comments_count: number }>('DELETE', `/community/posts/${postId}/comments/${commentId}`),
+    onSuccess: (data) => {
+      setEditingCommentId(null);
+      setEditDraftHtml('<p></p>');
+      setEditEditorSeq((s) => s + 1);
+      editCommentEditorRef.current = null;
+      setReplyParentId(null);
+      setReplyDraftHtml('<p></p>');
+      setReplyInlineEditorSeq((s) => s + 1);
+      replyInlineEditorRef.current = null;
+      refetchComments();
+      queryClient.invalidateQueries({ queryKey: ['community-posts'] });
+      if (modalPost) {
+        setModalPost({ ...modalPost, comments_count: data.comments_count });
+      }
+      toast.success('Comment deleted');
+    },
+    onError: (err: any) => {
+      toast.error(err.response?.data?.detail || 'Failed to delete comment');
+    },
+  });
+
+  const commentThreadBusy =
+    createCommentMutation.isLoading || updateCommentMutation.isLoading || deleteCommentMutation.isLoading;
+
+  const confirmDeleteComment = async (commentId: string) => {
+    if (!modalPost) return;
+    const result = await confirm({
+      title: 'Delete comment',
+      message:
+        'Delete this comment? Any replies under it will be removed. This cannot be undone.',
+      confirmText: 'Delete',
+      cancelText: 'Cancel',
+    });
+    if (result !== 'confirm') return;
+    deleteCommentMutation.mutate({ postId: modalPost.id, commentId });
+  };
+
   const handleOpenModal = (post: CommunityPost, focusComments = false) => {
     setModalPost(post);
+    setActivePostPanel(focusComments ? 'comments' : null);
     // Mark post as viewed when modal is opened
     markViewedMutation.mutate(post.id);
-    // If focusing on comments, scroll to comments section after modal opens
-    if (focusComments) {
-      setTimeout(() => {
-        if (commentsRef.current) {
-          commentsRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' });
-        }
-      }, 300);
-    }
   };
 
   const handleLike = (e: React.MouseEvent, post: CommunityPost) => {
@@ -317,18 +430,29 @@ export default function EmployeeCommunity({ expanded = false, feedMode = false }
     if (!modalPost || modalPost.id !== post.id) {
       handleOpenModal(post, true);
     } else {
-      setTimeout(() => {
-        if (commentsRef.current) {
-          commentsRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' });
-        }
-      }, 100);
+      setActivePostPanel('comments');
     }
   };
 
   const handleSubmitComment = (e: React.FormEvent) => {
     e.preventDefault();
     const ed = commentEditorRef.current;
-    if (!modalPost || !ed) return;
+    if (!modalPost || !ed || replyParentId) return;
+    const content = sanitizeCommunityPostHtml(ed.getHTML());
+    if (isCommunityEditorHtmlEmpty(content)) return;
+    const mentions = extractMentionsFromEditor(ed);
+    createCommentMutation.mutate({
+      postId: modalPost.id,
+      content,
+      parent_comment_id: undefined,
+      mentions: mentions.length ? mentions : undefined,
+    });
+  };
+
+  const handleSubmitInlineReply = (e: React.FormEvent) => {
+    e.preventDefault();
+    const ed = replyInlineEditorRef.current;
+    if (!modalPost || !ed || !replyParentId) return;
     const content = sanitizeCommunityPostHtml(ed.getHTML());
     if (isCommunityEditorHtmlEmpty(content)) return;
     const mentions = extractMentionsFromEditor(ed);
@@ -341,7 +465,41 @@ export default function EmployeeCommunity({ expanded = false, feedMode = false }
   };
 
   const commentSubmitDisabled =
-    isCommunityEditorHtmlEmpty(sanitizeCommunityPostHtml(commentDraftHtml)) || createCommentMutation.isLoading;
+    !!replyParentId ||
+    isCommunityEditorHtmlEmpty(sanitizeCommunityPostHtml(commentDraftHtml)) ||
+    commentThreadBusy;
+
+  const replyInlineSubmitDisabled =
+    !replyParentId ||
+    isCommunityEditorHtmlEmpty(sanitizeCommunityPostHtml(replyDraftHtml)) ||
+    commentThreadBusy;
+
+  const editCommentSubmitDisabled =
+    !editingCommentId ||
+    isCommunityEditorHtmlEmpty(sanitizeCommunityPostHtml(editDraftHtml)) ||
+    commentThreadBusy;
+
+  const handleSaveCommentEdit = (e: React.FormEvent) => {
+    e.preventDefault();
+    const ed = editCommentEditorRef.current;
+    if (!modalPost || !editingCommentId || !ed) return;
+    const content = sanitizeCommunityPostHtml(ed.getHTML());
+    if (isCommunityEditorHtmlEmpty(content)) return;
+    const mentions = extractMentionsFromEditor(ed);
+    updateCommentMutation.mutate({
+      postId: modalPost.id,
+      commentId: editingCommentId,
+      content,
+      mentions: mentions.length ? mentions : undefined,
+    });
+  };
+
+  const cancelCommentEdit = () => {
+    setEditingCommentId(null);
+    setEditDraftHtml('<p></p>');
+    setEditEditorSeq((s) => s + 1);
+    editCommentEditorRef.current = null;
+  };
 
   const formatTimeAgo = (dateString: string) => {
     const date = new Date(dateString);
@@ -356,512 +514,709 @@ export default function EmployeeCommunity({ expanded = false, feedMode = false }
     return date.toLocaleDateString();
   };
 
-  const getTagColor = (tag: string) => {
-    switch (tag) {
-      case 'Announcement':
-        return 'bg-red-50 text-red-700';
-      case 'Urgent':
-        return 'bg-red-50 text-red-700';
-      case 'Required':
-        return 'bg-red-50 text-red-700';
-      case 'Image':
-        return 'bg-green-50 text-green-700';
-      case 'Document':
-        return 'bg-green-50 text-green-700';
-      case 'Groups':
-        return 'bg-blue-50 text-blue-700';
-      case 'Mack Kirk News':
-        return 'bg-blue-50 text-blue-700';
-      default:
-        return 'bg-gray-50 text-gray-700';
-    }
-  };
+  const unreadCount = useMemo(
+    () => (Array.isArray(posts) ? posts.filter((p: CommunityPost) => p.is_unread).length : 0),
+    [posts]
+  );
+  const hasActiveRefinements = Boolean(searchQ.trim() || relatedAreaFilter || priorityFilter || confirmedOnly);
 
-  const getTagPriority = (tag: string): number => {
-    switch (tag) {
-      case 'Urgent':
-        return 1;
-      case 'Required':
-        return 2;
-      case 'Announcement':
-        return 3;
-      case 'Groups':
-        return 4;
-      case 'Image':
-      case 'Document':
-        return 5;
-      default:
-        return 99;
-    }
-  };
-
-  const sortTagsByPriority = (tags: string[]): string[] => {
-    if (!Array.isArray(tags)) return [];
-    return [...tags].sort((a, b) => getTagPriority(a) - getTagPriority(b));
+  const clearRefinements = () => {
+    setSearchQ('');
+    setRelatedAreaFilter('');
+    setPriorityFilter('');
+    setConfirmedOnly(false);
   };
 
   return (
-    <div className={`rounded-[12px] border border-gray-200/80 bg-white shadow-sm p-5 ${expanded ? 'h-full flex flex-col' : feedMode ? 'h-full flex flex-col min-w-0' : ''}`}>
-      <div className="mb-5 flex items-center justify-between flex-shrink-0">
-        <h3 className="text-lg font-bold text-gray-900 tracking-tight">Employee Community</h3>
+    <div className={`rounded-2xl border border-gray-200 bg-white shadow-sm p-5 ${expanded ? 'h-full flex flex-col' : feedMode ? 'h-full flex flex-col min-w-0' : ''}`}>
+      <div className="mb-5 flex items-start justify-between gap-3 flex-shrink-0">
+        <div>
+          <h3 className="text-lg font-semibold text-gray-900 tracking-tight">Employee Community</h3>
+          <p className="text-xs text-gray-500 mt-0.5">Company updates and required communications.</p>
+        </div>
+        <div className="rounded-lg border border-gray-200 bg-gray-50 px-2.5 py-1 text-right">
+          <div className="text-[10px] uppercase tracking-wide text-gray-500 font-semibold">Unread</div>
+          <div className="text-xs font-semibold text-gray-800">{unreadCount}</div>
+        </div>
       </div>
 
-      {/* Filter tabs */}
-      <div className="flex gap-2 mb-3 overflow-x-auto flex-shrink-0">
-        {(['all', 'unread', 'urgent', 'required', 'announcements'] as const).map((f) => (
-          <button
-            key={f}
-            type="button"
-            onClick={() => setFilter(f)}
-            className={`
-              px-4 py-2 rounded-lg text-sm whitespace-nowrap transition-all duration-150 font-medium
-              ${filter === f
-                ? 'bg-blue-600 text-white shadow-sm active:scale-[0.98]'
-                : 'bg-gray-100 text-gray-600 hover:bg-gray-200 active:bg-gray-300 active:scale-[0.98] border border-gray-200/60'
-              }
-            `}
-          >
-            {f.charAt(0).toUpperCase() + f.slice(1)}
-          </button>
-        ))}
-      </div>
+      <div className="mb-4 rounded-xl border border-slate-200 bg-slate-50/40 p-3 flex-shrink-0">
+        <div className="flex flex-col gap-3">
+          <div className="flex flex-col gap-2 lg:flex-row lg:items-center">
+            <div className="relative flex-1 min-w-[200px]">
+              <svg
+                className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+                aria-hidden
+              >
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="m21 21-4.35-4.35M10.5 18a7.5 7.5 0 1 1 0-15 7.5 7.5 0 0 1 0 15Z" />
+              </svg>
+              <input
+                type="search"
+                placeholder="Search title or content..."
+                value={searchQ}
+                onChange={(e) => setSearchQ(e.target.value)}
+                className="h-9 w-full rounded-lg border border-slate-300 bg-white pl-9 pr-3 text-sm text-slate-700 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-200 focus:border-slate-400"
+              />
+            </div>
+            <div className="flex gap-1.5 overflow-x-auto pb-1 lg:pb-0">
+              {(['all', 'unread', 'urgent', 'required'] as const).map((f) => (
+                <button
+                  key={f}
+                  type="button"
+                  onClick={() => setFilter(f)}
+                  className={`
+                    h-9 px-3 rounded-lg text-xs whitespace-nowrap transition-all duration-150 font-semibold tracking-wide uppercase border
+                    ${filter === f
+                      ? 'bg-slate-900 text-white border-slate-900 shadow-sm'
+                      : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-100 active:bg-slate-200'
+                    }
+                  `}
+                >
+                  {f.charAt(0).toUpperCase() + f.slice(1)}
+                </button>
+              ))}
+            </div>
+          </div>
 
-      <div className="flex flex-wrap gap-2 mb-4 items-end flex-shrink-0">
-        <input
-          type="search"
-          placeholder="Search title or content…"
-          value={searchQ}
-          onChange={(e) => setSearchQ(e.target.value)}
-          className="min-w-[140px] flex-1 rounded-lg border border-gray-300 px-3 py-2 text-sm"
-        />
-        <select
-          value={relatedAreaFilter}
-          onChange={(e) => setRelatedAreaFilter(e.target.value)}
-          className="rounded-lg border border-gray-300 px-2 py-2 text-sm"
-        >
-          <option value="">All areas</option>
-          {Object.entries(AREA_LABELS).map(([k, lab]) => (
-            <option key={k} value={k}>
-              {lab}
-            </option>
-          ))}
-        </select>
-        <select
-          value={priorityFilter}
-          onChange={(e) => setPriorityFilter(e.target.value)}
-          className="rounded-lg border border-gray-300 px-2 py-2 text-sm"
-        >
-          <option value="">All priorities</option>
-          <option value="normal">Normal</option>
-          <option value="important">Important</option>
-          <option value="urgent">Urgent</option>
-          <option value="critical">Critical</option>
-        </select>
-        <label className="flex items-center gap-1 text-xs text-gray-600 whitespace-nowrap">
-          <input type="checkbox" checked={confirmedOnly} onChange={(e) => setConfirmedOnly(e.target.checked)} />
-          Confirmed by me
-        </label>
+          <div className="flex flex-col gap-2 md:flex-row md:flex-wrap md:items-center">
+            <select
+              value={relatedAreaFilter}
+              onChange={(e) => setRelatedAreaFilter(e.target.value)}
+              className="h-9 min-w-[170px] rounded-lg border border-slate-300 bg-white px-3 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-slate-200 focus:border-slate-400"
+            >
+              <option value="">All areas</option>
+              {Object.entries(AREA_LABELS).map(([k, lab]) => (
+                <option key={k} value={k}>
+                  {lab}
+                </option>
+              ))}
+            </select>
+            <select
+              value={priorityFilter}
+              onChange={(e) => setPriorityFilter(e.target.value)}
+              className="h-9 min-w-[170px] rounded-lg border border-slate-300 bg-white px-3 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-slate-200 focus:border-slate-400"
+            >
+              <option value="">All priorities</option>
+              <option value="normal">Normal</option>
+              <option value="important">Important</option>
+              <option value="urgent">Urgent</option>
+              <option value="critical">Critical</option>
+            </select>
+
+            <button
+              type="button"
+              onClick={() => setConfirmedOnly((v) => !v)}
+              className={`h-9 inline-flex items-center rounded-lg border px-3 text-xs font-semibold tracking-wide uppercase transition ${
+                confirmedOnly
+                  ? 'border-emerald-300 bg-emerald-50 text-emerald-700'
+                  : 'border-slate-300 bg-white text-slate-600 hover:bg-slate-100'
+              }`}
+            >
+              Confirmed by me
+            </button>
+
+            {hasActiveRefinements && (
+              <button
+                type="button"
+                onClick={clearRefinements}
+                className="h-9 md:ml-auto inline-flex items-center rounded-lg border border-slate-300 bg-white px-3 text-xs font-semibold text-slate-600 hover:bg-slate-100"
+              >
+                Clear filters
+              </button>
+            )}
+          </div>
+        </div>
       </div>
 
       {/* Posts feed */}
       <div 
         ref={feedContainerRef}
-        className={`space-y-4 overflow-y-auto ${expanded ? 'flex-1 min-h-0' : feedMode ? 'flex-1 min-h-0' : ''}`} 
+        className={`space-y-3 overflow-y-auto pt-1 ${expanded ? 'flex-1 min-h-0' : feedMode ? 'flex-1 min-h-0' : ''}`} 
         style={feedMode ? {} : (!expanded ? { maxHeight: '600px', height: '600px' } : { maxHeight: '100%' })}
       >
         {filteredPosts.length === 0 ? (
-          <div className="text-center text-gray-500 py-8">
+          <div className="text-center text-gray-500 py-10 rounded-xl border border-dashed border-gray-200 bg-gray-50/50">
             {posts.length === 0 ? 'No posts yet' : `No ${filter} posts`}
           </div>
         ) : (
-          filteredPosts.map((post) => {
-            const pr = post.priority || '';
-            const isUrgent =
-              pr === 'urgent' || pr === 'critical' || post.tags?.includes('Urgent') || false;
-            const isCritical = pr === 'critical';
-            const isRequired = post.requires_read_confirmation || post.tags?.includes('Required') || false;
-
-            return (
-              <div
-                key={post.id}
-                className={`group border rounded-[12px] p-4 hover:shadow-md hover:-translate-y-0.5 transition-all duration-200 cursor-pointer overflow-hidden ${
-                  isCritical
-                    ? 'border-red-700/50 bg-red-100/40 shadow-md ring-1 ring-red-200'
-                    : isUrgent
-                      ? 'border-red-300/60 bg-red-50/50 shadow-sm'
-                      : isRequired
-                        ? 'border-orange-300/60 bg-orange-50/50 shadow-sm'
-                        : 'border-gray-200/50 bg-gray-50/30 shadow-sm'
-                }`}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  handleOpenModal(post);
-                }}
-              >
-                <div className="flex items-start gap-3">
-                  {/* Avatar */}
-                  <div className="w-10 h-10 rounded-full bg-gray-200 flex items-center justify-center flex-shrink-0">
-                    {post.author_avatar ? (
-                      <img
-                        src={withFileAccessTokenIfNeeded(post.author_avatar)}
-                        alt={post.author_name || 'User'}
-                        className="w-full h-full rounded-full object-cover"
-                      />
-                    ) : (
-                      <span className="text-gray-500 text-sm">
-                        {(post.author_name || 'U')[0].toUpperCase()}
-                      </span>
-                    )}
-                  </div>
-
-                  {/* Content */}
-                  <div className="flex-1 min-w-0 overflow-hidden">
-                    <div className="flex items-center gap-2 mb-1.5">
-                      <h4 className={`font-bold text-base truncate tracking-tight ${
-                        isUrgent ? 'text-red-900' :
-                        isRequired ? 'text-orange-900' :
-                        'text-gray-700'
-                      }`}>
-                        {post.title}
-                      </h4>
-                      {post.is_unread && (
-                        <div className="w-2 h-2 rounded-full bg-red-500 flex-shrink-0"></div>
-                      )}
-                      {(isCritical || isUrgent || isRequired) && (
-                        <span
-                          className={`px-2 py-0.5 rounded text-xs font-bold flex-shrink-0 tracking-wide ${
-                            isCritical ? 'bg-red-900 text-white' : isUrgent ? 'bg-red-600 text-white' : 'bg-orange-600 text-white'
-                          }`}
-                        >
-                          {isCritical ? 'CRITICAL' : isUrgent ? 'URGENT' : 'REQUIRED'}
-                        </span>
-                      )}
-                      {post.related_area && (
-                        <span className="text-[10px] px-2 py-0.5 rounded bg-blue-50 text-blue-800 border border-blue-100">
-                          {AREA_LABELS[post.related_area] || post.related_area}
-                        </span>
-                      )}
-                    </div>
-
-                    <div className={`text-xs mb-2.5 font-medium ${
-                      isUrgent || isRequired ? 'text-gray-500' : 'text-gray-400'
-                    }`}>
-                      {post.author_name || 'Unknown'} · {formatTimeAgo(post.created_at)}
-                      {post.target_type === 'all'
-                        ? ' · All employees'
-                        : post.target_type === 'users'
-                          ? ' · Specific employees'
-                          : ' · Divisions'}
-                      {post.user_has_confirmed && (
-                        <span className="ml-2 text-green-700 font-semibold">· Confirmed</span>
-                      )}
-                    </div>
-
-                    {/* Tags */}
-                    {Array.isArray(post.tags) && post.tags.length > 0 && (
-                      <div className="flex flex-wrap gap-2 mb-2">
-                        {sortTagsByPriority(post.tags).map((tag) => (
-                          <span
-                            key={tag}
-                            className={`px-2 py-0.5 rounded text-xs ${getTagColor(tag)}`}
-                          >
-                            {tag}
-                          </span>
-                        ))}
-                      </div>
-                    )}
-
-                    {/* Content preview - 2 lines max in feed mode */}
-                    <div
-                      className={`text-sm mb-3 leading-relaxed max-w-full overflow-hidden ${
-                        feedMode ? 'line-clamp-2' : 'line-clamp-1'
-                      } ${isUrgent || isRequired ? 'text-gray-600' : 'text-gray-500'}`}
-                    >
-                      <CommunityPostBody html={post.content} />
-                    </div>
-
-                    {/* Engagement */}
-                    <div className="flex items-center gap-4 text-sm">
-                      <button
-                        onClick={(e) => handleLike(e, post)}
-                        className={`flex items-center gap-1.5 hover:opacity-80 active:opacity-60 transition-all ${post.user_has_liked ? 'text-red-600' : 'text-gray-500'}`}
-                      >
-                        {post.user_has_liked ? '❤️' : '🤍'}
-                        <span className="font-medium">{post.likes_count || 0}</span>
-                      </button>
-                      <button
-                        onClick={(e) => handleCommentClick(e, post)}
-                        className="flex items-center gap-1.5 hover:opacity-80 active:opacity-60 transition-all text-gray-500"
-                      >
-                        💬
-                        <span className="font-medium">{post.comments_count || 0}</span>
-                      </button>
-                      {feedMode && (
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleOpenModal(post);
-                          }}
-                          className="ml-auto px-3 py-1.5 text-xs font-semibold text-blue-600 hover:text-blue-700 hover:bg-blue-50 active:bg-blue-100 rounded-lg transition-all duration-150 active:scale-[0.98]"
-                        >
-                          View post →
-                        </button>
-                      )}
-                      {!feedMode && (
-                        <span className="ml-auto text-xs text-gray-400 font-medium">
-                          Click to view full post
-                        </span>
-                      )}
-                    </div>
-                  </div>
-                </div>
-              </div>
-            );
-          })
+          filteredPosts.map((post) => (
+            <CommunityFeedPostSnippet
+              key={post.id}
+              post={post}
+              feedMode={feedMode}
+              interactive
+              onCardClick={(e) => {
+                e.stopPropagation();
+                handleOpenModal(post);
+              }}
+              onAuthorButtonClick={(e) => {
+                e.stopPropagation();
+                if (post.author_id) setDirectoryCardUserId(post.author_id);
+              }}
+              onLikeClick={(e) => handleLike(e, post)}
+              onCommentClick={(e) => handleCommentClick(e, post)}
+              onOpenClick={
+                feedMode
+                  ? (e) => {
+                      e.stopPropagation();
+                      handleOpenModal(post);
+                    }
+                  : undefined
+              }
+            />
+          ))
         )}
       </div>
 
       {/* Post Detail Modal */}
-      {modalPost && (
-        <OverlayPortal><div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50" onClick={() => setModalPost(null)}>
-          <div className="bg-white w-full max-w-2xl max-h-[90vh] flex flex-col rounded-xl overflow-hidden" onClick={(e) => e.stopPropagation()}>
-            {/* Scrollable content */}
-            <div className="flex-1 overflow-y-auto">
-              <div className="p-4">
-                {/* Author profile with close button */}
-                <div className="flex items-start gap-3 mb-4 relative">
-                  <div className="w-12 h-12 rounded-full bg-gray-200 flex items-center justify-center flex-shrink-0">
-                    {modalPost.author_avatar ? (
-                      <img
-                        src={withFileAccessTokenIfNeeded(modalPost.author_avatar)}
-                        alt={modalPost.author_name || 'User'}
-                        className="w-full h-full rounded-full object-cover"
-                      />
-                    ) : (
-                      <span className="text-gray-500 text-lg font-medium">
-                        {(modalPost.author_name || 'U')[0].toUpperCase()}
-                      </span>
-                    )}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-start justify-between gap-2">
-                      <h3 className="text-base font-semibold text-gray-900 leading-tight pr-8">{modalPost.title}</h3>
-                      <button
-                        onClick={() => {
-                          setModalPost(null);
-                          setCommentDraftHtml('<p></p>');
-                          setCommentEditorSeq((s) => s + 1);
-                          setReplyParentId(null);
-                          commentEditorRef.current = null;
-                        }}
-                        className="text-gray-400 hover:text-gray-600 transition flex-shrink-0 mt-0.5"
-                      >
-                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                        </svg>
-                      </button>
-                    </div>
-                    <div className="text-sm text-gray-600 mt-0.5 flex flex-wrap gap-2 items-center">
-                      <span>
-                        {modalPost.author_name || 'Unknown'} · {formatTimeAgo(modalPost.created_at)}
-                      </span>
-                      {modalPost.related_area && (
-                        <span className="text-xs px-2 py-0.5 rounded bg-blue-50 text-blue-800 border border-blue-100">
-                          {AREA_LABELS[modalPost.related_area] || modalPost.related_area}
+      {modalPost && (() => {
+        const atts =
+          Array.isArray(modalPost.attachments) && modalPost.attachments.length > 0
+            ? modalPost.attachments
+            : modalPost.document_url
+              ? [
+                  {
+                    file_id: modalPost.document_file_id || '',
+                    url: modalPost.document_url,
+                    original_name: modalPost.document_original_name || 'Attachment',
+                  },
+                ]
+              : [];
+        const audienceLabel =
+          modalPost.target_type === 'all'
+            ? 'Everyone'
+            : modalPost.target_type === 'users'
+              ? 'Selected employees'
+              : 'Division audience';
+        const priorityLabel =
+          modalPost.priority && modalPost.priority !== 'normal'
+            ? modalPost.priority.charAt(0).toUpperCase() + modalPost.priority.slice(1)
+            : null;
+        const togglePanel = (panel: 'comments' | 'attachments') => {
+          setActivePostPanel((current) => (current === panel ? null : panel));
+        };
+
+        const dockTransition = prefersReducedMotion
+          ? { duration: 0 }
+          : { duration: 0.34, ease: [0.22, 1, 0.36, 1] as [number, number, number, number] };
+        const dockInnerTransition = prefersReducedMotion
+          ? { duration: 0 }
+          : { duration: 0.3, ease: [0.22, 1, 0.36, 1] as [number, number, number, number], delay: 0.04 };
+        const closeModal = () => {
+          setModalPost(null);
+          setDirectoryCardUserId(null);
+          setCommentDraftHtml('<p></p>');
+          setCommentEditorSeq((s) => s + 1);
+          setReplyParentId(null);
+          setReplyDraftHtml('<p></p>');
+          setReplyInlineEditorSeq((s) => s + 1);
+          setActivePostPanel(null);
+          commentEditorRef.current = null;
+          replyInlineEditorRef.current = null;
+          setEditingCommentId(null);
+          setEditDraftHtml('<p></p>');
+          setEditEditorSeq((s) => s + 1);
+          editCommentEditorRef.current = null;
+        };
+
+        return (
+          <OverlayPortal>
+            <div
+              className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/55 p-4 backdrop-blur-sm"
+              onClick={closeModal}
+            >
+              <div
+                className="flex h-[min(92dvh,920px)] w-full max-w-5xl flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl"
+                onClick={(e) => e.stopPropagation()}
+                role="dialog"
+                aria-modal="true"
+              >
+                <div className="shrink-0 border-b border-slate-200 bg-white px-5 py-4">
+                  <div className="flex items-start gap-3">
+                    <button
+                      type="button"
+                      className="h-11 w-11 shrink-0 rounded-full bg-slate-100 flex items-center justify-center overflow-hidden ring-offset-2 hover:ring-2 hover:ring-[#7f1010]/35 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#7f1010]/45"
+                      onClick={() => modalPost.author_id && setDirectoryCardUserId(modalPost.author_id)}
+                      aria-label={`View profile: ${modalPost.author_name || 'Author'}`}
+                    >
+                      {modalPost.author_avatar ? (
+                        <img
+                          src={withFileAccessTokenIfNeeded(modalPost.author_avatar)}
+                          alt=""
+                          className="h-full w-full object-cover"
+                        />
+                      ) : (
+                        <span className="text-sm font-semibold text-slate-500">
+                          {(modalPost.author_name || 'U')[0].toUpperCase()}
                         </span>
                       )}
-                      <span className="text-xs text-gray-500">
-                        {modalPost.target_type === 'all'
-                          ? 'Everyone'
-                          : modalPost.target_type === 'users'
-                            ? 'Selected employees'
-                            : 'Division audience'}
-                      </span>
-                      {modalPost.priority && modalPost.priority !== 'normal' && (
-                        <span className="text-xs font-semibold text-red-800 capitalize">{modalPost.priority}</span>
+                    </button>
+                    <div className="min-w-0 flex-1">
+                      <h3 className="line-clamp-2 text-lg font-semibold leading-snug text-slate-950">
+                        {modalPost.title}
+                      </h3>
+                      <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-slate-500">
+                        <button
+                          type="button"
+                          className="font-semibold text-slate-700 hover:text-[#7f1010] hover:underline"
+                          onClick={() => modalPost.author_id && setDirectoryCardUserId(modalPost.author_id)}
+                        >
+                          {modalPost.author_name || 'Unknown'}
+                        </button>
+                        <span>{formatTimeAgo(modalPost.created_at)}</span>
+                        {modalPost.related_area && (
+                          <span className="rounded-md border border-slate-200 bg-slate-50 px-1.5 py-0.5 font-medium text-slate-600">
+                            {AREA_LABELS[modalPost.related_area] || modalPost.related_area}
+                          </span>
+                        )}
+                        <span className="rounded-md border border-slate-200 bg-slate-50 px-1.5 py-0.5 font-medium text-slate-600">
+                          {audienceLabel}
+                        </span>
+                        {priorityLabel && (
+                          <span className="rounded-md border border-red-100 bg-red-50 px-1.5 py-0.5 font-semibold text-red-700">
+                            {priorityLabel}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={closeModal}
+                      className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-slate-400 transition hover:bg-slate-100 hover:text-slate-700"
+                      aria-label="Close post"
+                    >
+                      <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                      </svg>
+                    </button>
+                  </div>
+                </div>
+
+                <div className="flex min-h-0 flex-1 flex-col overflow-hidden bg-white">
+                  <motion.div
+                    layout
+                    transition={{ layout: dockTransition }}
+                    className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-5 pt-2 pb-4"
+                  >
+                    <div className="min-h-full text-sm leading-relaxed text-slate-900">
+                      <CommunityPostBody html={modalPost.content} />
+                    </div>
+                  </motion.div>
+
+                  <AnimatePresence mode="wait" initial={false}>
+                    {activePostPanel === 'attachments' && atts.length > 0 && (
+                      <motion.div
+                        key={`dock-att-${modalPost.id}`}
+                        initial={{ height: 0, opacity: 0 }}
+                        animate={{ height: 'auto', opacity: 1 }}
+                        exit={{ height: 0, opacity: 0 }}
+                        transition={dockTransition}
+                        className="shrink-0 overflow-hidden border-t border-slate-100 bg-white"
+                      >
+                        <motion.div
+                          initial={{ y: 18, opacity: 0.88 }}
+                          animate={{ y: 0, opacity: 1 }}
+                          exit={{ y: 12, opacity: 0 }}
+                          transition={dockInnerTransition}
+                          ref={attachmentsPanelScrollRef}
+                          className="max-h-[min(48dvh,520px)] overflow-y-auto overscroll-contain px-5 pb-4 pt-4"
+                        >
+                          <section aria-label="Attachments">
+                            <div className="mb-3 flex items-center justify-between gap-3">
+                              <h4 className="text-sm font-semibold text-slate-950">Attachments</h4>
+                              <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-semibold text-slate-600">
+                                {atts.length}
+                              </span>
+                            </div>
+                            <div className="space-y-2">
+                              {atts.map((att) => (
+                                <a
+                                  key={att.file_id || att.url}
+                                  href={withFileAccessTokenIfNeeded(att.url)}
+                                  download={att.original_name || undefined}
+                                  className="group flex items-center gap-3 rounded-xl border border-slate-200 bg-slate-50/80 px-3 py-2.5 transition hover:border-slate-300 hover:bg-slate-50"
+                                >
+                                  <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-white text-slate-500 ring-1 ring-slate-200">
+                                    <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
+                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 7V5a2 2 0 012-2h5l5 5v11a2 2 0 01-2 2H9a2 2 0 01-2-2v-2" />
+                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 3v6h6M5 12h8m0 0l-3-3m3 3l-3 3" />
+                                    </svg>
+                                  </div>
+                                  <div className="min-w-0 flex-1">
+                                    <div className="truncate text-sm font-medium text-slate-800">
+                                      {att.original_name || 'Attachment'}
+                                    </div>
+                                    <div className="text-xs font-medium text-slate-500 group-hover:text-[#7f1010]">
+                                      Download
+                                    </div>
+                                  </div>
+                                </a>
+                              ))}
+                            </div>
+                          </section>
+                        </motion.div>
+                      </motion.div>
+                    )}
+
+                    {activePostPanel === 'comments' && (
+                      <motion.div
+                        key={`dock-com-${modalPost.id}`}
+                        initial={{ height: 0, opacity: 0 }}
+                        animate={{ height: 'auto', opacity: 1 }}
+                        exit={{ height: 0, opacity: 0 }}
+                        transition={dockTransition}
+                        className="shrink-0 overflow-hidden border-t border-slate-100 bg-white"
+                      >
+                        <motion.div
+                          initial={{ y: 18, opacity: 0.88 }}
+                          animate={{ y: 0, opacity: 1 }}
+                          exit={{ y: 12, opacity: 0 }}
+                          transition={dockInnerTransition}
+                          ref={commentsPanelScrollRef}
+                          className="max-h-[min(48dvh,520px)] overflow-y-auto overscroll-contain px-5 pb-4 pt-4"
+                        >
+                          <section aria-labelledby={`discussion-${modalPost.id}`}>
+                            <div className="rounded-xl bg-slate-50/60 px-3 py-4 ring-1 ring-slate-100/80 sm:px-4">
+                              <div className="mb-4 flex items-center justify-between gap-3">
+                                <div>
+                                  <h3 id={`discussion-${modalPost.id}`} className="text-sm font-semibold text-slate-950">
+                                    Discussion
+                                  </h3>
+                                  <p className="text-xs text-slate-500">
+                                    {comments.length} {comments.length === 1 ? 'comment' : 'comments'}
+                                  </p>
+                                </div>
+                              </div>
+
+                              {comments.length === 0 ? (
+                                <div className="rounded-xl border border-dashed border-slate-200 bg-white/80 px-4 py-8 text-center">
+                                  <p className="text-sm font-medium text-slate-700">No comments yet</p>
+                                  <p className="mt-1 text-xs text-slate-500">Start the conversation below.</p>
+                                </div>
+                              ) : (
+                                <div className="space-y-3">
+                                  {comments.map((comment: Comment) => (
+                                    <div
+                                      key={comment.id}
+                                      className={`flex gap-2.5 ${comment.parent_comment_id ? 'ml-6 border-l border-slate-200 pl-3' : ''}`}
+                                    >
+                                      <button
+                                        type="button"
+                                        className="h-8 w-8 shrink-0 rounded-full bg-slate-100 flex items-center justify-center overflow-hidden ring-offset-2 hover:ring-2 hover:ring-[#7f1010]/35 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#7f1010]/45"
+                                        onClick={() => comment.user_id && setDirectoryCardUserId(comment.user_id)}
+                                        aria-label={`View profile: ${comment.user_name || 'Commenter'}`}
+                                      >
+                                        {comment.user_avatar ? (
+                                          <img
+                                            src={withFileAccessTokenIfNeeded(comment.user_avatar)}
+                                            alt=""
+                                            className="h-full w-full object-cover"
+                                          />
+                                        ) : (
+                                          <span className="text-xs font-semibold text-slate-500">
+                                            {(comment.user_name || 'U')[0].toUpperCase()}
+                                          </span>
+                                        )}
+                                      </button>
+                                      <div className="min-w-0 flex-1 space-y-2">
+                                        <div className="rounded-xl border border-slate-200 bg-white px-3 py-2.5 shadow-sm">
+                                          <div className="mb-1 flex flex-wrap items-center gap-2">
+                                            <button
+                                              type="button"
+                                              className="text-left text-sm font-semibold text-slate-900 hover:text-[#7f1010] hover:underline"
+                                              onClick={() => comment.user_id && setDirectoryCardUserId(comment.user_id)}
+                                            >
+                                              {comment.user_name || 'Unknown'}
+                                            </button>
+                                            <span className="text-xs text-slate-400">{formatTimeAgo(comment.created_at)}</span>
+                                            {comment.updated_at &&
+                                              comment.created_at &&
+                                              new Date(comment.updated_at).getTime() >
+                                                new Date(comment.created_at).getTime() + 500 && (
+                                                <span className="text-xs font-medium text-slate-400">Edited</span>
+                                              )}
+                                          </div>
+
+                                          {editingCommentId === comment.id ? (
+                                            <form onSubmit={handleSaveCommentEdit} className="space-y-2">
+                                              <CommunityCommentRichTextEditor
+                                                editorKey={`${modalPost.id}-edit-${comment.id}-${editEditorSeq}`}
+                                                initialHtml={editDraftHtml}
+                                                onChangeHtml={setEditDraftHtml}
+                                                onEditorReady={(ed) => {
+                                                  editCommentEditorRef.current = ed;
+                                                }}
+                                                placeholder="Edit comment…"
+                                                className="border-slate-300"
+                                              />
+                                              <div className="flex flex-wrap gap-2">
+                                                <button
+                                                  type="submit"
+                                                  disabled={editCommentSubmitDisabled}
+                                                  className="inline-flex h-9 items-center justify-center rounded-lg bg-gradient-to-r from-[#7f1010] to-[#a31414] px-4 text-xs font-semibold text-white transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
+                                                >
+                                                  {updateCommentMutation.isLoading ? 'Saving…' : 'Save'}
+                                                </button>
+                                                <button
+                                                  type="button"
+                                                  disabled={commentThreadBusy}
+                                                  onClick={cancelCommentEdit}
+                                                  className="inline-flex h-9 items-center justify-center rounded-lg border border-slate-200 bg-white px-4 text-xs font-semibold text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+                                                >
+                                                  Cancel
+                                                </button>
+                                              </div>
+                                            </form>
+                                          ) : (
+                                            <>
+                                              <CommunityPostBody
+                                                html={comment.content}
+                                                className="text-sm text-slate-800 leading-relaxed"
+                                              />
+                                              <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1">
+                                                {isOwnComment(comment) && (
+                                                  <>
+                                                    <button
+                                                      type="button"
+                                                      className="text-xs font-semibold text-slate-500 hover:text-[#7f1010]"
+                                                      onClick={() => {
+                                                        setEditingCommentId(comment.id);
+                                                        setEditDraftHtml(comment.content);
+                                                        setEditEditorSeq((s) => s + 1);
+                                                        editCommentEditorRef.current = null;
+                                                        if (replyParentId === comment.id) {
+                                                          setReplyParentId(null);
+                                                          setReplyDraftHtml('<p></p>');
+                                                          setReplyInlineEditorSeq((s) => s + 1);
+                                                          replyInlineEditorRef.current = null;
+                                                        }
+                                                      }}
+                                                    >
+                                                      Edit
+                                                    </button>
+                                                    <button
+                                                      type="button"
+                                                      className="text-xs font-semibold text-slate-500 hover:text-red-600"
+                                                      disabled={commentThreadBusy}
+                                                      onClick={() => void confirmDeleteComment(comment.id)}
+                                                    >
+                                                      Delete
+                                                    </button>
+                                                  </>
+                                                )}
+                                                <button
+                                                  type="button"
+                                                  className={`text-xs font-semibold hover:text-[#7f1010] ${
+                                                    replyParentId === comment.id ? 'text-[#7f1010]' : 'text-slate-500'
+                                                  }`}
+                                                  aria-expanded={replyParentId === comment.id}
+                                                  onClick={() => {
+                                                    if (replyParentId === comment.id) {
+                                                      setReplyParentId(null);
+                                                      setReplyDraftHtml('<p></p>');
+                                                      setReplyInlineEditorSeq((s) => s + 1);
+                                                      replyInlineEditorRef.current = null;
+                                                    } else {
+                                                      cancelCommentEdit();
+                                                      setReplyParentId(comment.id);
+                                                      setReplyDraftHtml('<p></p>');
+                                                      setReplyInlineEditorSeq((s) => s + 1);
+                                                    }
+                                                  }}
+                                                >
+                                                  Reply
+                                                </button>
+                                              </div>
+                                            </>
+                                          )}
+                                        </div>
+
+                                        {replyParentId === comment.id && editingCommentId !== comment.id && (
+                                          <form
+                                            onSubmit={handleSubmitInlineReply}
+                                            className="rounded-xl border border-slate-200 bg-white px-3 py-2.5 shadow-sm ring-1 ring-slate-100/80"
+                                          >
+                                            <div className="mb-2 flex items-center justify-between gap-2">
+                                              <span className="text-xs text-slate-600">
+                                                Replying to{' '}
+                                                <span className="font-semibold text-slate-900">
+                                                  {comment.user_name || 'Unknown'}
+                                                </span>
+                                              </span>
+                                              <button
+                                                type="button"
+                                                className="text-xs font-semibold text-slate-500 hover:text-[#7f1010]"
+                                                onClick={() => {
+                                                  setReplyParentId(null);
+                                                  setReplyDraftHtml('<p></p>');
+                                                  setReplyInlineEditorSeq((s) => s + 1);
+                                                  replyInlineEditorRef.current = null;
+                                                }}
+                                              >
+                                                Cancel
+                                              </button>
+                                            </div>
+                                            <div className="flex flex-col gap-2 sm:flex-row sm:items-start">
+                                              <div className="min-w-0 flex-1">
+                                                <CommunityCommentRichTextEditor
+                                                  editorKey={`${modalPost.id}-reply-${replyParentId}-${replyInlineEditorSeq}`}
+                                                  initialHtml={replyDraftHtml}
+                                                  onChangeHtml={setReplyDraftHtml}
+                                                  onEditorReady={(ed) => {
+                                                    replyInlineEditorRef.current = ed;
+                                                  }}
+                                                  placeholder={`Reply to ${comment.user_name || 'comment'}…`}
+                                                  className="border-slate-300"
+                                                />
+                                              </div>
+                                              <button
+                                                type="submit"
+                                                disabled={replyInlineSubmitDisabled}
+                                                className="inline-flex h-10 shrink-0 items-center justify-center gap-2 rounded-lg bg-gradient-to-r from-[#7f1010] to-[#a31414] px-4 text-sm font-semibold text-white transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
+                                              >
+                                                <span>{createCommentMutation.isLoading ? 'Posting…' : 'Post'}</span>
+                                              </button>
+                                            </div>
+                                          </form>
+                                        )}
+                                      </div>
+                                    </div>
+                                  ))}
+                                </div>
+                              )}
+
+                              {!replyParentId && (
+                                <div className="mt-4 border-t border-slate-200/80 pt-4">
+                                  <form onSubmit={handleSubmitComment} className="flex flex-col gap-3 sm:flex-row sm:items-start">
+                                    <div className="min-w-0 flex-1">
+                                      <CommunityCommentRichTextEditor
+                                        editorKey={`${modalPost.id}-c-${commentEditorSeq}`}
+                                        initialHtml={commentDraftHtml}
+                                        onChangeHtml={setCommentDraftHtml}
+                                        onEditorReady={(ed) => {
+                                          commentEditorRef.current = ed;
+                                        }}
+                                        placeholder="Add comment... Type @ to mention someone"
+                                        className="border-slate-300"
+                                      />
+                                    </div>
+                                    <button
+                                      type="submit"
+                                      disabled={commentSubmitDisabled}
+                                      className="inline-flex h-10 items-center justify-center gap-2 rounded-lg bg-gradient-to-r from-[#7f1010] to-[#a31414] px-5 text-sm font-semibold text-white transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
+                                    >
+                                      <span>{createCommentMutation.isLoading ? 'Posting...' : 'Post'}</span>
+                                      {!createCommentMutation.isLoading && (
+                                        <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
+                                        </svg>
+                                      )}
+                                    </button>
+                                  </form>
+                                </div>
+                              )}
+                            </div>
+                          </section>
+                        </motion.div>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+
+                  <div className="shrink-0 border-t border-slate-100 bg-white px-5 pb-6 pt-4">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => likeMutation.mutate(modalPost.id)}
+                        className={`inline-flex items-center gap-2 rounded-full px-3 py-2 text-sm font-semibold transition ${
+                          modalPost.user_has_liked
+                            ? 'bg-red-50 text-red-600'
+                            : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
+                        }`}
+                        aria-label="Like post"
+                      >
+                        {modalPost.user_has_liked ? (
+                          <svg className="h-5 w-5 fill-current" viewBox="0 0 24 24">
+                            <path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/>
+                          </svg>
+                        ) : (
+                          <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" />
+                          </svg>
+                        )}
+                        <span>{modalPost.likes_count || 0}</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => togglePanel('comments')}
+                        className={`inline-flex items-center gap-2 rounded-full px-3 py-2 text-sm font-semibold transition ${
+                          activePostPanel === 'comments'
+                            ? 'bg-slate-900 text-white'
+                            : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
+                        }`}
+                        aria-expanded={activePostPanel === 'comments'}
+                      >
+                        <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 10h8m-8 4h5m8 5l-3.5-3.5A9 9 0 1112 3a9 9 0 019 9 8.97 8.97 0 01-1.5 5z" />
+                        </svg>
+                        <span>{comments.length}</span>
+                      </button>
+
+                      {atts.length > 0 && (
+                        <button
+                          type="button"
+                          onClick={() => togglePanel('attachments')}
+                          className={`inline-flex items-center gap-2 rounded-full px-3 py-2 text-sm font-semibold transition ${
+                            activePostPanel === 'attachments'
+                              ? 'bg-slate-900 text-white'
+                              : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
+                          }`}
+                          aria-expanded={activePostPanel === 'attachments'}
+                        >
+                          <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.586-6.586a4 4 0 00-5.657-5.657L5.757 10.757a6 6 0 108.486 8.486L20 13.486" />
+                          </svg>
+                          <span>{atts.length}</span>
+                        </button>
                       )}
                     </div>
-                  </div>
-                </div>
 
-                <div className="text-base text-gray-900 mb-4 leading-relaxed">
-                  <CommunityPostBody html={modalPost.content} />
-                </div>
-
-                {(() => {
-                  const atts =
-                    Array.isArray(modalPost.attachments) && modalPost.attachments.length > 0
-                      ? modalPost.attachments
-                      : modalPost.document_url
-                        ? [
-                            {
-                              file_id: modalPost.document_file_id || '',
-                              url: modalPost.document_url,
-                              original_name: modalPost.document_original_name || 'Attachment',
-                            },
-                          ]
-                        : [];
-                  if (atts.length === 0) return null;
-                  return (
-                    <div className="mb-4 space-y-2">
-                      {atts.map((att) => (
-                        <div key={att.file_id || att.url} className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2.5">
-                          <a
-                            href={withFileAccessTokenIfNeeded(att.url)}
-                            download={att.original_name || undefined}
-                            className="inline-flex items-center gap-2 text-sm font-medium text-blue-700 hover:text-blue-900"
-                          >
-                            <svg className="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                    {modalPost.requires_read_confirmation && (
+                      <div className="mt-3">
+                        {modalPost.user_has_confirmed ? (
+                          <div className="inline-flex items-center gap-2 rounded-full border border-green-200 bg-green-50 px-3 py-1.5 text-xs font-semibold text-green-700">
+                            <svg className="h-4 w-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
                             </svg>
-                            <span className="truncate">Download: {att.original_name}</span>
-                          </a>
-                        </div>
-                      ))}
-                    </div>
-                  );
-                })()}
-
-                {/* Engagement - likes count */}
-                <div className="flex items-center gap-4 mb-4 pb-4 border-b border-gray-200">
-                  <button
-                    onClick={() => likeMutation.mutate(modalPost.id)}
-                    className={`flex items-center gap-1.5 hover:opacity-70 transition ${modalPost.user_has_liked ? 'text-red-600' : 'text-gray-600'}`}
-                  >
-                    {modalPost.user_has_liked ? (
-                      <svg className="w-5 h-5 fill-current" viewBox="0 0 24 24">
-                        <path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/>
-                      </svg>
-                    ) : (
-                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" />
-                      </svg>
-                    )}
-                    <span className="text-sm font-medium">{modalPost.likes_count || 0}</span>
-                  </button>
-                </div>
-
-                {/* Comments Section */}
-                <div ref={commentsRef} className="pt-2">
-                  <h3 className="text-base font-semibold text-gray-900 mb-4">
-                    {comments.length} {comments.length === 1 ? 'Comment' : 'Comments'}
-                  </h3>
-                  
-                  {/* Comments List */}
-                  <div className="space-y-4 mb-4">
-                    {comments.length === 0 ? (
-                      <div className="text-sm text-gray-500 text-center py-6">
-                        No comments yet. Be the first to comment!
+                            Read confirmed
+                          </div>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => confirmReadMutation.mutate(modalPost.id)}
+                            disabled={confirmReadMutation.isLoading}
+                            className="rounded-full bg-gradient-to-r from-[#7f1010] to-[#a31414] px-4 py-2 text-xs font-semibold text-white transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
+                          >
+                            {confirmReadMutation.isLoading ? 'Confirming...' : 'Confirm I have read this'}
+                          </button>
+                        )}
                       </div>
-                    ) : (
-                      comments.map((comment: Comment) => (
-                        <div
-                          key={comment.id}
-                          className={`flex gap-3 ${comment.parent_comment_id ? 'ml-6 pl-3 border-l-2 border-gray-100' : ''}`}
-                        >
-                          <div className="w-10 h-10 rounded-full bg-gray-200 flex items-center justify-center flex-shrink-0">
-                            {comment.user_avatar ? (
-                              <img
-                                src={withFileAccessTokenIfNeeded(comment.user_avatar)}
-                                alt={comment.user_name || 'User'}
-                                className="w-full h-full rounded-full object-cover"
-                              />
-                            ) : (
-                              <span className="text-gray-500 text-sm font-medium">
-                                {(comment.user_name || 'U')[0].toUpperCase()}
-                              </span>
-                            )}
-                          </div>
-                          <div className="flex-1 min-w-0">
-                            <div className="flex items-center gap-2 mb-1">
-                              <span className="font-semibold text-sm text-gray-900">{comment.user_name || 'Unknown'}</span>
-                            </div>
-                            <CommunityPostBody
-                              html={comment.content}
-                              className="text-sm text-gray-900 mb-1 leading-relaxed"
-                            />
-                            <div className="flex items-center gap-3 text-xs text-gray-500">
-                              <span>{formatTimeAgo(comment.created_at)}</span>
-                              <button
-                                type="button"
-                                className="text-blue-600 hover:underline"
-                                onClick={() => {
-                                  setReplyParentId(comment.id);
-                                  toast.success('Replying — add your message below');
-                                }}
-                              >
-                                Reply
-                              </button>
-                            </div>
-                          </div>
-                        </div>
-                      ))
                     )}
                   </div>
                 </div>
-
-                {/* Read Confirmation */}
-                {modalPost.requires_read_confirmation && (
-                  <div className="pt-4 border-t border-gray-200 mb-4">
-                    {modalPost.user_has_confirmed ? (
-                      <div className="flex items-center gap-2 text-sm text-green-700 bg-green-50 px-4 py-3 rounded-lg border border-green-200">
-                        <span>✓</span>
-                        <span>You have confirmed reading this post</span>
-                      </div>
-                    ) : (
-                      <button
-                        onClick={() => confirmReadMutation.mutate(modalPost.id)}
-                        disabled={confirmReadMutation.isLoading}
-                        className="w-full px-4 py-3 rounded-lg bg-gradient-to-r from-[#7f1010] to-[#a31414] text-white hover:opacity-90 transition disabled:opacity-50 disabled:cursor-not-allowed font-medium"
-                      >
-                        {confirmReadMutation.isLoading ? 'Confirming...' : 'Confirm I have read this message'}
-                      </button>
-                    )}
-                  </div>
-                )}
               </div>
             </div>
+          </OverlayPortal>
+        );
+      })()}
 
-            {/* Fixed comment input at bottom */}
-            <div className="border-t border-gray-200 p-4 bg-white space-y-3">
-              {replyParentId && (
-                <div className="flex items-center justify-between text-xs text-gray-600 bg-gray-50 px-2 py-1 rounded">
-                  <span>Replying to thread</span>
-                  <button type="button" className="text-blue-600" onClick={() => setReplyParentId(null)}>
-                    Cancel
-                  </button>
-                </div>
-              )}
-              <form onSubmit={handleSubmitComment} className="flex gap-2 items-start">
-                <div className="flex-1 min-w-0">
-                  <CommunityCommentRichTextEditor
-                    editorKey={`${modalPost.id}-c-${commentEditorSeq}`}
-                    initialHtml={commentDraftHtml}
-                    onChangeHtml={setCommentDraftHtml}
-                    onEditorReady={(ed) => {
-                      commentEditorRef.current = ed;
-                    }}
-                    placeholder="Add comment… Type @ to mention someone"
-                  />
-                </div>
-                <button
-                  type="submit"
-                  disabled={commentSubmitDisabled}
-                  className="px-6 py-2.5 bg-gradient-to-r from-[#7f1010] to-[#a31414] text-white rounded-lg hover:opacity-90 transition disabled:opacity-50 disabled:cursor-not-allowed font-medium text-sm flex items-center gap-2"
-                  style={{ height: '40px', marginTop: '0' }}
-                >
-                  <span>{createCommentMutation.isLoading ? 'Posting...' : 'Post'}</span>
-                  {!createCommentMutation.isLoading && (
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
-                    </svg>
-                  )}
-                </button>
-              </form>
-            </div>
-          </div>
-        </div></OverlayPortal>
-      )}
+      <CommunityDirectoryUserPeekModal
+        userId={directoryCardUserId}
+        onClose={() => setDirectoryCardUserId(null)}
+      />
     </div>
   );
 }
