@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { AnnouncementManagerCard } from '@/components/community/AnnouncementManagerCard';
+import { MegaphoneIcon } from '@/components/community/communityIcons';
 
 type StatusFilter = 'all' | 'draft' | 'scheduled' | 'published' | 'cancelled';
 
@@ -11,19 +12,6 @@ const STATUS_FILTERS: { value: StatusFilter; label: string }[] = [
   { value: 'published', label: 'Published' },
   { value: 'cancelled', label: 'Cancelled' },
 ];
-
-function MegaphoneIcon() {
-  return (
-    <svg className="mx-auto h-12 w-12 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
-      <path
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        strokeWidth={1.5}
-        d="M11 5.882V19.24a1.76 1.76 0 01-3.417.592l-2.147-6.15M18 13a3 3 0 100-6M5.436 13.683A4.001 4.001 0 017 6h1.832c4.1 0 7.625-1.234 9.168-3v14c-1.543-1.766-5.067-3-9.168-3H7a3.988 3.988 0 01-1.564-.317z"
-      />
-    </svg>
-  );
-}
 
 function AnnouncementListSkeleton() {
   return (
@@ -140,7 +128,7 @@ export function MyAnnouncementsPanel({ posts, isPending, isError, error, refetch
 
       {!isPending && !isError && posts.length === 0 && (
         <div className="rounded-xl border border-dashed border-gray-200 bg-gray-50/50 px-6 py-12 text-center">
-          <MegaphoneIcon />
+          <MegaphoneIcon className="mx-auto h-12 w-12 text-gray-300" />
           <p className="mt-4 text-sm font-medium text-gray-900">No announcements yet</p>
           <p className="mt-1 text-xs text-gray-500 max-w-sm mx-auto">Create an announcement to reach your teams and track confirmations here.</p>
           <Link

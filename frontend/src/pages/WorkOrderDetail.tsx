@@ -13,7 +13,7 @@ import { FleetEquipmentPageHeader } from '@/components/fleet/FleetEquipmentPageH
 import OverlayPortal from '@/components/OverlayPortal';
 import { useConfirm } from '@/components/ConfirmProvider';
 import {
-  SAFETY_MODAL_OVERLAY,
+  SafetyModalOverlayBackdrop,
   SAFETY_MODAL_BTN_CANCEL,
   SAFETY_MODAL_BTN_PRIMARY,
   SAFETY_MODAL_FIELD_LABEL,
@@ -1008,7 +1008,7 @@ export default function WorkOrderDetail() {
 
       {showCheckInModal && (
         <OverlayPortal>
-          <div className={SAFETY_MODAL_OVERLAY} onClick={(e) => e.target === e.currentTarget && setShowCheckInModal(false)}>
+          <SafetyModalOverlayBackdrop onBackdropClick={() => setShowCheckInModal(false)}>
             <SafetyFormModalLayout
               widthClass="w-[640px]"
               titleId={woCheckInModalTitleId}
@@ -1064,13 +1064,13 @@ export default function WorkOrderDetail() {
                 </div>
               </div>
             </SafetyFormModalLayout>
-          </div>
+          </SafetyModalOverlayBackdrop>
         </OverlayPortal>
       )}
 
       {showCheckOutModal && (
         <OverlayPortal>
-          <div className={SAFETY_MODAL_OVERLAY} onClick={(e) => e.target === e.currentTarget && setShowCheckOutModal(false)}>
+          <SafetyModalOverlayBackdrop onBackdropClick={() => setShowCheckOutModal(false)}>
             <SafetyFormModalLayout
               widthClass="w-[640px]"
               titleId={woCheckOutModalTitleId}
@@ -1126,15 +1126,16 @@ export default function WorkOrderDetail() {
                 </div>
               </div>
             </SafetyFormModalLayout>
-          </div>
+          </SafetyModalOverlayBackdrop>
         </OverlayPortal>
       )}
 
       {showEditStatusModal && workOrder && (
         <OverlayPortal>
-          <div
-            className={SAFETY_MODAL_OVERLAY}
-            onClick={(e) => e.target === e.currentTarget && !updateStatusMutation.isPending && setShowEditStatusModal(false)}
+          <SafetyModalOverlayBackdrop
+            onBackdropClick={() =>
+              !updateStatusMutation.isPending ? setShowEditStatusModal(false) : undefined
+            }
           >
             <SafetyFormModalLayout
               widthClass="w-[480px]"
@@ -1182,13 +1183,13 @@ export default function WorkOrderDetail() {
                 </select>
               </div>
             </SafetyFormModalLayout>
-          </div>
+          </SafetyModalOverlayBackdrop>
         </OverlayPortal>
       )}
 
       {showStatusReasonModal && (
         <OverlayPortal>
-          <div className={SAFETY_MODAL_OVERLAY} onClick={(e) => e.target === e.currentTarget && setShowStatusReasonModal(false)}>
+          <SafetyModalOverlayBackdrop onBackdropClick={() => setShowStatusReasonModal(false)}>
             <SafetyFormModalLayout
               widthClass="w-[480px]"
               titleId={woStatusReasonModalTitleId}
@@ -1225,13 +1226,13 @@ export default function WorkOrderDetail() {
                 />
               </div>
             </SafetyFormModalLayout>
-          </div>
+          </SafetyModalOverlayBackdrop>
         </OverlayPortal>
       )}
 
       {showReopenModal && (
         <OverlayPortal>
-          <div className={SAFETY_MODAL_OVERLAY} onClick={(e) => e.target === e.currentTarget && setShowReopenModal(false)}>
+          <SafetyModalOverlayBackdrop onBackdropClick={() => setShowReopenModal(false)}>
             <SafetyFormModalLayout
               widthClass="w-[480px]"
               titleId={woReopenModalTitleId}
@@ -1268,7 +1269,7 @@ export default function WorkOrderDetail() {
                 />
               </div>
             </SafetyFormModalLayout>
-          </div>
+          </SafetyModalOverlayBackdrop>
         </OverlayPortal>
       )}
     </div>
@@ -1894,7 +1895,7 @@ function WorkOrderFilesTab({ workOrderId }: { workOrderId: string }) {
       {/* Upload modal */}
       {showUpload && (
         <OverlayPortal>
-          <div className={SAFETY_MODAL_OVERLAY} onClick={(e) => e.target === e.currentTarget && setShowUpload(false)}>
+          <SafetyModalOverlayBackdrop onBackdropClick={() => setShowUpload(false)}>
             <SafetyFormModalLayout
               widthClass="w-[448px]"
               titleId={woFilesUploadModalTitleId}
@@ -1947,7 +1948,7 @@ function WorkOrderFilesTab({ workOrderId }: { workOrderId: string }) {
                 </div>
               </div>
             </SafetyFormModalLayout>
-          </div>
+          </SafetyModalOverlayBackdrop>
         </OverlayPortal>
       )}
 

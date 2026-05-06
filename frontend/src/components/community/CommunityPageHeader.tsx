@@ -27,7 +27,7 @@ export function CommunityPageHeader({
   );
 
   return (
-    <div className="rounded-xl border bg-white p-4 mb-4">
+    <div className="rounded-xl border bg-white p-4 sm:p-5 mb-4">
       <div className="flex items-center justify-between gap-3">
         <div className="flex items-center gap-3 flex-1 min-w-0">
           {onBack ? (
@@ -43,8 +43,8 @@ export function CommunityPageHeader({
             </button>
           ) : null}
           <div className="min-w-0">
-            <div className="text-sm font-semibold text-gray-900">{title}</div>
-            <div className="text-xs text-gray-500 mt-0.5">{subtitle}</div>
+            <div className="text-lg font-semibold text-gray-900 tracking-tight">{title}</div>
+            <div className="text-sm text-gray-500 mt-0.5">{subtitle}</div>
           </div>
         </div>
         <div className="flex items-center gap-3 shrink-0">

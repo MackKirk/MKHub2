@@ -149,6 +149,8 @@ type Props = {
   onEditorReady?: (editor: Editor | null) => void;
   placeholder?: string;
   className?: string;
+  /** Fill parent height (flex layout); scroll inside editor. Omit fixed max-height. */
+  fillHeight?: boolean;
 };
 
 export default function CommunityPostRichTextEditor({
@@ -158,6 +160,7 @@ export default function CommunityPostRichTextEditor({
   onEditorReady,
   placeholder = 'Write your announcement…',
   className = '',
+  fillHeight = false,
 }: Props) {
   const onChangeHtmlRef = useRef(onChangeHtml);
   onChangeHtmlRef.current = onChangeHtml;
@@ -272,7 +275,9 @@ export default function CommunityPostRichTextEditor({
       content: initialHtml || '<p></p>',
       editorProps: {
         attributes: {
-          class: 'focus:outline-none min-h-[220px]',
+          class: fillHeight
+            ? 'focus:outline-none min-h-[12rem] h-full'
+            : 'focus:outline-none min-h-[220px]',
         },
         handlePaste: (_view, event) => {
           const items = Array.from(event.clipboardData?.items || []);
@@ -305,7 +310,7 @@ export default function CommunityPostRichTextEditor({
         bump();
       },
     },
-    [editorKey, insertImageFromFile]
+    [editorKey, insertImageFromFile, fillHeight]
   );
 
   useEffect(() => {
@@ -320,12 +325,26 @@ export default function CommunityPostRichTextEditor({
   }, [editor]);
 
   if (!editor) {
-    return <div className="text-sm text-gray-500 py-6">Loading editor…</div>;
+    return (
+      <div
+        className={`text-sm text-gray-500 py-6 ${fillHeight ? 'flex min-h-[12rem] flex-1 items-center justify-center' : ''}`}
+      >
+        Loading editor…
+      </div>
+    );
   }
 
+  const editorContentClass = fillHeight
+    ? 'lesson-richtext-editor-content flex-1 min-h-0 overflow-y-auto bg-white [&_.ProseMirror]:min-h-[12rem]'
+    : 'lesson-richtext-editor-content max-h-[min(520px,55vh)] overflow-y-auto bg-white';
+
   return (
-    <div className={`lesson-richtext-editor community-post-rich-text border border-gray-200 rounded-lg bg-white ${className}`}>
-      <div className="flex flex-wrap items-center gap-1 p-2 border-b border-gray-100 bg-slate-50">
+    <div
+      className={`lesson-richtext-editor community-post-rich-text border border-gray-200 rounded-lg bg-white ${
+        fillHeight ? 'flex h-full min-h-0 flex-col' : ''
+      } ${className}`}
+    >
+      <div className="flex shrink-0 flex-wrap items-center gap-1 border-b border-gray-100 bg-slate-50 p-2">
         <ToolbarButton
           title="Bold"
           onClick={() => editor.chain().focus().toggleBold().run()}
@@ -447,8 +466,8 @@ export default function CommunityPostRichTextEditor({
           <RedoIcon />
         </ToolbarButton>
       </div>
-      <EditorContent editor={editor} className="lesson-richtext-editor-content max-h-[min(520px,55vh)] overflow-y-auto bg-white" />
-      <p className="text-[11px] text-gray-500 px-3 py-2 border-t border-gray-100 bg-slate-50">
+      <EditorContent editor={editor} className={editorContentClass} />
+      <p className="shrink-0 border-t border-gray-100 bg-slate-50 px-3 py-2 text-[11px] text-gray-500">
         Type <strong>@</strong> to mention someone. Paste or drop images, or use <strong>Image</strong>.
       </p>
 

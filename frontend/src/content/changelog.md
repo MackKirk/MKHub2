@@ -13,6 +13,28 @@
 -->
 
 <<<RELEASE>>>
+id: 2026-05-06-1
+date: 2026-05-06
+title: Update 1.1.028 - Week 19
+
+### New
+- Human Resources → Community: a hub with an Overview (shortcuts to create announcements, open Groups, and open Insights) and a My announcements tab for posts you authored, with filters and management actions.
+- Community groups: create groups, manage members, and adjust details from the Groups area.
+- Community insights: engagement and activity metrics for a selected date range, with export where available.
+- Create and edit announcements using a dedicated composer: rich-text body with formatting and @mentions, optional preview before publishing, multiple file attachments, audience targeting, priority and related topic area, optional read confirmation, and publishing as send now, schedule for a date and time, or save as draft, with a warning if you try to leave with unsaved changes.
+- When reading posts: comments and likes where enabled; attachments when authors include files; read confirmations when required.
+
+### Improved
+- Community Overview uses a cleaner, more consistent layout for shortcuts and navigation.
+- Creating an announcement is highlighted as the primary shortcut alongside Groups and Insights; community headers and spacing match other HR pages more closely.
+
+### Fixed
+- (none this release)
+
+### Known issues
+- (none this release)
+
+<<<RELEASE>>>
 id: 2026-04-29-1
 date: 2026-04-29
 title: Update 1.1.027 - Week 18

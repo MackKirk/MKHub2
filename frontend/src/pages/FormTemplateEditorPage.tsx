@@ -26,7 +26,7 @@ import {
   SAFETY_MODAL_BTN_CANCEL,
   SAFETY_MODAL_BTN_PRIMARY,
   SAFETY_MODAL_FIELD_LABEL,
-  SAFETY_MODAL_OVERLAY,
+  SafetyModalOverlayBackdrop,
   SafetyFormModalLayout,
   SafetyFormPdfPreviewShell,
 } from '@/components/safety/SafetyModalChrome';
@@ -1388,7 +1388,7 @@ export default function FormTemplateEditorPage() {
 
       {customListEdit && (
         <OverlayPortal>
-          <div className={SAFETY_MODAL_OVERLAY} onClick={closeCustomListModal} role="presentation">
+          <SafetyModalOverlayBackdrop onBackdropClick={closeCustomListModal}>
             <SafetyFormModalLayout
               widthClass="w-full max-w-md"
               titleId="custom-list-modal-title"
@@ -1430,13 +1430,13 @@ export default function FormTemplateEditorPage() {
                 .
               </p>
             </SafetyFormModalLayout>
-          </div>
+          </SafetyModalOverlayBackdrop>
         </OverlayPortal>
       )}
 
       {imageViewEdit && (
         <OverlayPortal>
-          <div className={SAFETY_MODAL_OVERLAY} onClick={closeImageViewModal} role="presentation">
+          <SafetyModalOverlayBackdrop onBackdropClick={closeImageViewModal}>
             <SafetyFormModalLayout
               widthClass="w-full max-w-md"
               titleId="image-view-modal-title"
@@ -1496,13 +1496,13 @@ export default function FormTemplateEditorPage() {
                 )}
               </div>
             </SafetyFormModalLayout>
-          </div>
+          </SafetyModalOverlayBackdrop>
         </OverlayPortal>
       )}
 
       {pdfViewEdit && (
         <OverlayPortal>
-          <div className={SAFETY_MODAL_OVERLAY} onClick={closePdfViewModal} role="presentation">
+          <SafetyModalOverlayBackdrop onBackdropClick={closePdfViewModal}>
             <SafetyFormModalLayout
               widthClass="w-full max-w-2xl"
               titleId="pdf-view-modal-title"
@@ -1626,7 +1626,7 @@ export default function FormTemplateEditorPage() {
                 )}
               </div>
             </SafetyFormModalLayout>
-          </div>
+          </SafetyModalOverlayBackdrop>
         </OverlayPortal>
       )}
 
@@ -1640,7 +1640,7 @@ export default function FormTemplateEditorPage() {
 
       {showTypeModal && (
         <OverlayPortal>
-          <div className={SAFETY_MODAL_OVERLAY} onClick={closeTypeModal} role="presentation">
+          <SafetyModalOverlayBackdrop onBackdropClick={closeTypeModal}>
             <div
               className="w-full max-w-lg max-h-[90vh] bg-gray-100 rounded-xl overflow-hidden flex flex-col border border-gray-200 shadow-xl"
               onClick={(e) => e.stopPropagation()}
@@ -1793,7 +1793,7 @@ export default function FormTemplateEditorPage() {
                 </button>
               </div>
             </div>
-          </div>
+          </SafetyModalOverlayBackdrop>
         </OverlayPortal>
       )}
     </div>

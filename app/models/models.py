@@ -2251,17 +2251,6 @@ class CommunityGroup(Base):
     members: Mapped[List["User"]] = relationship("User", secondary=community_group_members, backref="community_groups")
 
 
-class CommunityGroupTopic(Base):
-    __tablename__ = "community_group_topics"
-
-    id: Mapped[uuid.UUID] = uuid_pk()
-    group_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("community_groups.id", ondelete="CASCADE"), nullable=False, index=True)
-    name: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow, nullable=False, index=True)
-
-    group: Mapped["CommunityGroup"] = relationship("CommunityGroup", foreign_keys=[group_id])
-
-
 # =====================
 # Fleet & Equipment Management domain
 # =====================

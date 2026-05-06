@@ -8,6 +8,7 @@ import {
   SAFETY_MODAL_BTN_PRIMARY,
   SAFETY_MODAL_FIELD_LABEL,
   SafetyFormModalLayout,
+  SafetyModalOverlayBackdrop,
 } from '@/components/safety/SafetyModalChrome';
 import {
   PROJECT_SAFETY_INSPECTION_TEMPLATE,
@@ -1484,13 +1485,12 @@ export default function ProjectSafetyTab({
       </div>
       {showCreateModal && canWrite && (
         <OverlayPortal>
-          <div
-            className="fixed inset-0 z-[200] bg-black/50 flex items-center justify-center overflow-y-auto p-4"
-            onClick={() => {
+          <SafetyModalOverlayBackdrop
+            overlayClassName="z-[200]"
+            onBackdropClick={() => {
               setShowCreateModal(false);
               setPickedTemplateId('');
             }}
-            role="presentation"
           >
             <SafetyFormModalLayout
               widthClass="w-full max-w-md"
@@ -1539,7 +1539,7 @@ export default function ProjectSafetyTab({
                 ))}
               </select>
             </SafetyFormModalLayout>
-          </div>
+          </SafetyModalOverlayBackdrop>
         </OverlayPortal>
       )}
       </>
@@ -1650,10 +1650,9 @@ export default function ProjectSafetyTab({
 
           {signersStatusModalOpen && detail?.status === 'pending_signatures' && (
             <OverlayPortal>
-              <div
-                className="fixed inset-0 z-[200] bg-black/50 flex items-center justify-center overflow-y-auto p-4"
-                onClick={() => setSignersStatusModalOpen(false)}
-                role="presentation"
+              <SafetyModalOverlayBackdrop
+                overlayClassName="z-[200]"
+                onBackdropClick={() => setSignersStatusModalOpen(false)}
               >
                 <SafetyFormModalLayout
                   widthClass="w-full max-w-xl"
@@ -1673,7 +1672,7 @@ export default function ProjectSafetyTab({
                 >
                   <AdditionalSignersSummaryModalBody signRequests={detail.sign_requests} />
                 </SafetyFormModalLayout>
-              </div>
+              </SafetyModalOverlayBackdrop>
             </OverlayPortal>
           )}
 
@@ -1768,10 +1767,9 @@ export default function ProjectSafetyTab({
 
           {finalizeModalOpen && (
             <OverlayPortal>
-              <div
-                className="fixed inset-0 z-[200] bg-black/50 flex items-center justify-center overflow-y-auto p-4"
-                onClick={() => setFinalizeModalOpen(false)}
-                role="presentation"
+              <SafetyModalOverlayBackdrop
+                overlayClassName="z-[200]"
+                onBackdropClick={() => setFinalizeModalOpen(false)}
               >
                 <SafetyFormModalLayout
                   widthClass="w-full max-w-lg"
@@ -1835,7 +1833,7 @@ export default function ProjectSafetyTab({
                     <p className="mt-2 text-xs text-gray-600">{extraSignerIds.length} additional signer(s) selected.</p>
                   )}
                 </SafetyFormModalLayout>
-              </div>
+              </SafetyModalOverlayBackdrop>
             </OverlayPortal>
           )}
         </>

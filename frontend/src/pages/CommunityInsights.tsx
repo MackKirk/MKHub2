@@ -1,248 +1,327 @@
-import { useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { api } from '@/lib/api';
 import { CommunityPageHeader } from '@/components/community/CommunityPageHeader';
+import { InsightsToolbar, presetToRange, type DatePresetId } from '@/components/community/insights/InsightsToolbar';
+import { InsightsKpiCard } from '@/components/community/insights/InsightsKpiCard';
+import { InsightsActivityTimeline } from '@/components/community/insights/InsightsActivityTimeline';
+import { InsightsEngagementByArea } from '@/components/community/insights/InsightsEngagementByArea';
+import { InsightsEngagementByPriority } from '@/components/community/insights/InsightsEngagementByPriority';
+import { InsightsTopPosts } from '@/components/community/insights/InsightsTopPosts';
+import { InsightsTopContributors } from '@/components/community/insights/InsightsTopContributors';
+import { InsightsReadHealth } from '@/components/community/insights/InsightsReadHealth';
+import { InsightsWorkforceReach } from '@/components/community/insights/InsightsWorkforceReach';
+import { computeDelta, type InsightsPayload } from '@/components/community/insights/insightsTypes';
 
-export default function CommunityInsights() {
-  const navigate = useNavigate();
-  const [dateFrom, setDateFrom] = useState(() => {
-    const date = new Date();
-    date.setDate(date.getDate() - 14);
-    return date.toISOString().split('T')[0];
-  });
-  const [dateTo, setDateTo] = useState(() => {
-    return new Date().toISOString().split('T')[0];
-  });
+const DEFAULT_PRESET: DatePresetId = '14d';
 
-  const { data: insights, isLoading, isError } = useQuery({
-    queryKey: ['community-insights', dateFrom, dateTo],
-    queryFn: () => api<any>('GET', `/community/insights?from=${dateFrom}&to=${dateTo}`),
-  });
+function presetForRange(from: string, to: string): DatePresetId {
+  const candidates: DatePresetId[] = ['7d', '14d', '30d', '90d', 'qtd'];
+  for (const id of candidates) {
+    const r = presetToRange(id);
+    if (r.from === from && r.to === to) return id;
+  }
+  return 'custom';
+}
 
+function csvEscape(value: unknown): string {
+  if (value === null || value === undefined) return '';
+  const s = String(value);
+  if (s.includes(',') || s.includes('"') || s.includes('\n')) {
+    return `"${s.replace(/"/g, '""')}"`;
+  }
+  return s;
+}
+
+function buildCsv(payload: InsightsPayload): string {
+  const lines: string[] = [];
+  lines.push(`Community Insights export`);
+  lines.push(`Range,${csvEscape(payload.range.from)}->${csvEscape(payload.range.to)} (${payload.range.days} days)`);
+  lines.push('');
+  lines.push('Headline KPIs');
+  lines.push('Metric,Current,Previous');
+  const k = payload.kpis;
+  const p = payload.previous;
+  lines.push(`Posts Published,${k.posts_published},${p.posts_published}`);
+  lines.push(`Total Views,${k.post_views},${p.post_views}`);
+  lines.push(`Active Members,${k.active_members},${p.active_members}`);
+  lines.push(`Comments Made,${k.comments_made},${p.comments_made}`);
+  lines.push(`Likes Total,${k.likes_total},${p.likes_total}`);
+  lines.push(`Engagement Rate (%),${k.engagement_rate_pct},${p.engagement_rate_pct}`);
+  lines.push(`Avg Read Rate (%),${k.avg_read_rate_pct},${p.avg_read_rate_pct}`);
+  lines.push('');
+  lines.push('Top posts');
+  lines.push('Title,Author,Area,Priority,Views,Likes,Comments,Audience,Read %');
+  for (const tp of payload.top_posts) {
+    lines.push([
+      csvEscape(tp.title),
+      csvEscape(tp.author_name),
+      csvEscape(tp.related_area),
+      csvEscape(tp.priority),
+      tp.views,
+      tp.likes,
+      tp.comments,
+      tp.audience,
+      tp.read_rate_pct,
+    ].join(','));
+  }
+  lines.push('');
+  lines.push('Top contributors');
+  lines.push('User,Posts,Views,Likes,Comments,Engagement');
+  for (const c of payload.top_contributors) {
+    lines.push([
+      csvEscape(c.user_name),
+      c.posts_count,
+      c.views_total,
+      c.likes_total,
+      c.comments_total,
+      c.engagement_score,
+    ].join(','));
+  }
+  return lines.join('\n');
+}
+
+function downloadCsv(filename: string, contents: string) {
+  const blob = new Blob([contents], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+function KpiSkeleton() {
   return (
-    <div className="space-y-4">
-      <CommunityPageHeader
-        title="Insights"
-        subtitle="Analytics and metrics for community engagement."
-        onBack={() => navigate('/community')}
-      />
-
-      {/* Date Range Selector */}
-      <div className="rounded-xl border bg-white p-4">
-        <div className="flex items-center gap-4 mb-4">
-          <div>
-            <label className="block text-xs text-gray-600 mb-1">From</label>
-            <input
-              type="date"
-              value={dateFrom}
-              onChange={(e) => setDateFrom(e.target.value)}
-              className="border rounded px-3 py-2 text-sm"
-            />
-          </div>
-          <div>
-            <label className="block text-xs text-gray-600 mb-1">To</label>
-            <input
-              type="date"
-              value={dateTo}
-              onChange={(e) => setDateTo(e.target.value)}
-              className="border rounded px-3 py-2 text-sm"
-            />
-          </div>
-          <div className="flex items-end">
-            <button className="px-4 py-2 rounded border text-sm hover:bg-gray-50">
-              Export Full Data
-            </button>
-          </div>
-        </div>
+    <div className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm min-w-0 w-full flex flex-col gap-2">
+      <div className="space-y-1.5">
+        <div className="h-3 w-24 max-w-full bg-gray-100 rounded animate-pulse" />
+        <div className="h-5 w-28 max-w-full bg-gray-100 rounded animate-pulse" />
       </div>
-
-      {isLoading ? (
-        <div className="text-center text-gray-500 py-8">Loading insights...</div>
-      ) : isError ? (
-        <div className="rounded-xl border border-red-200 bg-red-50 text-red-800 p-4 text-sm">
-          Unable to load insights. You need <strong>hr:community:write</strong> permission.
-        </div>
-      ) : (
-        <>
-          {/* Key Metrics */}
-          <div className="grid grid-cols-4 gap-4">
-            <div className="rounded-xl border bg-white p-4">
-              <div className="text-2xl font-bold text-gray-900">{insights?.posts_made || 0}</div>
-              <div className="text-sm text-gray-600">Posts Made</div>
-            </div>
-            <div className="rounded-xl border bg-white p-4">
-              <div className="text-2xl font-bold text-gray-900">{insights?.post_views || 0}</div>
-              <div className="text-sm text-gray-600">Post Views</div>
-            </div>
-            <div className="rounded-xl border bg-white p-4">
-              <div className="text-2xl font-bold text-gray-900">{insights?.active_members || 0}</div>
-              <div className="text-sm text-gray-600">Active Members</div>
-            </div>
-            <div className="rounded-xl border bg-white p-4">
-              <div className="text-2xl font-bold text-gray-900">{insights?.comments_made || 0}</div>
-              <div className="text-sm text-gray-600">Comments Made</div>
-            </div>
-          </div>
-
-          {/* Post View Distribution */}
-          <div className="rounded-xl border bg-white p-4">
-            <h3 className="font-semibold mb-4">Post View Distribution</h3>
-            <div className="space-y-2 text-sm">
-              <div className="flex justify-between">
-                <span className="text-gray-600">Total Views</span>
-                <span className="font-medium">{insights?.post_views || 0}</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-gray-600">Via Website</span>
-                <span className="font-medium">{insights?.views_via_website || 0}</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-gray-600">Via Email</span>
-                <span className="font-medium">{insights?.views_via_email || 0}</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-gray-600">Via Mobile</span>
-                <span className="font-medium">{insights?.views_via_mobile || 0}</span>
-              </div>
-            </div>
-          </div>
-
-          {/* Email Engagement */}
-          <div className="rounded-xl border bg-white p-4">
-            <h3 className="font-semibold mb-4">Email Engagement</h3>
-            <div className="space-y-3">
-              <div>
-                <div className="flex justify-between text-sm mb-1">
-                  <span>Email Opened</span>
-                  <span className="font-medium">{insights?.email_opened || 0}</span>
-                </div>
-                <div className="w-full bg-gray-200 rounded-full h-2">
-                  <div
-                    className="bg-brand-red h-2 rounded-full"
-                    style={{ width: `${Math.min(100, ((insights?.email_opened || 0) / Math.max(1, insights?.views_via_email || 1)) * 100)}%` }}
-                  />
-                </div>
-              </div>
-              <div>
-                <div className="flex justify-between text-sm mb-1">
-                  <span>Email Clicked</span>
-                  <span className="font-medium">{insights?.email_clicked || 0}</span>
-                </div>
-                <div className="w-full bg-gray-200 rounded-full h-2">
-                  <div
-                    className="bg-brand-red h-2 rounded-full"
-                    style={{ width: `${Math.min(100, ((insights?.email_clicked || 0) / Math.max(1, insights?.email_opened || 1)) * 100)}%` }}
-                  />
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* Posting Activity Over Time */}
-          <div className="rounded-xl border bg-white p-4">
-            <h3 className="font-semibold mb-4">Posting Activity Over Time</h3>
-            <div className="space-y-1 text-sm max-h-48 overflow-y-auto">
-              {(insights?.posting_activity || []).length === 0 ? (
-                <p className="text-gray-500">No posts in this range.</p>
-              ) : (
-                (insights.posting_activity as { date: string; count: number }[]).map((row) => (
-                  <div key={row.date} className="flex justify-between border-b border-gray-100 py-1">
-                    <span className="text-gray-600">{row.date}</span>
-                    <span className="font-medium">{row.count}</span>
-                  </div>
-                ))
-              )}
-            </div>
-          </div>
-
-          {/* Top posts */}
-          <div className="rounded-xl border bg-white p-4 overflow-x-auto">
-            <h3 className="font-semibold mb-4">Top posts (engagement)</h3>
-            <table className="min-w-full text-sm">
-              <thead>
-                <tr className="text-left text-gray-500 border-b">
-                  <th className="py-2 pr-4">Title</th>
-                  <th className="py-2 pr-4">Area</th>
-                  <th className="py-2 pr-2">Views</th>
-                  <th className="py-2 pr-2">Likes</th>
-                  <th className="py-2 pr-2">Comments</th>
-                  <th className="py-2">Read %</th>
-                </tr>
-              </thead>
-              <tbody>
-                {(insights?.top_posts || []).map((row: any) => (
-                  <tr key={row.post_id} className="border-b border-gray-50">
-                    <td className="py-2 pr-4 max-w-xs truncate">{row.title}</td>
-                    <td className="py-2 pr-4">{row.related_area}</td>
-                    <td className="py-2 pr-2">{row.views}</td>
-                    <td className="py-2 pr-2">{row.likes}</td>
-                    <td className="py-2 pr-2">{row.comments}</td>
-                    <td className="py-2">{row.read_rate_pct}%</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-
-          {/* Engagement by area */}
-          <div className="rounded-xl border bg-white p-4">
-            <h3 className="font-semibold mb-4">Engagement by area</h3>
-            <div className="space-y-2 text-sm">
-              {Object.entries(insights?.engagement_by_area || {}).map(([area, stats]: [string, any]) => (
-                <div key={area} className="flex justify-between border-b border-gray-100 py-1">
-                  <span className="text-gray-700 capitalize">{area.replace(/_/g, ' ')}</span>
-                  <span className="text-gray-600">
-                    {stats.posts} posts · {stats.views} views · {stats.likes} likes · {stats.comments} comments
-                  </span>
-                </div>
-              ))}
-              {Object.keys(insights?.engagement_by_area || {}).length === 0 && (
-                <p className="text-gray-500">No data.</p>
-              )}
-            </div>
-          </div>
-
-          {/* Posts needing confirmations */}
-          <div className="rounded-xl border bg-white p-4">
-            <h3 className="font-semibold mb-4">Required-read posts with pending confirmations</h3>
-            <ul className="text-sm space-y-1">
-              {(insights?.ignored_posts || []).length === 0 ? (
-                <li className="text-gray-500">None in this date range.</li>
-              ) : (
-                insights.ignored_posts.map((row: any) => (
-                  <li key={row.post_id} className="flex justify-between gap-2">
-                    <span className="truncate">{row.title}</span>
-                    <span className="text-gray-600 whitespace-nowrap">{row.pending_confirmations} pending</span>
-                  </li>
-                ))
-              )}
-            </ul>
-          </div>
-
-          {/* Member Distribution */}
-          <div className="rounded-xl border bg-white p-4">
-            <h3 className="font-semibold mb-4">Member Distribution</h3>
-            <div className="space-y-2 text-sm">
-              <div className="flex justify-between">
-                <span className="text-gray-600">Active Members</span>
-                <span className="font-medium">
-                  {insights?.member_distribution?.active_percentage || 0}% ({insights?.member_distribution?.active_count || 0}/{insights?.member_distribution?.total_members || 0})
-                </span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-gray-600">Avg Posts / User</span>
-                <span className="font-medium">{insights?.member_distribution?.avg_posts_per_user?.toFixed(1) || '0.0'}</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-gray-600">Avg Comments / User</span>
-                <span className="font-medium">{insights?.member_distribution?.avg_comments_per_user?.toFixed(1) || '0.0'}</span>
-              </div>
-            </div>
-          </div>
-        </>
-      )}
+      <div className="h-8 w-20 bg-gray-100 rounded animate-pulse" />
+      <div className="h-8 w-full min-w-0 bg-gray-50 rounded animate-pulse" />
     </div>
   );
 }
 
+function SectionSkeleton({ height = 240 }: { height?: number }) {
+  return (
+    <div className="rounded-xl border border-gray-200 bg-white shadow-sm p-4">
+      <div className="h-4 w-40 bg-gray-100 rounded animate-pulse mb-3" />
+      <div className="bg-gray-50 rounded animate-pulse" style={{ height }} />
+    </div>
+  );
+}
+
+export default function CommunityInsights() {
+  const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
+
+  const initialFrom = searchParams.get('from');
+  const initialTo = searchParams.get('to');
+  const initialPreset = (searchParams.get('preset') as DatePresetId | null) ?? null;
+
+  const [{ from, to, preset }, setRangeState] = useState(() => {
+    if (initialFrom && initialTo) {
+      const detected = initialPreset ?? presetForRange(initialFrom, initialTo);
+      return { from: initialFrom, to: initialTo, preset: detected };
+    }
+    const r = presetToRange(DEFAULT_PRESET);
+    return { from: r.from, to: r.to, preset: DEFAULT_PRESET };
+  });
+
+  useEffect(() => {
+    const next = new URLSearchParams(searchParams);
+    next.set('from', from);
+    next.set('to', to);
+    next.set('preset', preset);
+    setSearchParams(next, { replace: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [from, to, preset]);
+
+  function handlePresetChange(p: DatePresetId) {
+    if (p === 'custom') {
+      setRangeState({ from, to, preset: 'custom' });
+    } else {
+      const r = presetToRange(p);
+      setRangeState({ from: r.from, to: r.to, preset: p });
+    }
+  }
+
+  function handleDateFromChange(v: string) {
+    if (!v) return;
+    setRangeState({ from: v, to, preset: 'custom' });
+  }
+  function handleDateToChange(v: string) {
+    if (!v) return;
+    setRangeState({ from, to: v, preset: 'custom' });
+  }
+
+  const { data, isLoading, isError, error, refetch, isFetching } = useQuery({
+    queryKey: ['community-insights', from, to],
+    queryFn: () => api<InsightsPayload>('GET', `/community/insights?from=${from}&to=${to}`),
+  });
+
+  const insights = data;
+
+  const deltas = useMemo(() => {
+    if (!insights) return null;
+    const k = insights.kpis;
+    const p = insights.previous;
+    return {
+      posts: computeDelta(k.posts_published, p.posts_published),
+      views: computeDelta(k.post_views, p.post_views),
+      active: computeDelta(k.active_members, p.active_members),
+      engagement: computeDelta(k.engagement_rate_pct, p.engagement_rate_pct),
+      readRate: computeDelta(k.avg_read_rate_pct, p.avg_read_rate_pct),
+    };
+  }, [insights]);
+
+  const handleExport = () => {
+    if (!insights) return;
+    const csv = buildCsv(insights);
+    downloadCsv(`community-insights-${from}-to-${to}.csv`, csv);
+  };
+
+  return (
+    <div className="space-y-4 min-w-0 max-w-full">
+      <div className="min-w-0 max-w-full">
+        <CommunityPageHeader
+          title="Insights"
+          subtitle="Analytics and engagement metrics for the selected window."
+          onBack={() => navigate('/community')}
+        />
+      </div>
+
+      <InsightsToolbar
+        preset={preset}
+        onPresetChange={handlePresetChange}
+        dateFrom={from}
+        dateTo={to}
+        onDateFromChange={handleDateFromChange}
+        onDateToChange={handleDateToChange}
+        onExport={handleExport}
+        isExporting={!insights}
+        onRefresh={() => { void refetch(); }}
+        isRefreshing={isFetching}
+      />
+
+      {isError ? (
+        <div className="rounded-xl border border-rose-200 bg-rose-50 text-rose-800 p-4 text-sm">
+          <div className="font-semibold mb-1">Unable to load insights</div>
+          <div className="text-xs">
+            You need <code className="font-mono">hr:community:write</code> permission to access this page.
+          </div>
+          {error instanceof Error ? <div className="text-xs mt-1 text-rose-700/80">{error.message}</div> : null}
+        </div>
+      ) : null}
+
+      {/* Hero KPI Strip — auto-fit keeps each card ≥260px wide so chips/sparklines never collide */}
+      <div className="grid gap-4 [grid-template-columns:repeat(auto-fit,minmax(min(100%,260px),1fr))]">
+        {isLoading || !insights || !deltas ? (
+          Array.from({ length: 5 }).map((_, i) => <KpiSkeleton key={i} />)
+        ) : (
+          <>
+            <InsightsKpiCard
+              label="Posts Published"
+              value={insights.kpis.posts_published}
+              deltaPct={deltas.posts.pct}
+              sparkline={insights.daily.posts_published}
+              sparklineColor="#0f766e"
+              sparklineFill="rgba(15, 118, 110, 0.12)"
+              hint={`${insights.previous.posts_published} in previous window`}
+            />
+            <InsightsKpiCard
+              label="Total Views"
+              value={insights.kpis.post_views}
+              deltaPct={deltas.views.pct}
+              sparkline={insights.daily.views}
+              sparklineColor="#1d4ed8"
+              sparklineFill="rgba(29, 78, 216, 0.12)"
+              hint={`${insights.previous.post_views.toLocaleString()} in previous window`}
+            />
+            <InsightsKpiCard
+              label="Active Members"
+              value={insights.kpis.active_members}
+              deltaPct={deltas.active.pct}
+              sparkline={insights.daily.active_users}
+              sparklineColor="#a16207"
+              sparklineFill="rgba(161, 98, 7, 0.12)"
+              hint={`${insights.workforce_reach.active_percentage.toFixed(1)}% of workforce`}
+            />
+            <InsightsKpiCard
+              label="Engagement Rate"
+              value={insights.kpis.engagement_rate_pct}
+              unit="%"
+              formatter={(v) => v.toFixed(1)}
+              deltaPct={deltas.engagement.pct}
+              sparklineColor="#d11616"
+              sparklineFill="rgba(209, 22, 22, 0.12)"
+              hint="(likes + comments) / views"
+            />
+            <InsightsKpiCard
+              label="Avg Read Rate"
+              value={insights.kpis.avg_read_rate_pct}
+              unit="%"
+              formatter={(v) => v.toFixed(1)}
+              deltaPct={deltas.readRate.pct}
+              sparklineColor="#0ea5e9"
+              sparklineFill="rgba(14, 165, 233, 0.12)"
+              hint="Avg viewers / audience per post"
+            />
+          </>
+        )}
+      </div>
+
+      {/* Activity Timeline */}
+      {isLoading || !insights ? (
+        <SectionSkeleton height={260} />
+      ) : (
+        <InsightsActivityTimeline daily={insights.daily} />
+      )}
+
+      {/* Two-column engagement breakdown */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 min-w-0">
+        {isLoading || !insights ? (
+          <>
+            <SectionSkeleton height={220} />
+            <SectionSkeleton height={220} />
+          </>
+        ) : (
+          <>
+            <InsightsEngagementByArea byArea={insights.engagement_by_area} />
+            <InsightsEngagementByPriority byPriority={insights.engagement_by_priority} />
+          </>
+        )}
+      </div>
+
+      {/* Top posts */}
+      {isLoading || !insights ? <SectionSkeleton height={280} /> : <InsightsTopPosts posts={insights.top_posts} />}
+
+      {/* Top contributors + Read health */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 min-w-0">
+        {isLoading || !insights ? (
+          <>
+            <SectionSkeleton height={260} />
+            <SectionSkeleton height={260} />
+          </>
+        ) : (
+          <>
+            <InsightsTopContributors contributors={insights.top_contributors} />
+            <InsightsReadHealth health={insights.read_health} />
+          </>
+        )}
+      </div>
+
+      {/* Workforce reach */}
+      {isLoading || !insights ? (
+        <SectionSkeleton height={180} />
+      ) : (
+        <InsightsWorkforceReach reach={insights.workforce_reach} />
+      )}
+    </div>
+  );
+}

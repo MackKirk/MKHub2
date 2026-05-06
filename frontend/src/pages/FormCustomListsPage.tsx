@@ -25,7 +25,7 @@ import {
   SAFETY_MODAL_BTN_CANCEL,
   SAFETY_MODAL_BTN_PRIMARY,
   SAFETY_MODAL_FIELD_LABEL,
-  SAFETY_MODAL_OVERLAY,
+  SafetyModalOverlayBackdrop,
   SafetyFormModalLayout,
 } from '@/components/safety/SafetyModalChrome';
 
@@ -522,7 +522,7 @@ export default function FormCustomListsPage() {
 
       {createOpen && (
         <OverlayPortal>
-          <div className={SAFETY_MODAL_OVERLAY} onClick={() => setCreateOpen(false)} role="presentation">
+          <SafetyModalOverlayBackdrop onBackdropClick={() => setCreateOpen(false)}>
             <SafetyFormModalLayout
               widthClass="w-full max-w-md"
               titleId="form-custom-list-create-title"
@@ -553,7 +553,7 @@ export default function FormCustomListsPage() {
                 placeholder="e.g. Hazard Types"
               />
             </SafetyFormModalLayout>
-          </div>
+          </SafetyModalOverlayBackdrop>
         </OverlayPortal>
       )}
     </div>
