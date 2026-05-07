@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from sqlalchemy import or_
+import copy
 import uuid
 from typing import Optional, List, Dict, Any, Set
 from datetime import datetime, timezone, timedelta
@@ -15,6 +16,7 @@ from ..models.models import (
     FormTemplate,
     user_divisions,
     SettingItem,
+    Notification,
 )
 from ..auth.security import get_current_user, require_permissions, _has_permission
 from ..services.hierarchy import get_direct_reports
@@ -839,6 +841,123 @@ def put_director_meeting_config(
     db.commit()
     db.refresh(c)
     return _build_director_meeting_board(c, db)
+
+
+@router.put("/director-meeting-config-all-cycles")
+def put_director_meeting_config_all_cycles(
+    payload: Dict[str, Any],
+    db: Session = Depends(get_db),
+    user: User = Depends(require_permissions("reviews:admin", "hr:reviews:admin")),
+):
+    """
+    Same slot windows + duration as PUT /cycles/{id}/director-meeting-config, but applied to every review cycle
+    so published availability is shared across all cycles.
+    """
+    duration = _clamp_duration_minutes(payload.get("duration_minutes"))
+    windows_in = payload.get("windows")
+    windows_out: List[Dict[str, Any]] = []
+    if isinstance(windows_in, list):
+        for w in windows_in:
+            if not isinstance(w, dict):
+                continue
+            ws = w.get("starts_at")
+            we = w.get("ends_at")
+            if not ws or not we:
+                continue
+            wid = w.get("id")
+            if not wid or not isinstance(wid, str):
+                wid = str(uuid.uuid4())
+            windows_out.append({"id": wid, "starts_at": str(ws).strip(), "ends_at": str(we).strip()})
+    now_iso = datetime.now(timezone.utc).isoformat()
+    updater = str(user.id)
+    cfg_base = {
+        "duration_minutes": duration,
+        "windows": windows_out,
+        "updated_at": now_iso,
+        "updated_by_user_id": updater,
+    }
+    cycles = db.query(ReviewCycle).order_by(ReviewCycle.name.asc()).all()
+    if not cycles:
+        raise HTTPException(status_code=404, detail="No review cycles found")
+    for c in cycles:
+        c.director_1on1_slot_config = copy.deepcopy(cfg_base)
+        db.add(c)
+    db.commit()
+    db.refresh(cycles[0])
+    return _build_director_meeting_board(cycles[0], db)
+
+
+@router.post("/cycles/{cycle_id}/director-meeting-notify-affected")
+def notify_director_meeting_affected_reviewees(
+    cycle_id: str,
+    payload: Dict[str, Any],
+    db: Session = Depends(get_db),
+    _: User = Depends(require_permissions("reviews:admin", "hr:reviews:admin")),
+):
+    """
+    When HR removes or changes published availability that overlapped booked slots, notify affected employees.
+    Creates in-app notifications (same pipeline as /notifications).
+    """
+    cid = _uuid_or_none(cycle_id)
+    if not cid:
+        raise HTTPException(status_code=400, detail="Invalid cycle_id")
+    c = db.query(ReviewCycle).filter(ReviewCycle.id == cid).first()
+    if not c:
+        raise HTTPException(status_code=404, detail="Cycle not found")
+
+    raw_ids = payload.get("reviewee_user_ids")
+    if not isinstance(raw_ids, list) or not raw_ids:
+        raise HTTPException(status_code=400, detail="reviewee_user_ids is required")
+
+    message = (payload.get("message") or "").strip()
+    if not message:
+        raise HTTPException(status_code=400, detail="message is required")
+    if len(message) > 4000:
+        raise HTTPException(status_code=400, detail="message is too long")
+
+    title = "Director 1:1 meeting — schedule change"
+    body = (
+        "The published availability for your director 1:1 meeting was updated (shared across review cycles). "
+        "Your previous time slot may no longer apply.\n\n"
+        f"Message from HR:\n{message}"
+    )
+    link = "/reviews/my"
+
+    seen: Set[str] = set()
+    created = 0
+    now = datetime.now(timezone.utc)
+    for uid_raw in raw_ids:
+        uid = _uuid_or_none(uid_raw)
+        if not uid:
+            continue
+        key = str(uid)
+        if key in seen:
+            continue
+        seen.add(key)
+        target = db.query(User).filter(User.id == uid).first()
+        if not target:
+            continue
+        n = Notification(
+            user_id=uid,
+            channel="push",
+            template_key="director_meeting_schedule_change",
+            payload_json={
+                "title": title,
+                "message": body,
+                "type": "director_meeting_schedule_change",
+                "link": link,
+                "metadata": {"cycle_id": str(cid), "kind": "availability_changed"},
+                "read": False,
+            },
+            status="pending",
+            created_at=now,
+        )
+        db.add(n)
+        created += 1
+    if created == 0:
+        raise HTTPException(status_code=400, detail="No valid recipients to notify")
+    db.commit()
+    return {"ok": True, "notified_count": created}
 
 
 @router.post("/cycles/{cycle_id}/director-meetings/book")

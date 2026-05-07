@@ -2,6 +2,10 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 import { api } from '@/lib/api';
+import DirectorMeetingSlotPicker, {
+  formatDirectorSlotDayLabel,
+  formatDirectorSlotTimeRange,
+} from '@/components/DirectorMeetingSlotPicker';
 
 type BoardSlot = {
   starts_at: string;
@@ -21,17 +25,6 @@ type AssignmentRow = {
   cycle_name?: string;
   is_self?: boolean;
 };
-
-function formatRange(isoStart: string, isoEnd: string) {
-  try {
-    const a = new Date(isoStart);
-    const b = new Date(isoEnd);
-    if (Number.isNaN(a.getTime()) || Number.isNaN(b.getTime())) return isoStart;
-    return `${a.toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })} – ${b.toLocaleTimeString(undefined, { timeStyle: 'short' })}`;
-  } catch {
-    return isoStart;
-  }
-}
 
 /**
  * Employee-only: book a director closing 1:1 from published slots (configured by HR on the cycle).
@@ -103,8 +96,8 @@ export default function MyReviewsDirectorMeetingTab() {
       <div>
         <h2 className="text-lg font-semibold text-gray-900">Director 1:1 meeting</h2>
         <p className="mt-1 text-sm text-gray-600 max-w-2xl">
-          After your self-review and supervisor review, book a time for your closing conversation with leadership. Slots
-          appear when HR publishes availability for the cycle.{' '}
+          After your self-review and supervisor review, pick a day on the calendar, then book a closing conversation with
+          leadership. Slots appear when HR publishes availability for the cycle.{' '}
           <Link to="/reviews/compare" className="font-medium text-brand-red hover:underline">
             Compare reviews
           </Link>
@@ -135,7 +128,8 @@ export default function MyReviewsDirectorMeetingTab() {
           {activeBookingSlot ? (
             <p className="text-sm text-green-800 bg-green-50 border border-green-200 rounded-lg px-3 py-2">
               <span className="font-medium">Your meeting:</span>{' '}
-              {formatRange(activeBookingSlot.starts_at, activeBookingSlot.ends_at)}
+              {formatDirectorSlotDayLabel(activeBookingSlot.starts_at)} ·{' '}
+              {formatDirectorSlotTimeRange(activeBookingSlot.starts_at, activeBookingSlot.ends_at)}
             </p>
           ) : null}
 
@@ -151,61 +145,18 @@ export default function MyReviewsDirectorMeetingTab() {
               updates availability).
             </div>
           ) : (
-            <div className="overflow-x-auto rounded-lg border border-gray-200">
-              <table className="min-w-full text-sm">
-                <thead className="bg-gray-50 text-left text-xs font-medium text-gray-600 uppercase">
-                  <tr>
-                    <th className="px-3 py-2">Time</th>
-                    <th className="px-3 py-2">Status</th>
-                    <th className="px-3 py-2 w-36"> </th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-100">
-                  {(board?.slots || []).map((slot) => {
-                    const taken = !!slot.booked_reviewee_user_id;
-                    const isMine = taken && slot.booked_reviewee_user_id === myId;
-                    const canTake = !taken && !!myId;
-                    return (
-                      <tr key={slot.starts_at} className="hover:bg-gray-50/80">
-                        <td className="px-3 py-2.5 tabular-nums">{formatRange(slot.starts_at, slot.ends_at)}</td>
-                        <td className="px-3 py-2.5">
-                          {taken ? (
-                            <span className="text-gray-800">
-                              Booked — {slot.booked_reviewee_name || slot.booked_reviewee_user_id}
-                            </span>
-                          ) : (
-                            <span className="text-green-700 font-medium">Available</span>
-                          )}
-                        </td>
-                        <td className="px-3 py-2.5">
-                          {canTake ? (
-                            <button
-                              type="button"
-                              onClick={() => handleBook(slot.starts_at)}
-                              disabled={bookMutation.isPending}
-                              className="rounded-lg bg-brand-red px-3 py-1.5 text-xs font-semibold text-white hover:opacity-90 disabled:opacity-50"
-                            >
-                              Book
-                            </button>
-                          ) : isMine ? (
-                            <button
-                              type="button"
-                              onClick={handleCancel}
-                              disabled={bookMutation.isPending}
-                              className="rounded-lg border border-gray-300 px-3 py-1.5 text-xs font-semibold text-gray-800 hover:bg-gray-50 disabled:opacity-50"
-                            >
-                              Cancel
-                            </button>
-                          ) : (
-                            <span className="text-xs text-gray-400">—</span>
-                          )}
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
+            <DirectorMeetingSlotPicker
+              cycleId={cycleId}
+              slots={board?.slots || []}
+              durationMinutes={board?.duration_minutes ?? 15}
+              bookingTargetId={myId}
+              onBook={handleBook}
+              onCancelMine={handleCancel}
+              isPending={bookMutation.isPending}
+              compact
+              reserveLabel="Book"
+              cancelLabel="Cancel"
+            />
           )}
         </>
       )}
