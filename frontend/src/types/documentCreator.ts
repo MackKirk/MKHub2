@@ -53,9 +53,9 @@ export type DocumentEditorFont = (typeof DOCUMENT_EDITOR_FONTS)[number];
 
 /** Text style presets: font, weight, size, color. User can apply then override font/size. */
 export const TEXT_STYLE_PRESETS = [
-  { id: 'area-title', label: 'Padrão 01 (Area Title)', fontFamily: 'Montserrat' as const, fontWeight: 'bold' as const, fontSize: 13, color: '#B30000' },
-  { id: 'text', label: 'Padrão 02 (Text)', fontFamily: 'Montserrat' as const, fontWeight: 'normal' as const, fontSize: 12, color: '#787878' },
-  { id: 'title', label: 'Padrão 03 (Title)', fontFamily: 'Montserrat' as const, fontWeight: 'normal' as const, fontSize: 12, color: '#000000' },
+  { id: 'area-title', label: 'Preset 01 (Area title)', fontFamily: 'Montserrat' as const, fontWeight: 'bold' as const, fontSize: 13, color: '#B30000' },
+  { id: 'text', label: 'Preset 02 (Body text)', fontFamily: 'Montserrat' as const, fontWeight: 'normal' as const, fontSize: 12, color: '#787878' },
+  { id: 'title', label: 'Preset 03 (Title)', fontFamily: 'Montserrat' as const, fontWeight: 'normal' as const, fontSize: 12, color: '#000000' },
 ] as const;
 
 export function createTextElement(): DocElement {

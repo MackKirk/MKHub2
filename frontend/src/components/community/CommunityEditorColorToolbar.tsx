@@ -1,38 +1,6 @@
 import { useCallback, useEffect, useReducer, useRef, useState, type RefObject } from 'react';
 import type { Editor } from '@tiptap/core';
-
-/** Word-style standard colors (subset). */
-const FONT_COLOR_PRESETS = [
-  '#000000',
-  '#434343',
-  '#666666',
-  '#999999',
-  '#b7b7b7',
-  '#cccccc',
-  '#d9d9d9',
-  '#efefef',
-  '#ffffff',
-  '#980000',
-  '#ff0000',
-  '#ff9900',
-  '#ffff00',
-  '#00ff00',
-  '#00ffff',
-  '#4a86e8',
-  '#0000ff',
-  '#9900ff',
-  '#ff00ff',
-  '#e6b8af',
-  '#f4cccc',
-  '#fce5cd',
-  '#fff2cc',
-  '#d9ead3',
-  '#d0e0e3',
-  '#c9daf8',
-  '#cfe2f3',
-  '#d9d2e9',
-  '#ead1dc',
-] as const;
+import { EDITOR_FONT_COLOR_PRESETS } from '@/lib/editorFontColorPresets';
 
 const HIGHLIGHT_PRESETS = [
   '#fef08a',
@@ -255,7 +223,7 @@ export function CommunityEditorColorToolbar({ editor }: { editor: Editor }) {
             </button>
             <p className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-gray-500">Standard colors</p>
             <div className="mb-2 grid grid-cols-8 gap-1">
-              {FONT_COLOR_PRESETS.map((c) => (
+              {EDITOR_FONT_COLOR_PRESETS.map((c) => (
                 <Swatch
                   key={c}
                   color={c}

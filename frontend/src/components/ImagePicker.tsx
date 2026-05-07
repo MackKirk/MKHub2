@@ -1,10 +1,32 @@
-import { useEffect, useMemo, useRef, useState, useCallback } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { api, withFileAccessToken } from '@/lib/api';
 import toast from 'react-hot-toast';
 import ImageEditor from '@/components/ImageEditor';
 import OverlayPortal from '@/components/OverlayPortal';
+import {
+  editorCaptionClass,
+  editorPanelAsideClass,
+  editorPanelTitleClass,
+  editorSegmentedControlTrackClass,
+  editorSegmentedSegmentIdleClass,
+  editorSegmentedSegmentSelectedClass,
+  editorTransitionInteractive,
+  selectionToolButtonGhostClass,
+} from '@/components/document-editor/documentEditorRibbonPrimitives';
 
 type LibraryFile = { id:string, file_object_id:string, is_image?:boolean, content_type?:string, category?:string };
+
+const FILE_INPUT_ACCEPT = 'image/*,.heic,.heif,image/heic,image/heif';
+
+function pickImageFileFromList(files: FileList | null): File | null {
+  if (!files?.length) return null;
+  for (let i = 0; i < files.length; i++) {
+    const f = files[i];
+    const ext = (f.name || '').toLowerCase();
+    if (f.type.startsWith('image/') || ext.endsWith('.heic') || ext.endsWith('.heif')) return f;
+  }
+  return null;
+}
 
 function computeExportDimensions(
   targetWidth: number,
@@ -39,6 +61,7 @@ export default function ImagePicker({
   fileObjectId,
   editorScaleFactor = 2.5,
   hideEditButton = false,
+  openEditorOnOpen = false,
   /** If set, scales export down so max(width,height) does not exceed this (px). */
   maxExportLongSide,
 }:{
@@ -54,6 +77,7 @@ export default function ImagePicker({
   fileObjectId?:string,
   editorScaleFactor?: number,
   hideEditButton?: boolean,
+  openEditorOnOpen?: boolean,
   maxExportLongSide?: number,
 }){
   const exportDimensions = useMemo(
@@ -87,6 +111,8 @@ export default function ImagePicker({
   const dragging = useRef<{x:number, y:number, tx:number, ty:number}|null>(null);
   const [isPanning] = useState(true);
   const blobUrlRef = useRef<string | null>(null);
+  const [dragActive, setDragActive] = useState(false);
+  const dropDepthRef = useRef(0);
 
   useEffect(()=>{
     if(!isOpen){
@@ -235,12 +261,11 @@ export default function ImagePicker({
     finally { setIsLoadingLibrary(false); }
   };
 
-  useEffect(()=>{
-    // If user switches to library tab, lazy-load
-    if (tab === 'library' && isOpen && hasLibrary && !libraryLoaded && !isLoadingLibrary){
+  useEffect(() => {
+    if (tab === 'library' && isOpen && hasLibrary && !libraryLoaded && !isLoadingLibrary) {
       loadLibrary(true);
     }
-  }, [tab, isOpen, clientId, projectId]);
+  }, [tab, isOpen, hasLibrary, clientId, projectId, libraryLoaded, isLoadingLibrary]);
 
   const cw = 360;
   const ch = useMemo(()=> Math.round(cw * (targetHeight/targetWidth)), [targetWidth, targetHeight]);
@@ -414,7 +439,7 @@ export default function ImagePicker({
         const errorText = await putResp.text().catch(() => 'Unknown error');
         throw new Error(`Azure upload failed: ${putResp.status} ${putResp.statusText} - ${errorText}`);
       }
-      setProgressMessage(isHeic ? 'Converting HEIC to JPG...' : 'Saving file...');
+      setProgressMessage(isHeic ? 'Converting HEIC to JPEG…' : 'Saving file…');
       const conf:any = await api('POST','/files/confirm',{ key: up.key, size_bytes: file.size, checksum_sha256:'na', content_type: contentType });
       const fileObjectId = conf.id;
       // Attach to client library
@@ -491,6 +516,13 @@ export default function ImagePicker({
       loadFromFileObject(fileObjectId);
     }
   }, [isOpen, fileObjectId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    if (!isOpen) return;
+    if (!openEditorOnOpen) return;
+    if (!img) return;
+    setShowImageEditor(true);
+  }, [isOpen, openEditorOnOpen, img]);
 
   // Use refs to access current values in event handler
   const zoomRef = useRef(zoom);
@@ -605,9 +637,9 @@ export default function ImagePicker({
     if (img.src.startsWith('blob:')) {
       return img.src;
     }
-    // If image is from a file object, use the thumbnail endpoint
+    // Stable URL — ImageEditor keys reloads on this string; avoid cache-bust timestamps here.
     if (originalFileObjectId) {
-      return withFileAccessToken(`/files/${originalFileObjectId}/thumbnail?w=1024&cb=${Date.now()}`);
+      return withFileAccessToken(`/files/${originalFileObjectId}/thumbnail?w=1024`);
     }
     // Fallback to image src
     return img.src;
@@ -717,7 +749,37 @@ export default function ImagePicker({
     }
   };
 
-  if(!isOpen) return null;
+  const onDropZoneDragEnter = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    dropDepthRef.current += 1;
+    setDragActive(true);
+  };
+  const onDropZoneDragLeave = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    dropDepthRef.current -= 1;
+    if (dropDepthRef.current <= 0) {
+      dropDepthRef.current = 0;
+      setDragActive(false);
+    }
+  };
+  const onDropZoneDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    e.dataTransfer.dropEffect = 'copy';
+  };
+  const onDropZoneDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    dropDepthRef.current = 0;
+    setDragActive(false);
+    const file = pickImageFileFromList(e.dataTransfer.files);
+    if (file) void loadFromFile(file);
+    else toast.error('Please drop an image file (JPEG, PNG, HEIC, …).');
+  };
+
+  if (!isOpen) return null;
   return (
     <>
       <style>{`
@@ -777,163 +839,440 @@ export default function ImagePicker({
         }
       `}</style>
     <OverlayPortal>
-    <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center overflow-y-auto p-4">
-      <div className="w-[900px] max-w-[95vw] max-h-[90vh] rounded-xl overflow-hidden flex flex-col border border-gray-200 shadow-xl bg-white">
-        <div className="rounded-t-xl border-b border-gray-200 bg-white p-4 flex-shrink-0">
-          <div className="flex items-center justify-between">
-            <h2 className="text-sm font-semibold text-gray-900">Choose image</h2>
+      <div className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-black/45 p-4">
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="image-picker-title"
+          className="flex max-h-[90vh] w-[900px] max-w-[95vw] flex-col overflow-hidden rounded-xl border border-slate-200/90 bg-white shadow-2xl ring-1 ring-slate-900/[0.06]"
+        >
+          <div className="flex shrink-0 items-center justify-between border-b border-slate-200/85 bg-gradient-to-b from-white to-slate-50/90 px-4 py-3">
+            <h2 id="image-picker-title" className={`${editorPanelTitleClass} truncate`}>
+              Choose image
+            </h2>
             <button
               type="button"
               onClick={onClose}
-              className="p-1.5 rounded hover:bg-gray-100 transition-colors flex items-center justify-center text-gray-500 hover:text-gray-700"
+              className={`${editorTransitionInteractive} flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-slate-500 hover:bg-slate-100 hover:text-slate-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-red/35`}
               title="Close"
             >
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
               </svg>
             </button>
           </div>
-        </div>
-        <div className="grid grid-cols-3 gap-0 flex-1 min-h-0 overflow-hidden">
-          <div className="border-r border-gray-200 bg-gray-50/50 overflow-y-auto min-h-0">
-            {hasLibrary && (
-              <div className="p-3">
-                <div className="mb-2 flex items-center justify-between">
-                  <div className="text-sm font-semibold">{projectId ? 'Project gallery' : 'Library'}</div>
-                  <div className="flex items-center gap-2">
-                    <button type="button" disabled={isLoadingLibrary} onClick={()=>loadLibrary(true)} className="text-xs px-2 py-1 rounded bg-gray-100 disabled:opacity-50">Reload</button>
-                  </div>
-                </div>
-                {!libraryLoaded && (
-                  <div className="py-6 text-center">
-                    <button type="button" disabled={isLoadingLibrary} onClick={()=>loadLibrary(true)} className="px-3 py-2 rounded bg-gray-800 text-white disabled:opacity-50">Load gallery</button>
-                  </div>
-                )}
-                {libraryLoaded && (
-                  <div className="space-y-4 max-h-[380px] overflow-auto">
-                    {/* Originais */}
-                    <div>
-                      <div className="flex items-center justify-between mb-1.5">
-                        <span className="text-xs font-semibold text-gray-700 uppercase tracking-wide">Imagens originais</span>
-                        {filesOriginals.length > IMAGES_PER_PAGE && (
-                          <span className="text-[10px] text-gray-500">
-                            {displayPageOriginals * IMAGES_PER_PAGE + 1}-{Math.min((displayPageOriginals + 1) * IMAGES_PER_PAGE, filesOriginals.length)} de {filesOriginals.length}
-                          </span>
-                        )}
-                      </div>
-                      <div className="grid grid-cols-3 gap-2">
-                        {filesOriginals.slice(displayPageOriginals * IMAGES_PER_PAGE, (displayPageOriginals + 1) * IMAGES_PER_PAGE).map((f) => (
-                          <button type="button" key={f.id} className="border rounded overflow-hidden hover:ring-2 hover:ring-brand-red/50" onClick={() => loadFromFileObject(f.file_object_id)}>
-                            <img className="w-full h-20 object-cover" src={withFileAccessToken(`/files/${f.file_object_id}/thumbnail?w=160`)} loading="lazy" alt="" />
-                          </button>
-                        ))}
-                      </div>
-                      {filesOriginals.length > IMAGES_PER_PAGE && (
-                        <div className="flex items-center justify-center gap-1 mt-2">
-                          <button type="button" disabled={displayPageOriginals === 0} onClick={() => setDisplayPageOriginals((p) => p - 1)} className="px-2 py-1 rounded bg-gray-100 disabled:opacity-40 text-xs">Anterior</button>
-                          <span className="text-xs text-gray-500 px-1">{displayPageOriginals + 1} / {Math.ceil(filesOriginals.length / IMAGES_PER_PAGE)}</span>
-                          <button type="button" disabled={(displayPageOriginals + 1) * IMAGES_PER_PAGE >= filesOriginals.length} onClick={() => setDisplayPageOriginals((p) => p + 1)} className="px-2 py-1 rounded bg-gray-100 disabled:opacity-40 text-xs">Próxima</button>
-                        </div>
-                      )}
-                      {filesOriginals.length === 0 && <p className="text-xs text-gray-400 py-2">Nenhuma imagem original</p>}
-                    </div>
 
-                    {/* Editadas / derivadas */}
-                    <div>
-                      <div className="flex items-center justify-between mb-1.5">
-                        <span className="text-xs font-semibold text-gray-700 uppercase tracking-wide">Imagens editadas</span>
-                        {filesDerived.length > IMAGES_PER_PAGE && (
-                          <span className="text-[10px] text-gray-500">
-                            {displayPageDerived * IMAGES_PER_PAGE + 1}-{Math.min((displayPageDerived + 1) * IMAGES_PER_PAGE, filesDerived.length)} de {filesDerived.length}
-                          </span>
-                        )}
-                      </div>
-                      <div className="grid grid-cols-3 gap-2">
-                        {filesDerived.slice(displayPageDerived * IMAGES_PER_PAGE, (displayPageDerived + 1) * IMAGES_PER_PAGE).map((f) => (
-                          <button type="button" key={f.id} className="border rounded overflow-hidden hover:ring-2 hover:ring-brand-red/50" onClick={() => loadFromFileObject(f.file_object_id)}>
-                            <img className="w-full h-20 object-cover" src={withFileAccessToken(`/files/${f.file_object_id}/thumbnail?w=160`)} loading="lazy" alt="" />
-                          </button>
-                        ))}
-                      </div>
-                      {filesDerived.length > IMAGES_PER_PAGE && (
-                        <div className="flex items-center justify-center gap-1 mt-2">
-                          <button type="button" disabled={displayPageDerived === 0} onClick={() => setDisplayPageDerived((p) => p - 1)} className="px-2 py-1 rounded bg-gray-100 disabled:opacity-40 text-xs">Anterior</button>
-                          <span className="text-xs text-gray-500 px-1">{displayPageDerived + 1} / {Math.ceil(filesDerived.length / IMAGES_PER_PAGE)}</span>
-                          <button type="button" disabled={(displayPageDerived + 1) * IMAGES_PER_PAGE >= filesDerived.length} onClick={() => setDisplayPageDerived((p) => p + 1)} className="px-2 py-1 rounded bg-gray-100 disabled:opacity-40 text-xs">Próxima</button>
-                        </div>
-                      )}
-                      {filesDerived.length === 0 && <p className="text-xs text-gray-400 py-2">Nenhuma imagem editada</p>}
+          <div className="grid min-h-0 flex-1 grid-cols-3 gap-0 overflow-hidden">
+            <div className={`flex min-h-0 min-w-0 flex-col border-r border-slate-200/90 ${editorPanelAsideClass}`}>
+              {hasLibrary ? (
+                <>
+                  <div className="shrink-0 border-b border-slate-200/80 p-2">
+                    <div className={`${editorSegmentedControlTrackClass} w-full`}>
+                      <button
+                        type="button"
+                        onClick={() => setTab('upload')}
+                        className={`flex h-full min-h-0 flex-1 items-center justify-center px-2 text-[11px] font-semibold capitalize transition-[background-color,color,box-shadow] duration-150 ${
+                          tab === 'upload' ? editorSegmentedSegmentSelectedClass : editorSegmentedSegmentIdleClass
+                        }`}
+                      >
+                        Upload
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setTab('library')}
+                        className={`flex h-full min-h-0 flex-1 items-center justify-center px-2 text-[11px] font-semibold capitalize transition-[background-color,color,box-shadow] duration-150 ${
+                          tab === 'library' ? editorSegmentedSegmentSelectedClass : editorSegmentedSegmentIdleClass
+                        }`}
+                      >
+                        Gallery
+                      </button>
                     </div>
                   </div>
-                )}
-              </div>
-            )}
-            <div className="p-3 border-t border-gray-200">
-              <div className="mb-2 text-sm font-semibold">Upload</div>
-              <input ref={inputRef} type="file" accept="image/*,.heic,.heif,image/heic,image/heif" onChange={(e)=>{ const f=e.target.files?.[0]; if(f) loadFromFile(f); }} />
-              <div className="mt-3">
-                <button 
-                  type="button"
-                  onClick={handlePaste}
-                  className="w-full px-3 py-2 rounded bg-gray-100 hover:bg-gray-200 text-sm flex items-center justify-center gap-2"
-                  title="Paste image from clipboard (Ctrl+V)"
-                >
-                  📋 Paste Image
-                </button>
-              </div>
-            </div>
-          </div>
-          <div className="col-span-2 min-w-0 overflow-y-auto">
-            <div className="p-4">
-              <div className="mb-3 text-sm text-gray-600">
-                Target: {targetWidth}×{targetHeight}px · JPEG export {exportDimensions.outW}×{exportDimensions.outH}px
-              </div>
-              <div ref={containerRef} className="relative bg-white overflow-hidden" style={{ width: cw, height: ch, userSelect:'none', cursor: (img && isPanning)? (dragging.current? 'grabbing':'grab') : 'default', touchAction:'none' as any }} onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={onPointerUp}>
-                {img && (
-                  <img src={img.src} draggable={false} onDragStart={(e)=>e.preventDefault()} style={{ position:'absolute', left: tx, top: ty, width: img.naturalWidth*coverScale*zoom, height: img.naturalHeight*coverScale*zoom, maxWidth:'none', maxHeight:'none', userSelect:'none', zIndex: 1 }} />
-                )}
-                {!img && <div className="w-full h-full grid place-items-center text-sm text-gray-500">{isLoading? 'Loading image…' : 'Select or upload an image'}</div>}
-                <div className="absolute inset-0 ring-2 ring-black/70 pointer-events-none" style={{ zIndex: 2 }} />
-              </div>
-              <div className="mt-3 flex items-center gap-3">
-                <div className="custom-slider-container" style={{ flex: 1 }}>
-                  <span className="text-xs font-medium text-gray-700 flex-shrink-0" style={{ width: '45px' }}>Zoom:</span>
-                  <input 
-                    type="range" 
-                    min={0.1} 
-                    max={6} 
-                    step={0.01} 
-                    disabled={!img || !allowEdit} 
-                    value={zoom} 
-                    onChange={(e)=>{ const nz = Math.min(6, Math.max(0.1, parseFloat(e.target.value||'1'))); const { x, y } = clamp(tx, ty, nz); setZoom(nz); setTx(x); setTy(y); }} 
-                    className="custom-slider"
-                    style={{
-                      background: `linear-gradient(to right, #6b7280 0%, #6b7280 ${((zoom - 0.1) / (6 - 0.1)) * 100}%, #e5e7eb ${((zoom - 0.1) / (6 - 0.1)) * 100}%, #e5e7eb 100%)`
+                  <div className="min-h-0 flex-1 overflow-y-auto">
+                    {tab === 'upload' ? (
+                      <div className="space-y-3 p-3">
+                        <input
+                          ref={inputRef}
+                          type="file"
+                          accept={FILE_INPUT_ACCEPT}
+                          className="sr-only"
+                          onChange={(e) => {
+                            const f = e.target.files?.[0];
+                            if (f) void loadFromFile(f);
+                            e.target.value = '';
+                          }}
+                        />
+                        <div
+                          role="button"
+                          tabIndex={0}
+                          onClick={() => inputRef.current?.click()}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter' || e.key === ' ') {
+                              e.preventDefault();
+                              inputRef.current?.click();
+                            }
+                          }}
+                          onDragEnter={onDropZoneDragEnter}
+                          onDragLeave={onDropZoneDragLeave}
+                          onDragOver={onDropZoneDragOver}
+                          onDrop={onDropZoneDrop}
+                          className={`${editorTransitionInteractive} flex cursor-pointer flex-col items-center justify-center rounded-xl border-2 border-dashed px-4 py-8 text-center ${
+                            dragActive
+                              ? 'border-brand-red/55 bg-brand-red/[0.06] ring-2 ring-brand-red/15'
+                              : 'border-slate-300/90 bg-white/60 hover:border-slate-400 hover:bg-slate-50/90'
+                          }`}
+                        >
+                          <svg className="mb-2 h-9 w-9 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                          </svg>
+                          <p className="text-sm font-medium text-slate-800">
+                            Drop an image here or{' '}
+                            <span className="text-brand-red underline decoration-brand-red/40 underline-offset-2">browse</span>
+                          </p>
+                          <p className="mt-1 max-w-[14rem] text-[11px] leading-snug text-slate-500">
+                            <kbd className="rounded border border-slate-200 bg-slate-100 px-1 py-0.5 font-mono text-[10px] text-slate-700">Ctrl+V</kbd> /{' '}
+                            <kbd className="rounded border border-slate-200 bg-slate-100 px-1 py-0.5 font-mono text-[10px] text-slate-700">⌘V</kbd> to paste while this dialog is open
+                          </p>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={handlePaste}
+                          className={`${selectionToolButtonGhostClass} h-9 w-full justify-center gap-2 text-xs font-semibold`}
+                          title="Paste from clipboard (may require permission)"
+                        >
+                          <svg className="h-4 w-4 shrink-0 text-slate-600" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+                          </svg>
+                          Paste from clipboard
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="p-3">
+                        <div className="mb-2 flex items-center justify-between gap-2">
+                          <div className="truncate text-sm font-semibold text-slate-900">
+                            {projectId ? 'Project gallery' : 'Library'}
+                          </div>
+                          <button
+                            type="button"
+                            disabled={isLoadingLibrary}
+                            onClick={() => loadLibrary(true)}
+                            className={`${selectionToolButtonGhostClass} h-8 shrink-0 px-2 text-xs`}
+                          >
+                            Reload
+                          </button>
+                        </div>
+                        {!libraryLoaded && (
+                          <div className="py-8 text-center">
+                            <button
+                              type="button"
+                              disabled={isLoadingLibrary}
+                              onClick={() => loadLibrary(true)}
+                              className={`${editorTransitionInteractive} rounded-lg bg-slate-800 px-4 py-2.5 text-sm font-semibold text-white hover:bg-slate-900 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-red/40 disabled:opacity-50`}
+                            >
+                              Load gallery
+                            </button>
+                          </div>
+                        )}
+                        {libraryLoaded && (
+                          <div className="max-h-[min(380px,50vh)] space-y-4 overflow-auto">
+                            <div>
+                              <div className="mb-1.5 flex items-center justify-between">
+                                <span className="text-[10px] font-semibold uppercase tracking-wide text-slate-600">Original images</span>
+                                {filesOriginals.length > IMAGES_PER_PAGE && (
+                                  <span className="text-[10px] text-slate-500">
+                                    {displayPageOriginals * IMAGES_PER_PAGE + 1}–
+                                    {Math.min((displayPageOriginals + 1) * IMAGES_PER_PAGE, filesOriginals.length)} of{' '}
+                                    {filesOriginals.length}
+                                  </span>
+                                )}
+                              </div>
+                              <div className="grid grid-cols-3 gap-2">
+                                {filesOriginals
+                                  .slice(displayPageOriginals * IMAGES_PER_PAGE, (displayPageOriginals + 1) * IMAGES_PER_PAGE)
+                                  .map((f) => (
+                                    <button
+                                      type="button"
+                                      key={f.id}
+                                      className="overflow-hidden rounded-lg border border-slate-200/90 transition-shadow hover:ring-2 hover:ring-brand-red/45 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-red/35"
+                                      onClick={() => loadFromFileObject(f.file_object_id)}
+                                    >
+                                      <img
+                                        className="h-20 w-full object-cover"
+                                        src={withFileAccessToken(`/files/${f.file_object_id}/thumbnail?w=160`)}
+                                        loading="lazy"
+                                        alt=""
+                                      />
+                                    </button>
+                                  ))}
+                              </div>
+                              {filesOriginals.length > IMAGES_PER_PAGE && (
+                                <div className="mt-2 flex items-center justify-center gap-1">
+                                  <button
+                                    type="button"
+                                    disabled={displayPageOriginals === 0}
+                                    onClick={() => setDisplayPageOriginals((p) => p - 1)}
+                                    className={`${selectionToolButtonGhostClass} h-8 px-2 text-xs disabled:opacity-40`}
+                                  >
+                                    Previous
+                                  </button>
+                                  <span className="px-1 text-xs text-slate-500">
+                                    {displayPageOriginals + 1} / {Math.ceil(filesOriginals.length / IMAGES_PER_PAGE)}
+                                  </span>
+                                  <button
+                                    type="button"
+                                    disabled={(displayPageOriginals + 1) * IMAGES_PER_PAGE >= filesOriginals.length}
+                                    onClick={() => setDisplayPageOriginals((p) => p + 1)}
+                                    className={`${selectionToolButtonGhostClass} h-8 px-2 text-xs disabled:opacity-40`}
+                                  >
+                                    Next
+                                  </button>
+                                </div>
+                              )}
+                              {filesOriginals.length === 0 && <p className="py-2 text-xs text-slate-400">No original images</p>}
+                            </div>
+                            <div>
+                              <div className="mb-1.5 flex items-center justify-between">
+                                <span className="text-[10px] font-semibold uppercase tracking-wide text-slate-600">Edited images</span>
+                                {filesDerived.length > IMAGES_PER_PAGE && (
+                                  <span className="text-[10px] text-slate-500">
+                                    {displayPageDerived * IMAGES_PER_PAGE + 1}–
+                                    {Math.min((displayPageDerived + 1) * IMAGES_PER_PAGE, filesDerived.length)} of {filesDerived.length}
+                                  </span>
+                                )}
+                              </div>
+                              <div className="grid grid-cols-3 gap-2">
+                                {filesDerived
+                                  .slice(displayPageDerived * IMAGES_PER_PAGE, (displayPageDerived + 1) * IMAGES_PER_PAGE)
+                                  .map((f) => (
+                                    <button
+                                      type="button"
+                                      key={f.id}
+                                      className="overflow-hidden rounded-lg border border-slate-200/90 transition-shadow hover:ring-2 hover:ring-brand-red/45 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-red/35"
+                                      onClick={() => loadFromFileObject(f.file_object_id)}
+                                    >
+                                      <img
+                                        className="h-20 w-full object-cover"
+                                        src={withFileAccessToken(`/files/${f.file_object_id}/thumbnail?w=160`)}
+                                        loading="lazy"
+                                        alt=""
+                                      />
+                                    </button>
+                                  ))}
+                              </div>
+                              {filesDerived.length > IMAGES_PER_PAGE && (
+                                <div className="mt-2 flex items-center justify-center gap-1">
+                                  <button
+                                    type="button"
+                                    disabled={displayPageDerived === 0}
+                                    onClick={() => setDisplayPageDerived((p) => p - 1)}
+                                    className={`${selectionToolButtonGhostClass} h-8 px-2 text-xs disabled:opacity-40`}
+                                  >
+                                    Previous
+                                  </button>
+                                  <span className="px-1 text-xs text-slate-500">
+                                    {displayPageDerived + 1} / {Math.ceil(filesDerived.length / IMAGES_PER_PAGE)}
+                                  </span>
+                                  <button
+                                    type="button"
+                                    disabled={(displayPageDerived + 1) * IMAGES_PER_PAGE >= filesDerived.length}
+                                    onClick={() => setDisplayPageDerived((p) => p + 1)}
+                                    className={`${selectionToolButtonGhostClass} h-8 px-2 text-xs disabled:opacity-40`}
+                                  >
+                                    Next
+                                  </button>
+                                </div>
+                              )}
+                              {filesDerived.length === 0 && <p className="py-2 text-xs text-slate-400">No edited images</p>}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                </>
+              ) : (
+                <div className="min-h-0 flex-1 overflow-y-auto p-3">
+                  <input
+                    ref={inputRef}
+                    type="file"
+                    accept={FILE_INPUT_ACCEPT}
+                    className="sr-only"
+                    onChange={(e) => {
+                      const f = e.target.files?.[0];
+                      if (f) void loadFromFile(f);
+                      e.target.value = '';
                     }}
                   />
-                  <div className="custom-slider-value">{zoom.toFixed(2)}x</div>
+                  <div
+                    role="button"
+                    tabIndex={0}
+                    onClick={() => inputRef.current?.click()}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' || e.key === ' ') {
+                        e.preventDefault();
+                        inputRef.current?.click();
+                      }
+                    }}
+                    onDragEnter={onDropZoneDragEnter}
+                    onDragLeave={onDropZoneDragLeave}
+                    onDragOver={onDropZoneDragOver}
+                    onDrop={onDropZoneDrop}
+                    className={`${editorTransitionInteractive} mb-3 flex cursor-pointer flex-col items-center justify-center rounded-xl border-2 border-dashed px-4 py-8 text-center ${
+                      dragActive
+                        ? 'border-brand-red/55 bg-brand-red/[0.06] ring-2 ring-brand-red/15'
+                        : 'border-slate-300/90 bg-white/60 hover:border-slate-400 hover:bg-slate-50/90'
+                    }`}
+                  >
+                    <svg className="mb-2 h-9 w-9 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                    </svg>
+                    <p className="text-sm font-medium text-slate-800">
+                      Drop an image here or{' '}
+                      <span className="text-brand-red underline decoration-brand-red/40 underline-offset-2">browse</span>
+                    </p>
+                    <p className="mt-1 max-w-[14rem] text-[11px] leading-snug text-slate-500">
+                      <kbd className="rounded border border-slate-200 bg-slate-100 px-1 py-0.5 font-mono text-[10px] text-slate-700">Ctrl+V</kbd> /{' '}
+                      <kbd className="rounded border border-slate-200 bg-slate-100 px-1 py-0.5 font-mono text-[10px] text-slate-700">⌘V</kbd> to paste while this dialog is open
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handlePaste}
+                    className={`${selectionToolButtonGhostClass} h-9 w-full justify-center gap-2 text-xs font-semibold`}
+                    title="Paste from clipboard (may require permission)"
+                  >
+                    <svg className="h-4 w-4 shrink-0 text-slate-600" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+                    </svg>
+                    Paste from clipboard
+                  </button>
                 </div>
-                <button type="button" disabled={!img || !allowEdit} onClick={()=>{ const { x, y } = clamp(0,0,1); setZoom(1); setTx(x); setTy(y); }} className="px-3 py-1.5 rounded bg-gray-100 disabled:opacity-50">Reset</button>
-                <div className="ml-auto" />
-                {!hideEditButton && (
-                  <button type="button" disabled={!img || isLoading || isSavingFromEditor} onClick={()=>setShowImageEditor(true)} className="px-4 py-2 rounded bg-gray-600 text-white disabled:opacity-50">Edit Image</button>
-                )}
-                <button type="button" disabled={!img || isLoading || isConfirming} onClick={confirm} className="px-4 py-2 rounded bg-brand-red text-white disabled:opacity-50">
-                  {isConfirming ? 'Processing...' : 'Confirm'}
-                </button>
+              )}
+            </div>
+
+            <div className="col-span-2 min-h-0 min-w-0 overflow-y-auto bg-slate-50/80">
+              <div className="p-4">
+                <p className={`${editorCaptionClass} mb-3`}>
+                  Target: {targetWidth} × {targetHeight}px · JPEG export {exportDimensions.outW} × {exportDimensions.outH}px
+                </p>
+                <div
+                  className="inline-block rounded-md border-2 border-slate-500 bg-slate-200/95 p-px shadow-[0_2px_8px_rgba(15,23,42,0.12)] ring-1 ring-slate-900/10"
+                  title="Exported crop area — outline matches target dimensions"
+                >
+                  <div
+                    ref={containerRef}
+                    className="relative overflow-hidden rounded-[3px] bg-slate-200"
+                    style={{
+                      width: cw,
+                      height: ch,
+                      userSelect: 'none',
+                      cursor: img && isPanning ? (dragging.current ? 'grabbing' : 'grab') : 'default',
+                      touchAction: 'none' as const,
+                    }}
+                    onPointerDown={onPointerDown}
+                    onPointerMove={onPointerMove}
+                    onPointerUp={onPointerUp}
+                  >
+                    {img && (
+                      <img
+                        src={img.src}
+                        draggable={false}
+                        onDragStart={(e) => e.preventDefault()}
+                        alt=""
+                        style={{
+                          position: 'absolute',
+                          left: tx,
+                          top: ty,
+                          width: img.naturalWidth * coverScale * zoom,
+                          height: img.naturalHeight * coverScale * zoom,
+                          maxWidth: 'none',
+                          maxHeight: 'none',
+                          userSelect: 'none',
+                          zIndex: 1,
+                        }}
+                      />
+                    )}
+                    {!img && (
+                      <div className="grid h-full w-full place-items-center text-sm text-slate-600">
+                        {isLoading ? 'Loading image…' : 'Select or upload an image'}
+                      </div>
+                    )}
+                    <div
+                      className="pointer-events-none absolute inset-0 z-[2] shadow-[inset_0_0_0_1px_rgba(15,23,42,0.22)]"
+                      aria-hidden
+                    />
+                  </div>
+                </div>
+                <div className="mt-4 flex flex-wrap items-center gap-2">
+                  <div className="custom-slider-container min-w-0 flex-1" style={{ flex: 1 }}>
+                    <span className="flex w-11 shrink-0 text-xs font-medium text-slate-700">Zoom</span>
+                    <input
+                      type="range"
+                      min={0.1}
+                      max={6}
+                      step={0.01}
+                      disabled={!img || !allowEdit}
+                      value={zoom}
+                      onChange={(e) => {
+                        const nz = Math.min(6, Math.max(0.1, parseFloat(e.target.value || '1')));
+                        const { x, y } = clamp(tx, ty, nz);
+                        setZoom(nz);
+                        setTx(x);
+                        setTy(y);
+                      }}
+                      className="custom-slider"
+                      style={{
+                        background: `linear-gradient(to right, #6b7280 0%, #6b7280 ${((zoom - 0.1) / (6 - 0.1)) * 100}%, #e5e7eb ${((zoom - 0.1) / (6 - 0.1)) * 100}%, #e5e7eb 100%)`,
+                      }}
+                    />
+                    <div className="custom-slider-value">{zoom.toFixed(2)}×</div>
+                  </div>
+                  <button
+                    type="button"
+                    disabled={!img || !allowEdit}
+                    onClick={() => {
+                      const { x, y } = clamp(0, 0, 1);
+                      setZoom(1);
+                      setTx(x);
+                      setTy(y);
+                    }}
+                    className={`${selectionToolButtonGhostClass} h-8 shrink-0 px-3 text-xs disabled:opacity-50`}
+                  >
+                    Reset
+                  </button>
+                  <div className="ml-auto flex flex-wrap items-center gap-2">
+                    {!hideEditButton && (
+                      <button
+                        type="button"
+                        disabled={!img || isLoading || isSavingFromEditor}
+                        onClick={() => setShowImageEditor(true)}
+                        className={`${editorTransitionInteractive} h-9 shrink-0 rounded-md bg-slate-700 px-4 text-xs font-semibold text-white hover:bg-slate-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-red/35 disabled:opacity-50`}
+                      >
+                        Edit image
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      disabled={!img || isLoading || isConfirming}
+                      onClick={confirm}
+                      className={`${editorTransitionInteractive} h-9 shrink-0 rounded-md bg-brand-red px-4 text-xs font-semibold text-white shadow-sm hover:bg-red-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-red/45 disabled:opacity-50`}
+                    >
+                      {isConfirming ? 'Processing…' : 'Confirm'}
+                    </button>
+                  </div>
+                </div>
               </div>
             </div>
           </div>
         </div>
       </div>
-    </div>
     </OverlayPortal>
       {showProgress && (
         <OverlayPortal>
-        <div className="fixed inset-0 z-[60] bg-black/50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-xl border border-gray-200 shadow-xl px-6 py-5 w-[360px] max-w-[90vw] text-center">
-            <div className="mx-auto mb-4 h-10 w-10 rounded-full border-4 border-gray-200 border-t-brand-red animate-spin" />
-            <div className="text-sm text-gray-600">{progressMessage || 'Processing...'}</div>
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/45 p-4">
+          <div className="w-[360px] max-w-[90vw] rounded-xl border border-slate-200/90 bg-white px-6 py-5 text-center shadow-2xl ring-1 ring-slate-900/[0.06]">
+            <div className="mx-auto mb-4 h-10 w-10 animate-spin rounded-full border-4 border-slate-200 border-t-brand-red" />
+            <div className="text-sm text-slate-600">{progressMessage || 'Processing…'}</div>
           </div>
         </div>
         </OverlayPortal>
