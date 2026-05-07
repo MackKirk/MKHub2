@@ -11,6 +11,41 @@ export type SlotPickerSlot = {
   booked_reviewee_name: string | null;
 };
 
+/** Normalize API slot objects (snake_case and occasional camelCase) for the picker. */
+export function normalizeDirectorMeetingSlots(rawList: unknown[] | undefined): SlotPickerSlot[] {
+  if (!rawList?.length) return [];
+  return rawList.map((raw) => {
+    const s = raw as Record<string, unknown>;
+    const id =
+      (s.booked_reviewee_user_id as string | null | undefined) ??
+      (s.bookedRevieweeUserId as string | null | undefined) ??
+      null;
+    const name =
+      (s.booked_reviewee_name as string | null | undefined) ??
+      (s.bookedRevieweeName as string | null | undefined) ??
+      null;
+    return {
+      starts_at: String(s.starts_at ?? s.startsAt ?? ''),
+      ends_at: String(s.ends_at ?? s.endsAt ?? ''),
+      booked_reviewee_user_id: id != null ? String(id) : null,
+      booked_reviewee_name: name != null && String(name).trim() ? String(name).trim() : null,
+    };
+  });
+}
+
+export function revieweeUserIdsEqual(a: string | null | undefined, b: string | null | undefined): boolean {
+  if (a == null || b == null) return false;
+  return String(a).trim().toLowerCase() === String(b).trim().toLowerCase();
+}
+
+function bookedColleagueLabel(slot: SlotPickerSlot): string {
+  const name = (slot.booked_reviewee_name || '').trim();
+  if (name) return name;
+  const id = slot.booked_reviewee_user_id;
+  if (id) return String(id);
+  return 'Booked';
+}
+
 function formatTimeOnly(isoStart: string, isoEnd: string) {
   try {
     const a = new Date(isoStart);
@@ -46,11 +81,19 @@ type Props = {
   bookingTargetId: string;
   onBook: (slotStartsAt: string) => void;
   onCancelMine: () => void;
+  /** HR / admin: cancel any occupied slot (pass booked reviewee id). When set, Cancel appears for every taken row. */
+  onCancelBookedSlot?: (bookedRevieweeUserId: string) => void;
   isPending: boolean;
   /** Default layout: medium-sized calendar (not full width, not tiny). */
   compact?: boolean;
   reserveLabel?: string;
   cancelLabel?: string;
+  /** Allow reserve button even if bookingTargetId is empty (HR chooses target later). */
+  allowReserveWithoutTarget?: boolean;
+  /** When true, slots booked by someone other than `bookingTargetId` show as generic “Booked” (no name); calendar tooltips omit names too. */
+  hideOtherBookedNames?: boolean;
+  /** On `lg+` breakpoints, calendar and time list sit side-by-side to use wide pages (e.g. Meeting schedule). */
+  wideSplit?: boolean;
 };
 
 export default function DirectorMeetingSlotPicker({
@@ -60,10 +103,14 @@ export default function DirectorMeetingSlotPicker({
   bookingTargetId,
   onBook,
   onCancelMine,
+  onCancelBookedSlot,
   isPending,
   compact = true,
   reserveLabel = 'Reserve this time',
   cancelLabel = 'Cancel booking',
+  allowReserveWithoutTarget = false,
+  hideOtherBookedNames = false,
+  wideSplit = false,
 }: Props) {
   const [selectedBookingYmd, setSelectedBookingYmd] = useState<string | null>(null);
   const [bookingCalendarMonth, setBookingCalendarMonth] = useState(() => {
@@ -95,14 +142,18 @@ export default function DirectorMeetingSlotPicker({
   }, [selectedBookingYmd]);
 
   const bookingSlotStatsByYmd = useMemo(() => {
-    const map = new Map<string, { total: number; booked: number }>();
+    const map = new Map<string, { total: number; booked: number; available: number }>();
     for (const s of slots) {
       const d = new Date(s.starts_at);
       if (Number.isNaN(d.getTime())) continue;
       const key = formatYMD(d);
-      const cur = map.get(key) || { total: 0, booked: 0 };
+      const cur = map.get(key) || { total: 0, booked: 0, available: 0 };
       cur.total += 1;
-      if (s.booked_reviewee_user_id) cur.booked += 1;
+      if (s.booked_reviewee_user_id) {
+        cur.booked += 1;
+      } else {
+        cur.available += 1;
+      }
       map.set(key, cur);
     }
     return map;
@@ -118,71 +169,115 @@ export default function DirectorMeetingSlotPicker({
       .sort((a, b) => new Date(a.starts_at).getTime() - new Date(b.starts_at).getTime());
   }, [slots, selectedBookingYmd]);
 
-  return (
-    <div className="space-y-5">
-      <DirectorMeetingMonthCalendar
-        compact={compact}
-        visibleMonth={bookingCalendarMonth}
-        onVisibleMonthChange={setBookingCalendarMonth}
-        selectedYmd={selectedBookingYmd}
-        onSelectYmd={setSelectedBookingYmd}
-        getDayProps={(ymd) => {
-          const stats = bookingSlotStatsByYmd.get(ymd);
-          const total = stats?.total ?? 0;
-          const booked = stats?.booked ?? 0;
-          const hasSlots = total > 0;
-          return {
-            disabled: !hasSlots,
-            badge: hasSlots ? (booked > 0 ? booked : total) : undefined,
-            badgeTone: booked > 0 ? 'booked' : 'neutral',
-          };
-        }}
-        getDayTitle={(ymd) => {
-          const stats = bookingSlotStatsByYmd.get(ymd);
-          const total = stats?.total ?? 0;
-          const booked = stats?.booked ?? 0;
-          const hasSlots = total > 0;
-          if (!hasSlots) return 'No slots';
-          return `${booked} booked · ${total} slot${total === 1 ? '' : 's'} offered`;
-        }}
-        footerNote="Red = bookings that day. Gray = slots open, none booked (number = slots offered)."
-      />
+  const calendarEl = (
+    <DirectorMeetingMonthCalendar
+      compact={compact}
+      visibleMonth={bookingCalendarMonth}
+      onVisibleMonthChange={setBookingCalendarMonth}
+      selectedYmd={selectedBookingYmd}
+      onSelectYmd={setSelectedBookingYmd}
+      getDayProps={(ymd) => {
+        const stats = bookingSlotStatsByYmd.get(ymd);
+        const total = stats?.total ?? 0;
+        const booked = stats?.booked ?? 0;
+        const available = stats?.available ?? Math.max(0, total - booked);
+        const hasSlots = total > 0;
+        return {
+          disabled: !hasSlots,
+          /** Badge = bookable slots left that day (not how many are already taken). */
+          badge: hasSlots ? available : undefined,
+          badgeTone: hasSlots && available === 0 ? 'booked' : 'neutral',
+        };
+      }}
+      getDayTitle={(ymd) => {
+        const stats = bookingSlotStatsByYmd.get(ymd);
+        const total = stats?.total ?? 0;
+        const booked = stats?.booked ?? 0;
+        const available = stats?.available ?? Math.max(0, total - booked);
+        const hasSlots = total > 0;
+        if (!hasSlots) return 'No slots';
+        const base = `${available} available · ${booked} booked · ${total} total`;
+        if (hideOtherBookedNames) {
+          return base;
+        }
+        const dayBooked = slots.filter((s) => {
+          const d = new Date(s.starts_at);
+          return !Number.isNaN(d.getTime()) && formatYMD(d) === ymd && !!s.booked_reviewee_user_id;
+        });
+        const names = [
+          ...new Set(dayBooked.map((s) => bookedColleagueLabel(s)).filter((x) => x && x !== 'Booked')),
+        ];
+        if (names.length > 0) {
+          const head = names.slice(0, 6).join(', ');
+          const tail = names.length > 6 ? ` (+${names.length - 6} more)` : '';
+          return `${base}. Booked: ${head}${tail}.`;
+        }
+        return base;
+      }}
+      footerNote="Number on each day = open slots you can book. Red = that day is fully booked. Gray = at least one slot is free."
+    />
+  );
 
-      <div className="min-w-0">
-        <h3 className="text-sm font-semibold text-slate-800 border-b border-slate-200 pb-2 mb-3">
+  return (
+    <div
+      className={
+        wideSplit
+          ? 'flex flex-col gap-5 lg:flex-row lg:items-start lg:gap-8 xl:gap-10'
+          : 'space-y-5'
+      }
+    >
+      <div
+        className={
+          wideSplit
+            ? 'w-full max-w-[26rem] sm:max-w-[34rem] shrink-0 mx-auto lg:mx-0'
+            : 'contents'
+        }
+      >
+        {calendarEl}
+      </div>
+
+      <div className={wideSplit ? 'min-w-0 flex-1' : 'min-w-0'}>
+        <h3 className="text-sm font-semibold text-gray-800 border-b border-gray-200 pb-2 mb-3">
           {selectedBookingYmd ? formatYmdHeading(selectedBookingYmd) : 'Select a day'}
         </h3>
         {!selectedBookingYmd ? (
-          <p className="text-sm text-slate-500 py-5 text-center rounded-xl border border-dashed border-slate-200 bg-slate-50/50 px-2">
+          <p className="text-xs text-gray-500 py-5 text-center rounded-xl border border-dashed border-gray-200 bg-gray-50/50 px-2">
             Tap a date on the calendar to see times.
           </p>
         ) : slotsForSelectedDay.length === 0 ? (
-          <p className="text-sm text-slate-500 py-5 text-center rounded-xl border border-dashed border-slate-200 bg-slate-50/50 px-2">
+          <p className="text-xs text-gray-500 py-5 text-center rounded-xl border border-dashed border-gray-200 bg-gray-50/50 px-2">
             No slots on this day.
           </p>
         ) : (
-          <div className="divide-y divide-slate-100 rounded-xl border border-slate-200 overflow-hidden">
+          <div className="divide-y divide-gray-100 rounded-xl border border-gray-200 overflow-hidden">
             {slotsForSelectedDay.map((slot) => {
               const taken = !!slot.booked_reviewee_user_id;
-              const isMine = taken && slot.booked_reviewee_user_id === bookingTargetId;
-              const canTake = !taken && !!bookingTargetId;
+              const isMine = taken && revieweeUserIdsEqual(slot.booked_reviewee_user_id, bookingTargetId);
+              const canHrCancelTaken = !!(taken && onCancelBookedSlot && slot.booked_reviewee_user_id);
+              const canTake = !taken && (!!bookingTargetId || allowReserveWithoutTarget);
               return (
                 <div
                   key={slot.starts_at}
-                  className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between px-3 sm:px-4 py-2.5 sm:py-3 bg-white hover:bg-slate-50/80"
+                  className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between px-3 sm:px-4 py-2.5 sm:py-3 bg-white hover:bg-gray-50/80"
                 >
                   <div className="min-w-0">
-                    <div className="font-semibold tabular-nums text-slate-900 text-base">
+                    <div className="font-semibold tabular-nums text-gray-900 text-sm">
                       {formatTimeOnly(slot.starts_at, slot.ends_at)}
                     </div>
-                    <div className="text-xs text-slate-500 mt-0.5">{durationMinutes} min meeting</div>
+                    <div className="text-xs text-gray-500 mt-0.5">{durationMinutes} min meeting</div>
                   </div>
                   <div className="flex flex-wrap items-center gap-2 shrink-0">
-                    <span className="text-sm">
+                    <span className="text-xs">
                       {taken ? (
-                        <span className="text-slate-700">
-                          Booked —{' '}
-                          <span className="font-medium">{slot.booked_reviewee_name || slot.booked_reviewee_user_id}</span>
+                        <span className="text-gray-700">
+                          {hideOtherBookedNames && !isMine ? (
+                            <span className="font-medium">Booked</span>
+                          ) : (
+                            <>
+                              Booked —{' '}
+                              <span className="font-medium">{bookedColleagueLabel(slot)}</span>
+                            </>
+                          )}
                         </span>
                       ) : (
                         <span className="font-medium text-emerald-700">Available</span>
@@ -193,22 +288,32 @@ export default function DirectorMeetingSlotPicker({
                         type="button"
                         onClick={() => onBook(slot.starts_at)}
                         disabled={isPending}
-                        className="rounded-lg bg-brand-red px-4 py-2 text-sm font-semibold text-white shadow-sm hover:opacity-95 disabled:opacity-50"
+                        className="rounded-lg bg-brand-red px-4 py-2 text-xs font-medium text-white transition-colors hover:bg-[#aa1212] disabled:opacity-50"
                       >
                         {reserveLabel}
+                      </button>
+                    ) : canHrCancelTaken ? (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const id = slot.booked_reviewee_user_id;
+                          if (id) onCancelBookedSlot(id);
+                        }}
+                        disabled={isPending}
+                        className="rounded-lg border border-gray-300 bg-white px-4 py-2 text-xs font-medium text-gray-800 hover:bg-gray-50 disabled:opacity-50"
+                      >
+                        {cancelLabel}
                       </button>
                     ) : isMine ? (
                       <button
                         type="button"
                         onClick={onCancelMine}
                         disabled={isPending}
-                        className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-800 hover:bg-slate-50 disabled:opacity-50"
+                        className="rounded-lg border border-gray-300 bg-white px-4 py-2 text-xs font-medium text-gray-800 hover:bg-gray-50 disabled:opacity-50"
                       >
                         {cancelLabel}
                       </button>
-                    ) : (
-                      <span className="text-xs text-slate-400">—</span>
-                    )}
+                    ) : null}
                   </div>
                 </div>
               );

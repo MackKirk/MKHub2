@@ -5,6 +5,7 @@ import copy
 import uuid
 from typing import Optional, List, Dict, Any, Set
 from datetime import datetime, timezone, timedelta
+from collections import defaultdict
 
 from ..db import get_db
 from ..models.models import (
@@ -104,14 +105,41 @@ def _booking_blocks_slot(
     return bs < slot_end and be > slot_start
 
 
+def _merge_duplicate_schedule_entries(a: Dict[str, Any], b: Dict[str, Any]) -> Dict[str, Any]:
+    """Merge two schedule rows for the same reviewee (duplicate JSON keys / legacy formats)."""
+    sa, sb = a.get("scheduled_at"), b.get("scheduled_at")
+    if sa and sb:
+        return dict(a) if str(a.get("updated_at") or "") >= str(b.get("updated_at") or "") else dict(b)
+    if sa:
+        return dict(a)
+    if sb:
+        return dict(b)
+    out = dict(b)
+    for k, v in a.items():
+        if v in (None, ""):
+            continue
+        ov = out.get(k)
+        if ov in (None, "") or (k == "hr_pending_reschedule_at" and str(v) > str(ov or "")):
+            out[k] = v
+    return out
+
+
 def _sched_reviewee_entries(sched_map: Dict[str, Any]) -> Dict[str, Dict[str, Any]]:
-    out: Dict[str, Dict[str, Any]] = {}
+    """One entry per reviewee: canonical UUID string key, merged duplicates."""
+    buckets: Dict[str, List[Dict[str, Any]]] = defaultdict(list)
     for k, v in sched_map.items():
-        if not isinstance(k, str):
+        if not isinstance(k, str) or not isinstance(v, dict):
             continue
-        if not isinstance(v, dict):
+        u = _uuid_or_none(k)
+        if not u:
             continue
-        out[k] = v
+        buckets[str(u)].append(v)
+    out: Dict[str, Dict[str, Any]] = {}
+    for canon, entries in buckets.items():
+        acc = entries[0]
+        for e in entries[1:]:
+            acc = _merge_duplicate_schedule_entries(acc, e)
+        out[canon] = acc
     return out
 
 
@@ -559,7 +587,6 @@ def cycle_hr_status(cycle_id: str, db: Session = Depends(get_db), _=Depends(requ
     if not c:
         raise HTTPException(status_code=404, detail="Cycle not found")
     assigns = db.query(ReviewAssignment).filter(ReviewAssignment.cycle_id == cid).all()
-    from collections import defaultdict
 
     by_reviewee = defaultdict(list)
     for a in assigns:
@@ -585,6 +612,7 @@ def cycle_hr_status(cycle_id: str, db: Session = Depends(get_db), _=Depends(requ
 
     sched_raw = getattr(c, "director_1on1_schedule", None) or {}
     sched_map: Dict[str, Any] = sched_raw if isinstance(sched_raw, dict) else {}
+    merged_sched = _sched_reviewee_entries(sched_map)
 
     def _label(uid: Optional[uuid.UUID]) -> Optional[str]:
         if not uid:
@@ -609,7 +637,7 @@ def cycle_hr_status(cycle_id: str, db: Session = Depends(get_db), _=Depends(requ
         missing_supervisor = not supervisor_done
         disp = _label(rid) or str(rid)
         sup_uid = mgr_a.reviewer_user_id if mgr_a else None
-        meet = sched_map.get(str(rid))
+        meet = merged_sched.get(str(rid))
         if not isinstance(meet, dict):
             meet = {}
         until_out = meet.get("scheduled_until")
@@ -640,6 +668,8 @@ def cycle_hr_status(cycle_id: str, db: Session = Depends(get_db), _=Depends(requ
                 "director_meeting_scheduled_at": meet.get("scheduled_at"),
                 "director_meeting_scheduled_until": until_out,
                 "director_meeting_notes": meet.get("notes"),
+                "director_meeting_hr_pending_reschedule_at": meet.get("hr_pending_reschedule_at"),
+                "director_meeting_hr_pending_reschedule_message": meet.get("hr_pending_reschedule_message"),
             }
         )
     out.sort(key=lambda r: (r.get("display_name") or "").lower())
@@ -675,7 +705,7 @@ def upsert_director_meeting(
         sat = str(sat_raw).strip() or None
 
     prev = getattr(c, "director_1on1_schedule", None)
-    sched: Dict[str, Any] = dict(prev) if isinstance(prev, dict) else {}
+    sched: Dict[str, Any] = _sched_reviewee_entries(dict(prev) if isinstance(prev, dict) else {})
     key = str(rid)
     prev_entry = sched.get(key)
     prev_notes = prev_entry.get("notes") if isinstance(prev_entry, dict) else None
@@ -693,7 +723,18 @@ def upsert_director_meeting(
         suntil = str(sun_raw).strip() or None
 
     if sat is None and not notes_val:
-        sched.pop(key, None)
+        prev_e = sched.get(key) if isinstance(sched.get(key), dict) else {}
+        if isinstance(prev_e, dict) and prev_e.get("hr_pending_reschedule_at"):
+            sched[key] = {
+                k: v
+                for k, v in prev_e.items()
+                if k in ("hr_pending_reschedule_at", "hr_pending_reschedule_message", "notes")
+                and v not in (None, "")
+            }
+            sched[key]["updated_at"] = datetime.now(timezone.utc).isoformat()
+            sched[key]["updated_by_user_id"] = str(user.id)
+        else:
+            sched.pop(key, None)
     else:
         row: Dict[str, Any] = {
             "scheduled_at": sat,
@@ -707,6 +748,11 @@ def upsert_director_meeting(
             st = _parse_iso_dt(sat)
             if st:
                 row["scheduled_until"] = _iso_utc_z(st + timedelta(minutes=_get_cycle_slot_duration(c)))
+        prev_e = sched.get(key) if isinstance(sched.get(key), dict) else {}
+        if not sat and isinstance(prev_e, dict):
+            for k in ("hr_pending_reschedule_at", "hr_pending_reschedule_message"):
+                if k in prev_e:
+                    row[k] = prev_e[k]
         sched[key] = row
 
     c.director_1on1_schedule = sched
@@ -739,17 +785,19 @@ def _build_director_meeting_board(c: ReviewCycle, db: Session) -> Dict[str, Any]
         u = _uuid_or_none(uid_s)
         if u:
             uids.add(u)
-    users_by_id: Dict[uuid.UUID, User] = {}
-    ep_by_uid: Dict[uuid.UUID, EmployeeProfile] = {}
+    users_by_id_str: Dict[str, User] = {}
+    ep_by_uid_str: Dict[str, EmployeeProfile] = {}
     if uids:
-        for urow in db.query(User).filter(User.id.in_(list(uids))).all():
-            users_by_id[urow.id] = urow
-        for ep in db.query(EmployeeProfile).filter(EmployeeProfile.user_id.in_(list(uids))).all():
-            ep_by_uid[ep.user_id] = ep
+        uid_list = list(uids)
+        for urow in db.query(User).filter(User.id.in_(uid_list)).all():
+            users_by_id_str[str(urow.id)] = urow
+        for ep in db.query(EmployeeProfile).filter(EmployeeProfile.user_id.in_(uid_list)).all():
+            ep_by_uid_str[str(ep.user_id)] = ep
 
     def _disp(uid: uuid.UUID) -> str:
-        u = users_by_id.get(uid)
-        ep = ep_by_uid.get(uid)
+        sk = str(uid)
+        u = users_by_id_str.get(sk)
+        ep = ep_by_uid_str.get(sk)
         return (
             _display_name_from_user_profile(u, ep)
             or (getattr(u, "username", None) if u else None)
@@ -792,7 +840,7 @@ def _build_director_meeting_board(c: ReviewCycle, db: Session) -> Dict[str, Any]
 def get_director_meeting_board(
     cycle_id: str,
     db: Session = Depends(get_db),
-    _: User = Depends(get_current_user),
+    user: User = Depends(get_current_user),
 ):
     cid = _uuid_or_none(cycle_id)
     if not cid:
@@ -800,7 +848,19 @@ def get_director_meeting_board(
     c = db.query(ReviewCycle).filter(ReviewCycle.id == cid).first()
     if not c:
         raise HTTPException(status_code=404, detail="Cycle not found")
-    return _build_director_meeting_board(c, db)
+    base = _build_director_meeting_board(c, db)
+    sched_src = getattr(c, "director_1on1_schedule", None) or {}
+    sched_map = sched_src if isinstance(sched_src, dict) else {}
+    merged_sched = _sched_reviewee_entries(sched_map)
+    my_ent = merged_sched.get(str(user.id))
+    hr_pending_reschedule: Optional[Dict[str, Any]] = None
+    if isinstance(my_ent, dict) and my_ent.get("hr_pending_reschedule_at"):
+        hr_pending_reschedule = {
+            "since": my_ent.get("hr_pending_reschedule_at"),
+            "message": my_ent.get("hr_pending_reschedule_message"),
+        }
+    base["hr_pending_reschedule"] = hr_pending_reschedule
+    return base
 
 
 @router.put("/cycles/{cycle_id}/director-meeting-config")
@@ -989,23 +1049,48 @@ def book_director_meeting_slot(
     slot_raw = payload.get("slot_starts_at")
     if slot_raw is None or slot_raw == "":
         prev = getattr(c, "director_1on1_schedule", None)
-        sched_m: Dict[str, Any] = dict(prev) if isinstance(prev, dict) else {}
+        sched_m: Dict[str, Any] = _sched_reviewee_entries(dict(prev) if isinstance(prev, dict) else {})
         key = str(rid)
-        ent = sched_m.get(key)
-        if isinstance(ent, dict):
-            ent = dict(ent)
+        msg_raw = payload.get("hr_cancel_message")
+        msg_trim: Optional[str] = None
+        if msg_raw is not None and str(msg_raw).strip():
+            msg_trim = str(msg_raw).strip()[:4000]
+
+        # HR cancel for someone else always uses the "pending reschedule" path. HR cancelling their own
+        # booking must use that path too when hr_cancel_message is sent (Director meetings modal flow);
+        # otherwise is_self would hit the employee branch and drop the row with no nudge for My reviews.
+        hr_cancel_sets_pending = is_hr and (not is_self or msg_trim is not None)
+        if hr_cancel_sets_pending:
+            ent = dict(sched_m.get(key) or {}) if isinstance(sched_m.get(key), dict) else {}
             ent.pop("scheduled_at", None)
             ent.pop("scheduled_until", None)
             ent.pop("booked_by_user_id", None)
+            ent["hr_pending_reschedule_at"] = datetime.now(timezone.utc).isoformat()
+            if msg_trim:
+                ent["hr_pending_reschedule_message"] = msg_trim
+            else:
+                ent.pop("hr_pending_reschedule_message", None)
             ent["updated_at"] = datetime.now(timezone.utc).isoformat()
             ent["updated_by_user_id"] = str(user.id)
-            notes_kept = (ent.get("notes") or "").strip()
-            if notes_kept:
-                sched_m[key] = ent
+            sched_m[key] = ent
+        else:
+            ent = sched_m.get(key)
+            if isinstance(ent, dict):
+                ent = dict(ent)
+                ent.pop("scheduled_at", None)
+                ent.pop("scheduled_until", None)
+                ent.pop("booked_by_user_id", None)
+                ent.pop("hr_pending_reschedule_at", None)
+                ent.pop("hr_pending_reschedule_message", None)
+                ent["updated_at"] = datetime.now(timezone.utc).isoformat()
+                ent["updated_by_user_id"] = str(user.id)
+                notes_kept = (ent.get("notes") or "").strip()
+                if notes_kept:
+                    sched_m[key] = ent
+                else:
+                    sched_m.pop(key, None)
             else:
                 sched_m.pop(key, None)
-        else:
-            sched_m.pop(key, None)
         c.director_1on1_schedule = sched_m
         db.add(c)
         db.commit()
@@ -1036,8 +1121,8 @@ def book_director_meeting_slot(
         raise HTTPException(status_code=400, detail="Invalid slot configuration")
 
     prev = getattr(c, "director_1on1_schedule", None)
-    sched = dict(prev) if isinstance(prev, dict) else {}
-    sched_rev = _sched_reviewee_entries(sched)
+    sched = _sched_reviewee_entries(dict(prev) if isinstance(prev, dict) else {})
+    sched_rev = sched
     key = str(rid)
 
     for uid_str, entry in sched_rev.items():

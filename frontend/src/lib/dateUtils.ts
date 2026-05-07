@@ -31,3 +31,27 @@ export function getCurrentMonthLocal(): string {
   return `${year}-${month}`;
 }
 
+/** Avoid timezone shift for plain YYYY-MM-DD from the API. */
+export function parseApiDateForDisplay(isoOrYmd: string | null | undefined): Date | null {
+  if (!isoOrYmd) return null;
+  const s = String(isoOrYmd).trim();
+  if (!s) return null;
+  const d = /^\d{4}-\d{2}-\d{2}$/.test(s) ? new Date(`${s}T12:00:00`) : new Date(s);
+  return Number.isNaN(d.getTime()) ? null : d;
+}
+
+export function formatFriendlyDate(isoOrYmd: string | null | undefined): string {
+  const d = parseApiDateForDisplay(isoOrYmd);
+  if (!d) return '—';
+  return d.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' });
+}
+
+export function formatReviewPeriodRange(start: string | null | undefined, end: string | null | undefined): string {
+  const a = parseApiDateForDisplay(start);
+  const b = parseApiDateForDisplay(end);
+  if (!a && !b) return 'Review period not set';
+  if (a && b) return `${formatFriendlyDate(start)} — ${formatFriendlyDate(end)}`;
+  if (a) return `From ${formatFriendlyDate(start)}`;
+  return `Until ${formatFriendlyDate(end)}`;
+}
+

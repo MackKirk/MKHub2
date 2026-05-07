@@ -29,19 +29,23 @@ type CycleDetail = {
 
 type EmpRow = ReviewParticipantEmp & { name?: string; username?: string };
 
-function formatIsoDate(s: string | null | undefined) {
-  if (!s) return '—';
-  try {
-    const d = new Date(s);
-    if (Number.isNaN(d.getTime())) return s;
-    return d.toLocaleString(undefined, {
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric',
-    });
-  } catch {
-    return s;
-  }
+function CalendarCyclesIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className ?? 'w-5 h-5'} fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
+      <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth={2}
+        d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"
+      />
+    </svg>
+  );
+}
+
+function statusLabel(status: string | null | undefined): string {
+  const s = String(status || '').toLowerCase();
+  if (!s) return 'Unknown';
+  return s.charAt(0).toUpperCase() + s.slice(1);
 }
 
 function formatDueShort(s: string | null | undefined) {
@@ -300,28 +304,34 @@ export default function ReviewCycleDetailPage() {
     return { kind: 'explicit' as const, lines };
   }, [cycle, empName, divisionLabelById, projDivLabel]);
 
-  const statusBadgeClass = (s: string) => {
-    const x = (s || '').toLowerCase();
-    if (x === 'active') return 'bg-green-100 text-green-800';
-    if (x === 'draft') return 'bg-amber-100 text-amber-800';
-    return 'bg-gray-100 text-gray-700';
-  };
+  const todayLabel = useMemo(
+    () =>
+      new Date().toLocaleDateString(undefined, {
+        weekday: 'long',
+        year: 'numeric',
+        month: 'short',
+        day: 'numeric',
+      }),
+    []
+  );
 
   if (!id) {
     return (
-      <div className="rounded-xl border bg-white p-6 text-sm text-gray-600">Invalid cycle.</div>
+      <div className="rounded-xl border border-gray-200 bg-white p-6 text-sm text-gray-600">Invalid cycle.</div>
     );
   }
 
   if (cycleLoading) {
     return (
-      <div className="rounded-xl border bg-white p-8 text-center text-sm text-gray-500">Loading cycle…</div>
+      <div className="rounded-xl border border-gray-200 bg-white p-8 text-center text-sm text-gray-500">
+        Loading cycle…
+      </div>
     );
   }
 
   if (cycleError || !cycle) {
     return (
-      <div className="rounded-xl border bg-white p-6">
+      <div className="rounded-xl border border-gray-200 bg-white p-6">
         <p className="text-sm text-red-700">Could not load this review cycle.</p>
         <button
           type="button"
@@ -335,88 +345,78 @@ export default function ReviewCycleDetailPage() {
   }
 
   return (
-    <div className="max-w-6xl pb-10">
-      <div className="rounded-xl border bg-white p-4 mb-4">
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <div className="flex items-start gap-3 min-w-0">
+    <div className="space-y-4 pb-8 min-w-0">
+      <div className="rounded-xl border border-gray-200 bg-white p-4 sm:p-5">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex items-center gap-3 min-w-0 flex-1">
             <button
               type="button"
               onClick={() => navigate('/reviews/cycles')}
-              className="p-1.5 rounded hover:bg-gray-100 shrink-0"
+              className="p-1.5 rounded-lg hover:bg-gray-100 transition-colors flex items-center justify-center shrink-0"
               title="Back to review cycles"
+              aria-label="Back to review cycles"
             >
-              <svg className="w-4 h-4 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <svg className="w-4 h-4 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
               </svg>
             </button>
+            <div className="w-8 h-8 rounded-lg bg-purple-100 flex items-center justify-center shrink-0">
+              <CalendarCyclesIcon className="w-5 h-5 text-purple-700" />
+            </div>
             <div className="min-w-0">
-              <div className="flex flex-wrap items-center gap-2">
-                <h1 className="text-lg font-bold text-gray-900">{cycle.name}</h1>
+              <h5 className="text-sm font-semibold text-purple-900">Review cycle</h5>
+              <div className="mt-0.5 flex flex-wrap items-center gap-2 gap-y-1">
+                <span className="text-base font-semibold text-gray-900">{cycle.name}</span>
                 <span
-                  className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium ${statusBadgeClass(
-                    cycle.status
-                  )}`}
+                  className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold tracking-wide ${
+                    cycle.status === 'active'
+                      ? 'bg-emerald-50 text-emerald-800 ring-1 ring-emerald-100'
+                      : cycle.status === 'draft'
+                        ? 'bg-amber-50 text-amber-900 ring-1 ring-amber-100'
+                        : 'bg-gray-100 text-gray-600 ring-1 ring-gray-200/80'
+                  }`}
                 >
-                  {cycle.status}
+                  {statusLabel(cycle.status)}
                 </span>
               </div>
-              <p className="text-xs text-gray-500 mt-1">
-                {formatIsoDate(cycle.period_start)} → {formatIsoDate(cycle.period_end)}
-              </p>
-              <p className="text-[11px] text-gray-400 mt-0.5 font-mono truncate" title={cycle.id}>
-                ID {cycle.id}
-              </p>
             </div>
           </div>
-          <div className="flex flex-wrap gap-2 shrink-0">
-            {canManageReviewTasks && (
-              <button
-                type="button"
-                disabled={generatingTasks}
-                onClick={() => runGenerateReviewTasks()}
-                className="px-3 py-1.5 rounded-lg border border-gray-300 text-xs font-medium text-gray-800 bg-white hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
-                title="Creates database rows: one self-review per eligible person and one supervisor review per manager/report pair in scope."
-              >
-                {generatingTasks ? 'Creating…' : 'Create review tasks'}
-              </button>
-            )}
-            <Link
-              to="/reviews/admin"
-              className="px-3 py-1.5 rounded-lg text-xs font-medium bg-gray-900 text-white hover:bg-gray-800 inline-block text-center"
-            >
-              Status board
-            </Link>
+          <div className="text-left sm:text-right shrink-0">
+            <div className="text-[10px] font-medium text-gray-500 uppercase tracking-wide">Today</div>
+            <div className="text-xs font-semibold text-gray-700 mt-0.5">{todayLabel}</div>
           </div>
         </div>
       </div>
 
-      <div className="flex flex-wrap gap-1 border-b border-gray-200 mb-4">
-        <button
-          type="button"
-          onClick={() => setCycleTab('progress')}
-          className={`px-4 py-2.5 text-sm font-medium rounded-t border-b-2 -mb-px transition-colors ${
-            cycleTab === 'progress'
-              ? 'border-brand-red text-brand-red bg-white'
-              : 'border-transparent text-gray-600 hover:text-gray-900'
-          }`}
-        >
-          Team progress
-        </button>
-        <button
-          type="button"
-          onClick={() => setCycleTab('details')}
-          className={`px-4 py-2.5 text-sm font-medium rounded-t border-b-2 -mb-px transition-colors ${
-            cycleTab === 'details'
-              ? 'border-brand-red text-brand-red bg-white'
-              : 'border-transparent text-gray-600 hover:text-gray-900'
-          }`}
-        >
-          Cycle details
-        </button>
-      </div>
+      <div className="rounded-xl border border-gray-200 bg-white overflow-hidden">
+        <div className="flex flex-wrap gap-0 border-b border-gray-100 bg-gray-50/60 px-2 sm:px-3">
+          <button
+            type="button"
+            onClick={() => setCycleTab('progress')}
+            className={`px-4 py-2.5 text-sm font-medium rounded-t border-b-2 -mb-px transition-colors ${
+              cycleTab === 'progress'
+                ? 'border-brand-red text-brand-red bg-white'
+                : 'border-transparent text-gray-600 hover:text-gray-900'
+            }`}
+          >
+            Team progress
+          </button>
+          <button
+            type="button"
+            onClick={() => setCycleTab('details')}
+            className={`px-4 py-2.5 text-sm font-medium rounded-t border-b-2 -mb-px transition-colors ${
+              cycleTab === 'details'
+                ? 'border-brand-red text-brand-red bg-white'
+                : 'border-transparent text-gray-600 hover:text-gray-900'
+            }`}
+          >
+            Cycle details
+          </button>
+        </div>
 
-      {cycleTab === 'details' && (
-        <>
+        <div className="p-4 sm:p-5">
+          {cycleTab === 'details' && (
+            <>
       {cycle.assignment_count === 0 && (
         <div className="rounded-xl border border-amber-200 bg-amber-50/90 p-4 mb-4">
           <h2 className="text-sm font-semibold text-amber-950 mb-1">Next step: create review tasks</h2>
@@ -572,12 +572,12 @@ export default function ReviewCycleDetailPage() {
           </button>
         </div>
       )}
-        </>
-      )}
+            </>
+          )}
 
       {cycleTab === 'progress' && (
         <div className="space-y-4">
-          <div className="rounded-xl border border-gray-200 bg-gradient-to-br from-slate-50/90 to-white p-5 shadow-sm">
+          <div className="rounded-xl border border-gray-200 bg-gradient-to-br from-gray-50/90 to-white p-5 shadow-sm">
             <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
               <div className="min-w-0">
                 <h2 className="text-base font-semibold text-gray-900">Who has finished?</h2>
@@ -685,14 +685,14 @@ export default function ReviewCycleDetailPage() {
                 <div className="overflow-x-auto">
                   <table className="min-w-full text-sm">
                     <thead>
-                      <tr className="bg-slate-100/90 border-b border-gray-200 text-left text-[11px] font-semibold uppercase tracking-wide text-slate-600">
+                      <tr className="bg-gray-50 border-b border-gray-200 text-left text-xs font-semibold uppercase tracking-wide text-gray-600">
                         <th className="py-3 px-4">Employee</th>
                         <th className="py-3 px-4">Supervisor</th>
                         <th className="py-3 px-4 whitespace-nowrap">Self due</th>
                         {canSeeAdminReviewColumn ? (
                           <th className="py-3 px-4 text-center whitespace-nowrap">
                             Admin
-                            <span className="block font-normal normal-case text-[10px] text-slate-500 tracking-normal">
+                            <span className="block font-normal normal-case text-[10px] text-gray-500 tracking-normal">
                               HR / admin
                             </span>
                           </th>
@@ -732,7 +732,7 @@ export default function ReviewCycleDetailPage() {
                               </span>
                             );
                           return (
-                            <tr key={r.user_id} className="hover:bg-slate-50/80 transition-colors">
+                            <tr key={r.user_id} className="hover:bg-gray-50/80 transition-colors">
                               <td className="py-3 px-4">
                                 <Link
                                   to={`/users/${encodeURIComponent(r.user_id)}`}
@@ -808,6 +808,8 @@ export default function ReviewCycleDetailPage() {
           ) : null}
         </div>
       )}
+        </div>
+      </div>
     </div>
   );
 }

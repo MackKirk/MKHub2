@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Link } from 'react-router-dom';
 import { api } from '@/lib/api';
 import DirectorMeetingSlotPicker, {
   formatDirectorSlotDayLabel,
   formatDirectorSlotTimeRange,
+  normalizeDirectorMeetingSlots,
+  revieweeUserIdsEqual,
 } from '@/components/DirectorMeetingSlotPicker';
 
 type BoardSlot = {
@@ -14,10 +15,16 @@ type BoardSlot = {
   booked_reviewee_name: string | null;
 };
 
+type HrPendingReschedule = {
+  since: string;
+  message?: string | null;
+};
+
 type BoardResponse = {
   duration_minutes: number;
   windows: { id?: string; starts_at: string; ends_at: string }[];
   slots: BoardSlot[];
+  hr_pending_reschedule?: HrPendingReschedule | null;
 };
 
 type AssignmentRow = {
@@ -62,6 +69,11 @@ export default function MyReviewsDirectorMeetingTab() {
     enabled: !!cycleId,
   });
 
+  const boardSlotsNorm = useMemo(
+    () => normalizeDirectorMeetingSlots(board?.slots as unknown[]),
+    [board?.slots]
+  );
+
   const bookMutation = useMutation({
     mutationFn: (body: { reviewee_user_id: string; slot_starts_at: string | null }) =>
       api('POST', `/reviews/cycles/${encodeURIComponent(cycleId)}/director-meetings/book`, body),
@@ -71,9 +83,11 @@ export default function MyReviewsDirectorMeetingTab() {
   });
 
   const activeBookingSlot = useMemo(() => {
-    if (!board?.slots?.length || !myId) return null;
-    return board.slots.find((s) => s.booked_reviewee_user_id === myId) || null;
-  }, [board, myId]);
+    if (!boardSlotsNorm.length || !myId) return null;
+    return boardSlotsNorm.find((s) => revieweeUserIdsEqual(s.booked_reviewee_user_id, myId)) || null;
+  }, [boardSlotsNorm, myId]);
+
+  const hrRescheduleNudge = board?.hr_pending_reschedule ?? null;
 
   const handleBook = useCallback(
     (slotStartIso: string) => {
@@ -89,20 +103,17 @@ export default function MyReviewsDirectorMeetingTab() {
   }, [myId, cycleId, bookMutation]);
 
   const hasWindows = (board?.windows?.length ?? 0) > 0;
-  const hasSlots = (board?.slots?.length ?? 0) > 0;
+  const hasSlots = boardSlotsNorm.length > 0;
 
   return (
     <div className="space-y-5">
-      <div>
+      <header className="space-y-2">
         <h2 className="text-lg font-semibold text-gray-900">Director 1:1 meeting</h2>
-        <p className="mt-1 text-sm text-gray-600 max-w-2xl">
-          After your self-review and supervisor review, pick a day on the calendar, then book a closing conversation with
-          leadership. Slots appear when HR publishes availability for the cycle.{' '}
-          <Link to="/reviews/compare" className="font-medium text-brand-red hover:underline">
-            Compare reviews
-          </Link>
+        <p className="text-sm text-gray-600 leading-relaxed w-full">
+          After your self-review, pick a day on the calendar, then book a closing conversation with leadership. Slots
+          appear when HR publishes availability for this review cycle.
         </p>
-      </div>
+      </header>
 
       {!cyclesFromSelf.length ? (
         <div className="rounded-lg border border-dashed border-gray-200 bg-gray-50/80 px-4 py-10 text-center text-sm text-gray-600">
@@ -125,7 +136,29 @@ export default function MyReviewsDirectorMeetingTab() {
             </select>
           </div>
 
-          {activeBookingSlot ? (
+          {hrRescheduleNudge ? (
+            <div
+              role="status"
+              className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-2.5 text-sm text-amber-950 shadow-sm"
+            >
+              <p className="font-semibold text-amber-950">Your director meeting needs a new time</p>
+              <p className="mt-1 text-amber-900/90 leading-relaxed">
+                HR cancelled your previous booking. Please book another slot below when you are ready
+                {hrRescheduleNudge.since
+                  ? ` (updated ${formatDirectorSlotDayLabel(hrRescheduleNudge.since)})`
+                  : ''}
+                .
+              </p>
+              {hrRescheduleNudge.message ? (
+                <div className="mt-2 rounded-md border border-amber-200/80 bg-white/70 px-2.5 py-2 text-xs text-amber-950/95 whitespace-pre-wrap">
+                  <span className="font-medium text-amber-950">Message from HR: </span>
+                  {hrRescheduleNudge.message}
+                </div>
+              ) : null}
+            </div>
+          ) : null}
+
+          {activeBookingSlot && !hrRescheduleNudge ? (
             <p className="text-sm text-green-800 bg-green-50 border border-green-200 rounded-lg px-3 py-2">
               <span className="font-medium">Your meeting:</span>{' '}
               {formatDirectorSlotDayLabel(activeBookingSlot.starts_at)} ·{' '}
@@ -147,7 +180,7 @@ export default function MyReviewsDirectorMeetingTab() {
           ) : (
             <DirectorMeetingSlotPicker
               cycleId={cycleId}
-              slots={board?.slots || []}
+              slots={boardSlotsNorm}
               durationMinutes={board?.duration_minutes ?? 15}
               bookingTargetId={myId}
               onBook={handleBook}
@@ -156,6 +189,7 @@ export default function MyReviewsDirectorMeetingTab() {
               compact
               reserveLabel="Book"
               cancelLabel="Cancel"
+              hideOtherBookedNames
             />
           )}
         </>

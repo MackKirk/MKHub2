@@ -15,6 +15,12 @@ import {
   mergeSupervisorSideCommentsForSubmit,
 } from '@/lib/employeeReviewForm';
 import MyReviewsDirectorMeetingTab from '@/components/MyReviewsDirectorMeetingTab';
+import {
+  formatDirectorSlotDayLabel,
+  formatDirectorSlotTimeRange,
+  normalizeDirectorMeetingSlots,
+  revieweeUserIdsEqual,
+} from '@/components/DirectorMeetingSlotPicker';
 
 type AssignmentQuestionsResponse = {
   definition: SafetyFormDefinition;
@@ -24,6 +30,7 @@ type AssignmentQuestionsResponse = {
 
 type AssignmentRow = {
   id: string;
+  cycle_id?: string;
   status?: string;
   due_date?: string | null;
   cycle_name?: string | null;
@@ -107,9 +114,9 @@ function IconClipboardReview() {
   );
 }
 
-function IconCalendar() {
+function IconCalendar({ className = 'w-4 h-4 text-gray-500 shrink-0' }: { className?: string }) {
   return (
-    <svg className="w-4 h-4 text-gray-500 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24">
       <path
         strokeLinecap="round"
         strokeLinejoin="round"
@@ -120,14 +127,204 @@ function IconCalendar() {
   );
 }
 
+type DirectorMeetingBoardPeek = {
+  windows: { id?: string; starts_at: string; ends_at: string }[];
+  slots: unknown[];
+  hr_pending_reschedule?: { since: string; message?: string | null } | null;
+};
+
+function IconPartyPopper({ className }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden>
+      <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth={1.75}
+        d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.847a4.5 4.5 0 003.09 3.09L15.75 12l-2.847.813a4.5 4.5 0 00-3.09 3.09zM18.259 8.715L18 9.75l-.259-1.035a3.375 3.375 0 00-2.455-2.456L14.25 6l1.036-.259a3.375 3.375 0 002.455-2.456L18 2.25l.259 1.035a3.375 3.375 0 002.456 2.456L21.75 6l-1.035.259a3.375 3.375 0 00-2.456 2.456zM16.894 20.567L16.5 21.75l-.394-1.183a2.25 2.25 0 00-1.423-1.423L13.5 18.75l1.183-.394a2.25 2.25 0 001.423-1.423l.394-1.183.394 1.183a2.25 2.25 0 001.423 1.423l1.183.394-1.183.394a2.25 2.25 0 00-1.423 1.423z"
+      />
+    </svg>
+  );
+}
+
+function IconCheckCircle({ className }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden>
+      <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth={1.75}
+        d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+      />
+    </svg>
+  );
+}
+
+function DirectorMeetingScheduleRow({
+  cycleId,
+  onGoToSchedule,
+}: {
+  cycleId: string;
+  onGoToSchedule: () => void;
+}) {
+  const { data: me } = useQuery({ queryKey: ['me'], queryFn: () => api<any>('GET', '/auth/me') });
+  const myId = me?.id != null ? String(me.id) : '';
+  const { data: board, isLoading } = useQuery({
+    queryKey: ['director-meeting-board', cycleId],
+    queryFn: () =>
+      api<DirectorMeetingBoardPeek>('GET', `/reviews/cycles/${encodeURIComponent(cycleId)}/director-meeting-board`),
+    enabled: !!cycleId,
+  });
+  const slotsNorm = useMemo(
+    () => normalizeDirectorMeetingSlots(board?.slots as unknown[]),
+    [board?.slots]
+  );
+  const activeSlot = useMemo(() => {
+    if (!myId || !slotsNorm.length) return null;
+    return slotsNorm.find((s) => revieweeUserIdsEqual(s.booked_reviewee_user_id, myId)) ?? null;
+  }, [slotsNorm, myId]);
+  /** Shown even if a stale slot row still matches (board API lists pending cancel first). */
+  const pendingReschedule = board?.hr_pending_reschedule ?? null;
+
+  if (isLoading) {
+    return (
+      <div
+        className="mt-4 rounded-xl border border-amber-200/80 bg-gradient-to-br from-amber-50/90 via-white to-orange-50/50 px-4 py-3.5 shadow-sm"
+        role="status"
+      >
+        <p className="text-sm text-amber-950/80">Checking director meeting status…</p>
+      </div>
+    );
+  }
+
+  if (pendingReschedule != null) {
+    const reason = (pendingReschedule.message && String(pendingReschedule.message).trim()) || '';
+
+    return (
+      <div className="mt-4 space-y-3">
+        <div
+          className="rounded-xl border border-red-200/90 bg-gradient-to-br from-red-50/95 via-red-50/70 to-rose-50/50 px-4 py-3.5 shadow-sm ring-1 ring-red-100/80"
+          role="status"
+        >
+          <p className="text-xs font-bold uppercase tracking-wide text-red-900/90">Booking cancelled</p>
+          <p className="mt-1 text-sm text-red-900/85 leading-relaxed">
+            HR cancelled this time slot. What happened is summarized below; use the yellow section to pick a new time.
+          </p>
+          {reason ? (
+            <div className="mt-2.5 rounded-lg border border-red-200/80 bg-white/85 px-3 py-2.5 text-sm text-red-950 shadow-sm">
+              <span className="font-semibold text-red-950">Reason: </span>
+              <span className="whitespace-pre-wrap">{reason}</span>
+            </div>
+          ) : null}
+        </div>
+
+        <div
+          className="rounded-xl border-2 border-amber-400/70 bg-gradient-to-br from-amber-50 via-orange-50/60 to-amber-100/30 px-4 py-4 shadow-md"
+          role="region"
+          aria-label="Reschedule director meeting"
+        >
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
+            <div className="flex min-w-0 gap-3">
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-amber-200/80 text-amber-900">
+                <IconCalendar className="h-5 w-5 text-amber-950" />
+              </div>
+              <div className="min-w-0">
+                <p className="text-xs font-bold uppercase tracking-wide text-amber-950">Action needed</p>
+                <p className="mt-1 text-sm font-semibold text-amber-950">Pick a new time for your director 1:1</p>
+                <p className="mt-0.5 text-sm text-amber-950/90 leading-relaxed">
+                  Choose another time when it works for you.
+                </p>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={onGoToSchedule}
+              className="shrink-0 self-stretch rounded-lg bg-brand-red px-4 py-2.5 text-sm font-semibold text-white shadow-md transition hover:opacity-95 sm:self-center"
+            >
+              Book a new time
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (activeSlot) {
+    return (
+      <div
+        className="mt-4 rounded-xl border border-emerald-200/90 bg-gradient-to-br from-emerald-50/95 via-teal-50/40 to-white px-4 py-4 shadow-sm ring-1 ring-emerald-100/80"
+        role="region"
+        aria-label="Director meeting scheduled"
+      >
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
+          <div className="flex min-w-0 gap-3">
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-emerald-100 text-emerald-700">
+              <IconCheckCircle className="h-5 w-5" />
+            </div>
+            <div className="min-w-0">
+              <p className="text-xs font-semibold uppercase tracking-wide text-emerald-800/90">Director 1:1</p>
+              <p className="mt-1 text-sm font-semibold text-emerald-950">You&apos;re on the calendar</p>
+              <p className="mt-0.5 text-sm text-emerald-900/90 leading-relaxed">
+                {formatDirectorSlotDayLabel(activeSlot.starts_at)} ·{' '}
+                {formatDirectorSlotTimeRange(activeSlot.starts_at, activeSlot.ends_at)}
+              </p>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={onGoToSchedule}
+            className="shrink-0 self-stretch rounded-lg border border-emerald-300/90 bg-white px-4 py-2.5 text-sm font-semibold text-emerald-900 shadow-sm transition hover:bg-emerald-50/80 sm:self-center"
+          >
+            View or change
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div
+      className="mt-4 rounded-xl border border-amber-300/80 bg-gradient-to-br from-amber-50 via-amber-50/70 to-orange-50/50 px-4 py-4 shadow-md ring-1 ring-amber-200/50"
+      role="region"
+      aria-label="Schedule director meeting"
+    >
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
+        <div className="flex min-w-0 gap-3">
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-amber-200/70 text-amber-900">
+            <IconPartyPopper className="h-5 w-5" />
+          </div>
+          <div className="min-w-0">
+            <p className="text-xs font-bold uppercase tracking-wide text-amber-950/90">Nice work</p>
+            <p className="mt-1 text-sm font-semibold text-amber-950 leading-snug">
+              You finished your self-review — ready for the next step
+            </p>
+            <p className="mt-1 text-sm text-amber-950/85 leading-relaxed">
+              Book a short closing conversation with leadership. Slots open when HR publishes availability for this
+              cycle.
+            </p>
+          </div>
+        </div>
+        <button
+          type="button"
+          onClick={onGoToSchedule}
+          className="shrink-0 self-stretch rounded-lg bg-brand-red px-5 py-2.5 text-sm font-semibold text-white shadow-md transition hover:opacity-95 sm:self-center"
+        >
+          Schedule director 1:1
+        </button>
+      </div>
+    </div>
+  );
+}
+
 function SelfReviewHeroCard({
   a,
   setOpenId,
   variant,
+  onGoToDirectorTab,
 }: {
   a: AssignmentRow;
   setOpenId: (id: string) => void;
   variant: 'pending' | 'completed';
+  onGoToDirectorTab?: () => void;
 }) {
   const done = variant === 'completed';
   const period = formatCyclePeriod(a.cycle_period_start, a.cycle_period_end);
@@ -182,6 +379,9 @@ function SelfReviewHeroCard({
           </button>
         </div>
       </div>
+      {done && a.cycle_id && onGoToDirectorTab ? (
+        <DirectorMeetingScheduleRow cycleId={String(a.cycle_id)} onGoToSchedule={onGoToDirectorTab} />
+      ) : null}
     </div>
   );
 }
@@ -190,10 +390,12 @@ function SelfReviewSpotlightSection({
   rows,
   setOpenId,
   emptyMessage,
+  onGoToDirectorTab,
 }: {
   rows: AssignmentRow[];
   setOpenId: (id: string) => void;
   emptyMessage: string;
+  onGoToDirectorTab: () => void;
 }) {
   const pending = rows.filter((a) => !isSubmitted(a));
   const completed = rows.filter((a) => isSubmitted(a));
@@ -256,7 +458,13 @@ function SelfReviewSpotlightSection({
             <p className="mb-3 text-[10px] font-semibold uppercase tracking-wide text-green-900/85">Completed</p>
             <div className="space-y-3">
               {completed.map((a) => (
-                <SelfReviewHeroCard key={a.id} a={a} setOpenId={setOpenId} variant="completed" />
+                <SelfReviewHeroCard
+                  key={a.id}
+                  a={a}
+                  setOpenId={setOpenId}
+                  variant="completed"
+                  onGoToDirectorTab={onGoToDirectorTab}
+                />
               ))}
             </div>
           </div>
@@ -620,6 +828,7 @@ export default function MyReviews() {
                 rows={selfAssignments as AssignmentRow[]}
                 setOpenId={setOpenId}
                 emptyMessage="No self-review row was created for you in this period (HR may still be setting up the cycle)."
+                onGoToDirectorTab={() => setMainTab('director')}
               />
               <TeamReviewSectionCard
                 title="Your direct reports"
@@ -645,6 +854,7 @@ export default function MyReviews() {
               rows={list as AssignmentRow[]}
               setOpenId={setOpenId}
               emptyMessage="No assignments."
+              onGoToDirectorTab={() => setMainTab('director')}
             />
           )}
         </div>

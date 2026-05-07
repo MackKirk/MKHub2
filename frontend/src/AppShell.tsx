@@ -544,7 +544,6 @@ export default function AppShell({ children }: PropsWithChildren){
         ...(((me?.roles || []).includes('admin') ||
           (me?.permissions || []).includes('hr:reviews:admin') ||
           (me?.permissions || []).includes('reviews:admin')) ? [
-          { id: 'employee-review-admin', label: 'Admin', path: '/reviews/admin', icon: <IconOverview />, requiredPermission: 'hr:reviews:admin' },
           {
             id: 'employee-review-cycles',
             label: 'Review cycles',
