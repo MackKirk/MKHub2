@@ -1,12 +1,15 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import DirectorMeetingMonthCalendar, {
   formatYMD,
   formatYmdHeading,
 } from '@/components/DirectorMeetingMonthCalendar';
-import DirectorMeetingSlotPicker from '@/components/DirectorMeetingSlotPicker';
+import DirectorMeetingSlotPicker, {
+  normalizeDirectorMeetingSlots,
+  revieweeUserIdsEqual,
+} from '@/components/DirectorMeetingSlotPicker';
 import OverlayPortal from '@/components/OverlayPortal';
 import { useConfirm } from '@/components/ConfirmProvider';
 import { useUnsavedChangesGuard } from '@/hooks/useUnsavedChangesGuard';
@@ -25,6 +28,16 @@ type BoardResponse = {
   windows: { id?: string; starts_at: string; ends_at: string }[];
   slots: BoardSlot[];
 };
+
+/** Build: removing a row with bookings, or Book tab: cancelling someone’s slot — both notify then apply. */
+type PendingDirectorNotifyModal =
+  | { kind: 'remove_row'; idx: number; bookedSlots: BoardSlot[] }
+  | {
+      kind: 'cancel_booking';
+      cycleId: string;
+      revieweeUserId: string;
+      displayName: string;
+    };
 
 type AssignmentRow = {
   id: string;
@@ -157,12 +170,13 @@ function getDisplacedBookingsByConfigChange(
   currentBoard: BoardResponse | undefined,
   payload: { duration_minutes: number; windows: { starts_at: string; ends_at: string }[] }
 ): { name: string; startsAt: string }[] {
-  if (!currentBoard?.slots?.length) return [];
+  const slots = normalizeDirectorMeetingSlots(currentBoard?.slots as unknown[]);
+  if (!slots.length) return [];
   const dur = snapToMeetingPresetMinutes(payload.duration_minutes);
   const newSlots = deriveSlotsFromWindows(dur, payload.windows);
   const newStartMs = new Set(newSlots.map((s) => new Date(s.starts_at).getTime()));
   const out: { name: string; startsAt: string }[] = [];
-  for (const s of currentBoard.slots) {
+  for (const s of slots) {
     if (!s.booked_reviewee_user_id) continue;
     const t = new Date(s.starts_at).getTime();
     if (Number.isNaN(t)) continue;
@@ -295,9 +309,10 @@ function expandDayIntoSlotRows(dateYmd: string, fromHHmm: string, toHHmm: string
 
 type PageTab = 'build' | 'book';
 
+type BookPersonModalTab = 'new' | 'reschedule';
+
 export default function DirectorMeetingsPage() {
   const queryClient = useQueryClient();
-  const navigate = useNavigate();
   const confirm = useConfirm();
   const { data: me } = useQuery({ queryKey: ['me'], queryFn: () => api<any>('GET', '/auth/me') });
   const myId = me?.id != null ? String(me.id) : '';
@@ -367,6 +382,11 @@ export default function DirectorMeetingsPage() {
       ),
     enabled: !!boardQueryCycleId,
   });
+
+  const boardSlotsNorm = useMemo(
+    () => normalizeDirectorMeetingSlots(board?.slots as unknown[]),
+    [board?.slots]
+  );
 
   const { data: hrStatus = [] } = useQuery({
     queryKey: ['review-hr-status', bookingCycleId],
@@ -454,11 +474,17 @@ export default function DirectorMeetingsPage() {
       cycleId: string;
       reviewee_user_id: string;
       slot_starts_at: string | null;
-    }) =>
-      api('POST', `/reviews/cycles/${encodeURIComponent(body.cycleId)}/director-meetings/book`, {
+      hr_cancel_message?: string | null;
+    }) => {
+      const payload: Record<string, unknown> = {
         reviewee_user_id: body.reviewee_user_id,
         slot_starts_at: body.slot_starts_at,
-      }),
+      };
+      if (body.hr_cancel_message != null && body.hr_cancel_message !== '') {
+        payload.hr_cancel_message = body.hr_cancel_message;
+      }
+      return api('POST', `/reviews/cycles/${encodeURIComponent(body.cycleId)}/director-meetings/book`, payload);
+    },
     onSuccess: (_data, variables) => {
       queryClient.invalidateQueries({ queryKey: ['director-meeting-board'] });
       queryClient.invalidateQueries({ queryKey: ['review-hr-status', variables.cycleId] });
@@ -480,106 +506,217 @@ export default function DirectorMeetingsPage() {
 
   const bookingTargetId = canHrBook ? hrRevieweeId : myId;
 
+  /** At least self-review done (`employee_self_done`) — sorted A–Z for reserve-time picker modal. */
+  const eligiblePeopleBySelfDone = useMemo(() => {
+    const rows = (hrStatus as any[]).filter((r: any) => !!r.employee_self_done);
+    return [...rows].sort((a: any, b: any) =>
+      String(a.display_name || a.name || '').localeCompare(
+        String(b.display_name || b.name || ''),
+        undefined,
+        { sensitivity: 'base' }
+      )
+    );
+  }, [hrStatus]);
+
+  const peopleWithoutSchedule = useMemo(
+    () => eligiblePeopleBySelfDone.filter((r: any) => !r.director_meeting_scheduled_at),
+    [eligiblePeopleBySelfDone]
+  );
+
+  const peopleWithSchedule = useMemo(
+    () => eligiblePeopleBySelfDone.filter((r: any) => !!r.director_meeting_scheduled_at),
+    [eligiblePeopleBySelfDone]
+  );
+
+  const [bookPersonModalOpen, setBookPersonModalOpen] = useState(false);
+  const [bookPersonModalTab, setBookPersonModalTab] = useState<BookPersonModalTab>('new');
+  const [pendingBookSlotStartsAt, setPendingBookSlotStartsAt] = useState<string | null>(null);
+  const closeBookPersonModal = useCallback(() => {
+    setBookPersonModalOpen(false);
+    setPendingBookSlotStartsAt(null);
+  }, []);
+
+  useEffect(() => {
+    if (!bookPersonModalOpen) return;
+    if (peopleWithoutSchedule.length > 0) setBookPersonModalTab('new');
+    else if (peopleWithSchedule.length > 0) setBookPersonModalTab('reschedule');
+  }, [bookPersonModalOpen, peopleWithoutSchedule.length, peopleWithSchedule.length]);
+
+  useEffect(() => {
+    if (!bookPersonModalOpen) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') closeBookPersonModal();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [bookPersonModalOpen, closeBookPersonModal]);
+
+  const pickPendingPersonForBooking = useCallback(
+    (userId: string) => {
+      if (!bookingCycleId || !pendingBookSlotStartsAt) return;
+      setHrRevieweeId(userId);
+      closeBookPersonModal();
+      bookMutation.mutate({
+        cycleId: bookingCycleId,
+        reviewee_user_id: userId,
+        slot_starts_at: pendingBookSlotStartsAt,
+      });
+    },
+    [bookMutation, bookingCycleId, pendingBookSlotStartsAt, closeBookPersonModal]
+  );
+
   const activeBookingSlot = useMemo(() => {
-    if (!board?.slots?.length || !bookingTargetId) return null;
-    return board.slots.find((s) => s.booked_reviewee_user_id === bookingTargetId) || null;
-  }, [board, bookingTargetId]);
+    if (!boardSlotsNorm.length || !bookingTargetId) return null;
+    return boardSlotsNorm.find((s) => revieweeUserIdsEqual(s.booked_reviewee_user_id, bookingTargetId)) || null;
+  }, [boardSlotsNorm, bookingTargetId]);
 
   const handleBook = useCallback(
     (slotStartIso: string) => {
-      if (!bookingTargetId || !bookingCycleId) return;
+      if (!bookingCycleId) return;
+      if (canHrBook) {
+        if (eligiblePeopleBySelfDone.length === 0) {
+          toast.error('No colleague with self-review submitted for booking yet.');
+          return;
+        }
+        setPendingBookSlotStartsAt(slotStartIso);
+        setBookPersonModalOpen(true);
+        return;
+      }
+      if (!bookingTargetId) return;
       bookMutation.mutate({
         cycleId: bookingCycleId,
         reviewee_user_id: bookingTargetId,
         slot_starts_at: slotStartIso,
       });
     },
-    [bookingTargetId, bookingCycleId, bookMutation]
+    [bookingTargetId, bookingCycleId, bookMutation, canHrBook, eligiblePeopleBySelfDone.length]
+  );
+
+  const openCancelBookingModal = useCallback(
+    (revieweeUserId: string) => {
+      if (!revieweeUserId || !bookingCycleId) return;
+      const slot = boardSlotsNorm.find((s) => revieweeUserIdsEqual(s.booked_reviewee_user_id, revieweeUserId));
+      const displayName = (slot?.booked_reviewee_name || '').trim() || revieweeUserId;
+      setPendingDirectorNotifyModal({
+        kind: 'cancel_booking',
+        cycleId: bookingCycleId,
+        revieweeUserId,
+        displayName,
+      });
+      setRemoveBookingJustification('');
+    },
+    [bookingCycleId, boardSlotsNorm]
   );
 
   const handleCancelMine = useCallback(() => {
-    if (!bookingTargetId || !bookingCycleId) return;
-    bookMutation.mutate({
-      cycleId: bookingCycleId,
-      reviewee_user_id: bookingTargetId,
-      slot_starts_at: null,
-    });
-  }, [bookingTargetId, bookingCycleId, bookMutation]);
+    if (!bookingTargetId) return;
+    openCancelBookingModal(bookingTargetId);
+  }, [bookingTargetId, openCancelBookingModal]);
 
   const removeAvailabilityRow = useCallback((idx: number) => {
     setAvailabilityDraft((rows) => rows.filter((_, i) => i !== idx));
   }, []);
 
-  const [pendingRemoveWithBookings, setPendingRemoveWithBookings] = useState<{
-    idx: number;
-    bookedSlots: BoardSlot[];
-  } | null>(null);
+  const [pendingDirectorNotifyModal, setPendingDirectorNotifyModal] = useState<PendingDirectorNotifyModal | null>(
+    null
+  );
   const [removeBookingJustification, setRemoveBookingJustification] = useState('');
   const [removeNotifyPending, setRemoveNotifyPending] = useState(false);
 
-  const closeRemoveBookingModal = useCallback(() => {
-    setPendingRemoveWithBookings(null);
+  const closeDirectorNotifyModal = useCallback(() => {
+    setPendingDirectorNotifyModal(null);
     setRemoveBookingJustification('');
     setRemoveNotifyPending(false);
   }, []);
 
-  const submitRemoveBookingModal = useCallback(async () => {
-    if (!pendingRemoveWithBookings || !canonicalCycleId) return;
+  const submitDirectorNotifyModal = useCallback(async () => {
+    if (!pendingDirectorNotifyModal) return;
     const msg = removeBookingJustification.trim();
     if (!msg) {
       toast.error('Enter a message for the affected colleagues.');
       return;
     }
-    const ids = [
-      ...new Set(
-        pendingRemoveWithBookings.bookedSlots
-          .map((s) => s.booked_reviewee_user_id)
-          .filter((id): id is string => !!id)
-      ),
-    ];
-    if (!ids.length) {
-      toast.error('No booked colleagues found for this row.');
-      return;
+
+    let removeRowIds: string[] | null = null;
+    if (pendingDirectorNotifyModal.kind === 'remove_row') {
+      if (!canonicalCycleId) return;
+      removeRowIds = [
+        ...new Set(
+          pendingDirectorNotifyModal.bookedSlots
+            .map((s) => s.booked_reviewee_user_id)
+            .filter((id): id is string => !!id)
+        ),
+      ];
+      if (!removeRowIds.length) {
+        toast.error('No booked colleagues found for this row.');
+        return;
+      }
     }
+
     setRemoveNotifyPending(true);
     try {
-      await api<{ ok: boolean; notified_count: number }>(
-        'POST',
-        `/reviews/cycles/${encodeURIComponent(canonicalCycleId)}/director-meeting-notify-affected`,
-        {
-          reviewee_user_ids: ids,
-          message: msg,
-        }
-      );
-      removeAvailabilityRow(pendingRemoveWithBookings.idx);
-      closeRemoveBookingModal();
-      toast.success(ids.length === 1 ? 'Notification sent. Row removed from schedule.' : `Notifications sent (${ids.length}). Row removed from schedule.`);
+      const pend = pendingDirectorNotifyModal;
+      if (pend.kind === 'remove_row') {
+        await api<{ ok: boolean; notified_count: number }>(
+          'POST',
+          `/reviews/cycles/${encodeURIComponent(canonicalCycleId)}/director-meeting-notify-affected`,
+          {
+            reviewee_user_ids: removeRowIds!,
+            message: msg,
+          }
+        );
+        removeAvailabilityRow(pend.idx);
+        closeDirectorNotifyModal();
+        toast.success(
+          removeRowIds!.length === 1
+            ? 'Notification sent. Row removed from schedule.'
+            : `Notifications sent (${removeRowIds!.length}). Row removed from schedule.`
+        );
+      } else {
+        await api<{ ok: boolean; notified_count: number }>(
+          'POST',
+          `/reviews/cycles/${encodeURIComponent(pend.cycleId)}/director-meeting-notify-affected`,
+          {
+            reviewee_user_ids: [pend.revieweeUserId],
+            message: msg,
+          }
+        );
+        await bookMutation.mutateAsync({
+          cycleId: pend.cycleId,
+          reviewee_user_id: pend.revieweeUserId,
+          slot_starts_at: null,
+          hr_cancel_message: msg,
+        });
+        closeDirectorNotifyModal();
+        toast.success('Notification sent. Booking cancelled.');
+      }
     } catch (e: any) {
       toast.error(e?.response?.data?.detail || e?.message || 'Failed to send notifications');
     } finally {
       setRemoveNotifyPending(false);
     }
   }, [
-    pendingRemoveWithBookings,
+    pendingDirectorNotifyModal,
     canonicalCycleId,
     removeBookingJustification,
-    closeRemoveBookingModal,
+    closeDirectorNotifyModal,
     removeAvailabilityRow,
+    bookMutation,
   ]);
 
   useEffect(() => {
-    if (!pendingRemoveWithBookings) return;
+    if (!pendingDirectorNotifyModal) return;
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') closeRemoveBookingModal();
+      if (e.key === 'Escape') closeDirectorNotifyModal();
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [pendingRemoveWithBookings, closeRemoveBookingModal]);
+  }, [pendingDirectorNotifyModal, closeDirectorNotifyModal]);
 
   const requestRemoveDraftRow = useCallback(
     (idx: number, bookedSlots: BoardSlot[]) => {
       if (bookedSlots.length > 0) {
-        setPendingRemoveWithBookings({ idx, bookedSlots });
+        setPendingDirectorNotifyModal({ kind: 'remove_row', idx, bookedSlots });
         setRemoveBookingJustification('');
         return;
       }
@@ -764,16 +901,20 @@ export default function DirectorMeetingsPage() {
     setPageTab(next);
   };
 
-  const removeModalRecipients = useMemo(() => {
-    if (!pendingRemoveWithBookings) return [] as { id: string; label: string }[];
+  const directorNotifyModalRecipients = useMemo(() => {
+    if (!pendingDirectorNotifyModal) return [] as { id: string; label: string }[];
+    if (pendingDirectorNotifyModal.kind === 'cancel_booking') {
+      const p = pendingDirectorNotifyModal;
+      return [{ id: p.revieweeUserId, label: p.displayName }];
+    }
     const m = new Map<string, string>();
-    for (const s of pendingRemoveWithBookings.bookedSlots) {
+    for (const s of pendingDirectorNotifyModal.bookedSlots) {
       const id = s.booked_reviewee_user_id;
       if (!id) continue;
       if (!m.has(id)) m.set(id, (s.booked_reviewee_name || id).trim());
     }
     return [...m.entries()].map(([id, label]) => ({ id, label }));
-  }, [pendingRemoveWithBookings]);
+  }, [pendingDirectorNotifyModal]);
 
   const showScheduleFooterBar = canConfigure && pageTab === 'build' && !!canonicalCycleId && scheduleBaselineReady;
 
@@ -788,22 +929,12 @@ export default function DirectorMeetingsPage() {
 
   return (
     <>
-    <div className={`max-w-5xl mx-auto px-3 sm:px-4 ${showScheduleFooterBar ? 'pb-28' : 'pb-12'}`}>
-      <div className="rounded-xl border bg-white p-4 mb-6">
-        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+    <div className={`w-full min-w-0 max-w-none space-y-4 ${showScheduleFooterBar ? 'pb-28' : 'pb-12'}`}>
+      <div className="rounded-xl border bg-white p-4">
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
           <div className="flex items-center gap-3 flex-1 min-w-0">
-            <button
-              type="button"
-              onClick={() => navigate('/reviews/my')}
-              className="p-1.5 rounded-lg hover:bg-gray-100 transition-colors flex items-center justify-center shrink-0"
-              title="Back to My reviews"
-            >
-              <svg className="w-4 h-4 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
-              </svg>
-            </button>
-            <div className="w-8 h-8 rounded bg-blue-100 flex items-center justify-center shrink-0">
-              <svg className="w-5 h-5 text-blue-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <div className="w-8 h-8 rounded-lg bg-purple-100 flex items-center justify-center shrink-0">
+              <svg className="w-5 h-5 text-purple-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path
                   strokeLinecap="round"
                   strokeLinejoin="round"
@@ -813,21 +944,23 @@ export default function DirectorMeetingsPage() {
               </svg>
             </div>
             <div className="min-w-0">
-              <h5 className="text-sm font-semibold text-blue-900">Schedule 1:1</h5>
-              <p className="text-xs text-gray-600 mt-0.5 max-w-2xl leading-relaxed">
-                Schedule the director closing 1:1 for the performance review.
+              <h5 className="text-sm font-semibold text-purple-900">Director meeting schedule</h5>
+              <p className="text-xs text-gray-600 mt-0.5 leading-relaxed">
+                Publish availability and book director closing 1:1s for the performance review cycle.
               </p>
             </div>
           </div>
-          <div className="text-right flex flex-col items-end shrink-0 sm:pl-2">
-            <div className="text-[10px] text-gray-400 mb-1 font-medium uppercase tracking-wide">Today</div>
-            <div className="text-xs font-semibold text-gray-700">{todayLabel}</div>
+          <div className="flex flex-wrap items-center gap-3 justify-end shrink-0 lg:pl-4">
+            <div className="text-right">
+              <div className="text-[10px] font-medium text-gray-500 uppercase tracking-wide">Today</div>
+              <div className="text-xs font-semibold text-gray-700 mt-0.5">{todayLabel}</div>
+            </div>
           </div>
         </div>
       </div>
 
       {!canonicalCycleId ? (
-        <div className="rounded-xl border border-dashed border-gray-200 bg-gray-50/80 py-12 text-center text-sm text-gray-500">
+        <div className="rounded-xl border bg-white py-12 text-center text-xs text-gray-500">
           {cycleOptions.length === 0
             ? 'No review cycles available for your account.'
             : 'Loading review cycles…'}
@@ -835,49 +968,51 @@ export default function DirectorMeetingsPage() {
       ) : (
         <>
           {canConfigure ? (
-            <div
-              className="mb-6 flex gap-1 rounded-xl border border-slate-200 bg-slate-100/80 p-1"
-              role="tablist"
-              aria-label="Director meetings"
-            >
-              <button
-                type="button"
-                role="tab"
-                aria-selected={pageTab === 'build'}
-                onClick={() => void handlePageTabRequest('build')}
-                className={`flex-1 rounded-lg px-4 py-2.5 text-sm font-semibold transition-colors ${
-                  pageTab === 'build'
-                    ? 'bg-white text-slate-900 shadow-sm'
-                    : 'text-slate-600 hover:text-slate-900'
-                }`}
+            <div className="rounded-xl border bg-white p-4">
+              <div
+                className="flex max-w-lg items-center border border-gray-200 rounded-lg overflow-hidden"
+                role="tablist"
+                aria-label="Director meetings"
               >
-                Build schedule
-              </button>
-              <button
-                type="button"
-                role="tab"
-                aria-selected={pageTab === 'book'}
-                onClick={() => void handlePageTabRequest('book')}
-                className={`flex-1 rounded-lg px-4 py-2.5 text-sm font-semibold transition-colors ${
-                  pageTab === 'book'
-                    ? 'bg-white text-slate-900 shadow-sm'
-                    : 'text-slate-600 hover:text-slate-900'
-                }`}
-              >
-                Book times
-              </button>
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={pageTab === 'build'}
+                  onClick={() => void handlePageTabRequest('build')}
+                  className={`flex-1 px-4 py-2.5 text-xs font-medium transition-colors duration-150 ${
+                    pageTab === 'build'
+                      ? 'bg-gray-900 text-white'
+                      : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50 bg-white'
+                  }`}
+                >
+                  Build schedule
+                </button>
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={pageTab === 'book'}
+                  onClick={() => void handlePageTabRequest('book')}
+                  className={`flex-1 px-4 py-2.5 text-xs font-medium transition-colors duration-150 border-l border-gray-200 ${
+                    pageTab === 'book'
+                      ? 'bg-gray-900 text-white'
+                      : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50 bg-white'
+                  }`}
+                >
+                  Book times
+                </button>
+              </div>
             </div>
           ) : null}
 
           {canConfigure && pageTab === 'build' ? (
-            <section className="rounded-2xl border border-slate-200 bg-gradient-to-br from-slate-50/90 to-white p-5 sm:p-6 shadow-sm mb-6">
-              <h2 className="text-base font-semibold text-slate-900 mb-4">Publish availability</h2>
+            <section className="rounded-xl border bg-white p-4 sm:p-5">
+              <h2 className="text-sm font-semibold text-gray-900 mb-4">Publish availability</h2>
 
-              <div className="rounded-xl border border-slate-200 bg-white p-4 sm:p-5 shadow-sm mb-6">
+              <div className="rounded-xl border border-gray-200 bg-white p-4 sm:p-5 mb-6">
                 <div className="flex flex-col gap-6 lg:flex-row lg:items-start lg:gap-8">
                   <div className="min-w-0 flex-1 shrink-0">
                     <div className="mb-2 flex items-center gap-1.5">
-                      <span className="text-xs font-semibold text-slate-800">Calendar</span>
+                      <span className="text-xs font-semibold text-gray-800">Calendar</span>
                       <FieldHint
                         hint={
                           'Calendar\n\nClick a day to sync start and end dates in the form. The badge is how many schedule rows fall on that date.'
@@ -905,68 +1040,81 @@ export default function DirectorMeetingsPage() {
                     />
                   </div>
 
-                  <div className="min-w-0 flex-1 space-y-4 rounded-xl border border-slate-200 bg-slate-50/60 p-4">
-                    <div className="flex flex-wrap gap-3">
-                      <div>
-                        <div className="mb-1 flex items-center gap-1">
-                          <span className="text-xs font-medium text-slate-600">Start date</span>
-                          <FieldHint hint="First day included when you generate rows from the range (bulk add)." />
+                  <div className="min-w-0 flex-1">
+                    <div className="mb-2 flex items-center gap-1.5">
+                      <span className="text-xs font-semibold text-gray-800">Dates & times</span>
+                      <FieldHint
+                        hint={
+                          'Dates & times\n\nSet the day range and daily open hours. The same From–To window applies to each day in the range when you add rows.'
+                        }
+                      />
+                    </div>
+                    <div className="space-y-4 rounded-xl border border-gray-200 bg-gray-50/60 p-4">
+                    <div className="space-y-3">
+                      <div className="flex flex-wrap gap-3">
+                        <div>
+                          <div className="mb-1 flex items-center gap-1">
+                            <span className="text-xs font-medium text-gray-600">Start date</span>
+                            <FieldHint hint="First day included when you generate rows from the range (bulk add)." />
+                          </div>
+                          <input
+                            type="date"
+                            className="rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-gray-900 min-w-[10rem] focus:ring-1 focus:ring-gray-400 focus:border-gray-400"
+                            value={bulkDateFrom}
+                            onChange={(e) => setBulkDateFrom(e.target.value)}
+                          />
                         </div>
-                        <input
-                          type="date"
-                          className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm min-w-[10rem]"
-                          value={bulkDateFrom}
-                          onChange={(e) => setBulkDateFrom(e.target.value)}
-                        />
+                        <div>
+                          <div className="mb-1 flex items-center gap-1">
+                            <span className="text-xs font-medium text-gray-600">End date</span>
+                            <FieldHint hint="Last day included (inclusive). Use the same as start for a single day, or extend for multiple days." />
+                          </div>
+                          <input
+                            type="date"
+                            className="rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-gray-900 min-w-[10rem] focus:ring-1 focus:ring-gray-400 focus:border-gray-400"
+                            value={bulkDateTo}
+                            onChange={(e) => setBulkDateTo(e.target.value)}
+                          />
+                        </div>
                       </div>
-                      <div>
-                        <div className="mb-1 flex items-center gap-1">
-                          <span className="text-xs font-medium text-slate-600">End date</span>
-                          <FieldHint hint="Last day included (inclusive). Use the same as start for a single day, or extend for multiple days." />
+                      <div className="flex flex-wrap gap-3">
+                        <div>
+                          <div className="mb-1 flex items-center gap-1">
+                            <span className="text-xs font-medium text-gray-600">From time</span>
+                            <FieldHint hint="Start of the daily open window. The same From–To times apply to each day between start and end date." />
+                          </div>
+                          <input
+                            type="time"
+                            step={60}
+                            className="rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-gray-900 min-w-[7rem] focus:ring-1 focus:ring-gray-400 focus:border-gray-400"
+                            value={bulkTimeFrom}
+                            onChange={(e) => setBulkTimeFrom(normalizeTimeValue(e.target.value))}
+                          />
                         </div>
-                        <input
-                          type="date"
-                          className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm min-w-[10rem]"
-                          value={bulkDateTo}
-                          onChange={(e) => setBulkDateTo(e.target.value)}
-                        />
-                      </div>
-                      <div>
-                        <div className="mb-1 flex items-center gap-1">
-                          <span className="text-xs font-medium text-slate-600">From time</span>
-                          <FieldHint hint="Start of the daily open window. The same From–To times apply to each day between start and end date." />
+                        <div>
+                          <div className="mb-1 flex items-center gap-1">
+                            <span className="text-xs font-medium text-gray-600">To time</span>
+                            <FieldHint hint="End of the daily window. Must be after From time; the span is split into meeting-length slots." />
+                          </div>
+                          <input
+                            type="time"
+                            step={60}
+                            className="rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-gray-900 min-w-[7rem] focus:ring-1 focus:ring-gray-400 focus:border-gray-400"
+                            value={bulkTimeTo}
+                            onChange={(e) => setBulkTimeTo(normalizeTimeValue(e.target.value))}
+                          />
                         </div>
-                        <input
-                          type="time"
-                          step={60}
-                          className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm min-w-[7rem]"
-                          value={bulkTimeFrom}
-                          onChange={(e) => setBulkTimeFrom(normalizeTimeValue(e.target.value))}
-                        />
-                      </div>
-                      <div>
-                        <div className="mb-1 flex items-center gap-1">
-                          <span className="text-xs font-medium text-slate-600">To time</span>
-                          <FieldHint hint="End of the daily window. Must be after From time; the span is split into meeting-length slots." />
-                        </div>
-                        <input
-                          type="time"
-                          step={60}
-                          className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm min-w-[7rem]"
-                          value={bulkTimeTo}
-                          onChange={(e) => setBulkTimeTo(normalizeTimeValue(e.target.value))}
-                        />
                       </div>
                     </div>
 
                     <label className="flex items-start gap-2 cursor-pointer">
                       <input
                         type="checkbox"
-                        className="mt-0.5 rounded border-slate-300"
+                        className="mt-0.5 rounded border-gray-300"
                         checked={bulkReplaceDraft}
                         onChange={(e) => setBulkReplaceDraft(e.target.checked)}
                       />
-                      <span className="flex flex-wrap items-center gap-1 text-xs text-slate-700">
+                      <span className="flex flex-wrap items-center gap-1 text-xs text-gray-700">
                         Replace current Schedule
                         <FieldHint hint="When checked, your next Add replaces the whole schedule. When off, new rows are appended to what you already have." />
                       </span>
@@ -974,7 +1122,7 @@ export default function DirectorMeetingsPage() {
 
                     <div>
                       <div className="mb-2 flex items-center gap-1">
-                        <span className="text-xs font-medium text-slate-600">Each meeting slot lasts</span>
+                        <span className="text-xs font-medium text-gray-600">Each meeting slot lasts</span>
                         <FieldHint hint="Length of each bookable slot. The From–To window is divided into consecutive segments of this length." />
                       </div>
                       <div className="flex flex-wrap gap-1.5">
@@ -983,10 +1131,10 @@ export default function DirectorMeetingsPage() {
                             key={`slot-${p.minutes}`}
                             type="button"
                             onClick={() => setMeetingDurationDraft(p.minutes)}
-                            className={`rounded-lg px-3 py-1.5 text-sm font-semibold border transition-colors ${
+                            className={`rounded-lg px-3 py-1.5 text-xs font-medium border transition-colors ${
                               meetingDurationDraft === p.minutes
-                                ? 'border-brand-red bg-red-50 text-brand-red'
-                                : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'
+                                ? 'border-brand-red bg-brand-red text-white hover:bg-[#aa1212]'
+                                : 'border-gray-200 bg-white text-gray-700 hover:bg-gray-50'
                             }`}
                           >
                             {p.label}
@@ -995,19 +1143,19 @@ export default function DirectorMeetingsPage() {
                       </div>
                     </div>
 
-                    <div className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs text-slate-600">
-                      Preview: ~<span className="font-semibold text-slate-800">{bulkPreviewSlots}</span> row
+                    <div className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-xs text-gray-600">
+                      Preview: ~<span className="font-semibold text-gray-900">{bulkPreviewSlots}</span> row
                       {bulkPreviewSlots === 1 ? '' : 's'} per day · ~{' '}
-                      <span className="font-semibold text-slate-800">{bulkDayCount * bulkPreviewSlots}</span> total for{' '}
+                      <span className="font-semibold text-gray-900">{bulkDayCount * bulkPreviewSlots}</span> total for{' '}
                       {bulkDayCount} day{bulkDayCount === 1 ? '' : 's'} · each row ={' '}
-                      <span className="font-semibold text-slate-800">{meetingDurationDraft} min</span> window.
+                      <span className="font-semibold text-gray-900">{meetingDurationDraft} min</span> window.
                     </div>
 
                     <div className="flex flex-wrap items-center gap-2">
                       <button
                         type="button"
                         onClick={addTimeRangeToDraft}
-                        className="w-full rounded-lg bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-slate-800 sm:w-auto"
+                        className="w-full sm:w-auto inline-flex items-center justify-center gap-1.5 rounded-lg bg-brand-red px-4 py-2 text-xs font-medium text-white transition-colors hover:bg-[#aa1212] sm:px-3 sm:py-1.5"
                       >
                         {bulkReplaceDraft ? 'Replace schedule from range' : 'Add range to schedule'}
                       </button>
@@ -1015,26 +1163,27 @@ export default function DirectorMeetingsPage() {
 
                     {bulkHint ? (
                       <p
-                        className={`text-sm ${/^Added |^Replaced /.test(bulkHint) ? 'text-emerald-800' : 'text-red-700'}`}
+                        className={`text-xs ${/^Added |^Replaced /.test(bulkHint) ? 'text-emerald-800' : 'text-red-700'}`}
                         role="status"
                       >
                         {bulkHint}
                       </p>
                     ) : null}
+                    </div>
                   </div>
                 </div>
 
                 {scheduleSelectedYmd ? (
-                  <div className="mt-6 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
-                    <div className="flex flex-wrap items-end justify-between gap-3 border-b border-slate-100 bg-slate-50/90 px-4 py-3">
+                  <div className="mt-6 overflow-hidden rounded-xl border border-gray-200 bg-white">
+                    <div className="flex flex-wrap items-end justify-between gap-3 border-b border-gray-100 bg-gray-50 px-4 py-3">
                       <div className="min-w-0">
                         <div className="flex items-center gap-1.5">
-                          <h4 className="text-sm font-semibold text-slate-900">Current Schedule</h4>
+                          <h4 className="text-sm font-semibold text-gray-900">Current schedule</h4>
                           <FieldHint hint="Shows availability rows for the selected day in your current schedule. Remove a row if needed; if someone already booked in that window, you can notify them before removing." />
                         </div>
-                        <p className="mt-0.5 text-xs font-medium text-slate-600">{formatYmdHeading(scheduleSelectedYmd)}</p>
+                        <p className="mt-0.5 text-xs font-medium text-gray-600">{formatYmdHeading(scheduleSelectedYmd)}</p>
                       </div>
-                      <span className="rounded-full bg-slate-200/90 px-2.5 py-0.5 text-xs font-semibold tabular-nums text-slate-700">
+                      <span className="rounded-full bg-gray-200/90 px-2.5 py-0.5 text-[10px] font-semibold tabular-nums text-gray-800">
                         {draftRowsForSelectedDay.length} row{draftRowsForSelectedDay.length === 1 ? '' : 's'} this day
                       </span>
                     </div>
@@ -1042,18 +1191,18 @@ export default function DirectorMeetingsPage() {
                       {draftRowsForSelectedDay.length > 0 ? (
                         <ul className="space-y-1.5">
                           {draftRowsForSelectedDay.map(({ row, idx }) => {
-                            const bookedHere = (board?.slots || []).filter(
+                            const bookedHere = boardSlotsNorm.filter(
                               (s) => s.booked_reviewee_user_id && slotOverlapsAvailabilityRow(s, row)
                             );
                             return (
                               <li
                                 key={row.id}
-                                className="flex flex-col gap-2 rounded-lg border border-slate-100 bg-slate-50/70 px-3 py-2.5 text-sm sm:flex-row sm:items-center sm:justify-between"
+                                className="flex flex-col gap-2 rounded-lg border border-gray-100 bg-gray-50/80 px-3 py-2.5 text-xs sm:flex-row sm:items-center sm:justify-between"
                               >
                                 <div className="min-w-0 flex-1">
-                                  <div className="tabular-nums text-slate-800">
+                                  <div className="tabular-nums text-gray-800">
                                     <span className="font-medium">{normalizeTimeValue(row.startTime)}</span>
-                                    <span className="text-slate-400"> · </span>
+                                    <span className="text-gray-400"> · </span>
                                     {row.windowMinutes} min window
                                   </div>
                                   {bookedHere.length > 0 ? (
@@ -1074,7 +1223,7 @@ export default function DirectorMeetingsPage() {
                                 <button
                                   type="button"
                                   onClick={() => void requestRemoveDraftRow(idx, bookedHere)}
-                                  className="shrink-0 self-start text-xs font-semibold text-slate-500 hover:text-red-600 sm:self-center"
+                                  className="shrink-0 self-start rounded-lg border border-gray-200 bg-white px-2.5 py-1 text-xs font-medium text-gray-700 hover:bg-gray-50 hover:text-red-600 hover:border-red-200 sm:self-center"
                                 >
                                   Remove
                                 </button>
@@ -1083,12 +1232,12 @@ export default function DirectorMeetingsPage() {
                           })}
                         </ul>
                       ) : availabilityDraft.length === 0 ? (
-                        <p className="py-8 text-center text-sm leading-relaxed text-slate-500">
+                        <p className="py-8 text-center text-xs leading-relaxed text-gray-500">
                           Nothing in the schedule yet. Use the calendar and time range above. Saving while empty clears published
                           availability for every review cycle.
                         </p>
                       ) : (
-                        <p className="py-8 text-center text-sm leading-relaxed text-slate-500">
+                        <p className="py-8 text-center text-xs leading-relaxed text-gray-500">
                           No windows for this day in the current schedule. Choose another day on the calendar or add a range that
                           includes this date.
                         </p>
@@ -1101,26 +1250,17 @@ export default function DirectorMeetingsPage() {
           ) : null}
 
           {(!canConfigure || pageTab === 'book') ? (
-          <section className="rounded-2xl border border-slate-200 bg-white p-5 sm:p-6 shadow-sm mb-6">
-            <div className="mb-1 flex items-center gap-1.5">
-              <h2 className="text-base font-semibold text-slate-900">Book a slot</h2>
-              <FieldHint hint="Pick a day, then a start time. Badges show bookings that day; open slots appear in the list. Same steps employees use under My reviews → Director 1:1." />
-            </div>
-            <p className="text-sm text-slate-600 mb-4">
-              Choose a day on the calendar (badge = bookings that day; gray = open slots only), then pick a time below.
-              Same flow as employees on My reviews.
-            </p>
-
+          <section className="rounded-xl border bg-white p-4 sm:p-5">
             {canHrBook ? (
               <div className="mb-5 space-y-4">
                 {cycleOptions.length > 1 ? (
                   <div>
                     <div className="mb-1.5 flex items-center gap-1">
-                      <label className="text-sm font-medium text-slate-700">Review cycle (assignments)</label>
+                      <label className="text-xs font-medium text-gray-700">Review cycle (assignments)</label>
                       <FieldHint hint="Open times are identical for every cycle; this only picks which cycle’s assignment list and bookings you are acting on." />
                     </div>
                     <select
-                      className="rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm min-w-[min(100%,320px)] shadow-sm"
+                      className="rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-gray-900 min-w-[min(100%,320px)] focus:ring-1 focus:ring-gray-400 focus:border-gray-400"
                       value={bookingCycleId}
                       onChange={(e) => setBookingCycleId(e.target.value)}
                     >
@@ -1130,35 +1270,18 @@ export default function DirectorMeetingsPage() {
                         </option>
                       ))}
                     </select>
-                    <p className="mt-1 text-xs text-slate-500">
+                    <p className="mt-1 text-xs text-gray-500">
                       Open times are shared across cycles; this only chooses which cycle’s employee list and bookings you are
                       working with.
                     </p>
                   </div>
                 ) : null}
-                <div>
-                <div className="mb-1.5 flex items-center gap-1">
-                  <label className="text-sm font-medium text-slate-700">Who is this booking for?</label>
-                  <FieldHint hint="Employee you are booking or changing the slot for. Their booking is stored on this review cycle." />
-                </div>
-                <select
-                  className="rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm min-w-[min(100%,320px)] shadow-sm"
-                  value={hrRevieweeId}
-                  onChange={(e) => setHrRevieweeId(e.target.value)}
-                >
-                  {(hrStatus as any[]).map((r: any) => (
-                    <option key={r.user_id} value={r.user_id}>
-                      {r.display_name || r.name || r.user_id}
-                    </option>
-                  ))}
-                </select>
-                </div>
               </div>
             ) : (
-              <p className="text-sm text-slate-600 mb-4">
-                Booking for <span className="font-semibold text-slate-900">your account</span>.
+              <p className="text-xs text-gray-600 mb-4 leading-relaxed">
+                Booking for <span className="font-semibold text-gray-900">your account</span>.
                 {activeBookingSlot ? (
-                  <span className="block mt-2 rounded-lg bg-green-50 border border-green-200 px-3 py-2 text-green-900">
+                  <span className="block mt-2 rounded-lg bg-green-50 border border-green-200 px-3 py-2 text-xs text-green-800">
                     <span className="font-medium">Scheduled:</span>{' '}
                     {formatDayHeading(activeBookingSlot.starts_at)} ·{' '}
                     {formatTimeOnly(activeBookingSlot.starts_at, activeBookingSlot.ends_at)}
@@ -1168,9 +1291,9 @@ export default function DirectorMeetingsPage() {
             )}
 
             {boardLoading ? (
-              <p className="text-sm text-slate-500 py-8 text-center">Loading open times…</p>
+              <p className="text-xs text-gray-500 py-8 text-center">Loading open times…</p>
             ) : !hasConfiguredWindows ? (
-              <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-8 text-center text-sm text-amber-950">
+              <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-8 text-center text-xs text-amber-950">
                 {canConfigure ? (
                   <>
                     No schedule published yet. Open the <span className="font-semibold">Build schedule</span> tab to add
@@ -1179,26 +1302,29 @@ export default function DirectorMeetingsPage() {
                 ) : (
                   <>No schedule published yet. An admin must publish availability under </>
                 )}
-                <Link to="/reviews/admin" className="font-semibold underline">
-                  Employee Review → Director 1:1
+                <Link to="/reviews/director-meetings" className="font-semibold underline">
+                  Employee Review → Meeting schedule
                 </Link>
                 .
               </div>
-            ) : !(board?.slots || []).length ? (
-              <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-8 text-center text-sm text-amber-950">
+            ) : !boardSlotsNorm.length ? (
+              <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-8 text-center text-xs text-amber-950">
                 No bookable times yet — try a longer block or shorter meeting length so at least one slot fits inside the
                 window.
               </div>
             ) : (
               <DirectorMeetingSlotPicker
                 cycleId={bookingCycleId || canonicalCycleId}
-                slots={board?.slots || []}
+                slots={boardSlotsNorm}
                 durationMinutes={board?.duration_minutes ?? meetingDurationDraft}
                 bookingTargetId={bookingTargetId}
                 onBook={(iso) => handleBook(iso)}
                 onCancelMine={handleCancelMine}
+                onCancelBookedSlot={canHrBook ? (uid) => openCancelBookingModal(uid) : undefined}
                 isPending={bookMutation.isPending}
                 compact
+                wideSplit
+                allowReserveWithoutTarget={canHrBook}
               />
             )}
           </section>
@@ -1207,7 +1333,178 @@ export default function DirectorMeetingsPage() {
       )}
     </div>
 
-    {pendingRemoveWithBookings ? (
+    {bookPersonModalOpen ? (
+      <OverlayPortal>
+        <div
+          className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 p-4 backdrop-blur-[2px]"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="book-person-modal-title"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) closeBookPersonModal();
+          }}
+        >
+          <div
+            className="flex max-h-[min(88vh,32rem)] w-full max-w-lg flex-col overflow-hidden rounded-xl border border-gray-200 bg-white shadow-lg"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="shrink-0 border-b border-gray-100 bg-gray-50 px-5 py-4">
+              <h2 id="book-person-modal-title" className="text-sm font-semibold text-gray-900">
+                New schedule
+              </h2>
+              <p className="mt-1.5 text-xs leading-relaxed text-gray-600">
+                Pick who this slot is for. People who already have a meeting are under{' '}
+                <span className="font-medium text-gray-800">Reschedule</span>, with their current time shown.
+              </p>
+              {pendingBookSlotStartsAt ? (
+                <p className="mt-2 inline-flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-2.5 py-1.5 text-xs text-gray-700">
+                  <span className="font-medium text-gray-500">Time:</span>
+                  <span className="font-semibold tabular-nums text-gray-900">
+                    {formatSlotStartLabel(pendingBookSlotStartsAt)}
+                  </span>
+                </p>
+              ) : null}
+            </div>
+
+            <div className="shrink-0 border-b border-gray-100 px-4 pt-3 pb-2">
+              <div
+                className="flex items-center border border-gray-200 rounded-lg overflow-hidden"
+                role="tablist"
+                aria-label="Booking type"
+              >
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={bookPersonModalTab === 'new'}
+                  onClick={() => setBookPersonModalTab('new')}
+                  className={`relative flex flex-1 items-center justify-center gap-1.5 px-3 py-2 text-xs font-medium transition-colors duration-150 ${
+                    bookPersonModalTab === 'new'
+                      ? 'bg-gray-900 text-white'
+                      : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50 bg-white'
+                  }`}
+                >
+                  Not scheduled
+                  <span
+                    className={`min-w-[1.25rem] rounded-full px-1.5 py-0.5 text-[10px] font-bold tabular-nums ${
+                      bookPersonModalTab === 'new' ? 'bg-white/20 text-white' : 'bg-gray-200 text-gray-600'
+                    }`}
+                  >
+                    {peopleWithoutSchedule.length}
+                  </span>
+                </button>
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={bookPersonModalTab === 'reschedule'}
+                  onClick={() => setBookPersonModalTab('reschedule')}
+                  className={`relative flex flex-1 items-center justify-center gap-1.5 px-3 py-2 text-xs font-medium transition-colors duration-150 border-l border-gray-200 ${
+                    bookPersonModalTab === 'reschedule'
+                      ? 'bg-gray-900 text-white'
+                      : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50 bg-white'
+                  }`}
+                >
+                  Reschedule
+                  <span
+                    className={`min-w-[1.25rem] rounded-full px-1.5 py-0.5 text-[10px] font-bold tabular-nums ${
+                      bookPersonModalTab === 'reschedule' ? 'bg-white/20 text-white' : 'bg-gray-200 text-gray-600'
+                    }`}
+                  >
+                    {peopleWithSchedule.length}
+                  </span>
+                </button>
+              </div>
+            </div>
+
+            <div className="min-h-0 flex-1 overflow-y-auto px-4 py-3">
+              {bookPersonModalTab === 'new' ? (
+                peopleWithoutSchedule.length === 0 ? (
+                  <div className="rounded-xl border border-dashed border-gray-200 bg-gray-50/80 px-4 py-8 text-center">
+                    <p className="text-xs font-medium text-gray-700">No one without a meeting</p>
+                    <p className="mt-1 text-xs text-gray-500">
+                      Everyone eligible already has a time. Use the Reschedule tab to change it.
+                    </p>
+                  </div>
+                ) : (
+                  <ul className="space-y-2">
+                    {peopleWithoutSchedule.map((r: any) => (
+                      <li key={r.user_id}>
+                        <button
+                          type="button"
+                          onClick={() => pickPendingPersonForBooking(String(r.user_id))}
+                          disabled={bookMutation.isPending}
+                          className="group w-full rounded-xl border border-gray-200 bg-white px-4 py-3 text-left transition-all hover:border-gray-300 hover:bg-gray-50 disabled:pointer-events-none disabled:opacity-50"
+                        >
+                          <span className="text-xs font-semibold text-gray-900 group-hover:text-brand-red">
+                            {r.display_name || r.name || r.user_id}
+                          </span>
+                          <span className="mt-0.5 block text-[11px] text-gray-500">Click to book this slot</span>
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                )
+              ) : peopleWithSchedule.length === 0 ? (
+                <div className="rounded-xl border border-dashed border-gray-200 bg-gray-50/80 px-4 py-8 text-center">
+                  <p className="text-xs font-medium text-gray-700">No one to reschedule</p>
+                  <p className="mt-1 text-xs text-gray-500">
+                    No eligible people with a meeting booked in this cycle yet.
+                  </p>
+                </div>
+              ) : (
+                <ul className="space-y-2">
+                  {peopleWithSchedule.map((r: any) => {
+                    const startsAt = r.director_meeting_scheduled_at as string | null;
+                    const endsAt =
+                      (r.director_meeting_scheduled_until as string | null) ||
+                      (r.director_meeting_scheduled_at as string | null);
+                    return (
+                      <li key={r.user_id}>
+                        <button
+                          type="button"
+                          onClick={() => pickPendingPersonForBooking(String(r.user_id))}
+                          disabled={bookMutation.isPending}
+                          className="group w-full rounded-xl border border-gray-200 bg-white px-4 py-3 text-left transition-all hover:border-gray-300 hover:bg-gray-50 disabled:pointer-events-none disabled:opacity-50"
+                        >
+                          <div className="text-xs font-semibold text-gray-900 group-hover:text-brand-red">
+                            {r.display_name || r.name || r.user_id}
+                          </div>
+                          {startsAt ? (
+                            <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-gray-600">
+                              <span className="rounded-md bg-gray-100 px-1.5 py-0.5 font-medium text-gray-700">
+                                Current: {formatDayHeading(startsAt)}
+                              </span>
+                              {endsAt ? (
+                                <span className="tabular-nums text-gray-600">{formatTimeOnly(startsAt, endsAt)}</span>
+                              ) : null}
+                            </div>
+                          ) : null}
+                          <span className="mt-1.5 block text-[11px] text-gray-500">
+                            The current booking will be replaced with this slot
+                          </span>
+                        </button>
+                      </li>
+                    );
+                  })}
+                </ul>
+              )}
+            </div>
+
+            <div className="flex shrink-0 items-center justify-end gap-2 border-t border-gray-100 bg-gray-50 px-4 py-3">
+              <button
+                type="button"
+                onClick={() => closeBookPersonModal()}
+                disabled={bookMutation.isPending}
+                className="rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      </OverlayPortal>
+    ) : null}
+
+    {pendingDirectorNotifyModal ? (
       <OverlayPortal>
         <div
           className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 p-4"
@@ -1215,26 +1512,42 @@ export default function DirectorMeetingsPage() {
           aria-modal="true"
           aria-labelledby="remove-booking-modal-title"
           onClick={(e) => {
-            if (e.target === e.currentTarget && !removeNotifyPending) closeRemoveBookingModal();
+            if (e.target === e.currentTarget && !removeNotifyPending) closeDirectorNotifyModal();
           }}
         >
           <div
             className="w-full max-w-lg rounded-xl border border-gray-200 bg-white shadow-lg overflow-hidden"
             onClick={(e) => e.stopPropagation()}
           >
-            <div id="remove-booking-modal-title" className="border-b border-gray-200 px-4 py-3 text-sm font-semibold text-gray-900">
-              Remove schedule row — colleagues will be notified
+            <div
+              id="remove-booking-modal-title"
+              className="border-b border-gray-200 px-4 py-3 text-sm font-semibold text-gray-900"
+            >
+              {pendingDirectorNotifyModal.kind === 'remove_row'
+                ? 'Remove schedule row — colleagues will be notified'
+                : 'Cancel booking — colleagues will be notified'}
             </div>
             <div className="max-h-[min(70vh,28rem)] overflow-y-auto p-4 space-y-3">
               <p className="text-xs text-gray-700 leading-relaxed">
-                This row overlaps published slots that are already booked. If you continue, an{' '}
-                <span className="font-medium text-gray-900">in-app notification</span> will be sent to each affected person with
-                your message below. Then the row is removed from your current schedule (publish to apply availability).
+                {pendingDirectorNotifyModal.kind === 'remove_row' ? (
+                  <>
+                    This row overlaps published slots that are already booked. If you continue, an{' '}
+                    <span className="font-medium text-gray-900">in-app notification</span> will be sent to each affected
+                    person with your message below. Then the row is removed from your current schedule (publish to apply
+                    availability).
+                  </>
+                ) : (
+                  <>
+                    This cancels the director meeting slot for this person. If you continue, an{' '}
+                    <span className="font-medium text-gray-900">in-app notification</span> will be sent with your message
+                    below, then the booking is cleared.
+                  </>
+                )}
               </p>
-              {removeModalRecipients.length > 0 ? (
-                <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-800">
-                  <span className="font-medium text-slate-900">Notify: </span>
-                  {removeModalRecipients.map((r) => r.label).join(' · ')}
+              {directorNotifyModalRecipients.length > 0 ? (
+                <div className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-xs text-gray-800">
+                  <span className="font-medium text-gray-900">Notify: </span>
+                  {directorNotifyModalRecipients.map((r) => r.label).join(' · ')}
                 </div>
               ) : null}
               <div>
@@ -1257,7 +1570,7 @@ export default function DirectorMeetingsPage() {
             <div className="flex flex-wrap items-center justify-end gap-2 border-t border-gray-200 px-4 py-3">
               <button
                 type="button"
-                onClick={() => closeRemoveBookingModal()}
+                onClick={() => closeDirectorNotifyModal()}
                 disabled={removeNotifyPending}
                 className="rounded-lg px-3 py-2 border border-gray-300 text-xs font-medium text-gray-700 bg-white hover:bg-gray-50 disabled:opacity-50"
               >
@@ -1265,13 +1578,19 @@ export default function DirectorMeetingsPage() {
               </button>
               <button
                 type="button"
-                onClick={() => void submitRemoveBookingModal()}
+                onClick={() => void submitDirectorNotifyModal()}
                 disabled={
-                  removeNotifyPending || !removeBookingJustification.trim() || removeModalRecipients.length === 0
+                  removeNotifyPending ||
+                  !removeBookingJustification.trim() ||
+                  directorNotifyModalRecipients.length === 0
                 }
                 className="rounded-lg px-3 py-2 bg-brand-red text-white text-xs font-semibold hover:opacity-90 disabled:opacity-50 disabled:pointer-events-none"
               >
-                {removeNotifyPending ? 'Sending…' : 'Send notification & remove row'}
+                {removeNotifyPending
+                  ? 'Sending…'
+                  : pendingDirectorNotifyModal.kind === 'remove_row'
+                    ? 'Send notification & remove row'
+                    : 'Send notification & cancel booking'}
               </button>
             </div>
           </div>
@@ -1281,7 +1600,7 @@ export default function DirectorMeetingsPage() {
 
     {showScheduleFooterBar ? (
       <div className="fixed left-64 right-0 bottom-0 z-40 flex justify-center">
-        <div className="mx-auto max-w-5xl w-full px-4">
+        <div className="w-full min-w-0 max-w-none px-5">
           <div className="rounded-t-xl border bg-white/95 backdrop-blur p-2.5 flex flex-wrap items-center justify-between gap-3 shadow-[0_-6px_16px_rgba(0,0,0,0.08)]">
             {hasScheduleUnsaved ? (
               <div className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-full px-2.5 py-1 font-medium">
@@ -1298,7 +1617,7 @@ export default function DirectorMeetingsPage() {
                 type="button"
                 onClick={() => discardScheduleDraft()}
                 disabled={!hasScheduleUnsaved || saveConfig.isPending}
-                className="rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-semibold text-slate-800 hover:bg-slate-50 disabled:opacity-50 disabled:pointer-events-none"
+                className="rounded-lg border border-gray-300 px-3 py-1.5 text-xs font-medium text-gray-700 bg-white hover:bg-gray-50 disabled:opacity-50 disabled:pointer-events-none"
               >
                 Discard
               </button>
@@ -1306,7 +1625,7 @@ export default function DirectorMeetingsPage() {
                 type="button"
                 onClick={() => void saveSchedule()}
                 disabled={!hasScheduleUnsaved || saveConfig.isPending}
-                className="rounded-lg bg-slate-900 px-4 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-slate-800 disabled:opacity-50 disabled:pointer-events-none"
+                className="rounded-lg bg-brand-red px-4 py-1.5 text-xs font-medium text-white transition-colors hover:bg-[#aa1212] disabled:opacity-50 disabled:pointer-events-none"
               >
                 {saveConfig.isPending ? 'Saving…' : 'Save schedule'}
               </button>

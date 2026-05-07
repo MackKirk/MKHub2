@@ -132,7 +132,11 @@ export default function DirectorMeetingMonthCalendar({
         {cells.map((cell, index) => {
           if (!cell) return <div key={`pad-${index}`} className={`${cellAspect} ${cellRound}`} />;
           const meta = getDayProps(cell.ymd, cell.date);
-          const showBadge = !meta.disabled && meta.badge != null && meta.badge > 0;
+          /** Show count when >0, or 0 when day has slots but none left (booked tone). */
+          const showBadge =
+            !meta.disabled &&
+            meta.badge != null &&
+            (meta.badge > 0 || meta.badgeTone === 'booked');
           const isSelected = selectedYmd === cell.ymd;
           const todayRef = new Date();
           const isTodayCell =

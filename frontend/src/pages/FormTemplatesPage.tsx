@@ -7,6 +7,19 @@ import PageHeaderBar from '@/components/PageHeaderBar';
 import { useConfirm } from '@/components/ConfirmProvider';
 import { formatDateLocal } from '@/lib/dateUtils';
 
+function DocumentStackIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className ?? 'w-5 h-5'} fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
+      <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth={2}
+        d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
+      />
+    </svg>
+  );
+}
+
 type TemplateRow = {
   id: string;
   name: string;
@@ -146,6 +159,216 @@ export default function FormTemplatesPage({ variant = 'safety', embedded = false
     }
   };
 
+  const todayLabel = useMemo(
+    () =>
+      new Date().toLocaleDateString('en-CA', {
+        weekday: 'long',
+        year: 'numeric',
+        month: 'short',
+        day: 'numeric',
+      }),
+    []
+  );
+
+  const searchInput = (
+    <input
+      id="form-templates-search"
+      type="search"
+      value={searchQuery}
+      onChange={(e) => setSearchQuery(e.target.value)}
+      placeholder="Search by name, category, version, or description…"
+      className={
+        isHr
+          ? 'w-full max-w-xl rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-gray-900 focus:ring-1 focus:ring-gray-400 focus:border-gray-400'
+          : 'w-full pl-9 pr-3 py-2 text-sm border border-gray-200 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-brand-red/20 focus:border-brand-red'
+      }
+      autoComplete="off"
+    />
+  );
+
+  /** First row in template list — same dashed pattern as Opportunities (/rm-opportunities). */
+  const newTemplateButton = (
+    <button
+      type="button"
+      onClick={() => createMut.mutate()}
+      disabled={createMut.isPending}
+      className="w-full border-2 border-dashed border-gray-300 rounded-lg p-2.5 hover:border-brand-red hover:bg-gray-50 transition-all bg-white flex items-center justify-center min-h-[60px] disabled:opacity-50 disabled:pointer-events-none disabled:cursor-not-allowed"
+    >
+      <span className="text-lg text-gray-400 mr-2 leading-none" aria-hidden>
+        +
+      </span>
+      <span className="font-medium text-xs text-gray-700">
+        {createMut.isPending ? 'Creating…' : 'New template'}
+      </span>
+    </button>
+  );
+
+  const templatesTableRows = filteredRows.map((r) => (
+    <tr key={r.id} className="hover:bg-gray-50/80 transition-colors border-b border-gray-100 last:border-b-0">
+      <td className="py-3 px-4 align-middle min-w-0">
+        <Link
+          to={`${editorBasePath}/${encodeURIComponent(r.id)}`}
+          className="font-semibold text-sm text-gray-900 hover:text-brand-red hover:underline truncate block max-w-md"
+        >
+          {r.name}
+        </Link>
+      </td>
+      <td className="py-3 px-4 align-middle text-xs text-gray-600 truncate max-w-[140px]" title={r.version_label || ''}>
+        {(r.version_label || '').trim() || '—'}
+      </td>
+      <td className="py-3 px-4 align-middle text-xs text-gray-600 whitespace-nowrap">{fmtDate(r.created_at)}</td>
+      <td className="py-3 px-4 align-middle text-xs text-gray-600 whitespace-nowrap hidden md:table-cell">
+        {fmtDate(r.updated_at)}
+      </td>
+      <td className="py-3 px-4 align-middle">
+        {r.status === 'active' ? (
+          <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium bg-green-50 text-green-800">
+            Active
+          </span>
+        ) : (
+          <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium bg-gray-100 text-gray-600">
+            {r.status}
+          </span>
+        )}
+      </td>
+      <td className="py-3 px-4 align-middle text-right">
+        <div className="inline-flex items-center justify-end gap-1">
+          <button
+            type="button"
+            aria-label={`Duplicate template ${r.name.trim() || 'Untitled'}`}
+            title="Duplicate"
+            disabled={duplicateMut.isPending}
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              duplicateMut.mutate(r.id);
+            }}
+            className="h-8 w-8 inline-flex items-center justify-center rounded-lg border border-gray-200 bg-white text-gray-500 hover:text-brand-red hover:border-gray-300 hover:bg-gray-50 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-gray-300 disabled:opacity-50"
+          >
+            <DuplicateIcon className="w-4 h-4" />
+          </button>
+          <button
+            type="button"
+            aria-label={`Delete template ${r.name.trim() || 'Untitled'}`}
+            title="Delete"
+            disabled={deleteMut.isPending}
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              void askDeleteTemplate(r);
+            }}
+            className="h-8 w-8 inline-flex items-center justify-center rounded-lg border border-gray-200 bg-white text-gray-500 hover:text-red-600 hover:border-red-200 hover:bg-red-50/80 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-gray-300 disabled:opacity-50"
+          >
+            <TrashIcon className="w-4 h-4" />
+          </button>
+        </div>
+      </td>
+    </tr>
+  ));
+
+  if (isHr && !embedded) {
+    return (
+      <div className="space-y-4 min-w-0 pb-16">
+        <div className="rounded-xl border bg-white p-4">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex items-center gap-3 flex-1 min-w-0">
+              <div className="w-8 h-8 rounded-lg bg-violet-100 flex items-center justify-center shrink-0">
+                <DocumentStackIcon className="w-5 h-5 text-violet-700" />
+              </div>
+              <div className="min-w-0">
+                <h5 className="text-sm font-semibold text-violet-900">Employee review form templates</h5>
+                <p className="text-xs text-gray-600 mt-0.5 leading-relaxed">
+                  Build reusable forms with the same builder as Safety. Saving in the editor updates what employees see in
+                  review cycles.
+                </p>
+              </div>
+            </div>
+            <div className="flex flex-wrap items-center gap-3 justify-end shrink-0">
+              <div className="text-right">
+                <div className="text-[10px] font-medium text-gray-500 uppercase tracking-wide">Today</div>
+                <div className="text-xs font-semibold text-gray-700 mt-0.5">{todayLabel}</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div className="rounded-xl border bg-white p-4">
+          <label className="sr-only" htmlFor="form-templates-search">
+            Search templates
+          </label>
+          {searchInput}
+        </div>
+
+        <div className="rounded-xl border bg-white overflow-hidden">
+          {isLoading ? (
+            <div className="animate-pulse divide-y divide-gray-100">
+              {Array.from({ length: 8 }).map((_, i) => (
+                <div key={i} className="flex items-center gap-3 px-4 py-3">
+                  <div className="h-4 bg-gray-100 rounded flex-1 max-w-xs" />
+                  <div className="h-4 bg-gray-100 rounded w-16" />
+                  <div className="h-4 bg-gray-100 rounded w-24 hidden sm:block" />
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <div className="min-w-[640px] p-2 border-b border-gray-100">{newTemplateButton}</div>
+              {rows.length === 0 ? (
+                <div className="min-w-[640px] p-8 text-center text-xs text-gray-500">No templates yet.</div>
+              ) : filteredRows.length === 0 ? (
+                <div className="min-w-[640px] p-8 text-center text-xs text-gray-500">No matching templates.</div>
+              ) : (
+                <table className="w-full text-sm text-left min-w-[640px]">
+                  <thead>
+                    <tr className="border-b bg-gray-50 text-xs font-semibold text-gray-600 uppercase tracking-wide">
+                      <th className="py-3 px-4 text-left">
+                        <button
+                          type="button"
+                          onClick={() => setListSort('name')}
+                          className="inline-flex items-center gap-1 hover:text-gray-900 rounded outline-none focus:outline-none focus-visible:ring-2 focus-visible:ring-gray-300"
+                          title="Sort by name"
+                        >
+                          Name
+                          {sortBy === 'name' ? (sortDir === 'asc' ? ' ↑' : ' ↓') : ''}
+                        </button>
+                      </th>
+                      <th className="py-3 px-4 text-left">Version</th>
+                      <th className="py-3 px-4 text-left">
+                        <button
+                          type="button"
+                          onClick={() => setListSort('created_at')}
+                          className="inline-flex items-center gap-1 hover:text-gray-900 rounded outline-none focus:outline-none focus-visible:ring-2 focus-visible:ring-gray-300"
+                          title="Sort by created date"
+                        >
+                          Created
+                          {sortBy === 'created_at' ? (sortDir === 'asc' ? ' ↑' : ' ↓') : ''}
+                        </button>
+                      </th>
+                      <th className="py-3 px-4 text-left hidden md:table-cell">
+                        <button
+                          type="button"
+                          onClick={() => setListSort('updated_at')}
+                          className="inline-flex items-center gap-1 hover:text-gray-900 rounded outline-none focus:outline-none focus-visible:ring-2 focus-visible:ring-gray-300"
+                          title="Sort by last update"
+                        >
+                          Last update
+                          {sortBy === 'updated_at' ? (sortDir === 'asc' ? ' ↑' : ' ↓') : ''}
+                        </button>
+                      </th>
+                      <th className="py-3 px-4 text-left w-28">Status</th>
+                      <th className="py-3 px-4 text-right w-[7rem]">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>{templatesTableRows}</tbody>
+                </table>
+              )}
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className={`space-y-4 min-w-0 ${embedded ? 'pb-2' : 'pb-16'}`}>
       {!embedded && (
@@ -179,27 +402,10 @@ export default function FormTemplatesPage({ variant = 'safety', embedded = false
                     />
                   </svg>
                 </span>
-                <input
-                  id="form-templates-search"
-                  type="search"
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  placeholder="Search by name, category, version, or description…"
-                  className="w-full pl-9 pr-3 py-2 text-sm border border-gray-200 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-brand-red/20 focus:border-brand-red"
-                  autoComplete="off"
-                />
+                {searchInput}
               </div>
             </div>
-            <div className="p-2 border-b border-gray-100">
-              <button
-                type="button"
-                onClick={() => createMut.mutate()}
-                disabled={createMut.isPending}
-                className="w-full px-4 py-2 text-sm border border-dashed border-gray-300 rounded-lg text-gray-600 hover:bg-gray-50 disabled:opacity-50 disabled:pointer-events-none"
-              >
-                {createMut.isPending ? 'Creating…' : '+ New template'}
-              </button>
-            </div>
+            <div className="p-2 border-b border-gray-100">{newTemplateButton}</div>
             {rows.length === 0 ? (
               <div className="p-8 text-center text-sm text-gray-500">No templates yet.</div>
             ) : filteredRows.length === 0 ? (

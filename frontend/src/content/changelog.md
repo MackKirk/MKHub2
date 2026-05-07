@@ -13,6 +13,27 @@
 -->
 
 <<<RELEASE>>>
+id: 2026-05-07-1
+date: 2026-05-07
+title: Update 1.1.029
+
+### New
+- Reviews → My reviews → Director meeting: if HR cancels your slot, you see a short banner to book again; HR can add a message you can read there.
+- HR → Director meetings (book tab): after you pick a free time, you choose which colleague that booking is for (new booking vs reschedule).
+
+### Improved
+- Director meeting calendar: the number on each day is how many openings are still free; a day turns red when it is fully booked.
+- My reviews → Director meeting: other people’s bookings show simply as “Booked” (no names).
+- Review cycle (open a cycle): top of the page matches the cleaner style used elsewhere; back button works like on user pages; less clutter in the header.
+- Human Resources → Reviews: removed the extra “Admin” item from the side menu (same tools stay available where you already use them).
+
+### Fixed
+- Fewer mix-ups with director meeting times and who a slot belongs to, including older saved data.
+
+### Known issues
+- (none this release)
+
+<<<RELEASE>>>
 id: 2026-05-06-1
 date: 2026-05-06
 title: Update 1.1.028 - Week 19
