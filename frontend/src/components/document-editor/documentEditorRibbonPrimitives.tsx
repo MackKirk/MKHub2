@@ -73,6 +73,31 @@ export const editorPanelTitleClass =
 /** Subtitle / meta under panel titles. */
 export const editorPanelMetaClass = 'text-[10px] font-medium leading-snug text-slate-500';
 
+/** Shared width for left Pages strip and right Layers panel (document editor). */
+export const editorSidePanelWidthClass = 'w-[12.5rem]';
+
+/** Left column root (pages): fixed width + border-r + aside chrome. */
+export const editorSidePanelRootLeftClass = `flex min-h-0 flex-shrink-0 flex-col border-r ${editorSidePanelWidthClass} ${editorPanelAsideClass}`;
+
+/** Right column root (layers): fixed width + border-l + aside chrome. */
+export const editorSidePanelRootRightClass = `flex min-h-0 flex-shrink-0 flex-col border-l ${editorSidePanelWidthClass} ${editorPanelAsideClass}`;
+
+/** Header strip shared by Pages / Layers side panels (compact). */
+export const editorSidePanelHeaderClass =
+  'shrink-0 border-b border-slate-200/90 bg-white px-2.5 py-2';
+
+/** Titles in side panel headers — slightly smaller than `editorPanelTitleClass`. */
+export const editorSidePanelHeadingTitleClass =
+  'text-left text-[12px] font-semibold tracking-tight text-slate-900';
+
+/** Meta line under side panel titles. */
+export const editorSidePanelHeadingMetaClass =
+  'mt-0.5 text-[10px] font-medium leading-tight text-slate-500';
+
+/** Scrollable body shared by Pages / Layers lists (padding + thin scrollbar). */
+export const editorSidePanelBodyClass =
+  'min-h-0 flex-1 overflow-auto bg-slate-50/50 p-2 [scrollbar-width:thin]';
+
 /**
  * Scrollable canvas bed behind the A4 page (DocumentPreview).
  * Soft neutral field; no visible grid — keeps focus on the page.

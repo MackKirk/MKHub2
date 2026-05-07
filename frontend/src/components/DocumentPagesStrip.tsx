@@ -1,7 +1,13 @@
 import { withFileAccessToken } from '@/lib/api';
 import { useEffect, useRef, useState } from 'react';
 import type { DocumentPage, DocElement, PageMargins } from '@/types/documentCreator';
-import { editorPanelAsideClass } from '@/components/document-editor/documentEditorRibbonPrimitives';
+import {
+  editorSidePanelBodyClass,
+  editorSidePanelHeaderClass,
+  editorSidePanelHeadingMetaClass,
+  editorSidePanelHeadingTitleClass,
+  editorSidePanelRootLeftClass,
+} from '@/components/document-editor/documentEditorRibbonPrimitives';
 import {
   BLOCK_PROTECTED_BG,
   MARGIN_PROTECTED_BG,
@@ -82,7 +88,7 @@ function PageThumbnail({
       ref={thumbRef}
       type="button"
       onClick={onClick}
-      className={`relative w-full flex-shrink-0 overflow-hidden rounded-xl border border-slate-200/90 bg-white shadow-sm transition-[box-shadow,border-color,transform] duration-200 ease-out ${
+      className={`relative w-full flex-shrink-0 overflow-hidden rounded-lg border border-slate-200/90 bg-white shadow-sm transition-[box-shadow,border-color,transform] duration-200 ease-out ${
         isSelected
           ? 'border-brand-red/45 shadow-md ring-1 ring-brand-red/20'
           : 'hover:-translate-y-0.5 hover:border-slate-300 hover:shadow-md'
@@ -103,7 +109,7 @@ function PageThumbnail({
           <>
             {(marginOverlay.left_pct ?? 0) > 0 && (
               <div
-                className={`pointer-events-none absolute inset-y-0 left-0 rounded-l-xl ${marginBandRingClass}`}
+                className={`pointer-events-none absolute inset-y-0 left-0 rounded-l-lg ${marginBandRingClass}`}
                 style={{
                   width: `${marginOverlay.left_pct}%`,
                   background: MARGIN_PROTECTED_BG,
@@ -112,7 +118,7 @@ function PageThumbnail({
             )}
             {(marginOverlay.right_pct ?? 0) > 0 && (
               <div
-                className={`pointer-events-none absolute inset-y-0 right-0 rounded-r-xl ${marginBandRingClass}`}
+                className={`pointer-events-none absolute inset-y-0 right-0 rounded-r-lg ${marginBandRingClass}`}
                 style={{
                   width: `${marginOverlay.right_pct}%`,
                   background: MARGIN_PROTECTED_BG,
@@ -121,7 +127,7 @@ function PageThumbnail({
             )}
             {(marginOverlay.top_pct ?? 0) > 0 && (
               <div
-                className={`pointer-events-none absolute inset-x-0 top-0 rounded-t-xl ${marginBandRingClass}`}
+                className={`pointer-events-none absolute inset-x-0 top-0 rounded-t-lg ${marginBandRingClass}`}
                 style={{
                   height: `${marginOverlay.top_pct}%`,
                   background: MARGIN_PROTECTED_BG,
@@ -130,7 +136,7 @@ function PageThumbnail({
             )}
             {(marginOverlay.bottom_pct ?? 0) > 0 && (
               <div
-                className={`pointer-events-none absolute inset-x-0 bottom-0 rounded-b-xl ${marginBandRingClass}`}
+                className={`pointer-events-none absolute inset-x-0 bottom-0 rounded-b-lg ${marginBandRingClass}`}
                 style={{
                   height: `${marginOverlay.bottom_pct}%`,
                   background: MARGIN_PROTECTED_BG,
@@ -255,10 +261,15 @@ export default function DocumentPagesStrip({
     setDragOverIndex(null);
   };
 
+  const pagesMeta = canReorder ? 'Drag to reorder' : 'Tap to select';
+
   return (
-    <div
-      className={`flex w-44 flex-shrink-0 flex-col gap-3.5 overflow-y-auto border-r py-4 pl-2 pr-1.5 ${editorPanelAsideClass}`}
-    >
+    <div className={editorSidePanelRootLeftClass}>
+      <div className={editorSidePanelHeaderClass}>
+        <div className={editorSidePanelHeadingTitleClass}>Pages</div>
+        <p className={editorSidePanelHeadingMetaClass}>{pagesMeta}</p>
+      </div>
+      <div className={`${editorSidePanelBodyClass} flex flex-col gap-2`}>
       {pages.map((page, i) => {
         const template = templates.find((t) => t.id === (page.template_id ?? ''));
         const backgroundUrl = template?.background_file_id
@@ -275,9 +286,9 @@ export default function DocumentPagesStrip({
             onDragLeave={handleDragLeave}
             onDrop={(e) => handleDrop(e, i)}
             onDragEnd={handleDragEnd}
-            className={`group relative rounded-xl px-1.5 transition-colors duration-200 ${
+            className={`group relative rounded-lg px-0.5 transition-colors duration-200 ${
               canReorder ? 'cursor-grab active:cursor-grabbing' : ''
-            } ${isDropTarget ? 'rounded-xl bg-brand-red/[0.08] ring-1 ring-inset ring-brand-red/30' : ''} ${isDragging ? 'opacity-50' : ''}`}
+            } ${isDropTarget ? 'rounded-lg bg-brand-red/[0.08] ring-1 ring-inset ring-brand-red/30' : ''} ${isDragging ? 'opacity-50' : ''}`}
           >
             <PageThumbnail
               page={page}
@@ -330,12 +341,13 @@ export default function DocumentPagesStrip({
         <button
           type="button"
           onClick={onAddPage}
-          className="mx-1.5 mt-0.5 flex items-center justify-center rounded-xl border border-dashed border-slate-300/90 py-4 text-slate-500 transition-[border-color,background-color,color] duration-200 ease-out hover:border-slate-400 hover:bg-slate-50 hover:text-slate-700"
+          className="flex items-center justify-center rounded-lg border border-dashed border-slate-300/90 py-2.5 text-slate-500 transition-[border-color,background-color,color] duration-200 ease-out hover:border-slate-400 hover:bg-slate-50 hover:text-slate-700"
         >
           <span className="text-lg font-light">+</span>
           <span className="sr-only">Add page</span>
         </button>
       )}
+      </div>
     </div>
   );
 }

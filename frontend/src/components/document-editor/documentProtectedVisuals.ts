@@ -1,5 +1,5 @@
 /**
- * Shared hatch + fill for margin bands and block "Protected" zones (main canvas + page thumbnails).
+ * Shared hatch + fill for margin bands and block "Blocked Area" zones (main canvas + page thumbnails).
  * Tune darkness in one place.
  */
 

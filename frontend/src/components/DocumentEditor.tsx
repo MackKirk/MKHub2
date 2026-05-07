@@ -8,18 +8,27 @@ import toast from 'react-hot-toast';
 import DocumentPreview from '@/components/DocumentPreview';
 import DocumentPagesStrip from '@/components/DocumentPagesStrip';
 import { AddPageModal } from '@/components/AddPageModal';
-import ImagePicker from '@/components/ImagePicker';
+import ImagePicker, { type ImagePickerConfirmMeta } from '@/components/ImagePicker';
 import type { DocumentPage, DocElement, PageMargins } from '@/types/documentCreator';
-import { createTextElement, createImageElement, createImagePlaceholder, createBlockElement } from '@/types/documentCreator';
+import {
+  createTextElement,
+  createImageElement,
+  createImagePlaceholder,
+  createBlockElement,
+  sizeImageElementFrameForIntrinsicAspect,
+} from '@/types/documentCreator';
 import OverlayPortal from '@/components/OverlayPortal';
 import DocumentEditorRibbon from '@/components/document-editor/DocumentEditorRibbon';
 import {
   ribbonPortalDropdownPanelClass,
   editorSurfaceWorkspaceClass,
-  editorPanelAsideClass,
+  editorCanvasScrollAreaClass,
   editorGroupLabelClass,
-  editorPanelTitleClass,
-  editorPanelMetaClass,
+  editorSidePanelBodyClass,
+  editorSidePanelHeaderClass,
+  editorSidePanelHeadingMetaClass,
+  editorSidePanelHeadingTitleClass,
+  editorSidePanelRootRightClass,
 } from '@/components/document-editor/documentEditorRibbonPrimitives';
 import DocumentSelectionRibbon from '@/components/document-editor/DocumentSelectionRibbon';
 import DocumentSelectionInspector from '@/components/document-editor/DocumentSelectionInspector';
@@ -144,6 +153,9 @@ export default function DocumentEditor(props: DocumentEditorProps) {
   /** When true, picker opens directly in ImageEditor. */
   const [imagePickerOpenEditorOnOpen, setImagePickerOpenEditorOnOpen] = useState(false);
   const [canvasWidthPxForExport, setCanvasWidthPxForExport] = useState<number>(910);
+  /** Vertical scroll container when multiple pages are stacked (`DocumentPreview` embedded). */
+  const canvasScrollRef = useRef<HTMLDivElement>(null);
+  const pageSectionRefs = useRef<(HTMLDivElement | null)[]>([]);
   const [zoom, setZoom] = useState<number>(0.75);
   const [dragLayerIndex, setDragLayerIndex] = useState<number | null>(null);
   /** Bumps when undo/redo stacks change so UI (e.g. ribbon buttons) re-renders. */
@@ -159,7 +171,8 @@ export default function DocumentEditor(props: DocumentEditorProps) {
   });
   const undoRef = useRef<EditorSnapshot[]>([]);
   const redoRef = useRef<EditorSnapshot[]>([]);
-  const clipboardRef = useRef<DocElement | null>(null);
+  /** Internal clipboard: one or many elements (multi-select copy/paste). */
+  const clipboardRef = useRef<DocElement[] | null>(null);
 
   const newElementId = useCallback(() => {
     return `el-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
@@ -404,57 +417,57 @@ export default function DocumentEditor(props: DocumentEditorProps) {
         redo();
         return;
       }
-      // Copy/Paste/Duplicate for elements (single selection only)
-      const sel = ids.length === 1 ? curEls.find((x) => x.id === ids[0]) : null;
+      // Copy/Paste/Duplicate for elements (multi-select supported; blocks excluded)
+      const toCopy = selectedEls.filter((el) => el.type !== 'block');
       if (key === 'c') {
-        if (sel && sel.type !== 'block') {
-          clipboardRef.current = JSON.parse(JSON.stringify(sel)) as DocElement;
-          toast.success('Copied.');
+        if (toCopy.length > 0) {
+          e.preventDefault();
+          clipboardRef.current = toCopy.map((el) => JSON.parse(JSON.stringify(el)) as DocElement);
+          toast.success(toCopy.length === 1 ? 'Copied.' : `Copied ${toCopy.length} elements.`);
         }
         return;
       }
       if (key === 'd') {
-        if (sel && sel.type !== 'block') {
-          const src = sel;
-          const clone: DocElement = {
-            ...(JSON.parse(JSON.stringify(src)) as DocElement),
-            id: newElementId(),
-            x_pct: Math.min(100 - (src.width_pct ?? 0), (src.x_pct ?? 0) + 1),
-            y_pct: Math.min(100 - (src.height_pct ?? 0), (src.y_pct ?? 0) + 1),
-          };
-          pushHistory();
-          setPages((prev) => {
-            const next = [...prev];
-            const idx = stateRef.current.currentPageIndex;
-            if (!next[idx]) return prev;
-            const els = next[idx].elements ?? [];
-            next[idx] = { ...next[idx], elements: [...els, clone] };
-            return next;
-          });
-          setSelectedElementIds([clone.id]);
-        }
+        if (toCopy.length === 0) return;
+        e.preventDefault();
+        pushHistory();
+        const clones: DocElement[] = toCopy.map((src) => ({
+          ...(JSON.parse(JSON.stringify(src)) as DocElement),
+          id: newElementId(),
+          x_pct: Math.min(100 - (src.width_pct ?? 0), (src.x_pct ?? 0) + 1),
+          y_pct: Math.min(100 - (src.height_pct ?? 0), (src.y_pct ?? 0) + 1),
+        }));
+        setPages((prev) => {
+          const next = [...prev];
+          const idx = stateRef.current.currentPageIndex;
+          if (!next[idx]) return prev;
+          const els = next[idx].elements ?? [];
+          next[idx] = { ...next[idx], elements: [...els, ...clones] };
+          return next;
+        });
+        setSelectedElementIds(clones.map((c) => c.id));
         return;
       }
       if (key === 'v') {
-        const src = clipboardRef.current;
-        if (src && src.type !== 'block') {
-          const clone: DocElement = {
-            ...(JSON.parse(JSON.stringify(src)) as DocElement),
-            id: newElementId(),
-            x_pct: Math.min(100 - (src.width_pct ?? 0), (src.x_pct ?? 0) + 1),
-            y_pct: Math.min(100 - (src.height_pct ?? 0), (src.y_pct ?? 0) + 1),
-          };
-          pushHistory();
-          setPages((prev) => {
-            const next = [...prev];
-            const idx = stateRef.current.currentPageIndex;
-            if (!next[idx]) return prev;
-            const els = next[idx].elements ?? [];
-            next[idx] = { ...next[idx], elements: [...els, clone] };
-            return next;
-          });
-          setSelectedElementIds([clone.id]);
-        }
+        const buf = clipboardRef.current?.filter((el) => el.type !== 'block') ?? [];
+        if (buf.length === 0) return;
+        e.preventDefault();
+        pushHistory();
+        const clones: DocElement[] = buf.map((src) => ({
+          ...(JSON.parse(JSON.stringify(src)) as DocElement),
+          id: newElementId(),
+          x_pct: Math.min(100 - (src.width_pct ?? 0), (src.x_pct ?? 0) + 1),
+          y_pct: Math.min(100 - (src.height_pct ?? 0), (src.y_pct ?? 0) + 1),
+        }));
+        setPages((prev) => {
+          const next = [...prev];
+          const idx = stateRef.current.currentPageIndex;
+          if (!next[idx]) return prev;
+          const els = next[idx].elements ?? [];
+          next[idx] = { ...next[idx], elements: [...els, ...clones] };
+          return next;
+        });
+        setSelectedElementIds(clones.map((c) => c.id));
       }
     };
     window.addEventListener('keydown', onKeyDown);
@@ -487,6 +500,46 @@ export default function DocumentEditor(props: DocumentEditorProps) {
     ...currentTemplate?.margins,
     ...currentPage?.margins,
   };
+
+  /** Multi-page documents: vertical stack + scroll; template editor stays single-page. */
+  const useContinuousPageCanvas = !isTemplate && pages.length > 1;
+
+  const setPageSectionRef = useCallback((index: number) => (el: HTMLDivElement | null) => {
+    pageSectionRefs.current[index] = el;
+  }, []);
+
+  const handlePageSelect = useCallback((index: number) => {
+    setCurrentPageIndex(index);
+    requestAnimationFrame(() => {
+      pageSectionRefs.current[index]?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
+  }, []);
+
+  useEffect(() => {
+    const idsOnPage = new Set((pages[currentPageIndex]?.elements ?? []).map((e) => e.id));
+    setSelectedElementIds((prev) => prev.filter((id) => idsOnPage.has(id)));
+  }, [currentPageIndex, pages]);
+
+  useLayoutEffect(() => {
+    if (!useContinuousPageCanvas) return;
+    const root = canvasScrollRef.current;
+    if (!root || pages.length < 2) return;
+    const obs = new IntersectionObserver(
+      (entries) => {
+        const candidates = entries.filter((e) => e.isIntersecting && e.intersectionRatio >= 0.18);
+        if (candidates.length === 0) return;
+        candidates.sort((a, b) => b.intersectionRatio - a.intersectionRatio);
+        const raw = (candidates[0].target as HTMLElement).dataset.pageIndex;
+        const n = raw !== undefined ? Number(raw) : NaN;
+        if (!Number.isNaN(n)) setCurrentPageIndex(n);
+      },
+      { root, rootMargin: '-10% 0px -14% 0px', threshold: [0, 0.15, 0.35, 0.55, 0.75, 1] }
+    );
+    pageSectionRefs.current.forEach((el) => {
+      if (el) obs.observe(el);
+    });
+    return () => obs.disconnect();
+  }, [useContinuousPageCanvas, pages.length]);
 
   const setCurrentPageTemplate = useCallback((templateId: string | null) => {
     pushHistory();
@@ -524,6 +577,18 @@ export default function DocumentEditor(props: DocumentEditorProps) {
       return next;
     });
   }, [currentPageIndex]);
+
+  const updateElementsAtPageIndex = useCallback((pageIndex: number, updater: (els: DocElement[]) => DocElement[]) => {
+    setPages((prev) => {
+      const next = [...prev];
+      if (!next[pageIndex]) return prev;
+      next[pageIndex] = {
+        ...next[pageIndex],
+        elements: updater(next[pageIndex].elements ?? []),
+      };
+      return next;
+    });
+  }, []);
 
   const moveElement = useCallback(
     (fromIndex: number, toIndex: number) => {
@@ -572,6 +637,24 @@ export default function DocumentEditor(props: DocumentEditorProps) {
     setCurrentPageElements((prev) => prev.filter((e) => e.id !== elementId));
     setSelectedElementIds((prev) => prev.filter((id) => id !== elementId));
   }, [setCurrentPageElements, pushHistory]);
+
+  const handleUpdateElementAtPage = useCallback(
+    (pageIndex: number, elementId: string, updater: (e: DocElement) => DocElement) => {
+      updateElementsAtPageIndex(pageIndex, (prev) =>
+        prev.map((e) => (e.id === elementId ? updater(e) : e))
+      );
+    },
+    [updateElementsAtPageIndex]
+  );
+
+  const handleRemoveElementAtPage = useCallback(
+    (pageIndex: number, elementId: string) => {
+      pushHistory();
+      updateElementsAtPageIndex(pageIndex, (prev) => prev.filter((e) => e.id !== elementId));
+      setSelectedElementIds((prev) => prev.filter((id) => id !== elementId));
+    },
+    [pushHistory, updateElementsAtPageIndex]
+  );
 
   const handleAlignSelected = useCallback(
     (alignment: AlignKind) => {
@@ -765,8 +848,8 @@ export default function DocumentEditor(props: DocumentEditorProps) {
     }
   }, [handleAddElement]);
 
-  const handleReplaceImage = useCallback(
-    async (elementId: string, file: File) => {
+  const handleReplaceImageAtPage = useCallback(
+    async (pageIndex: number, elementId: string, file: File) => {
       try {
         const up: any = await api('POST', '/files/upload', {
           original_name: file.name,
@@ -789,13 +872,22 @@ export default function DocumentEditor(props: DocumentEditorProps) {
           content_type: file.type,
         });
         pushHistory();
-        handleUpdateElement(elementId, (el) => ({ ...el, content: conf.id }));
+        updateElementsAtPageIndex(pageIndex, (prev) =>
+          prev.map((e) => (e.id === elementId ? { ...e, content: conf.id } : e))
+        );
         toast.success('Image updated.');
       } catch {
         toast.error('Failed to upload image.');
       }
     },
-    [handleUpdateElement, pushHistory]
+    [pushHistory, updateElementsAtPageIndex, isTemplate]
+  );
+
+  const handleReplaceImage = useCallback(
+    async (elementId: string, file: File) => {
+      await handleReplaceImageAtPage(currentPageIndex, elementId, file);
+    },
+    [currentPageIndex, handleReplaceImageAtPage]
   );
 
   const openImagePickerForElement = useCallback((elementId: string) => {
@@ -863,7 +955,7 @@ export default function DocumentEditor(props: DocumentEditorProps) {
       const r = await fetch(`/document-creator/documents/${id}/export-pdf`, {
         method: 'POST',
         headers,
-        body: JSON.stringify({ canvas_width_px: Math.round(canvasWidthPxForExport) }),
+        body: JSON.stringify({ canvas_width_px: 910 }),
       });
       if (!r.ok) throw new Error(r.statusText || 'Export failed');
       const blob = await r.blob();
@@ -1154,7 +1246,7 @@ export default function DocumentEditor(props: DocumentEditorProps) {
           pages={pages}
           templates={templates}
           currentPageIndex={currentPageIndex}
-          onPageSelect={setCurrentPageIndex}
+          onPageSelect={handlePageSelect}
           onAddPage={readOnly ? undefined : isTemplate ? () => {} : () => setShowAddPageModal(true)}
           onReorderPages={readOnly ? undefined : isTemplate ? undefined : handleReorderPages}
           onDeletePage={readOnly ? undefined : isTemplate ? undefined : handleDeletePage}
@@ -1167,43 +1259,104 @@ export default function DocumentEditor(props: DocumentEditorProps) {
                 : handleDuplicatePage
           }
         />
-        <DocumentPreview
-          backgroundUrl={backgroundUrl}
-          elements={elements}
-          margins={effectiveMargins}
-          blockAreasVisible={true}
-          lockBlockElements={!isTemplate}
-          showElementOptionsPopover={false}
-          onCanvasWidthPxChange={setCanvasWidthPxForExport}
-          onBeginUserAction={readOnly ? undefined : pushHistory}
-          zoom={zoom}
-          onElementClick={(elementId, e) => {
-            if (e?.ctrlKey || e?.metaKey) {
-              setSelectedElementIds((prev) =>
-                prev.includes(elementId) ? prev.filter((id) => id !== elementId) : [...prev, elementId]
+        {useContinuousPageCanvas ? (
+          <div
+            ref={canvasScrollRef}
+            className={`min-h-0 flex-1 overflow-x-hidden overflow-y-auto ${editorCanvasScrollAreaClass}`}
+          >
+            {pages.map((page, pageIndex) => {
+              const tmplForPage = templates.find((t) => t.id === (page.template_id ?? ''));
+              const bgForPage = tmplForPage?.background_file_id
+                ? withFileAccessToken(`/files/${tmplForPage.background_file_id}/thumbnail?w=800`)
+                : null;
+              const marginsForPage: PageMargins = {
+                ...defaultMargins,
+                ...tmplForPage?.margins,
+                ...page.margins,
+              };
+              const elsForPage = page.elements ?? [];
+              return (
+                <section
+                  key={pageIndex}
+                  ref={setPageSectionRef(pageIndex)}
+                  data-page-index={pageIndex}
+                  className="flex flex-col"
+                >
+                  <DocumentPreview
+                    embedded
+                    embedScrollParentRef={canvasScrollRef}
+                    onPageInteraction={() => setCurrentPageIndex(pageIndex)}
+                    backgroundUrl={bgForPage}
+                    elements={elsForPage}
+                    margins={marginsForPage}
+                    blockAreasVisible={true}
+                    lockBlockElements={!isTemplate}
+                    showElementOptionsPopover={false}
+                    onCanvasWidthPxChange={setCanvasWidthPxForExport}
+                    onBeginUserAction={readOnly ? undefined : pushHistory}
+                    zoom={zoom}
+                    onElementClick={(elementId, e) => {
+                      setCurrentPageIndex(pageIndex);
+                      if (e?.ctrlKey || e?.metaKey) {
+                        setSelectedElementIds((prev) =>
+                          prev.includes(elementId) ? prev.filter((id) => id !== elementId) : [...prev, elementId]
+                        );
+                      } else {
+                        setSelectedElementIds([elementId]);
+                      }
+                    }}
+                    onCanvasClick={() => setSelectedElementIds([])}
+                    selectedElementIds={selectedElementIds}
+                    onUpdateElement={
+                      readOnly ? undefined : (id, u) => handleUpdateElementAtPage(pageIndex, id, u)
+                    }
+                    onRemoveElement={readOnly ? undefined : (id) => handleRemoveElementAtPage(pageIndex, id)}
+                    onReplaceImage={
+                      readOnly ? undefined : (id, file) => handleReplaceImageAtPage(pageIndex, id, file)
+                    }
+                    onReplaceImageClick={readOnly ? undefined : (projectId ? openImagePickerForElement : undefined)}
+                  />
+                </section>
               );
-            } else {
-              setSelectedElementIds([elementId]);
-            }
-          }}
-          onCanvasClick={() => setSelectedElementIds([])}
-          selectedElementIds={selectedElementIds}
-          onUpdateElement={readOnly ? undefined : handleUpdateElement}
-          onRemoveElement={readOnly ? undefined : handleRemoveElement}
-          onReplaceImage={readOnly ? undefined : handleReplaceImage}
-          onReplaceImageClick={readOnly ? undefined : (projectId ? openImagePickerForElement : undefined)}
-        />
-        {!readOnly && (
-        <div
-          className={`flex w-[15.5rem] min-h-0 flex-shrink-0 flex-col border-l ${editorPanelAsideClass}`}
-        >
-          <div className="border-b border-slate-200/90 bg-white px-3.5 py-3">
-            <div className={`text-left ${editorPanelTitleClass}`}>Layers</div>
-            <p className={`mt-1 ${editorPanelMetaClass}`}>Order and visibility on this page</p>
+            })}
           </div>
-          <div className="min-h-0 flex-1 space-y-2.5 overflow-auto bg-slate-50/50 p-3">
+        ) : (
+          <DocumentPreview
+            backgroundUrl={backgroundUrl}
+            elements={elements}
+            margins={effectiveMargins}
+            blockAreasVisible={true}
+            lockBlockElements={!isTemplate}
+            showElementOptionsPopover={false}
+            onCanvasWidthPxChange={setCanvasWidthPxForExport}
+            onBeginUserAction={readOnly ? undefined : pushHistory}
+            zoom={zoom}
+            onElementClick={(elementId, e) => {
+              if (e?.ctrlKey || e?.metaKey) {
+                setSelectedElementIds((prev) =>
+                  prev.includes(elementId) ? prev.filter((id) => id !== elementId) : [...prev, elementId]
+                );
+              } else {
+                setSelectedElementIds([elementId]);
+              }
+            }}
+            onCanvasClick={() => setSelectedElementIds([])}
+            selectedElementIds={selectedElementIds}
+            onUpdateElement={readOnly ? undefined : handleUpdateElement}
+            onRemoveElement={readOnly ? undefined : handleRemoveElement}
+            onReplaceImage={readOnly ? undefined : handleReplaceImage}
+            onReplaceImageClick={readOnly ? undefined : (projectId ? openImagePickerForElement : undefined)}
+          />
+        )}
+        {!readOnly && (
+        <div className={editorSidePanelRootRightClass}>
+          <div className={editorSidePanelHeaderClass}>
+            <div className={editorSidePanelHeadingTitleClass}>Layers</div>
+            <p className={editorSidePanelHeadingMetaClass}>Stack order on page</p>
+          </div>
+          <div className={`${editorSidePanelBodyClass} space-y-2`}>
             {elements.length === 0 && (
-              <div className="rounded-xl border border-dashed border-slate-200/90 bg-white px-3 py-5 text-center text-xs font-medium text-slate-500">
+              <div className="rounded-lg border border-dashed border-slate-200/90 bg-white px-2 py-4 text-center text-[11px] font-medium text-slate-500">
                 No elements on this page.
               </div>
             )}
@@ -1214,20 +1367,20 @@ export default function DocumentEditor(props: DocumentEditorProps) {
                   ? (el.content || 'Text').split('\n')[0].slice(0, 24)
                   : el.type === 'image'
                     ? (el.content ? 'Image' : 'Image area')
-                    : 'Blocked area';
+                    : 'Blocked Area';
               const typeIcon =
                 el.type === 'text' ? (
-                  <TextIcon className="h-3.5 w-3.5 text-slate-400" />
+                  <TextIcon className="h-3 w-3 text-slate-400" />
                 ) : el.type === 'image' ? (
-                  <ImageIcon className="h-3.5 w-3.5 text-slate-400" />
+                  <ImageIcon className="h-3 w-3 text-slate-400" />
                 ) : (
-                  <BlockIcon className="h-3.5 w-3.5 text-slate-400" />
+                  <BlockIcon className="h-3 w-3 text-slate-400" />
                 );
               const typeLabel = el.type === 'text' ? 'Text' : el.type === 'image' ? 'Image' : 'Block';
               return (
                 <div
                   key={el.id}
-                  className={`group rounded-xl border transition-[border-color,box-shadow,background-color] duration-200 ease-out ${
+                  className={`group rounded-lg border transition-[border-color,box-shadow,background-color] duration-200 ease-out ${
                     isSel
                       ? 'border-brand-red/40 bg-white shadow-sm ring-1 ring-brand-red/15'
                       : 'border-slate-200/90 bg-white hover:border-slate-300/90 hover:bg-slate-50/95'
@@ -1244,14 +1397,14 @@ export default function DocumentEditor(props: DocumentEditorProps) {
                     setDragLayerIndex(null);
                   }}
                 >
-                  <div className="flex items-center gap-1.5 px-2.5 py-2.5">
+                  <div className="flex items-center gap-1 px-2 py-1.5">
                     <button
                       type="button"
                       onClick={(e) => {
                         e.stopPropagation();
                         handleUpdateElementWithHistory(el.id, (prev) => ({ ...prev, locked: !prev.locked }));
                       }}
-                      className={`flex-shrink-0 rounded-lg p-1.5 transition-colors duration-200 ${
+                      className={`flex-shrink-0 rounded-md p-1 transition-colors duration-200 ${
                         el.locked
                           ? 'text-amber-700 hover:bg-amber-50'
                           : 'text-slate-400 hover:bg-slate-100 hover:text-slate-600'
@@ -1259,7 +1412,7 @@ export default function DocumentEditor(props: DocumentEditorProps) {
                       title={el.locked ? 'Unlock' : 'Lock'}
                       aria-label={el.locked ? 'Unlock' : 'Lock'}
                     >
-                      <LockIcon locked={!!el.locked} className="w-3.5 h-3.5" />
+                      <LockIcon locked={!!el.locked} className="h-3 w-3" />
                     </button>
                     {el.type !== 'block' && (
                       <button
@@ -1268,13 +1421,13 @@ export default function DocumentEditor(props: DocumentEditorProps) {
                           e.stopPropagation();
                           handleUpdateElementWithHistory(el.id, (prev) => ({ ...prev, lockPosition: !prev.lockPosition }));
                         }}
-                        className={`flex-shrink-0 rounded-lg p-1.5 transition-colors duration-200 ${
+                        className={`flex-shrink-0 rounded-md p-1 transition-colors duration-200 ${
                           el.lockPosition ? 'text-sky-600 hover:bg-sky-50' : 'text-slate-400 hover:bg-slate-100 hover:text-slate-600'
                         }`}
                         title={el.lockPosition ? 'Allow move' : 'Block move'}
                         aria-label={el.lockPosition ? 'Allow move' : 'Block move'}
                       >
-                        <PinIcon pinned={!!el.lockPosition} className="w-3.5 h-3.5" />
+                        <PinIcon pinned={!!el.lockPosition} className="h-3 w-3" />
                       </button>
                     )}
                     <button
@@ -1288,53 +1441,53 @@ export default function DocumentEditor(props: DocumentEditorProps) {
                           setSelectedElementIds([el.id]);
                         }
                       }}
-                      className="flex min-w-0 flex-1 items-center gap-2.5 text-left"
+                      className="flex min-w-0 flex-1 items-center gap-1.5 text-left"
                       title={label}
                     >
-                      <span className="flex shrink-0 items-center gap-1.5 rounded-md border border-slate-200/90 bg-slate-100/80 px-2 py-0.5">
+                      <span className="flex shrink-0 items-center gap-1 rounded border border-slate-200/90 bg-slate-100/80 px-1.5 py-0.5">
                         {typeIcon}
-                        <span className="text-[10px] font-medium text-slate-500">{typeLabel}</span>
+                        <span className="text-[9px] font-semibold uppercase tracking-wide text-slate-500">{typeLabel}</span>
                       </span>
-                      <span className="flex-1 truncate text-[13px] font-medium leading-snug text-slate-800">{label}</span>
+                      <span className="flex-1 truncate text-[12px] font-medium leading-snug text-slate-800">{label}</span>
                     </button>
                   </div>
                   {isSel && selectedElementIds.length === 1 && el.type !== 'block' && (
-                    <div className="flex items-center justify-center gap-1 border-t border-slate-100 px-2 pb-2.5 pt-2">
+                    <div className="flex items-center justify-center gap-0.5 border-t border-slate-100 px-1.5 pb-1.5 pt-1.5">
                       <button
                         type="button"
                         onClick={() => moveBackward(idx)}
-                        className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200/90 bg-white text-slate-500 shadow-sm transition-[border-color,background-color,color,transform] duration-200 ease-out hover:border-slate-300 hover:bg-slate-50 hover:text-slate-800 active:scale-[0.96]"
+                        className="inline-flex h-7 w-7 items-center justify-center rounded-md border border-slate-200/90 bg-white text-slate-500 shadow-sm transition-[border-color,background-color,color,transform] duration-200 ease-out hover:border-slate-300 hover:bg-slate-50 hover:text-slate-800 active:scale-[0.96]"
                         title="Send backward"
                         aria-label="Send backward"
                       >
-                        <LayerBackwardIcon className="h-4 w-4" />
+                        <LayerBackwardIcon className="h-3.5 w-3.5" />
                       </button>
                       <button
                         type="button"
                         onClick={() => moveForward(idx)}
-                        className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200/90 bg-white text-slate-500 shadow-sm transition-[border-color,background-color,color,transform] duration-200 ease-out hover:border-slate-300 hover:bg-slate-50 hover:text-slate-800 active:scale-[0.96]"
+                        className="inline-flex h-7 w-7 items-center justify-center rounded-md border border-slate-200/90 bg-white text-slate-500 shadow-sm transition-[border-color,background-color,color,transform] duration-200 ease-out hover:border-slate-300 hover:bg-slate-50 hover:text-slate-800 active:scale-[0.96]"
                         title="Bring forward"
                         aria-label="Bring forward"
                       >
-                        <LayerForwardIcon className="h-4 w-4" />
+                        <LayerForwardIcon className="h-3.5 w-3.5" />
                       </button>
                       <button
                         type="button"
                         onClick={() => sendToBack(idx)}
-                        className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200/90 bg-white text-slate-500 shadow-sm transition-[border-color,background-color,color,transform] duration-200 ease-out hover:border-slate-300 hover:bg-slate-50 hover:text-slate-800 active:scale-[0.96]"
+                        className="inline-flex h-7 w-7 items-center justify-center rounded-md border border-slate-200/90 bg-white text-slate-500 shadow-sm transition-[border-color,background-color,color,transform] duration-200 ease-out hover:border-slate-300 hover:bg-slate-50 hover:text-slate-800 active:scale-[0.96]"
                         title="Send to back"
                         aria-label="Send to back"
                       >
-                        <LayerToBackIcon className="h-4 w-4" />
+                        <LayerToBackIcon className="h-3.5 w-3.5" />
                       </button>
                       <button
                         type="button"
                         onClick={() => bringToFront(idx)}
-                        className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200/90 bg-white text-slate-500 shadow-sm transition-[border-color,background-color,color,transform] duration-200 ease-out hover:border-slate-300 hover:bg-slate-50 hover:text-slate-800 active:scale-[0.96]"
+                        className="inline-flex h-7 w-7 items-center justify-center rounded-md border border-slate-200/90 bg-white text-slate-500 shadow-sm transition-[border-color,background-color,color,transform] duration-200 ease-out hover:border-slate-300 hover:bg-slate-50 hover:text-slate-800 active:scale-[0.96]"
                         title="Bring to front"
                         aria-label="Bring to front"
                       >
-                        <LayerToFrontIcon className="h-4 w-4" />
+                        <LayerToFrontIcon className="h-3.5 w-3.5" />
                       </button>
                     </div>
                   )}
@@ -1370,7 +1523,7 @@ export default function DocumentEditor(props: DocumentEditorProps) {
           targetHeight={imagePickerTargetSize.height}
           allowEdit={true}
           exportScale={2}
-          onConfirm={async (blob) => {
+          onConfirm={async (blob, meta?: ImagePickerConfirmMeta) => {
             try {
               const name = `doc-img-${Date.now()}.jpg`;
               const up: any = await api('POST', '/files/upload', {
@@ -1393,13 +1546,38 @@ export default function DocumentEditor(props: DocumentEditorProps) {
                 checksum_sha256: 'na',
                 content_type: 'image/jpeg',
               });
+              const iw = meta?.intrinsicWidth;
+              const ih = meta?.intrinsicHeight;
               const replaceId = imagePickerReplaceElementId;
               if (replaceId) {
                 pushHistory();
-                handleUpdateElement(replaceId, (el) => ({ ...el, content: conf.id }));
+                handleUpdateElement(replaceId, (el) => {
+                  if (el.type !== 'image') {
+                    return { ...el, content: conf.id };
+                  }
+                  const next: DocElement = {
+                    ...el,
+                    content: conf.id,
+                    imageFit: 'fill',
+                  };
+                  if (iw && ih && iw > 0 && ih > 0) {
+                    const { width_pct, height_pct } = sizeImageElementFrameForIntrinsicAspect(el.width_pct ?? 40, iw, ih);
+                    return { ...next, width_pct, height_pct };
+                  }
+                  return next;
+                });
                 toast.success('Image updated.');
               } else {
-                handleAddElement(createImageElement(conf.id));
+                const base = createImageElement(conf.id);
+                const sized =
+                  iw && ih && iw > 0 && ih > 0
+                    ? {
+                        ...base,
+                        ...sizeImageElementFrameForIntrinsicAspect(base.width_pct ?? 40, iw, ih),
+                        imageFit: 'fill' as const,
+                      }
+                    : base;
+                handleAddElement(sized);
                 toast.success('Image added.');
               }
               setImagePickerOpen(false);

@@ -74,6 +74,46 @@ export function createTextElement(): DocElement {
   };
 }
 
+/** Page is A4 portrait in the editor; element % width / % height must match this aspect to match image pixels without letterboxing. */
+const PAGE_WIDTH_OVER_HEIGHT = 210 / 297;
+
+/**
+ * Set width_pct / height_pct so the on-canvas frame matches the image aspect ratio (no stretch with `contain`).
+ */
+export function sizeImageElementFrameForIntrinsicAspect(
+  baseWidthPct: number,
+  intrinsicWidthPx: number,
+  intrinsicHeightPx: number,
+  options?: { maxWidthPct?: number; maxHeightPct?: number; minSizePct?: number },
+): { width_pct: number; height_pct: number } {
+  const maxW = options?.maxWidthPct ?? 92;
+  const maxH = options?.maxHeightPct ?? 88;
+  const minS = options?.minSizePct ?? 2;
+
+  if (!intrinsicWidthPx || !intrinsicHeightPx || intrinsicWidthPx <= 0 || intrinsicHeightPx <= 0) {
+    return { width_pct: baseWidthPct, height_pct: 25 };
+  }
+
+  let w = Math.max(minS, Math.min(maxW, baseWidthPct));
+  let h = w * PAGE_WIDTH_OVER_HEIGHT * (intrinsicHeightPx / intrinsicWidthPx);
+
+  if (h > maxH) {
+    const s = maxH / h;
+    w = Math.max(minS, w * s);
+    h = maxH;
+  }
+  if (w > maxW) {
+    const s = maxW / w;
+    w = maxW;
+    h = Math.max(minS, h * s);
+  }
+
+  return {
+    width_pct: Math.round(w * 1000) / 1000,
+    height_pct: Math.round(h * 1000) / 1000,
+  };
+}
+
 export function createImageElement(fileId: string): DocElement {
   return {
     id: `el-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,

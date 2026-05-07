@@ -9,6 +9,7 @@ from reportlab.lib.pagesizes import A4
 from reportlab.lib import colors
 from reportlab.pdfgen import canvas
 from reportlab.pdfbase import pdfmetrics
+from reportlab.pdfbase.pdfmetrics import getAscentDescent
 from reportlab.pdfbase.ttfonts import TTFont
 from sqlalchemy.orm import Session
 import httpx
@@ -20,10 +21,23 @@ from ..storage.local_provider import LocalStorageProvider
 from ..storage.blob_provider import BlobStorageProvider
 
 
-# In the editor, fontSize is CSS px inside a scaled A4 canvas. We map px->pt so PDF matches visual size.
-# 1200 made font too small; 96dpi (72/96≈0.75) was too big. Use a middle reference so export looks right.
-# ~910px reference gives factor ~0.65 (595.28/910).
+# In the editor, fontSize is stored in reference CSS px and preview scales it by
+# (rendered canvas width / 910). PDF export must use the same reference width,
+# not the user's current zoom/window size, otherwise fonts drift from preview.
 CANVAS_REFERENCE_WIDTH_PX = 910.0
+TEXT_INNER_PADDING_PX = 4.0
+CSS_NORMAL_LINE_HEIGHT = 1.2
+
+
+def _font_ascent_descent(font_name: str, font_size: float) -> tuple[float, float]:
+    """Return font ascent/descent in points, with a conservative fallback."""
+    try:
+        ascent, descent = getAscentDescent(font_name, font_size)
+        if ascent:
+            return float(ascent), float(descent)
+    except Exception:
+        pass
+    return font_size * 0.8, -font_size * 0.2
 
 
 # Register document editor fonts (Montserrat, Open Sans). Returns dict: font_family_key -> (regular_name, bold_name)
@@ -220,12 +234,11 @@ def build_pdf_bytes(db: Session, doc: UserDocument, canvas_width_px: Optional[fl
     fonts_map = _register_fonts()
     buf = io.BytesIO()
     page_width, page_height = A4  # 595.28 x 841.89 points
-    cw = None
-    try:
-        cw = float(canvas_width_px) if canvas_width_px is not None else None
-    except Exception:
-        cw = None
-    px_to_pt = page_width / (cw if cw and cw > 100 else CANVAS_REFERENCE_WIDTH_PX)
+    # Keep the optional argument for API compatibility, but do not let runtime
+    # viewport/zoom width affect PDF layout.
+    _ = canvas_width_px
+    px_to_pt = page_width / CANVAS_REFERENCE_WIDTH_PX
+    text_padding = TEXT_INNER_PADDING_PX * px_to_pt
 
     c = canvas.Canvas(buf, pagesize=A4)
     pages = doc.pages if isinstance(doc.pages, list) else []
@@ -289,7 +302,7 @@ def build_pdf_bytes(db: Session, doc: UserDocument, canvas_width_px: Optional[fl
                     if el_type == "text":
                         font_size_px = float(el.get("fontSize") or el.get("font_size", 11) or 11)
                         font_size = max(1.0, font_size_px * px_to_pt)
-                        line_height = max(6.0, font_size * 1.2)
+                        line_height = max(6.0, font_size * CSS_NORMAL_LINE_HEIGHT)
                         is_bold = el.get("fontWeight") == "bold"
                         font_family = el.get("fontFamily") or "Montserrat"
                         font_name, font_bold = fonts_map.get(font_family, fonts_map.get("Montserrat", ("Helvetica", "Helvetica-Bold")))
@@ -298,38 +311,41 @@ def build_pdf_bytes(db: Session, doc: UserDocument, canvas_width_px: Optional[fl
                         c.setFillColor(_parse_hex_color(el.get("color")))
                         text_align = el.get("textAlign") or "left"
                         vertical_align = el.get("verticalAlign") or "top"
-                        lines = _wrap_text_to_width(c, str(content), active_font, font_size, w)
+                        text_x = x + text_padding
+                        text_y = y + text_padding
+                        text_w = max(1.0, w - (text_padding * 2.0))
+                        text_h = max(0.0, h - (text_padding * 2.0))
+                        lines = _wrap_text_to_width(c, str(content), active_font, font_size, text_w)
                         # Clip to box height
-                        max_lines = int(h // line_height) if h > 0 else 0
+                        max_lines = int(text_h // line_height) if text_h > 0 else 0
                         if max_lines > 0:
                             lines = lines[:max_lines]
                         n = len(lines)
                         if n > 0:
-                            ascent = font_size * 0.8
-                            descent = font_size * 0.2
+                            ascent, descent = _font_ascent_descent(active_font, font_size)
+                            half_leading = max(0.0, (line_height - font_size) / 2.0)
+                            first_line_offset = half_leading + ascent
+                            last_line_descent = half_leading + abs(descent)
+                            block_h = (n - 1) * line_height + first_line_offset + last_line_descent
                             # baseline of the first (top) line, per vertical alignment
                             if vertical_align == "bottom":
-                                baseline_first = y + (n - 1) * line_height + descent
+                                baseline_first = text_y + block_h - first_line_offset
                             elif vertical_align == "center":
-                                baseline_first = (
-                                    y
-                                    + (h / 2.0)
-                                    - (ascent - descent) / 2.0
-                                    + (n - 1) * (line_height / 2.0)
-                                )
+                                block_top = text_y + ((text_h + block_h) / 2.0)
+                                baseline_first = block_top - first_line_offset
                             else:
-                                baseline_first = y + h - ascent
+                                baseline_first = text_y + text_h - first_line_offset
 
                             for i, line in enumerate(lines):
                                 line_y = baseline_first - i * line_height
                                 if text_align == "center":
                                     tw = c.stringWidth(line, active_font, font_size)
-                                    c.drawString(x + (w - tw) / 2.0, line_y, line)
+                                    c.drawString(text_x + (text_w - tw) / 2.0, line_y, line)
                                 elif text_align == "right":
                                     tw = c.stringWidth(line, active_font, font_size)
-                                    c.drawString(x + w - tw, line_y, line)
+                                    c.drawString(text_x + text_w - tw, line_y, line)
                                 else:
-                                    c.drawString(x, line_y, line)
+                                    c.drawString(text_x, line_y, line)
                     elif el_type == "image" and content:
                         try:
                             fid = uuid.UUID(content) if isinstance(content, str) else None

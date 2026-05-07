@@ -48,6 +48,61 @@ function computeExportDimensions(
   return { outW, outH };
 }
 
+/**
+ * When zoom is below 1 the image can be smaller than the preview frame (letterboxing).
+ * Export crops to the intersection of the frame with the drawn image so JPEGs
+ * are not padded with white margins.
+ */
+function computeTightCropNatural(
+  image: HTMLImageElement,
+  tx: number,
+  ty: number,
+  frameW: number,
+  frameH: number,
+  /** display pixels per natural pixel (coverScale * zoom) */
+  scale: number,
+): { sx: number; sy: number; sw: number; sh: number } | null {
+  const nw = image.naturalWidth;
+  const nh = image.naturalHeight;
+  if (!nw || !nh || scale <= 0) return null;
+
+  const dw = nw * scale;
+  const dh = nh * scale;
+
+  const imgLeft = tx;
+  const imgTop = ty;
+  const imgRight = tx + dw;
+  const imgBottom = ty + dh;
+
+  const visLeft = Math.max(0, imgLeft);
+  const visTop = Math.max(0, imgTop);
+  const visRight = Math.min(frameW, imgRight);
+  const visBottom = Math.min(frameH, imgBottom);
+
+  if (visRight <= visLeft + 0.25 || visBottom <= visTop + 0.25) return null;
+
+  let sx = (visLeft - tx) / scale;
+  let sy = (visTop - ty) / scale;
+  let sw = (visRight - visLeft) / scale;
+  let sh = (visBottom - visTop) / scale;
+
+  sx = Math.max(0, Math.min(nw, sx));
+  sy = Math.max(0, Math.min(nh, sy));
+  sw = Math.max(0, Math.min(nw - sx, sw));
+  sh = Math.max(0, Math.min(nh - sy, sh));
+
+  if (sw < 0.5 || sh < 0.5) return null;
+
+  return { sx, sy, sw, sh };
+}
+
+/** Optional metadata when confirming — document editor uses intrinsic size to size the frame without distortion. */
+export type ImagePickerConfirmMeta = {
+  originalFileObjectId?: string;
+  intrinsicWidth?: number;
+  intrinsicHeight?: number;
+};
+
 export default function ImagePicker({
   isOpen,
   onClose,
@@ -67,7 +122,7 @@ export default function ImagePicker({
 }:{
   isOpen:boolean,
   onClose:()=>void,
-  onConfirm:(blob:Blob, originalFileObjectId?:string)=>void,
+  onConfirm: (blob: Blob, meta?: ImagePickerConfirmMeta) => void,
   targetWidth:number,
   targetHeight:number,
   allowEdit?:boolean,
@@ -274,6 +329,15 @@ export default function ImagePicker({
     if(!img) return 1;
     return Math.max(cw / img.naturalWidth, ch / img.naturalHeight);
   }, [img, cw, ch]);
+
+  /** Export pixel size for current pan/zoom (tight crop — no letterbox margins in the file). */
+  const tightExportDimensions = useMemo(() => {
+    if (!img) return null;
+    const scale = coverScale * zoom;
+    const crop = computeTightCropNatural(img, tx, ty, cw, ch, scale);
+    if (!crop) return null;
+    return computeExportDimensions(crop.sw, crop.sh, exportScale, maxExportLongSide);
+  }, [img, tx, ty, cw, ch, coverScale, zoom, exportScale, maxExportLongSide]);
 
   // clamp translation so image covers the frame (or allows movement within container when zoom < 1)
   const clamp = (nx:number, ny:number, nz:number)=>{
@@ -590,29 +654,32 @@ export default function ImagePicker({
     setIsConfirming(true);
     try {
       const canvas = document.createElement('canvas');
-      const { outW, outH } = computeExportDimensions(targetWidth, targetHeight, exportScale, maxExportLongSide);
+      const scale = coverScale * zoom;
+      const crop = computeTightCropNatural(img, tx, ty, cw, ch, scale);
+      if (!crop) {
+        toast.error('No image visible in the frame — zoom in or center the image.');
+        return;
+      }
+      const { outW, outH } = computeExportDimensions(crop.sw, crop.sh, exportScale, maxExportLongSide);
       canvas.width = outW;
       canvas.height = outH;
       const ctx = canvas.getContext('2d')!;
       
-      // Use white background instead of blur
+      // White behind JPEG (edges); crop excludes letterbox margins when zoom < 1
       ctx.fillStyle = '#ffffff';
       ctx.fillRect(0, 0, canvas.width, canvas.height);
-      
-      // Draw the main image on top
-      const scale = coverScale * zoom;
-      const sx = -tx / scale;
-      const sy = -ty / scale;
-      const sw = cw / scale;
-      const sh = ch / scale;
-      // draw scaled to target canvas
-      ctx.drawImage(img, sx, sy, sw, sh, 0, 0, canvas.width, canvas.height);
+
+      ctx.drawImage(img, crop.sx, crop.sy, crop.sw, crop.sh, 0, 0, canvas.width, canvas.height);
       
       await new Promise<void>((resolve, reject) => {
         canvas.toBlob((b)=>{
           if(b){
             try {
-              onConfirm(b, originalFileObjectId);
+              onConfirm(b, {
+                originalFileObjectId,
+                intrinsicWidth: outW,
+                intrinsicHeight: outH,
+              });
               resolve();
             } catch (e) {
               reject(e);
@@ -1153,7 +1220,10 @@ export default function ImagePicker({
             <div className="col-span-2 min-h-0 min-w-0 overflow-y-auto bg-slate-50/80">
               <div className="p-4">
                 <p className={`${editorCaptionClass} mb-3`}>
-                  Target: {targetWidth} × {targetHeight}px · JPEG export {exportDimensions.outW} × {exportDimensions.outH}px
+                  Slot target: {targetWidth} × {targetHeight}px · JPEG export{' '}
+                  {tightExportDimensions
+                    ? `${tightExportDimensions.outW} × ${tightExportDimensions.outH}px (visible image only)`
+                    : `${exportDimensions.outW} × ${exportDimensions.outH}px`}
                 </p>
                 <div
                   className="inline-block rounded-md border-2 border-slate-500 bg-slate-200/95 p-px shadow-[0_2px_8px_rgba(15,23,42,0.12)] ring-1 ring-slate-900/10"

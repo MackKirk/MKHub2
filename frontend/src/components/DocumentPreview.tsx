@@ -1,5 +1,5 @@
 import { withFileAccessToken } from '@/lib/api';
-import { useRef, useState, useCallback, useEffect, Fragment } from 'react';
+import { useRef, useState, useCallback, useEffect, Fragment, type RefObject } from 'react';
 import type { DocElement } from '@/types/documentCreator';
 import { ElementOptionsPopover } from '@/components/ElementOptionsPopover';
 import { editorCanvasScrollAreaClass } from '@/components/document-editor/documentEditorRibbonPrimitives';
@@ -44,6 +44,12 @@ type DocumentPreviewProps = {
   onReplaceImage?: (elementId: string, file: File) => Promise<void>;
   /** When provided, "Add image" / "Replace image" in popover opens image picker instead of file input. */
   onReplaceImageClick?: (elementId: string) => void;
+  /** Stack inside parent vertical scroll — no chrome row, no inner scroll (multi-page editor). */
+  embedded?: boolean;
+  /** Parent scroll container for space+drag pan when `embedded`. */
+  embedScrollParentRef?: RefObject<HTMLElement | null>;
+  /** Called when user interacts with this page (sync active page in stacked layout). */
+  onPageInteraction?: () => void;
 };
 
 const A4_ASPECT = 210 / 297;
@@ -52,6 +58,7 @@ const MIN_SIZE_PCT = 2;
 // Reference width used to keep font sizing stable across window sizes.
 // Font sizes are stored in "reference px" and scaled by (canvasWidth / REFERENCE_CANVAS_WIDTH_PX).
 const REFERENCE_CANVAS_WIDTH_PX = 910;
+const DOCUMENT_PREVIEW_IMAGE_WIDTH_PX = 1600;
 
 type ResizeHandle = 'n' | 's' | 'e' | 'w' | 'nw' | 'ne' | 'sw' | 'se';
 
@@ -384,6 +391,9 @@ export default function DocumentPreview({
   onRemoveElement,
   onReplaceImage,
   onReplaceImageClick,
+  embedded = false,
+  embedScrollParentRef,
+  onPageInteraction,
 }: DocumentPreviewProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLDivElement>(null);
@@ -402,6 +412,7 @@ export default function DocumentPreview({
     startX: number;
     startY: number;
     hasMoved: boolean;
+    historyPushed: boolean;
   } | null>(null);
   const resizeRef = useRef<{
     elementId: string;
@@ -464,6 +475,7 @@ export default function DocumentPreview({
   const handlePointerDown = useCallback(
     (e: React.PointerEvent, el: DocElement) => {
       e.stopPropagation();
+      onPageInteraction?.();
       if (e.button !== 0) return;
       if (el.type === 'block' && lockBlockElements) return;
       const target = e.target as HTMLElement;
@@ -488,15 +500,17 @@ export default function DocumentPreview({
         startX: e.clientX,
         startY: e.clientY,
         hasMoved: false,
+        historyPushed: false,
       };
       (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
     },
-    [selectedElementIds, elements]
+    [lockBlockElements, selectedElementIds, elements, onPageInteraction]
   );
 
   const handleResizePointerDown = useCallback(
     (e: React.PointerEvent, el: DocElement, handle: ResizeHandle) => {
       e.stopPropagation();
+      onPageInteraction?.();
       if (e.button !== 0) return;
       if (el.locked) return;
       if (el.lockPosition) return;
@@ -514,7 +528,7 @@ export default function DocumentPreview({
       };
       (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
     },
-    [lockBlockElements],
+    [lockBlockElements, onPageInteraction],
   );
 
   const handlePointerMove = useCallback(
@@ -535,7 +549,15 @@ export default function DocumentPreview({
       // Show guide lines when close to alignment, but do not snap (use raw dx, dy)
       const hasGuides = snapped.guides.v.length > 0 || snapped.guides.h.length > 0;
       setDragGuideLines(hasGuides ? snapped.guides : null);
-      if (Math.abs(dx) > 0.5 || Math.abs(dy) > 0.5) drag.hasMoved = true;
+      const movedEnough = Math.abs(dx) > 0.5 || Math.abs(dy) > 0.5;
+      if (!drag.historyPushed && !movedEnough) return;
+      if (movedEnough) {
+        if (!drag.historyPushed) {
+          onBeginUserAction?.();
+          drag.historyPushed = true;
+        }
+        drag.hasMoved = true;
+      }
       const blocks = elements.filter((x) => x.type === 'block');
       drag.movingIds.forEach((elementId) => {
         const el = elements.find((x) => x.id === elementId);
@@ -552,7 +574,7 @@ export default function DocumentPreview({
         onUpdateElement(elementId, (prev) => ({ ...prev, x_pct: newX_pct, y_pct: newY_pct }));
       });
     },
-    [onUpdateElement, margins, elements]
+    [onUpdateElement, onBeginUserAction, margins, elements]
   );
 
   const handlePointerUp = useCallback(
@@ -592,8 +614,13 @@ export default function DocumentPreview({
         const snapped = computeSnap(bbox, refV, refH, dx, dy);
         const hasGuides = snapped.guides.v.length > 0 || snapped.guides.h.length > 0;
         setDragGuideLines(hasGuides ? snapped.guides : null);
-        if (Math.abs(dx) > 0.5 || Math.abs(dy) > 0.5) {
-          if (!drag.hasMoved) onBeginUserAction?.();
+        const movedEnough = Math.abs(dx) > 0.5 || Math.abs(dy) > 0.5;
+        if (!drag.historyPushed && !movedEnough) return;
+        if (movedEnough) {
+          if (!drag.historyPushed) {
+            onBeginUserAction?.();
+            drag.historyPushed = true;
+          }
           drag.hasMoved = true;
         }
         const blocks = elements.filter((x) => x.type === 'block');
@@ -645,7 +672,7 @@ export default function DocumentPreview({
       document.removeEventListener('pointerup', onDocUp);
       document.removeEventListener('pointercancel', onDocUp);
     };
-  }, [onUpdateElement, margins, elements]);
+  }, [onUpdateElement, onBeginUserAction, margins, elements]);
 
   const handleDoubleClick = useCallback((e: React.MouseEvent, el: DocElement) => {
     e.stopPropagation();
@@ -659,12 +686,27 @@ export default function DocumentPreview({
 
   const selectedElement = selectedElementIds.length === 1 ? elements.find((e) => e.id === selectedElementIds[0]) : null;
 
+  const getPanScrollEl = useCallback((): HTMLElement | null => {
+    if (embedded && embedScrollParentRef?.current) return embedScrollParentRef.current;
+    return scrollRef.current;
+  }, [embedded, embedScrollParentRef]);
+
+  const scrollAreaClassName = embedded
+    ? `flex w-full flex-shrink-0 items-start justify-center px-4 py-8 sm:px-6 ${editorCanvasScrollAreaClass} ${spaceDown ? 'cursor-grab' : ''}`
+    : `flex min-h-0 flex-1 items-start justify-center overflow-auto ${editorCanvasScrollAreaClass} px-8 py-12 sm:px-16 sm:py-16 ${spaceDown ? 'cursor-grab' : ''}`;
+
+  const outerChromeClass = embedded
+    ? 'flex w-full min-w-0 flex-shrink-0 flex-col'
+    : 'relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden rounded-2xl border border-slate-200/90 bg-white shadow-sm ring-1 ring-slate-900/[0.04]';
+
   return (
-    <div className="relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden rounded-2xl border border-slate-200/90 bg-white shadow-sm ring-1 ring-slate-900/[0.04]">
-      <div className="flex items-center justify-between border-b border-slate-200/85 bg-slate-50/95 px-4 py-1.5">
-        <span className="text-[10px] font-semibold uppercase tracking-wider text-slate-500">Canvas</span>
-        <span className="text-[10px] font-medium text-slate-500">A4 preview</span>
-      </div>
+    <div className={outerChromeClass}>
+      {!embedded && (
+        <div className="flex items-center justify-between border-b border-slate-200/85 bg-slate-50/95 px-4 py-1.5">
+          <span className="text-[10px] font-semibold uppercase tracking-wider text-slate-500">Canvas</span>
+          <span className="text-[10px] font-medium text-slate-500">A4 preview</span>
+        </div>
+      )}
       {showElementOptionsPopover &&
         selectedElement &&
         onUpdateElement &&
@@ -684,17 +726,19 @@ export default function DocumentPreview({
         />
       )}
       <div
-        ref={scrollRef}
-        className={`flex min-h-0 flex-1 items-start justify-center overflow-auto ${editorCanvasScrollAreaClass} px-8 py-12 sm:px-16 sm:py-16 ${spaceDown ? 'cursor-grab' : ''}`}
+        ref={embedded ? undefined : scrollRef}
+        className={scrollAreaClassName}
         onClick={(e) => {
           if (e.target === e.currentTarget) {
+            if (embedded) onPageInteraction?.();
             setEditingElementId(null);
             onCanvasClick?.();
           }
         }}
         onPointerDown={(e) => {
+          if (embedded) onPageInteraction?.();
           if (!spaceDown || e.button !== 0) return;
-          const sc = scrollRef.current;
+          const sc = getPanScrollEl();
           if (!sc) return;
           panRef.current = {
             active: true,
@@ -706,7 +750,7 @@ export default function DocumentPreview({
           (e.currentTarget as HTMLElement).setPointerCapture?.(e.pointerId);
         }}
         onPointerMove={(e) => {
-          const sc = scrollRef.current;
+          const sc = getPanScrollEl();
           if (!sc || !panRef.current.active) return;
           sc.scrollLeft = panRef.current.startLeft - (e.clientX - panRef.current.startX);
           sc.scrollTop = panRef.current.startTop - (e.clientY - panRef.current.startY);
@@ -731,6 +775,7 @@ export default function DocumentPreview({
           }}
           onClick={(e) => {
             if (e.target === e.currentTarget) {
+              if (embedded) onPageInteraction?.();
               setEditingElementId(null);
               onCanvasClick?.();
             }
@@ -818,7 +863,7 @@ export default function DocumentPreview({
                   isEditing ? 'cursor-text overflow-hidden' : isLocked ? 'cursor-pointer overflow-hidden' : isPositionLocked ? 'cursor-default overflow-hidden' : isBlock && lockBlockElements ? 'cursor-default overflow-hidden' : 'cursor-move'
                 } ${
                   isSelected
-                    ? 'z-[1] overflow-visible border-brand-red/35 shadow-[0_0_0_1px_rgba(220,38,38,0.2)] ring-1 ring-brand-red/35'
+                    ? 'z-[1] overflow-visible border-brand-red/55 shadow-[0_0_0_2px_rgba(220,38,38,0.32)] ring-2 ring-brand-red/50'
                     : 'overflow-hidden border-transparent hover:border-slate-300/70'
                 }`}
                 style={{
@@ -847,7 +892,7 @@ export default function DocumentPreview({
                         {isEditing ? (
                           <textarea
                             autoFocus
-                            className="block w-full flex-1 min-h-0 resize-none overflow-hidden whitespace-pre-wrap break-words p-1 border-0 rounded bg-white/95 focus:outline-none focus:ring-1 focus:ring-brand-red select-text"
+                            className="block w-full flex-1 min-h-0 resize-none overflow-hidden whitespace-pre-wrap break-words p-1 border-0 rounded bg-white/95 focus:outline-none focus:ring-2 focus:ring-brand-red/90 select-text"
                             style={textStyle}
                             value={el.content}
                             onChange={(e) => {
@@ -887,7 +932,7 @@ export default function DocumentPreview({
                     style={{ background: BLOCK_PROTECTED_BG }}
                   >
                     <span className="text-[10px] font-medium uppercase tracking-wide text-amber-900/75 drop-shadow-[0_0_8px_rgba(255,255,255,0.95)]">
-                      Protected
+                      Blocked Area
                     </span>
                   </div>
                 ) : isImagePlaceholder ? (
@@ -897,7 +942,7 @@ export default function DocumentPreview({
                 ) : (
                   el.content && (
                     <img
-                      src={withFileAccessToken(`/files/${el.content}/thumbnail?w=400`)}
+                      src={withFileAccessToken(`/files/${el.content}/thumbnail?w=${DOCUMENT_PREVIEW_IMAGE_WIDTH_PX}`)}
                       alt=""
                       className="w-full h-full pointer-events-none"
                       style={{
@@ -912,7 +957,7 @@ export default function DocumentPreview({
                     <div
                       key={dir}
                       role="presentation"
-                      className={`absolute h-2.5 w-2.5 rounded-full border border-white bg-white shadow-sm ring-[1.5px] ring-brand-red/60 transition-transform duration-200 ease-out hover:scale-110 hover:ring-brand-red/80 ${position}`}
+                      className={`absolute h-2.5 w-2.5 rounded-full border border-white bg-white shadow-sm ring-[2px] ring-brand-red/75 transition-transform duration-200 ease-out hover:scale-110 hover:ring-brand-red ${position}`}
                       style={{ cursor }}
                       onPointerDown={(e) => handleResizePointerDown(e, el, dir)}
                       onPointerUp={handleResizePointerUp}
