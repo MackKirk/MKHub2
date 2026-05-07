@@ -2,6 +2,7 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react
 import { createPortal } from 'react-dom';
 import { getOverlayRoot } from '@/lib/overlayRoot';
 import { EDITOR_FONT_COLOR_PRESETS } from '@/lib/editorFontColorPresets';
+import { openNativeColorInputPicker } from '@/lib/openNativeColorInputPicker';
 import { ribbonPortalDropdownPanelClass } from '@/components/document-editor/documentEditorRibbonPrimitives';
 
 const PANEL_W = 232;
@@ -42,15 +43,25 @@ function Swatch({ color, onPick, label }: { color: string; onPick: () => void; l
 export default function DocumentEditorFontColorPicker({
   value,
   onChange,
+  buttonTitle = 'Font color',
+  panelAriaLabel = 'Font colors',
 }: {
   value: string | undefined;
   onChange: (next: string | undefined) => void;
+  /** `title` on the trigger button */
+  buttonTitle?: string;
+  /** Accessible name for the dropdown panel */
+  panelAriaLabel?: string;
 }) {
   const [open, setOpen] = useState(false);
+  const [customPickerOpen, setCustomPickerOpen] = useState(false);
   const [menuPos, setMenuPos] = useState({ top: 0, left: 0 });
   const triggerRef = useRef<HTMLButtonElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
   const moreInputRef = useRef<HTMLInputElement>(null);
+  const customPickerInitialValueRef = useRef<string | undefined>(undefined);
+  /** While true, ignore outside mousedown — native color UI is not inside `panelRef`. */
+  const nativePickerSessionRef = useRef(false);
 
   const bar = value || '#1e293b';
 
@@ -78,26 +89,51 @@ export default function DocumentEditorFontColorPicker({
     const onDown = (e: MouseEvent) => {
       const t = e.target as Node | null;
       if (!t) return;
+      if (nativePickerSessionRef.current) return;
       if (triggerRef.current?.contains(t)) return;
       if (panelRef.current?.contains(t)) return;
+      setCustomPickerOpen(false);
       setOpen(false);
     };
     window.addEventListener('mousedown', onDown);
-    return () => window.removeEventListener('mousedown', onDown);
+    window.addEventListener('pointerdown', onDown);
+    return () => {
+      window.removeEventListener('mousedown', onDown);
+      window.removeEventListener('pointerdown', onDown);
+    };
   }, [open]);
 
   return (
     <>
+      {/* Keep mounted outside the portaled panel so closing the menu never destroys the input
+          (re-mount breaks repeated native color UI sessions in Chromium). */}
+      <input
+        ref={moreInputRef}
+        type="color"
+        className="sr-only"
+        aria-hidden
+        tabIndex={-1}
+        value={value ?? '#000000'}
+        onChange={(e) => {
+          onChange(e.target.value);
+        }}
+      />
       <button
         type="button"
         ref={triggerRef}
-        onClick={() => setOpen((o) => !o)}
+        onClick={() => {
+          setOpen((o) => {
+            const next = !o;
+            if (!next) setCustomPickerOpen(false);
+            return next;
+          });
+        }}
         className={`inline-flex h-8 shrink-0 items-center gap-0.5 rounded-lg border px-1.5 text-xs font-semibold text-slate-900 shadow-sm transition-[border-color,background-color,box-shadow] duration-200 ease-out ${
           open
             ? 'border-brand-red/45 bg-red-50 ring-2 ring-brand-red/20'
             : 'border-slate-300/95 bg-white hover:border-slate-400 hover:bg-slate-50'
         }`}
-        title="Font color"
+        title={buttonTitle}
         aria-expanded={open}
         aria-haspopup="dialog"
       >
@@ -109,7 +145,7 @@ export default function DocumentEditorFontColorPicker({
           <div
             ref={panelRef}
             role="dialog"
-            aria-label="Font colors"
+            aria-label={panelAriaLabel}
             className={`${ribbonPortalDropdownPanelClass} w-[232px] max-h-[min(70vh,420px)] overflow-y-auto`}
             style={{ top: menuPos.top, left: menuPos.left }}
           >
@@ -120,6 +156,7 @@ export default function DocumentEditorFontColorPicker({
               onMouseDown={(e) => e.preventDefault()}
               onClick={() => {
                 onChange(undefined);
+                setCustomPickerOpen(false);
                 setOpen(false);
               }}
             >
@@ -134,6 +171,7 @@ export default function DocumentEditorFontColorPicker({
                   label={c}
                   onPick={() => {
                     onChange(c);
+                    setCustomPickerOpen(false);
                     setOpen(false);
                   }}
                 />
@@ -143,21 +181,52 @@ export default function DocumentEditorFontColorPicker({
               type="button"
               className="w-full rounded border border-dashed border-gray-300 py-1.5 text-xs font-medium text-gray-700 hover:border-brand-red/50 hover:bg-red-50/50"
               onMouseDown={(e) => e.preventDefault()}
-              onClick={() => moreInputRef.current?.click()}
+              onClick={() => {
+                void (async () => {
+                  customPickerInitialValueRef.current = value;
+                  setCustomPickerOpen(true);
+                  nativePickerSessionRef.current = true;
+                  try {
+                    await openNativeColorInputPicker(moreInputRef.current);
+                  } finally {
+                    nativePickerSessionRef.current = false;
+                  }
+                })();
+              }}
             >
               More colors…
             </button>
-            <input
-              ref={moreInputRef}
-              type="color"
-              className="sr-only"
-              aria-hidden
-              value={value ?? '#000000'}
-              onChange={(e) => {
-                onChange(e.target.value);
-                setOpen(false);
-              }}
-            />
+            {customPickerOpen && (
+              <div className="mt-2 flex gap-2 border-t border-slate-200/80 pt-2">
+                <button
+                  type="button"
+                  className="h-8 flex-1 rounded-md border border-slate-300/90 bg-white px-2 text-xs font-semibold text-slate-700 shadow-sm hover:bg-slate-50"
+                  onMouseDown={(e) => e.preventDefault()}
+                  onClick={() => {
+                    nativePickerSessionRef.current = false;
+                    onChange(customPickerInitialValueRef.current);
+                    setCustomPickerOpen(false);
+                    setOpen(false);
+                    triggerRef.current?.focus();
+                  }}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  className="h-8 flex-1 rounded-md bg-brand-red px-2 text-xs font-semibold text-white shadow-sm hover:bg-red-700"
+                  onMouseDown={(e) => e.preventDefault()}
+                  onClick={() => {
+                    nativePickerSessionRef.current = false;
+                    setCustomPickerOpen(false);
+                    setOpen(false);
+                    triggerRef.current?.focus();
+                  }}
+                >
+                  OK
+                </button>
+              </div>
+            )}
           </div>,
           getOverlayRoot()
         )}

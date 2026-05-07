@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useReducer, useRef, useState, type RefObject } from 'react';
 import type { Editor } from '@tiptap/core';
 import { EDITOR_FONT_COLOR_PRESETS } from '@/lib/editorFontColorPresets';
+import { openNativeColorInputPicker } from '@/lib/openNativeColorInputPicker';
 
 const HIGHLIGHT_PRESETS = [
   '#fef08a',
@@ -75,15 +76,25 @@ function ClearHighlightIcon() {
   );
 }
 
-function useClickOutside(ref: RefObject<HTMLDivElement | null>, open: boolean, onClose: () => void) {
+function useClickOutside(
+  ref: RefObject<HTMLDivElement | null>,
+  open: boolean,
+  onClose: () => void,
+  suppressRef?: RefObject<boolean>,
+) {
   useEffect(() => {
     if (!open) return;
     const fn = (e: MouseEvent) => {
+      if (suppressRef?.current) return;
       if (ref.current && !ref.current.contains(e.target as Node)) onClose();
     };
     document.addEventListener('mousedown', fn);
-    return () => document.removeEventListener('mousedown', fn);
-  }, [open, onClose, ref]);
+    document.addEventListener('pointerdown', fn);
+    return () => {
+      document.removeEventListener('mousedown', fn);
+      document.removeEventListener('pointerdown', fn);
+    };
+  }, [open, onClose, ref, suppressRef]);
 }
 
 function Swatch({
@@ -169,15 +180,26 @@ export function CommunityEditorColorToolbar({ editor }: { editor: Editor }) {
 
   const [fontOpen, setFontOpen] = useState(false);
   const [hiOpen, setHiOpen] = useState(false);
+  const [fontCustomPickerOpen, setFontCustomPickerOpen] = useState(false);
+  const [hiCustomPickerOpen, setHiCustomPickerOpen] = useState(false);
   const fontWrapRef = useRef<HTMLDivElement>(null);
   const hiWrapRef = useRef<HTMLDivElement>(null);
   const fontMoreInputRef = useRef<HTMLInputElement>(null);
   const hiMoreInputRef = useRef<HTMLInputElement>(null);
+  const suppressOutsideCloseRef = useRef(false);
+  const fontCustomInitialValueRef = useRef<string | null>(null);
+  const hiCustomInitialValueRef = useRef<string | null>(null);
 
-  const closeFont = useCallback(() => setFontOpen(false), []);
-  const closeHi = useCallback(() => setHiOpen(false), []);
-  useClickOutside(fontWrapRef, fontOpen, closeFont);
-  useClickOutside(hiWrapRef, hiOpen, closeHi);
+  const closeFont = useCallback(() => {
+    setFontCustomPickerOpen(false);
+    setFontOpen(false);
+  }, []);
+  const closeHi = useCallback(() => {
+    setHiCustomPickerOpen(false);
+    setHiOpen(false);
+  }, []);
+  useClickOutside(fontWrapRef, fontOpen, closeFont, suppressOutsideCloseRef);
+  useClickOutside(hiWrapRef, hiOpen, closeHi, suppressOutsideCloseRef);
 
   const textColor = (editor.getAttributes('textStyle').color as string | undefined) || null;
   const hiAttr = editor.getAttributes('highlight') as { color?: string };
@@ -193,8 +215,13 @@ export function CommunityEditorColorToolbar({ editor }: { editor: Editor }) {
           pressed={fontOpen}
           title="Font color"
           onClick={() => {
+            setHiCustomPickerOpen(false);
             setHiOpen(false);
-            setFontOpen((o) => !o);
+            setFontOpen((o) => {
+              const next = !o;
+              if (!next) setFontCustomPickerOpen(false);
+              return next;
+            });
           }}
         >
           <FontColorGlyph bar={fontBar} />
@@ -203,6 +230,17 @@ export function CommunityEditorColorToolbar({ editor }: { editor: Editor }) {
         <IconToolbarButton title="Remove text color (automatic)" onClick={() => editor.chain().focus().unsetColor().run()}>
           <ClearFontColorIcon />
         </IconToolbarButton>
+        <input
+          ref={fontMoreInputRef}
+          type="color"
+          className="sr-only"
+          aria-hidden
+          tabIndex={-1}
+          value={fontBar}
+          onChange={(e) => {
+            editor.chain().focus().setColor(e.target.value).run();
+          }}
+        />
         {fontOpen && (
           <div
             className="absolute left-0 top-full z-[120] mt-1 w-[232px] rounded-lg border border-gray-200 bg-white py-2 pl-2 pr-2 shadow-xl"
@@ -216,6 +254,7 @@ export function CommunityEditorColorToolbar({ editor }: { editor: Editor }) {
               onMouseDown={(e) => e.preventDefault()}
               onClick={() => {
                 editor.chain().focus().unsetColor().run();
+                setFontCustomPickerOpen(false);
                 setFontOpen(false);
               }}
             >
@@ -230,6 +269,7 @@ export function CommunityEditorColorToolbar({ editor }: { editor: Editor }) {
                   label={c}
                   onPick={() => {
                     editor.chain().focus().setColor(c).run();
+                    setFontCustomPickerOpen(false);
                     setFontOpen(false);
                   }}
                 />
@@ -239,20 +279,52 @@ export function CommunityEditorColorToolbar({ editor }: { editor: Editor }) {
               type="button"
               className="w-full rounded border border-dashed border-gray-300 py-1.5 text-xs font-medium text-gray-700 hover:border-brand-red/50 hover:bg-red-50/50"
               onMouseDown={(e) => e.preventDefault()}
-              onClick={() => fontMoreInputRef.current?.click()}
+              onClick={() => {
+                void (async () => {
+                  fontCustomInitialValueRef.current = textColor;
+                  setFontCustomPickerOpen(true);
+                  suppressOutsideCloseRef.current = true;
+                  try {
+                    await openNativeColorInputPicker(fontMoreInputRef.current);
+                  } finally {
+                    suppressOutsideCloseRef.current = false;
+                  }
+                })();
+              }}
             >
               More colors…
             </button>
-            <input
-              ref={fontMoreInputRef}
-              type="color"
-              className="sr-only"
-              aria-hidden
-              onChange={(e) => {
-                editor.chain().focus().setColor(e.target.value).run();
-                setFontOpen(false);
-              }}
-            />
+            {fontCustomPickerOpen && (
+              <div className="mt-2 flex gap-2 border-t border-gray-200 pt-2">
+                <button
+                  type="button"
+                  className="h-8 flex-1 rounded-md border border-gray-300 bg-white px-2 text-xs font-semibold text-gray-700 shadow-sm hover:bg-gray-50"
+                  onMouseDown={(e) => e.preventDefault()}
+                  onClick={() => {
+                    suppressOutsideCloseRef.current = false;
+                    const previous = fontCustomInitialValueRef.current;
+                    if (previous) editor.chain().focus().setColor(previous).run();
+                    else editor.chain().focus().unsetColor().run();
+                    setFontCustomPickerOpen(false);
+                    setFontOpen(false);
+                  }}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  className="h-8 flex-1 rounded-md bg-brand-red px-2 text-xs font-semibold text-white shadow-sm hover:bg-red-700"
+                  onMouseDown={(e) => e.preventDefault()}
+                  onClick={() => {
+                    suppressOutsideCloseRef.current = false;
+                    setFontCustomPickerOpen(false);
+                    setFontOpen(false);
+                  }}
+                >
+                  OK
+                </button>
+              </div>
+            )}
           </div>
         )}
       </div>
@@ -262,8 +334,13 @@ export function CommunityEditorColorToolbar({ editor }: { editor: Editor }) {
           pressed={hiOpen}
           title="Text highlight color"
           onClick={() => {
+            setFontCustomPickerOpen(false);
             setFontOpen(false);
-            setHiOpen((o) => !o);
+            setHiOpen((o) => {
+              const next = !o;
+              if (!next) setHiCustomPickerOpen(false);
+              return next;
+            });
           }}
         >
           <HighlightGlyph bar={hiBar} />
@@ -272,6 +349,17 @@ export function CommunityEditorColorToolbar({ editor }: { editor: Editor }) {
         <IconToolbarButton title="Remove highlight" onClick={() => editor.chain().focus().unsetHighlight().run()}>
           <ClearHighlightIcon />
         </IconToolbarButton>
+        <input
+          ref={hiMoreInputRef}
+          type="color"
+          className="sr-only"
+          aria-hidden
+          tabIndex={-1}
+          value={hiBar}
+          onChange={(e) => {
+            editor.chain().focus().setHighlight({ color: e.target.value }).run();
+          }}
+        />
         {hiOpen && (
           <div
             className="absolute left-0 top-full z-[120] mt-1 w-[200px] rounded-lg border border-gray-200 bg-white py-2 pl-2 pr-2 shadow-xl"
@@ -285,6 +373,7 @@ export function CommunityEditorColorToolbar({ editor }: { editor: Editor }) {
               onMouseDown={(e) => e.preventDefault()}
               onClick={() => {
                 editor.chain().focus().unsetHighlight().run();
+                setHiCustomPickerOpen(false);
                 setHiOpen(false);
               }}
             >
@@ -299,6 +388,7 @@ export function CommunityEditorColorToolbar({ editor }: { editor: Editor }) {
                   label={c}
                   onPick={() => {
                     editor.chain().focus().setHighlight({ color: c }).run();
+                    setHiCustomPickerOpen(false);
                     setHiOpen(false);
                   }}
                 />
@@ -308,21 +398,52 @@ export function CommunityEditorColorToolbar({ editor }: { editor: Editor }) {
               type="button"
               className="w-full rounded border border-dashed border-gray-300 py-1.5 text-xs font-medium text-gray-700 hover:border-brand-red/50 hover:bg-red-50/50"
               onMouseDown={(e) => e.preventDefault()}
-              onClick={() => hiMoreInputRef.current?.click()}
+              onClick={() => {
+                void (async () => {
+                  hiCustomInitialValueRef.current = hiColor;
+                  setHiCustomPickerOpen(true);
+                  suppressOutsideCloseRef.current = true;
+                  try {
+                    await openNativeColorInputPicker(hiMoreInputRef.current);
+                  } finally {
+                    suppressOutsideCloseRef.current = false;
+                  }
+                })();
+              }}
             >
               More colors…
             </button>
-            <input
-              ref={hiMoreInputRef}
-              type="color"
-              className="sr-only"
-              aria-hidden
-              defaultValue="#fef08a"
-              onChange={(e) => {
-                editor.chain().focus().setHighlight({ color: e.target.value }).run();
-                setHiOpen(false);
-              }}
-            />
+            {hiCustomPickerOpen && (
+              <div className="mt-2 flex gap-2 border-t border-gray-200 pt-2">
+                <button
+                  type="button"
+                  className="h-8 flex-1 rounded-md border border-gray-300 bg-white px-2 text-xs font-semibold text-gray-700 shadow-sm hover:bg-gray-50"
+                  onMouseDown={(e) => e.preventDefault()}
+                  onClick={() => {
+                    suppressOutsideCloseRef.current = false;
+                    const previous = hiCustomInitialValueRef.current;
+                    if (previous) editor.chain().focus().setHighlight({ color: previous }).run();
+                    else editor.chain().focus().unsetHighlight().run();
+                    setHiCustomPickerOpen(false);
+                    setHiOpen(false);
+                  }}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  className="h-8 flex-1 rounded-md bg-brand-red px-2 text-xs font-semibold text-white shadow-sm hover:bg-red-700"
+                  onMouseDown={(e) => e.preventDefault()}
+                  onClick={() => {
+                    suppressOutsideCloseRef.current = false;
+                    setHiCustomPickerOpen(false);
+                    setHiOpen(false);
+                  }}
+                >
+                  OK
+                </button>
+              </div>
+            )}
           </div>
         )}
       </div>

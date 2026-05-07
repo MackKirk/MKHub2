@@ -1,9 +1,10 @@
 import { useEffect, useRef, useState, useCallback, useMemo } from 'react';
 import { api, withFileAccessToken } from '@/lib/api';
 import OverlayPortal from '@/components/OverlayPortal';
+import DocumentEditorFontColorPicker from '@/components/document-editor/DocumentEditorFontColorPicker';
 import {
+  editorCaptionClass,
   editorGroupLabelClass,
-  editorPanelAsideClass,
   editorPanelTitleClass,
   editorTransitionInteractive,
   selectionToolButtonGhostClass,
@@ -24,7 +25,8 @@ const sliderStyle = `
   .custom-slider {
     -webkit-appearance: none;
     appearance: none;
-    flex: 1;
+    flex: 1 1 0%;
+    min-width: 0;
     height: 6px;
     border-radius: 3px;
     outline: none;
@@ -62,6 +64,9 @@ const sliderStyle = `
     align-items: center;
     gap: 8px;
     margin-bottom: 4px;
+    width: 100%;
+    min-width: 0;
+    box-sizing: border-box;
   }
   
   .custom-slider-value {
@@ -2648,8 +2653,13 @@ export default function ImageEditor({ isOpen, onClose, imageUrl, imageName = 'im
 
           <div className="flex min-h-0 min-w-0 flex-1 overflow-hidden">
             {/* Row never scrolls horizontally as a whole — sidebar stays visible; only the canvas pane scrolls if needed. */}
-            <div ref={containerRef} className="flex min-h-0 min-w-0 flex-1 gap-0 overflow-hidden">
+            <div ref={containerRef} className="isolate flex min-h-0 min-w-0 flex-1 gap-0 overflow-hidden">
               <div className="min-h-0 min-w-0 flex-1 overflow-x-auto overflow-y-auto overscroll-contain bg-slate-50/80 p-4 [scrollbar-gutter:stable]">
+                {!isLoading && !loadError && canvasWidth > 0 && canvasHeight > 0 && (
+                  <p className={`${editorCaptionClass} mb-3`}>
+                    Editing area: {canvasWidth} × {canvasHeight}px
+                  </p>
+                )}
                 <div
                   className="relative inline-block"
                   style={
@@ -2684,7 +2694,11 @@ export default function ImageEditor({ isOpen, onClose, imageUrl, imageName = 'im
                   </div>
                 )}
                 {!isLoading && !loadError && (
-                  <>
+                  <div
+                    className="inline-block rounded-md border-2 border-slate-500 bg-slate-200/95 p-px shadow-[0_2px_8px_rgba(15,23,42,0.12)] ring-1 ring-slate-900/10"
+                    title="Editing area — same frame style as Image picker"
+                  >
+                    <div className="relative overflow-hidden rounded-[3px] bg-slate-200">
                     <canvas
                       ref={canvasRef}
                       className="block"
@@ -2791,16 +2805,20 @@ export default function ImageEditor({ isOpen, onClose, imageUrl, imageName = 'im
                         }
                       }}
                     />
-                  </>
+                    <div
+                      className="pointer-events-none absolute inset-0 z-[2] shadow-[inset_0_0_0_1px_rgba(15,23,42,0.22)]"
+                      aria-hidden
+                    />
+                    </div>
+                  </div>
                 )}
                   </div>
                 </div>
               </div>
 
-              <div
-                className={`flex min-h-0 w-56 shrink-0 flex-col space-y-3 overflow-x-hidden overflow-y-auto border-l border-slate-200/90 p-3 ${editorPanelAsideClass}`}
+              <aside
+                className={`relative z-[1] box-border flex h-full min-h-0 w-56 min-w-[14rem] shrink-0 flex-col gap-3 overflow-x-hidden overflow-y-auto border-l border-slate-200/90 bg-white/95 px-4 py-3 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.95)] ring-1 ring-slate-900/[0.04] [scrollbar-gutter:stable]`}
               >
-              <div>
                 <span className={`${editorGroupLabelClass} mb-2 block`}>Image controls</span>
                 <div>
                   <label className="mb-1 block text-[11px] font-medium text-slate-600">Rotation</label>
@@ -2839,8 +2857,7 @@ export default function ImageEditor({ isOpen, onClose, imageUrl, imageName = 'im
                     <div className="custom-slider-value">{scale.toFixed(2)}×</div>
                   </div>
                 </div>
-              </div>
-              
+
               <div className="border-t border-slate-200/80 pt-3">
                 <span className={`${editorGroupLabelClass} mb-2 block`}>Tools</span>
                 <div className="grid grid-cols-3 gap-1.5">
@@ -2943,13 +2960,13 @@ export default function ImageEditor({ isOpen, onClose, imageUrl, imageName = 'im
                 </label>
                 {textBackgroundEnabled && (
                   <div className="flex items-start gap-2">
-                    <div style={{ width: '20%' }}>
-                      <label className="mb-1 block text-[11px] font-medium text-slate-600">Color</label>
-                      <input
-                        type="color"
+                    <div className="flex shrink-0 flex-col gap-1">
+                      <label className="block text-[11px] font-medium text-slate-600">Color</label>
+                      <DocumentEditorFontColorPicker
                         value={textBackgroundColor}
-                        onChange={e => setTextBackgroundColor(e.target.value)}
-                        className="h-8 w-full cursor-pointer rounded-md border border-slate-200/90"
+                        onChange={(c) => setTextBackgroundColor(c ?? '#ffffff')}
+                        buttonTitle="Text background color"
+                        panelAriaLabel="Text background colors"
                       />
                     </div>
                     <div className="min-w-0 flex-1">
@@ -2976,14 +2993,13 @@ export default function ImageEditor({ isOpen, onClose, imageUrl, imageName = 'im
               
               <div className="border-t border-slate-200/80 pt-3">
                 <span className={`${editorGroupLabelClass} mb-2 block`}>Text & line</span>
-                <div className="custom-slider-container mb-1">
+                <div className="mb-1 flex min-w-0 items-center gap-2">
                   <span className="w-12 shrink-0 text-xs font-medium text-slate-700">Color</span>
-                  <input 
-                    type="color" 
-                    value={color} 
-                    onChange={e => setColor(e.target.value)} 
-                    className="h-8 cursor-pointer rounded-md border border-slate-200/90"
-                    style={{ width: '60px' }}
+                  <DocumentEditorFontColorPicker
+                    value={color}
+                    onChange={(c) => setColor(c ?? '#000000')}
+                    buttonTitle="Text & line color"
+                    panelAriaLabel="Text and line colors"
                   />
                 </div>
               </div>
@@ -3041,7 +3057,7 @@ export default function ImageEditor({ isOpen, onClose, imageUrl, imageName = 'im
                   </button>
                 </div>
               </div>
-            </div>
+            </aside>
             </div>
           </div>
         </div>
