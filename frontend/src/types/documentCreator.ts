@@ -53,9 +53,9 @@ export type DocumentEditorFont = (typeof DOCUMENT_EDITOR_FONTS)[number];
 
 /** Text style presets: font, weight, size, color. User can apply then override font/size. */
 export const TEXT_STYLE_PRESETS = [
-  { id: 'area-title', label: 'Padrão 01 (Area Title)', fontFamily: 'Montserrat' as const, fontWeight: 'bold' as const, fontSize: 13, color: '#B30000' },
-  { id: 'text', label: 'Padrão 02 (Text)', fontFamily: 'Montserrat' as const, fontWeight: 'normal' as const, fontSize: 12, color: '#787878' },
-  { id: 'title', label: 'Padrão 03 (Title)', fontFamily: 'Montserrat' as const, fontWeight: 'normal' as const, fontSize: 12, color: '#000000' },
+  { id: 'area-title', label: 'Preset 01 (Area title)', fontFamily: 'Montserrat' as const, fontWeight: 'bold' as const, fontSize: 13, color: '#B30000' },
+  { id: 'text', label: 'Preset 02 (Body text)', fontFamily: 'Montserrat' as const, fontWeight: 'normal' as const, fontSize: 12, color: '#787878' },
+  { id: 'title', label: 'Preset 03 (Title)', fontFamily: 'Montserrat' as const, fontWeight: 'normal' as const, fontSize: 12, color: '#000000' },
 ] as const;
 
 export function createTextElement(): DocElement {
@@ -71,6 +71,46 @@ export function createTextElement(): DocElement {
     fontFamily: 'Montserrat',
     fontWeight: 'bold',
     color: '#000000',
+  };
+}
+
+/** Page is A4 portrait in the editor; element % width / % height must match this aspect to match image pixels without letterboxing. */
+const PAGE_WIDTH_OVER_HEIGHT = 210 / 297;
+
+/**
+ * Set width_pct / height_pct so the on-canvas frame matches the image aspect ratio (no stretch with `contain`).
+ */
+export function sizeImageElementFrameForIntrinsicAspect(
+  baseWidthPct: number,
+  intrinsicWidthPx: number,
+  intrinsicHeightPx: number,
+  options?: { maxWidthPct?: number; maxHeightPct?: number; minSizePct?: number },
+): { width_pct: number; height_pct: number } {
+  const maxW = options?.maxWidthPct ?? 92;
+  const maxH = options?.maxHeightPct ?? 88;
+  const minS = options?.minSizePct ?? 2;
+
+  if (!intrinsicWidthPx || !intrinsicHeightPx || intrinsicWidthPx <= 0 || intrinsicHeightPx <= 0) {
+    return { width_pct: baseWidthPct, height_pct: 25 };
+  }
+
+  let w = Math.max(minS, Math.min(maxW, baseWidthPct));
+  let h = w * PAGE_WIDTH_OVER_HEIGHT * (intrinsicHeightPx / intrinsicWidthPx);
+
+  if (h > maxH) {
+    const s = maxH / h;
+    w = Math.max(minS, w * s);
+    h = maxH;
+  }
+  if (w > maxW) {
+    const s = maxW / w;
+    w = maxW;
+    h = Math.max(minS, h * s);
+  }
+
+  return {
+    width_pct: Math.round(w * 1000) / 1000,
+    height_pct: Math.round(h * 1000) / 1000,
   };
 }
 

@@ -1,12 +1,25 @@
 import { withFileAccessToken } from '@/lib/api';
 import { useEffect, useRef, useState } from 'react';
-import type { DocumentPage, DocElement } from '@/types/documentCreator';
+import type { DocumentPage, DocElement, PageMargins } from '@/types/documentCreator';
+import {
+  editorSidePanelBodyClass,
+  editorSidePanelHeaderClass,
+  editorSidePanelHeadingMetaClass,
+  editorSidePanelHeadingTitleClass,
+  editorSidePanelRootLeftClass,
+} from '@/components/document-editor/documentEditorRibbonPrimitives';
+import {
+  BLOCK_PROTECTED_BG,
+  MARGIN_PROTECTED_BG,
+  blockProtectedBorderClass,
+  marginBandRingClass,
+} from '@/components/document-editor/documentProtectedVisuals';
 
 const A4_ASPECT = 210 / 297;
 // Keep thumbnails visually consistent with the main editor scaling.
 const REFERENCE_CANVAS_WIDTH_PX = 910;
 
-type Template = { id: string; name: string; background_file_id?: string };
+type Template = { id: string; name: string; background_file_id?: string; margins?: PageMargins | null };
 
 type DocumentPagesStripProps = {
   pages: DocumentPage[];
@@ -23,18 +36,34 @@ type DocumentPagesStripProps = {
   onDuplicatePage?: (index: number) => void;
 };
 
+const defaultMargins: PageMargins = { left_pct: 0, right_pct: 0, top_pct: 0, bottom_pct: 0 };
+
 function PageThumbnail({
   page,
+  templates,
   backgroundUrl,
   isSelected,
   onClick,
 }: {
   page: DocumentPage;
+  templates: Template[];
   backgroundUrl: string | null;
   isSelected: boolean;
   onClick: () => void;
 }) {
   const elements = page.elements ?? [];
+  const tmpl = templates.find((t) => t.id === (page.template_id ?? ''));
+  /** Same merge as DocumentEditor `effectiveMargins` per page */
+  const marginOverlay: PageMargins = {
+    ...defaultMargins,
+    ...tmpl?.margins,
+    ...page.margins,
+  };
+  const showMarginBands =
+    (marginOverlay.left_pct ?? 0) > 0 ||
+    (marginOverlay.right_pct ?? 0) > 0 ||
+    (marginOverlay.top_pct ?? 0) > 0 ||
+    (marginOverlay.bottom_pct ?? 0) > 0;
   const thumbRef = useRef<HTMLButtonElement>(null);
   const [thumbWidthPx, setThumbWidthPx] = useState<number>(130);
 
@@ -59,8 +88,10 @@ function PageThumbnail({
       ref={thumbRef}
       type="button"
       onClick={onClick}
-      className={`relative w-full rounded-lg border-2 overflow-hidden bg-white transition-all flex-shrink-0 ${
-        isSelected ? 'border-brand-red ring-2 ring-brand-red/30 shadow-md' : 'border-gray-200 hover:border-gray-300'
+      className={`relative w-full flex-shrink-0 overflow-hidden rounded-lg border border-slate-200/90 bg-white shadow-sm transition-[box-shadow,border-color,transform] duration-200 ease-out ${
+        isSelected
+          ? 'border-brand-red/45 shadow-md ring-1 ring-brand-red/20'
+          : 'hover:-translate-y-0.5 hover:border-slate-300 hover:shadow-md'
       }`}
       style={{ aspectRatio: `${A4_ASPECT}` }}
     >
@@ -72,8 +103,48 @@ function PageThumbnail({
             className="absolute inset-0 w-full h-full object-cover pointer-events-none"
           />
         ) : (
-          <div className="absolute inset-0 bg-gray-100 pointer-events-none" />
+          <div className="pointer-events-none absolute inset-0 bg-gradient-to-br from-white to-slate-100" />
         )}
+        {showMarginBands ? (
+          <>
+            {(marginOverlay.left_pct ?? 0) > 0 && (
+              <div
+                className={`pointer-events-none absolute inset-y-0 left-0 rounded-l-lg ${marginBandRingClass}`}
+                style={{
+                  width: `${marginOverlay.left_pct}%`,
+                  background: MARGIN_PROTECTED_BG,
+                }}
+              />
+            )}
+            {(marginOverlay.right_pct ?? 0) > 0 && (
+              <div
+                className={`pointer-events-none absolute inset-y-0 right-0 rounded-r-lg ${marginBandRingClass}`}
+                style={{
+                  width: `${marginOverlay.right_pct}%`,
+                  background: MARGIN_PROTECTED_BG,
+                }}
+              />
+            )}
+            {(marginOverlay.top_pct ?? 0) > 0 && (
+              <div
+                className={`pointer-events-none absolute inset-x-0 top-0 rounded-t-lg ${marginBandRingClass}`}
+                style={{
+                  height: `${marginOverlay.top_pct}%`,
+                  background: MARGIN_PROTECTED_BG,
+                }}
+              />
+            )}
+            {(marginOverlay.bottom_pct ?? 0) > 0 && (
+              <div
+                className={`pointer-events-none absolute inset-x-0 bottom-0 rounded-b-lg ${marginBandRingClass}`}
+                style={{
+                  height: `${marginOverlay.bottom_pct}%`,
+                  background: MARGIN_PROTECTED_BG,
+                }}
+              />
+            )}
+          </>
+        ) : null}
         {elements.map((el: DocElement) => {
           const x = (el.x_pct ?? 10) / 100;
           const y = (el.y_pct ?? 20) / 100;
@@ -115,11 +186,8 @@ function PageThumbnail({
                 })()
               ) : el.type === 'block' ? (
                 <div
-                  className="w-full h-full rounded bg-amber-500/20 border border-amber-600/40"
-                  style={{
-                    backgroundImage:
-                      'repeating-linear-gradient(-45deg, transparent, transparent 6px, rgba(245,158,11,0.12) 6px, rgba(245,158,11,0.12) 12px)',
-                  }}
+                  className={`h-full w-full rounded-sm ${blockProtectedBorderClass}`}
+                  style={{ background: BLOCK_PROTECTED_BG }}
                 />
               ) : (
                 el.content && (
@@ -193,8 +261,15 @@ export default function DocumentPagesStrip({
     setDragOverIndex(null);
   };
 
+  const pagesMeta = canReorder ? 'Drag to reorder' : 'Tap to select';
+
   return (
-    <div className="w-36 flex flex-col bg-gray-50/80 border-r border-gray-200 overflow-y-auto py-3 gap-2 flex-shrink-0">
+    <div className={editorSidePanelRootLeftClass}>
+      <div className={editorSidePanelHeaderClass}>
+        <div className={editorSidePanelHeadingTitleClass}>Pages</div>
+        <p className={editorSidePanelHeadingMetaClass}>{pagesMeta}</p>
+      </div>
+      <div className={`${editorSidePanelBodyClass} flex flex-col gap-2`}>
       {pages.map((page, i) => {
         const template = templates.find((t) => t.id === (page.template_id ?? ''));
         const backgroundUrl = template?.background_file_id
@@ -211,18 +286,19 @@ export default function DocumentPagesStrip({
             onDragLeave={handleDragLeave}
             onDrop={(e) => handleDrop(e, i)}
             onDragEnd={handleDragEnd}
-            className={`px-2 relative group transition-colors rounded-lg ${
+            className={`group relative rounded-lg px-0.5 transition-colors duration-200 ${
               canReorder ? 'cursor-grab active:cursor-grabbing' : ''
-            } ${isDropTarget ? 'ring-2 ring-brand-red/50 ring-inset bg-brand-red/5 rounded-lg' : ''} ${isDragging ? 'opacity-50' : ''}`}
+            } ${isDropTarget ? 'rounded-lg bg-brand-red/[0.08] ring-1 ring-inset ring-brand-red/30' : ''} ${isDragging ? 'opacity-50' : ''}`}
           >
             <PageThumbnail
               page={page}
+              templates={templates}
               backgroundUrl={backgroundUrl}
               isSelected={currentPageIndex === i}
               onClick={() => onPageSelect(i)}
             />
-            <div className="flex items-center justify-center gap-0.5 mt-0.5">
-              <span className="text-center text-[10px] text-gray-500 font-medium flex-1">
+            <div className="mt-1 flex items-center justify-center gap-1">
+              <span className="flex-1 text-center text-[10px] font-semibold tabular-nums text-slate-400">
                 {i === 0 ? 'Cover' : i + 1}
               </span>
               {canDuplicate && (
@@ -232,7 +308,7 @@ export default function DocumentPagesStrip({
                     e.stopPropagation();
                     onDuplicatePage?.(i);
                   }}
-                  className="p-0.5 rounded text-gray-400 hover:text-brand-red hover:bg-brand-red/10"
+                  className="rounded-md p-1 text-slate-400 transition-[color,background-color] duration-200 hover:bg-slate-100 hover:text-slate-700"
                   aria-label="Duplicate page"
                   title="Duplicate page"
                 >
@@ -248,7 +324,7 @@ export default function DocumentPagesStrip({
                     e.stopPropagation();
                     onDeletePage?.(i);
                   }}
-                  className="p-0.5 rounded text-gray-400 hover:text-red-600 hover:bg-red-50"
+                  className="rounded-md p-1 text-slate-400 transition-[color,background-color] duration-200 hover:bg-red-50 hover:text-red-600"
                   aria-label="Delete page"
                   title="Delete page"
                 >
@@ -265,12 +341,13 @@ export default function DocumentPagesStrip({
         <button
           type="button"
           onClick={onAddPage}
-          className="mx-2 mt-1 flex items-center justify-center rounded-lg border-2 border-dashed border-gray-300 hover:border-brand-red hover:bg-brand-red/5 text-gray-500 hover:text-brand-red transition-colors py-4"
+          className="flex items-center justify-center rounded-lg border border-dashed border-slate-300/90 py-2.5 text-slate-500 transition-[border-color,background-color,color] duration-200 ease-out hover:border-slate-400 hover:bg-slate-50 hover:text-slate-700"
         >
           <span className="text-lg font-light">+</span>
           <span className="sr-only">Add page</span>
         </button>
       )}
+      </div>
     </div>
   );
 }

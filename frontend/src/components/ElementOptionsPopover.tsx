@@ -1,4 +1,5 @@
 import { useRef } from 'react';
+import { useConfirm } from '@/components/ConfirmProvider';
 import type { DocElement } from '@/types/documentCreator';
 import { DOCUMENT_EDITOR_FONTS } from '@/types/documentCreator';
 
@@ -95,6 +96,7 @@ export function ElementOptionsPopover({
   onReplaceImage,
   onReplaceImageClick,
 }: ElementOptionsPopoverProps) {
+  const confirm = useConfirm();
   const id = element.id;
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -122,7 +124,15 @@ export function ElementOptionsPopover({
           </button>
           <button
             type="button"
-            onClick={() => onRemove(id)}
+            onClick={async () => {
+              const choice = await confirm({
+                title: 'Delete element',
+                message: 'Remove this element from the page? This cannot be undone.',
+                confirmText: 'Delete',
+              });
+              if (choice !== 'confirm') return;
+              onRemove(id);
+            }}
             className="text-xs text-red-600 hover:text-red-700 font-medium"
           >
             Delete

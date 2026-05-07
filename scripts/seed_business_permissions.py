@@ -101,25 +101,25 @@ def seed_business_permissions():
                 "key": "business:construction:projects:read",
                 "label": "View Projects & Opportunities (Construction)",
                 "description": "Allows viewing construction line projects and opportunities",
-                "sort_index": 22,
+                "sort_index": 24,
             },
             {
                 "key": "business:construction:projects:write",
                 "label": "Edit Projects & Opportunities (Construction)",
                 "description": "Allows creating, updating, and deleting construction line projects and opportunities",
-                "sort_index": 23,
+                "sort_index": 25,
             },
             {
                 "key": "business:rm:projects:read",
                 "label": "View Projects & Opportunities (Repairs & Maintenance)",
                 "description": "Allows viewing Repairs & Maintenance line projects and opportunities",
-                "sort_index": 24,
+                "sort_index": 26,
             },
             {
                 "key": "business:rm:projects:write",
                 "label": "Edit Projects & Opportunities (Repairs & Maintenance)",
                 "description": "Allows creating, updating, and deleting Repairs & Maintenance projects and opportunities",
-                "sort_index": 25,
+                "sort_index": 27,
             },
             # Projects - Sub-permissions
             {
@@ -221,14 +221,14 @@ def seed_business_permissions():
             {
                 "key": "business:projects:safety:read",
                 "label": "View Safety",
-                "description": "Allows viewing the Safety tab on awarded projects",
-                "sort_index": 26,
+                "description": "Allows viewing the Safety tab in project details (awarded projects only)",
+                "sort_index": 22,
             },
             {
                 "key": "business:projects:safety:write",
                 "label": "Edit Safety",
-                "description": "Allows creating and editing safety inspections on awarded projects",
-                "sort_index": 27,
+                "description": "Allows creating and editing safety inspections in the Safety tab (awarded projects only)",
+                "sort_index": 23,
             },
         ]
         

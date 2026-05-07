@@ -1,6 +1,18 @@
 import { useEffect, useRef, useState, useCallback, useMemo } from 'react';
 import { api, withFileAccessToken } from '@/lib/api';
 import OverlayPortal from '@/components/OverlayPortal';
+import DocumentEditorFontColorPicker from '@/components/document-editor/DocumentEditorFontColorPicker';
+import {
+  editorCaptionClass,
+  editorGroupLabelClass,
+  editorPanelTitleClass,
+  editorTransitionInteractive,
+  selectionToolButtonGhostClass,
+} from '@/components/document-editor/documentEditorRibbonPrimitives';
+
+const toolBtnBase = `${editorTransitionInteractive} flex items-center justify-center rounded-lg border px-2 py-2 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-red/35`;
+const toolBtnIdle = `${toolBtnBase} border-transparent bg-slate-100/95 text-slate-800 hover:bg-slate-200/90 active:scale-[0.98]`;
+const toolBtnActive = `${toolBtnBase} border-brand-red/25 bg-brand-red text-white shadow-sm hover:bg-red-700 active:scale-[0.98]`;
 
 // Custom slider styles and icon rendering improvements
 const sliderStyle = `
@@ -13,7 +25,8 @@ const sliderStyle = `
   .custom-slider {
     -webkit-appearance: none;
     appearance: none;
-    flex: 1;
+    flex: 1 1 0%;
+    min-width: 0;
     height: 6px;
     border-radius: 3px;
     outline: none;
@@ -51,6 +64,9 @@ const sliderStyle = `
     align-items: center;
     gap: 8px;
     margin-bottom: 4px;
+    width: 100%;
+    min-width: 0;
+    box-sizing: border-box;
   }
   
   .custom-slider-value {
@@ -279,7 +295,7 @@ export default function ImageEditor({ isOpen, onClose, imageUrl, imageName = 'im
     setMode('select');
   }, [setItems, setSelectedIds, setMode]);
 
-  // Load image - only when modal opens or fileObjectId changes
+  // Load image when modal opens: server file via fileObjectId (full-res when possible), otherwise imageUrl (blob / data / direct src).
   useEffect(() => {
     if (!isOpen) {
       setImg(null);
@@ -295,41 +311,53 @@ export default function ImageEditor({ isOpen, onClose, imageUrl, imageName = 'im
       }
       return;
     }
-    
-    if (!fileObjectId) {
+
+    const loadKey = fileObjectId ?? (imageUrl || '').trim();
+    if (!loadKey) {
       return;
     }
-    
+
     // Prevent reloading if already loaded or currently loading
     if (loadingRef.current) {
       return;
     }
-    
-    if (loadedFileIdRef.current === fileObjectId) {
-      return; // Already loaded or loading this file
+
+    if (loadedFileIdRef.current === loadKey) {
+      return;
     }
-    
+
     const loadImage = async () => {
       loadingRef.current = true;
-      loadedFileIdRef.current = fileObjectId;
+      loadedFileIdRef.current = loadKey;
       setIsLoading(true);
       setLoadError(null);
       setImg(null);
-      
+
       let urlToLoad: string;
-      try {
-        // Prefer full-resolution image via download URL so saved image keeps original quality
-        const r: any = await api('GET', withFileAccessToken(`/files/${fileObjectId}/download`));
-        const downloadUrl = r?.download_url ? String(r.download_url) : '';
-        if (downloadUrl) {
-          urlToLoad = downloadUrl;
-        } else {
+      if (fileObjectId) {
+        try {
+          // Prefer full-resolution image via download URL so saved image keeps original quality
+          const r: any = await api('GET', withFileAccessToken(`/files/${fileObjectId}/download`));
+          const downloadUrl = r?.download_url ? String(r.download_url) : '';
+          if (downloadUrl) {
+            urlToLoad = downloadUrl;
+          } else {
+            urlToLoad = withFileAccessToken(`/files/${fileObjectId}/thumbnail?w=1024`);
+          }
+        } catch (_e) {
           urlToLoad = withFileAccessToken(`/files/${fileObjectId}/thumbnail?w=1024`);
         }
-      } catch (_e) {
-        urlToLoad = withFileAccessToken(`/files/${fileObjectId}/thumbnail?w=1024`);
+      } else {
+        urlToLoad = (imageUrl || '').trim();
+        if (!urlToLoad) {
+          loadingRef.current = false;
+          loadedFileIdRef.current = null;
+          setIsLoading(false);
+          setLoadError('No image URL to load.');
+          return;
+        }
       }
-      
+
       const image = new Image();
       let imageLoaded = false;
       const loadTimeout = setTimeout(() => {
@@ -341,7 +369,7 @@ export default function ImageEditor({ isOpen, onClose, imageUrl, imageName = 'im
           loadedFileIdRef.current = null;
         }
       }, 60000);
-      
+
       image.onload = () => {
         imageLoaded = true;
         clearTimeout(loadTimeout);
@@ -357,29 +385,35 @@ export default function ImageEditor({ isOpen, onClose, imageUrl, imageName = 'im
         setSelectedIds([]);
         setMode('select');
       };
-      
+
       image.onerror = () => {
-        if (image.src.includes('/thumbnail')) {
-          imageLoaded = true;
-          clearTimeout(loadTimeout);
-          loadingRef.current = false;
-          setIsLoading(false);
-          setLoadError('Failed to load image. Please check if the file exists and try again.');
-          loadedFileIdRef.current = null;
+        if (fileObjectId && !image.src.includes('/thumbnail')) {
+          imageLoaded = false;
+          image.removeAttribute('crossOrigin');
+          image.src = withFileAccessToken(`/files/${fileObjectId}/thumbnail?w=1024`);
           return;
         }
-        imageLoaded = false;
-        image.crossOrigin = '';
-        image.src = withFileAccessToken(`/files/${fileObjectId}/thumbnail?w=1024`);
+        imageLoaded = true;
+        clearTimeout(loadTimeout);
+        loadingRef.current = false;
+        setIsLoading(false);
+        setLoadError('Failed to load image. Please check if the file exists and try again.');
+        loadedFileIdRef.current = null;
       };
-      
-      image.crossOrigin = 'anonymous';
+
+      // Blob/data URLs must not use crossOrigin or some browsers won't decode / canvas may taint.
+      const skipCors = /^blob:|^data:/i.test(urlToLoad);
+      if (skipCors) {
+        image.removeAttribute('crossOrigin');
+      } else {
+        image.crossOrigin = 'anonymous';
+      }
       image.src = urlToLoad;
     };
-    
+
     loadImage();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isOpen, fileObjectId]); // Only depend on isOpen and fileObjectId to prevent infinite loops
+  }, [isOpen, fileObjectId, imageUrl]);
 
   // Set canvas size to match image dimensions exactly (no white space)
   // The canvas will be sized to show the full image without any padding
@@ -2589,43 +2623,82 @@ export default function ImageEditor({ isOpen, onClose, imageUrl, imageName = 'im
     <>
       <style>{sliderStyle}</style>
       <OverlayPortal>
-      <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4">
-      <div 
-        className="bg-white rounded-xl overflow-hidden flex flex-col"
-        style={{
-          width: isLoading ? '800px' : `${Math.min(modalWidth, window.innerWidth - 32)}px`,
-          maxWidth: '95vw',
-          maxHeight: '95vh'
-        }}
-      >
-        <div className="px-4 py-3 border-b flex items-center justify-between flex-shrink-0">
-          <div className="font-semibold">Edit Image: {imageName}</div>
-          <button onClick={onClose} className="text-gray-500 hover:text-gray-700 text-2xl font-bold w-8 h-8 flex items-center justify-center rounded hover:bg-gray-100">×</button>
-        </div>
-        
-        <div className="flex-1 overflow-auto p-4">
-          <div ref={containerRef} className="flex gap-4 items-start">
-            <div className="flex-shrink-0" style={{ width: canvasWidth > 0 ? `${canvasWidth}px` : 'auto', maxWidth: canvasWidth > 0 ? `${canvasWidth}px` : 'none' }}>
-              <div className="relative inline-block" style={isLoading ? { height: '500px', width: '500px', display: 'flex', alignItems: 'center', justifyContent: 'center' } : undefined}>
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/45 p-4">
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="image-editor-title"
+          className="flex min-w-0 flex-col overflow-hidden rounded-xl border border-slate-200/90 bg-white shadow-2xl ring-1 ring-slate-900/[0.06]"
+          style={{
+            width: isLoading ? '800px' : `${Math.min(modalWidth, window.innerWidth - 32)}px`,
+            maxWidth: 'min(95vw, calc(100vw - 2rem))',
+            maxHeight: '95vh',
+          }}
+        >
+          <div className="flex shrink-0 items-center justify-between border-b border-slate-200/85 bg-gradient-to-b from-white to-slate-50/90 px-4 py-3">
+            <h2 id="image-editor-title" className={`${editorPanelTitleClass} truncate`}>
+              Edit image<span className="text-slate-500 font-normal">: {imageName}</span>
+            </h2>
+            <button
+              type="button"
+              onClick={onClose}
+              className={`${editorTransitionInteractive} flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-slate-500 hover:bg-slate-100 hover:text-slate-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-red/35`}
+              title="Close"
+            >
+              <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+          </div>
+
+          <div className="flex min-h-0 min-w-0 flex-1 overflow-hidden">
+            {/* Row never scrolls horizontally as a whole — sidebar stays visible; only the canvas pane scrolls if needed. */}
+            <div ref={containerRef} className="isolate flex min-h-0 min-w-0 flex-1 gap-0 overflow-hidden">
+              <div className="min-h-0 min-w-0 flex-1 overflow-x-auto overflow-y-auto overscroll-contain bg-slate-50/80 p-4 [scrollbar-gutter:stable]">
+                {!isLoading && !loadError && canvasWidth > 0 && canvasHeight > 0 && (
+                  <p className={`${editorCaptionClass} mb-3`}>
+                    Editing area: {canvasWidth} × {canvasHeight}px
+                  </p>
+                )}
+                <div
+                  className="relative inline-block"
+                  style={
+                    isLoading
+                      ? { height: '500px', width: '500px', display: 'flex', alignItems: 'center', justifyContent: 'center' }
+                      : undefined
+                  }
+                >
+                  <div
+                    className="flex-shrink-0"
+                    style={{ width: canvasWidth > 0 ? `${canvasWidth}px` : 'auto', maxWidth: canvasWidth > 0 ? `${canvasWidth}px` : 'none' }}
+                  >
                 {isLoading && (
                   <div className="text-center">
-                    <div className="mx-auto mb-4 h-10 w-10 rounded-full border-4 border-gray-200 border-t-brand-red animate-spin" />
-                    <div className="text-sm text-gray-600">Loading image...</div>
+                    <div className="mx-auto mb-4 h-10 w-10 animate-spin rounded-full border-4 border-slate-200 border-t-brand-red" />
+                    <div className="text-sm text-slate-600">Loading image…</div>
                   </div>
                 )}
                 {loadError && !isLoading && (
                   <div className="absolute inset-0 flex items-center justify-center p-4">
                     <div className="text-center">
-                      <div className="text-red-600 font-semibold mb-2">Error</div>
-                      <div className="text-sm text-gray-600 mb-4 max-w-md">{loadError}</div>
-                      <button onClick={() => window.location.reload()} className="px-4 py-2 rounded bg-brand-red text-white">
+                      <div className="mb-2 font-semibold text-red-700">Error</div>
+                      <div className="mb-4 max-w-md text-sm text-slate-600">{loadError}</div>
+                      <button
+                        type="button"
+                        onClick={() => window.location.reload()}
+                        className={`${editorTransitionInteractive} rounded-md bg-brand-red px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-red-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-red/45`}
+                      >
                         Retry
                       </button>
                     </div>
                   </div>
                 )}
                 {!isLoading && !loadError && (
-                  <>
+                  <div
+                    className="inline-block rounded-md border-2 border-slate-500 bg-slate-200/95 p-px shadow-[0_2px_8px_rgba(15,23,42,0.12)] ring-1 ring-slate-900/10"
+                    title="Editing area — same frame style as Image picker"
+                  >
+                    <div className="relative overflow-hidden rounded-[3px] bg-slate-200">
                     <canvas
                       ref={canvasRef}
                       className="block"
@@ -2732,28 +2805,43 @@ export default function ImageEditor({ isOpen, onClose, imageUrl, imageName = 'im
                         }
                       }}
                     />
-                  </>
+                    <div
+                      className="pointer-events-none absolute inset-0 z-[2] shadow-[inset_0_0_0_1px_rgba(15,23,42,0.22)]"
+                      aria-hidden
+                    />
+                    </div>
+                  </div>
                 )}
+                  </div>
+                </div>
               </div>
-            </div>
-            
-            <div className="w-56 flex-shrink-0 space-y-2.5">
-              <div>
-                <label className="block text-xs font-medium mb-1.5 text-gray-700">Image Controls</label>
+
+              <aside
+                className={`relative z-[1] box-border flex h-full min-h-0 w-56 min-w-[14rem] shrink-0 flex-col gap-3 overflow-x-hidden overflow-y-auto border-l border-slate-200/90 bg-white/95 px-4 py-3 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.95)] ring-1 ring-slate-900/[0.04] [scrollbar-gutter:stable]`}
+              >
+                <span className={`${editorGroupLabelClass} mb-2 block`}>Image controls</span>
                 <div>
-                  <label className="block text-xs text-gray-600 mb-1">Rotation</label>
+                  <label className="mb-1 block text-[11px] font-medium text-slate-600">Rotation</label>
                   <div className="flex gap-1.5">
-                    <button onClick={() => setAngle(prev => (prev + 270) % 360)} className="flex-1 px-2 py-1.5 rounded text-xs bg-gray-100 hover:bg-gray-200 transition-colors">
+                    <button
+                      type="button"
+                      onClick={() => setAngle((prev) => (prev + 270) % 360)}
+                      className={`${selectionToolButtonGhostClass} flex-1 justify-center py-2 text-xs font-semibold`}
+                    >
                       ⟲ Left
                     </button>
-                    <button onClick={() => setAngle(prev => (prev + 90) % 360)} className="flex-1 px-2 py-1.5 rounded text-xs bg-gray-100 hover:bg-gray-200 transition-colors">
+                    <button
+                      type="button"
+                      onClick={() => setAngle((prev) => (prev + 90) % 360)}
+                      className={`${selectionToolButtonGhostClass} flex-1 justify-center py-2 text-xs font-semibold`}
+                    >
                       ⟳ Right
                     </button>
                   </div>
                 </div>
                 <div className="mt-2">
                   <div className="custom-slider-container mb-1">
-                    <span className="text-xs font-medium text-gray-700 flex-shrink-0" style={{ width: '45px' }}>Zoom:</span>
+                    <span className="flex w-11 shrink-0 text-xs font-medium text-slate-700">Zoom</span>
                     <input
                       type="range"
                       min="0.1"
@@ -2766,13 +2854,12 @@ export default function ImageEditor({ isOpen, onClose, imageUrl, imageName = 'im
                         background: `linear-gradient(to right, #6b7280 0%, #6b7280 ${((scale - 0.1) / (3 - 0.1)) * 100}%, #e5e7eb ${((scale - 0.1) / (3 - 0.1)) * 100}%, #e5e7eb 100%)`
                       }}
                     />
-                    <div className="custom-slider-value">{scale.toFixed(2)}x</div>
+                    <div className="custom-slider-value">{scale.toFixed(2)}×</div>
                   </div>
                 </div>
-              </div>
-              
-              <div className="pt-2.5 border-t">
-                <label className="block text-xs font-medium mb-1.5 text-gray-700">Tools</label>
+
+              <div className="border-t border-slate-200/80 pt-3">
+                <span className={`${editorGroupLabelClass} mb-2 block`}>Tools</span>
                 <div className="grid grid-cols-3 gap-1.5">
                   <button onClick={() => {
                     // Disable text editing when changing tools
@@ -2786,7 +2873,7 @@ export default function ImageEditor({ isOpen, onClose, imageUrl, imageName = 'im
                       }
                     }
                     setMode('select');
-                  }} className={`px-2 py-2 rounded flex items-center justify-center hover:bg-gray-200 transition-colors ${mode === 'select' ? 'bg-brand-red text-white' : 'bg-gray-100'}`} title="Select">
+                  }} className={mode === 'select' ? toolBtnActive : toolBtnIdle} title="Select">
                     <img src={selectIcon} alt="Select" className="w-6 h-6" />
                   </button>
                   <button onClick={() => {
@@ -2799,7 +2886,7 @@ export default function ImageEditor({ isOpen, onClose, imageUrl, imageName = 'im
                       }
                     }
                     setMode('rect');
-                  }} className={`px-2 py-2 rounded flex items-center justify-center hover:bg-gray-200 transition-colors ${mode === 'rect' ? 'bg-brand-red text-white' : 'bg-gray-100'}`} title="Rectangle">
+                  }} className={mode === 'rect' ? toolBtnActive : toolBtnIdle} title="Rectangle">
                     <img src={rectIcon} alt="Rect" className="w-6 h-6" />
                   </button>
                   <button onClick={() => {
@@ -2812,7 +2899,7 @@ export default function ImageEditor({ isOpen, onClose, imageUrl, imageName = 'im
                       }
                     }
                     setMode('arrow');
-                  }} className={`px-2 py-2 rounded flex items-center justify-center hover:bg-gray-200 transition-colors ${mode === 'arrow' ? 'bg-brand-red text-white' : 'bg-gray-100'}`} title="Arrow">
+                  }} className={mode === 'arrow' ? toolBtnActive : toolBtnIdle} title="Arrow">
                     <img src={arrowIcon} alt="Arrow" className="w-6 h-6" />
                   </button>
                   <button onClick={() => {
@@ -2825,7 +2912,7 @@ export default function ImageEditor({ isOpen, onClose, imageUrl, imageName = 'im
                       }
                     }
                     setMode('text');
-                  }} className={`px-2 py-2 rounded flex items-center justify-center hover:bg-gray-200 transition-colors ${mode === 'text' ? 'bg-brand-red text-white' : 'bg-gray-100'}`} title="Text">
+                  }} className={mode === 'text' ? toolBtnActive : toolBtnIdle} title="Text">
                     <img src={textIcon} alt="Text" className="w-5 h-5" />
                   </button>
                   <button onClick={() => {
@@ -2838,7 +2925,7 @@ export default function ImageEditor({ isOpen, onClose, imageUrl, imageName = 'im
                       }
                     }
                     setMode('circle');
-                  }} className={`px-2 py-2 rounded flex items-center justify-center hover:bg-gray-200 transition-colors ${mode === 'circle' ? 'bg-brand-red text-white' : 'bg-gray-100'}`} title="Circle">
+                  }} className={mode === 'circle' ? toolBtnActive : toolBtnIdle} title="Circle">
                     <img src={circleIcon} alt="Circle" className="w-5 h-5" />
                   </button>
                   <button onClick={() => {
@@ -2846,7 +2933,7 @@ export default function ImageEditor({ isOpen, onClose, imageUrl, imageName = 'im
                       exitTextEditing();
                     }
                     setMode('draw');
-                  }} className={`px-2 py-2 rounded flex items-center justify-center hover:bg-gray-200 transition-colors ${mode === 'draw' ? 'bg-brand-red text-white' : 'bg-gray-100'}`} title="Draw">
+                  }} className={mode === 'draw' ? toolBtnActive : toolBtnIdle} title="Draw">
                     <img src={pencilIcon} alt="Draw" className="w-5 h-5" />
                   </button>
                   <button onClick={() => {
@@ -2854,36 +2941,36 @@ export default function ImageEditor({ isOpen, onClose, imageUrl, imageName = 'im
                       exitTextEditing();
                     }
                     setMode('delete');
-                  }} className={`px-2 py-2 rounded flex items-center justify-center hover:bg-gray-200 transition-colors ${mode === 'delete' ? 'bg-brand-red text-white' : 'bg-gray-100'}`} title="Delete">
+                  }} className={mode === 'delete' ? toolBtnActive : toolBtnIdle} title="Delete">
                     <img src={deleteIcon} alt="Delete" className="w-5 h-5" />
                   </button>
                 </div>
               </div>
               
-              <div className="pt-2.5 border-t">
-                <label className="flex items-center gap-1.5 mb-1.5">
-                  <span className="text-xs font-medium text-gray-700">Text Background:</span>
+              <div className="border-t border-slate-200/80 pt-3">
+                <label className="mb-2 flex cursor-pointer items-center gap-2">
+                  <span className="text-[11px] font-semibold text-slate-700">Text background</span>
                   <input
                     type="checkbox"
                     checked={textBackgroundEnabled}
-                    onChange={e => setTextBackgroundEnabled(e.target.checked)}
-                    className="w-2.5 h-2.5"
+                    onChange={(e) => setTextBackgroundEnabled(e.target.checked)}
+                    className="h-3.5 w-3.5 rounded border-slate-300 text-brand-red focus:ring-brand-red/35"
                   />
-                  <span className="text-xs text-gray-600">Enable</span>
+                  <span className="text-[11px] text-slate-600">Enable</span>
                 </label>
                 {textBackgroundEnabled && (
-                  <div className="flex gap-1.5 items-start">
-                    <div style={{ width: '20%' }}>
-                      <label className="block text-xs text-gray-600 mb-1">Color</label>
-                      <input
-                        type="color"
+                  <div className="flex items-start gap-2">
+                    <div className="flex shrink-0 flex-col gap-1">
+                      <label className="block text-[11px] font-medium text-slate-600">Color</label>
+                      <DocumentEditorFontColorPicker
                         value={textBackgroundColor}
-                        onChange={e => setTextBackgroundColor(e.target.value)}
-                        className="w-full h-6 rounded"
+                        onChange={(c) => setTextBackgroundColor(c ?? '#ffffff')}
+                        buttonTitle="Text background color"
+                        panelAriaLabel="Text background colors"
                       />
                     </div>
-                    <div style={{ width: '80%' }}>
-                      <label className="block text-xs text-gray-600 mb-1">Opacity</label>
+                    <div className="min-w-0 flex-1">
+                      <label className="mb-1 block text-[11px] font-medium text-slate-600">Opacity</label>
                       <div className="custom-slider-container mb-1">
                         <input
                           type="range"
@@ -2904,22 +2991,21 @@ export default function ImageEditor({ isOpen, onClose, imageUrl, imageName = 'im
                 )}
               </div>
               
-              <div className="pt-2.5 border-t">
-                <label className="block text-xs font-medium mb-2 text-gray-700">Text/Line Configs</label>
-                <div className="custom-slider-container mb-1">
-                  <span className="text-xs font-medium text-gray-700 flex-shrink-0" style={{ width: '50px' }}>Color:</span>
-                  <input 
-                    type="color" 
-                    value={color} 
-                    onChange={e => setColor(e.target.value)} 
-                    className="h-6 rounded" 
-                    style={{ width: '60px' }}
+              <div className="border-t border-slate-200/80 pt-3">
+                <span className={`${editorGroupLabelClass} mb-2 block`}>Text & line</span>
+                <div className="mb-1 flex min-w-0 items-center gap-2">
+                  <span className="w-12 shrink-0 text-xs font-medium text-slate-700">Color</span>
+                  <DocumentEditorFontColorPicker
+                    value={color}
+                    onChange={(c) => setColor(c ?? '#000000')}
+                    buttonTitle="Text & line color"
+                    panelAriaLabel="Text and line colors"
                   />
                 </div>
               </div>
               <div>
                 <div className="custom-slider-container mb-1">
-                  <span className="text-xs font-medium text-gray-700 flex-shrink-0" style={{ width: '50px' }}>Stroke:</span>
+                  <span className="w-12 shrink-0 text-xs font-medium text-slate-700">Stroke</span>
                   <input
                     type="range"
                     min="1"
@@ -2936,7 +3022,7 @@ export default function ImageEditor({ isOpen, onClose, imageUrl, imageName = 'im
               </div>
               <div>
                 <div className="custom-slider-container mb-1">
-                  <span className="text-xs font-medium text-gray-700 flex-shrink-0" style={{ width: '50px' }}>Font:</span>
+                  <span className="w-12 shrink-0 text-xs font-medium text-slate-700">Font</span>
                   <input
                     type="range"
                     min="8"
@@ -2952,20 +3038,29 @@ export default function ImageEditor({ isOpen, onClose, imageUrl, imageName = 'im
                 </div>
               </div>
               
-              <div className="pt-2.5 border-t">
-                <div className="flex gap-1.5">
-                  <button onClick={handleReset} className="flex-1 px-1.5 py-1.5 rounded text-xs bg-gray-100 hover:bg-gray-200 transition-colors">
+              <div className="border-t border-slate-200/80 pt-3">
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={handleReset}
+                    className={`${selectionToolButtonGhostClass} h-9 flex-1 justify-center text-xs font-semibold`}
+                  >
                     Reset
                   </button>
-                  <button onClick={handleSave} disabled={isSaving} className="flex-1 px-1.5 py-1.5 rounded text-xs bg-brand-red text-white flex items-center justify-center disabled:opacity-50 hover:bg-red-700 transition-colors">
-                    {isSaving ? 'Saving...' : 'Save'}
+                  <button
+                    type="button"
+                    onClick={handleSave}
+                    disabled={isSaving}
+                    className={`${editorTransitionInteractive} flex h-9 flex-1 items-center justify-center rounded-md bg-brand-red px-3 text-xs font-semibold text-white shadow-sm hover:bg-red-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-red/45 disabled:opacity-50`}
+                  >
+                    {isSaving ? 'Saving…' : 'Save'}
                   </button>
                 </div>
               </div>
+            </aside>
             </div>
           </div>
         </div>
-      </div>
       </div>
       </OverlayPortal>
     </>

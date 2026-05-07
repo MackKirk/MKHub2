@@ -1,7 +1,14 @@
 import { withFileAccessToken } from '@/lib/api';
-import { useRef, useState, useCallback, useEffect, Fragment } from 'react';
+import { useRef, useState, useCallback, useEffect, Fragment, type RefObject } from 'react';
 import type { DocElement } from '@/types/documentCreator';
 import { ElementOptionsPopover } from '@/components/ElementOptionsPopover';
+import { editorCanvasScrollAreaClass } from '@/components/document-editor/documentEditorRibbonPrimitives';
+import {
+  BLOCK_PROTECTED_BG,
+  MARGIN_PROTECTED_BG,
+  blockProtectedBorderClass,
+  marginBandRingClass,
+} from '@/components/document-editor/documentProtectedVisuals';
 
 export type TemplateMargins = {
   left_pct?: number;
@@ -37,13 +44,21 @@ type DocumentPreviewProps = {
   onReplaceImage?: (elementId: string, file: File) => Promise<void>;
   /** When provided, "Add image" / "Replace image" in popover opens image picker instead of file input. */
   onReplaceImageClick?: (elementId: string) => void;
+  /** Stack inside parent vertical scroll — no chrome row, no inner scroll (multi-page editor). */
+  embedded?: boolean;
+  /** Parent scroll container for space+drag pan when `embedded`. */
+  embedScrollParentRef?: RefObject<HTMLElement | null>;
+  /** Called when user interacts with this page (sync active page in stacked layout). */
+  onPageInteraction?: () => void;
 };
 
 const A4_ASPECT = 210 / 297;
 const MIN_SIZE_PCT = 2;
+
 // Reference width used to keep font sizing stable across window sizes.
 // Font sizes are stored in "reference px" and scaled by (canvasWidth / REFERENCE_CANVAS_WIDTH_PX).
 const REFERENCE_CANVAS_WIDTH_PX = 910;
+const DOCUMENT_PREVIEW_IMAGE_WIDTH_PX = 1600;
 
 type ResizeHandle = 'n' | 's' | 'e' | 'w' | 'nw' | 'ne' | 'sw' | 'se';
 
@@ -376,6 +391,9 @@ export default function DocumentPreview({
   onRemoveElement,
   onReplaceImage,
   onReplaceImageClick,
+  embedded = false,
+  embedScrollParentRef,
+  onPageInteraction,
 }: DocumentPreviewProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLDivElement>(null);
@@ -394,6 +412,7 @@ export default function DocumentPreview({
     startX: number;
     startY: number;
     hasMoved: boolean;
+    historyPushed: boolean;
   } | null>(null);
   const resizeRef = useRef<{
     elementId: string;
@@ -456,13 +475,13 @@ export default function DocumentPreview({
   const handlePointerDown = useCallback(
     (e: React.PointerEvent, el: DocElement) => {
       e.stopPropagation();
+      onPageInteraction?.();
       if (e.button !== 0) return;
-      if (el.locked) return;
       if (el.type === 'block' && lockBlockElements) return;
       const target = e.target as HTMLElement;
       if (target.closest('textarea') || target.closest('input')) return;
-      // When element has lockPosition, we don't move it but still capture so we can select on click (movingIds = [])
-      const movingIds = el.lockPosition
+      // Locked / position-locked: no drag, but capture pointer so click still selects (unlock, ribbon, etc.).
+      const movingIds = el.locked || el.lockPosition
         ? []
         : selectedElementIds.includes(el.id)
           ? selectedElementIds.filter((id) => {
@@ -481,15 +500,17 @@ export default function DocumentPreview({
         startX: e.clientX,
         startY: e.clientY,
         hasMoved: false,
+        historyPushed: false,
       };
       (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
     },
-    [selectedElementIds, elements]
+    [lockBlockElements, selectedElementIds, elements, onPageInteraction]
   );
 
   const handleResizePointerDown = useCallback(
     (e: React.PointerEvent, el: DocElement, handle: ResizeHandle) => {
       e.stopPropagation();
+      onPageInteraction?.();
       if (e.button !== 0) return;
       if (el.locked) return;
       if (el.lockPosition) return;
@@ -507,13 +528,14 @@ export default function DocumentPreview({
       };
       (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
     },
-    [lockBlockElements],
+    [lockBlockElements, onPageInteraction],
   );
 
   const handlePointerMove = useCallback(
     (e: React.PointerEvent) => {
       const drag = dragRef.current;
       if (!drag || !canvasRef.current || !onUpdateElement) return;
+      if (drag.movingIds.length === 0) return;
       const rect = canvasRef.current.getBoundingClientRect();
       let dx = ((e.clientX - drag.startX) / rect.width) * 100;
       let dy = ((e.clientY - drag.startY) / rect.height) * 100;
@@ -527,7 +549,15 @@ export default function DocumentPreview({
       // Show guide lines when close to alignment, but do not snap (use raw dx, dy)
       const hasGuides = snapped.guides.v.length > 0 || snapped.guides.h.length > 0;
       setDragGuideLines(hasGuides ? snapped.guides : null);
-      if (Math.abs(dx) > 0.5 || Math.abs(dy) > 0.5) drag.hasMoved = true;
+      const movedEnough = Math.abs(dx) > 0.5 || Math.abs(dy) > 0.5;
+      if (!drag.historyPushed && !movedEnough) return;
+      if (movedEnough) {
+        if (!drag.historyPushed) {
+          onBeginUserAction?.();
+          drag.historyPushed = true;
+        }
+        drag.hasMoved = true;
+      }
       const blocks = elements.filter((x) => x.type === 'block');
       drag.movingIds.forEach((elementId) => {
         const el = elements.find((x) => x.id === elementId);
@@ -544,7 +574,7 @@ export default function DocumentPreview({
         onUpdateElement(elementId, (prev) => ({ ...prev, x_pct: newX_pct, y_pct: newY_pct }));
       });
     },
-    [onUpdateElement, margins, elements]
+    [onUpdateElement, onBeginUserAction, margins, elements]
   );
 
   const handlePointerUp = useCallback(
@@ -553,7 +583,7 @@ export default function DocumentPreview({
       const drag = dragRef.current;
       dragRef.current = null;
       setDragGuideLines(null);
-      // Select on click: either we were dragging this element and didn't move, or we clicked with lockPosition (movingIds empty)
+      // Select on click: drag of this id, or locked / position-locked (movingIds empty — no drag)
       if (drag && !drag.hasMoved && (drag.movingIds.includes(el.id) || drag.movingIds.length === 0)) {
         onElementClick?.(el.id, e);
       }
@@ -571,6 +601,7 @@ export default function DocumentPreview({
     const onDocMove = (e: PointerEvent) => {
       const drag = dragRef.current;
       if (drag && canvasRef.current) {
+        if (drag.movingIds.length === 0) return;
         const rect = canvasRef.current.getBoundingClientRect();
         let dx = ((e.clientX - drag.startX) / rect.width) * 100;
         let dy = ((e.clientY - drag.startY) / rect.height) * 100;
@@ -583,8 +614,13 @@ export default function DocumentPreview({
         const snapped = computeSnap(bbox, refV, refH, dx, dy);
         const hasGuides = snapped.guides.v.length > 0 || snapped.guides.h.length > 0;
         setDragGuideLines(hasGuides ? snapped.guides : null);
-        if (Math.abs(dx) > 0.5 || Math.abs(dy) > 0.5) {
-          if (!drag.hasMoved) onBeginUserAction?.();
+        const movedEnough = Math.abs(dx) > 0.5 || Math.abs(dy) > 0.5;
+        if (!drag.historyPushed && !movedEnough) return;
+        if (movedEnough) {
+          if (!drag.historyPushed) {
+            onBeginUserAction?.();
+            drag.historyPushed = true;
+          }
           drag.hasMoved = true;
         }
         const blocks = elements.filter((x) => x.type === 'block');
@@ -636,7 +672,7 @@ export default function DocumentPreview({
       document.removeEventListener('pointerup', onDocUp);
       document.removeEventListener('pointercancel', onDocUp);
     };
-  }, [onUpdateElement, margins, elements]);
+  }, [onUpdateElement, onBeginUserAction, margins, elements]);
 
   const handleDoubleClick = useCallback((e: React.MouseEvent, el: DocElement) => {
     e.stopPropagation();
@@ -650,11 +686,27 @@ export default function DocumentPreview({
 
   const selectedElement = selectedElementIds.length === 1 ? elements.find((e) => e.id === selectedElementIds[0]) : null;
 
+  const getPanScrollEl = useCallback((): HTMLElement | null => {
+    if (embedded && embedScrollParentRef?.current) return embedScrollParentRef.current;
+    return scrollRef.current;
+  }, [embedded, embedScrollParentRef]);
+
+  const scrollAreaClassName = embedded
+    ? `flex w-full flex-shrink-0 items-start justify-center px-4 py-8 sm:px-6 ${editorCanvasScrollAreaClass} ${spaceDown ? 'cursor-grab' : ''}`
+    : `flex min-h-0 flex-1 items-start justify-center overflow-auto ${editorCanvasScrollAreaClass} px-8 py-12 sm:px-16 sm:py-16 ${spaceDown ? 'cursor-grab' : ''}`;
+
+  const outerChromeClass = embedded
+    ? 'flex w-full min-w-0 flex-shrink-0 flex-col'
+    : 'relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden rounded-2xl border border-slate-200/90 bg-white shadow-sm ring-1 ring-slate-900/[0.04]';
+
   return (
-    <div className="flex-1 flex flex-col min-w-0 rounded-xl border bg-white overflow-hidden relative">
-      <div className="p-3 border-b border-gray-200 text-gray-600 text-sm font-medium">
-        Preview
-      </div>
+    <div className={outerChromeClass}>
+      {!embedded && (
+        <div className="flex items-center justify-between border-b border-slate-200/85 bg-slate-50/95 px-4 py-1.5">
+          <span className="text-[10px] font-semibold uppercase tracking-wider text-slate-500">Canvas</span>
+          <span className="text-[10px] font-medium text-slate-500">A4 preview</span>
+        </div>
+      )}
       {showElementOptionsPopover &&
         selectedElement &&
         onUpdateElement &&
@@ -674,11 +726,19 @@ export default function DocumentPreview({
         />
       )}
       <div
-        ref={scrollRef}
-        className={`flex-1 min-h-0 flex items-start justify-center p-4 overflow-auto ${spaceDown ? 'cursor-grab' : ''}`}
+        ref={embedded ? undefined : scrollRef}
+        className={scrollAreaClassName}
+        onClick={(e) => {
+          if (e.target === e.currentTarget) {
+            if (embedded) onPageInteraction?.();
+            setEditingElementId(null);
+            onCanvasClick?.();
+          }
+        }}
         onPointerDown={(e) => {
+          if (embedded) onPageInteraction?.();
           if (!spaceDown || e.button !== 0) return;
-          const sc = scrollRef.current;
+          const sc = getPanScrollEl();
           if (!sc) return;
           panRef.current = {
             active: true,
@@ -690,7 +750,7 @@ export default function DocumentPreview({
           (e.currentTarget as HTMLElement).setPointerCapture?.(e.pointerId);
         }}
         onPointerMove={(e) => {
-          const sc = scrollRef.current;
+          const sc = getPanScrollEl();
           if (!sc || !panRef.current.active) return;
           sc.scrollLeft = panRef.current.startLeft - (e.clientX - panRef.current.startX);
           sc.scrollTop = panRef.current.startTop - (e.clientY - panRef.current.startY);
@@ -706,7 +766,7 @@ export default function DocumentPreview({
       >
         <div
           ref={canvasRef}
-          className="bg-white shadow-lg rounded-sm overflow-visible relative select-none flex-shrink-0"
+          className="relative flex-shrink-0 select-none overflow-visible rounded-xl bg-white shadow-[0_12px_40px_-12px_rgba(15,23,42,0.12),0_4px_16px_-4px_rgba(15,23,42,0.08),inset_0_1px_0_rgba(255,255,255,1)] ring-1 ring-slate-900/[0.06]"
           style={{
             aspectRatio: `${A4_ASPECT}`,
             width: `${Math.max(0.25, zoom) * 100}%`,
@@ -715,6 +775,7 @@ export default function DocumentPreview({
           }}
           onClick={(e) => {
             if (e.target === e.currentTarget) {
+              if (embedded) onPageInteraction?.();
               setEditingElementId(null);
               onCanvasClick?.();
             }
@@ -724,36 +785,49 @@ export default function DocumentPreview({
             <img
               src={backgroundUrl}
               alt=""
-              className="absolute inset-0 w-full h-full object-cover pointer-events-none rounded-sm"
+              className="pointer-events-none absolute inset-0 h-full w-full rounded-xl object-cover"
             />
           )}
           {!backgroundUrl && (
-            <div className="absolute inset-0 bg-gray-100 pointer-events-none rounded-sm" />
+            <div className="pointer-events-none absolute inset-0 rounded-xl bg-gradient-to-br from-white to-slate-100" />
           )}
           {margins && (
             <>
+              {/* Off-limits margin bands: soft diagonal hatch */}
               {(margins.left_pct ?? 0) > 0 && (
                 <div
-                  className="absolute inset-y-0 left-0 bg-gray-900/10 pointer-events-none rounded-l-sm"
-                  style={{ width: `${margins.left_pct}%` }}
+                  className={`pointer-events-none absolute inset-y-0 left-0 rounded-l-xl ${marginBandRingClass}`}
+                  style={{
+                    width: `${margins.left_pct}%`,
+                    background: MARGIN_PROTECTED_BG,
+                  }}
                 />
               )}
               {(margins.right_pct ?? 0) > 0 && (
                 <div
-                  className="absolute inset-y-0 right-0 bg-gray-900/10 pointer-events-none rounded-r-sm"
-                  style={{ width: `${margins.right_pct}%` }}
+                  className={`pointer-events-none absolute inset-y-0 right-0 rounded-r-xl ${marginBandRingClass}`}
+                  style={{
+                    width: `${margins.right_pct}%`,
+                    background: MARGIN_PROTECTED_BG,
+                  }}
                 />
               )}
               {(margins.top_pct ?? 0) > 0 && (
                 <div
-                  className="absolute inset-x-0 top-0 bg-gray-900/10 pointer-events-none rounded-t-sm"
-                  style={{ height: `${margins.top_pct}%` }}
+                  className={`pointer-events-none absolute inset-x-0 top-0 rounded-t-xl ${marginBandRingClass}`}
+                  style={{
+                    height: `${margins.top_pct}%`,
+                    background: MARGIN_PROTECTED_BG,
+                  }}
                 />
               )}
               {(margins.bottom_pct ?? 0) > 0 && (
                 <div
-                  className="absolute inset-x-0 bottom-0 bg-gray-900/10 pointer-events-none rounded-b-sm"
-                  style={{ height: `${margins.bottom_pct}%` }}
+                  className={`pointer-events-none absolute inset-x-0 bottom-0 rounded-b-xl ${marginBandRingClass}`}
+                  style={{
+                    height: `${margins.bottom_pct}%`,
+                    background: MARGIN_PROTECTED_BG,
+                  }}
                 />
               )}
             </>
@@ -785,9 +859,13 @@ export default function DocumentPreview({
                 }}
                 onClick={(e) => e.stopPropagation()}
                 onDoubleClick={(e) => handleDoubleClick(e, el)}
-                className={`absolute border transition-colors rounded ${
-                  isEditing ? 'cursor-text overflow-hidden' : isLocked ? 'cursor-default overflow-hidden' : isPositionLocked ? 'cursor-default overflow-hidden' : isBlock && lockBlockElements ? 'cursor-default overflow-hidden' : 'cursor-move'
-                } ${isSelected ? 'ring-2 ring-brand-red border-brand-red overflow-visible' : 'overflow-hidden border-transparent hover:border-gray-300'}`}
+                className={`absolute rounded-md border transition-[border-color,box-shadow] duration-200 ease-out ${
+                  isEditing ? 'cursor-text overflow-hidden' : isLocked ? 'cursor-pointer overflow-hidden' : isPositionLocked ? 'cursor-default overflow-hidden' : isBlock && lockBlockElements ? 'cursor-default overflow-hidden' : 'cursor-move'
+                } ${
+                  isSelected
+                    ? 'z-[1] overflow-visible border-brand-red/55 shadow-[0_0_0_2px_rgba(220,38,38,0.32)] ring-2 ring-brand-red/50'
+                    : 'overflow-hidden border-transparent hover:border-slate-300/70'
+                }`}
                 style={{
                   left: `${x * 100}%`,
                   top: `${y * 100}%`,
@@ -814,7 +892,7 @@ export default function DocumentPreview({
                         {isEditing ? (
                           <textarea
                             autoFocus
-                            className="block w-full flex-1 min-h-0 resize-none overflow-hidden whitespace-pre-wrap break-words p-1 border-0 rounded bg-white/95 focus:outline-none focus:ring-1 focus:ring-brand-red select-text"
+                            className="block w-full flex-1 min-h-0 resize-none overflow-hidden whitespace-pre-wrap break-words p-1 border-0 rounded bg-white/95 focus:outline-none focus:ring-2 focus:ring-brand-red/90 select-text"
                             style={textStyle}
                             value={el.content}
                             onChange={(e) => {
@@ -850,21 +928,21 @@ export default function DocumentPreview({
                   })()
                 ) : el.type === 'block' ? (
                   <div
-                    className="w-full h-full rounded bg-amber-500/25 border-2 border-amber-600/50 border-dashed pointer-events-none flex items-center justify-center"
-                    style={{
-                      backgroundImage: 'repeating-linear-gradient(-45deg, transparent, transparent 6px, rgba(245,158,11,0.15) 6px, rgba(245,158,11,0.15) 12px)',
-                    }}
+                    className={`pointer-events-none flex h-full w-full items-center justify-center rounded-md ${blockProtectedBorderClass}`}
+                    style={{ background: BLOCK_PROTECTED_BG }}
                   >
-                    <span className="text-xs font-medium text-amber-800/80">Blocked area</span>
+                    <span className="text-[10px] font-medium uppercase tracking-wide text-amber-900/75 drop-shadow-[0_0_8px_rgba(255,255,255,0.95)]">
+                      Blocked Area
+                    </span>
                   </div>
                 ) : isImagePlaceholder ? (
-                  <div className="w-full h-full rounded border-2 border-dashed border-gray-400 bg-gray-50/80 flex items-center justify-center pointer-events-none">
-                    <span className="text-xs text-gray-500">Image area</span>
+                  <div className="pointer-events-none flex h-full w-full items-center justify-center rounded-md border border-dashed border-slate-300 bg-slate-50/90">
+                    <span className="text-[11px] font-medium text-slate-500">Image area</span>
                   </div>
                 ) : (
                   el.content && (
                     <img
-                      src={withFileAccessToken(`/files/${el.content}/thumbnail?w=400`)}
+                      src={withFileAccessToken(`/files/${el.content}/thumbnail?w=${DOCUMENT_PREVIEW_IMAGE_WIDTH_PX}`)}
                       alt=""
                       className="w-full h-full pointer-events-none"
                       style={{
@@ -879,7 +957,7 @@ export default function DocumentPreview({
                     <div
                       key={dir}
                       role="presentation"
-                      className={`absolute w-3 h-3 rounded-full bg-white border-2 border-brand-red shadow ${position}`}
+                      className={`absolute h-2.5 w-2.5 rounded-full border border-white bg-white shadow-sm ring-[2px] ring-brand-red/75 transition-transform duration-200 ease-out hover:scale-110 hover:ring-brand-red ${position}`}
                       style={{ cursor }}
                       onPointerDown={(e) => handleResizePointerDown(e, el, dir)}
                       onPointerUp={handleResizePointerUp}
@@ -888,7 +966,7 @@ export default function DocumentPreview({
               </div>
               {isSelected && isPositionLocked && !isBlock && onUpdateElement && (
                 <div
-                  className="absolute flex items-center justify-between gap-2 px-2 py-1.5 rounded bg-sky-50 border border-sky-200 shadow-sm pointer-events-auto z-10"
+                  className="pointer-events-auto absolute z-10 flex items-center justify-between gap-2 rounded-lg border border-sky-200/90 bg-white px-2.5 py-1.5 shadow-md ring-1 ring-sky-900/[0.06]"
                   style={{
                     left: `${x * 100}%`,
                     top: `${(y + h) * 100 + 0.3}%`,
@@ -896,8 +974,8 @@ export default function DocumentPreview({
                   }}
                   onClick={(e) => e.stopPropagation()}
                 >
-                  <span className="text-xs text-sky-800 flex-1 min-w-0 truncate">
-                    This element has movement blocked.
+                  <span className="min-w-0 flex-1 truncate text-[11px] font-medium text-slate-700">
+                    Movement is blocked for this element.
                   </span>
                   <button
                     type="button"
@@ -905,7 +983,7 @@ export default function DocumentPreview({
                       e.stopPropagation();
                       onUpdateElement(el.id, (prev) => ({ ...prev, lockPosition: false }));
                     }}
-                    className="flex-shrink-0 px-2 py-1 rounded text-xs font-medium bg-sky-600 text-white hover:bg-sky-700 border-0"
+                    className="flex-shrink-0 rounded-lg border border-sky-500/25 bg-sky-600 px-2.5 py-1 text-[11px] font-semibold text-white shadow-sm transition-[background-color,transform] duration-200 ease-out hover:bg-sky-700 active:scale-[0.98]"
                   >
                     Unblock
                   </button>
@@ -916,18 +994,18 @@ export default function DocumentPreview({
           })}
           {/* Snap guide lines (alignment references while dragging) */}
           {dragGuideLines && (
-            <div className="absolute inset-0 pointer-events-none rounded-sm" aria-hidden>
+            <div className="pointer-events-none absolute inset-0 rounded-xl" aria-hidden>
               {dragGuideLines.v.map((pct) => (
                 <div
                   key={`v-${pct}`}
-                  className="absolute top-0 bottom-0 w-0.5 -translate-x-1/2 bg-brand-red/80"
+                  className="absolute bottom-0 top-0 w-px -translate-x-1/2 bg-brand-red/35"
                   style={{ left: `${pct}%` }}
                 />
               ))}
               {dragGuideLines.h.map((pct) => (
                 <div
                   key={`h-${pct}`}
-                  className="absolute left-0 right-0 h-0.5 -translate-y-1/2 bg-brand-red/80"
+                  className="absolute left-0 right-0 h-px -translate-y-1/2 bg-brand-red/35"
                   style={{ top: `${pct}%` }}
                 />
               ))}
