@@ -3,11 +3,16 @@ import { useEffect, useRef, useState } from 'react';
 import type { DocumentPage, DocElement, PageMargins } from '@/types/documentCreator';
 import {
   editorSidePanelBodyClass,
+  editorSidePanelCollapsedRailButtonClass,
+  editorSidePanelCollapsedRailCaptionClass,
+  editorSidePanelCollapsedRailLeftClass,
+  editorSidePanelCollapseToggleClass,
   editorSidePanelHeaderClass,
   editorSidePanelHeadingMetaClass,
   editorSidePanelHeadingTitleClass,
   editorSidePanelRootLeftClass,
 } from '@/components/document-editor/documentEditorRibbonPrimitives';
+import { ChevronLeftIcon, ChevronRightIcon, MiniPagesStackGlyph } from '@/components/document-editor/documentEditorIcons';
 import {
   BLOCK_PROTECTED_BG,
   MARGIN_PROTECTED_BG,
@@ -34,6 +39,10 @@ type DocumentPagesStripProps = {
   onDeletePage?: (index: number) => void;
   /** When set, show duplicate button on each page. */
   onDuplicatePage?: (index: number) => void;
+  /** When true, only a narrow rail with an expand control is shown. */
+  collapsed?: boolean;
+  /** Toggle between collapsed rail and full Pages strip (requires `collapsed`). */
+  onToggleCollapsed?: () => void;
 };
 
 const defaultMargins: PageMargins = { left_pct: 0, right_pct: 0, top_pct: 0, bottom_pct: 0 };
@@ -219,6 +228,8 @@ export default function DocumentPagesStrip({
   onReorderPages,
   onDeletePage,
   onDuplicatePage,
+  collapsed,
+  onToggleCollapsed,
 }: DocumentPagesStripProps) {
   const canDelete = typeof onDeletePage === 'function' && pages.length > 1;
   const canDuplicate = typeof onDuplicatePage === 'function';
@@ -263,11 +274,46 @@ export default function DocumentPagesStrip({
 
   const pagesMeta = canReorder ? 'Drag to reorder' : 'Tap to select';
 
+  if (collapsed && onToggleCollapsed) {
+    return (
+      <div className={editorSidePanelCollapsedRailLeftClass}>
+        <button
+          type="button"
+          onClick={onToggleCollapsed}
+          className={editorSidePanelCollapsedRailButtonClass}
+          title="Expand Pages"
+          aria-expanded={false}
+          aria-label="Expand Pages panel"
+        >
+          <ChevronRightIcon className="h-4 w-4 shrink-0 opacity-90" />
+          <MiniPagesStackGlyph className="h-9 w-6 shrink-0 text-slate-400" />
+          <span aria-hidden className={`${editorSidePanelCollapsedRailCaptionClass} mt-0.5`}>Pages</span>
+        </button>
+      </div>
+    );
+  }
+
   return (
     <div className={editorSidePanelRootLeftClass}>
-      <div className={editorSidePanelHeaderClass}>
-        <div className={editorSidePanelHeadingTitleClass}>Pages</div>
-        <p className={editorSidePanelHeadingMetaClass}>{pagesMeta}</p>
+      <div className={`${editorSidePanelHeaderClass} flex flex-col gap-0`}>
+        <div className="flex items-start gap-1">
+          {onToggleCollapsed ? (
+            <button
+              type="button"
+              onClick={onToggleCollapsed}
+              className={`${editorSidePanelCollapseToggleClass} shrink-0`}
+              title="Collapse Pages"
+              aria-expanded={true}
+              aria-label="Collapse Pages panel"
+            >
+              <ChevronLeftIcon className="h-4 w-4" />
+            </button>
+          ) : null}
+          <div className="min-w-0 flex-1 text-right">
+            <div className={`${editorSidePanelHeadingTitleClass} !text-right`}>Pages</div>
+            <p className={`${editorSidePanelHeadingMetaClass} !text-right`}>{pagesMeta}</p>
+          </div>
+        </div>
       </div>
       <div className={`${editorSidePanelBodyClass} flex flex-col gap-2`}>
       {pages.map((page, i) => {

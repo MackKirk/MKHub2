@@ -29,6 +29,8 @@ type TemplateRow = {
   version_label: string;
   created_at?: string | null;
   updated_at?: string | null;
+  created_by_name?: string | null;
+  updated_by_name?: string | null;
 };
 
 function TrashIcon({ className }: { className?: string }) {
@@ -159,6 +161,13 @@ export default function FormTemplatesPage({ variant = 'safety', embedded = false
     }
   };
 
+  const fmtDateBy = (iso: string | null | undefined, byName: string | null | undefined) => {
+    const d = fmtDate(iso);
+    if (d === '—') return '—';
+    const who = (byName || '').trim() || 'Unknown';
+    return `${d} by ${who}`;
+  };
+
   const todayLabel = useMemo(
     () =>
       new Date().toLocaleDateString('en-CA', {
@@ -216,9 +225,11 @@ export default function FormTemplatesPage({ variant = 'safety', embedded = false
       <td className="py-3 px-4 align-middle text-xs text-gray-600 truncate max-w-[140px]" title={r.version_label || ''}>
         {(r.version_label || '').trim() || '—'}
       </td>
-      <td className="py-3 px-4 align-middle text-xs text-gray-600 whitespace-nowrap">{fmtDate(r.created_at)}</td>
+      <td className="py-3 px-4 align-middle text-xs text-gray-600 whitespace-nowrap">
+        {fmtDateBy(r.created_at, r.created_by_name)}
+      </td>
       <td className="py-3 px-4 align-middle text-xs text-gray-600 whitespace-nowrap hidden md:table-cell">
-        {fmtDate(r.updated_at)}
+        {fmtDateBy(r.updated_at, r.updated_by_name)}
       </td>
       <td className="py-3 px-4 align-middle">
         {r.status === 'active' ? (
@@ -462,8 +473,8 @@ export default function FormTemplatesPage({ variant = 'safety', embedded = false
                       <div className="min-w-0 text-xs text-gray-600 truncate" title={r.version_label || ''}>
                         {(r.version_label || '').trim() || '—'}
                       </div>
-                      <div className="text-xs text-gray-600 whitespace-nowrap">{fmtDate(r.created_at)}</div>
-                      <div className="text-xs text-gray-600 whitespace-nowrap">{fmtDate(r.updated_at)}</div>
+                      <div className="text-xs text-gray-600 whitespace-nowrap">{fmtDateBy(r.created_at, r.created_by_name)}</div>
+                      <div className="text-xs text-gray-600 whitespace-nowrap">{fmtDateBy(r.updated_at, r.updated_by_name)}</div>
                       <div className="flex justify-center">
                         <span
                           className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${

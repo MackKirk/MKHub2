@@ -1483,7 +1483,7 @@ export default function DynamicSafetyForm({
         const visibleFields = section.fields.filter((f) => isFieldVisible(f, formPayload));
         return (
           <div key={section.id} className="rounded-xl border border-gray-200 bg-white overflow-visible">
-            <div className="px-4 py-3 border-b border-gray-200 bg-gray-200">
+            <div className="px-4 py-3 border-b border-gray-200 bg-gray-200 rounded-t-xl">
               <h3 className="text-sm font-semibold text-gray-700">{section.title}</h3>
             </div>
             <div className="divide-y divide-gray-100">
@@ -1497,7 +1497,7 @@ export default function DynamicSafetyForm({
           data-safety-field-key="_additionalComments"
           className="rounded-xl border border-gray-200 bg-white overflow-visible"
         >
-          <div className="px-4 py-3 border-b border-gray-200 bg-gray-200">
+          <div className="px-4 py-3 border-b border-gray-200 bg-gray-200 rounded-t-xl">
             <h3 className="text-sm font-semibold text-gray-700">Additional Comments / Photos</h3>
           </div>
           <div className="p-4">
