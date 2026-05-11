@@ -98,6 +98,7 @@ export default function DocumentSelectionRibbon({
           <>
             <button
               type="button"
+              onMouseDown={(e) => e.preventDefault()}
               onClick={() => selectedEls.forEach((el) => onUpdate(el.id, (e) => ({ ...e, locked: true })))}
               disabled={allLocked}
               className={
@@ -112,6 +113,7 @@ export default function DocumentSelectionRibbon({
             </button>
             <button
               type="button"
+              onMouseDown={(e) => e.preventDefault()}
               onClick={() => selectedEls.forEach((el) => onUpdate(el.id, (e) => ({ ...e, locked: false })))}
               disabled={!anyLocked}
               className={
@@ -126,6 +128,7 @@ export default function DocumentSelectionRibbon({
             </button>
             <button
               type="button"
+              onMouseDown={(e) => e.preventDefault()}
               onClick={() => selectedEls.forEach((el) => onUpdate(el.id, (e) => ({ ...e, lockPosition: true })))}
               disabled={allPositionLocked}
               className={
@@ -140,6 +143,7 @@ export default function DocumentSelectionRibbon({
             </button>
             <button
               type="button"
+              onMouseDown={(e) => e.preventDefault()}
               onClick={() => selectedEls.forEach((el) => onUpdate(el.id, (e) => ({ ...e, lockPosition: false })))}
               disabled={!anyPositionLocked}
               className={
@@ -159,6 +163,7 @@ export default function DocumentSelectionRibbon({
           <>
             <button
               type="button"
+              onMouseDown={(e) => e.preventDefault()}
               onClick={() => element && onUpdate(id, (el) => ({ ...el, locked: !el.locked }))}
               disabled={!element}
               title={isLocked ? 'Unlock (allow move, resize, edit)' : 'Lock (block move, resize, edit)'}
@@ -175,6 +180,7 @@ export default function DocumentSelectionRibbon({
             </button>
             <button
               type="button"
+              onMouseDown={(e) => e.preventDefault()}
               onClick={() => element && onUpdate(id, (el) => ({ ...el, lockPosition: !el.lockPosition }))}
               disabled={!element}
               className={`${selectionToolButtonBaseClass} flex items-center gap-1 ${
@@ -195,22 +201,22 @@ export default function DocumentSelectionRibbon({
         {multi && onAlignSelected && (
           <div className="flex flex-shrink-0 items-center gap-1 pl-1">
             <span className={`${editorToolbarMicroLabelClass} mr-0.5 leading-none`}>Align</span>
-            <button type="button" onClick={() => onAlignSelected('left')} className={selectionIconToolButtonClass} title="Align left">
+            <button type="button" onMouseDown={(e) => e.preventDefault()} onClick={() => onAlignSelected('left')} className={selectionIconToolButtonClass} title="Align left">
               <AlignLeftIcon className="h-4 w-4 shrink-0 text-slate-800" />
             </button>
-            <button type="button" onClick={() => onAlignSelected('centerH')} className={selectionIconToolButtonClass} title="Align center">
+            <button type="button" onMouseDown={(e) => e.preventDefault()} onClick={() => onAlignSelected('centerH')} className={selectionIconToolButtonClass} title="Align center">
               <AlignCenterIcon className="h-4 w-4 shrink-0 text-slate-800" />
             </button>
-            <button type="button" onClick={() => onAlignSelected('right')} className={selectionIconToolButtonClass} title="Align right">
+            <button type="button" onMouseDown={(e) => e.preventDefault()} onClick={() => onAlignSelected('right')} className={selectionIconToolButtonClass} title="Align right">
               <AlignRightIcon className="h-4 w-4 shrink-0 text-slate-800" />
             </button>
-            <button type="button" onClick={() => onAlignSelected('top')} className={selectionIconToolButtonClass} title="Align top">
+            <button type="button" onMouseDown={(e) => e.preventDefault()} onClick={() => onAlignSelected('top')} className={selectionIconToolButtonClass} title="Align top">
               <AlignTopIcon className="h-4 w-4 shrink-0 text-slate-800" />
             </button>
-            <button type="button" onClick={() => onAlignSelected('centerV')} className={selectionIconToolButtonClass} title="Align middle">
+            <button type="button" onMouseDown={(e) => e.preventDefault()} onClick={() => onAlignSelected('centerV')} className={selectionIconToolButtonClass} title="Align middle">
               <AlignMiddleIcon className="h-4 w-4 shrink-0 text-slate-800" />
             </button>
-            <button type="button" onClick={() => onAlignSelected('bottom')} className={selectionIconToolButtonClass} title="Align bottom">
+            <button type="button" onMouseDown={(e) => e.preventDefault()} onClick={() => onAlignSelected('bottom')} className={selectionIconToolButtonClass} title="Align bottom">
               <AlignBottomIcon className="h-4 w-4 shrink-0 text-slate-800" />
             </button>
           </div>
@@ -225,6 +231,7 @@ export default function DocumentSelectionRibbon({
           {hasImage && onReplaceImageClick && (
             <button
               type="button"
+              onMouseDown={(e) => e.preventDefault()}
               onClick={() => {
                 if (isLocked) return;
                 if (onEditImageClick) onEditImageClick(id);
@@ -238,6 +245,7 @@ export default function DocumentSelectionRibbon({
           )}
           <button
             type="button"
+            onMouseDown={(e) => e.preventDefault()}
             onClick={() => {
               if (isLocked) return;
               if (onReplaceImageClick) {
@@ -257,6 +265,7 @@ export default function DocumentSelectionRibbon({
       <div className={`${editorContextToolbarGroupClass} gap-1.5`}>
         <button
           type="button"
+          onMouseDown={(e) => e.preventDefault()}
           onClick={onDeselect}
           disabled={!element && !multi}
           className={
@@ -267,6 +276,7 @@ export default function DocumentSelectionRibbon({
         </button>
         <button
           type="button"
+          onMouseDown={(e) => e.preventDefault()}
           onClick={async () => {
             if (multi) {
               const toRemove = selectedEls.filter((e) => !e.locked);

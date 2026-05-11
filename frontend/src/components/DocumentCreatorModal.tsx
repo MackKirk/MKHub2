@@ -1,5 +1,6 @@
 import DocumentEditor from '@/components/DocumentEditor';
 import OverlayPortal from '@/components/OverlayPortal';
+import { CompressIcon } from '@/components/document-editor/documentEditorIcons';
 
 type DocumentCreatorModalProps = {
   open: boolean;
@@ -10,6 +11,8 @@ type DocumentCreatorModalProps = {
   onAfterClose?: () => void;
   /** When true, document is opened in read-only mode (no editing, no add page). */
   readOnly?: boolean;
+  /** When provided, shows a compress button in the ribbon to exit full-screen mode. */
+  onCompress?: () => void;
 };
 
 export function DocumentCreatorModal({
@@ -19,6 +22,7 @@ export function DocumentCreatorModal({
   onClose,
   onAfterClose,
   readOnly = false,
+  onCompress,
 }: DocumentCreatorModalProps) {
   const handleClose = () => {
     onAfterClose?.();
@@ -26,6 +30,17 @@ export function DocumentCreatorModal({
   };
 
   if (!open) return null;
+
+  const compressButton = onCompress ? (
+    <button
+      type="button"
+      onClick={onCompress}
+      title="Exit full screen"
+      className="rounded-xl p-2 text-slate-600 transition-[color,background-color,transform] duration-200 ease-out hover:bg-slate-200/70 hover:text-slate-950 active:scale-[0.96] focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-red/35"
+    >
+      <CompressIcon className="w-5 h-5" />
+    </button>
+  ) : undefined;
 
   return (
     <OverlayPortal>
@@ -37,6 +52,7 @@ export function DocumentCreatorModal({
             projectId={projectId}
             onClose={handleClose}
             readOnly={readOnly}
+            closeSlotBelow={compressButton}
           />
         ) : (
           <div className="flex items-center justify-center p-8 text-gray-500">

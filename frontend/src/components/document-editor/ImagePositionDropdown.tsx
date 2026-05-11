@@ -74,6 +74,7 @@ export default function ImagePositionDropdown({ value, onChange, disabled }: Ima
         type="button"
         ref={triggerRef}
         disabled={disabled}
+        onMouseDown={(e) => !disabled && e.preventDefault()}
         onClick={() => !disabled && setOpen((v) => !v)}
         className={`${selectionContextDropdownTriggerClass} ${
           disabled ? 'cursor-not-allowed opacity-50' : ''
@@ -94,6 +95,7 @@ export default function ImagePositionDropdown({ value, onChange, disabled }: Ima
             ref={dropdownRef}
             role="dialog"
             aria-label="Image position"
+            data-document-editor-overlay="true"
             className={`${ribbonPortalDropdownPanelClass} w-fit`}
             style={{ top: menuPos.top, left: menuPos.left, minWidth: PANEL_MIN_W }}
           >

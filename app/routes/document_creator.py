@@ -5,13 +5,13 @@ import copy
 import uuid
 from typing import Optional, List, Any
 
-from fastapi import APIRouter, Depends, HTTPException, Body
+from fastapi import APIRouter, Depends, HTTPException, Body, Query
 from fastapi.responses import Response
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
 
 from ..db import get_db
-from ..models.models import DocumentTemplate, DocumentType, UserDocument, User, FileObject
+from ..models.models import DocumentTemplate, DocumentType, UserDocument, User, FileObject, Project, Client
 from ..auth.security import get_current_user, require_permissions
 
 
@@ -110,6 +110,46 @@ def _clone_elements_with_new_ids(elements: Optional[list], prefix: str) -> list:
         copy["id"] = f"{prefix}-{base}-{i}-{uuid.uuid4().hex[:8]}"
         out.append(copy)
     return out
+
+
+# --- Project token auto-fill ---
+
+# Ordered list of (token_in_template, value_key). Order matters: more specific tokens first.
+_PLACEHOLDER_TOKENS: list[tuple[str, str]] = [
+    ("<Project Name>", "project_name"),
+    ("<Customer Name>", "customer_name"),
+    ("<Reference Code>", "reference_code"),
+    ("REFERENCE CODE", "reference_code"),
+]
+
+
+def _substitute_project_tokens(elements: list, values: dict) -> list:
+    """Replace placeholder tokens in text element content with project data. Mutates in place."""
+    for el in elements:
+        if el.get("type") != "text" or not el.get("content"):
+            continue
+        content: str = el["content"]
+        for token, key in _PLACEHOLDER_TOKENS:
+            content = content.replace(token, values.get(key, ""))
+        el["content"] = content
+    return elements
+
+
+def _project_token_values(project_id: uuid.UUID, db: Session) -> Optional[dict]:
+    """Fetch project + client and build the token substitution dict. Returns None if project not found."""
+    proj = db.get(Project, project_id)
+    if not proj:
+        return None
+    client_name = ""
+    if proj.client_id:
+        client = db.get(Client, proj.client_id)
+        if client:
+            client_name = client.display_name or client.name or ""
+    return {
+        "project_name": proj.name or "",
+        "customer_name": client_name,
+        "reference_code": proj.code or "",
+    }
 
 
 # --- Document types (preset page sequences) ---
@@ -273,12 +313,14 @@ def duplicate_document_type(
 @router.get("/document-types/{document_type_id}/expand-pages", response_model=List[dict])
 def expand_document_type_pages(
     document_type_id: str,
+    project_id: Optional[str] = Query(None, description="When set, substitute project tokens in text elements."),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
     _=Depends(require_permissions("documents:access", "documents:read", "business:projects:documents:read")),
 ):
     """Expand a document type into a list of pages (template_id, margins, elements) with cloned element ids.
-    Use when adding pages from a template to an existing document. Uses template default_elements when entry has no elements."""
+    Use when adding pages from a template to an existing document. Uses template default_elements when entry has no elements.
+    When project_id is provided, placeholder tokens in text elements are replaced with the project's data."""
     try:
         dtid = uuid.UUID(document_type_id)
     except ValueError:
@@ -322,6 +364,16 @@ def expand_document_type_pages(
             )
         margins = entry_margins if entry_margins is not None else getattr(template, "margins", None)
         pages.append({"template_id": str(tuid), "margins": margins, "elements": elements})
+    # Auto-fill project tokens when project_id is provided
+    if project_id:
+        try:
+            pid = uuid.UUID(project_id)
+            token_values = _project_token_values(pid, db)
+            if token_values:
+                for page in pages:
+                    _substitute_project_tokens(page.get("elements", []), token_values)
+        except ValueError:
+            pass  # invalid uuid — ignore silently, don't break the response
     return pages
 
 
@@ -534,6 +586,16 @@ def create_document(
             entry_elements = entry.get("elements") if isinstance(entry.get("elements"), list) else []
             elements = _clone_elements_with_new_ids(entry_elements, f"p{idx}") if entry_elements else []
             pages.append({"template_id": str(tuid), "margins": entry_margins, "elements": elements})
+    # Auto-fill project tokens in text elements when document is linked to a project
+    if body.project_id:
+        try:
+            pid = uuid.UUID(body.project_id)
+            token_values = _project_token_values(pid, db)
+            if token_values:
+                for page in pages:
+                    _substitute_project_tokens(page.get("elements", []), token_values)
+        except ValueError:
+            pass  # invalid project_id uuid — already validated above, ignore here
     doc = UserDocument(
         title=body.title or "Sem título",
         document_type_id=dtype_id,

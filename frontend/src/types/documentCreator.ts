@@ -1,3 +1,14 @@
+/** A single styled run of text within a line. Missing properties inherit from element-level defaults. */
+export type RichTextRun = {
+  text: string;
+  bold?: boolean;
+  italic?: boolean;
+  /** Font size in reference px (same scale as DocElement.fontSize). */
+  fontSize?: number;
+  color?: string;
+  fontFamily?: 'Montserrat' | 'Open Sans';
+};
+
 /** Element that can be placed on a document page (Canva-style) */
 export type DocElement = {
   id: string;
@@ -19,6 +30,14 @@ export type DocElement = {
   fontFamily?: 'Montserrat' | 'Open Sans';
   /** Text color (hex, e.g. #000000) */
   color?: string;
+  /** Legacy / whole-box list style. Newer edits may use lineListStyles for mixed plain/list content. */
+  listStyle?: 'none' | 'bullet' | 'numbered' | 'lettered';
+  /** Per-content-line list style, aligned with `content.split('\n')`. Missing/none = plain text. */
+  lineListStyles?: Array<'none' | 'bullet' | 'numbered' | 'lettered' | null | undefined>;
+  /** Rich text runs per line. When present, supersedes element-level bold/italic/color/fontSize/fontFamily for display. */
+  richLines?: RichTextRun[][];
+  /** Per-line horizontal alignment. Overrides element-level textAlign for individual lines. */
+  lineTextAligns?: ('left' | 'center' | 'right')[];
   /** Image only: how the image fits inside its box (CSS object-fit) */
   imageFit?: 'contain' | 'cover' | 'fill' | 'none';
   /** Image only: where the image is anchored inside its box (CSS object-position, e.g. "50% 50%") */

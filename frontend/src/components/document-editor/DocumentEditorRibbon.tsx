@@ -54,6 +54,10 @@ export type DocumentEditorRibbonProps = {
   inspectorPanel?: ReactNode;
   zoom: number;
   onZoomChange: (zoom: number) => void;
+  /** Optional actions rendered at the far right of the ribbon toolbar (e.g. expand/compress button). */
+  extraActions?: ReactNode;
+  /** Optional element rendered directly below the close/back button (e.g. expand button). */
+  closeSlotBelow?: ReactNode;
 };
 
 const ZOOM_LEVELS = [0.5, 0.75, 1, 1.25, 1.5, 2] as const;
@@ -92,6 +96,8 @@ export default function DocumentEditorRibbon(props: DocumentEditorRibbonProps) {
     inspectorPanel,
     zoom,
     onZoomChange,
+    extraActions,
+    closeSlotBelow,
   } = props;
 
   const [editingTitle, setEditingTitle] = useState(false);
@@ -103,6 +109,11 @@ export default function DocumentEditorRibbon(props: DocumentEditorRibbonProps) {
   const [zoomMenuPos, setZoomMenuPos] = useState({ top: 0, left: 0 });
   const zoomTriggerRef = useRef<HTMLButtonElement>(null);
   const zoomDropdownRef = useRef<HTMLDivElement>(null);
+
+  const [tokensMenuOpen, setTokensMenuOpen] = useState(false);
+  const [tokensMenuPos, setTokensMenuPos] = useState({ top: 0, left: 0 });
+  const tokensTriggerRef = useRef<HTMLButtonElement>(null);
+  const tokensDropdownRef = useRef<HTMLDivElement>(null);
 
   const repositionZoomMenu = useCallback(() => {
     if (!zoomMenuOpen || !zoomTriggerRef.current) return;
@@ -136,6 +147,37 @@ export default function DocumentEditorRibbon(props: DocumentEditorRibbonProps) {
     window.addEventListener('mousedown', onDown);
     return () => window.removeEventListener('mousedown', onDown);
   }, [zoomMenuOpen]);
+
+  useEffect(() => {
+    if (!tokensMenuOpen) return;
+    const reposition = () => {
+      if (!tokensTriggerRef.current) return;
+      const r = tokensTriggerRef.current.getBoundingClientRect();
+      const panelW = 320;
+      const left = Math.max(8, Math.min(r.left, window.innerWidth - panelW - 8));
+      setTokensMenuPos({ top: r.bottom + 4, left });
+    };
+    reposition();
+    window.addEventListener('resize', reposition);
+    window.addEventListener('scroll', reposition, true);
+    return () => {
+      window.removeEventListener('resize', reposition);
+      window.removeEventListener('scroll', reposition, true);
+    };
+  }, [tokensMenuOpen]);
+
+  useEffect(() => {
+    if (!tokensMenuOpen) return;
+    const onDown = (e: MouseEvent) => {
+      const t = e.target as Node | null;
+      if (!t) return;
+      if (tokensTriggerRef.current?.contains(t)) return;
+      if (tokensDropdownRef.current?.contains(t)) return;
+      setTokensMenuOpen(false);
+    };
+    window.addEventListener('mousedown', onDown);
+    return () => window.removeEventListener('mousedown', onDown);
+  }, [tokensMenuOpen]);
 
   useEffect(() => {
     if (!editingTitle) setLocalTitle(title);
@@ -190,14 +232,17 @@ export default function DocumentEditorRibbon(props: DocumentEditorRibbonProps) {
         aria-label="Document editor toolbar"
       >
         <RibbonGroup label="Document">
-          <button
-            type="button"
-            onClick={onCloseOrBack}
-            className="shrink-0 self-center rounded-xl p-2 text-slate-600 transition-[color,background-color,transform] duration-200 ease-out hover:bg-slate-200/70 hover:text-slate-950 active:scale-[0.96] focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-red/35"
-            aria-label={useCloseIcon ? 'Close' : 'Back'}
-          >
-            {useCloseIcon ? <CloseIcon className="w-5 h-5" /> : <BackIcon className="w-5 h-5" />}
-          </button>
+          <div className="flex flex-col items-center gap-1 shrink-0 self-center">
+            <button
+              type="button"
+              onClick={onCloseOrBack}
+              className="rounded-xl p-2 text-slate-600 transition-[color,background-color,transform] duration-200 ease-out hover:bg-slate-200/70 hover:text-slate-950 active:scale-[0.96] focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-red/35"
+              aria-label={useCloseIcon ? 'Close' : 'Back'}
+            >
+              {useCloseIcon ? <CloseIcon className="w-5 h-5" /> : <BackIcon className="w-5 h-5" />}
+            </button>
+            {closeSlotBelow}
+          </div>
           <div className="flex flex-col min-w-0 max-w-[min(250px,44vw)] sm:max-w-[320px] justify-end pb-0.5">
             <span className="text-[10px] font-bold uppercase tracking-[0.12em] text-slate-600 leading-tight">{modeHeading}</span>
             {showTitleInput ? (
@@ -270,6 +315,75 @@ export default function DocumentEditorRibbon(props: DocumentEditorRibbonProps) {
         {!readOnly && (
           <RibbonGroup label="Page">
             <div className="flex flex-wrap items-end gap-2.5 max-w-[min(100vw-2rem,450px)]">{layoutPanel}</div>
+          </RibbonGroup>
+        )}
+
+        {isTemplate && (
+          <RibbonGroup label="Variables">
+            <div className="inline-flex items-center pb-0.5">
+              <button
+                type="button"
+                ref={tokensTriggerRef}
+                onClick={() => setTokensMenuOpen((v) => !v)}
+                className={ribbonDropdownTriggerClass}
+                title="Auto-fill tokens reference"
+                aria-expanded={tokensMenuOpen}
+                aria-haspopup="dialog"
+              >
+                <span className="font-mono text-sm leading-none text-slate-500">{'{ }'}</span>
+                <span>Auto-fill</span>
+              </button>
+              {tokensMenuOpen &&
+                createPortal(
+                  <div
+                    ref={tokensDropdownRef}
+                    className={`${ribbonPortalDropdownPanelClass} w-[320px]`}
+                    style={{ top: tokensMenuPos.top, left: tokensMenuPos.left }}
+                    role="dialog"
+                    aria-label="Auto-fill tokens"
+                  >
+                    <div className="flex items-center justify-between mb-3">
+                      <span className="text-[13px] font-semibold text-slate-900">Auto-fill tokens</span>
+                      <button
+                        type="button"
+                        onClick={() => setTokensMenuOpen(false)}
+                        className="p-1 rounded text-slate-400 hover:text-slate-700 hover:bg-slate-100"
+                        aria-label="Close"
+                      >
+                        ✕
+                      </button>
+                    </div>
+                    <p className="text-[12px] text-slate-500 mb-3 leading-snug">
+                      Use these tokens in text elements. When a document is created from a project, they are replaced automatically.
+                    </p>
+                    <table className="w-full text-[12px] border-collapse">
+                      <thead>
+                        <tr className="border-b border-slate-100">
+                          <th className="pb-1.5 text-left font-semibold text-slate-700">Token</th>
+                          <th className="pb-1.5 text-left font-semibold text-slate-700">Filled with</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-50">
+                        {[
+                          { token: '<Project Name>', label: 'Project name' },
+                          { token: '<Customer Name>', label: 'Customer name' },
+                          { token: '<Reference Code>', label: 'Project code' },
+                        ].map(({ token, label }) => (
+                          <tr key={token}>
+                            <td className="py-1.5 pr-3">
+                              <code className="rounded bg-slate-100 px-1.5 py-0.5 font-mono text-[11px] text-slate-800">
+                                {token}
+                              </code>
+                            </td>
+                            <td className="py-1.5 text-slate-600">{label}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>,
+                  getOverlayRoot()
+                )}
+            </div>
           </RibbonGroup>
         )}
 
@@ -358,9 +472,16 @@ export default function DocumentEditorRibbon(props: DocumentEditorRibbonProps) {
             </button>
           </RibbonGroup>
         )}
+
+        {extraActions && (
+          <div className="ml-auto flex shrink-0 items-end pb-2.5 pr-1">
+            {extraActions}
+          </div>
+        )}
       </div>
       {selectionPanel || inspectorPanel ? (
         <div
+          data-document-editor-formatting="true"
           className={`${editorContextStripClass} flex shrink-0 flex-nowrap items-center gap-0 overflow-x-auto px-2 py-1 sm:px-3 sm:py-1.5 [scrollbar-width:thin]`}
           role="region"
           aria-label="Selection and formatting"

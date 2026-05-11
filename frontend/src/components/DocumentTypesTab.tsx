@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, withFileAccessToken } from '@/lib/api';
 import toast from 'react-hot-toast';
@@ -136,6 +136,9 @@ export default function DocumentTypesTab() {
   const [isSaving, setIsSaving] = useState(false);
   const [layoutModalPageIndex, setLayoutModalPageIndex] = useState<number | null>(null);
   const [draggingPageIdx, setDraggingPageIdx] = useState<number | null>(null);
+  const [tokensPopoverOpen, setTokensPopoverOpen] = useState(false);
+  const tokensButtonRef = useRef<HTMLButtonElement>(null);
+  const tokensPopoverRef = useRef<HTMLDivElement>(null);
   const [dragOverPageIdx, setDragOverPageIdx] = useState<number | null>(null);
   const [dragInsertPosition, setDragInsertPosition] = useState<'above' | 'below' | null>(null);
 
@@ -168,6 +171,19 @@ export default function DocumentTypesTab() {
       setPages([{ template_id: '', label: '' }]);
     }
   }, [editing, showForm]);
+
+  useEffect(() => {
+    if (!tokensPopoverOpen) return;
+    const onDown = (e: MouseEvent) => {
+      const t = e.target as Node | null;
+      if (!t) return;
+      if (tokensButtonRef.current?.contains(t)) return;
+      if (tokensPopoverRef.current?.contains(t)) return;
+      setTokensPopoverOpen(false);
+    };
+    document.addEventListener('mousedown', onDown);
+    return () => document.removeEventListener('mousedown', onDown);
+  }, [tokensPopoverOpen]);
 
   const { data: templates = [] } = useQuery({
     queryKey: ['document-creator-templates'],
@@ -376,7 +392,63 @@ export default function DocumentTypesTab() {
         Document templates are preset layouts: an ordered list of background templates (e.g. cover, back cover, content
         page). When creating a document, users can choose a template to start with that sequence of pages.
       </p>
-      <div className="flex justify-end">
+      <div className="flex items-center justify-end gap-2">
+        {/* Auto-fill tokens reference */}
+        <div className="relative">
+          <button
+            ref={tokensButtonRef}
+            type="button"
+            onClick={() => setTokensPopoverOpen((v) => !v)}
+            className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border border-slate-300/80 bg-white text-sm font-medium text-slate-700 shadow-sm hover:bg-slate-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-red/35"
+            title="Auto-fill tokens reference"
+          >
+            <span className="font-mono text-base leading-none text-slate-500">{'{ }'}</span>
+            Auto-fill tokens
+          </button>
+          {tokensPopoverOpen && (
+            <div
+              ref={tokensPopoverRef}
+              className="absolute right-0 top-full mt-2 z-50 w-80 rounded-xl border border-slate-200/90 bg-white p-4 shadow-2xl ring-1 ring-slate-900/5"
+            >
+              <div className="flex items-center justify-between mb-3">
+                <span className="text-[13px] font-semibold text-slate-900">Auto-fill tokens</span>
+                <button
+                  type="button"
+                  onClick={() => setTokensPopoverOpen(false)}
+                  className="p-1 rounded text-slate-400 hover:text-slate-700 hover:bg-slate-100"
+                  aria-label="Close"
+                >
+                  ✕
+                </button>
+              </div>
+              <p className="text-[12px] text-slate-500 mb-3 leading-snug">
+                Use these tokens in text elements. When a document is created from a project, the tokens are automatically replaced with the project's data.
+              </p>
+              <table className="w-full text-[12px] border-collapse">
+                <thead>
+                  <tr className="border-b border-slate-100">
+                    <th className="pb-1.5 text-left font-semibold text-slate-700">Token</th>
+                    <th className="pb-1.5 text-left font-semibold text-slate-700">Filled with</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-50">
+                  {[
+                    { token: '<Project Name>', label: 'Project name' },
+                    { token: '<Customer Name>', label: 'Customer name' },
+                    { token: '<Reference Code>', label: 'Project code' },
+                  ].map(({ token, label }) => (
+                    <tr key={token}>
+                      <td className="py-1.5 pr-3">
+                        <code className="rounded bg-slate-100 px-1.5 py-0.5 font-mono text-[11px] text-slate-800">{token}</code>
+                      </td>
+                      <td className="py-1.5 text-slate-600">{label}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
         <button
           type="button"
           onClick={openCreate}

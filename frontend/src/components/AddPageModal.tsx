@@ -31,6 +31,8 @@ type AddPageModalProps = {
   onAddPage: (templateId: string | null) => void;
   /** Add multiple pages (e.g. from a document type) */
   onAddPages: (pages: DocumentPage[]) => void;
+  /** When set, placeholder tokens in template elements are replaced with this project's data */
+  projectId?: string | null;
 };
 
 function TemplateIcon({ className }: { className?: string }) {
@@ -57,6 +59,7 @@ export function AddPageModal({
   onClose,
   onAddPage,
   onAddPages,
+  projectId,
 }: AddPageModalProps) {
   const [tab, setTab] = useState<'template' | 'background'>('template');
 
@@ -84,7 +87,8 @@ export function AddPageModal({
 
   const handleSelectDocumentType = async (docTypeId: string) => {
     try {
-      const pages = await api<DocumentPage[]>('GET', `/document-creator/document-types/${docTypeId}/expand-pages`);
+      const qs = projectId ? `?project_id=${encodeURIComponent(projectId)}` : '';
+      const pages = await api<DocumentPage[]>('GET', `/document-creator/document-types/${docTypeId}/expand-pages${qs}`);
       if (pages && pages.length > 0) {
         onAddPages(pages);
         onClose();

@@ -1,14 +1,20 @@
 import { withFileAccessToken } from '@/lib/api';
-import { useRef, useState, useCallback, useEffect, Fragment, type RefObject } from 'react';
-import type { DocElement } from '@/types/documentCreator';
+import { useRef, useState, useCallback, useEffect, useLayoutEffect, Fragment, type RefObject } from 'react';
+import type { DocElement, RichTextRun } from '@/types/documentCreator';
 import { ElementOptionsPopover } from '@/components/ElementOptionsPopover';
-import { editorCanvasScrollAreaClass } from '@/components/document-editor/documentEditorRibbonPrimitives';
+import {
+  editorCanvasScrollAreaClass,
+  editorSegmentedControlTrackClass,
+  editorSegmentedSegmentIdleClass,
+  editorSegmentedSegmentSelectedClass,
+} from '@/components/document-editor/documentEditorRibbonPrimitives';
 import {
   BLOCK_PROTECTED_BG,
   MARGIN_PROTECTED_BG,
   blockProtectedBorderClass,
   marginBandRingClass,
 } from '@/components/document-editor/documentProtectedVisuals';
+import { PinIcon } from '@/components/document-editor/documentEditorIcons';
 
 export type TemplateMargins = {
   left_pct?: number;
@@ -59,6 +65,1205 @@ const MIN_SIZE_PCT = 2;
 // Font sizes are stored in "reference px" and scaled by (canvasWidth / REFERENCE_CANVAS_WIDTH_PX).
 const REFERENCE_CANVAS_WIDTH_PX = 910;
 const DOCUMENT_PREVIEW_IMAGE_WIDTH_PX = 1600;
+
+/** Ribbon strip below toolbar — keep focus in inline text editor when using formatting controls. */
+const DOCUMENT_EDITOR_FORMATTING_SELECTOR = '[data-document-editor-formatting]';
+/** Portaled editor panels (color, etc.) — same as formatting strip for “still editing” clicks. */
+const DOCUMENT_EDITOR_OVERLAY_SELECTOR = '[data-document-editor-overlay]';
+const INLINE_TEXT_EDITOR_ATTR = 'data-inline-text-editor';
+const TEXT_EDITOR_ROOT_ATTR = 'data-document-text-editor-root';
+const TEXT_EDITOR_LINE_ATTR = 'data-document-text-line-index';
+const TEXT_EDITOR_LINE_STYLE_ATTR = 'data-document-text-line-style';
+const TEXT_EDITOR_LINE_TEXT_ATTR = 'data-document-text-line-text';
+const TEXT_EDITOR_ACTIVE_LINE_ATTR = 'data-document-text-active-line-index';
+const DOCUMENT_TEXT_APPLY_LIST_STYLE_EVENT = 'document-text-editor-apply-list-style';
+const DOCUMENT_TEXT_APPLY_FORMAT_EVENT = 'document-text-apply-format';
+const DOCUMENT_TEXT_APPLY_LINE_ALIGN_EVENT = 'document-text-apply-line-align';
+const DOCUMENT_TEXT_FORMAT_STATE_ATTR = 'data-current-format';
+const TEXT_EDITOR_RUN_ATTR = 'data-document-text-run-index';
+/** Fired on `window` whenever the editor updates its data-current-format attribute so the inspector can re-read it. */
+const DOCUMENT_TEXT_FORMAT_STATE_CHANGED_EVENT = 'document-text-format-state-changed';
+
+/** Floating chips above text boxes — align with document editor segmented toolbar (h-8 track). */
+const DOCUMENT_PREVIEW_FLOATING_SEGMENT_BTN_CLASS =
+  'flex h-full min-h-0 shrink-0 items-center gap-1.5 whitespace-nowrap px-2.5 text-[11px] font-semibold transition-[background-color,color,box-shadow] duration-150 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-red/35 active:scale-[0.98]';
+
+type LineListStyle = Exclude<NonNullable<DocElement['listStyle']>, 'none'>;
+type TextEditorSnapshot = {
+  content: string;
+  lineListStyles?: Array<LineListStyle | 'none'>;
+  richLines?: RichTextRun[][];
+  lineTextAligns?: ('left' | 'center' | 'right')[];
+};
+
+type ApplyListStyleEvent = CustomEvent<{
+  elementId: string;
+  mode: LineListStyle | 'none';
+}>;
+
+type ApplyFormatEvent = CustomEvent<{
+  elementId: string;
+  format: Partial<Omit<RichTextRun, 'text'>>;
+  /** true = toggle (e.g. bold off if all selected are bold) */
+  toggle?: boolean;
+}>;
+
+type ApplyLineAlignEvent = CustomEvent<{
+  elementId: string;
+  align: 'left' | 'center' | 'right';
+}>;
+
+function normalizeLineListStyle(style: DocElement['listStyle'] | null | undefined): LineListStyle | undefined {
+  return style && style !== 'none' ? style : undefined;
+}
+
+function contentLines(content: string | null | undefined): string[] {
+  return (content ?? '').replace(/\r\n/g, '\n').split('\n');
+}
+
+// ── Rich text run helpers ────────────────────────────────────────────────────
+
+function runsText(runs: RichTextRun[]): string {
+  return runs.map((r) => r.text).join('');
+}
+
+type RunFormat = Partial<Omit<RichTextRun, 'text'>>;
+
+function runFormat(run: RichTextRun): RunFormat {
+  const fmt: RunFormat = {};
+  if (run.bold !== undefined) fmt.bold = run.bold;
+  if (run.italic !== undefined) fmt.italic = run.italic;
+  if (run.fontSize !== undefined) fmt.fontSize = run.fontSize;
+  if (run.color !== undefined) fmt.color = run.color;
+  if (run.fontFamily !== undefined) fmt.fontFamily = run.fontFamily;
+  return fmt;
+}
+
+function formatsEqual(a: RunFormat, b: RunFormat): boolean {
+  return a.bold === b.bold && a.italic === b.italic && a.fontSize === b.fontSize && a.color === b.color && a.fontFamily === b.fontFamily;
+}
+
+function mergeAdjacentRuns(runs: RichTextRun[]): RichTextRun[] {
+  if (runs.length <= 1) return runs;
+  const result: RichTextRun[] = [{ ...runs[0] }];
+  for (let i = 1; i < runs.length; i++) {
+    const prev = result[result.length - 1];
+    const curr = runs[i];
+    if (formatsEqual(runFormat(prev), runFormat(curr))) {
+      result[result.length - 1] = { ...prev, text: prev.text + curr.text };
+    } else {
+      result.push({ ...curr });
+    }
+  }
+  return result;
+}
+
+function splitRunsAt(runs: RichTextRun[], offset: number): [RichTextRun[], RichTextRun[]] {
+  if (runs.length === 0) return [[{ text: '' }], [{ text: '' }]];
+  let pos = 0;
+  const left: RichTextRun[] = [];
+  const right: RichTextRun[] = [];
+  for (let i = 0; i < runs.length; i++) {
+    const run = runs[i];
+    const len = run.text.length;
+    if (pos + len <= offset) {
+      left.push({ ...run });
+    } else if (pos >= offset) {
+      right.push({ ...run });
+    } else {
+      const sp = offset - pos;
+      if (sp > 0) left.push({ ...run, text: run.text.slice(0, sp) });
+      if (sp < len) right.push({ ...run, text: run.text.slice(sp) });
+    }
+    pos += len;
+  }
+  if (left.length === 0) left.push({ text: '' });
+  if (right.length === 0) right.push({ text: '' });
+  return [left, right];
+}
+
+/** Delete characters [start, end) from a line's runs. */
+function deleteRangeFromLineRuns(runs: RichTextRun[], start: number, end: number): RichTextRun[] {
+  if (start >= end) return runs;
+  let pos = 0;
+  const result: RichTextRun[] = [];
+  for (const run of runs) {
+    const len = run.text.length;
+    const rEnd = pos + len;
+    if (rEnd <= start || pos >= end) {
+      result.push({ ...run });
+    } else {
+      const kept = run.text.slice(0, Math.max(0, start - pos)) + run.text.slice(Math.min(len, end - pos));
+      if (kept.length > 0) result.push({ ...run, text: kept });
+    }
+    pos += len;
+  }
+  return result.length > 0 ? mergeAdjacentRuns(result) : [{ text: '' }];
+}
+
+/** Insert text at offset in a line's runs, inheriting format from adjacent run unless fmt overrides. */
+function insertIntoLineRuns(runs: RichTextRun[], offset: number, text: string, fmt?: RunFormat): RichTextRun[] {
+  if (runs.length === 0) return [{ text, ...fmt }];
+  let pos = 0;
+  const result: RichTextRun[] = [];
+  let inserted = false;
+  for (let i = 0; i < runs.length; i++) {
+    const run = runs[i];
+    const len = run.text.length;
+    if (!inserted && pos + len >= offset) {
+      const inRun = offset - pos;
+      const effectiveFmt = fmt ?? runFormat(run);
+      if (formatsEqual(effectiveFmt, runFormat(run))) {
+        result.push({ ...run, text: run.text.slice(0, inRun) + text + run.text.slice(inRun) });
+      } else {
+        if (inRun > 0) result.push({ ...run, text: run.text.slice(0, inRun) });
+        result.push({ text, ...effectiveFmt });
+        if (inRun < len) result.push({ ...run, text: run.text.slice(inRun) });
+      }
+      inserted = true;
+    } else {
+      result.push({ ...run });
+    }
+    pos += len;
+  }
+  if (!inserted) {
+    const last = runs[runs.length - 1];
+    const effectiveFmt = fmt ?? runFormat(last);
+    if (formatsEqual(effectiveFmt, runFormat(last))) {
+      result[result.length - 1] = { ...last, text: last.text + text };
+    } else {
+      result.push({ text, ...effectiveFmt });
+    }
+  }
+  return mergeAdjacentRuns(result);
+}
+
+/** Apply a format override to runs in [start, end). */
+function applyFormatToLineRuns(runs: RichTextRun[], start: number, end: number, fmt: RunFormat): RichTextRun[] {
+  if (start >= end) return runs;
+  let pos = 0;
+  const result: RichTextRun[] = [];
+  for (const run of runs) {
+    const len = run.text.length;
+    const rEnd = pos + len;
+    if (rEnd <= start || pos >= end) {
+      result.push({ ...run });
+    } else {
+      if (pos < start) result.push({ ...run, text: run.text.slice(0, start - pos) });
+      const midS = Math.max(0, start - pos);
+      const midE = Math.min(len, end - pos);
+      const mid = run.text.slice(midS, midE);
+      if (mid.length > 0) result.push({ ...run, text: mid, ...fmt });
+      if (rEnd > end) result.push({ ...run, text: run.text.slice(end - pos) });
+    }
+    pos += len;
+  }
+  const cleaned = result.filter((r) => r.text.length > 0);
+  return cleaned.length > 0 ? mergeAdjacentRuns(cleaned) : [{ text: '' }];
+}
+
+/** Get the format at a given character offset within a line's runs. */
+function getFormatAtOffset(runs: RichTextRun[], offset: number): RunFormat {
+  let pos = 0;
+  for (const run of runs) {
+    if (pos + run.text.length >= offset) return runFormat(run);
+    pos += run.text.length;
+  }
+  return runs.length > 0 ? runFormat(runs[runs.length - 1]) : {};
+}
+
+/** Check if all runs in [start,end) for the given property share the same value (returns value or 'mixed'/'none'). */
+function selectionFormatValue(
+  allRuns: RichTextRun[][],
+  start: { lineIndex: number; offset: number },
+  end: { lineIndex: number; offset: number },
+  prop: keyof RunFormat,
+): unknown {
+  const vals: unknown[] = [];
+  for (let li = start.lineIndex; li <= end.lineIndex; li++) {
+    const lineRuns = allRuns[li] ?? [];
+    const lStart = li === start.lineIndex ? start.offset : 0;
+    const lEnd = li === end.lineIndex ? end.offset : runsText(lineRuns).length;
+    let pos = 0;
+    for (const run of lineRuns) {
+      const rEnd = pos + run.text.length;
+      if (rEnd > lStart && pos < lEnd) vals.push(run[prop]);
+      pos += run.text.length;
+    }
+  }
+  if (vals.length === 0) return undefined;
+  const first = vals[0];
+  return vals.every((v) => v === first) ? first : 'mixed';
+}
+
+function initRunsFromElement(el: DocElement): RichTextRun[][] {
+  const lines = contentLines(el.content);
+  if (el.richLines && el.richLines.length > 0) {
+    return lines.map((line, idx) => {
+      const rl = el.richLines![idx];
+      if (rl && rl.length > 0 && runsText(rl) === line) return rl;
+      return [{ text: line }];
+    });
+  }
+  return lines.map((line) => [{ text: line }]);
+}
+
+function runSpanInlineStyle(run: RichTextRun, elementFontSize: number): string {
+  const parts: string[] = [];
+  if (run.bold !== undefined) parts.push(`font-weight:${run.bold ? 'bold' : 'normal'}`);
+  if (run.italic !== undefined) parts.push(`font-style:${run.italic ? 'italic' : 'normal'}`);
+  if (run.fontSize !== undefined && run.fontSize !== elementFontSize) {
+    parts.push(`font-size:${(run.fontSize / Math.max(1, elementFontSize)).toFixed(4)}em`);
+  }
+  if (run.color !== undefined) parts.push(`color:${run.color}`);
+  if (run.fontFamily !== undefined) {
+    parts.push(`font-family:${run.fontFamily === 'Open Sans' ? '"Open Sans",sans-serif' : '"Montserrat",sans-serif'}`);
+  }
+  return parts.join(';');
+}
+
+/** CSS style object for a run span in non-edit (React) display mode. */
+function runDisplayStyle(run: RichTextRun, elementFontSize: number): React.CSSProperties {
+  const s: React.CSSProperties = {};
+  if (run.bold !== undefined) s.fontWeight = run.bold ? 'bold' : 'normal';
+  if (run.italic !== undefined) s.fontStyle = run.italic ? 'italic' : 'normal';
+  if (run.fontSize !== undefined && run.fontSize !== elementFontSize) {
+    s.fontSize = `${(run.fontSize / Math.max(1, elementFontSize)).toFixed(4)}em`;
+  }
+  if (run.color !== undefined) s.color = run.color;
+  if (run.fontFamily !== undefined) {
+    s.fontFamily = run.fontFamily === 'Open Sans' ? '"Open Sans", sans-serif' : '"Montserrat", sans-serif';
+  }
+  return s;
+}
+
+function effectiveLineListStyles(el: Pick<DocElement, 'content' | 'listStyle' | 'lineListStyles'>): Array<LineListStyle | undefined> {
+  const lines = contentLines(el.content);
+  const fallback = normalizeLineListStyle(el.listStyle);
+  return lines.map((_, idx) => normalizeLineListStyle(el.lineListStyles?.[idx] ?? fallback));
+}
+
+function listOrdinalAt(styles: Array<LineListStyle | undefined>, idx: number): number {
+  const style = styles[idx];
+  if (!style || style === 'bullet') return 0;
+  let n = 1;
+  for (let i = idx - 1; i >= 0 && styles[i] === style; i -= 1) n += 1;
+  return n;
+}
+
+function lineMarker(style: LineListStyle | undefined, ordinal: number): string {
+  if (style === 'bullet') return '•';
+  if (style === 'numbered') return `${ordinal}.`;
+  if (style === 'lettered') return `${ordinal <= 26 ? String.fromCharCode(96 + ordinal) : ordinal}.`;
+  return '';
+}
+
+
+// ── Imperative text editor ──────────────────────────────────────────────────
+// React MUST NOT render children inside contentEditable — it loses track of
+// DOM mutations made by the browser and crashes (insertBefore / removeChild).
+// All DOM management here is 100% imperative via innerHTML + useLayoutEffect.
+
+function escapeHtmlText(s: string): string {
+  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+function buildEditorHtml(
+  lines: string[],
+  styles: Array<LineListStyle | undefined>,
+  runs: RichTextRun[][],
+  elementFontSize: number,
+): string {
+  return lines
+    .map((line, idx) => {
+      const style = styles[idx];
+      const markerText = style ? escapeHtmlText(lineMarker(style, listOrdinalAt(styles, idx))) : '';
+      const markerHtml = style
+        ? `<span data-document-text-line-marker="true" contenteditable="false" style="margin-right:0.45em;min-width:1.35em;display:inline-block;text-align:right;user-select:none;-webkit-user-select:none">${markerText}</span>`
+        : '';
+      const lineRuns = runs[idx] ?? [{ text: line }];
+      const hasRichStyling = lineRuns.some((r) => runSpanInlineStyle(r, elementFontSize));
+      let textHtml: string;
+      if (!hasRichStyling && lineRuns.length === 1) {
+        textHtml = escapeHtmlText(lineRuns[0].text) || '<br>';
+      } else {
+        const allEmpty = lineRuns.every((r) => r.text === '');
+        if (allEmpty) {
+          textHtml = '<br>';
+        } else {
+          textHtml = lineRuns
+            .map((run, ri) => {
+              const s = runSpanInlineStyle(run, elementFontSize);
+              const content = escapeHtmlText(run.text);
+              return s
+                ? `<span ${TEXT_EDITOR_RUN_ATTR}="${ri}" style="${s}">${content}</span>`
+                : `<span ${TEXT_EDITOR_RUN_ATTR}="${ri}">${content}</span>`;
+            })
+            .join('') || '<br>';
+        }
+      }
+      const divStyle = style ? 'display:flex;align-items:baseline' : '';
+      return `<div ${TEXT_EDITOR_LINE_ATTR}="${idx}" ${TEXT_EDITOR_LINE_STYLE_ATTR}="${style ?? 'none'}" style="${divStyle}">${markerHtml}<span ${TEXT_EDITOR_LINE_TEXT_ATTR}="true" style="${style ? 'flex:1;min-width:0' : ''}">${textHtml}</span></div>`;
+    })
+    .join('');
+}
+
+/** Walk DOM tree under `container` to find the text node at `offset` chars from the start.
+ *  Skips marker spans. Returns null if offset exceeds total text length. */
+function findTextNodeAt(container: Node, offset: number): { node: Node; pos: number } | null {
+  if (container instanceof HTMLElement && container.hasAttribute('data-document-text-line-marker')) return null;
+  if (container.nodeType === Node.TEXT_NODE) {
+    const len = (container.textContent ?? '').length;
+    if (offset <= len) return { node: container, pos: offset };
+    return null;
+  }
+  let rem = offset;
+  for (const child of Array.from(container.childNodes)) {
+    if (child instanceof HTMLElement && child.hasAttribute('data-document-text-line-marker')) continue;
+    const len = (child.textContent ?? '').length;
+    if (rem <= len) {
+      const found = findTextNodeAt(child, rem);
+      if (found) return found;
+      break;
+    }
+    rem -= len;
+  }
+  return null;
+}
+
+function imperativeCaretSet(root: HTMLElement, lineIdx: number, charOffset: number) {
+  const lineEl = root.querySelector(`[${TEXT_EDITOR_LINE_ATTR}="${lineIdx}"]`);
+  const textSpan = lineEl?.querySelector<HTMLElement>(`[${TEXT_EDITOR_LINE_TEXT_ATTR}]`);
+  if (!textSpan) return;
+  const domSel = window.getSelection();
+  if (!domSel) return;
+  const found = findTextNodeAt(textSpan, charOffset);
+  let node: Node;
+  let pos: number;
+  if (found) {
+    node = found.node; pos = found.pos;
+  } else {
+    // Fallback: place at end of last text node
+    const walker = document.createTreeWalker(textSpan, NodeFilter.SHOW_TEXT);
+    let last: Text | null = null;
+    let cur: Node | null;
+    while ((cur = walker.nextNode())) last = cur as Text;
+    node = last ?? textSpan;
+    pos = last ? last.length : 0;
+  }
+  try {
+    const range = document.createRange();
+    const maxPos = node.nodeType === Node.TEXT_NODE ? (node.textContent ?? '').length : (node as HTMLElement).childNodes.length;
+    range.setStart(node, Math.min(pos, maxPos));
+    range.collapse(true);
+    domSel.removeAllRanges();
+    domSel.addRange(range);
+  } catch { /* ignore */ }
+}
+
+/** Restore a selection range from logical line/char coordinates after a repaint. */
+function imperativeSelectionRestore(
+  root: HTMLElement,
+  sel: { start: { lineIndex: number; offset: number }; end: { lineIndex: number; offset: number } },
+) {
+  const domSel = window.getSelection();
+  if (!domSel) return;
+  const getNodeAt = (lineIdx: number, offset: number) => {
+    const lineEl = root.querySelector(`[${TEXT_EDITOR_LINE_ATTR}="${lineIdx}"]`);
+    const textSpan = lineEl?.querySelector<HTMLElement>(`[${TEXT_EDITOR_LINE_TEXT_ATTR}]`);
+    if (!textSpan) return null;
+    const found = findTextNodeAt(textSpan, offset);
+    if (found) return found;
+    // end of span fallback
+    const walker = document.createTreeWalker(textSpan, NodeFilter.SHOW_TEXT);
+    let last: Text | null = null;
+    let cur: Node | null;
+    while ((cur = walker.nextNode())) last = cur as Text;
+    return last ? { node: last as Node, pos: last.length } : null;
+  };
+  const startN = getNodeAt(sel.start.lineIndex, sel.start.offset);
+  const endN = getNodeAt(sel.end.lineIndex, sel.end.offset);
+  if (!startN || !endN) {
+    imperativeCaretSet(root, sel.start.lineIndex, sel.start.offset);
+    return;
+  }
+  try {
+    const range = document.createRange();
+    range.setStart(startN.node, Math.min(startN.pos, (startN.node.textContent ?? '').length));
+    range.setEnd(endN.node, Math.min(endN.pos, (endN.node.textContent ?? '').length));
+    domSel.removeAllRanges();
+    domSel.addRange(range);
+  } catch {
+    imperativeCaretSet(root, sel.start.lineIndex, sel.start.offset);
+  }
+}
+
+function imperativeSelectionRead(
+  root: HTMLElement,
+  fallbackLineIdx: number
+): { start: { lineIndex: number; offset: number }; end: { lineIndex: number; offset: number }; collapsed: boolean } | null {
+  const sel = window.getSelection();
+  if (!sel || !sel.anchorNode || !root.contains(sel.anchorNode)) return null;
+
+  const lineIdxForNode = (node: Node | null): number => {
+    let n: Node | null = node;
+    if (n?.nodeType === Node.TEXT_NODE) n = n.parentNode;
+    while (n && n !== root) {
+      if (n instanceof HTMLElement && n.hasAttribute(TEXT_EDITOR_LINE_ATTR))
+        return Number(n.getAttribute(TEXT_EDITOR_LINE_ATTR));
+      n = n.parentNode;
+    }
+    return fallbackLineIdx;
+  };
+
+  const charOffsetInLine = (lineIdx: number, node: Node | null, domOffset: number): number => {
+    const lineEl = root.querySelector(`[${TEXT_EDITOR_LINE_ATTR}="${lineIdx}"]`);
+    const textSpan = lineEl?.querySelector<HTMLElement>(`[${TEXT_EDITOR_LINE_TEXT_ATTR}]`);
+    if (!textSpan || !node || !textSpan.contains(node)) return 0;
+    const range = document.createRange();
+    range.selectNodeContents(textSpan);
+    range.setEnd(node, domOffset);
+    return range.toString().length;
+  };
+
+  const anchorLineIdx = lineIdxForNode(sel.anchorNode);
+  const focusLineIdx = root.contains(sel.focusNode) ? lineIdxForNode(sel.focusNode) : anchorLineIdx;
+  const anchor = { lineIndex: anchorLineIdx, offset: charOffsetInLine(anchorLineIdx, sel.anchorNode, sel.anchorOffset) };
+  const focus = { lineIndex: focusLineIdx, offset: charOffsetInLine(focusLineIdx, sel.focusNode, sel.focusOffset) };
+  const anchorFirst = anchor.lineIndex < focus.lineIndex || (anchor.lineIndex === focus.lineIndex && anchor.offset <= focus.offset);
+  return {
+    start: anchorFirst ? anchor : focus,
+    end: anchorFirst ? focus : anchor,
+    collapsed: anchor.lineIndex === focus.lineIndex && anchor.offset === focus.offset,
+  };
+}
+
+function InlineTextEditor({
+  element,
+  textStyle,
+  onCommit,
+  onEscape,
+}: {
+  element: DocElement;
+  textStyle: React.CSSProperties;
+  onCommit: (snapshot: TextEditorSnapshot) => void;
+  onEscape: () => void;
+}) {
+  const rootRef = useRef<HTMLDivElement>(null);
+  // All state lives in refs — no React re-renders inside this component.
+  const linesRef = useRef<string[]>(contentLines(element.content));
+  const stylesRef = useRef<Array<LineListStyle | undefined>>(effectiveLineListStyles(element));
+  const runsRef = useRef<RichTextRun[][]>(initRunsFromElement(element));
+  const lineAlignsRef = useRef<('left' | 'center' | 'right')[]>([]);
+  const pendingFormatRef = useRef<RunFormat | null>(null);
+  const elementFontSizeRef = useRef(Math.max(8, Math.min(72, element.fontSize ?? 12)));
+  const activeLineRef = useRef(0);
+  const composingRef = useRef(false);
+  /** Selection saved just before each user input event (used to apply pending format in handleInput). */
+  const preinputSelRef = useRef<{ lineIndex: number; offset: number; endLineIndex: number; endOffset: number } | null>(null);
+  const onCommitRef = useRef(onCommit);
+  const onEscapeRef = useRef(onEscape);
+  useLayoutEffect(() => { onCommitRef.current = onCommit; });
+  useLayoutEffect(() => { onEscapeRef.current = onEscape; });
+
+  // ── Undo stack ────────────────────────────────────────────────────────────
+  type UndoEntry = {
+    lines: string[];
+    styles: Array<LineListStyle | undefined>;
+    runs: RichTextRun[][];
+    aligns: ('left' | 'center' | 'right')[];
+  };
+  const undoStackRef = useRef<UndoEntry[]>([]);
+  const typingSessionActiveRef = useRef(false);
+  const typingPauseTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const pushUndo = useCallback(() => {
+    undoStackRef.current.push({
+      lines: [...linesRef.current],
+      styles: [...stylesRef.current],
+      runs: runsRef.current.map((r) => [...r]),
+      aligns: [...lineAlignsRef.current],
+    });
+    if (undoStackRef.current.length > 200) undoStackRef.current.shift();
+    typingSessionActiveRef.current = false;
+  }, []);
+
+  const pushUndoForTyping = useCallback(() => {
+    if (!typingSessionActiveRef.current) {
+      pushUndo();
+      typingSessionActiveRef.current = true;
+    }
+    if (typingPauseTimerRef.current) clearTimeout(typingPauseTimerRef.current);
+    typingPauseTimerRef.current = setTimeout(() => { typingSessionActiveRef.current = false; }, 1000);
+  }, [pushUndo]);
+
+  const doCommit = useCallback(() => {
+    const lines = linesRef.current;
+    const styles = stylesRef.current;
+    const runs = runsRef.current;
+    const aligns = lineAlignsRef.current;
+    const hasLineStyles = styles.some(Boolean);
+    const hasRichRuns = runs.some((lr) =>
+      lr.some((r) => r.bold !== undefined || r.italic !== undefined || r.fontSize !== undefined || r.color !== undefined || r.fontFamily !== undefined)
+    );
+    const defaultAlign = element.textAlign ?? 'left';
+    const hasAligns = aligns.some((a) => a && a !== defaultAlign);
+    onCommitRef.current({
+      content: lines.join('\n'),
+      lineListStyles: hasLineStyles ? styles.map((s) => s ?? 'none') : undefined,
+      richLines: hasRichRuns ? runs : undefined,
+      lineTextAligns: hasAligns ? aligns : undefined,
+    });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  /** Update data-current-format on the root for the inspector to read, then notify the inspector. */
+  const syncFormatState = useCallback(() => {
+    const root = rootRef.current;
+    if (!root) return;
+    const sel = imperativeSelectionRead(root, activeLineRef.current);
+    if (!sel) return;
+    const lineRuns = runsRef.current[sel.start.lineIndex] ?? [];
+    const fmt = pendingFormatRef.current ?? getFormatAtOffset(lineRuns, sel.start.offset);
+    root.setAttribute(DOCUMENT_TEXT_FORMAT_STATE_ATTR, JSON.stringify(fmt));
+    // Notify inspector to re-read (selectionchange doesn't fire when a toolbar button is clicked).
+    window.dispatchEvent(new CustomEvent(DOCUMENT_TEXT_FORMAT_STATE_CHANGED_EVENT, { detail: { elementId: element.id } }));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  /** Rebuild innerHTML then restore focus + caret. */
+  const repaint = useCallback((focusLineIdx?: number, focusOffset?: number) => {
+    const root = rootRef.current;
+    if (!root) return;
+    root.innerHTML = buildEditorHtml(linesRef.current, stylesRef.current, runsRef.current, elementFontSizeRef.current);
+    root.setAttribute(TEXT_EDITOR_ACTIVE_LINE_ATTR, String(activeLineRef.current));
+    if (focusLineIdx != null) {
+      root.focus({ preventScroll: true });
+      imperativeCaretSet(root, focusLineIdx, focusOffset ?? 0);
+    }
+    syncFormatState();
+  }, [syncFormatState]);
+
+  // ── Mount / element switch ────────────────────────────────────────────────
+  useLayoutEffect(() => {
+    linesRef.current = contentLines(element.content);
+    stylesRef.current = effectiveLineListStyles(element);
+    runsRef.current = initRunsFromElement(element);
+    lineAlignsRef.current = element.lineTextAligns
+      ? [...element.lineTextAligns]
+      : linesRef.current.map(() => element.textAlign ?? 'left');
+    elementFontSizeRef.current = Math.max(8, Math.min(72, element.fontSize ?? 12));
+    activeLineRef.current = 0;
+    pendingFormatRef.current = null;
+    undoStackRef.current = [];
+    typingSessionActiveRef.current = false;
+    if (typingPauseTimerRef.current) clearTimeout(typingPauseTimerRef.current);
+    repaint(linesRef.current.length - 1, linesRef.current[linesRef.current.length - 1]?.length ?? 0);
+    rootRef.current?.focus();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [element.id]);
+
+  // ── Apply-list-style event ────────────────────────────────────────────────
+  useEffect(() => {
+    const handler = (event: Event) => {
+      const { elementId, mode } = (event as ApplyListStyleEvent).detail ?? {};
+      const root = rootRef.current;
+      if (!root || elementId !== element.id) return;
+      const sel = imperativeSelectionRead(root, activeLineRef.current);
+      const indexes: number[] = sel
+        ? Array.from({ length: sel.end.lineIndex - sel.start.lineIndex + 1 }, (_, i) => sel.start.lineIndex + i)
+        : [activeLineRef.current];
+      pushUndo();
+      const nextStyles = [...stylesRef.current];
+      indexes.forEach((idx) => {
+        if (idx >= 0 && idx < nextStyles.length) nextStyles[idx] = mode === 'none' ? undefined : mode;
+      });
+      stylesRef.current = nextStyles;
+      const caretLine = sel ? sel.start.lineIndex : activeLineRef.current;
+      const caretOffset = sel ? sel.start.offset : 0;
+      repaint(caretLine, caretOffset);
+      doCommit();
+    };
+    window.addEventListener(DOCUMENT_TEXT_APPLY_LIST_STYLE_EVENT, handler);
+    return () => window.removeEventListener(DOCUMENT_TEXT_APPLY_LIST_STYLE_EVENT, handler);
+  }, [doCommit, element.id, pushUndo, repaint]);
+
+  // ── Apply-format event (bold, italic, color, fontSize, fontFamily) ────────
+  useEffect(() => {
+    const handler = (event: Event) => {
+      const { elementId, format, toggle } = (event as ApplyFormatEvent).detail ?? {};
+      const root = rootRef.current;
+      if (!root || elementId !== element.id) return;
+
+      const sel = imperativeSelectionRead(root, activeLineRef.current);
+
+      // No selection: set pending format (will be applied to next typed characters).
+      if (!sel || sel.collapsed) {
+        pendingFormatRef.current = { ...(pendingFormatRef.current ?? {}), ...format };
+        syncFormatState();
+        return;
+      }
+
+      pushUndo();
+      const { start, end } = sel;
+      const nextRuns = [...runsRef.current];
+
+      // Toggle logic: if all selected runs already have the format value, invert it.
+      let appliedFormat = { ...format };
+      if (toggle) {
+        for (const [key, val] of Object.entries(format) as [keyof RunFormat, unknown][]) {
+          const existing = selectionFormatValue(runsRef.current, start, end, key);
+          if (existing === val) {
+            // All selected already have this value → toggle off
+            (appliedFormat as Record<string, unknown>)[key] = key === 'bold' ? false : key === 'italic' ? false : undefined;
+          }
+        }
+      }
+
+      for (let li = start.lineIndex; li <= end.lineIndex; li++) {
+        const lr = nextRuns[li] ?? [{ text: linesRef.current[li] ?? '' }];
+        const lStart = li === start.lineIndex ? start.offset : 0;
+        const lEnd = li === end.lineIndex ? end.offset : runsText(lr).length;
+        if (lStart < lEnd) nextRuns[li] = applyFormatToLineRuns(lr, lStart, lEnd, appliedFormat);
+      }
+      runsRef.current = nextRuns;
+
+      repaint();
+      root.focus({ preventScroll: true });
+      imperativeSelectionRestore(root, sel);
+      syncFormatState();
+      doCommit();
+    };
+    window.addEventListener(DOCUMENT_TEXT_APPLY_FORMAT_EVENT, handler);
+    return () => window.removeEventListener(DOCUMENT_TEXT_APPLY_FORMAT_EVENT, handler);
+  }, [doCommit, element.id, pushUndo, repaint, syncFormatState]);
+
+  // ── Apply-line-align event ────────────────────────────────────────────────
+  useEffect(() => {
+    const handler = (event: Event) => {
+      const { elementId, align } = (event as ApplyLineAlignEvent).detail ?? {};
+      const root = rootRef.current;
+      if (!root || elementId !== element.id) return;
+      const sel = imperativeSelectionRead(root, activeLineRef.current);
+      const indexes: number[] = sel
+        ? Array.from({ length: sel.end.lineIndex - sel.start.lineIndex + 1 }, (_, i) => sel.start.lineIndex + i)
+        : [activeLineRef.current];
+      pushUndo();
+      const nextAligns = [...lineAlignsRef.current];
+      indexes.forEach((idx) => { if (idx >= 0 && idx < nextAligns.length) nextAligns[idx] = align; });
+      lineAlignsRef.current = nextAligns;
+      const caretLine = sel ? sel.start.lineIndex : activeLineRef.current;
+      const caretOffset = sel ? sel.start.offset : 0;
+      repaint(caretLine, caretOffset);
+      doCommit();
+    };
+    window.addEventListener(DOCUMENT_TEXT_APPLY_LINE_ALIGN_EVENT, handler);
+    return () => window.removeEventListener(DOCUMENT_TEXT_APPLY_LINE_ALIGN_EVENT, handler);
+  }, [doCommit, element.id, pushUndo, repaint]);
+
+  // ── Enter ─────────────────────────────────────────────────────────────────
+  const handleEnterImperative = useCallback((root: HTMLElement, sel: NonNullable<ReturnType<typeof imperativeSelectionRead>>) => {
+    const { start, end } = sel;
+    const lines = linesRef.current;
+    const styles = stylesRef.current;
+    const runs = runsRef.current;
+    const aligns = lineAlignsRef.current;
+
+    const lineText = (lines[start.lineIndex] ?? '').slice(0, start.offset);
+    const afterText = (lines[end.lineIndex] ?? '').slice(end.offset);
+    const style = styles[start.lineIndex];
+
+    if (style && lineText.trim() === '' && afterText.trim() === '') {
+      const nextStyles = [...styles];
+      nextStyles[start.lineIndex] = undefined;
+      stylesRef.current = nextStyles;
+      activeLineRef.current = start.lineIndex;
+      repaint(start.lineIndex, 0);
+      doCommit();
+      return;
+    }
+
+    const startRuns = runs[start.lineIndex] ?? [{ text: lines[start.lineIndex] ?? '' }];
+    const endRuns = runs[end.lineIndex] ?? [{ text: lines[end.lineIndex] ?? '' }];
+    const [leftRuns] = splitRunsAt(startRuns, start.offset);
+    const [, rightRunsEnd] = splitRunsAt(endRuns, end.offset);
+    const [, rightRunsStart] = splitRunsAt(startRuns, start.offset);
+    const newLineRuns = start.lineIndex === end.lineIndex ? rightRunsStart : rightRunsEnd;
+
+    const nextLines = [...lines];
+    nextLines[start.lineIndex] = lineText;
+    if (start.lineIndex !== end.lineIndex) nextLines.splice(start.lineIndex + 1, end.lineIndex - start.lineIndex);
+    nextLines.splice(start.lineIndex + 1, 0, afterText);
+
+    const nextRuns = [...runs];
+    nextRuns[start.lineIndex] = leftRuns.length > 0 ? leftRuns : [{ text: '' }];
+    if (start.lineIndex !== end.lineIndex) nextRuns.splice(start.lineIndex + 1, end.lineIndex - start.lineIndex);
+    nextRuns.splice(start.lineIndex + 1, 0, newLineRuns.length > 0 ? newLineRuns : [{ text: '' }]);
+
+    const nextStyles = [...styles];
+    if (start.lineIndex !== end.lineIndex) nextStyles.splice(start.lineIndex + 1, end.lineIndex - start.lineIndex);
+    nextStyles.splice(start.lineIndex + 1, 0, style);
+
+    const nextAligns = [...aligns];
+    if (start.lineIndex !== end.lineIndex) nextAligns.splice(start.lineIndex + 1, end.lineIndex - start.lineIndex);
+    nextAligns.splice(start.lineIndex + 1, 0, aligns[start.lineIndex] ?? 'left');
+
+    linesRef.current = nextLines;
+    stylesRef.current = nextStyles;
+    runsRef.current = nextRuns;
+    lineAlignsRef.current = nextAligns;
+    activeLineRef.current = start.lineIndex + 1;
+
+    // Carry the character format from the cursor position into the new line
+    // (mirrors Word behaviour: if you were typing in bold, the new line starts bold).
+    if (!pendingFormatRef.current) {
+      const curRuns = nextRuns[start.lineIndex] ?? [];
+      const fmt = lineText.length > 0
+        ? getFormatAtOffset(curRuns, lineText.length - 1)
+        : (curRuns.length > 0 ? runFormat(curRuns[0]) : {});
+      if (Object.keys(fmt).length > 0) pendingFormatRef.current = fmt;
+    }
+
+    repaint(start.lineIndex + 1, 0);
+    doCommit();
+  }, [doCommit, repaint]);
+
+  // ── Backspace ─────────────────────────────────────────────────────────────
+  const handleBackspaceImperative = useCallback((root: HTMLElement, sel: NonNullable<ReturnType<typeof imperativeSelectionRead>>) => {
+    const { start, end, collapsed } = sel;
+    const lines = linesRef.current;
+    const styles = stylesRef.current;
+    const runs = runsRef.current;
+    const aligns = lineAlignsRef.current;
+
+    if (!collapsed) {
+      const sRuns = runs[start.lineIndex] ?? [{ text: lines[start.lineIndex] ?? '' }];
+      const eRuns = runs[end.lineIndex] ?? [{ text: lines[end.lineIndex] ?? '' }];
+      const [leftRuns] = splitRunsAt(sRuns, start.offset);
+      const [, rightRuns] = splitRunsAt(eRuns, end.offset);
+      const merged = mergeAdjacentRuns([...leftRuns, ...rightRuns]);
+      const mergedText = `${(lines[start.lineIndex] ?? '').slice(0, start.offset)}${(lines[end.lineIndex] ?? '').slice(end.offset)}`;
+      const nextLinesBS = [...lines.slice(0, start.lineIndex), mergedText, ...lines.slice(end.lineIndex + 1)];
+      const nextRunsBS = [...runs.slice(0, start.lineIndex), merged, ...runs.slice(end.lineIndex + 1)];
+      const nextStylesBS = [...styles.slice(0, start.lineIndex), styles[start.lineIndex], ...styles.slice(end.lineIndex + 1)];
+      const nextAlignsBS = [...aligns.slice(0, start.lineIndex), aligns[start.lineIndex], ...aligns.slice(end.lineIndex + 1)];
+      linesRef.current = nextLinesBS.length > 0 ? nextLinesBS : [''];
+      runsRef.current = nextRunsBS.length > 0 ? nextRunsBS : [[{ text: '' }]];
+      stylesRef.current = nextStylesBS.length > 0 ? nextStylesBS : [undefined];
+      lineAlignsRef.current = nextAlignsBS.length > 0 ? nextAlignsBS : ['left'];
+      activeLineRef.current = start.lineIndex;
+      repaint(start.lineIndex, start.offset);
+      doCommit();
+      return;
+    }
+
+    const idx = start.lineIndex;
+    if (start.offset === 0) {
+      if (styles[idx]) {
+        const nextStyles = [...styles];
+        nextStyles[idx] = undefined;
+        stylesRef.current = nextStyles;
+        activeLineRef.current = idx;
+        repaint(idx, 0);
+        doCommit();
+        return;
+      }
+      if (idx > 0) {
+        const prevText = lines[idx - 1] ?? '';
+        const prevRuns = runs[idx - 1] ?? [{ text: prevText }];
+        const curRuns = runs[idx] ?? [{ text: lines[idx] ?? '' }];
+        const mergedRuns = mergeAdjacentRuns([...prevRuns, ...curRuns]);
+        const nextLines = [...lines];
+        nextLines[idx - 1] = `${prevText}${lines[idx] ?? ''}`;
+        nextLines.splice(idx, 1);
+        const nextRuns = [...runs];
+        nextRuns[idx - 1] = mergedRuns;
+        nextRuns.splice(idx, 1);
+        const nextStyles = [...styles];
+        nextStyles.splice(idx, 1);
+        const nextAligns = [...aligns];
+        nextAligns.splice(idx, 1);
+        linesRef.current = nextLines;
+        runsRef.current = nextRuns;
+        stylesRef.current = nextStyles;
+        lineAlignsRef.current = nextAligns;
+        activeLineRef.current = idx - 1;
+        repaint(idx - 1, prevText.length);
+        doCommit();
+      }
+      return;
+    }
+
+    // Single char before caret
+    const lineRuns = runs[idx] ?? [{ text: lines[idx] ?? '' }];
+    const newRuns = deleteRangeFromLineRuns(lineRuns, start.offset - 1, start.offset);
+    const nextLines = [...lines];
+    nextLines[idx] = runsText(newRuns);
+    const nextRuns = [...runs];
+    nextRuns[idx] = newRuns;
+    linesRef.current = nextLines;
+    runsRef.current = nextRuns;
+    activeLineRef.current = idx;
+    repaint(idx, start.offset - 1);
+    doCommit();
+  }, [doCommit, repaint]);
+
+  // ── Delete ────────────────────────────────────────────────────────────────
+  const handleDeleteImperative = useCallback((root: HTMLElement, sel: NonNullable<ReturnType<typeof imperativeSelectionRead>>) => {
+    const { start, collapsed } = sel;
+    const lines = linesRef.current;
+    const runs = runsRef.current;
+
+    if (!collapsed) {
+      handleBackspaceImperative(root, sel);
+      return;
+    }
+
+    const idx = start.lineIndex;
+    const text = lines[idx] ?? '';
+
+    if (start.offset < text.length) {
+      const lineRuns = runs[idx] ?? [{ text }];
+      const newRuns = deleteRangeFromLineRuns(lineRuns, start.offset, start.offset + 1);
+      const nextLines = [...lines];
+      nextLines[idx] = runsText(newRuns);
+      const nextRuns = [...runs];
+      nextRuns[idx] = newRuns;
+      linesRef.current = nextLines;
+      runsRef.current = nextRuns;
+      activeLineRef.current = idx;
+      repaint(idx, start.offset);
+      doCommit();
+      return;
+    }
+    if (idx < lines.length - 1) {
+      const nextLines = [...lines];
+      const nextRuns = [...runs];
+      const merged = mergeAdjacentRuns([...(runs[idx] ?? [{ text }]), ...(runs[idx + 1] ?? [{ text: lines[idx + 1] ?? '' }])]);
+      nextLines[idx] = `${text}${lines[idx + 1] ?? ''}`;
+      nextLines.splice(idx + 1, 1);
+      nextRuns[idx] = merged;
+      nextRuns.splice(idx + 1, 1);
+      const nextStyles = [...stylesRef.current];
+      nextStyles.splice(idx + 1, 1);
+      const nextAligns = [...lineAlignsRef.current];
+      nextAligns.splice(idx + 1, 1);
+      linesRef.current = nextLines;
+      runsRef.current = nextRuns;
+      stylesRef.current = nextStyles;
+      lineAlignsRef.current = nextAligns;
+      activeLineRef.current = idx;
+      repaint(idx, text.length);
+      doCommit();
+    }
+  }, [doCommit, handleBackspaceImperative, repaint]);
+
+  // ── KeyDown ───────────────────────────────────────────────────────────────
+  const handleKeyDown = useCallback((e: React.KeyboardEvent<HTMLDivElement>) => {
+    if (e.key === 'Escape') { e.preventDefault(); onEscapeRef.current(); return; }
+
+    const root = e.currentTarget;
+
+    // Save cursor position for printable keys so handleInput can apply pending format.
+    // (handleBeforeInput is unreliable for reading the selection in some React versions.)
+    if (
+      e.key.length === 1 &&
+      !e.ctrlKey && !e.metaKey && !e.altKey &&
+      !composingRef.current
+    ) {
+      const sel = imperativeSelectionRead(root, activeLineRef.current);
+      preinputSelRef.current = sel
+        ? { lineIndex: sel.start.lineIndex, offset: sel.start.offset, endLineIndex: sel.end.lineIndex, endOffset: sel.end.offset }
+        : null;
+    }
+
+    if ((e.ctrlKey || e.metaKey) && e.key === 'z' && !e.shiftKey) {
+      e.preventDefault();
+      if (typingPauseTimerRef.current) clearTimeout(typingPauseTimerRef.current);
+      typingSessionActiveRef.current = false;
+      const prev = undoStackRef.current.pop();
+      if (prev) {
+        linesRef.current = prev.lines;
+        stylesRef.current = prev.styles;
+        runsRef.current = prev.runs;
+        lineAlignsRef.current = prev.aligns;
+        activeLineRef.current = Math.min(activeLineRef.current, prev.lines.length - 1);
+        const caretLine = activeLineRef.current;
+        const caretOffset = (prev.lines[caretLine] ?? '').length;
+        repaint(caretLine, caretOffset);
+        doCommit();
+      }
+      return;
+    }
+
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      const sel = imperativeSelectionRead(root, activeLineRef.current);
+      if (sel) { pushUndo(); handleEnterImperative(root, sel); }
+      return;
+    }
+
+    // Backspace + Delete: all cases handled imperatively (with run tracking).
+    if (e.key === 'Backspace' && !e.ctrlKey && !e.metaKey) {
+      e.preventDefault();
+      const sel = imperativeSelectionRead(root, activeLineRef.current);
+      if (sel) { pushUndoForTyping(); handleBackspaceImperative(root, sel); }
+      return;
+    }
+    if (e.key === 'Delete' && !e.ctrlKey && !e.metaKey) {
+      e.preventDefault();
+      const sel = imperativeSelectionRead(root, activeLineRef.current);
+      if (sel) { pushUndoForTyping(); handleDeleteImperative(root, sel); }
+      return;
+    }
+
+    if (e.key === 'ArrowUp' || e.key === 'ArrowDown' || e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
+      pendingFormatRef.current = null;
+      requestAnimationFrame(() => {
+        const r = rootRef.current;
+        if (!r) return;
+        const s = imperativeSelectionRead(r, activeLineRef.current);
+        if (s) {
+          activeLineRef.current = s.start.lineIndex;
+          r.setAttribute(TEXT_EDITOR_ACTIVE_LINE_ATTR, String(activeLineRef.current));
+          syncFormatState();
+        }
+      });
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [doCommit, pushUndo, pushUndoForTyping, repaint, syncFormatState]);
+
+  // ── BeforeInput ───────────────────────────────────────────────────────────
+  // Enter is intercepted here for structural control (new line). Regular character
+  // typing is handled natively by the browser; pending format is applied in onInput.
+  const handleBeforeInput = useCallback((e: React.FormEvent<HTMLDivElement>) => {
+    const inputType = (e.nativeEvent as InputEvent).inputType;
+    const root = e.currentTarget;
+
+    if (inputType === 'insertParagraph' || inputType === 'insertLineBreak') {
+      e.preventDefault();
+      const sel = imperativeSelectionRead(root, activeLineRef.current);
+      if (sel) { pushUndo(); handleEnterImperative(root, sel); }
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // ── Input: sync state after browser-native text changes ──────────────────
+  const handleInput = useCallback((e: React.FormEvent<HTMLDivElement>) => {
+    pushUndoForTyping();
+
+    const root = e.currentTarget;
+    const lineDivs = Array.from(root.querySelectorAll<HTMLElement>(`[${TEXT_EDITOR_LINE_ATTR}]`));
+
+    // Read cursor position AFTER the browser's change (used to restore after repaint).
+    const postSel = imperativeSelectionRead(root, activeLineRef.current);
+    if (postSel) activeLineRef.current = postSel.start.lineIndex;
+
+    if (lineDivs.length !== linesRef.current.length) {
+      // Line count changed unexpectedly — resync everything.
+      const nextLines = lineDivs.map((div) => {
+        let text = '';
+        div.childNodes.forEach((child) => {
+          if (child instanceof HTMLElement && child.hasAttribute('data-document-text-line-marker')) return;
+          text += child.textContent ?? '';
+        });
+        return text.replace(/\u00a0/g, ' ');
+      });
+      const nextRuns = nextLines.map((line, idx) => {
+        const existing = runsRef.current[idx];
+        if (existing && runsText(existing) === line) return existing;
+        return [{ text: line }];
+      });
+      linesRef.current = nextLines;
+      runsRef.current = nextRuns;
+      stylesRef.current = stylesRef.current.slice(0, nextLines.length);
+      lineAlignsRef.current = lineAlignsRef.current.slice(0, nextLines.length);
+      repaint(activeLineRef.current, 0);
+      doCommit();
+      preinputSelRef.current = null;
+      return;
+    }
+
+    // Read new text from each line.
+    const prevLines = linesRef.current;
+    const nextLines = lineDivs.map((div) => {
+      let text = '';
+      div.childNodes.forEach((child) => {
+        if (child instanceof HTMLElement && child.hasAttribute('data-document-text-line-marker')) return;
+        text += child.textContent ?? '';
+      });
+      return text.replace(/\u00a0/g, ' ');
+    });
+
+    // Sync runs, applying pending format to newly inserted characters when present.
+    const prePos = preinputSelRef.current;
+    preinputSelRef.current = null;
+    const pending = pendingFormatRef.current;
+
+    let needRepaint = false;
+    const nextRuns = nextLines.map((line, idx) => {
+      const existing = runsRef.current[idx];
+      if (existing && runsText(existing) === line) return existing;
+
+      // Text changed on this line — apply pending format to inserted characters.
+      if (pending && prePos && prePos.lineIndex === idx) {
+        const prevLine = prevLines[idx] ?? '';
+        const insertOffset = prePos.offset;
+        // Selection end on the same line (collapsed → same as offset).
+        const selEnd = prePos.endLineIndex === idx ? prePos.endOffset : prevLine.length;
+        // How many characters survive after selection end + how many were inserted.
+        const rightSurvived = prevLine.length - selEnd;
+        const insertedLen = line.length - insertOffset - rightSurvived;
+
+        if (insertedLen > 0) {
+          const inserted = line.slice(insertOffset, insertOffset + insertedLen);
+          const baseRuns = existing && runsText(existing) === prevLine
+            ? existing
+            : [{ text: prevLine }];
+          // Step 1: remove the selection range from the runs (if any).
+          const afterDelete = selEnd > insertOffset
+            ? deleteRangeFromLineRuns(baseRuns, insertOffset, selEnd)
+            : baseRuns;
+          // Step 2: insert the typed character(s) at insertOffset with the pending format.
+          const withFormat = insertIntoLineRuns(afterDelete, insertOffset, inserted, pending);
+          needRepaint = true;
+          return withFormat;
+        }
+      }
+
+      // Fallback: plain run (covers single-char deletes that slipped through, IME, etc.)
+      return [{ text: line }];
+    });
+
+    linesRef.current = nextLines;
+    runsRef.current = nextRuns;
+    root.setAttribute(TEXT_EDITOR_ACTIVE_LINE_ATTR, String(activeLineRef.current));
+    doCommit();
+
+    if (needRepaint && postSel) {
+      // Re-render with formatted spans and restore cursor.
+      repaint(postSel.start.lineIndex, postSel.start.offset);
+    }
+  }, [doCommit, pushUndoForTyping, repaint]);
+
+  const handlePointerUp = useCallback(() => {
+    const root = rootRef.current;
+    if (!root) return;
+    const sel = imperativeSelectionRead(root, activeLineRef.current);
+    if (sel) {
+      activeLineRef.current = sel.start.lineIndex;
+      root.setAttribute(TEXT_EDITOR_ACTIVE_LINE_ATTR, String(activeLineRef.current));
+    }
+    pendingFormatRef.current = null;
+    syncFormatState();
+  }, [syncFormatState]);
+
+  const handlePaste = useCallback((e: React.ClipboardEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    pushUndo();
+    const root = e.currentTarget;
+    const sel = imperativeSelectionRead(root, activeLineRef.current);
+    if (!sel) return;
+    const pasted = e.clipboardData.getData('text/plain').replace(/\r\n/g, '\n');
+    const parts = pasted.split('\n');
+    const { start, end } = sel;
+    const lines = linesRef.current;
+    const styles = stylesRef.current;
+    const runs = runsRef.current;
+    const aligns = lineAlignsRef.current;
+
+    // Delete selection first if any
+    let wLines = lines;
+    let wRuns = runs;
+    let wStyles = styles;
+    let wAligns = aligns;
+    if (!sel.collapsed) {
+      const sRuns = runs[start.lineIndex] ?? [{ text: lines[start.lineIndex] ?? '' }];
+      const eRuns = runs[end.lineIndex] ?? [{ text: lines[end.lineIndex] ?? '' }];
+      const [leftR] = splitRunsAt(sRuns, start.offset);
+      const [, rightR] = splitRunsAt(eRuns, end.offset);
+      const merged = mergeAdjacentRuns([...leftR, ...rightR]);
+      const mergedText = `${(lines[start.lineIndex] ?? '').slice(0, start.offset)}${(lines[end.lineIndex] ?? '').slice(end.offset)}`;
+      wLines = [...lines.slice(0, start.lineIndex), mergedText, ...lines.slice(end.lineIndex + 1)];
+      wRuns = [...runs.slice(0, start.lineIndex), merged, ...runs.slice(end.lineIndex + 1)];
+      wStyles = [...styles.slice(0, start.lineIndex), styles[start.lineIndex], ...styles.slice(end.lineIndex + 1)];
+      wAligns = [...aligns.slice(0, start.lineIndex), aligns[start.lineIndex], ...aligns.slice(end.lineIndex + 1)];
+    }
+
+    const before = (wLines[start.lineIndex] ?? '').slice(0, start.offset);
+    const after = (wLines[start.lineIndex] ?? '').slice(start.offset);
+    const pasteRuns = wRuns[start.lineIndex] ?? [{ text: wLines[start.lineIndex] ?? '' }];
+    const pasteFormat = getFormatAtOffset(pasteRuns, start.offset);
+
+    const replacement = parts.length === 1
+      ? [`${before}${parts[0]}${after}`]
+      : [`${before}${parts[0]}`, ...parts.slice(1, -1), `${parts[parts.length - 1]}${after}`];
+
+    // Build runs for pasted lines — each line inherits the format at the cursor position
+    const simpleRunsArr = replacement.map((lineText) => [{ text: lineText, ...pasteFormat }]);
+
+    const nextLines = [...wLines.slice(0, start.lineIndex), ...replacement, ...wLines.slice(start.lineIndex + 1)];
+    const nextRuns = [...wRuns.slice(0, start.lineIndex), ...simpleRunsArr, ...wRuns.slice(start.lineIndex + 1)];
+    const nextStyles = nextLines.map((_, idx) => {
+      if (idx < start.lineIndex) return wStyles[idx];
+      if (idx < start.lineIndex + replacement.length) return wStyles[start.lineIndex];
+      return wStyles[idx - replacement.length + 1];
+    });
+    const nextAligns = nextLines.map((_, idx) => {
+      if (idx < start.lineIndex) return wAligns[idx];
+      if (idx < start.lineIndex + replacement.length) return wAligns[start.lineIndex];
+      return wAligns[idx - replacement.length + 1];
+    });
+
+    linesRef.current = nextLines;
+    runsRef.current = nextRuns;
+    stylesRef.current = nextStyles;
+    lineAlignsRef.current = nextAligns;
+    const nextActive = start.lineIndex + replacement.length - 1;
+    activeLineRef.current = nextActive;
+    repaint(nextActive, replacement[replacement.length - 1].length - after.length);
+    doCommit();
+  }, [doCommit, pushUndo, repaint]);
+
+  const handleCut = useCallback((e: React.ClipboardEvent<HTMLDivElement>) => {
+    const root = e.currentTarget;
+    const sel = imperativeSelectionRead(root, activeLineRef.current);
+    if (!sel || sel.collapsed) return;
+    pushUndo();
+    const { start, end } = sel;
+    const lines = linesRef.current;
+    const selectedLines = lines.slice(start.lineIndex, end.lineIndex + 1);
+    selectedLines[0] = selectedLines[0].slice(start.offset);
+    selectedLines[selectedLines.length - 1] = selectedLines[selectedLines.length - 1].slice(
+      0, end.offset - (start.lineIndex === end.lineIndex ? start.offset : 0)
+    );
+    e.clipboardData.setData('text/plain', selectedLines.join('\n'));
+    e.preventDefault();
+    handleBackspaceImperative(root, sel);
+  }, [handleBackspaceImperative, pushUndo]);
+
+  return (
+    <div
+      ref={rootRef}
+      {...{ [TEXT_EDITOR_ROOT_ATTR]: 'true' }}
+      contentEditable
+      suppressContentEditableWarning
+      className="block w-full flex-1 min-h-0 overflow-auto rounded border-0 bg-transparent p-1 focus:outline-none focus:ring-2 focus:ring-brand-red/90 select-text"
+      style={textStyle}
+      onInput={handleInput}
+      onBeforeInput={handleBeforeInput}
+      onKeyDown={handleKeyDown}
+      onPointerUp={handlePointerUp}
+      onPaste={handlePaste}
+      onCut={handleCut}
+      onCompositionStart={() => { composingRef.current = true; }}
+      onCompositionEnd={() => { composingRef.current = false; }}
+      onPointerDown={(e) => e.stopPropagation()}
+      onPointerMove={(e) => e.stopPropagation()}
+      // No children — DOM managed imperatively via repaint()
+    />
+  );
+}
 
 type ResizeHandle = 'n' | 's' | 'e' | 'w' | 'nw' | 'ne' | 'sw' | 'se';
 
@@ -479,7 +1684,7 @@ export default function DocumentPreview({
       if (e.button !== 0) return;
       if (el.type === 'block' && lockBlockElements) return;
       const target = e.target as HTMLElement;
-      if (target.closest('textarea') || target.closest('input')) return;
+      if (target.closest('textarea') || target.closest('input') || target.closest('[contenteditable="true"]')) return;
       // Locked / position-locked: no drag, but capture pointer so click still selects (unlock, ribbon, etc.).
       const movingIds = el.locked || el.lockPosition
         ? []
@@ -684,6 +1889,20 @@ export default function DocumentPreview({
     setEditingElementId(null);
   }, []);
 
+  useEffect(() => {
+    if (!editingElementId) return;
+    const onPointerDownCapture = (e: PointerEvent) => {
+      const t = e.target;
+      if (!(t instanceof Element)) return;
+      if (t.closest(DOCUMENT_EDITOR_FORMATTING_SELECTOR)) return;
+      if (t.closest(DOCUMENT_EDITOR_OVERLAY_SELECTOR)) return;
+      if (t.closest(`[${INLINE_TEXT_EDITOR_ATTR}="${editingElementId}"]`)) return;
+      commitInlineEdit();
+    };
+    document.addEventListener('pointerdown', onPointerDownCapture, true);
+    return () => document.removeEventListener('pointerdown', onPointerDownCapture, true);
+  }, [editingElementId, commitInlineEdit]);
+
   const selectedElement = selectedElementIds.length === 1 ? elements.find((e) => e.id === selectedElementIds[0]) : null;
 
   const getPanScrollEl = useCallback((): HTMLElement | null => {
@@ -845,10 +2064,75 @@ export default function DocumentPreview({
             const isPositionLocked = !!el.lockPosition;
             const showHandles = isSelected && !isEditing && !(isBlock && lockBlockElements) && !isLocked && !isPositionLocked && selectedElementIds.length === 1;
             const isImagePlaceholder = el.type === 'image' && !el.content;
+            const showTextEditButton =
+              el.type === 'text' && isSelected && !isEditing && !isLocked && selectedElementIds.length === 1;
+            const textFloatingToolbarStyle: React.CSSProperties = {
+              left: `${(x + w) * 100}%`,
+              top: `${y * 100}%`,
+              transform: 'translate(-100%, calc(-100% - 4px))',
+            };
 
             return (
               <Fragment key={el.id}>
+              {showTextEditButton && (
+                <div
+                  className={`absolute z-[3] w-max ${editorSegmentedControlTrackClass}`}
+                  style={textFloatingToolbarStyle}
+                >
+                  {onUpdateElement && (
+                    <button
+                      type="button"
+                      className={`${DOCUMENT_PREVIEW_FLOATING_SEGMENT_BTN_CLASS} ${
+                        isPositionLocked
+                          ? 'rounded-md bg-sky-100 text-sky-950 shadow-sm ring-1 ring-sky-400/50 hover:bg-sky-100'
+                          : editorSegmentedSegmentIdleClass
+                      }`}
+                      title={isPositionLocked ? 'Allow move' : 'Block move (still edit text/image)'}
+                      onMouseDown={(e) => e.stopPropagation()}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onUpdateElement(el.id, (prev) => ({ ...prev, lockPosition: !prev.lockPosition }));
+                      }}
+                    >
+                      <PinIcon className="h-3 w-3 shrink-0 opacity-90" />
+                      {isPositionLocked ? 'Allow move' : 'Block move'}
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    className={`${DOCUMENT_PREVIEW_FLOATING_SEGMENT_BTN_CLASS} ${editorSegmentedSegmentIdleClass}`}
+                    title="Edit text"
+                    onMouseDown={(e) => e.stopPropagation()}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setEditingElementId(el.id);
+                    }}
+                  >
+                    Edit
+                  </button>
+                </div>
+              )}
+              {isEditing && el.type === 'text' && (
+                <div
+                  className={`absolute z-[3] w-max ${editorSegmentedControlTrackClass}`}
+                  style={textFloatingToolbarStyle}
+                >
+                  <button
+                    type="button"
+                    className={`${DOCUMENT_PREVIEW_FLOATING_SEGMENT_BTN_CLASS} ${editorSegmentedSegmentSelectedClass}`}
+                    title="Finish editing"
+                    onMouseDown={(e) => e.stopPropagation()}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      commitInlineEdit();
+                    }}
+                  >
+                    Done
+                  </button>
+                </div>
+              )}
               <div
+                data-inline-text-editor={isEditing && el.type === 'text' ? el.id : undefined}
                 onPointerDown={(e) => handlePointerDown(e, el)}
                 onPointerMove={handlePointerMove}
                 onPointerUp={(e) => handlePointerUp(e, el)}
@@ -862,9 +2146,11 @@ export default function DocumentPreview({
                 className={`absolute rounded-md border transition-[border-color,box-shadow] duration-200 ease-out ${
                   isEditing ? 'cursor-text overflow-hidden' : isLocked ? 'cursor-pointer overflow-hidden' : isPositionLocked ? 'cursor-default overflow-hidden' : isBlock && lockBlockElements ? 'cursor-default overflow-hidden' : 'cursor-move'
                 } ${
-                  isSelected
-                    ? 'z-[1] overflow-visible border-brand-red/55 shadow-[0_0_0_2px_rgba(220,38,38,0.32)] ring-2 ring-brand-red/50'
-                    : 'overflow-hidden border-transparent hover:border-slate-300/70'
+                  isEditing
+                    ? 'z-[2] overflow-visible border-brand-red/55 shadow-[0_0_0_2px_rgba(220,38,38,0.32)] ring-2 ring-brand-red/50'
+                    : isSelected
+                      ? 'z-[1] overflow-visible border-brand-red/55 shadow-[0_0_0_2px_rgba(220,38,38,0.32)] ring-2 ring-brand-red/50'
+                      : 'overflow-hidden border-transparent hover:border-slate-300/70'
                 }`}
                 style={{
                   left: `${x * 100}%`,
@@ -879,7 +2165,7 @@ export default function DocumentPreview({
                     const justifyContent = va === 'top' ? 'flex-start' : va === 'bottom' ? 'flex-end' : 'center';
                     const scale = canvasWidthPx / REFERENCE_CANVAS_WIDTH_PX;
                     const refFontSize = Math.max(8, Math.min(72, el.fontSize ?? 12));
-                    const textStyle = {
+                    const textStyle: React.CSSProperties = {
                       fontSize: `${Math.max(6, refFontSize * scale)}px`,
                       textAlign: el.textAlign ?? 'left',
                       fontWeight: el.fontWeight ?? 'normal',
@@ -887,34 +2173,87 @@ export default function DocumentPreview({
                       fontFamily: el.fontFamily === 'Open Sans' ? '"Open Sans", sans-serif' : '"Montserrat", sans-serif',
                       color: el.color ?? '#000000',
                     };
+                    const textLines = contentLines(el.content);
+                    const lineStyles = effectiveLineListStyles(el);
+                    const editHint =
+                      'Enter: new line. Click Done or outside this box to finish. Escape: exit edit.';
                     return (
-                      <div className="w-full h-full flex flex-col" style={{ justifyContent }}>
+                      <div
+                        className="relative flex h-full w-full flex-col"
+                        style={{ justifyContent }}
+                      >
                         {isEditing ? (
-                          <textarea
-                            autoFocus
-                            className="block w-full flex-1 min-h-0 resize-none overflow-hidden whitespace-pre-wrap break-words p-1 border-0 rounded bg-white/95 focus:outline-none focus:ring-2 focus:ring-brand-red/90 select-text"
-                            style={textStyle}
-                            value={el.content}
-                            onChange={(e) => {
-                              onUpdateElement?.(el.id, (prev) => ({ ...prev, content: e.target.value }));
-                            }}
-                            onBlur={commitInlineEdit}
-                            onKeyDown={(e) => {
-                              if (e.key === 'Escape') {
-                                commitInlineEdit();
-                                (e.target as HTMLTextAreaElement).blur();
-                              }
-                              if (e.key === 'Enter' && !e.shiftKey) {
-                                e.preventDefault();
-                                commitInlineEdit();
-                                (e.target as HTMLTextAreaElement).blur();
-                              }
-                            }}
-                            onClick={(e) => e.stopPropagation()}
-                            onPointerDown={(e) => e.stopPropagation()}
-                            onPointerMove={(e) => e.stopPropagation()}
-                            onPointerUp={(e) => e.stopPropagation()}
+                          <InlineTextEditor
+                            element={el}
+                            textStyle={textStyle}
+                            onCommit={(snapshot) =>
+                              onUpdateElement?.(el.id, (prev) => ({
+                                ...prev,
+                                content: snapshot.content,
+                                listStyle: undefined,
+                                lineListStyles: snapshot.lineListStyles,
+                                richLines: snapshot.richLines,
+                                lineTextAligns: snapshot.lineTextAligns,
+                              }))
+                            }
+                            onEscape={commitInlineEdit}
                           />
+                        ) : el.richLines && el.richLines.length > 0 ? (
+                          // ── Rich text display (per-run styled spans) ──────────────────
+                          <div
+                            className="block overflow-hidden whitespace-pre-wrap break-words p-1 min-h-[1em]"
+                            style={{ ...textStyle, textAlign: undefined }}
+                          >
+                            {el.richLines.map((lineRuns, idx) => {
+                              const listStyle = lineStyles[idx];
+                              const lineAlign = el.lineTextAligns?.[idx] ?? el.textAlign ?? 'left';
+                              return (
+                                <div
+                                  key={idx}
+                                  className={listStyle ? 'flex min-h-[1.2em] items-baseline' : 'min-h-[1.2em]'}
+                                  style={{ textAlign: lineAlign }}
+                                >
+                                  {listStyle && (
+                                    <span className="mr-[0.45em] inline-block min-w-[1.35em] shrink-0 select-none text-right">
+                                      {lineMarker(listStyle, listOrdinalAt(lineStyles, idx))}
+                                    </span>
+                                  )}
+                                  <span className={listStyle ? 'min-w-0 flex-1' : undefined}>
+                                    {lineRuns.map((run, ri) => {
+                                      const rs = runDisplayStyle(run, refFontSize);
+                                      return Object.keys(rs).length > 0
+                                        ? <span key={ri} style={rs}>{run.text || '\u00a0'}</span>
+                                        : <span key={ri}>{run.text || '\u00a0'}</span>;
+                                    })}
+                                  </span>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        ) : lineStyles.some(Boolean) ? (
+                          <div
+                            className="block overflow-hidden whitespace-pre-wrap break-words p-1 min-h-[1em]"
+                            style={textStyle}
+                          >
+                            {textLines.map((line, idx) => {
+                              const style = lineStyles[idx];
+                              return (
+                                <div
+                                  key={idx}
+                                  className={style ? 'flex min-h-[1.2em] items-baseline' : 'min-h-[1.2em]'}
+                                >
+                                  {style && (
+                                    <span className="mr-[0.45em] inline-block min-w-[1.35em] shrink-0 select-none text-right">
+                                      {lineMarker(style, listOrdinalAt(lineStyles, idx))}
+                                    </span>
+                                  )}
+                                  <span className={style ? 'min-w-0 flex-1' : undefined}>
+                                    {line || '\u00a0'}
+                                  </span>
+                                </div>
+                              );
+                            })}
+                          </div>
                         ) : (
                           <span
                             className="block overflow-hidden whitespace-pre-wrap break-words p-1 min-h-[1em]"
@@ -964,31 +2303,6 @@ export default function DocumentPreview({
                     />
                   ))}
               </div>
-              {isSelected && isPositionLocked && !isBlock && onUpdateElement && (
-                <div
-                  className="pointer-events-auto absolute z-10 flex items-center justify-between gap-2 rounded-lg border border-sky-200/90 bg-white px-2.5 py-1.5 shadow-md ring-1 ring-sky-900/[0.06]"
-                  style={{
-                    left: `${x * 100}%`,
-                    top: `${(y + h) * 100 + 0.3}%`,
-                    width: `${w * 100}%`,
-                  }}
-                  onClick={(e) => e.stopPropagation()}
-                >
-                  <span className="min-w-0 flex-1 truncate text-[11px] font-medium text-slate-700">
-                    Movement is blocked for this element.
-                  </span>
-                  <button
-                    type="button"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      onUpdateElement(el.id, (prev) => ({ ...prev, lockPosition: false }));
-                    }}
-                    className="flex-shrink-0 rounded-lg border border-sky-500/25 bg-sky-600 px-2.5 py-1 text-[11px] font-semibold text-white shadow-sm transition-[background-color,transform] duration-200 ease-out hover:bg-sky-700 active:scale-[0.98]"
-                  >
-                    Unblock
-                  </button>
-                </div>
-              )}
             </Fragment>
             );
           })}

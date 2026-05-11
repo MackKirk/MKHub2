@@ -426,10 +426,18 @@ export default function ImageEditor({ isOpen, onClose, imageUrl, imageName = 'im
     const imgWidth = img.naturalWidth;
     const imgHeight = img.naturalHeight;
     
-    // If targetWidth and targetHeight are provided, use them
+    // If targetWidth and targetHeight are provided, use them as a bounding box
+    // but preserve the image's own aspect ratio to avoid white letterbox borders
     if (targetWidth && targetHeight) {
-      canvasWidth = targetWidth;
-      canvasHeight = targetHeight;
+      const imgAspect = imgWidth / imgHeight;
+      const targetAspect = targetWidth / targetHeight;
+      if (imgAspect > targetAspect) {
+        canvasWidth = targetWidth;
+        canvasHeight = targetWidth / imgAspect;
+      } else {
+        canvasWidth = targetHeight * imgAspect;
+        canvasHeight = targetHeight;
+      }
     } else {
       // Calculate maximum size that fits in viewport while maintaining aspect ratio
       // Account for sidebar (224px) + gap (16px) + padding (32px) + modal padding (32px) + margin
@@ -2393,30 +2401,35 @@ export default function ImageEditor({ isOpen, onClose, imageUrl, imageName = 'im
     const cx = displayWidth / 2;
     const cy = displayHeight / 2;
     const angleRad = (angle * Math.PI) / 180;
-    const cosA = Math.cos(angleRad);
-    const sinA = Math.sin(angleRad);
+
+    // Export canvas represents the visible frame at natural resolution.
+    // Each display pixel covers 1/s natural pixels, so the visible frame is displayW/s × displayH/s.
+    // At fitScale (initial load, no pan) this equals iw × ih (full image). When zoomed in it
+    // is a crop — exactly what the user sees, with no room for white margins.
+    const outW = Math.round(displayWidth / s);
+    const outH = Math.round(displayHeight / s);
     
-    // Transform display coords to image coords (full-res export)
+    // Transform display coords to export canvas coords.
+    // Pan and rotation terms cancel completely; only scale + re-center is needed.
     const dispToImg = (xd: number, yd: number): { xi: number; yi: number } => ({
-      xi: ((xd - cx - clamped.x) * cosA + (yd - cy - clamped.y) * sinA) / s + iw / 2,
-      yi: (-(xd - cx - clamped.x) * sinA + (yd - cy - clamped.y) * cosA) / s + ih / 2,
+      xi: (xd - cx) / s + outW / 2,
+      yi: (yd - cy) / s + outH / 2,
     });
     const lenScale = 1 / s; // scale factor for stroke, fontSize, w, h
     
-    // Export at original image resolution so saved file keeps same quality as before editing
     const finalCanvas = document.createElement('canvas');
-    finalCanvas.width = iw;
-    finalCanvas.height = ih;
+    finalCanvas.width = outW;
+    finalCanvas.height = outH;
     const ctx = finalCanvas.getContext('2d');
     if (!ctx) return;
     ctx.imageSmoothingEnabled = true;
     ctx.imageSmoothingQuality = 'high';
     
     ctx.save();
-    ctx.clearRect(0, 0, iw, ih);
+    ctx.clearRect(0, 0, outW, outH);
     ctx.fillStyle = '#ffffff';
-    ctx.fillRect(0, 0, iw, ih);
-    ctx.translate(iw / 2 + clamped.x / s, ih / 2 + clamped.y / s);
+    ctx.fillRect(0, 0, outW, outH);
+    ctx.translate(outW / 2 + clamped.x / s, outH / 2 + clamped.y / s);
     ctx.rotate(angleRad);
     ctx.drawImage(img, -iw / 2, -ih / 2, iw, ih);
     ctx.restore();

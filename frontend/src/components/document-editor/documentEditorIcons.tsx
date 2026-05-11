@@ -79,6 +79,71 @@ export function PageLayoutIcon({ className }: { className?: string }) {
   );
 }
 
+/** Plain paragraphs (no list) — Word-style Home ribbon. */
+export function ParagraphPlainIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 16 16" fill="currentColor" aria-hidden>
+      <rect x="2" y="3.25" width="12" height="1.35" rx="0.35" />
+      <rect x="2" y="7.35" width="12" height="1.35" rx="0.35" />
+      <rect x="2" y="11.4" width="9" height="1.35" rx="0.35" />
+    </svg>
+  );
+}
+
+/** Bulleted list. */
+export function ListBulletIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 16 16" fill="currentColor" aria-hidden>
+      <circle cx="3.35" cy="4.45" r="1.15" />
+      <circle cx="3.35" cy="8" r="1.15" />
+      <circle cx="3.35" cy="11.55" r="1.15" />
+      <rect x="6.25" y="3.55" width="7.75" height="1.35" rx="0.35" />
+      <rect x="6.25" y="7.35" width="7.75" height="1.35" rx="0.35" />
+      <rect x="6.25" y="11.15" width="5.5" height="1.35" rx="0.35" />
+    </svg>
+  );
+}
+
+/** Numbered list (1. 2. 3.). */
+export function ListNumberedIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 16 16" fill="currentColor" aria-hidden>
+      <text x="1.25" y="5.35" fontSize="4.25" fontFamily="system-ui, Segoe UI, Roboto, sans-serif" fontWeight="700" fill="currentColor">
+        1.
+      </text>
+      <text x="1.25" y="9.35" fontSize="4.25" fontFamily="system-ui, Segoe UI, Roboto, sans-serif" fontWeight="700" fill="currentColor">
+        2.
+      </text>
+      <text x="1.25" y="13.35" fontSize="4.25" fontFamily="system-ui, Segoe UI, Roboto, sans-serif" fontWeight="700" fill="currentColor">
+        3.
+      </text>
+      <rect x="6.75" y="3.55" width="7.25" height="1.35" rx="0.35" />
+      <rect x="6.75" y="7.35" width="7.25" height="1.35" rx="0.35" />
+      <rect x="6.75" y="11.15" width="5.25" height="1.35" rx="0.35" />
+    </svg>
+  );
+}
+
+/** Lettered list (a. b. c.). */
+export function ListLetteredIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 16 16" fill="currentColor" aria-hidden>
+      <text x="1.25" y="5.35" fontSize="4.25" fontFamily="system-ui, Segoe UI, Roboto, sans-serif" fontWeight="700" fontStyle="italic" fill="currentColor">
+        a.
+      </text>
+      <text x="1.25" y="9.35" fontSize="4.25" fontFamily="system-ui, Segoe UI, Roboto, sans-serif" fontWeight="700" fontStyle="italic" fill="currentColor">
+        b.
+      </text>
+      <text x="1.25" y="13.35" fontSize="4.25" fontFamily="system-ui, Segoe UI, Roboto, sans-serif" fontWeight="700" fontStyle="italic" fill="currentColor">
+        c.
+      </text>
+      <rect x="6.75" y="3.55" width="7.25" height="1.35" rx="0.35" />
+      <rect x="6.75" y="7.35" width="7.25" height="1.35" rx="0.35" />
+      <rect x="6.75" y="11.15" width="5.25" height="1.35" rx="0.35" />
+    </svg>
+  );
+}
+
 export function ZoomIcon({ className }: { className?: string }) {
   return (
     <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.5}>
@@ -282,6 +347,24 @@ export function LayerToFrontIcon({ className }: { className?: string }) {
   return (
     <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.5}>
       <path strokeLinecap="round" strokeLinejoin="round" d="M13 5l7 7-7 7M6 5l7 7-7 7" />
+    </svg>
+  );
+}
+
+/** Expand to full screen (arrows pointing outward from center). */
+export function ExpandIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className ?? 'w-4 h-4'} fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.75}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M4 8V5a1 1 0 011-1h3M4 16v3a1 1 0 001 1h3M20 8V5a1 1 0 00-1-1h-3M20 16v3a1 1 0 01-1 1h-3" />
+    </svg>
+  );
+}
+
+/** Compress from full screen (arrows pointing inward to center). */
+export function CompressIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className ?? 'w-4 h-4'} fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.75}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M9 4v3a1 1 0 01-1 1H5M15 4v3a1 1 0 001 1h3M9 20v-3a1 1 0 00-1-1H5M15 20v-3a1 1 0 011-1h3" />
     </svg>
   );
 }
