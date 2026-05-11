@@ -25,6 +25,10 @@ import {
   editorCanvasScrollAreaClass,
   editorGroupLabelClass,
   editorSidePanelBodyClass,
+  editorSidePanelCollapsedRailRightClass,
+  editorSidePanelCollapsedRailButtonClass,
+  editorSidePanelCollapsedRailCaptionClass,
+  editorSidePanelCollapseToggleClass,
   editorSidePanelHeaderClass,
   editorSidePanelHeadingMetaClass,
   editorSidePanelHeadingTitleClass,
@@ -35,6 +39,9 @@ import DocumentSelectionInspector from '@/components/document-editor/DocumentSel
 import type { AlignKind } from '@/components/document-editor/DocumentSelectionRibbon';
 import {
   BlockIcon,
+  ChevronLeftIcon,
+  ChevronRightIcon,
+  MiniLayersStackGlyph,
   ImageIcon,
   LayerBackwardIcon,
   LayerForwardIcon,
@@ -142,6 +149,8 @@ export default function DocumentEditor(props: DocumentEditorProps) {
   const [selectedElementIds, setSelectedElementIds] = useState<string[]>([]);
   const [isSaving, setIsSaving] = useState(false);
   const [showAddPageModal, setShowAddPageModal] = useState(false);
+  const [pagesPanelCollapsed, setPagesPanelCollapsed] = useState(false);
+  const [layersPanelCollapsed, setLayersPanelCollapsed] = useState(false);
   const [isExportingPdf, setIsExportingPdf] = useState(false);
   const [pdfPreview, setPdfPreview] = useState<{ url: string; filename: string } | null>(null);
   const [bgPickerOpen, setBgPickerOpen] = useState(false);
@@ -1258,6 +1267,8 @@ export default function DocumentEditor(props: DocumentEditorProps) {
                   : undefined
                 : handleDuplicatePage
           }
+          collapsed={pagesPanelCollapsed}
+          onToggleCollapsed={() => setPagesPanelCollapsed((v) => !v)}
         />
         {useContinuousPageCanvas ? (
           <div
@@ -1348,11 +1359,41 @@ export default function DocumentEditor(props: DocumentEditorProps) {
             onReplaceImageClick={readOnly ? undefined : (projectId ? openImagePickerForElement : undefined)}
           />
         )}
-        {!readOnly && (
+        {!readOnly && layersPanelCollapsed && (
+          <div className={editorSidePanelCollapsedRailRightClass}>
+            <button
+              type="button"
+              onClick={() => setLayersPanelCollapsed(false)}
+              className={editorSidePanelCollapsedRailButtonClass}
+              title="Expand Layers"
+              aria-expanded={false}
+              aria-label="Expand Layers panel"
+            >
+              <ChevronLeftIcon className="h-4 w-4 shrink-0 opacity-90" />
+              <MiniLayersStackGlyph className="h-9 w-6 shrink-0 text-slate-400" />
+              <span aria-hidden className={`${editorSidePanelCollapsedRailCaptionClass} mt-0.5`}>Layers</span>
+            </button>
+          </div>
+        )}
+        {!readOnly && !layersPanelCollapsed && (
         <div className={editorSidePanelRootRightClass}>
-          <div className={editorSidePanelHeaderClass}>
-            <div className={editorSidePanelHeadingTitleClass}>Layers</div>
-            <p className={editorSidePanelHeadingMetaClass}>Stack order on page</p>
+          <div className={`${editorSidePanelHeaderClass} flex flex-col gap-0`}>
+            <div className="flex items-start gap-1">
+              <div className="min-w-0 flex-1">
+                <div className={editorSidePanelHeadingTitleClass}>Layers</div>
+                <p className={editorSidePanelHeadingMetaClass}>Stack order on page</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setLayersPanelCollapsed(true)}
+                className={editorSidePanelCollapseToggleClass}
+                title="Collapse Layers"
+                aria-expanded={true}
+                aria-label="Collapse Layers panel"
+              >
+                <ChevronRightIcon className="h-4 w-4" />
+              </button>
+            </div>
           </div>
           <div className={`${editorSidePanelBodyClass} space-y-2`}>
             {elements.length === 0 && (

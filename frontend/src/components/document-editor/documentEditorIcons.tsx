@@ -87,6 +87,53 @@ export function ZoomIcon({ className }: { className?: string }) {
   );
 }
 
+/** Collapse side panel (narrow strip). */
+export function ChevronLeftIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.5} aria-hidden>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
+    </svg>
+  );
+}
+
+/** Expand side panel (narrow strip). */
+export function ChevronRightIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.5} aria-hidden>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
+    </svg>
+  );
+}
+
+/** Tiny stacked sheets — collapsed Pages rail hint. */
+export function MiniPagesStackGlyph({ className }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 22 28" fill="none" aria-hidden>
+      <rect x="1.5" y="2" width="15" height="19" rx="1.5" fill="white" stroke="currentColor" strokeWidth="1.15" />
+      <rect x="4" y="5.5" width="15" height="19" rx="1.5" fill="white" stroke="currentColor" strokeWidth="1.15" opacity="0.88" />
+      <rect x="6.5" y="9" width="15" height="19" rx="1.5" fill="white" stroke="currentColor" strokeWidth="1.15" opacity="0.76" />
+    </svg>
+  );
+}
+
+/** Stacked planes — collapsed Layers rail hint. */
+export function MiniLayersStackGlyph({ className }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 22 26" fill="none" aria-hidden>
+      <path d="M3 17 L11 20.5 L19 17" stroke="currentColor" strokeWidth="1.35" strokeLinecap="round" strokeLinejoin="round" opacity="0.55" />
+      <path d="M3 12.5 L11 16 L19 12.5" stroke="currentColor" strokeWidth="1.35" strokeLinecap="round" strokeLinejoin="round" opacity="0.72" />
+      <path
+        d="M3 8 L11 11.5 L19 8 L11 4.5 Z"
+        fill="currentColor"
+        fillOpacity="0.14"
+        stroke="currentColor"
+        strokeWidth="1.15"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
 export function BlockIcon({ className }: { className?: string }) {
   return (
     <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.5}>

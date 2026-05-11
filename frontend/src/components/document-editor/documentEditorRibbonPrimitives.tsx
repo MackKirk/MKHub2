@@ -82,6 +82,22 @@ export const editorSidePanelRootLeftClass = `flex min-h-0 flex-shrink-0 flex-col
 /** Right column root (layers): fixed width + border-l + aside chrome. */
 export const editorSidePanelRootRightClass = `flex min-h-0 flex-shrink-0 flex-col border-l ${editorSidePanelWidthClass} ${editorPanelAsideClass}`;
 
+/** Narrow rail when the Pages panel is collapsed (glyph + vertical label + expand). */
+export const editorSidePanelCollapsedRailLeftClass = `flex min-h-0 w-11 flex-shrink-0 flex-col items-stretch border-r ${editorPanelAsideClass}`;
+
+/** Narrow rail when the Layers panel is collapsed (glyph + vertical label + expand). */
+export const editorSidePanelCollapsedRailRightClass = `flex min-h-0 w-11 flex-shrink-0 flex-col items-stretch border-l ${editorPanelAsideClass}`;
+
+/** Icon button to collapse/expand Pages or Layers panels. */
+export const editorSidePanelCollapseToggleClass = `${editorTransitionInteractive} inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-transparent text-slate-600 hover:bg-slate-100 hover:text-slate-900 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-red/35 active:scale-[0.98]`;
+
+/** Full-height control on collapsed rails: chevron + glyph + vertical caption (entire rail clickable). */
+export const editorSidePanelCollapsedRailButtonClass = `${editorTransitionInteractive} flex min-h-0 flex-1 flex-col items-center gap-1.5 px-0.5 py-2 text-slate-600 hover:bg-slate-100/90 hover:text-slate-900 focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-brand-red/35 active:scale-[0.99]`;
+
+/** Vertical caption in collapsed side rails (Latin runs top → bottom). */
+export const editorSidePanelCollapsedRailCaptionClass =
+  'select-none text-[8px] font-bold uppercase tracking-[0.14em] text-slate-500 [writing-mode:vertical-rl] rotate-180 leading-none';
+
 /** Header strip shared by Pages / Layers side panels (compact). */
 export const editorSidePanelHeaderClass =
   'shrink-0 border-b border-slate-200/90 bg-white px-2.5 py-2';

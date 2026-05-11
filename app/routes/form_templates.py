@@ -227,7 +227,20 @@ def _validate_definition_structure(definition: dict) -> None:
                         raise HTTPException(status_code=400, detail="pass_fail_total.settings.mode must be manual or aggregate")
 
 
-def _template_to_dict(t: FormTemplate, *, include_definition: bool = False) -> dict:
+def _resolve_user_name(db: Session, user_id: Optional[uuid.UUID]) -> Optional[str]:
+    if not user_id:
+        return None
+    try:
+        u = db.query(User).filter(User.id == user_id).first()
+    except Exception:
+        u = None
+    if not u:
+        return None
+    return (u.username or "").strip() or None
+
+
+def _template_to_dict(db: Session, t: FormTemplate, *, include_definition: bool = False) -> dict:
+    created_by_name = _resolve_user_name(db, t.created_by)
     out = {
         "id": str(t.id),
         "name": t.name or "",
@@ -238,6 +251,10 @@ def _template_to_dict(t: FormTemplate, *, include_definition: bool = False) -> d
         "created_at": t.created_at.isoformat() if t.created_at else None,
         "updated_at": t.updated_at.isoformat() if t.updated_at else None,
         "created_by": str(t.created_by) if t.created_by else None,
+        "created_by_name": created_by_name,
+        # FormTemplate currently stores only created_by. Reuse it for "last updated by"
+        # until a dedicated updated_by field is introduced.
+        "updated_by_name": created_by_name,
     }
     if include_definition:
         d = getattr(t, "definition", None)
@@ -308,7 +325,7 @@ def list_form_templates(
     else:
         rows.sort(key=lambda t: (t.name or "").lower(), reverse=not asc_dir)
 
-    return [_template_to_dict(t) for t in rows]
+    return [_template_to_dict(db, t) for t in rows]
 
 
 @router.post("")
@@ -336,7 +353,7 @@ def create_form_template(
     db.add(t)
     db.commit()
     db.refresh(t)
-    return _template_to_dict(t, include_definition=True)
+    return _template_to_dict(db, t, include_definition=True)
 
 
 @router.get("/support/fleet-assets")
@@ -419,7 +436,7 @@ def get_form_template(
     if not t:
         raise HTTPException(status_code=404, detail="Template not found")
     _ensure_form_template_read(user, db, t, sign_project_id=sign_project_id, sign_inspection_id=sign_inspection_id)
-    return _template_to_dict(t, include_definition=True)
+    return _template_to_dict(db, t, include_definition=True)
 
 
 @router.put("/{template_id}")
@@ -460,7 +477,7 @@ def update_form_template(
     t.updated_at = datetime.now(timezone.utc)
     db.commit()
     db.refresh(t)
-    return _template_to_dict(t, include_definition=True)
+    return _template_to_dict(db, t, include_definition=True)
 
 
 @router.delete("/{template_id}")

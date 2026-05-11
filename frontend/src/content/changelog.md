@@ -52,8 +52,7 @@ title: Update 1.1.028 - Week 19
 - Document Creator: stronger, easier-to-see selection outlines on canvas elements.
 - Document Creator: PDF export tracks the on-screen preview more reliably (font scale reference, text metrics, padding so headers and body text line up better).
 - Document Creator: image placeholders on the canvas use higher-resolution assets so photos look sharper while editing.
-- Document Creator + image picker (project flow): confirming an image sizes the new frame to the exported photo’s aspect ratio so it lands undistorted; you can still stretch or shrink width and height independently afterward. The picker exports only the visible photo region (no letterboxed white margins baked into the JPEG when the preview is larger than the image).
-- Document Creator: template Protected zones are labeled Blocked Area in the canvas, thumbnails strip, layers list, and selection UI for consistency.
+- Document Creator + image picker (project flow): confirming an image sizes the new frame to the exported photo’s aspect ratio so it lands undistorted; you can still stretch or shrink width and height independently afterward.
 
 ### Fixed
 - Document Creator: Undo after moving elements restores the previous position correctly (drag history no longer merges with other steps).
