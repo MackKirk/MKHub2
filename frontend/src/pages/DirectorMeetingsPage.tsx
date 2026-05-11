@@ -968,21 +968,17 @@ export default function DirectorMeetingsPage() {
       ) : (
         <>
           {canConfigure ? (
-            <div className="rounded-xl border bg-white p-4">
-              <div
-                className="flex max-w-lg items-center border border-gray-200 rounded-lg overflow-hidden"
-                role="tablist"
-                aria-label="Director meetings"
-              >
+            <div className="rounded-xl border bg-white p-3">
+              <div className="flex flex-wrap gap-2" role="tablist" aria-label="Director meetings">
                 <button
                   type="button"
                   role="tab"
                   aria-selected={pageTab === 'build'}
                   onClick={() => void handlePageTabRequest('build')}
-                  className={`flex-1 px-4 py-2.5 text-xs font-medium transition-colors duration-150 ${
+                  className={`px-3 py-1.5 text-xs font-medium rounded-lg border transition-colors ${
                     pageTab === 'build'
-                      ? 'bg-gray-900 text-white'
-                      : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50 bg-white'
+                      ? 'bg-brand-red text-white border-brand-red'
+                      : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50 hover:border-gray-400'
                   }`}
                 >
                   Build schedule
@@ -992,10 +988,10 @@ export default function DirectorMeetingsPage() {
                   role="tab"
                   aria-selected={pageTab === 'book'}
                   onClick={() => void handlePageTabRequest('book')}
-                  className={`flex-1 px-4 py-2.5 text-xs font-medium transition-colors duration-150 border-l border-gray-200 ${
+                  className={`px-3 py-1.5 text-xs font-medium rounded-lg border transition-colors ${
                     pageTab === 'book'
-                      ? 'bg-gray-900 text-white'
-                      : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50 bg-white'
+                      ? 'bg-brand-red text-white border-brand-red'
+                      : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50 hover:border-gray-400'
                   }`}
                 >
                   Book times
@@ -1366,21 +1362,17 @@ export default function DirectorMeetingsPage() {
               ) : null}
             </div>
 
-            <div className="shrink-0 border-b border-gray-100 px-4 pt-3 pb-2">
-              <div
-                className="flex items-center border border-gray-200 rounded-lg overflow-hidden"
-                role="tablist"
-                aria-label="Booking type"
-              >
+            <div className="shrink-0 border-b border-gray-100 px-4 pt-3 pb-3">
+              <div className="flex flex-wrap gap-2" role="tablist" aria-label="Booking type">
                 <button
                   type="button"
                   role="tab"
                   aria-selected={bookPersonModalTab === 'new'}
                   onClick={() => setBookPersonModalTab('new')}
-                  className={`relative flex flex-1 items-center justify-center gap-1.5 px-3 py-2 text-xs font-medium transition-colors duration-150 ${
+                  className={`inline-flex flex-1 min-w-0 items-center justify-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg border transition-colors sm:flex-initial ${
                     bookPersonModalTab === 'new'
-                      ? 'bg-gray-900 text-white'
-                      : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50 bg-white'
+                      ? 'bg-brand-red text-white border-brand-red'
+                      : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50 hover:border-gray-400'
                   }`}
                 >
                   Not scheduled
@@ -1397,10 +1389,10 @@ export default function DirectorMeetingsPage() {
                   role="tab"
                   aria-selected={bookPersonModalTab === 'reschedule'}
                   onClick={() => setBookPersonModalTab('reschedule')}
-                  className={`relative flex flex-1 items-center justify-center gap-1.5 px-3 py-2 text-xs font-medium transition-colors duration-150 border-l border-gray-200 ${
+                  className={`inline-flex flex-1 min-w-0 items-center justify-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg border transition-colors sm:flex-initial ${
                     bookPersonModalTab === 'reschedule'
-                      ? 'bg-gray-900 text-white'
-                      : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50 bg-white'
+                      ? 'bg-brand-red text-white border-brand-red'
+                      : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50 hover:border-gray-400'
                   }`}
                 >
                   Reschedule

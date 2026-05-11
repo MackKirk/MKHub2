@@ -388,32 +388,38 @@ export default function ReviewCycleDetailPage() {
         </div>
       </div>
 
-      <div className="rounded-xl border border-gray-200 bg-white overflow-hidden">
-        <div className="flex flex-wrap gap-0 border-b border-gray-100 bg-gray-50/60 px-2 sm:px-3">
+      <div className="rounded-xl border bg-white p-3">
+        <div className="flex flex-wrap gap-2" role="tablist" aria-label="Review cycle">
           <button
             type="button"
+            role="tab"
+            aria-selected={cycleTab === 'progress'}
             onClick={() => setCycleTab('progress')}
-            className={`px-4 py-2.5 text-sm font-medium rounded-t border-b-2 -mb-px transition-colors ${
+            className={`px-3 py-1.5 text-xs font-medium rounded-lg border transition-colors ${
               cycleTab === 'progress'
-                ? 'border-brand-red text-brand-red bg-white'
-                : 'border-transparent text-gray-600 hover:text-gray-900'
+                ? 'bg-brand-red text-white border-brand-red'
+                : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50 hover:border-gray-400'
             }`}
           >
             Team progress
           </button>
           <button
             type="button"
+            role="tab"
+            aria-selected={cycleTab === 'details'}
             onClick={() => setCycleTab('details')}
-            className={`px-4 py-2.5 text-sm font-medium rounded-t border-b-2 -mb-px transition-colors ${
+            className={`px-3 py-1.5 text-xs font-medium rounded-lg border transition-colors ${
               cycleTab === 'details'
-                ? 'border-brand-red text-brand-red bg-white'
-                : 'border-transparent text-gray-600 hover:text-gray-900'
+                ? 'bg-brand-red text-white border-brand-red'
+                : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50 hover:border-gray-400'
             }`}
           >
             Cycle details
           </button>
         </div>
+      </div>
 
+      <div className="rounded-xl border border-gray-200 bg-white overflow-hidden">
         <div className="p-4 sm:p-5">
           {cycleTab === 'details' && (
             <>
