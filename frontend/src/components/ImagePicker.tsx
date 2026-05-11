@@ -344,15 +344,15 @@ export default function ImagePicker({
     if(!img) return { x: nx, y: ny };
     const dw = img.naturalWidth * coverScale * nz;
     const dh = img.naturalHeight * coverScale * nz;
-    // If zoom < 1, allow movement within container (image smaller than container)
+    // If zoom < 1, allow free placement within the frame.
+    // Constrain so the image centre stays within the frame (at least half
+    // of the image always visible), letting the user pan in any direction
+    // even when one axis exactly covers the frame width/height.
     if (nz < 1) {
-      // Image can move from left edge (0) to right edge (cw - dw)
-      // and from top edge (0) to bottom edge (ch - dh)
-      const minX = 0;
-      const maxX = cw - dw;
-      const minY = 0;
-      const maxY = ch - dh;
-      return { x: Math.max(minX, Math.min(maxX, nx)), y: Math.max(minY, Math.min(maxY, ny)) };
+      return {
+        x: Math.max(-(dw / 2), Math.min(cw - dw / 2, nx)),
+        y: Math.max(-(dh / 2), Math.min(ch - dh / 2, ny)),
+      };
     }
     // If zoom >= 1, ensure image covers the frame
     const minX = cw - dw;

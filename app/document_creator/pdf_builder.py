@@ -171,8 +171,18 @@ def _wrap_text_to_width(c: canvas.Canvas, text: str, font_name: str, font_size: 
                     cur = broken[-1]
             else:
                 cur = candidate
+                # A word that starts a fresh line may itself be too long to fit
+                if cur and not fits(cur):
+                    broken = break_long_word(cur)
+                    lines.extend(broken[:-1])
+                    cur = broken[-1]
         if cur != "":
-            lines.append(cur)
+            if not fits(cur):
+                broken = break_long_word(cur)
+                lines.extend(broken[:-1])
+                cur = broken[-1]
+            if cur != "":
+                lines.append(cur)
     return lines
 
 
@@ -467,6 +477,9 @@ def build_pdf_bytes(db: Session, doc: UserDocument, canvas_width_px: Optional[fl
                                     run_segments.append((run_text, r_font_name, r_font_pt, r_color))
 
                                 if not run_segments:
+                                    # Preserve blank lines as empty rows so they occupy vertical space
+                                    all_rows.append([(0.0, "", active_font, font_size, el_color)])
+                                    line_aligns_out.append(line_align)
                                     continue
 
                                 # Word-wrap each run while keeping track of current x offset

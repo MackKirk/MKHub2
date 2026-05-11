@@ -659,7 +659,7 @@ function InlineTextEditor({
     typingSessionActiveRef.current = false;
     if (typingPauseTimerRef.current) clearTimeout(typingPauseTimerRef.current);
     repaint(linesRef.current.length - 1, linesRef.current[linesRef.current.length - 1]?.length ?? 0);
-    rootRef.current?.focus();
+    // repaint() already calls root.focus() + imperativeCaretSet internally — no second focus() needed.
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [element.id]);
 
@@ -1095,7 +1095,9 @@ function InlineTextEditor({
       return text.replace(/\u00a0/g, ' ');
     });
 
-    // Sync runs, applying pending format to newly inserted characters when present.
+    // Sync runs, preserving rich-text structure on every keystroke.
+    // When pending format is set, apply it to the inserted chars; otherwise inherit
+    // the adjacent run's format so normal typing never strips existing formatting.
     const prePos = preinputSelRef.current;
     preinputSelRef.current = null;
     const pending = pendingFormatRef.current;
@@ -1105,33 +1107,46 @@ function InlineTextEditor({
       const existing = runsRef.current[idx];
       if (existing && runsText(existing) === line) return existing;
 
-      // Text changed on this line — apply pending format to inserted characters.
-      if (pending && prePos && prePos.lineIndex === idx) {
-        const prevLine = prevLines[idx] ?? '';
+      const prevLine = prevLines[idx] ?? '';
+      const baseExists = !!(existing && runsText(existing) === prevLine);
+
+      // Path A: use captured pre-input cursor (most accurate — set in handleKeyDown).
+      if (prePos && prePos.lineIndex === idx) {
         const insertOffset = prePos.offset;
-        // Selection end on the same line (collapsed → same as offset).
         const selEnd = prePos.endLineIndex === idx ? prePos.endOffset : prevLine.length;
-        // How many characters survive after selection end + how many were inserted.
         const rightSurvived = prevLine.length - selEnd;
         const insertedLen = line.length - insertOffset - rightSurvived;
 
         if (insertedLen > 0) {
           const inserted = line.slice(insertOffset, insertOffset + insertedLen);
-          const baseRuns = existing && runsText(existing) === prevLine
-            ? existing
-            : [{ text: prevLine }];
-          // Step 1: remove the selection range from the runs (if any).
+          const baseRuns = baseExists ? existing! : [{ text: prevLine }];
           const afterDelete = selEnd > insertOffset
             ? deleteRangeFromLineRuns(baseRuns, insertOffset, selEnd)
             : baseRuns;
-          // Step 2: insert the typed character(s) at insertOffset with the pending format.
-          const withFormat = insertIntoLineRuns(afterDelete, insertOffset, inserted, pending);
-          needRepaint = true;
+          // Apply pending format; fall back to inheriting the adjacent run's format.
+          const withFormat = insertIntoLineRuns(afterDelete, insertOffset, inserted, pending ?? undefined);
+          if (pending !== null) needRepaint = true;
           return withFormat;
         }
       }
 
-      // Fallback: plain run (covers single-char deletes that slipped through, IME, etc.)
+      // Path B: infer from post-input cursor. Handles:
+      //   • prePos null after toolbar click (browser lost the selection briefly)
+      //   • normal typing with pending=null (preserves rich structure instead of plain fallback)
+      if (baseExists && postSel && postSel.start.lineIndex === idx) {
+        const insertedLen = line.length - prevLine.length;
+        if (insertedLen > 0) {
+          const insertOffset = Math.max(0, postSel.start.offset - insertedLen);
+          if (insertOffset <= prevLine.length) {
+            const inserted = line.slice(insertOffset, insertOffset + insertedLen);
+            const withFormat = insertIntoLineRuns(existing!, insertOffset, inserted, pending ?? undefined);
+            if (pending !== null) needRepaint = true;
+            return withFormat;
+          }
+        }
+      }
+
+      // True fallback: plain run (IME composition end, unexpected DOM mutations, etc.)
       return [{ text: line }];
     });
 
@@ -1249,7 +1264,7 @@ function InlineTextEditor({
       contentEditable
       suppressContentEditableWarning
       className="block w-full flex-1 min-h-0 overflow-auto rounded border-0 bg-transparent p-1 focus:outline-none focus:ring-2 focus:ring-brand-red/90 select-text"
-      style={textStyle}
+      style={{ ...textStyle, whiteSpace: 'pre-wrap' }}
       onInput={handleInput}
       onBeforeInput={handleBeforeInput}
       onKeyDown={handleKeyDown}

@@ -226,10 +226,10 @@ export default function DocumentSelectionInspector({
   if (isText && !isLocked) {
     // When editing: read bold/italic/color/size/font from selection; else from element.
     const activeBold = isEditing && selFmt !== null
-      ? (selFmt.bold ?? false)
+      ? (selFmt.bold ?? (element.fontWeight ?? 'normal') === 'bold')
       : (element.fontWeight ?? 'normal') === 'bold';
     const activeItalic = isEditing && selFmt !== null
-      ? (selFmt.italic ?? false)
+      ? (selFmt.italic ?? (element.fontStyle ?? 'normal') === 'italic')
       : (element.fontStyle ?? 'normal') === 'italic';
     const activeColor = isEditing && selFmt !== null && selFmt.color !== undefined
       ? selFmt.color
@@ -299,6 +299,7 @@ export default function DocumentSelectionInspector({
                 <button
                   key={mode}
                   type="button"
+                  onPointerDown={(e) => e.preventDefault()}
                   onMouseDown={(e) => e.preventDefault()}
                   title={title}
                   aria-label={title}
@@ -338,6 +339,7 @@ export default function DocumentSelectionInspector({
           <span className={`${editorToolbarMicroLabelClass} mr-0.5`}>Style</span>
           <button
             type="button"
+            onPointerDown={(e) => e.preventDefault()}
             onMouseDown={(e) => e.preventDefault()}
             onClick={() => {
               if (!dispatchFormatToInlineEditor(id, { bold: !activeBold }, true)) {
@@ -355,6 +357,7 @@ export default function DocumentSelectionInspector({
           </button>
           <button
             type="button"
+            onPointerDown={(e) => e.preventDefault()}
             onMouseDown={(e) => e.preventDefault()}
             onClick={() => {
               if (!dispatchFormatToInlineEditor(id, { italic: !activeItalic }, true)) {
@@ -410,6 +413,7 @@ export default function DocumentSelectionInspector({
               <button
                 key={v}
                 type="button"
+                onPointerDown={(e) => e.preventDefault()}
                 onMouseDown={(e) => e.preventDefault()}
                 onClick={() => {
                   if (!dispatchLineAlignToInlineEditor(id, v)) {
@@ -438,6 +442,7 @@ export default function DocumentSelectionInspector({
               <button
                 key={v}
                 type="button"
+                onPointerDown={(e) => e.preventDefault()}
                 onMouseDown={(e) => e.preventDefault()}
                 onClick={() => onUpdate(id, (el) => ({ ...el, verticalAlign: v }))}
                 className={`flex h-full min-h-0 flex-1 items-center justify-center transition-[background-color,color,box-shadow] duration-150 ${
@@ -464,6 +469,7 @@ export default function DocumentSelectionInspector({
               <button
                 key={fit}
                 type="button"
+                onPointerDown={(e) => e.preventDefault()}
                 onMouseDown={(e) => e.preventDefault()}
                 onClick={() => onUpdate(id, (el) => ({ ...el, imageFit: fit }))}
                 className={`flex h-full min-h-0 min-w-[3rem] flex-1 items-center justify-center px-2 text-[11px] font-semibold capitalize transition-[background-color,color,box-shadow] duration-150 ${
