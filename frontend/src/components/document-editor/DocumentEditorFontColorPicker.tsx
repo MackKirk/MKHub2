@@ -121,6 +121,7 @@ export default function DocumentEditorFontColorPicker({
       <button
         type="button"
         ref={triggerRef}
+        onMouseDown={(e) => e.preventDefault()}
         onClick={() => {
           setOpen((o) => {
             const next = !o;
@@ -146,6 +147,7 @@ export default function DocumentEditorFontColorPicker({
             ref={panelRef}
             role="dialog"
             aria-label={panelAriaLabel}
+            data-document-editor-overlay="true"
             className={`${ribbonPortalDropdownPanelClass} w-[232px] max-h-[min(70vh,420px)] overflow-y-auto`}
             style={{ top: menuPos.top, left: menuPos.left }}
           >

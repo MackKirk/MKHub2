@@ -7,7 +7,7 @@ import uuid
 from typing import Any, Optional, Set, Tuple
 
 from fastapi import HTTPException
-from sqlalchemy import func
+from sqlalchemy import cast, func, String
 from sqlalchemy.orm import Session
 
 from ..auth.security import (
@@ -23,7 +23,9 @@ from ..models.models import (
     Client,
     ClientFile,
     ClientDocument,
+    DocumentTemplate,
     EmployeeProfile,
+    UserDocument,
     WorkOrderFile,
     Proposal,
 )
@@ -473,6 +475,63 @@ def _is_certificate_background_library_blob(fo: FileObject) -> bool:
     return "/misc/certificate-backgrounds/" in key
 
 
+def _user_has_document_creator_api_read_permission(user: User) -> bool:
+    """
+    Same permission bundle as read-only document-creator API routes
+    (e.g. list templates, list documents) — see app/routes/document_creator.py.
+    """
+    return bool(
+        _has_permission(user, "documents:access")
+        or _has_permission(user, "documents:read")
+        or _has_permission(user, "business:projects:documents:read")
+        or _has_permission(user, "documents:write")
+        or _has_permission(user, "business:projects:documents:write")
+    )
+
+
+def _is_document_creator_blob(fo: FileObject) -> bool:
+    """True for uploads under the document-creator category / path."""
+    cat = (str(fo.category_id).lower().strip() if fo.category_id else "")
+    if cat == "document-creator":
+        return True
+    key = (getattr(fo, "key", None) or "").replace("\\", "/").lower()
+    return "/document-creator/" in key
+
+
+def _is_file_referenced_in_project_documents(
+    db: Session, project_id: uuid.UUID, file_id: uuid.UUID
+) -> bool:
+    """True if any UserDocument for this project embeds this file id (e.g. image element content)."""
+    fid = str(file_id)
+    row = (
+        db.query(UserDocument.id)
+        .filter(
+            UserDocument.project_id == project_id,
+            cast(UserDocument.pages, String).like(f"%{fid}%"),
+        )
+        .first()
+    )
+    return row is not None
+
+
+def _can_read_via_document_creator_for_project(
+    user: User, db: Session, proj: Project, fo: FileObject
+) -> bool:
+    """
+    Project-scoped file: allow read when the user has document-creator access for this
+    project (business line + documents permissions) and the file is a document-creator
+    upload or embedded in a project-linked user document.
+    Template backgrounds are handled separately (before this branch).
+    """
+    if not _user_has_document_creator_api_read_permission(user):
+        return False
+    if not can_access_business_line(user, getattr(proj, "business_line", None)):
+        return False
+    if _is_document_creator_blob(fo):
+        return True
+    return _is_file_referenced_in_project_documents(db, proj.id, fo.id)
+
+
 def assert_can_read_file_object(user: User, db: Session, fo: FileObject) -> None:
     """Raise 403 if user may not read/download this file."""
     if _is_employee_profile_photo_file(db, fo):
@@ -501,6 +560,15 @@ def assert_can_read_file_object(user: User, db: Session, fo: FileObject) -> None
 
     pid, cid, eid = _resolve_file_scope_from_references(db, fo)
 
+    # Document template backgrounds (often stored without project_id on FileObject).
+    if _user_has_document_creator_api_read_permission(user):
+        if (
+            db.query(DocumentTemplate.id)
+            .filter(DocumentTemplate.background_file_id == fo.id)
+            .first()
+        ):
+            return
+
     if pid:
         proj = db.query(Project).filter(Project.id == pid, Project.deleted_at.is_(None)).first()
         if not proj:
@@ -516,6 +584,8 @@ def assert_can_read_file_object(user: User, db: Session, fo: FileObject) -> None
         if _can_read_project_file_via_proposal_tab(user, db, proj, fo):
             return
         if user_has_any_sign_request_on_project(db, user, str(proj.id)):
+            return
+        if _can_read_via_document_creator_for_project(user, db, proj, fo):
             return
         raise HTTPException(status_code=403, detail="Forbidden")
 
@@ -577,6 +647,10 @@ def assert_can_read_file_object(user: User, db: Session, fo: FileObject) -> None
         ):
             return
         raise HTTPException(status_code=403, detail="Forbidden")
+
+    # Misc document-creator uploads (no project_id on FileObject) used by the editor.
+    if _is_document_creator_blob(fo) and _user_has_document_creator_api_read_permission(user):
+        return
 
     _, _, _, cat_slug = infer_scope_from_storage_key(db, fo.key)
     if cat_slug == "form-template-reference":

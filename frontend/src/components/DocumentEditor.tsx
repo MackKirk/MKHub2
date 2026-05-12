@@ -102,6 +102,10 @@ type DocumentEditorDocumentProps = {
   onClose?: () => void;
   /** When true, document is view-only: no editing, no add page, no save. */
   readOnly?: boolean;
+  /** Optional node rendered at the far right of the ribbon (e.g. expand/compress button). */
+  extraActions?: React.ReactNode;
+  /** Optional element rendered directly below the close/back button in the ribbon (e.g. expand button). */
+  closeSlotBelow?: React.ReactNode;
 };
 
 type DocumentEditorTemplateProps = {
@@ -131,6 +135,8 @@ export default function DocumentEditor(props: DocumentEditorProps) {
   const onClose = props.onClose;
   const templateProps = isTemplate ? props : null;
   const readOnly = !isTemplate && !!(props as DocumentEditorDocumentProps).readOnly;
+  const extraActions = !isTemplate ? (props as DocumentEditorDocumentProps).extraActions : undefined;
+  const closeSlotBelow = !isTemplate ? (props as DocumentEditorDocumentProps).closeSlotBelow : undefined;
 
   const navigate = useNavigate();
   const queryClient = useQueryClient();
@@ -1202,6 +1208,8 @@ export default function DocumentEditor(props: DocumentEditorProps) {
         }
         zoom={zoom}
         onZoomChange={setZoom}
+        extraActions={extraActions}
+        closeSlotBelow={closeSlotBelow}
       />
       {!readOnly && <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={handleAddImage} />}
       {pdfPreview && (
@@ -1546,6 +1554,7 @@ export default function DocumentEditor(props: DocumentEditorProps) {
         onClose={() => setShowAddPageModal(false)}
         onAddPage={handleAddPageWithTemplate}
         onAddPages={handleAddPages}
+        projectId={projectId}
       />
       )}
       {!isTemplate && projectId && imagePickerOpen && (

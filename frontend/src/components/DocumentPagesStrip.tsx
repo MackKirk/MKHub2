@@ -47,6 +47,33 @@ type DocumentPagesStripProps = {
 
 const defaultMargins: PageMargins = { left_pct: 0, right_pct: 0, top_pct: 0, bottom_pct: 0 };
 
+type LineListStyle = Exclude<NonNullable<DocElement['listStyle']>, 'none'>;
+
+function normalizeLineListStyle(style: DocElement['listStyle'] | null | undefined): LineListStyle | undefined {
+  return style && style !== 'none' ? style : undefined;
+}
+
+function effectiveLineListStyles(el: Pick<DocElement, 'content' | 'listStyle' | 'lineListStyles'>): Array<LineListStyle | undefined> {
+  const lines = (el.content ?? '').replace(/\r\n/g, '\n').split('\n');
+  const fallback = normalizeLineListStyle(el.listStyle);
+  return lines.map((_, idx) => normalizeLineListStyle(el.lineListStyles?.[idx] ?? fallback));
+}
+
+function listOrdinalAt(styles: Array<LineListStyle | undefined>, idx: number): number {
+  const style = styles[idx];
+  if (!style || style === 'bullet') return 0;
+  let n = 1;
+  for (let i = idx - 1; i >= 0 && styles[i] === style; i -= 1) n += 1;
+  return n;
+}
+
+function lineMarker(style: LineListStyle | undefined, ordinal: number): string {
+  if (style === 'bullet') return '•';
+  if (style === 'numbered') return `${ordinal}.`;
+  if (style === 'lettered') return `${ordinal <= 26 ? String.fromCharCode(96 + ordinal) : ordinal}.`;
+  return '';
+}
+
 function PageThumbnail({
   page,
   templates,
@@ -185,11 +212,31 @@ function PageThumbnail({
                     color: el.color ?? '#000000',
                     lineHeight: 1.15,
                   };
+                  const miniLines = (el.content ?? '').split('\n');
+                  const lineStyles = effectiveLineListStyles(el);
                   return (
                     <div className="w-full h-full flex flex-col" style={{ justifyContent }}>
-                      <span className="block overflow-hidden whitespace-pre-wrap break-words p-0.5 min-h-[1em]" style={textStyle}>
-                        {el.content || ''}
-                      </span>
+                      {lineStyles.some(Boolean) ? (
+                        <div className="overflow-hidden whitespace-normal break-words p-0.5 min-h-[1em]" style={textStyle}>
+                          {miniLines.map((line, idx) => {
+                            const style = lineStyles[idx];
+                            return (
+                              <div key={idx} className={style ? 'flex min-h-[1.15em] items-baseline' : 'min-h-[1.15em]'}>
+                                {style && (
+                                  <span className="mr-[0.35em] inline-block min-w-[1em] shrink-0 select-none text-right">
+                                    {lineMarker(style, listOrdinalAt(lineStyles, idx))}
+                                  </span>
+                                )}
+                                <span className={style ? 'min-w-0 flex-1' : undefined}>{line || '\u00a0'}</span>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      ) : (
+                        <span className="block overflow-hidden whitespace-pre-wrap break-words p-0.5 min-h-[1em]" style={textStyle}>
+                          {el.content || ''}
+                        </span>
+                      )}
                     </div>
                   );
                 })()
