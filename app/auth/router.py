@@ -2316,6 +2316,10 @@ def update_user(user_id: str, email_personal: Optional[str] = None, username: Op
         u.username = username
     if is_active is not None:
         u.is_active = bool(is_active)
+        if not u.is_active:
+            from ..services.refresh_tokens import clear_refresh_tokens_for_user
+
+            clear_refresh_tokens_for_user(db, u.id)
     db.commit()
     return {"status":"ok"}
 
@@ -2454,6 +2458,8 @@ def password_forgot(identifier: str, db: Session = Depends(get_db)):
     )
     if not user:
         return {"status": "ok"}
+    if not user.is_active:
+        return {"status": "ok"}
     from ..models.models import PasswordReset
     token = secrets.token_urlsafe(32)
     pr = PasswordReset(user_id=user.id, token=token, expires_at=datetime.now(timezone.utc) + timedelta(hours=1))
@@ -2548,6 +2554,8 @@ def password_reset(req: PasswordResetConfirmRequest, db: Session = Depends(get_d
     user = db.query(User).filter(User.id == pr.user_id).first()
     if not user:
         raise HTTPException(status_code=400, detail="Invalid token")
+    if not user.is_active:
+        raise HTTPException(status_code=400, detail="Invalid or expired token")
     user.password_hash = get_password_hash(req.new_password)
     pr.used_at = now_utc
     db.commit()

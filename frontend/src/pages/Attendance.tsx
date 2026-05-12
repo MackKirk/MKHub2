@@ -9,6 +9,9 @@ import OverlayPortal from '@/components/OverlayPortal';
 
 type Attendance = {
   id: string;
+  record_kind?: 'internal' | 'subcontractor';
+  subcontractor_company_name?: string | null;
+  project_id?: string | null;
   worker_id: string;
   worker_name: string;
   type?: 'in' | 'out'; // For backward compatibility, but not used in new model
@@ -36,6 +39,8 @@ type Attendance = {
 
 type AttendanceEvent = {
   event_id: string;
+  record_kind?: 'internal' | 'subcontractor';
+  subcontractor_company_name?: string | null;
   worker_id: string;
   worker_name: string;
   job_name?: string | null;
@@ -207,6 +212,8 @@ const buildEvents = (attendances: Attendance[], projects: Project[] = []): Atten
         projectId = project.id;
         jobType = project.id; // Use project_id as job_type when there's a shift
       }
+    } else if ((att as Attendance).project_id) {
+      projectId = (att as Attendance).project_id || null;
     } else if (!att.shift_id) {
       // No shift - extract job_type from reason_text
       jobType = extractJobType(att.reason_text);
@@ -214,6 +221,8 @@ const buildEvents = (attendances: Attendance[], projects: Project[] = []): Atten
     
     return {
       event_id: att.id,
+      record_kind: att.record_kind || 'internal',
+      subcontractor_company_name: att.subcontractor_company_name || null,
       worker_id: att.worker_id,
       worker_name: att.worker_name,
       job_name: att.job_name,
@@ -258,13 +267,17 @@ export default function Attendance() {
   const isAdmin = (me?.roles || []).some((r: string) => String(r || '').toLowerCase() === 'admin');
   const perms = new Set<string>(me?.permissions || []);
   const canEditAttendance = isAdmin || perms.has('hr:attendance:write') || perms.has('hr:users:edit:timesheet') || perms.has('users:write');
-  const colCount = canEditAttendance ? 9 : 8;
+  const baseDataCols = 10;
+  const colCount = (canEditAttendance ? 1 : 0) + baseDataCols;
   const [refreshKey, setRefreshKey] = useState(0);
   const [filters, setFilters] = useState({
     worker_id: '',
     start_date: '',
     end_date: '',
     status: '',
+    record_kind: 'internal' as 'internal' | 'subcontractor' | 'all',
+    subcontractor_company_id: '',
+    project_id: '',
   });
   const [showModal, setShowModal] = useState(false);
   const [editingEvent, setEditingEvent] = useState<AttendanceEvent | null>(null);
@@ -298,6 +311,9 @@ export default function Attendance() {
   if (filters.start_date) queryParams.set('start_date', filters.start_date);
   if (filters.end_date) queryParams.set('end_date', filters.end_date);
   if (filters.status) queryParams.set('status', filters.status);
+  if (filters.record_kind) queryParams.set('record_kind', filters.record_kind);
+  if (filters.subcontractor_company_id) queryParams.set('subcontractor_company_id', filters.subcontractor_company_id);
+  if (filters.project_id) queryParams.set('project_id', filters.project_id);
   const queryString = queryParams.toString();
   const url = queryString
     ? `/settings/attendance/list?${queryString}`
@@ -317,6 +333,18 @@ export default function Attendance() {
     queryFn: async () => {
       const result = await api<Project[]>('GET', '/projects');
       return Array.isArray(result) ? result : [];
+    },
+  });
+
+  const { data: subcontractorCompanies = [] } = useQuery({
+    queryKey: ['subcontractor-companies-dd'],
+    queryFn: async () => {
+      const result = await api<{ items?: Array<{ id: string; name: string }> }>(
+        'GET',
+        '/subcontractors/companies?page=1&limit=500&status=all'
+      );
+      const items = Array.isArray(result?.items) ? result.items : [];
+      return items;
     },
   });
 
@@ -509,7 +537,10 @@ export default function Attendance() {
       }
       
       console.log('Deleting attendance via DELETE:', attendanceId);
-      await api('DELETE', `/settings/attendance/${attendanceId}`);
+      await api(
+        'DELETE',
+        event.record_kind === 'subcontractor' ? `/subcontractors/attendance/${attendanceId}` : `/settings/attendance/${attendanceId}`
+      );
       console.log('Delete result: success');
       
       // Invalidate and refetch
@@ -608,7 +639,12 @@ export default function Attendance() {
             continue;
           }
 
-          await api('DELETE', `/settings/attendance/${attendanceId}`);
+          await api(
+            'DELETE',
+            event.record_kind === 'subcontractor'
+              ? `/subcontractors/attendance/${attendanceId}`
+              : `/settings/attendance/${attendanceId}`
+          );
           successCount++;
         } catch (err: any) {
           errorCount++;
@@ -942,52 +978,103 @@ export default function Attendance() {
       </div>
 
       {/* Filters */}
-      <div className="rounded-xl border bg-white p-4 grid grid-cols-4 gap-4">
-        <div>
-          <label className="block text-xs font-medium text-gray-600 mb-1.5">Worker</label>
-          <select
-            value={filters.worker_id}
-            onChange={(e) => setFilters({ ...filters, worker_id: e.target.value })}
-            className="w-full rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-gray-900 focus:ring-1 focus:ring-gray-400 focus:border-gray-400"
-          >
-            <option value="">All Workers</option>
-            {(Array.isArray(users) ? users : []).map((u) => (
-              <option key={u.id} value={u.id}>
-                {u.name || u.username}
-              </option>
-            ))}
-          </select>
-        </div>
-        <div>
-          <label className="block text-xs font-medium text-gray-600 mb-1.5">Start Date</label>
-          <input
-            type="date"
-            value={filters.start_date}
-            onChange={(e) => setFilters({ ...filters, start_date: e.target.value })}
-            className="w-full rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-gray-900 focus:ring-1 focus:ring-gray-400 focus:border-gray-400"
-          />
-        </div>
-        <div>
-          <label className="block text-xs font-medium text-gray-600 mb-1.5">End Date</label>
-          <input
-            type="date"
-            value={filters.end_date}
-            onChange={(e) => setFilters({ ...filters, end_date: e.target.value })}
-            className="w-full rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-gray-900 focus:ring-1 focus:ring-gray-400 focus:border-gray-400"
-          />
-        </div>
-        <div>
-          <label className="block text-xs font-medium text-gray-600 mb-1.5">Status</label>
-          <select
-            value={filters.status}
-            onChange={(e) => setFilters({ ...filters, status: e.target.value })}
-            className="w-full rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-gray-900 focus:ring-1 focus:ring-gray-400 focus:border-gray-400"
-          >
-            <option value="">All Statuses</option>
-            <option value="approved">Approved</option>
-            <option value="pending">Pending</option>
-            <option value="rejected">Rejected</option>
-          </select>
+      <div className="rounded-xl border bg-white p-4 space-y-3">
+        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
+          <div>
+            <label className="block text-xs font-medium text-gray-600 mb-1.5">Record type</label>
+            <select
+              value={filters.record_kind}
+              onChange={(e) =>
+                setFilters({
+                  ...filters,
+                  record_kind: e.target.value as 'internal' | 'subcontractor' | 'all',
+                })
+              }
+              className="w-full rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-gray-900 focus:ring-1 focus:ring-gray-400 focus:border-gray-400"
+            >
+              <option value="internal">Internal Employees</option>
+              <option value="subcontractor">Subcontractors</option>
+              <option value="all">All</option>
+            </select>
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-gray-600 mb-1.5">Worker</label>
+            <select
+              value={filters.worker_id}
+              onChange={(e) => setFilters({ ...filters, worker_id: e.target.value })}
+              className="w-full rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-gray-900 focus:ring-1 focus:ring-gray-400 focus:border-gray-400"
+            >
+              <option value="">All Workers</option>
+              {(Array.isArray(users) ? users : []).map((u) => (
+                <option key={u.id} value={u.id}>
+                  {u.name || u.username}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-gray-600 mb-1.5">Project</label>
+            <select
+              value={filters.project_id}
+              onChange={(e) => setFilters({ ...filters, project_id: e.target.value })}
+              className="w-full rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-gray-900 focus:ring-1 focus:ring-gray-400 focus:border-gray-400"
+            >
+              <option value="">All Projects</option>
+              {(Array.isArray(projects) ? projects : []).map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.name}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-gray-600 mb-1.5">Subcontractor company</label>
+            <select
+              value={filters.subcontractor_company_id}
+              onChange={(e) => setFilters({ ...filters, subcontractor_company_id: e.target.value })}
+              className="w-full rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-gray-900 focus:ring-1 focus:ring-gray-400 focus:border-gray-400"
+            >
+              <option value="">All companies</option>
+              {subcontractorCompanies.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.name}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-gray-600 mb-1.5">Start Date</label>
+            <input
+              type="date"
+              value={filters.start_date}
+              onChange={(e) => setFilters({ ...filters, start_date: e.target.value })}
+              className="w-full rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-gray-900 focus:ring-1 focus:ring-gray-400 focus:border-gray-400"
+            />
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-gray-600 mb-1.5">End Date</label>
+            <input
+              type="date"
+              value={filters.end_date}
+              onChange={(e) => setFilters({ ...filters, end_date: e.target.value })}
+              className="w-full rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-gray-900 focus:ring-1 focus:ring-gray-400 focus:border-gray-400"
+            />
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-gray-600 mb-1.5">Status</label>
+            <select
+              value={filters.status}
+              onChange={(e) => setFilters({ ...filters, status: e.target.value })}
+              className="w-full rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-gray-900 focus:ring-1 focus:ring-gray-400 focus:border-gray-400"
+            >
+              <option value="">All Statuses</option>
+              <option value="approved">Approved</option>
+              <option value="pending">Pending</option>
+              <option value="rejected">Rejected</option>
+              <option value="open">Open (subcontractor)</option>
+              <option value="finalized">Finalized (subcontractor)</option>
+            </select>
+          </div>
         </div>
       </div>
 
@@ -1029,7 +1116,9 @@ export default function Attendance() {
                   />
                 </th>
               )}
+              <th className="p-2.5 text-left text-xs font-medium text-gray-600">Type</th>
               <th className="p-2.5 text-left text-xs font-medium text-gray-600">Worker</th>
+              <th className="p-2.5 text-left text-xs font-medium text-gray-600">Company</th>
               <th className="p-2.5 text-left text-xs font-medium text-gray-600">Clock In</th>
               <th className="p-2.5 text-left text-xs font-medium text-gray-600">Clock Out</th>
               <th className="p-2.5 text-left text-xs font-medium text-gray-600">Job/Project</th>
@@ -1085,7 +1174,17 @@ export default function Attendance() {
                       />
                     </td>
                   )}
+                  <td className="p-2.5 text-xs">
+                    <span
+                      className={`px-1.5 py-0.5 rounded text-[10px] font-medium ${
+                        event.record_kind === 'subcontractor' ? 'bg-purple-100 text-purple-800' : 'bg-gray-100 text-gray-700'
+                      }`}
+                    >
+                      {event.record_kind === 'subcontractor' ? 'Subcontractor' : 'Internal'}
+                    </span>
+                  </td>
                   <td className="p-2.5 text-xs">{event.worker_name}</td>
+                  <td className="p-2.5 text-xs text-gray-600">{event.subcontractor_company_name || '—'}</td>
                   <td className="p-2.5 text-xs">
                     {event.is_hours_worked ? '—' : (event.clock_in_time ? formatDateTime(event.clock_in_time) : '—')}
                   </td>
@@ -1106,20 +1205,26 @@ export default function Attendance() {
                   <td className="p-2.5">
                     <span
                       className={`px-2 py-0.5 rounded-full text-[10px] font-medium ${
-                        event.clock_in_status === 'approved' &&
-                        (!event.clock_out_status || event.clock_out_status === 'approved')
+                        event.record_kind === 'subcontractor'
+                          ? event.clock_out_time
+                            ? 'bg-green-100 text-green-800'
+                            : 'bg-yellow-100 text-yellow-800'
+                          : event.clock_in_status === 'approved' &&
+                            (!event.clock_out_status || event.clock_out_status === 'approved')
                           ? 'bg-green-100 text-green-800'
-                          : event.clock_in_status === 'pending' ||
-                            event.clock_out_status === 'pending'
+                          : event.clock_in_status === 'pending' || event.clock_out_status === 'pending'
                           ? 'bg-yellow-100 text-yellow-800'
                           : 'bg-red-100 text-red-800'
                       }`}
                     >
-                      {event.clock_in_status === 'approved' &&
-                      (!event.clock_out_status || event.clock_out_status === 'approved')
+                      {event.record_kind === 'subcontractor'
+                        ? event.clock_out_time
+                          ? 'Finalized'
+                          : 'Open'
+                        : event.clock_in_status === 'approved' &&
+                          (!event.clock_out_status || event.clock_out_status === 'approved')
                         ? 'Approved'
-                        : event.clock_in_status === 'pending' ||
-                          event.clock_out_status === 'pending'
+                        : event.clock_in_status === 'pending' || event.clock_out_status === 'pending'
                         ? 'Pending'
                         : 'Rejected'}
                     </span>
@@ -1128,12 +1233,14 @@ export default function Attendance() {
                     <div className="flex items-center gap-2">
                       {canEditAttendance && (
                         <>
+                          {event.record_kind !== 'subcontractor' && (
                           <button
                             onClick={() => handleOpenModal(event)}
                             className="px-2 py-1 text-[10px] text-blue-600 hover:text-blue-800 font-medium hover:bg-blue-50 rounded transition-colors"
                           >
                             Edit
                           </button>
+                          )}
                           <button
                             onClick={() => handleDeleteEvent(event)}
                             disabled={deletingId === event.event_id}

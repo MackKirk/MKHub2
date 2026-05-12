@@ -469,6 +469,7 @@ export default function AppShell({ children }: PropsWithChildren){
       icon: <IconBusiness />,
       items: [
         { id: 'customers', label: 'Customers', path: '/customers', icon: <IconUsers />, requiredPermission: 'business:customers:read' },
+        { id: 'subcontractors', label: 'Subcontractors', path: '/business/subcontractors', icon: <IconBriefcase />, requiredPermission: 'business:customers:read' },
         { id: 'suppliers', label: 'Suppliers', path: '/inventory/suppliers', icon: <IconShoppingCart />, requiredPermission: 'inventory:suppliers:read', children: [
           { id: 'products', label: 'Products', path: '/inventory/products', icon: <IconBox />, requiredPermission: 'inventory:products:read' },
         ] },

@@ -280,7 +280,7 @@ export default function Profile(){
                     </div>
                   </div>
                   <span className={`inline-flex items-center px-1.5 py-0.5 rounded-full text-[10px] font-medium flex-shrink-0 ${u?.is_active ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
-                    {u?.is_active ? 'Active' : 'Terminated'}
+                    {u?.is_active ? 'Active' : 'Inactive'}
                   </span>
                 </div>
               </div>
@@ -329,7 +329,7 @@ export default function Profile(){
                 </div>
                 <div className="mt-2">
                   <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium ${u?.is_active ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
-                    {u?.is_active ? 'Active' : 'Terminated'}
+                    {u?.is_active ? 'Active' : 'Inactive'}
                   </span>
                 </div>
               </div>

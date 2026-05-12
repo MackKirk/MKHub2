@@ -9,7 +9,7 @@ from fastapi import HTTPException
 from sqlalchemy.orm import Session
 
 from ..config import settings
-from ..models.models import RefreshToken
+from ..models.models import RefreshToken, User
 
 
 def _decode_refresh_payload(token: str) -> dict:
@@ -56,6 +56,12 @@ def validate_and_rotate_refresh(db: Session, old_jwt: str) -> tuple[str, str]:
         db.delete(row)
         db.commit()
         raise HTTPException(status_code=401, detail="Token expired")
+
+    user = db.query(User).filter(User.id == uid).first()
+    if user is None or not user.is_active:
+        db.delete(row)
+        db.commit()
+        raise HTTPException(status_code=401, detail="Refresh token invalid or revoked")
 
     from ..auth.security import create_access_token, create_refresh_token
 

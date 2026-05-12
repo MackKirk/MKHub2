@@ -171,6 +171,9 @@ def create_app() -> FastAPI:
     app.include_router(settings_router)
     app.include_router(integrations_router)
     app.include_router(inventory_router)
+    from .routes.subcontractors import router as subcontractors_router
+
+    app.include_router(subcontractors_router)
     app.include_router(proposals_router)
     app.include_router(quotes_router)
     app.include_router(users_router)
@@ -1904,6 +1907,130 @@ def create_app() -> FastAPI:
                         )
                         db.commit()
                         print("[startup] Created company_credit_cards tables")
+
+                    # Subcontractor companies, workers, attendance
+                    rows_sc = db.execute(
+                        text(
+                            """
+                            SELECT 1 FROM information_schema.tables
+                            WHERE table_schema = 'public' AND table_name = 'subcontractor_companies'
+                            LIMIT 1
+                            """
+                        )
+                    ).fetchall()
+                    if not rows_sc:
+                        from .models.models import (
+                            SubcontractorAttendance,
+                            SubcontractorCompany,
+                            SubcontractorWorker,
+                        )
+
+                        Base.metadata.create_all(
+                            bind=engine,
+                            tables=[
+                                SubcontractorCompany.__table__,
+                                SubcontractorWorker.__table__,
+                                SubcontractorAttendance.__table__,
+                            ],
+                        )
+                        db.commit()
+                        print("[startup] Created subcontractor_* tables")
+
+                    rows_scc = db.execute(
+                        text(
+                            """
+                            SELECT 1 FROM information_schema.tables
+                            WHERE table_schema = 'public' AND table_name = 'subcontractor_company_contacts'
+                            LIMIT 1
+                            """
+                        )
+                    ).fetchall()
+                    if not rows_scc:
+                        from .models.models import SubcontractorCompanyContact
+
+                        Base.metadata.create_all(
+                            bind=engine,
+                            tables=[SubcontractorCompanyContact.__table__],
+                        )
+                        db.commit()
+                    rows_scf = db.execute(
+                        text(
+                            """
+                            SELECT 1 FROM information_schema.tables
+                            WHERE table_schema = 'public' AND table_name = 'subcontractor_company_files'
+                            LIMIT 1
+                            """
+                        )
+                    ).fetchall()
+                    if not rows_scf:
+                        from .models.models import SubcontractorCompanyFile
+
+                        Base.metadata.create_all(
+                            bind=engine,
+                            tables=[SubcontractorCompanyFile.__table__],
+                        )
+                        db.commit()
+                        print("[startup] Created subcontractor_company_files table")
+
+                    rows_swf = db.execute(
+                        text(
+                            """
+                            SELECT 1 FROM information_schema.tables
+                            WHERE table_schema = 'public' AND table_name = 'subcontractor_worker_files'
+                            LIMIT 1
+                            """
+                        )
+                    ).fetchall()
+                    if not rows_swf:
+                        from .models.models import SubcontractorWorkerFile
+
+                        Base.metadata.create_all(
+                            bind=engine,
+                            tables=[SubcontractorWorkerFile.__table__],
+                        )
+                        db.commit()
+                        print("[startup] Created subcontractor_worker_files table")
+
+                    for col, ddl in [
+                        ("first_name", "VARCHAR(255)"),
+                        ("last_name", "VARCHAR(255)"),
+                        ("middle_name", "VARCHAR(255)"),
+                        ("preferred_name", "VARCHAR(255)"),
+                        ("gender", "VARCHAR(100)"),
+                        ("job_title", "VARCHAR(255)"),
+                        ("address_line1", "VARCHAR(255)"),
+                        ("address_line2", "VARCHAR(255)"),
+                        ("city", "VARCHAR(100)"),
+                        ("province", "VARCHAR(100)"),
+                        ("postal_code", "VARCHAR(20)"),
+                        ("country", "VARCHAR(100)"),
+                        ("emergency_contact_name", "VARCHAR(255)"),
+                        ("emergency_contact_relationship", "VARCHAR(255)"),
+                        ("emergency_contact_phone", "VARCHAR(100)"),
+                        ("emergency_contact_home_phone", "VARCHAR(50)"),
+                        ("emergency_contact_work_phone", "VARCHAR(50)"),
+                        ("emergency_contact_email", "VARCHAR(255)"),
+                        ("emergency_contact_address", "TEXT"),
+                    ]:
+                        try:
+                            chk = db.execute(
+                                text(
+                                    """
+                                    SELECT 1 FROM information_schema.columns
+                                    WHERE table_schema = 'public' AND table_name = 'subcontractor_workers' AND column_name = :c
+                                    LIMIT 1
+                                    """
+                                ),
+                                {"c": col},
+                            ).fetchall()
+                            if not chk:
+                                db.execute(
+                                    text(f"ALTER TABLE subcontractor_workers ADD COLUMN {col} {ddl} NULL")
+                                )
+                                db.commit()
+                                print(f"[startup] Added subcontractor_workers.{col}")
+                        except Exception as _e:
+                            pass
 
                     # Soft delete columns (if missing)
                     for table_name, fk_col in [("projects", "deleted_by_id"), ("clients", "deleted_by_id"), ("proposals", "deleted_by_id"), ("quotes", "deleted_by_id")]:

@@ -25,6 +25,7 @@ import { formatDateLocal, getCurrentMonthLocal } from '@/lib/dateUtils';
 import { DivisionIcon } from '@/components/DivisionIcon';
 import { ReportAttachmentAreaMultiple } from '@/components/ReportAttachmentArea';
 import OverlayPortal from '@/components/OverlayPortal';
+import SubcontractorClockModal from '@/components/SubcontractorClockModal';
 import { BUSINESS_LINE_REPAIRS_MAINTENANCE } from '@/lib/businessLine';
 import { filterStatusesForOpportunity, filterStatusesForProject } from '@/lib/projectStatusVisibility';
 
@@ -7749,6 +7750,7 @@ function TimesheetTab({ projectId, statusLabel }:{ projectId:string; statusLabel
   const [editStartTime, setEditStartTime] = useState<string>('');
   const [editEndTime, setEditEndTime] = useState<string>('');
   const [editBreakMinutes, setEditBreakMinutes] = useState<string>('0');
+  const [subcontractorClockOpen, setSubcontractorClockOpen] = useState(false);
   
   // Fetch project details for confirmation messages
   const { data: projectData } = useQuery({ 
@@ -8712,6 +8714,16 @@ function TimesheetTab({ projectId, statusLabel }:{ projectId:string; statusLabel
               No shifts scheduled for this date
             </div>
           )}
+          <div className="pt-2 mt-1.5 border-t border-gray-100">
+            <label className="text-[10px] text-gray-600 uppercase tracking-wide block mb-0.5">Subcontractor Clock-In/Out</label>
+            <button
+              type="button"
+              onClick={() => setSubcontractorClockOpen(true)}
+              className="w-full border rounded px-2.5 py-1.5 text-xs font-medium bg-white hover:bg-gray-50 text-gray-900"
+            >
+              Subcontractor Clock-In/Out
+            </button>
+          </div>
         </div>
         </div>
         
@@ -9318,6 +9330,7 @@ function TimesheetTab({ projectId, statusLabel }:{ projectId:string; statusLabel
           </div>
         </div></OverlayPortal>
       )}
+      <SubcontractorClockModal projectId={projectId} open={subcontractorClockOpen} onClose={() => setSubcontractorClockOpen(false)} />
     </div>
   );
 }

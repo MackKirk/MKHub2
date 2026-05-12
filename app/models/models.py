@@ -1970,6 +1970,203 @@ class Attendance(Base):
     )
 
 
+class SubcontractorCompany(Base):
+    """Third-party company providing services to Mack Kirk."""
+    __tablename__ = "subcontractor_companies"
+
+    id: Mapped[uuid.UUID] = uuid_pk()
+    name: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
+    contact_name: Mapped[Optional[str]] = mapped_column(String(255))
+    phone: Mapped[Optional[str]] = mapped_column(String(50))
+    email: Mapped[Optional[str]] = mapped_column(String(255))
+    address_line1: Mapped[Optional[str]] = mapped_column(String(255))
+    address_line2: Mapped[Optional[str]] = mapped_column(String(255))
+    city: Mapped[Optional[str]] = mapped_column(String(100))
+    province: Mapped[Optional[str]] = mapped_column(String(100))
+    postal_code: Mapped[Optional[str]] = mapped_column(String(20))
+    country: Mapped[Optional[str]] = mapped_column(String(100))
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    notes: Mapped[Optional[str]] = mapped_column(Text)
+    document_attachment_ids: Mapped[Optional[list]] = mapped_column(JSON)  # list of FileObject id strings
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
+    updated_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+
+    workers = relationship("SubcontractorWorker", back_populates="company")
+    contacts = relationship(
+        "SubcontractorCompanyContact", back_populates="company", cascade="all, delete-orphan"
+    )
+    company_files = relationship(
+        "SubcontractorCompanyFile", back_populates="company", cascade="all, delete-orphan"
+    )
+
+
+class SubcontractorCompanyFile(Base):
+    """Library files for a subcontractor company (parallel to client_files, no site scope)."""
+
+    __tablename__ = "subcontractor_company_files"
+
+    id: Mapped[uuid.UUID] = uuid_pk()
+    company_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("subcontractor_companies.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    file_object_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("file_objects.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    category: Mapped[Optional[str]] = mapped_column(String(100))
+    key: Mapped[Optional[str]] = mapped_column(String(1024))
+    original_name: Mapped[Optional[str]] = mapped_column(String(255))
+    uploaded_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
+    uploaded_by: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True))
+    deleted_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True, index=True)
+    deleted_by_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+
+    company = relationship("SubcontractorCompany", back_populates="company_files")
+
+
+class SubcontractorCompanyContact(Base):
+    """Contact persons for a subcontractor company (similar to client_contacts)."""
+
+    __tablename__ = "subcontractor_company_contacts"
+
+    id: Mapped[uuid.UUID] = uuid_pk()
+    company_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("subcontractor_companies.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    role_title: Mapped[Optional[str]] = mapped_column(String(100))
+    department: Mapped[Optional[str]] = mapped_column(String(100))
+    email: Mapped[Optional[str]] = mapped_column(String(255))
+    phone: Mapped[Optional[str]] = mapped_column(String(100))
+    mobile_phone: Mapped[Optional[str]] = mapped_column(String(100))
+    is_primary: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    sort_index: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    notes: Mapped[Optional[str]] = mapped_column(String(1000))
+    role_tags: Mapped[Optional[list]] = mapped_column(JSON)
+    photo_file_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("file_objects.id", ondelete="SET NULL"), nullable=True
+    )
+
+    company = relationship("SubcontractorCompany", back_populates="contacts")
+
+
+class SubcontractorWorker(Base):
+    """Worker employed by a subcontractor company (not an internal User)."""
+    __tablename__ = "subcontractor_workers"
+
+    id: Mapped[uuid.UUID] = uuid_pk()
+    company_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("subcontractor_companies.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    first_name: Mapped[Optional[str]] = mapped_column(String(255))
+    last_name: Mapped[Optional[str]] = mapped_column(String(255))
+    middle_name: Mapped[Optional[str]] = mapped_column(String(255))
+    preferred_name: Mapped[Optional[str]] = mapped_column(String(255))
+    gender: Mapped[Optional[str]] = mapped_column(String(100))
+    phone: Mapped[Optional[str]] = mapped_column(String(50))
+    email: Mapped[Optional[str]] = mapped_column(String(255))
+    photo_file_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("file_objects.id", ondelete="SET NULL"), nullable=True
+    )
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    notes: Mapped[Optional[str]] = mapped_column(Text)
+    job_title: Mapped[Optional[str]] = mapped_column(String(255))
+    address_line1: Mapped[Optional[str]] = mapped_column(String(255))
+    address_line2: Mapped[Optional[str]] = mapped_column(String(255))
+    city: Mapped[Optional[str]] = mapped_column(String(100))
+    province: Mapped[Optional[str]] = mapped_column(String(100))
+    postal_code: Mapped[Optional[str]] = mapped_column(String(20))
+    country: Mapped[Optional[str]] = mapped_column(String(100))
+    emergency_contact_name: Mapped[Optional[str]] = mapped_column(String(255))
+    emergency_contact_relationship: Mapped[Optional[str]] = mapped_column(String(255))
+    emergency_contact_phone: Mapped[Optional[str]] = mapped_column(String(100))
+    emergency_contact_home_phone: Mapped[Optional[str]] = mapped_column(String(50))
+    emergency_contact_work_phone: Mapped[Optional[str]] = mapped_column(String(50))
+    emergency_contact_email: Mapped[Optional[str]] = mapped_column(String(255))
+    emergency_contact_address: Mapped[Optional[str]] = mapped_column(Text)
+    qr_token: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), unique=True, nullable=False, default=uuid.uuid4, index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
+    updated_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+
+    company = relationship("SubcontractorCompany", back_populates="workers")
+    worker_files = relationship(
+        "SubcontractorWorkerFile", back_populates="worker", cascade="all, delete-orphan"
+    )
+
+
+class SubcontractorWorkerFile(Base):
+    """Library files attached to a subcontractor worker (parallel to subcontractor_company_files)."""
+
+    __tablename__ = "subcontractor_worker_files"
+
+    id: Mapped[uuid.UUID] = uuid_pk()
+    worker_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("subcontractor_workers.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    file_object_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("file_objects.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    category: Mapped[Optional[str]] = mapped_column(String(100))
+    key: Mapped[Optional[str]] = mapped_column(String(1024))
+    original_name: Mapped[Optional[str]] = mapped_column(String(255))
+    uploaded_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
+    uploaded_by: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True))
+    deleted_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True, index=True)
+    deleted_by_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+
+    worker = relationship("SubcontractorWorker", back_populates="worker_files")
+
+
+class SubcontractorAttendance(Base):
+    """Clock-in/out session for a subcontractor worker on a project."""
+    __tablename__ = "subcontractor_attendance"
+
+    id: Mapped[uuid.UUID] = uuid_pk()
+    worker_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("subcontractor_workers.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    company_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("subcontractor_companies.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    project_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("projects.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+
+    clock_in_time: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    clock_in_entered_utc: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    clock_in_confirmed_by_user_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    clock_in_notes: Mapped[Optional[str]] = mapped_column(Text)
+    clock_in_signature_file_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("file_objects.id", ondelete="SET NULL"), nullable=True
+    )
+
+    clock_out_time: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    clock_out_entered_utc: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    clock_out_confirmed_by_user_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    clock_out_notes: Mapped[Optional[str]] = mapped_column(Text)
+    clock_out_signature_file_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("file_objects.id", ondelete="SET NULL"), nullable=True
+    )
+
+    total_hours: Mapped[Optional[float]] = mapped_column(Numeric(12, 4))
+    status: Mapped[str] = mapped_column(String(20), default="open", nullable=False)  # open|finalized
+    notes: Mapped[Optional[str]] = mapped_column(Text)
+
+    __table_args__ = (
+        Index("idx_sc_attendance_worker_project", "worker_id", "project_id"),
+        Index("idx_sc_attendance_project_clock_in", "project_id", "clock_in_time"),
+        Index("idx_sc_attendance_worker_open", "worker_id", "clock_out_time"),
+    )
+
+
 class AuditLog(Base):
     """Append-only audit log for all dispatch actions"""
     __tablename__ = "audit_logs"

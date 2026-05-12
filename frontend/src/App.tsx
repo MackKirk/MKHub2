@@ -26,6 +26,10 @@ const WorkOrderDetail = lazy(() => import('./pages/WorkOrderDetail'));
 const Training = lazy(() => import('./pages/Training'));
 const SystemSettings = lazy(() => import('./pages/SystemSettings'));
 const BusinessDashboard = lazy(() => import('./pages/BusinessDashboard'));
+const SubcontractorsListPage = lazy(() => import('./pages/SubcontractorsListPage'));
+const SubcontractorCompanyPage = lazy(() => import('./pages/SubcontractorCompanyPage'));
+const SubcontractorWorkerPage = lazy(() => import('./pages/SubcontractorWorkerPage'));
+const SubcontractorScanPage = lazy(() => import('./pages/SubcontractorScanPage'));
 
 import Profile from './pages/Profile';
 import HomePage from './pages/Home';
@@ -181,6 +185,10 @@ export default function App(){
           <Route path="/opportunities" element={<AppShell><Opportunities/></AppShell>} />
           <Route path="/opportunities/:id" element={<AppShell><OpportunityDetail/></AppShell>} />
           <Route path="/business" element={<AppShell><BusinessDashboard/></AppShell>} />
+          <Route path="/business/subcontractors" element={<AppShell><SubcontractorsListPage /></AppShell>} />
+          <Route path="/business/subcontractors/scan" element={<AppShell><SubcontractorScanPage /></AppShell>} />
+          <Route path="/business/subcontractors/companies/:id" element={<AppShell><SubcontractorCompanyPage /></AppShell>} />
+          <Route path="/business/subcontractors/workers/:id" element={<AppShell><SubcontractorWorkerPage /></AppShell>} />
           <Route path="/rm-opportunities" element={<AppShell><BusinessLineProvider line={BUSINESS_LINE_REPAIRS_MAINTENANCE}><Opportunities /></BusinessLineProvider></AppShell>} />
           <Route path="/rm-opportunities/:id" element={<AppShell><RmOpportunityDetail /></AppShell>} />
           <Route path="/rm-leak-investigations" element={<AppShell><BusinessLineProvider line={BUSINESS_LINE_REPAIRS_MAINTENANCE}><LeakInvestigations /></BusinessLineProvider></AppShell>} />

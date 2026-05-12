@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session, defer
 from sqlalchemy.exc import ProgrammingError
 from sqlalchemy import or_, and_, text
@@ -7,7 +7,21 @@ from datetime import datetime, date, time, timedelta, timezone
 import uuid
 
 from ..db import get_db
-from ..models.models import SettingList, SettingItem, Client, Attendance, User, Shift, Project, EmployeeProfile, AuditLog, FileObject
+from ..models.models import (
+    SettingList,
+    SettingItem,
+    Client,
+    Attendance,
+    User,
+    Shift,
+    Project,
+    EmployeeProfile,
+    AuditLog,
+    FileObject,
+    SubcontractorAttendance,
+    SubcontractorWorker,
+    SubcontractorCompany,
+)
 from ..services.standard_file_categories import ensure_standard_file_categories
 from ..services.training_matrix_slots import (
     ensure_training_matrix_slots,
@@ -941,6 +955,149 @@ PREDEFINED_JOBS_DICT = {
 }
 
 
+def _build_subcontractor_attendance_rows(
+    db: Session,
+    *,
+    start_date: Optional[str],
+    end_date: Optional[str],
+    status: Optional[str],
+    project_id: Optional[str],
+    subcontractor_company_id: Optional[str],
+    subcontractor_worker_id: Optional[str] = None,
+) -> List[dict]:
+    """HR list rows for subcontractor_attendance (same shape keys as internal where possible)."""
+    q = db.query(SubcontractorAttendance)
+    if subcontractor_worker_id:
+        try:
+            wid = uuid.UUID(str(subcontractor_worker_id))
+            q = q.filter(SubcontractorAttendance.worker_id == wid)
+        except Exception:
+            pass
+    if start_date:
+        try:
+            start_dt = datetime.fromisoformat(start_date).date()
+            start_dt_utc = datetime.combine(start_dt, time.min).replace(tzinfo=timezone.utc)
+            q = q.filter(SubcontractorAttendance.clock_in_time >= start_dt_utc)
+        except Exception:
+            pass
+    if end_date:
+        try:
+            end_dt = datetime.fromisoformat(end_date).date()
+            end_dt_utc = datetime.combine(end_dt + timedelta(days=1), time.min).replace(tzinfo=timezone.utc)
+            q = q.filter(SubcontractorAttendance.clock_in_time < end_dt_utc)
+        except Exception:
+            pass
+    if status:
+        sl = status.lower()
+        if sl in ("open", "pending"):
+            q = q.filter(SubcontractorAttendance.clock_out_time.is_(None))
+        elif sl in ("finalized", "approved", "closed"):
+            q = q.filter(SubcontractorAttendance.clock_out_time.isnot(None))
+        else:
+            q = q.filter(SubcontractorAttendance.status == status)
+    if project_id and not str(project_id).startswith("job_"):
+        try:
+            pid = uuid.UUID(str(project_id))
+            q = q.filter(SubcontractorAttendance.project_id == pid)
+        except Exception:
+            pass
+    if subcontractor_company_id:
+        try:
+            cid = uuid.UUID(str(subcontractor_company_id))
+            q = q.filter(SubcontractorAttendance.company_id == cid)
+        except Exception:
+            pass
+
+    rows = q.order_by(SubcontractorAttendance.clock_in_time.desc()).limit(1000).all()
+    if not rows:
+        return []
+
+    wids = list({r.worker_id for r in rows})
+    cids = list({r.company_id for r in rows})
+    pids = list({r.project_id for r in rows})
+    workers = {}
+    companies = {}
+    projects = {}
+    if wids:
+        workers = {w.id: w for w in db.query(SubcontractorWorker).filter(SubcontractorWorker.id.in_(wids)).all()}
+    if cids:
+        companies = {c.id: c for c in db.query(SubcontractorCompany).filter(SubcontractorCompany.id.in_(cids)).all()}
+    if pids:
+        projects = {p.id: p for p in db.query(Project).filter(Project.id.in_(pids)).all()}
+
+    user_ids = set()
+    for r in rows:
+        if r.clock_in_confirmed_by_user_id:
+            user_ids.add(r.clock_in_confirmed_by_user_id)
+        if r.clock_out_confirmed_by_user_id:
+            user_ids.add(r.clock_out_confirmed_by_user_id)
+    users_map = {}
+    if user_ids:
+        users_map = {u.id: u for u in db.query(User).filter(User.id.in_(list(user_ids))).all()}
+
+    out: List[dict] = []
+    for r in rows:
+        w = workers.get(r.worker_id)
+        c = companies.get(r.company_id)
+        p = projects.get(r.project_id)
+        worker_name = w.name if w else "Unknown"
+        company_name = c.name if c else None
+        hours_worked = None
+        if r.clock_in_time and r.clock_out_time:
+            hours_worked = round((r.clock_out_time - r.clock_in_time).total_seconds() / 3600.0, 2)
+        elif r.total_hours is not None:
+            hours_worked = float(r.total_hours)
+
+        st = r.status or ("open" if r.clock_out_time is None else "finalized")
+        time_selected = r.clock_in_time or r.clock_out_time
+
+        def _uname(uid):
+            if not uid:
+                return None
+            u = users_map.get(uid)
+            return u.username if u else str(uid)
+
+        out.append(
+            {
+                "id": str(r.id),
+                "record_kind": "subcontractor",
+                "subcontractor_worker_id": str(r.worker_id),
+                "subcontractor_company_id": str(r.company_id),
+                "subcontractor_company_name": company_name,
+                "worker_id": str(r.worker_id),
+                "worker_name": worker_name,
+                "type": "in",
+                "clock_in_time": r.clock_in_time.isoformat() if r.clock_in_time else None,
+                "clock_out_time": r.clock_out_time.isoformat() if r.clock_out_time else None,
+                "time_selected_utc": time_selected.isoformat() if time_selected else None,
+                "time_entered_utc": (r.clock_in_entered_utc or r.clock_out_entered_utc).isoformat()
+                if (r.clock_in_entered_utc or r.clock_out_entered_utc)
+                else None,
+                "status": st,
+                "source": "subcontractor",
+                "shift_id": None,
+                "job_name": None,
+                "project_name": p.name if p else None,
+                "project_id": str(r.project_id),
+                "hours_worked": hours_worked,
+                "break_minutes": None,
+                "reason_text": None,
+                "gps_lat": None,
+                "gps_lng": None,
+                "created_at": r.clock_in_time.isoformat() if r.clock_in_time else None,
+                "approved_at": r.clock_out_entered_utc.isoformat() if r.clock_out_entered_utc else None,
+                "approved_by": _uname(r.clock_out_confirmed_by_user_id),
+                "clock_in_confirmed_by": _uname(r.clock_in_confirmed_by_user_id),
+                "clock_out_confirmed_by": _uname(r.clock_out_confirmed_by_user_id),
+                "shift_deleted": False,
+                "shift_deleted_by": None,
+                "shift_deleted_at": None,
+                "_sort_ts": time_selected.isoformat() if time_selected else "",
+            }
+        )
+    return out
+
+
 @router.get("/attendance/list")
 def list_attendances(
     worker_id: Optional[str] = None,
@@ -949,19 +1106,50 @@ def list_attendances(
     status: Optional[str] = None,
     type_filter: Optional[str] = None,  # "in" or "out"
     project_id: Optional[str] = None,  # Filter by project (through shift)
+    record_kind: str = Query("internal", description="internal | subcontractor | all"),
+    subcontractor_company_id: Optional[str] = None,
     db: Session = Depends(get_db),
     user: UserType = Depends(get_current_user)
 ):
-    """List all attendances with filters. All users can view their own attendances."""
+    """List all attendances with filters. All users can view their own attendances.
+
+    When record_kind=subcontractor, worker_id filters by subcontractor worker UUID (not internal user id).
+    """
     import logging
     from ..auth.security import _has_permission
     
     logger = logging.getLogger(__name__)
+    rk = (record_kind or "internal").lower()
+    if rk not in ("internal", "subcontractor", "all"):
+        rk = "internal"
     
     # Check if user has permission to view other users' attendances
     has_permission = _has_permission(user, "users:read") or _has_permission(user, "hr:attendance:read") or _has_permission(user, "hr:users:view:timesheet")
+    can_subcontractor_tab = (
+        has_permission
+        or _has_permission(user, "business:customers:read")
+        or _has_permission(user, "business:construction:projects:read")
+        or _has_permission(user, "business:rm:projects:read")
+        or _has_permission(user, "hr:attendance:write")
+    )
     
     try:
+        if rk == "subcontractor":
+            if not can_subcontractor_tab:
+                return []
+            sc_only = _build_subcontractor_attendance_rows(
+                db,
+                start_date=start_date,
+                end_date=end_date,
+                status=status,
+                project_id=project_id,
+                subcontractor_company_id=subcontractor_company_id,
+                subcontractor_worker_id=worker_id,
+            )
+            for it in sc_only:
+                it.pop("_sort_ts", None)
+            return sc_only
+
         # Query attendances directly without joins first
         query = db.query(Attendance)
         
@@ -1142,7 +1330,6 @@ def list_attendances(
                 elif att.clock_out_time:
                     att_type = "out"
                 
-                # Use clock_in_time or clock_out_time for time_selected_utc (backward compatibility)
                 time_selected = att.clock_in_time if att.clock_in_time else att.clock_out_time
                 time_entered = att.clock_in_entered_utc if att.clock_in_time else att.clock_out_entered_utc
                 
@@ -1179,9 +1366,13 @@ def list_attendances(
                                 shift_deleted_by = actor.username or actor.email or str(delete_log.actor_id)
                             else:
                                 shift_deleted_by = str(delete_log.actor_id)
+
+                shift_row = shifts_dict.get(str(att.shift_id)) if att.shift_id else None
+                project_id_str = str(shift_row.project_id) if shift_row and shift_row.project_id else None
                 
                 result.append({
                     "id": str(att.id),
+                    "record_kind": "internal",
                     "worker_id": str(att.worker_id),
                     "worker_name": worker_name,
                     "type": att_type,  # For backward compatibility
@@ -1194,6 +1385,7 @@ def list_attendances(
                     "shift_id": str(att.shift_id) if att.shift_id else None,
                     "job_name": job_name,
                     "project_name": project_name,
+                    "project_id": project_id_str,
                     "hours_worked": round(hours_worked, 2) if hours_worked else None,
                     "break_minutes": break_minutes,
                     "reason_text": att.reason_text,
@@ -1205,6 +1397,7 @@ def list_attendances(
                     "shift_deleted": shift_deleted,
                     "shift_deleted_by": shift_deleted_by,
                     "shift_deleted_at": shift_deleted_at,
+                    "_sort_ts": time_selected.isoformat() if time_selected else "",
                 })
             except Exception as e:
                 logger.error(f"Error processing attendance {att.id}: {str(e)}", exc_info=True)
@@ -1218,8 +1411,29 @@ def list_attendances(
             for i, att in enumerate(attendances[:3]):
                 att_type = "in" if att.clock_in_time else ("out" if att.clock_out_time else "unknown")
                 logger.warning(f"  Attendance {i+1}: id={att.id}, worker_id={att.worker_id}, type={att_type}, shift_id={att.shift_id}")
-        # Ensure we always return a list
-        return result if isinstance(result, list) else []
+        internal_result = result if isinstance(result, list) else []
+        if rk == "internal":
+            for it in internal_result:
+                it.pop("_sort_ts", None)
+            return internal_result
+
+        sc_rows: List[dict] = []
+        if rk == "all" and can_subcontractor_tab:
+            sc_rows = _build_subcontractor_attendance_rows(
+                db,
+                start_date=start_date,
+                end_date=end_date,
+                status=status,
+                project_id=project_id,
+                subcontractor_company_id=subcontractor_company_id,
+                subcontractor_worker_id=worker_id,
+            )
+        merged = internal_result + sc_rows
+        merged.sort(key=lambda x: x.get("_sort_ts") or "", reverse=True)
+        out_merged = merged[:1000]
+        for it in out_merged:
+            it.pop("_sort_ts", None)
+        return out_merged
     except HTTPException:
         raise
     except Exception as e:

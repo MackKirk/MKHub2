@@ -2498,6 +2498,14 @@ export default function UserInfo(){
     const perms = me?.permissions || [];
     return perms.includes('hr:users:edit:general') || perms.includes('users:write'); // Legacy
   }, [me]);
+
+  /** Matches PATCH /users/:id — admin, hr:users:write, or users:write only (not hr:users:edit:general). */
+  const canManageAccountStatus = useMemo(() => {
+    if (!me) return false;
+    if ((me?.roles || []).some((r: string) => String(r || '').toLowerCase() === 'admin')) return true;
+    const perms = me?.permissions || [];
+    return perms.includes('hr:users:write') || perms.includes('users:write');
+  }, [me]);
   
   // Check view permission for job compensation fields (Employment Type, Pay Type, Pay Rate)
   const canViewJobCompensation = useMemo(() => {
@@ -2684,6 +2692,9 @@ export default function UserInfo(){
   const [selectedProjectDivisions, setSelectedProjectDivisions] = useState<string[]>([]);
   const [isEditingPersonal, setIsEditingPersonal] = useState(false);
   const [sendingAccessInvite, setSendingAccessInvite] = useState(false);
+  const [savingAccountStatus, setSavingAccountStatus] = useState(false);
+  const [accountStatusModalOpen, setAccountStatusModalOpen] = useState(false);
+  const [accountStatusDraft, setAccountStatusDraft] = useState(true);
   const [deletingUser, setDeletingUser] = useState(false);
   
   // Auto-fill work_eligibility_status if user has visas but no status
@@ -2930,6 +2941,56 @@ export default function UserInfo(){
   
   const navigate = useNavigate();
 
+  const handleAccountStatusChange = async (
+    nextActive: boolean,
+    options?: { skipDeactivateConfirm?: boolean },
+  ): Promise<boolean> => {
+    if (!userId || savingAccountStatus) return false;
+    if (!nextActive && !options?.skipDeactivateConfirm) {
+      const result = await confirm({
+        title: 'Deactivate account',
+        message:
+          'This user will not be able to sign in or use the app until the account is activated again. Active sessions will be ended and access invites cannot be sent. Continue?',
+        confirmText: 'Deactivate',
+        cancelText: 'Cancel',
+      });
+      if (result !== 'confirm') return false;
+    }
+    setSavingAccountStatus(true);
+    try {
+      await api('PATCH', `/users/${encodeURIComponent(String(userId))}`, { is_active: nextActive });
+      toast.success(nextActive ? 'Account activated' : 'Account deactivated');
+      await queryClient.invalidateQueries({ queryKey: ['userProfile', userId] });
+      await queryClient.invalidateQueries({ queryKey: ['user', userId] });
+      if (!nextActive && me && String(me.id) === String(userId)) {
+        localStorage.removeItem('user_token');
+        window.location.replace('/login');
+        return true;
+      }
+      return true;
+    } catch (e: any) {
+      toast.error(e?.message || e?.detail || 'Failed to update account status');
+      return false;
+    } finally {
+      setSavingAccountStatus(false);
+    }
+  };
+
+  const openAccountStatusModal = () => {
+    setAccountStatusDraft(!!u?.is_active);
+    setAccountStatusModalOpen(true);
+  };
+
+  const saveAccountStatusFromModal = async () => {
+    const current = !!u?.is_active;
+    if (accountStatusDraft === current) {
+      setAccountStatusModalOpen(false);
+      return;
+    }
+    const ok = await handleAccountStatusChange(accountStatusDraft, { skipDeactivateConfirm: true });
+    if (ok) setAccountStatusModalOpen(false);
+  };
+
   const todayLabel = useMemo(() => {
     return new Date().toLocaleDateString('en-CA', {
       weekday: 'long',
@@ -3057,13 +3118,29 @@ export default function UserInfo(){
                       {p.job_title||'—'}{u?.divisions && u.divisions.length > 0 ? ` • ${u.divisions.map((d: any) => d.label).join(', ')}` : (p.division ? ` • ${p.division}` : '')}
                     </div>
                   </div>
-                  <span className={`inline-flex items-center px-1.5 py-0.5 rounded-full text-[10px] font-medium flex-shrink-0 ${
-                    u?.is_active 
-                      ? 'bg-green-100 text-green-800' 
-                      : 'bg-red-100 text-red-800'
-                  }`}>
-                    {u?.is_active? 'Active':'Terminated'}
-                  </span>
+                  <div className="flex-shrink-0">
+                    {canManageAccountStatus && userId && data ? (
+                      <button
+                        type="button"
+                        disabled={savingAccountStatus}
+                        onClick={openAccountStatusModal}
+                        title="Change account status"
+                        className={`inline-flex items-center px-1.5 py-0.5 rounded-full text-[10px] font-medium border border-transparent transition-shadow hover:ring-2 hover:ring-offset-1 hover:ring-brand-red/40 disabled:opacity-50 disabled:cursor-not-allowed ${
+                          u?.is_active ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
+                        }`}
+                      >
+                        {savingAccountStatus ? 'Saving…' : u?.is_active ? 'Active' : 'Inactive'}
+                      </button>
+                    ) : (
+                      <span
+                        className={`inline-flex items-center px-1.5 py-0.5 rounded-full text-[10px] font-medium ${
+                          u?.is_active ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
+                        }`}
+                      >
+                        {u?.is_active ? 'Active' : 'Inactive'}
+                      </span>
+                    )}
+                  </div>
                 </div>
               </div>
             </div>
@@ -3077,14 +3154,28 @@ export default function UserInfo(){
                   src={p.profile_photo_file_id? withFileAccessToken(`/files/${p.profile_photo_file_id}/thumbnail?w=240`):'/ui/assets/placeholders/user.png'} 
                   alt={`${p.first_name||u?.username} ${p.last_name||''}`}
                 />
-                <div className="mt-2">
-                  <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium ${
-                    u?.is_active 
-                      ? 'bg-green-100 text-green-800' 
-                      : 'bg-red-100 text-red-800'
-                  }`}>
-                    {u?.is_active? 'Active':'Terminated'}
-                  </span>
+                <div className="mt-2 flex flex-col items-center w-full max-w-[9rem]">
+                  {canManageAccountStatus && userId && data ? (
+                    <button
+                      type="button"
+                      disabled={savingAccountStatus}
+                      onClick={openAccountStatusModal}
+                      title="Change account status"
+                      className={`inline-flex items-center justify-center px-2 py-0.5 rounded-full text-[10px] font-medium w-full border border-transparent transition-shadow hover:ring-2 hover:ring-offset-1 hover:ring-brand-red/40 disabled:opacity-50 disabled:cursor-not-allowed ${
+                        u?.is_active ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
+                      }`}
+                    >
+                      {savingAccountStatus ? 'Saving…' : u?.is_active ? 'Active' : 'Inactive'}
+                    </button>
+                  ) : (
+                    <span
+                      className={`inline-flex items-center justify-center px-2 py-0.5 rounded-full text-[10px] font-medium w-full ${
+                        u?.is_active ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
+                      }`}
+                    >
+                      {u?.is_active ? 'Active' : 'Inactive'}
+                    </span>
+                  )}
                 </div>
               </div>
               
@@ -3365,6 +3456,104 @@ export default function UserInfo(){
           </p>
         </div>
       </div>
+
+      {accountStatusModalOpen && (
+        <OverlayPortal>
+          <div
+            className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+            onClick={() => {
+              if (!savingAccountStatus) setAccountStatusModalOpen(false);
+            }}
+          >
+            <div
+              className="bg-white rounded-xl shadow-lg w-full max-w-md overflow-hidden flex flex-col"
+              onClick={(e) => e.stopPropagation()}
+              role="dialog"
+              aria-labelledby="account-status-modal-title"
+              aria-modal="true"
+            >
+              <div className="px-4 py-3 border-b border-gray-200 flex items-center justify-between">
+                <h2 id="account-status-modal-title" className="text-sm font-semibold text-gray-900">
+                  Account status
+                </h2>
+                <button
+                  type="button"
+                  disabled={savingAccountStatus}
+                  className="w-8 h-8 rounded-lg text-gray-500 hover:bg-gray-100 hover:text-gray-800 text-lg leading-none disabled:opacity-40 disabled:pointer-events-none"
+                  aria-label="Close"
+                  onClick={() => setAccountStatusModalOpen(false)}
+                >
+                  ×
+                </button>
+              </div>
+              <div className="px-4 py-3 space-y-3">
+                <p className="text-xs text-gray-600">
+                  Controls whether this person can sign in to MK Hub. This is separate from employment status on the Job tab (hire / termination dates).
+                </p>
+                <fieldset className="space-y-2">
+                  <legend className="sr-only">Account status</legend>
+                  <label
+                    className={`flex items-start gap-3 cursor-pointer rounded-lg border p-3 ${
+                      accountStatusDraft ? 'border-green-300 bg-green-50/60' : 'border-gray-200 hover:bg-gray-50/80'
+                    }`}
+                  >
+                    <input
+                      type="radio"
+                      name="account-status"
+                      className="mt-0.5 text-brand-red focus:ring-brand-red"
+                      checked={accountStatusDraft === true}
+                      disabled={savingAccountStatus}
+                      onChange={() => setAccountStatusDraft(true)}
+                    />
+                    <span>
+                      <span className="block text-sm font-medium text-gray-900">Active</span>
+                      <span className="block text-xs text-gray-600 mt-0.5">Can sign in and use the app.</span>
+                    </span>
+                  </label>
+                  <label
+                    className={`flex items-start gap-3 cursor-pointer rounded-lg border p-3 ${
+                      !accountStatusDraft ? 'border-red-300 bg-red-50/60' : 'border-gray-200 hover:bg-gray-50/80'
+                    }`}
+                  >
+                    <input
+                      type="radio"
+                      name="account-status"
+                      className="mt-0.5 text-brand-red focus:ring-brand-red"
+                      checked={accountStatusDraft === false}
+                      disabled={savingAccountStatus}
+                      onChange={() => setAccountStatusDraft(false)}
+                    />
+                    <span>
+                      <span className="block text-sm font-medium text-gray-900">Inactive</span>
+                      <span className="block text-xs text-gray-600 mt-0.5">
+                        Cannot sign in; sessions end; access invites cannot be sent until reactivated.
+                      </span>
+                    </span>
+                  </label>
+                </fieldset>
+              </div>
+              <div className="px-4 py-3 border-t border-gray-100 bg-gray-50 flex justify-end gap-2">
+                <button
+                  type="button"
+                  disabled={savingAccountStatus}
+                  className="px-3 py-1.5 rounded-lg text-xs font-semibold border border-gray-300 bg-white text-gray-700 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                  onClick={() => setAccountStatusModalOpen(false)}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  disabled={savingAccountStatus}
+                  onClick={() => void saveAccountStatusFromModal()}
+                  className="px-3 py-1.5 rounded-lg text-xs font-semibold text-white bg-gradient-to-r from-brand-red to-[#ee2b2b] shadow-sm hover:opacity-95 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {savingAccountStatus ? 'Saving…' : 'Save'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </OverlayPortal>
+      )}
 
       {/* BambooHR Actions - Moved to bottom */}
       {canEdit && (
@@ -3921,6 +4110,9 @@ function JobSection({ type, p, editable, userId, collectChanges, usersOptions, s
               <div className="text-xs font-medium text-gray-700 mt-0.5">
                 Employment Status
               </div>
+              <p className="text-[10px] text-gray-500 mt-1 px-0.5 leading-snug max-w-[11rem] mx-auto">
+                From termination date in HR below, not the system account badge under the photo.
+              </p>
             </div>
           </div>
           

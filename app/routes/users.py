@@ -657,6 +657,10 @@ def update_user(
         touched_profile_audit = True
     if is_active is not None:
         u.is_active = bool(is_active)
+        if not u.is_active:
+            from ..services.refresh_tokens import clear_refresh_tokens_for_user
+
+            clear_refresh_tokens_for_user(db, u.id)
         touched_profile_audit = True
     if divisions is not None:
         divisions_list = db.query(SettingList).filter(SettingList.name == "divisions").first()

@@ -60,6 +60,7 @@ const backendProxyPrefixes = [
   '/safety',
   '/search',
   '/settings',
+  '/subcontractors',
   '/task-requests',
   '/tasks',
   '/training',
@@ -95,7 +96,7 @@ export default defineConfig({
     }
   },
   optimizeDeps: {
-    include: ['qrcode', 'react-grid-layout']
+    include: ['qrcode', 'html5-qrcode', 'react-grid-layout']
   },
   server: { 
     port: 5173, 
