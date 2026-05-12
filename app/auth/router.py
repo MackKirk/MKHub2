@@ -1368,8 +1368,36 @@ def update_my_profile(payload: EmployeeProfileInput, user: User = Depends(get_cu
     return {"status": "ok"}
 
 
+def _user_option_display_name(u: User, ep: Optional[EmployeeProfile]) -> str:
+    """Label for pickers: preferred + (first last) when both help disambiguate; else legal or username."""
+    fn = (getattr(ep, "first_name", None) or "").strip() if ep else ""
+    ln = (getattr(ep, "last_name", None) or "").strip() if ep else ""
+    legal = " ".join(x for x in (fn, ln) if x).strip()
+    pref = (getattr(ep, "preferred_name", None) or "").strip() if ep else ""
+    if pref and legal:
+        if pref.casefold() == legal.casefold():
+            return pref
+        return f"{pref} ({legal})"
+    if pref:
+        return pref
+    if legal:
+        return legal
+    un = (getattr(u, "username", None) or "").strip()
+    if un:
+        return un
+    em = (getattr(u, "email_personal", None) or "").strip()
+    if em:
+        return em
+    return str(u.id)
+
+
 @router.get("/users/options")
-def users_options(q: Optional[str] = None, limit: int = 100, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+def users_options(
+    q: Optional[str] = None,
+    limit: int = Query(100, ge=1, le=5000),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
     query = db.query(User, EmployeeProfile).outerjoin(EmployeeProfile, EmployeeProfile.user_id == User.id).filter(User.is_active == True)
     if q:
         like = f"%{q}%"
@@ -1384,18 +1412,11 @@ def users_options(q: Optional[str] = None, limit: int = 100, db: Session = Depen
     
     result = []
     for u, ep in rows:
-        name = None
-        if ep:
-            if ep.preferred_name:
-                name = ep.preferred_name
-            elif ep.first_name or ep.last_name:
-                name = " ".join([ep.first_name or "", ep.last_name or ""]).strip()
-        
         result.append({
             "id": str(u.id),
             "username": u.username,
             "email": u.email_personal,
-            "name": name or u.username
+            "name": _user_option_display_name(u, ep),
         })
     
     return result

@@ -34,7 +34,19 @@ export default function Profile(){
   // Get current user ID for components
   const { data:me } = useQuery({ queryKey:['me'], queryFn: ()=> api<any>('GET','/auth/me') });
   const userId = me?.id ? String(me.id) : '';
-  const { data: usersOptions } = useQuery({ queryKey: ['users-options'], queryFn: () => api<any[]>('GET', '/auth/users/options') });
+  const { data: usersOptionsRaw } = useQuery({
+    queryKey: ['users-options', { limit: 5000 }],
+    queryFn: () => api<any[]>('GET', '/auth/users/options?limit=5000'),
+  });
+  const usersOptions = useMemo(() => {
+    const arr = [...(usersOptionsRaw || [])];
+    arr.sort((a: any, b: any) => {
+      const la = String(a?.name ?? a?.username ?? a?.email ?? a?.id ?? '').toLowerCase();
+      const lb = String(b?.name ?? b?.username ?? b?.email ?? b?.id ?? '').toLowerCase();
+      return la.localeCompare(lb, undefined, { sensitivity: 'base' });
+    });
+    return arr;
+  }, [usersOptionsRaw]);
   const { data: supervisorProfile } = useQuery({
     queryKey: ['supervisor-profile', p?.manager_user_id],
     queryFn: () => api<any>('GET', `/auth/users/${p?.manager_user_id}/profile`),
@@ -49,7 +61,7 @@ export default function Profile(){
     }
     if (!p?.manager_user_id) return '';
     const row = (usersOptions || []).find((x: any) => String(x.id) === String(p.manager_user_id));
-    return row ? (row.username || row.email) : '';
+    return row ? String(row.name || row.username || row.email || '') : '';
   }, [usersOptions, p?.manager_user_id, supervisorProfile]);
   function calcAge(dob?: string) {
     if (!dob) return '';

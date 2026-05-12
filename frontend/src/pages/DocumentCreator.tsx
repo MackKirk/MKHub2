@@ -1,11 +1,9 @@
 import { useState, useCallback } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, Link } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import toast from 'react-hot-toast';
 import { useConfirm } from '@/components/ConfirmProvider';
-import DocumentTemplatesTab from '@/components/DocumentTemplatesTab';
-import DocumentTypesTab from '@/components/DocumentTypesTab';
 import DocumentEditor from '@/components/DocumentEditor';
 import { ChooseDocumentTypeModal } from '@/components/ChooseDocumentTypeModal';
 
@@ -58,14 +56,8 @@ export default function DocumentCreator() {
   const queryClient = useQueryClient();
   const confirm = useConfirm();
   const [isSaving, setIsSaving] = useState(false);
-  const [activeTab, setActiveTab] = useState<'creator' | 'templates' | 'types'>('creator');
   const [showChooseTypeModal, setShowChooseTypeModal] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
-
-  const { data: templates = [] } = useQuery({
-    queryKey: ['document-creator-templates'],
-    queryFn: () => api<{ id: string; name: string }[]>('GET', '/document-creator/templates'),
-  });
 
   const { data: documents = [] } = useQuery({
     queryKey: ['document-creator-documents'],
@@ -137,7 +129,12 @@ export default function DocumentCreator() {
               <div>
                 <h5 className="text-sm font-semibold text-gray-900">Documents</h5>
                 <p className="text-xs text-gray-600 mt-0.5">
-                  Create and edit documents{documents.length > 0 ? ` (${documents.length} total)` : ''}
+                  Create and edit documents{documents.length > 0 ? ` (${documents.length} total)` : ''}. Background and
+                  document templates are in{' '}
+                  <Link to="/settings?section=templates" className="font-medium text-brand-red hover:underline">
+                    Settings → System settings → Templates
+                  </Link>
+                  .
                 </p>
               </div>
             </div>
@@ -155,40 +152,8 @@ export default function DocumentCreator() {
           </div>
         </div>
 
-        {/* Tabs - same style as Users / ProjectDetail */}
-        <div className="flex items-center gap-2 flex-wrap">
-          <button
-            type="button"
-            onClick={() => setActiveTab('creator')}
-            className={`px-3 py-1.5 rounded-full text-sm font-medium ${activeTab === 'creator' ? 'bg-gray-900 text-white' : 'bg-white border border-gray-200 hover:bg-gray-50 text-gray-700'}`}
-          >
-            Documents
-          </button>
-          <button
-            type="button"
-            onClick={() => setActiveTab('templates')}
-            className={`px-3 py-1.5 rounded-full text-sm font-medium ${activeTab === 'templates' ? 'bg-gray-900 text-white' : 'bg-white border border-gray-200 hover:bg-gray-50 text-gray-700'}`}
-          >
-            Background templates
-          </button>
-          <button
-            type="button"
-            onClick={() => setActiveTab('types')}
-            className={`px-3 py-1.5 rounded-full text-sm font-medium ${activeTab === 'types' ? 'bg-gray-900 text-white' : 'bg-white border border-gray-200 hover:bg-gray-50 text-gray-700'}`}
-          >
-            Document templates
-          </button>
-        </div>
-
-        {activeTab === 'templates' ? (
-          <DocumentTemplatesTab />
-        ) : activeTab === 'types' ? (
-          <DocumentTypesTab />
-        ) : (
-          <>
-            {/* Documents list - same structure as Projects list */}
-            <div className="rounded-xl border bg-white overflow-hidden">
-              {documents.length === 0 ? (
+        <div className="rounded-xl border bg-white overflow-hidden">
+          {documents.length === 0 ? (
                 <div className="p-8 text-center">
                   <p className="text-xs text-gray-500 mb-4">No documents yet.</p>
                   <button
@@ -260,18 +225,15 @@ export default function DocumentCreator() {
                   ))}
                 </div>
               )}
-            </div>
-
-            <ChooseDocumentTypeModal
-              open={showChooseTypeModal}
-              onClose={() => setShowChooseTypeModal(false)}
-              onSelect={(documentTypeId) => {
-                setShowChooseTypeModal(false);
-                handleCreateNewDocument(documentTypeId);
-              }}
-            />
-          </>
-        )}
+        </div>
+        <ChooseDocumentTypeModal
+          open={showChooseTypeModal}
+          onClose={() => setShowChooseTypeModal(false)}
+          onSelect={(documentTypeId) => {
+            setShowChooseTypeModal(false);
+            handleCreateNewDocument(documentTypeId);
+          }}
+        />
       </div>
     );
   }
