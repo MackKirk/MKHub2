@@ -2624,6 +2624,14 @@ export default function UserInfo(){
     return perms.includes('reviews:read') || perms.includes('reviews:admin') || perms.includes('hr:reviews:admin');
   }, [me]);
 
+  const canImportLegacyReviews = useMemo(() => {
+    if (!me) return false;
+    const isAdminRole = (me?.roles || []).some((r: string) => String(r || '').toLowerCase() === 'admin');
+    if (isAdminRole) return true;
+    const perms = me?.permissions || [];
+    return perms.includes('hr:reviews:admin') || perms.includes('reviews:admin');
+  }, [me]);
+
   useEffect(() => {
     if (tab !== 'activity' || canViewActivity) return;
     if (canViewGeneral || canSelfEdit) setTab('personal');
@@ -2718,7 +2726,19 @@ export default function UserInfo(){
   const [isEditingJob, setIsEditingJob] = useState(false);
   const [isEmployeeCardMinimized, setIsEmployeeCardMinimized] = useState(false);
   const permissionsRef = useRef<UserPermissionsRef>(null);
-  const { data:usersOptions } = useQuery({ queryKey:['users-options'], queryFn: ()=> api<any[]>('GET','/auth/users/options') });
+  const { data: usersOptionsRaw } = useQuery({
+    queryKey: ['users-options', { limit: 5000 }],
+    queryFn: () => api<any[]>('GET', '/auth/users/options?limit=5000'),
+  });
+  const usersOptions = useMemo(() => {
+    const arr = [...(usersOptionsRaw || [])];
+    arr.sort((a: any, b: any) => {
+      const la = String(a?.name ?? a?.username ?? a?.email ?? a?.id ?? '').toLowerCase();
+      const lb = String(b?.name ?? b?.username ?? b?.email ?? b?.id ?? '').toLowerCase();
+      return la.localeCompare(lb, undefined, { sensitivity: 'base' });
+    });
+    return arr;
+  }, [usersOptionsRaw]);
   const { data: supervisorProfile } = useQuery({
     queryKey: ['supervisor-profile', p?.manager_user_id],
     queryFn: ()=> api<any>('GET', `/auth/users/${p.manager_user_id}/profile`),
@@ -2732,8 +2752,8 @@ export default function UserInfo(){
       if (full) return full;
     }
     if(!p?.manager_user_id) return '';
-    const row = (usersOptions||[]).find((x:any)=> String(x.id)===String(p.manager_user_id));
-    return row? (row.username || row.email) : '';
+    const row = (usersOptions || []).find((x: any) => String(x.id) === String(p.manager_user_id));
+    return row ? String(row.name || row.username || row.email || '') : '';
   }, [usersOptions, p?.manager_user_id, supervisorProfile]);
 
   function calcAge(dob?: string){
@@ -3378,7 +3398,11 @@ export default function UserInfo(){
               )}
               {tab==='reports' && canViewReports && <UserReports userId={String(userId)} canEdit={canEditGeneral || (me?.roles || []).some((r: string) => String(r || '').toLowerCase() === 'admin') || (me?.permissions || []).includes('hr:users:write') || (me?.permissions || []).includes('users:write')} />}
               {tab === 'reviews' && canViewReviews && userId && (
-                <UserEmployeeReviewsTab userId={String(userId)} enabled={tab === 'reviews'} />
+                <UserEmployeeReviewsTab
+                  userId={String(userId)}
+                  enabled={tab === 'reviews'}
+                  canImportLegacy={canImportLegacyReviews}
+                />
               )}
               {tab==='permissions' && canViewPermissions && <UserPermissions ref={permissionsRef} userId={String(userId)} onDirtyChange={setPermissionsDirty} canEdit={canEditPermissions} />}
               {tab === 'activity' && canViewActivity && userId && <UserActivityLogTab userId={String(userId)} />}
@@ -4169,8 +4193,8 @@ function JobSection({ type, p, editable, userId, collectChanges, usersOptions, s
   // organization
   const supervisor = useMemo(()=>{
     if(!p?.manager_user_id) return '';
-    const row = (usersOptions||[]).find((x:any)=> String(x.id)===String(p.manager_user_id));
-    return row? (row.username || row.email) : '';
+    const row = (usersOptions || []).find((x: any) => String(x.id) === String(p.manager_user_id));
+    return row ? String(row.name || row.username || row.email || '') : '';
   }, [usersOptions, p?.manager_user_id]);
   return (
     <div className="grid md:grid-cols-2 gap-4">
@@ -4236,8 +4260,10 @@ function JobSection({ type, p, editable, userId, collectChanges, usersOptions, s
         {isEditable? (
           <select className="w-full rounded-lg border px-3 py-2" value={form.manager_user_id} onChange={e=>onField('manager_user_id', e.target.value)}>
             <option value="">Select...</option>
-            {(usersOptions||[]).map((u:any)=> (
-              <option key={u.id} value={u.id}><UserLabel id={u.id} fallback={u.username||u.email} /></option>
+            {(usersOptions || []).map((u: any) => (
+              <option key={u.id} value={u.id}>
+                {String(u.name || u.username || u.email || u.id)}
+              </option>
             ))}
           </select>
         ) : (
@@ -6044,8 +6070,8 @@ function OrganizationSection({ p, editable, userId, collectChanges, usersOptions
       if (full) return full;
     }
     if(!p?.manager_user_id) return '';
-    const row = (usersOptions||[]).find((x:any)=> String(x.id)===String(p.manager_user_id));
-    return row? (row.username || row.email) : '';
+    const row = (usersOptions || []).find((x: any) => String(x.id) === String(p.manager_user_id));
+    return row ? String(row.name || row.username || row.email || '') : '';
   }, [usersOptions, p?.manager_user_id, supervisorProfile]);
   
   // Flatten project divisions (main divisions + subdivisions)
@@ -6121,8 +6147,10 @@ function OrganizationSection({ p, editable, userId, collectChanges, usersOptions
             {isEditable? (
               <select className="w-full rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-gray-900 focus:ring-1 focus:ring-gray-400 focus:border-gray-400" value={form.manager_user_id} onChange={e=>onField('manager_user_id', e.target.value)}>
                 <option value="">Select...</option>
-                {(usersOptions||[]).map((u:any)=> (
-                  <option key={u.id} value={u.id}><UserLabel id={u.id} fallback={u.username||u.email} /></option>
+                {(usersOptions || []).map((u: any) => (
+                  <option key={u.id} value={u.id}>
+                    {String(u.name || u.username || u.email || u.id)}
+                  </option>
                 ))}
               </select>
             ) : (
@@ -6372,15 +6400,18 @@ function TimeOffSection({ userId, canEdit }:{ userId:string, canEdit:boolean }){
   const [effectiveDate, setEffectiveDate] = useState(new Date().toISOString().split('T')[0]);
   const [adjustmentNote, setAdjustmentNote] = useState('');
   const [adjusting, setAdjusting] = useState(false);
-  const [showAddHistoryModal, setShowAddHistoryModal] = useState(false);
-  const [addHistoryPolicy, setAddHistoryPolicy] = useState('');
-  const [addHistoryDate, setAddHistoryDate] = useState(new Date().toISOString().split('T')[0]);
-  const [addHistoryDescription, setAddHistoryDescription] = useState('');
-  const [addHistoryUsedDays, setAddHistoryUsedDays] = useState('');
-  const [addHistoryEarnedDays, setAddHistoryEarnedDays] = useState('');
-  const [addingHistory, setAddingHistory] = useState(false);
   const [deletingHistoryId, setDeletingHistoryId] = useState<string | null>(null);
-  
+  const [showEditHistoryModal, setShowEditHistoryModal] = useState(false);
+  const [editHistoryForm, setEditHistoryForm] = useState<{
+    id: string;
+    policy_name: string;
+    transaction_date: string;
+    description: string;
+    used_days: string;
+    earned_days: string;
+  } | null>(null);
+  const [savingHistoryEdit, setSavingHistoryEdit] = useState(false);
+
   const calculateHours = () => {
     if (startDate && endDate) {
       const start = new Date(startDate);
@@ -6511,50 +6542,6 @@ function TimeOffSection({ userId, canEdit }:{ userId:string, canEdit:boolean }){
     }
   };
   
-  const handleOpenAddHistory = () => {
-    setAddHistoryPolicy(availablePolicies[0] || 'Vacation');
-    setAddHistoryDate(new Date().toISOString().split('T')[0]);
-    setAddHistoryDescription('');
-    setAddHistoryUsedDays('');
-    setAddHistoryEarnedDays('');
-    setShowAddHistoryModal(true);
-  };
-  
-  const handleAddHistoryEntry = async () => {
-    const used = addHistoryUsedDays.trim() ? parseFloat(addHistoryUsedDays) : undefined;
-    const earned = addHistoryEarnedDays.trim() ? parseFloat(addHistoryEarnedDays) : undefined;
-    if (!addHistoryPolicy || !addHistoryDate) {
-      toast.error('Policy and date are required');
-      return;
-    }
-    if ((used === undefined || isNaN(used) || used === 0) && (earned === undefined || isNaN(earned) || earned === 0)) {
-      toast.error('Enter at least one of Used days or Earned days');
-      return;
-    }
-    setAddingHistory(true);
-    try {
-      await api('POST', `/employees/${userId}/time-off/history`, {
-        policy_name: addHistoryPolicy,
-        transaction_date: addHistoryDate,
-        description: addHistoryDescription.trim() || undefined,
-        used_days: used !== undefined && !isNaN(used) ? used : undefined,
-        earned_days: earned !== undefined && !isNaN(earned) ? earned : undefined,
-      });
-      toast.success('History entry added');
-      setShowAddHistoryModal(false);
-      setAddHistoryPolicy('');
-      setAddHistoryDescription('');
-      setAddHistoryUsedDays('');
-      setAddHistoryEarnedDays('');
-      refetchHistory();
-      refetchBalances();
-    } catch (error: any) {
-      toast.error(error?.message || 'Failed to add history entry');
-    } finally {
-      setAddingHistory(false);
-    }
-  };
-  
   const handleDeleteHistoryEntry = async (entryId: string) => {
     if (!isAdmin) return;
     if (deletingHistoryId) return;
@@ -6582,6 +6569,52 @@ function TimeOffSection({ userId, canEdit }:{ userId:string, canEdit:boolean }){
   
   const availablePolicies = balances?.map((b: any) => b.policy_name) || [];
   const totalBalance = balances?.reduce((sum: number, b: any) => sum + b.balance_hours, 0) || 0;
+
+  const openEditHistoryModal = (h: any) => {
+    setEditHistoryForm({
+      id: String(h.id),
+      policy_name: String(h.policy_name || ''),
+      transaction_date: h.transaction_date ? String(h.transaction_date).slice(0, 10) : '',
+      description: h.description != null ? String(h.description) : '',
+      used_days: h.used_days != null && h.used_days !== '' ? String(h.used_days) : '',
+      earned_days: h.earned_days != null && h.earned_days !== '' ? String(h.earned_days) : '',
+    });
+    setShowEditHistoryModal(true);
+  };
+
+  const handleSaveHistoryEdit = async () => {
+    if (!editHistoryForm || !isAdmin) return;
+    const { id, policy_name, transaction_date, description, used_days, earned_days } = editHistoryForm;
+    if (!transaction_date) {
+      toast.error('Transaction date is required');
+      return;
+    }
+    const u = used_days.trim() ? parseFloat(used_days) : 0;
+    const e = earned_days.trim() ? parseFloat(earned_days) : 0;
+    if ((!used_days.trim() || isNaN(u) || u === 0) && (!earned_days.trim() || isNaN(e) || e === 0)) {
+      toast.error('Enter at least one non-zero value for used days or earned days');
+      return;
+    }
+    setSavingHistoryEdit(true);
+    try {
+      await api('PATCH', `/employees/${userId}/time-off/history/${encodeURIComponent(id)}`, {
+        policy_name: policy_name.trim() || undefined,
+        transaction_date,
+        description: description.trim() || null,
+        used_days: used_days.trim() ? parseFloat(used_days) : null,
+        earned_days: earned_days.trim() ? parseFloat(earned_days) : null,
+      });
+      toast.success('History entry updated');
+      setShowEditHistoryModal(false);
+      setEditHistoryForm(null);
+      await refetchHistory();
+      await refetchBalances();
+    } catch (err: any) {
+      toast.error(err?.message || err?.detail || 'Failed to update entry');
+    } finally {
+      setSavingHistoryEdit(false);
+    }
+  };
   
   // Ensure we always show cards for main policies (Sick Leave and Vacation), even if they don't exist in DB
   const defaultPolicies = ['Sick Leave', 'Vacation'];
@@ -6792,14 +6825,6 @@ function TimeOffSection({ userId, canEdit }:{ userId:string, canEdit:boolean }){
                   {syncingHistory ? 'Syncing...' : 'Sync History'}
                 </button>
               )}
-              {isAdmin && (
-                <button
-                  onClick={handleOpenAddHistory}
-                  className="px-2 py-1.5 rounded border border-blue-300 text-blue-700 text-xs font-medium hover:bg-blue-50"
-                >
-                  Add entry
-                </button>
-              )}
             </div>
           </div>
         {history && history.length > 0 ? (() => {
@@ -6833,13 +6858,12 @@ function TimeOffSection({ userId, canEdit }:{ userId:string, canEdit:boolean }){
                           <th className="text-right py-2 px-3 font-semibold text-xs">Used Days (-)</th>
                           <th className="text-right py-2 px-3 font-semibold text-xs">Earned Days (+)</th>
                           <th className="text-right py-2 px-3 font-semibold text-xs">Balance</th>
-                          {isAdmin && <th className="text-right py-2 px-3 font-semibold text-xs w-10"> </th>}
+                          {isAdmin && <th className="text-right py-2 px-3 font-semibold text-xs min-w-[5.5rem]"> </th>}
                         </tr>
                       </thead>
                       <tbody>
                         {entries.map((h: any) => {
                           const isAdjustment = isManualAdjustment(h.description || '');
-                          const isDeleting = deletingHistoryId === h.id;
                           return (
                             <tr key={h.id} className={`border-b ${isAdjustment ? 'bg-blue-50' : ''}`}>
                               <td className="py-2 px-3">
@@ -6883,24 +6907,37 @@ function TimeOffSection({ userId, canEdit }:{ userId:string, canEdit:boolean }){
                               </td>
                               {isAdmin && (
                                 <td className="py-2 px-3 text-right">
-                                  <button
-                                    type="button"
-                                    onClick={() => handleDeleteHistoryEntry(h.id)}
-                                    disabled={isDeleting}
-                                    className="p-1 rounded text-gray-400 hover:text-red-600 hover:bg-red-50 disabled:opacity-50"
-                                    title="Delete entry"
-                                  >
-                                    {isDeleting ? (
-                                      <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
-                                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
-                                      </svg>
-                                    ) : (
+                                  <div className="flex items-center justify-end gap-0.5">
+                                    <button
+                                      type="button"
+                                      onClick={() => openEditHistoryModal(h)}
+                                      disabled={!!deletingHistoryId || savingHistoryEdit}
+                                      className="p-1 rounded text-gray-400 hover:text-blue-700 hover:bg-blue-50 disabled:opacity-50"
+                                      title="Edit entry"
+                                    >
                                       <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
                                       </svg>
-                                    )}
-                                  </button>
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => handleDeleteHistoryEntry(h.id)}
+                                      disabled={!!deletingHistoryId || savingHistoryEdit}
+                                      className="p-1 rounded text-gray-400 hover:text-red-600 hover:bg-red-50 disabled:opacity-50"
+                                      title="Delete entry"
+                                    >
+                                      {deletingHistoryId === h.id ? (
+                                        <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
+                                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                                        </svg>
+                                      ) : (
+                                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                                        </svg>
+                                      )}
+                                    </button>
+                                  </div>
                                 </td>
                               )}
                             </tr>
@@ -7251,97 +7288,112 @@ function TimeOffSection({ userId, canEdit }:{ userId:string, canEdit:boolean }){
         </div>
         </OverlayPortal>
       )}
-      
-      {/* Add History Entry Modal - Admin only */}
-      {showAddHistoryModal && (
+
+      {showEditHistoryModal && editHistoryForm && (
         <OverlayPortal>
-        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50" onClick={() => setShowAddHistoryModal(false)}>
-          <div className="bg-white rounded-xl w-full max-w-md p-6" onClick={(e) => e.stopPropagation()}>
-            <h3 className="text-lg font-semibold text-gray-900 mb-4">Add time off history entry</h3>
-            <div className="space-y-4">
-              <div>
-                <label className="text-sm font-medium text-gray-700 block mb-1">Policy*</label>
-                <select
-                  value={addHistoryPolicy}
-                  onChange={(e) => setAddHistoryPolicy(e.target.value)}
-                  className="w-full border rounded px-3 py-2"
+          <div
+            className="fixed inset-0 bg-black/40 flex items-center justify-center z-50"
+            onClick={() => {
+              if (!savingHistoryEdit) {
+                setShowEditHistoryModal(false);
+                setEditHistoryForm(null);
+              }
+            }}
+          >
+            <div className="bg-white rounded-xl w-full max-w-md p-6 max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+              <h3 className="text-lg font-semibold text-gray-900 mb-4">Edit time off history</h3>
+              <div className="space-y-4">
+                <div>
+                  <label className="text-sm font-medium text-gray-700 block mb-1">Policy*</label>
+                  <select
+                    className="w-full border rounded px-3 py-2"
+                    value={editHistoryForm.policy_name}
+                    onChange={(e) => setEditHistoryForm((f) => (f ? { ...f, policy_name: e.target.value } : f))}
+                  >
+                    {Array.from(
+                      new Set(
+                        [...(availablePolicies || []), editHistoryForm.policy_name, 'Sick Leave', 'Vacation'].filter(
+                          Boolean,
+                        ),
+                      ),
+                    ).map((p: string) => (
+                      <option key={p} value={p}>
+                        {p}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="text-sm font-medium text-gray-700 block mb-1">Transaction date*</label>
+                  <input
+                    type="date"
+                    className="w-full border rounded px-3 py-2"
+                    value={editHistoryForm.transaction_date}
+                    onChange={(e) => setEditHistoryForm((f) => (f ? { ...f, transaction_date: e.target.value } : f))}
+                  />
+                </div>
+                <div>
+                  <label className="text-sm font-medium text-gray-700 block mb-1">Description</label>
+                  <input
+                    type="text"
+                    className="w-full border rounded px-3 py-2"
+                    value={editHistoryForm.description}
+                    onChange={(e) => setEditHistoryForm((f) => (f ? { ...f, description: e.target.value } : f))}
+                    placeholder="Optional"
+                  />
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="text-sm font-medium text-gray-700 block mb-1">Used days (-)</label>
+                    <input
+                      type="number"
+                      step="0.5"
+                      min="0"
+                      className="w-full border rounded px-3 py-2"
+                      value={editHistoryForm.used_days}
+                      onChange={(e) => setEditHistoryForm((f) => (f ? { ...f, used_days: e.target.value } : f))}
+                      placeholder="0"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-sm font-medium text-gray-700 block mb-1">Earned days (+)</label>
+                    <input
+                      type="number"
+                      step="0.5"
+                      min="0"
+                      className="w-full border rounded px-3 py-2"
+                      value={editHistoryForm.earned_days}
+                      onChange={(e) => setEditHistoryForm((f) => (f ? { ...f, earned_days: e.target.value } : f))}
+                      placeholder="0"
+                    />
+                  </div>
+                </div>
+                <p className="text-xs text-gray-500">At least one of used days or earned days must be non-zero.</p>
+              </div>
+              <div className="mt-6 flex justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (!savingHistoryEdit) {
+                      setShowEditHistoryModal(false);
+                      setEditHistoryForm(null);
+                    }
+                  }}
+                  className="px-4 py-2 rounded border text-sm hover:bg-gray-50"
                 >
-                  {availablePolicies.length > 0 ? (
-                    availablePolicies.map((p: string) => (
-                      <option key={p} value={p}>{p}</option>
-                    ))
-                  ) : (
-                    <>
-                      <option value="Vacation">Vacation</option>
-                      <option value="Sick Leave">Sick Leave</option>
-                    </>
-                  )}
-                </select>
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void handleSaveHistoryEdit()}
+                  disabled={savingHistoryEdit}
+                  className="px-4 py-2 rounded bg-brand-red text-white text-sm disabled:opacity-50 hover:bg-red-700"
+                >
+                  {savingHistoryEdit ? 'Saving…' : 'Save'}
+                </button>
               </div>
-              <div>
-                <label className="text-sm font-medium text-gray-700 block mb-1">Transaction date*</label>
-                <input
-                  type="date"
-                  value={addHistoryDate}
-                  onChange={(e) => setAddHistoryDate(e.target.value)}
-                  className="w-full border rounded px-3 py-2"
-                />
-              </div>
-              <div>
-                <label className="text-sm font-medium text-gray-700 block mb-1">Description (optional)</label>
-                <input
-                  type="text"
-                  value={addHistoryDescription}
-                  onChange={(e) => setAddHistoryDescription(e.target.value)}
-                  className="w-full border rounded px-3 py-2"
-                  placeholder="e.g. Manual adjustment, Carryover..."
-                />
-              </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="text-sm font-medium text-gray-700 block mb-1">Used days (-)</label>
-                  <input
-                    type="number"
-                    step="0.5"
-                    min="0"
-                    value={addHistoryUsedDays}
-                    onChange={(e) => setAddHistoryUsedDays(e.target.value)}
-                    className="w-full border rounded px-3 py-2"
-                    placeholder="0"
-                  />
-                </div>
-                <div>
-                  <label className="text-sm font-medium text-gray-700 block mb-1">Earned days (+)</label>
-                  <input
-                    type="number"
-                    step="0.5"
-                    min="0"
-                    value={addHistoryEarnedDays}
-                    onChange={(e) => setAddHistoryEarnedDays(e.target.value)}
-                    className="w-full border rounded px-3 py-2"
-                    placeholder="0"
-                  />
-                </div>
-              </div>
-              <p className="text-xs text-gray-500">Provide at least one of Used days or Earned days.</p>
-            </div>
-            <div className="mt-6 flex justify-end gap-2">
-              <button
-                onClick={() => setShowAddHistoryModal(false)}
-                className="px-4 py-2 rounded border text-sm hover:bg-gray-50"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleAddHistoryEntry}
-                disabled={addingHistory || !addHistoryPolicy || !addHistoryDate || ((!addHistoryUsedDays || parseFloat(addHistoryUsedDays) === 0) && (!addHistoryEarnedDays || parseFloat(addHistoryEarnedDays) === 0))}
-                className="px-4 py-2 rounded bg-brand-red text-white text-sm disabled:opacity-50 hover:bg-red-700"
-              >
-                {addingHistory ? 'Adding...' : 'Add entry'}
-              </button>
             </div>
           </div>
-        </div>
         </OverlayPortal>
       )}
     </div>

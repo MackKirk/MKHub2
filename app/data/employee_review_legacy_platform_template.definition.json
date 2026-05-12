@@ -1,0 +1,458 @@
+{
+  "sections": [
+    {
+      "id": "d88926fd-8336-5730-a58c-bc3d2dfd8613",
+      "title": "WORK STANDARDS",
+      "order": 0,
+      "fields": [
+        {
+          "id": "e14bd1d6-8bdb-5b56-bb34-0bd4feeafef7",
+          "key": "er_e_001",
+          "type": "scale_1_5",
+          "label": "Quality of work",
+          "order": 0,
+          "required": false
+        },
+        {
+          "id": "2ebb57e5-ce6c-5c32-b6ec-ec286897baba",
+          "key": "er_e_002",
+          "type": "scale_1_5",
+          "label": "Completing tasks on time",
+          "order": 1,
+          "required": false
+        },
+        {
+          "id": "9c6e72f9-c532-5217-b0cc-57ecfd85f305",
+          "key": "er_e_003",
+          "type": "scale_1_5",
+          "label": "Technical knowledge of the role",
+          "order": 2,
+          "required": false
+        },
+        {
+          "id": "a6e2ae4c-cfd7-5df8-aea2-90ad66c1b31d",
+          "key": "er_e_004",
+          "type": "scale_1_5",
+          "label": "Organization and planning with tools and workspace",
+          "order": 3,
+          "required": false
+        },
+        {
+          "id": "823ae73a-0695-595b-898e-e7a2bcb3f9b9",
+          "key": "er_e_005",
+          "type": "scale_1_5",
+          "label": "Efficient use of time and prioritizing productivity / no slacking",
+          "order": 4,
+          "required": false
+        },
+        {
+          "id": "41581c84-77e1-51d7-b45f-6e440e8baadf",
+          "key": "er_e_006",
+          "type": "scale_1_5",
+          "label": "Proactivity and initiative",
+          "order": 5,
+          "required": false
+        }
+      ]
+    },
+    {
+      "id": "3d487073-0004-59f2-8df2-790022b499a4",
+      "title": "BEHAVIOUR AND TEAMWORK",
+      "order": 1,
+      "fields": [
+        {
+          "id": "632ff39f-f172-568d-922a-92164ae9bf0d",
+          "key": "er_e_007",
+          "type": "scale_1_5",
+          "label": "Communication with the team",
+          "order": 0,
+          "required": false
+        },
+        {
+          "id": "5d54a2b6-575e-575c-a019-eab029c64b35",
+          "key": "er_e_008",
+          "type": "scale_1_5",
+          "label": "Contribution and teamwork",
+          "order": 1,
+          "required": false
+        },
+        {
+          "id": "28ac7836-ccba-5a6a-9204-42a163f32743",
+          "key": "er_e_009",
+          "type": "scale_1_5",
+          "label": "Respectful interactions with coworkers and others",
+          "order": 2,
+          "required": false
+        },
+        {
+          "id": "b7af8985-7e73-5b99-b31f-b6f0a3ad1798",
+          "key": "er_e_010",
+          "type": "scale_1_5",
+          "label": "Positive attitude at work",
+          "order": 3,
+          "required": false
+        },
+        {
+          "id": "f6e7607d-90b0-5538-ba35-30a0c590667a",
+          "key": "er_e_011",
+          "type": "scale_1_5",
+          "label": "Dealing with pressure and unusual problems",
+          "order": 4,
+          "required": false
+        },
+        {
+          "id": "1c090fee-15a4-5d98-8c73-544a23aa6c9a",
+          "key": "er_e_012",
+          "type": "scale_1_5",
+          "label": "Adapt to changes in workflow",
+          "order": 5,
+          "required": false
+        }
+      ]
+    },
+    {
+      "id": "c79e0b1b-d01e-5d14-abc4-9948eb855537",
+      "title": "GROWTH AND DEVELOPMENT",
+      "order": 2,
+      "fields": [
+        {
+          "id": "99b597b7-6f68-5101-90d9-67853d09520d",
+          "key": "er_e_013",
+          "type": "scale_1_5",
+          "label": "Adaptability to changes",
+          "order": 0,
+          "required": false
+        },
+        {
+          "id": "b65e4d08-2d8c-5662-ae44-a7befa6587b9",
+          "key": "er_e_014",
+          "type": "scale_1_5",
+          "label": "Shown progression in work skills",
+          "order": 1,
+          "required": false
+        },
+        {
+          "id": "e2163d99-c99f-5a2c-b9a7-8ac558b2d53b",
+          "key": "er_e_015",
+          "type": "scale_1_5",
+          "label": "Initiative to complete task without being told",
+          "order": 2,
+          "required": false
+        },
+        {
+          "id": "596f7a25-f84b-56a6-9c88-0a7a0c294c26",
+          "key": "er_e_016",
+          "type": "scale_1_5",
+          "label": "Capability to work independently",
+          "order": 3,
+          "required": false
+        },
+        {
+          "id": "5085e08c-556d-5430-8fa1-21261c7ea9ab",
+          "key": "er_e_017",
+          "type": "scale_1_5",
+          "label": "Willing to learn new skills and work procedures",
+          "order": 4,
+          "required": false
+        },
+        {
+          "id": "97c09cba-85f3-5341-98ce-0fe39317ee19",
+          "key": "er_e_018",
+          "type": "scale_1_5",
+          "label": "Open to feedback from others",
+          "order": 5,
+          "required": false
+        }
+      ]
+    },
+    {
+      "id": "9052f8c3-1787-5360-ae6a-063783a0a3a2",
+      "title": "SKILLS COMPENTANCY",
+      "order": 3,
+      "fields": [
+        {
+          "id": "6e03f0bc-6efe-5b8d-a921-7d3a90db4a86",
+          "key": "er_e_019",
+          "type": "scale_1_5",
+          "label": "Problem Solving and Decision making",
+          "order": 0,
+          "required": false
+        },
+        {
+          "id": "bc70fb9a-669c-5047-b4df-63a34fa09d87",
+          "key": "er_e_020",
+          "type": "scale_1_5",
+          "label": "Knowledge of daily work procedures on site",
+          "order": 1,
+          "required": false
+        },
+        {
+          "id": "60dc5ed9-e112-5e9f-9e9a-9fb92662dfe3",
+          "key": "er_e_021",
+          "type": "scale_1_5",
+          "label": "Form Fill Capability on company platforms",
+          "order": 2,
+          "required": false
+        },
+        {
+          "id": "a42d75c9-fa72-54e8-9d68-1cfcb1abee65",
+          "key": "er_e_022",
+          "type": "scale_1_5",
+          "label": "Tool Knowledge",
+          "order": 3,
+          "required": false
+        },
+        {
+          "id": "2beb5e65-608f-540b-b8a3-c73d3e99af7c",
+          "key": "er_e_023",
+          "type": "scale_1_5",
+          "label": "Material Knowledge",
+          "order": 4,
+          "required": false
+        },
+        {
+          "id": "78bdb1de-fd26-5980-8a49-29e6f11565fe",
+          "key": "er_e_024",
+          "type": "scale_1_5",
+          "label": "English Language",
+          "order": 5,
+          "required": false
+        }
+      ]
+    },
+    {
+      "id": "7ae5de4b-9de8-50a7-9d0b-b1a64de6c4c7",
+      "title": "SAFETY",
+      "order": 4,
+      "fields": [
+        {
+          "id": "c31cef6a-c176-5b1c-8112-4f4f78e25c03",
+          "key": "er_e_025",
+          "type": "scale_1_5",
+          "label": "Arriving onsite prepared and wearing PPE",
+          "order": 0,
+          "required": false
+        },
+        {
+          "id": "c91be274-f231-5876-878b-2a923f73972b",
+          "key": "er_e_026",
+          "type": "scale_1_5",
+          "label": "Following drug and Alch Policy onsite",
+          "order": 1,
+          "required": false
+        },
+        {
+          "id": "a7f9ca43-972e-59cb-bd1c-250f430d7565",
+          "key": "er_e_027",
+          "type": "yes_no_na",
+          "label": "Have you recieved any Safey Discipline / Violation notices",
+          "order": 2,
+          "required": false
+        },
+        {
+          "id": "256157ee-959a-539e-877b-8ee7e3ab0edb",
+          "key": "er_e_028",
+          "type": "scale_1_5",
+          "label": "Awareness of hazards onsite",
+          "order": 3,
+          "required": false
+        },
+        {
+          "id": "9a9b41bf-09b5-5b01-9fb1-894630cced41",
+          "key": "er_e_029",
+          "type": "scale_1_5",
+          "label": "Accountability",
+          "order": 4,
+          "required": false
+        },
+        {
+          "id": "9bbeb5b6-50b7-5944-8358-d56a2615cc55",
+          "key": "er_e_030",
+          "type": "scale_1_5",
+          "label": "Use of equipment and tools in a safe manner",
+          "order": 5,
+          "required": false
+        },
+        {
+          "id": "f592e52f-e5f8-5082-a4cb-982440f68a27",
+          "key": "er_e_031",
+          "type": "scale_1_5",
+          "label": "Phone use and distraction",
+          "order": 6,
+          "required": false
+        }
+      ]
+    },
+    {
+      "id": "0f86dca0-28ad-5a38-8dc0-975993d16378",
+      "title": "RESPONSIBILTY",
+      "order": 5,
+      "fields": [
+        {
+          "id": "29f88af4-6da2-55f8-a85b-37adbe201d78",
+          "key": "er_e_032",
+          "type": "scale_1_5",
+          "label": "Use and Care of company tools and equipment",
+          "order": 0,
+          "required": false
+        },
+        {
+          "id": "6ca3328a-d11b-5107-bf90-4898e1763d8e",
+          "key": "er_e_033",
+          "type": "scale_1_5",
+          "label": "Punctuality",
+          "order": 1,
+          "required": false
+        },
+        {
+          "id": "522fd82e-e129-5239-a896-2fc7fd2aba9c",
+          "key": "er_e_034",
+          "type": "scale_1_5",
+          "label": "Attendance",
+          "order": 2,
+          "required": false
+        },
+        {
+          "id": "285d4d0d-83f1-5166-b73c-a2744d11adde",
+          "key": "er_e_035",
+          "type": "scale_1_5",
+          "label": "Reporting Hours on time / Correctly",
+          "order": 3,
+          "required": false
+        },
+        {
+          "id": "74a28637-c188-57b0-85b7-cf1e47bbeb7a",
+          "key": "er_e_036",
+          "type": "scale_1_5",
+          "label": "Ensuring you arrive onsite prepared with your own PPE",
+          "order": 4,
+          "required": false
+        },
+        {
+          "id": "06f21ee1-a6d4-5dbf-9f6a-35e7904e2110",
+          "key": "er_e_037",
+          "type": "scale_1_5",
+          "label": "Care for PPE given to you by the company",
+          "order": 5,
+          "required": false
+        }
+      ]
+    },
+    {
+      "id": "e206824d-6f38-5abb-80f8-c551d8acd016",
+      "title": "COMPANY VEHICLE AND MACHINERY",
+      "order": 6,
+      "fields": [
+        {
+          "id": "2a7e4c2e-7e65-595e-87c9-cf6d77982223",
+          "key": "er_e_038",
+          "type": "yes_no_na",
+          "label": "Do you drive a company vehicle?",
+          "order": 0,
+          "required": false
+        },
+        {
+          "id": "811e7613-797c-5385-82a2-6ff1cce9857e",
+          "key": "er_e_039",
+          "type": "yes_no_na",
+          "label": "Avoiding parking tickets onsite",
+          "order": 1,
+          "required": false
+        },
+        {
+          "id": "87aaf968-5bd8-5813-b6bf-d7e40e6dced7",
+          "key": "er_e_040",
+          "type": "yes_no_na",
+          "label": "Keeping vehicle clean",
+          "order": 2,
+          "required": false
+        },
+        {
+          "id": "23a3ce76-6b81-55eb-b78b-8006bfa6184b",
+          "key": "er_e_041",
+          "type": "yes_no_na",
+          "label": "Has employee received speeding tickets",
+          "order": 3,
+          "required": false
+        },
+        {
+          "id": "229bc753-9409-5da3-9717-da6c55d666de",
+          "key": "er_e_042",
+          "type": "yes_no_na",
+          "label": "Driving with care and avoiding damage to vehicle",
+          "order": 4,
+          "required": false
+        },
+        {
+          "id": "e1107016-aba3-5a78-b795-c43116f975e6",
+          "key": "er_e_043",
+          "type": "yes_no_na",
+          "label": "Respecting and follow company vehicle policy",
+          "order": 5,
+          "required": false
+        }
+      ]
+    },
+    {
+      "id": "3d76e5e0-3c74-541a-beb2-6d13a190e60d",
+      "title": "REFLECTION & PLANNING",
+      "order": 7,
+      "fields": [
+        {
+          "id": "cbf4c892-d3dd-5f64-b424-b484b00be4ea",
+          "key": "er_e_044",
+          "type": "long_text",
+          "label": "What do you consider your biggest contribution this cycle?",
+          "order": 0,
+          "required": false
+        },
+        {
+          "id": "bc01d8c5-4674-500e-b11c-bbf03b9ebfde",
+          "key": "er_e_045",
+          "type": "long_text",
+          "label": "What challenges did you face and how did you handle them?",
+          "order": 1,
+          "required": false
+        },
+        {
+          "id": "51d73f75-c9fd-5239-bd4c-0a568bf34503",
+          "key": "er_e_046",
+          "type": "long_text",
+          "label": "What skills or behaviors would you like to improve?",
+          "order": 2,
+          "required": false
+        },
+        {
+          "id": "b7725734-748e-5784-b229-157930818d96",
+          "key": "er_e_047",
+          "type": "long_text",
+          "label": "What are your professional or personal development goals?",
+          "order": 3,
+          "required": false
+        },
+        {
+          "id": "c4f2e757-db0e-59ba-9e56-efb411fb434c",
+          "key": "er_e_048",
+          "type": "long_text",
+          "label": "Do you feel supported by your supervisor and the company? What could be improved?",
+          "order": 4,
+          "required": false
+        },
+        {
+          "id": "3e626a7a-b739-5086-b8fb-d68e2bd492b7",
+          "key": "er_e_049",
+          "type": "long_text",
+          "label": "Any additional comments or suggestions?",
+          "order": 5,
+          "required": false
+        }
+      ]
+    }
+  ],
+  "signature_policy": {
+    "worker": {
+      "required": false,
+      "mode": "drawn"
+    }
+  }
+}

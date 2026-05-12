@@ -166,12 +166,6 @@ const IconBriefcase = () => (
   </svg>
 );
 
-const IconFileText = () => (
-  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-  </svg>
-);
-
 const IconShoppingCart = () => (
   <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z" />
@@ -435,10 +429,10 @@ export default function AppShell({ children }: PropsWithChildren){
       items: [
         { id: 'overview', label: 'Overview', path: '/overview', icon: <IconOverview /> },
         { id: 'schedule', label: 'Schedule', path: '/schedule', icon: <IconCalendar /> },
-        { id: 'clock-in-out', label: 'Clock in/out', path: '/clock-in-out', icon: <IconClock /> },
+        { id: 'clock-in-out', label: 'Clock In/Out', path: '/clock-in-out', icon: <IconClock /> },
         { id: 'task-requests', label: 'Requests', path: '/task-requests', icon: <IconRequest /> },
         { id: 'tasks', label: 'Tasks', path: '/tasks', icon: <IconClipboard /> },
-        { id: 'my-reviews', label: 'My reviews', path: '/reviews/my', icon: <IconStar /> },
+        { id: 'my-reviews', label: 'My Reviews', path: '/reviews/my', icon: <IconStar /> },
         { id: 'my-training', label: 'My Training', path: '/training', icon: <IconAcademic /> },
       ]
     },
@@ -508,20 +502,19 @@ export default function AppShell({ children }: PropsWithChildren){
     },
     {
       id: 'company-assets',
-      label: 'Company assets',
+      label: 'Company Assets',
       icon: <IconBox />,
       items: [
         { id: 'equipment', label: 'Equipment', path: '/company-assets/equipment', icon: <IconWrench />, requiredPermission: 'equipment:read' },
-        { id: 'corporate-cards', label: 'Corporate cards', path: '/company-assets/credit-cards', icon: <IconCreditCard />, requiredPermission: 'company_cards:read' },
+        { id: 'corporate-cards', label: 'Corporate Cards', path: '/company-assets/credit-cards', icon: <IconCreditCard />, requiredPermission: 'company_cards:read' },
       ]
     },
     {
       id: 'documents',
-      label: 'Documents',
+      label: 'Company File Library',
       icon: <IconDocument />,
       items: [
         { id: 'company-files', label: 'Company Files', path: '/company-files', icon: <IconFolder />, requiredPermission: 'documents:access' },
-        { id: 'document-creator', label: 'Documents', path: '/documents/create', icon: <IconFileText />, requiredPermission: 'documents:access' },
       ]
     },
     {
@@ -547,21 +540,21 @@ export default function AppShell({ children }: PropsWithChildren){
           (me?.permissions || []).includes('reviews:admin')) ? [
           {
             id: 'employee-review-cycles',
-            label: 'Review cycles',
+            label: 'Review Cycles',
             path: '/reviews/cycles',
             icon: <IconCalendar />,
             requiredPermission: 'hr:reviews:admin',
           },
           {
             id: 'employee-review-meeting-schedule',
-            label: 'Meeting schedule',
+            label: 'Meeting Schedule',
             path: '/reviews/director-meetings',
             icon: <IconCalendar />,
             requiredPermission: 'hr:reviews:admin',
           },
           {
             id: 'employee-review-form-templates',
-            label: 'Form templates',
+            label: 'Form Templates',
             path: '/reviews/form-templates',
             icon: <IconDocument />,
             requiredPermission: 'hr:reviews:admin',
@@ -626,7 +619,7 @@ export default function AppShell({ children }: PropsWithChildren){
       items.push({
         type: 'page',
         id: 'audit-log',
-        title: 'Audit log',
+        title: 'Audit Log',
         subtitle: 'System',
         href: '/logs',
       });
@@ -918,9 +911,12 @@ export default function AppShell({ children }: PropsWithChildren){
                 onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
                 className="text-gray-400 hover:text-white p-1.5 rounded-lg hover:bg-gray-700/50 transition-all duration-200 flex-shrink-0"
                 title="Collapse sidebar"
+                type="button"
+                aria-expanded="true"
               >
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
+                  <rect x="3" y="4" width="14" height="14" rx="1.5" strokeWidth={2} />
+                  <rect x="9" y="8" width="12" height="12" rx="1.5" strokeWidth={2} />
                 </svg>
               </button>
             </>
@@ -929,9 +925,12 @@ export default function AppShell({ children }: PropsWithChildren){
               onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
               className="text-gray-400 hover:text-white p-1.5 rounded-lg hover:bg-gray-700/50 transition-all duration-200 w-full flex items-center justify-center"
               title="Expand sidebar"
+              type="button"
+              aria-expanded="false"
             >
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
+                <rect x="3" y="4" width="14" height="14" rx="1.5" strokeWidth={2} />
+                <rect x="9" y="8" width="12" height="12" rx="1.5" strokeWidth={2} />
               </svg>
             </button>
           )}
@@ -1301,7 +1300,7 @@ export default function AppShell({ children }: PropsWithChildren){
                   onClick={() => navigate('/onboarding/documents')}
                   className="shrink-0 px-3 py-1.5 rounded-lg bg-amber-700 text-white text-sm font-medium hover:bg-amber-800"
                 >
-                  Complete documents
+                  Complete Documents
                 </button>
               </div>
             )}

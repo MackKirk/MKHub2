@@ -26,6 +26,9 @@ from ..models.models import (
     AuditLog,
     user_divisions,
     SettingItem,
+    TimeOffHistory,
+    TimeOffRequest,
+    EmployeeDocument,
 )
 from ..services.audit_log_entries import audit_rows_to_entry_dicts
 from ..auth.security import require_permissions, require_roles, get_current_user, _has_permission
@@ -232,7 +235,7 @@ def hr_data_quality(
     viewer: User = Depends(require_permissions("hr:users:read", "users:read")),
 ):
     """
-    HR overview: active employees with incomplete org/profile fields.
+    HR overview: active employees with incomplete org/profile, time-off, or file-library data.
     Summary counts include all eligible users with at least one gap; rows are capped at 500 (alphabetical by username).
     Pay rate/type are never returned in rows (sensitive); compensation gaps appear only in summary counts and issue tags for viewers with hr:users:view:job:compensation.
     """
@@ -250,6 +253,7 @@ def hr_data_quality(
             EmployeeProfile.job_title,
             EmployeeProfile.pay_rate,
             EmployeeProfile.pay_type,
+            EmployeeProfile.employment_type,
             EmployeeProfile.updated_at,
             EmployeeProfile.updated_by,
             EmployeeProfile.first_name,
@@ -281,6 +285,9 @@ def hr_data_quality(
                 "missing_project_division": 0,
                 "missing_job_title": 0,
                 "missing_compensation": 0,
+                "missing_sick_leave_history": 0,
+                "missing_employment_type": 0,
+                "missing_employee_documents": 0,
             },
             "rows": [],
         }
@@ -294,6 +301,34 @@ def hr_data_quality(
         .all()
     ):
         ud_counts[uid] = int(cnt)
+
+    sick_user_ids: set = set()
+    users_with_uploaded_docs: set = set()
+    if user_ids:
+        for (uid,) in (
+            db.query(TimeOffHistory.user_id)
+            .filter(TimeOffHistory.user_id.in_(user_ids), TimeOffHistory.policy_name.ilike("%sick%"))
+            .distinct()
+            .all()
+        ):
+            sick_user_ids.add(uid)
+        for (uid,) in (
+            db.query(TimeOffRequest.user_id)
+            .filter(TimeOffRequest.user_id.in_(user_ids), TimeOffRequest.policy_name.ilike("%sick%"))
+            .distinct()
+            .all()
+        ):
+            sick_user_ids.add(uid)
+        for (uid,) in (
+            db.query(EmployeeDocument.user_id)
+            .filter(
+                EmployeeDocument.user_id.in_(user_ids),
+                EmployeeDocument.file_id.isnot(None),
+            )
+            .distinct()
+            .all()
+        ):
+            users_with_uploaded_docs.add(uid)
 
     def gaps_for_row(r) -> List[str]:
         ep_present = r.ep_id is not None
@@ -310,6 +345,12 @@ def hr_data_quality(
             issues.append("missing_project_division")
         if not ep_present or not (r.job_title and str(r.job_title).strip()):
             issues.append("missing_job_title")
+        if not ep_present or not str(getattr(r, "employment_type", None) or "").strip():
+            issues.append("missing_employment_type")
+        if r.id not in sick_user_ids:
+            issues.append("missing_sick_leave_history")
+        if r.id not in users_with_uploaded_docs:
+            issues.append("missing_employee_documents")
         if can_comp:
             pr = (str(r.pay_rate).strip() if ep_present and r.pay_rate is not None else "") if ep_present else ""
             pt = (str(r.pay_type).strip() if ep_present and r.pay_type is not None else "") if ep_present else ""
@@ -417,6 +458,9 @@ def hr_data_quality(
             "missing_project_division": summary_counter.get("missing_project_division", 0),
             "missing_job_title": summary_counter.get("missing_job_title", 0),
             "missing_compensation": summary_counter.get("missing_compensation", 0),
+            "missing_sick_leave_history": summary_counter.get("missing_sick_leave_history", 0),
+            "missing_employment_type": summary_counter.get("missing_employment_type", 0),
+            "missing_employee_documents": summary_counter.get("missing_employee_documents", 0),
         },
         "rows": out_rows,
     }

@@ -2,9 +2,12 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api, withFileAccessToken } from '@/lib/api';
 import { uploadOrganizationLogoFile, uploadCertificateBackgroundFile } from '@/lib/trainingFileUpload';
 import { useMemo, useState, useEffect, useRef } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import { useConfirm } from '@/components/ConfirmProvider';
 import { effectiveShowInProject, effectiveShowInOpportunity } from '@/lib/projectStatusVisibility';
+import DocumentTemplatesTab from '@/components/DocumentTemplatesTab';
+import DocumentTypesTab from '@/components/DocumentTypesTab';
 
 type Item = { id:string, label:string, value?:string, sort_index?:number, meta?: any };
 
@@ -22,6 +25,7 @@ function formatSettingsListTitle(name: string): string {
 export default function SystemSettings(){
   const confirm = useConfirm();
   const queryClient = useQueryClient();
+  const [searchParams, setSearchParams] = useSearchParams();
   const { data, refetch, isLoading } = useQuery({ queryKey:['settings-bundle'], queryFn: ()=>api<Record<string, Item[]>>('GET','/settings') });
   // Filter out non-list settings (like google_places_api_key) and lists with dedicated sections (like terms-templates)
   const lists = Object.entries(data||{})
@@ -133,6 +137,18 @@ export default function SystemSettings(){
 
   const [section, setSection] = useState<SettingsSection>('lists');
 
+  useEffect(() => {
+    const raw = (searchParams.get('section') || '').toLowerCase();
+    if (raw === 'templates' || raw === 'files' || raw === 'lists') {
+      setSection(raw as SettingsSection);
+    }
+  }, [searchParams]);
+
+  const handleSectionTab = (id: SettingsSection) => {
+    setSection(id);
+    setSearchParams(id === 'lists' ? {} : { section: id }, { replace: true });
+  };
+
   const sectionTabs: { id: SettingsSection; label: string }[] = [
     { id: 'lists', label: 'Lookup lists' },
     { id: 'files', label: 'Files & categories' },
@@ -154,7 +170,7 @@ export default function SystemSettings(){
             <div className="min-w-0">
               <h5 className="text-sm font-semibold text-blue-900">System settings</h5>
               <p className="text-xs text-gray-600 mt-0.5">
-                Lists, file organization, and templates used across the app.
+                Lists, file organization, templates, and document creator backgrounds/types used across the app.
               </p>
             </div>
           </div>
@@ -172,7 +188,7 @@ export default function SystemSettings(){
             <button
               key={t.id}
               type="button"
-              onClick={() => setSection(t.id)}
+              onClick={() => handleSectionTab(t.id)}
               className={`px-3 py-1.5 text-xs font-medium rounded-lg border transition-colors ${
                 section === t.id
                   ? 'bg-brand-red text-white border-brand-red'
@@ -612,20 +628,40 @@ export default function SystemSettings(){
       )}
 
       {section === 'templates' && (
-        <div className="grid gap-4 xl:grid-cols-2 xl:items-start">
-          <div className="rounded-xl border bg-white p-5 min-w-0">
-            <div className="mb-4 border-b border-gray-100 pb-3">
-              <h2 className="text-sm font-semibold text-gray-900">Permission templates</h2>
-              <p className="mt-1 text-xs text-gray-600">Apply bundles of permissions from a user&apos;s Permissions tab.</p>
+        <div className="space-y-4">
+          <div className="grid gap-4 xl:grid-cols-2 xl:items-start">
+            <div className="rounded-xl border bg-white p-5 min-w-0">
+              <div className="mb-4 border-b border-gray-100 pb-3">
+                <h2 className="text-sm font-semibold text-gray-900">Permission templates</h2>
+                <p className="mt-1 text-xs text-gray-600">Apply bundles of permissions from a user&apos;s Permissions tab.</p>
+              </div>
+              <PermissionTemplatesSection />
             </div>
-            <PermissionTemplatesSection />
+            <div className="rounded-xl border bg-white p-5 min-w-0">
+              <div className="mb-4 border-b border-gray-100 pb-3">
+                <h2 className="text-sm font-semibold text-gray-900">Terms templates</h2>
+                <p className="mt-1 text-xs text-gray-600">Preset terms for proposals and quotes.</p>
+              </div>
+              <TermsTemplatesSection />
+            </div>
           </div>
           <div className="rounded-xl border bg-white p-5 min-w-0">
             <div className="mb-4 border-b border-gray-100 pb-3">
-              <h2 className="text-sm font-semibold text-gray-900">Terms templates</h2>
-              <p className="mt-1 text-xs text-gray-600">Preset terms for proposals and quotes.</p>
+              <h2 className="text-sm font-semibold text-gray-900">Document creator — background templates</h2>
+              <p className="mt-1 text-xs text-gray-600">
+                Page backgrounds (images) used when building documents in the Document creator (sidebar → Documents).
+              </p>
             </div>
-            <TermsTemplatesSection />
+            <DocumentTemplatesTab />
+          </div>
+          <div className="rounded-xl border bg-white p-5 min-w-0">
+            <div className="mb-4 border-b border-gray-100 pb-3">
+              <h2 className="text-sm font-semibold text-gray-900">Document creator — document templates</h2>
+              <p className="mt-1 text-xs text-gray-600">
+                Preset layouts (ordered pages with backgrounds and fields) offered when creating a new document.
+              </p>
+            </div>
+            <DocumentTypesTab />
           </div>
         </div>
       )}

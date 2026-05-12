@@ -27,6 +27,9 @@ type Payload = {
     missing_project_division: number;
     missing_job_title: number;
     missing_compensation: number;
+    missing_sick_leave_history: number;
+    missing_employment_type: number;
+    missing_employee_documents: number;
   };
   rows: Row[];
 };
@@ -37,6 +40,9 @@ const ISSUE_KEYS = [
   'missing_project_division',
   'missing_job_title',
   'missing_compensation',
+  'missing_sick_leave_history',
+  'missing_employment_type',
+  'missing_employee_documents',
 ] as const;
 
 const ISSUE_LABELS: Record<(typeof ISSUE_KEYS)[number], string> = {
@@ -45,6 +51,9 @@ const ISSUE_LABELS: Record<(typeof ISSUE_KEYS)[number], string> = {
   missing_project_division: 'No project division',
   missing_job_title: 'No job title',
   missing_compensation: 'Pay details incomplete',
+  missing_sick_leave_history: 'No sick leave history',
+  missing_employment_type: 'No employment type',
+  missing_employee_documents: 'No files in Docs',
 };
 
 function fmtDate(iso: string | null | undefined): string {
@@ -84,8 +93,9 @@ export default function HrDataQualityOverview() {
       <div className="mb-8">
         <h1 className="text-2xl font-semibold text-gray-900">HR overview</h1>
         <p className="text-sm text-gray-600 mt-1">
-          Active employees with incomplete org or job data. Open a user to fix supervisor, departments, project divisions,
-          and titles. Pay/compensation gaps are counted on the card only (no amounts in the table).
+          Active employees with gaps in org/job data, sick-leave records, employment type, or uploaded files (Docs tab).
+          Open a user to fix supervisor, departments, project divisions, titles, time off, and documents. Pay/compensation
+          gaps are counted on the card only (no amounts in the table).
         </p>
         {data && (
           <p className="text-xs text-gray-500 mt-2">
@@ -99,7 +109,7 @@ export default function HrDataQualityOverview() {
 
       {data && (
         <>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-3 mb-8">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3 mb-8">
             {ISSUE_KEYS.map((key) => {
               const count = data.summary[key] ?? 0;
               const active = filter === key;

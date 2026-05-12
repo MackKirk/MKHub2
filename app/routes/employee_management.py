@@ -1980,6 +1980,133 @@ def _recompute_balance_from_history(db: Session, user_id: uuid_lib.UUID, policy_
         balance.updated_at = datetime.now(timezone.utc)
 
 
+def _recalculate_history_chain_zero_opening(
+    db: Session, user_id: uuid_lib.UUID, policy_name: str, year: int
+) -> None:
+    """
+    Rebuild balance_after for all history rows in a (user, policy, calendar year) bucket
+    assuming a zero opening balance at the start of the chain, then refresh TimeOffBalance.
+    Used after manual edits; BambooHR sync may later realign totals.
+    """
+    rows = (
+        db.query(TimeOffHistory)
+        .filter(
+            TimeOffHistory.user_id == user_id,
+            TimeOffHistory.policy_name == policy_name,
+            func.extract("year", TimeOffHistory.transaction_date) == year,
+        )
+        .order_by(TimeOffHistory.transaction_date.asc(), TimeOffHistory.id.asc())
+        .all()
+    )
+    if not rows:
+        _recompute_balance_from_history(db, user_id, policy_name, year)
+        return
+    running = 0.0
+    for h in rows:
+        running += float(h.earned_days or 0) - float(h.used_days or 0)
+        h.balance_after = running
+    db.flush()
+    _recompute_balance_from_history(db, user_id, policy_name, year)
+
+
+@router.patch("/{user_id}/time-off/history/{entry_id}")
+def patch_time_off_history_entry(
+    user_id: str,
+    entry_id: str,
+    payload: dict = Body(...),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+    _=Depends(require_roles("admin")),
+):
+    """Update a time off history row (admin only). Recalculates history chain and balance for affected years."""
+    user = db.query(User).filter(User.id == user_id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    try:
+        entry_uuid = uuid_lib.UUID(entry_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid entry id")
+    entry = db.query(TimeOffHistory).filter(
+        TimeOffHistory.id == entry_uuid,
+        TimeOffHistory.user_id == user.id,
+    ).first()
+    if not entry:
+        raise HTTPException(status_code=404, detail="History entry not found")
+
+    old_policy = entry.policy_name
+    old_year = entry.transaction_date.year if hasattr(entry.transaction_date, "year") else int(entry.transaction_date)
+
+    if not payload:
+        raise HTTPException(status_code=400, detail="No fields to update")
+
+    touch_chain = any(
+        k in payload for k in ("used_days", "earned_days", "transaction_date", "policy_name")
+    )
+
+    if "policy_name" in payload and payload.get("policy_name") is not None:
+        pn = str(payload.get("policy_name") or "").strip()
+        if not pn:
+            raise HTTPException(status_code=400, detail="policy_name cannot be empty")
+        entry.policy_name = pn
+    if "transaction_date" in payload and payload.get("transaction_date"):
+        try:
+            entry.transaction_date = datetime.fromisoformat(
+                str(payload.get("transaction_date")).split("T")[0]
+            ).date()
+        except Exception:
+            raise HTTPException(status_code=400, detail="Invalid transaction_date. Use YYYY-MM-DD")
+    if "description" in payload:
+        desc = payload.get("description")
+        entry.description = (str(desc).strip() if desc is not None else "") or None
+    if "used_days" in payload:
+        uv = payload.get("used_days")
+        if uv is None or (isinstance(uv, str) and not str(uv).strip()):
+            entry.used_days = None
+        else:
+            entry.used_days = float(uv)
+    if "earned_days" in payload:
+        ev = payload.get("earned_days")
+        if ev is None or (isinstance(ev, str) and not str(ev).strip()):
+            entry.earned_days = None
+        else:
+            entry.earned_days = float(ev)
+
+    uu = float(entry.used_days or 0)
+    ee = float(entry.earned_days or 0)
+    if uu == 0 and ee == 0:
+        raise HTTPException(
+            status_code=400,
+            detail="At least one of used_days or earned_days must be non-zero",
+        )
+
+    new_policy = entry.policy_name
+    new_year = entry.transaction_date.year if hasattr(entry.transaction_date, "year") else int(entry.transaction_date)
+
+    affected = {(old_policy, old_year), (new_policy, new_year)}
+
+    try:
+        if touch_chain:
+            for pol, yr in affected:
+                _recalculate_history_chain_zero_opening(db, user.id, pol, int(yr))
+        db.commit()
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
+
+    db.refresh(entry)
+    return {
+        "id": str(entry.id),
+        "policy_name": entry.policy_name,
+        "transaction_date": entry.transaction_date.isoformat(),
+        "description": entry.description,
+        "used_days": float(entry.used_days) if entry.used_days is not None else None,
+        "earned_days": float(entry.earned_days) if entry.earned_days is not None else None,
+        "balance_after": float(entry.balance_after),
+        "bamboohr_transaction_id": entry.bamboohr_transaction_id,
+        "message": "History entry updated",
+    }
+
+
 @router.delete("/{user_id}/time-off/history/{entry_id}")
 def delete_time_off_history_entry(
     user_id: str,
