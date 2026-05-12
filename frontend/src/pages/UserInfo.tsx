@@ -2616,6 +2616,14 @@ export default function UserInfo(){
     return perms.includes('reviews:read') || perms.includes('reviews:admin') || perms.includes('hr:reviews:admin');
   }, [me]);
 
+  const canImportLegacyReviews = useMemo(() => {
+    if (!me) return false;
+    const isAdminRole = (me?.roles || []).some((r: string) => String(r || '').toLowerCase() === 'admin');
+    if (isAdminRole) return true;
+    const perms = me?.permissions || [];
+    return perms.includes('hr:reviews:admin') || perms.includes('reviews:admin');
+  }, [me]);
+
   useEffect(() => {
     if (tab !== 'activity' || canViewActivity) return;
     if (canViewGeneral || canSelfEdit) setTab('personal');
@@ -3287,7 +3295,11 @@ export default function UserInfo(){
               )}
               {tab==='reports' && canViewReports && <UserReports userId={String(userId)} canEdit={canEditGeneral || (me?.roles || []).some((r: string) => String(r || '').toLowerCase() === 'admin') || (me?.permissions || []).includes('hr:users:write') || (me?.permissions || []).includes('users:write')} />}
               {tab === 'reviews' && canViewReviews && userId && (
-                <UserEmployeeReviewsTab userId={String(userId)} enabled={tab === 'reviews'} />
+                <UserEmployeeReviewsTab
+                  userId={String(userId)}
+                  enabled={tab === 'reviews'}
+                  canImportLegacy={canImportLegacyReviews}
+                />
               )}
               {tab==='permissions' && canViewPermissions && <UserPermissions ref={permissionsRef} userId={String(userId)} onDirtyChange={setPermissionsDirty} canEdit={canEditPermissions} />}
               {tab === 'activity' && canViewActivity && userId && <UserActivityLogTab userId={String(userId)} />}

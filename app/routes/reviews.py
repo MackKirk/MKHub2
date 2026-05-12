@@ -6,6 +6,8 @@ import uuid
 from typing import Optional, List, Dict, Any, Set
 from datetime import datetime, timezone, timedelta
 from collections import defaultdict
+import json
+import re
 
 from ..db import get_db
 from ..models.models import (
@@ -297,6 +299,288 @@ def _extract_numeric_score(value: Any) -> Optional[int]:
         if s in ("1", "2", "3", "4", "5"):
             return int(s)
     return None
+
+
+def _norm_review_label(s: str) -> str:
+    return re.sub(r"\s+", " ", (s or "").strip().lower())
+
+
+def _field_key_types_from_definition(definition: dict) -> Dict[str, str]:
+    """field key -> type string (e.g. scale_1_5, yes_no_na)."""
+    out: Dict[str, str] = {}
+    for sec in definition.get("sections") or []:
+        if not isinstance(sec, dict):
+            continue
+        for f in sec.get("fields") or []:
+            if not isinstance(f, dict):
+                continue
+            k = f.get("key")
+            if isinstance(k, str) and k.strip():
+                ft = f.get("type")
+                out[k.strip()] = (ft or "").strip() if isinstance(ft, str) else ""
+    return out
+
+
+def _label_norm_to_key(definition: dict) -> tuple[Dict[str, str], List[str]]:
+    """Normalized label -> first field key; warnings for duplicate normalized labels."""
+    buckets: Dict[str, List[str]] = defaultdict(list)
+    for sec in definition.get("sections") or []:
+        if not isinstance(sec, dict):
+            continue
+        for f in sec.get("fields") or []:
+            if not isinstance(f, dict):
+                continue
+            k = f.get("key")
+            if not isinstance(k, str) or not k.strip():
+                continue
+            lab = ((f.get("label") or k) or "").strip() or k.strip()
+            buckets[_norm_review_label(lab)].append(k.strip())
+    warnings: List[str] = []
+    out: Dict[str, str] = {}
+    for norm, keys in buckets.items():
+        if len(keys) > 1:
+            warnings.append(f'Ambiguous label match "{norm}": using {keys[0]} (also: {", ".join(keys[1:])})')
+        out[norm] = keys[0]
+    return out, warnings
+
+
+def _legacy_coerce_value_for_field(
+    field_type: str, legacy_type: str, raw_value: Any
+) -> tuple[Any, Optional[str]]:
+    """Returns (hub_value, warning_or_none)."""
+    ft = (field_type or "").strip()
+    lt = (legacy_type or "").strip().lower()
+
+    if lt == "scale" and ft != "scale_1_5":
+        return None, f"legacy scale does not match field type {ft!r}"
+
+    if lt == "yesno" and ft != "yes_no_na":
+        return None, f"legacy yesno does not match field type {ft!r}"
+
+    if lt == "text" and ft not in ("short_text", "long_text", "text_info", "number"):
+        if ft == "scale_1_5" or ft == "yes_no_na":
+            return None, f"legacy text incompatible with field type {ft!r}"
+        return None, f"unsupported template field type {ft!r} for legacy text"
+
+    if ft == "scale_1_5":
+        n: Optional[int] = None
+        if isinstance(raw_value, bool):
+            return None, "scale value was boolean"
+        if isinstance(raw_value, (int, float)):
+            n = int(raw_value)
+        elif isinstance(raw_value, str) and raw_value.strip() in ("1", "2", "3", "4", "5"):
+            n = int(raw_value.strip())
+        if n is None or n < 1 or n > 5:
+            return None, f"scale_1_5 expected 1–5, got {raw_value!r}"
+        return str(n), None
+
+    if ft == "yes_no_na":
+        if lt != "yesno":
+            return None, f"legacy type {legacy_type!r} for yes_no_na field"
+        s = str(raw_value).strip().lower()
+        if s in ("yes", "y"):
+            status = "yes"
+        elif s in ("no", "n"):
+            status = "no"
+        elif s in ("na", "n/a"):
+            status = "na"
+        else:
+            return None, f"yes_no_na: expected Yes/No, got {raw_value!r}"
+        return {"status": status, "comments": "", "commentImageIds": []}, None
+
+    if ft in ("short_text", "long_text", "text_info"):
+        if lt != "text":
+            return None, f"expected legacy text for field {ft!r}"
+        if raw_value is None:
+            return "", None
+        return str(raw_value), None
+
+    if ft == "number":
+        if lt == "text" and isinstance(raw_value, str) and raw_value.strip():
+            try:
+                return float(raw_value) if "." in raw_value else int(raw_value), None
+            except ValueError:
+                return None, f"number parse failed for {raw_value!r}"
+        if isinstance(raw_value, (int, float)):
+            return raw_value, None
+        if isinstance(raw_value, str) and raw_value.strip():
+            try:
+                return float(raw_value) if "." in raw_value else int(raw_value), None
+            except ValueError:
+                return None, f"number parse failed for {raw_value!r}"
+        return None, "number field empty"
+
+    return None, f"unsupported combination legacy={legacy_type!r} template={ft!r}"
+
+
+def _legacy_json_to_form_payload(
+    definition: dict,
+    legacy_items: List[dict],
+    *,
+    is_supervisor_payload: bool,
+) -> tuple[Dict[str, Any], List[str], List[str]]:
+    """Build form_payload for reviews storage. Returns (form_payload, unmapped_questions, warnings)."""
+    label_to_key, amb_warnings = _label_norm_to_key(definition)
+    key_types = _field_key_types_from_definition(definition)
+    form_payload: Dict[str, Any] = {}
+    unmapped: List[str] = []
+    warnings = list(amb_warnings)
+
+    for item in legacy_items:
+        qraw = item.get("question")
+        if not isinstance(qraw, str) or not qraw.strip():
+            warnings.append("skipped row with missing question")
+            continue
+        qnorm = _norm_review_label(qraw)
+        key = label_to_key.get(qnorm)
+        if not key:
+            unmapped.append(qraw.strip())
+            continue
+
+        ft = key_types.get(key, "")
+        lt = item.get("type")
+        lt_s = str(lt).strip().lower() if lt is not None else ""
+
+        if lt_s == "scale":
+            lt_s = "scale"
+        elif lt_s == "yesno":
+            lt_s = "yesno"
+        elif lt_s == "text":
+            lt_s = "text"
+        else:
+            warnings.append(f'unknown legacy type {lt!r} for question "{qraw[:60]}"')
+            lt_s = str(lt_s or "")
+
+        if lt_s == "text":
+            val, w = _legacy_coerce_value_for_field(ft, "text", item.get("value"))
+        elif lt_s == "scale":
+            val, w = _legacy_coerce_value_for_field(ft, "scale", item.get("value"))
+        elif lt_s == "yesno":
+            val, w = _legacy_coerce_value_for_field(ft, "yesno", item.get("value"))
+        else:
+            val, w = None, f"unsupported legacy type {lt!r}"
+
+        if w:
+            warnings.append(f"{key}: {w}")
+        if val is None and lt_s != "text":
+            continue
+        if val is None and lt_s == "text":
+            # coerce may have failed
+            if item.get("value") is not None:
+                unmapped.append(qraw.strip())
+            continue
+
+        suffix_len = len(SUPERVISOR_COMMENT_SUFFIX)
+        if len(key) + suffix_len > 100:
+            warnings.append(f"key too long for DB ({len(key)} chars): {key[:40]}…")
+
+        form_payload[key] = val
+
+        if is_supervisor_payload:
+            cmt = item.get("comment")
+            if isinstance(cmt, str) and cmt.strip() and len(key) + suffix_len <= 100:
+                ck = f"{key}{SUPERVISOR_COMMENT_SUFFIX}"
+                form_payload[ck] = cmt.strip()
+
+    return form_payload, unmapped, warnings
+
+
+def _parse_legacy_json_array(raw: Any) -> List[dict]:
+    if isinstance(raw, str):
+        try:
+            raw = json.loads(raw)
+        except json.JSONDecodeError as e:
+            raise HTTPException(status_code=400, detail=f"legacy_json is not valid JSON: {e}") from e
+    if not isinstance(raw, list):
+        raise HTTPException(status_code=400, detail="legacy_json must be a JSON array")
+    out: List[dict] = []
+    for i, item in enumerate(raw):
+        if not isinstance(item, dict):
+            raise HTTPException(status_code=400, detail=f"legacy_json[{i}] must be an object")
+        out.append(item)
+    return out
+
+
+def _get_or_create_manual_review_assignment(
+    db: Session, cycle: ReviewCycle, reviewee_id: uuid.UUID, reviewer_id: uuid.UUID
+) -> ReviewAssignment:
+    a = (
+        db.query(ReviewAssignment)
+        .filter(
+            ReviewAssignment.cycle_id == cycle.id,
+            ReviewAssignment.reviewee_user_id == reviewee_id,
+            ReviewAssignment.reviewer_user_id == reviewer_id,
+        )
+        .first()
+    )
+    now = datetime.now(timezone.utc)
+    snap = _normalize_definition(_definition_for_reviewee(cycle, reviewee_id, db))
+    due = cycle.period_end or now
+    if a:
+        a.form_definition_snapshot = snap
+        a.due_date = due
+        return a
+    a = ReviewAssignment(
+        cycle_id=cycle.id,
+        reviewee_user_id=reviewee_id,
+        reviewer_user_id=reviewer_id,
+        status="pending",
+        due_date=due,
+        form_definition_snapshot=snap,
+    )
+    db.add(a)
+    db.flush()
+    return a
+
+
+def _admin_write_form_payload_to_assignment(db: Session, a: ReviewAssignment, cycle: ReviewCycle, form_payload: dict) -> None:
+    """Replace all answers for assignment and mark submitted (HR legacy import)."""
+    definition = _definition_for_assignment(a, cycle, db)
+    key_labels = _field_key_labels_from_definition(definition)
+    is_supervisor_eval = str(a.reviewer_user_id) != str(a.reviewee_user_id)
+
+    db.query(ReviewAnswer).filter(ReviewAnswer.assignment_id == a.id).delete()
+
+    if not isinstance(form_payload, dict):
+        return
+
+    for key, value in form_payload.items():
+        if not isinstance(key, str) or not key.strip():
+            continue
+        if key.startswith("_"):
+            continue
+        if key.endswith(SUPERVISOR_COMMENT_SUFFIX):
+            if not is_supervisor_eval:
+                continue
+            base = key[: -len(SUPERVISOR_COMMENT_SUFFIX)].strip()
+            if base not in key_labels:
+                continue
+            label = f"Supervisor comment · {key_labels[base]}"
+            row = ReviewAnswer(
+                assignment_id=a.id,
+                question_key=key,
+                question_label_snapshot=label,
+                answer_json={"value": value},
+                score=None,
+                commented_at=datetime.now(timezone.utc),
+            )
+            db.add(row)
+            continue
+        if key not in key_labels:
+            continue
+        label = key_labels[key]
+        score = _extract_numeric_score(value)
+        row = ReviewAnswer(
+            assignment_id=a.id,
+            question_key=key,
+            question_label_snapshot=label,
+            answer_json={"value": value},
+            score=score,
+            commented_at=datetime.now(timezone.utc),
+        )
+        db.add(row)
+
+    a.status = "submitted"
 
 
 def _validate_employee_review_template(db: Session, tid: uuid.UUID) -> FormTemplate:
@@ -1195,6 +1479,88 @@ def user_reviewee_assignments(
             }
         )
     return out
+
+
+def _legacy_import_run(db: Session, reviewee_uid: uuid.UUID, payload: dict, *, apply: bool) -> dict:
+    cycle_id = _uuid_or_none(payload.get("cycle_id"))
+    if not cycle_id:
+        raise HTTPException(status_code=400, detail="cycle_id is required")
+    kind = str(payload.get("kind") or "").strip().lower()
+    if kind not in ("self", "supervisor"):
+        raise HTTPException(status_code=400, detail='kind must be "self" or "supervisor"')
+    supervisor_uid = _uuid_or_none(payload.get("supervisor_user_id"))
+    if kind == "supervisor":
+        if not supervisor_uid:
+            raise HTTPException(status_code=400, detail="supervisor_user_id is required for supervisor import")
+        if supervisor_uid == reviewee_uid:
+            raise HTTPException(status_code=400, detail="supervisor_user_id must differ from reviewee")
+    legacy_items = _parse_legacy_json_array(payload.get("legacy_json"))
+
+    cycle = db.query(ReviewCycle).filter(ReviewCycle.id == cycle_id).first()
+    if not cycle:
+        raise HTTPException(status_code=404, detail="Cycle not found")
+
+    reviewer_uid = reviewee_uid if kind == "self" else supervisor_uid  # type: ignore[assignment]
+
+    definition = _normalize_definition(_definition_for_reviewee(cycle, reviewee_uid, db))
+    form_payload, unmapped, warnings = _legacy_json_to_form_payload(
+        definition,
+        legacy_items,
+        is_supervisor_payload=(kind == "supervisor"),
+    )
+    mapped_keys = [k for k in form_payload if not k.endswith(SUPERVISOR_COMMENT_SUFFIX)]
+    comment_keys = [k for k in form_payload if k.endswith(SUPERVISOR_COMMENT_SUFFIX)]
+
+    if not apply:
+        return {
+            "dry_run": True,
+            "mapped_field_count": len(mapped_keys),
+            "supervisor_comment_field_count": len(comment_keys),
+            "unmapped_questions": unmapped,
+            "warnings": warnings,
+            "total_legacy_rows": len(legacy_items),
+        }
+
+    a = _get_or_create_manual_review_assignment(db, cycle, reviewee_uid, reviewer_uid)
+    _admin_write_form_payload_to_assignment(db, a, cycle, form_payload)
+    db.commit()
+    db.refresh(a)
+    return {
+        "dry_run": False,
+        "assignment_id": str(a.id),
+        "mapped_field_count": len(mapped_keys),
+        "supervisor_comment_field_count": len(comment_keys),
+        "unmapped_questions": unmapped,
+        "warnings": warnings,
+        "total_legacy_rows": len(legacy_items),
+        "status": a.status,
+    }
+
+
+@router.post("/users/{user_id}/legacy-import/preview")
+def legacy_import_preview(
+    user_id: str,
+    payload: dict,
+    db: Session = Depends(get_db),
+    _=Depends(require_permissions("hr:reviews:admin", "reviews:admin")),
+):
+    uid = _uuid_or_none(user_id)
+    if not uid:
+        raise HTTPException(status_code=400, detail="Invalid user_id")
+    return _legacy_import_run(db, uid, payload, apply=False)
+
+
+@router.post("/users/{user_id}/legacy-import/apply")
+def legacy_import_apply(
+    user_id: str,
+    payload: dict,
+    db: Session = Depends(get_db),
+    _=Depends(require_permissions("hr:reviews:admin", "reviews:admin")),
+):
+    uid = _uuid_or_none(user_id)
+    if not uid:
+        raise HTTPException(status_code=400, detail="Invalid user_id")
+    return _legacy_import_run(db, uid, payload, apply=True)
 
 
 # ----- Answers -----
