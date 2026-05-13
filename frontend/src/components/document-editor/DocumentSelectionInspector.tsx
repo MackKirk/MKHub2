@@ -234,8 +234,8 @@ export default function DocumentSelectionInspector({
     const activeColor = isEditing && selFmt !== null && selFmt.color !== undefined
       ? selFmt.color
       : (element.color ?? '#000000');
-    const activeFontSize = isEditing && selFmt !== null && selFmt.fontSize !== undefined
-      ? selFmt.fontSize
+    const activeFontSize = isEditing && selFmt !== null
+      ? (selFmt.fontSize ?? element.fontSize ?? 12)
       : (element.fontSize ?? 12);
     const activeFontFamily = isEditing && selFmt !== null && selFmt.fontFamily !== undefined
       ? selFmt.fontFamily
@@ -247,7 +247,7 @@ export default function DocumentSelectionInspector({
       : (element.textAlign ?? 'left');
 
     return (
-      <div className={editorContextToolbarRowClass}>
+      <div className={editorContextToolbarRowClass} data-document-inspector-keep-selection="">
         <Cluster className="gap-2">
           <span className={editorToolbarMicroLabelClass}>Preset</span>
           <select
@@ -373,8 +373,24 @@ export default function DocumentSelectionInspector({
           >
             I
           </button>
-          <div className="flex h-8 items-center gap-1 rounded-md border border-slate-300/90 bg-white px-1.5 shadow-sm">
-            <span className="text-[10px] font-semibold text-slate-600">Size</span>
+          <div className="flex h-8 items-center gap-0.5 rounded-md border border-slate-300/90 bg-white px-0.5 shadow-sm">
+            <span className="pl-1 text-[10px] font-semibold text-slate-600">Size</span>
+            <button
+              type="button"
+              onPointerDown={(e) => e.preventDefault()}
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={() => {
+                const next = Math.max(6, activeFontSize - 1);
+                if (!dispatchFormatToInlineEditor(id, { fontSize: next })) {
+                  onUpdate(id, (el) => ({ ...el, fontSize: next }));
+                }
+              }}
+              className="h-6 w-6 shrink-0 rounded text-sm font-semibold text-slate-700 hover:bg-slate-100"
+              title="Smaller"
+              aria-label="Decrease font size"
+            >
+              −
+            </button>
             <input
               type="number"
               min={6}
@@ -388,8 +404,24 @@ export default function DocumentSelectionInspector({
                   onUpdate(id, (el) => ({ ...el, fontSize: clamped }));
                 }
               }}
-              className="h-6 w-12 rounded border-0 bg-transparent p-0 text-right text-xs font-semibold tabular-nums text-slate-900 focus:outline-none focus:ring-0"
+              className="h-6 w-11 rounded border-0 bg-transparent p-0 text-center text-xs font-semibold tabular-nums text-slate-900 focus:outline-none focus:ring-0"
             />
+            <button
+              type="button"
+              onPointerDown={(e) => e.preventDefault()}
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={() => {
+                const next = Math.min(99, activeFontSize + 1);
+                if (!dispatchFormatToInlineEditor(id, { fontSize: next })) {
+                  onUpdate(id, (el) => ({ ...el, fontSize: next }));
+                }
+              }}
+              className="h-6 w-6 shrink-0 rounded text-sm font-semibold text-slate-700 hover:bg-slate-100"
+              title="Larger"
+              aria-label="Increase font size"
+            >
+              +
+            </button>
           </div>
           <DocumentEditorFontColorPicker
             key={id}

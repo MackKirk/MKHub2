@@ -19,6 +19,7 @@ from ..config import settings
 from ..storage.provider import StorageProvider
 from ..storage.local_provider import LocalStorageProvider
 from ..storage.blob_provider import BlobStorageProvider
+from ..proposals.pdf_image_optimizer import pil_image_to_jpeg_bytes_for_document_pdf
 
 
 # In the editor, fontSize is stored in reference CSS px and preview scales it by
@@ -387,11 +388,10 @@ def build_pdf_bytes(db: Session, doc: UserDocument, canvas_width_px: Optional[fl
                         from reportlab.lib.utils import ImageReader
                         from PIL import Image as PILImage
                         pil_im = PILImage.open(io.BytesIO(img_bytes))
-                        if pil_im.mode in ("RGBA", "P"):
-                            pil_im = pil_im.convert("RGB")
-                        img_buf = io.BytesIO()
-                        pil_im.save(img_buf, format="JPEG", quality=90)
-                        img_buf.seek(0)
+                        jpeg_bytes = pil_image_to_jpeg_bytes_for_document_pdf(
+                            pil_im, page_width, page_height
+                        )
+                        img_buf = io.BytesIO(jpeg_bytes)
                         reader = ImageReader(img_buf)
                         c.drawImage(reader, 0, 0, width=page_width, height=page_height)
                     except Exception:
@@ -631,47 +631,46 @@ def build_pdf_bytes(db: Session, doc: UserDocument, canvas_width_px: Optional[fl
                                     from reportlab.lib.utils import ImageReader
                                     from PIL import Image as PILImage
                                     pil_im = PILImage.open(io.BytesIO(img_bytes))
-                                    if pil_im.mode in ("RGBA", "P"):
-                                        pil_im = pil_im.convert("RGB")
                                     img_w, img_h = pil_im.size
-                                    img_buf = io.BytesIO()
-                                    pil_im.save(img_buf, format="JPEG", quality=90)
-                                    img_buf.seek(0)
-                                    reader = ImageReader(img_buf)
                                     fit = (el.get("imageFit") or el.get("image_fit") or "contain").lower()
                                     pos = el.get("imagePosition") or el.get("image_position") or "50% 50%"
                                     ax, ay = _parse_object_position(pos)
 
-                                    # Default to contain to match the editor preview.
+                                    if fit == "fill":
+                                        dw, dh = w, h
+                                    elif not img_w or not img_h or w <= 0 or h <= 0:
+                                        dw, dh = w, h
+                                    else:
+                                        if fit == "cover":
+                                            scale = max(w / img_w, h / img_h)
+                                        else:
+                                            scale = min(w / img_w, h / img_h)
+                                        dw = img_w * scale
+                                        dh = img_h * scale
+
+                                    jpeg_bytes = pil_image_to_jpeg_bytes_for_document_pdf(pil_im, dw, dh)
+                                    img_buf = io.BytesIO(jpeg_bytes)
+                                    img_buf.seek(0)
+                                    reader = ImageReader(img_buf)
+
                                     if fit == "fill":
                                         c.drawImage(reader, x, y, width=w, height=h)
+                                    elif not img_w or not img_h or w <= 0 or h <= 0:
+                                        c.drawImage(reader, x, y, width=w, height=h)
                                     else:
-                                        if not img_w or not img_h or w <= 0 or h <= 0:
-                                            c.drawImage(reader, x, y, width=w, height=h)
+                                        dx = (w - dw) * ax
+                                        dy = (h - dh) * (1.0 - ay)
+                                        draw_x = x + dx
+                                        draw_y = y + dy
+                                        if fit == "cover":
+                                            p = c.beginPath()
+                                            p.rect(x, y, w, h)
+                                            c.saveState()
+                                            c.clipPath(p, stroke=0, fill=0)
+                                            c.drawImage(reader, draw_x, draw_y, width=dw, height=dh)
+                                            c.restoreState()
                                         else:
-                                            if fit == "cover":
-                                                scale = max(w / img_w, h / img_h)
-                                            else:
-                                                # contain / none (treated as contain for now)
-                                                scale = min(w / img_w, h / img_h)
-                                            dw = img_w * scale
-                                            dh = img_h * scale
-                                            dx = (w - dw) * ax
-                                            # ay: 0=top, 1=bottom; PDF y grows up => invert for placement inside box
-                                            dy = (h - dh) * (1.0 - ay)
-                                            draw_x = x + dx
-                                            draw_y = y + dy
-
-                                            if fit == "cover":
-                                                # Clip to the element box, then draw oversized image.
-                                                p = c.beginPath()
-                                                p.rect(x, y, w, h)
-                                                c.saveState()
-                                                c.clipPath(p, stroke=0, fill=0)
-                                                c.drawImage(reader, draw_x, draw_y, width=dw, height=dh)
-                                                c.restoreState()
-                                            else:
-                                                c.drawImage(reader, draw_x, draw_y, width=dw, height=dh)
+                                            c.drawImage(reader, draw_x, draw_y, width=dw, height=dh)
                         except Exception:
                             pass
             else:
