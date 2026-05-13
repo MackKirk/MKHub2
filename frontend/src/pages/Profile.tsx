@@ -83,7 +83,7 @@ export default function Profile(){
   
   // Check if user has any reports to show the Reports tab
   const { data: userReports } = useQuery({
-    queryKey: ['reports', userId],
+    queryKey: ['reports', 'user', userId],
     queryFn: () => api<any[]>('GET', `/employees/${userId}/reports`),
     enabled: !!userId,
   });

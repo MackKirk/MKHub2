@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Body
 from sqlalchemy.orm import Session, defer
 from sqlalchemy.orm.attributes import flag_modified
 from sqlalchemy.exc import ProgrammingError
-from sqlalchemy import func, extract, select, literal
+from sqlalchemy import func, extract, select, literal, or_
 from typing import List, Optional
 import uuid
 
@@ -1003,7 +1003,7 @@ def list_projects(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    query = db.query(Project).filter(Project.deleted_at.is_(None))
+    query = db.query(Project).filter(Project.deleted_at.is_(None))  # soft delete: exclude removed projects
     if business_line:
         bl = normalize_business_line(business_line)
         if not can_access_business_line(user, bl):
@@ -1022,7 +1022,18 @@ def list_projects(
     if status:
         query = query.filter(Project.status_id == status)
     if q:
-        query = query.filter(Project.name.ilike(f"%{q}%"))
+        qn = f"%{q}%"
+        query = query.filter(
+            or_(
+                Project.name.ilike(qn),
+                Project.code.ilike(qn),
+                Project.slug.ilike(qn),
+                Project.address.ilike(qn),
+                Project.address_city.ilike(qn),
+                Project.address_province.ilike(qn),
+                Project.address_country.ilike(qn),
+            )
+        )
     if year:
         from sqlalchemy import extract
         query = query.filter(extract('year', Project.created_at) == int(year))
@@ -1030,6 +1041,12 @@ def list_projects(
         query = query.filter(Project.is_bidding == is_bidding)
     if is_leak_investigation is not None:
         query = query.filter(Project.is_leak_investigation == is_leak_investigation)
+    # Never return soft-deleted projects (belt-and-suspenders after ORM fetch).
+    rows = [
+        p
+        for p in query.order_by(Project.created_at.desc()).limit(100).all()
+        if getattr(p, "deleted_at", None) is None
+    ]
     return [
         {
             "id": str(p.id),
@@ -1059,8 +1076,13 @@ def list_projects(
             "estimator_id": str(getattr(p, 'estimator_id', None)) if getattr(p, 'estimator_id', None) else None,
             "estimator_ids": [str(eid) for eid in (getattr(p, 'estimator_ids', None) or [])] if getattr(p, 'estimator_ids', None) else ([str(getattr(p, 'estimator_id', None))] if getattr(p, 'estimator_id', None) else []),
             "project_admin_id": str(getattr(p, 'project_admin_id', None)) if getattr(p, 'project_admin_id', None) else None,
+            "address": getattr(p, "address", None),
+            "address_city": getattr(p, "address_city", None),
+            "address_province": getattr(p, "address_province", None),
+            "address_postal_code": getattr(p, "address_postal_code", None),
+            "address_country": getattr(p, "address_country", None),
         }
-        for p in query.order_by(Project.created_at.desc()).limit(100).all()
+        for p in rows
     ]
 
 

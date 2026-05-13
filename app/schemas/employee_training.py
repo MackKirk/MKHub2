@@ -57,7 +57,7 @@ class EmployeeTrainingRecordUpdate(BaseModel):
 
 class EmployeeTrainingRecordRead(BaseModel):
     id: UUID
-    user_id: UUID
+    user_id: Optional[UUID] = None
     title: str
     provider: Optional[str] = None
     category: Optional[str] = None

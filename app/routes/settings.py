@@ -955,6 +955,19 @@ PREDEFINED_JOBS_DICT = {
 }
 
 
+def _format_project_address_line(proj) -> Optional[str]:
+    if not proj:
+        return None
+    parts = [
+        getattr(proj, "address", None),
+        getattr(proj, "address_city", None),
+        getattr(proj, "address_province", None),
+        getattr(proj, "address_country", None),
+    ]
+    line = ", ".join(str(x).strip() for x in parts if x and str(x).strip())
+    return line or None
+
+
 def _build_subcontractor_attendance_rows(
     db: Session,
     *,
@@ -1035,6 +1048,12 @@ def _build_subcontractor_attendance_rows(
     if user_ids:
         users_map = {u.id: u for u in db.query(User).filter(User.id.in_(list(user_ids))).all()}
 
+    def _uname(uid):
+        if not uid:
+            return None
+        u = users_map.get(uid)
+        return u.username if u else str(uid)
+
     out: List[dict] = []
     for r in rows:
         w = workers.get(r.worker_id)
@@ -1043,19 +1062,15 @@ def _build_subcontractor_attendance_rows(
         worker_name = w.name if w else "Unknown"
         company_name = c.name if c else None
         hours_worked = None
-        if r.clock_in_time and r.clock_out_time:
-            hours_worked = round((r.clock_out_time - r.clock_in_time).total_seconds() / 3600.0, 2)
-        elif r.total_hours is not None:
+        if getattr(r, "total_hours", None) is not None:
             hours_worked = float(r.total_hours)
+        elif r.clock_in_time and r.clock_out_time:
+            hours_worked = round((r.clock_out_time - r.clock_in_time).total_seconds() / 3600.0, 2)
 
         st = r.status or ("open" if r.clock_out_time is None else "finalized")
+        hr_st = getattr(r, "hr_status", None) or "approved"
+        brk = getattr(r, "break_minutes", None)
         time_selected = r.clock_in_time or r.clock_out_time
-
-        def _uname(uid):
-            if not uid:
-                return None
-            u = users_map.get(uid)
-            return u.username if u else str(uid)
 
         out.append(
             {
@@ -1078,9 +1093,11 @@ def _build_subcontractor_attendance_rows(
                 "shift_id": None,
                 "job_name": None,
                 "project_name": p.name if p else None,
+                "project_address": _format_project_address_line(p),
                 "project_id": str(r.project_id),
                 "hours_worked": hours_worked,
-                "break_minutes": None,
+                "break_minutes": brk,
+                "hr_status": hr_st,
                 "reason_text": None,
                 "gps_lat": None,
                 "gps_lng": None,
@@ -1089,6 +1106,17 @@ def _build_subcontractor_attendance_rows(
                 "approved_by": _uname(r.clock_out_confirmed_by_user_id),
                 "clock_in_confirmed_by": _uname(r.clock_in_confirmed_by_user_id),
                 "clock_out_confirmed_by": _uname(r.clock_out_confirmed_by_user_id),
+                "clock_in_entered_utc": r.clock_in_entered_utc.isoformat() if r.clock_in_entered_utc else None,
+                "clock_out_entered_utc": r.clock_out_entered_utc.isoformat() if r.clock_out_entered_utc else None,
+                "clock_in_notes": getattr(r, "clock_in_notes", None),
+                "clock_out_notes": getattr(r, "clock_out_notes", None),
+                "session_notes": getattr(r, "notes", None),
+                "clock_in_signature_file_id": str(r.clock_in_signature_file_id)
+                if getattr(r, "clock_in_signature_file_id", None)
+                else None,
+                "clock_out_signature_file_id": str(r.clock_out_signature_file_id)
+                if getattr(r, "clock_out_signature_file_id", None)
+                else None,
                 "shift_deleted": False,
                 "shift_deleted_by": None,
                 "shift_deleted_at": None,
@@ -1369,7 +1397,22 @@ def list_attendances(
 
                 shift_row = shifts_dict.get(str(att.shift_id)) if att.shift_id else None
                 project_id_str = str(shift_row.project_id) if shift_row and shift_row.project_id else None
-                
+                proj_for_addr = None
+                if shift_row and shift_row.project_id:
+                    proj_for_addr = projects_dict.get(str(shift_row.project_id))
+                project_address_str = _format_project_address_line(proj_for_addr)
+                gps_acc = None
+                if att.clock_out_gps_accuracy_m is not None:
+                    try:
+                        gps_acc = float(att.clock_out_gps_accuracy_m)
+                    except (TypeError, ValueError):
+                        pass
+                if gps_acc is None and att.clock_in_gps_accuracy_m is not None:
+                    try:
+                        gps_acc = float(att.clock_in_gps_accuracy_m)
+                    except (TypeError, ValueError):
+                        pass
+
                 result.append({
                     "id": str(att.id),
                     "record_kind": "internal",
@@ -1380,17 +1423,21 @@ def list_attendances(
                     "clock_out_time": att.clock_out_time.isoformat() if att.clock_out_time else None,
                     "time_selected_utc": time_selected.isoformat() if time_selected else None,  # Backward compatibility
                     "time_entered_utc": time_entered.isoformat() if time_entered else None,  # Backward compatibility
+                    "clock_in_entered_utc": att.clock_in_entered_utc.isoformat() if att.clock_in_entered_utc else None,
+                    "clock_out_entered_utc": att.clock_out_entered_utc.isoformat() if att.clock_out_entered_utc else None,
                     "status": att.status,
                     "source": att.source,
                     "shift_id": str(att.shift_id) if att.shift_id else None,
                     "job_name": job_name,
                     "project_name": project_name,
                     "project_id": project_id_str,
+                    "project_address": project_address_str,
                     "hours_worked": round(hours_worked, 2) if hours_worked else None,
                     "break_minutes": break_minutes,
                     "reason_text": att.reason_text,
                     "gps_lat": float(att.clock_in_gps_lat) if att.clock_in_gps_lat else (float(att.clock_out_gps_lat) if att.clock_out_gps_lat else None),
                     "gps_lng": float(att.clock_in_gps_lng) if att.clock_in_gps_lng else (float(att.clock_out_gps_lng) if att.clock_out_gps_lng else None),
+                    "gps_accuracy_m": gps_acc,
                     "created_at": att.created_at.isoformat() if att.created_at else None,
                     "approved_at": att.approved_at.isoformat() if att.approved_at else None,
                     "approved_by": str(att.approved_by) if att.approved_by else None,

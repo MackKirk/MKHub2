@@ -5,13 +5,16 @@ import QRCode from 'qrcode';
 import { api, withFileAccessTokenIfNeeded } from '@/lib/api';
 import toast from 'react-hot-toast';
 import SubcontractorWorkerTimesheetBlock from '@/components/SubcontractorWorkerTimesheetBlock';
+import UserReports from '@/components/UserReports';
 import LoadingOverlay from '@/components/LoadingOverlay';
 import AddressAutocomplete from '@/components/AddressAutocomplete';
 import { formatAddressDisplay } from '@/lib/addressUtils';
+import { formatDecimalHoursAsHMin } from '@/lib/dateUtils';
 import { SubcontractorWorkerFilesTabEnhanced } from '@/pages/SubcontractorWorkerFilesTabEnhanced';
 import type { ClientFileForFiles } from '@/pages/SubcontractorCompanyFilesTabEnhanced';
 import ImagePicker from '@/components/ImagePicker';
 import OverlayPortal from '@/components/OverlayPortal';
+import { EmployeeTrainingSection } from './UserInfo';
 
 type WorkerBundle = {
   worker: {
@@ -76,6 +79,9 @@ function composeWorkerNameFromWf(wf: {
 
 type WorkerSubTab = 'personal' | 'job' | 'docs' | 'timesheet' | 'training' | 'reports' | 'activity';
 
+/** Which Personal-tab card is in edit mode (only one at a time). */
+type PersonalEditSection = 'basic' | 'contact' | 'address' | 'emergency' | 'notes';
+
 const WORKER_VALID_TABS = new Set<string>(['personal', 'job', 'docs', 'timesheet', 'training', 'reports', 'activity']);
 
 function workerTabFromSearchParams(sp: URLSearchParams): WorkerSubTab {
@@ -94,17 +100,11 @@ type ActivityFeedItem = {
   total_hours?: number | null;
   worker_file_id?: string;
   file_object_id?: string;
-};
-
-type ReportsSummary = {
-  projects: Array<{
-    project_id: string;
-    project_name?: string | null;
-    session_count: number;
-    total_hours?: number | null;
-    last_clock_out?: string | null;
-  }>;
-  note?: string;
+  by_user_id?: string | null;
+  by_username?: string | null;
+  audit_id?: string;
+  audit_action?: string;
+  detail_lines?: string[];
 };
 
 const WORKER_PHOTO_PLACEHOLDER = '/ui/assets/placeholders/user.png';
@@ -128,15 +128,6 @@ function Field({ label, children }: { label: string; children: ReactNode }) {
     <div>
       <span className="text-[10px] font-medium text-gray-500 uppercase tracking-wide">{label}</span>
       <div className="text-xs font-semibold text-gray-900 mt-0.5 break-words">{children}</div>
-    </div>
-  );
-}
-
-function SectionCard({ title, children, className = '' }: { title: string; children: ReactNode; className?: string }) {
-  return (
-    <div className={`rounded-lg border border-gray-200 bg-gray-50/50 p-4 ${className}`}>
-      <h3 className="text-sm font-semibold text-gray-900 mb-3">{title}</h3>
-      {children}
     </div>
   );
 }
@@ -225,7 +216,7 @@ export default function SubcontractorWorkerPage() {
 
   const qc = useQueryClient();
   const [qrDataUrl, setQrDataUrl] = useState<string>('');
-  const [editingPersonal, setEditingPersonal] = useState(false);
+  const [personalEditSection, setPersonalEditSection] = useState<PersonalEditSection | null>(null);
   const [editingJob, setEditingJob] = useState(false);
   const [isEmployeeCardMinimized, setIsEmployeeCardMinimized] = useState(false);
   const [workerPhotoPickerOpen, setWorkerPhotoPickerOpen] = useState(false);
@@ -262,6 +253,46 @@ export default function SubcontractorWorkerPage() {
   const hasEditPermission =
     (me?.roles || []).includes('admin') || (me?.permissions || []).includes('business:customers:write');
 
+  const canViewTraining = useMemo(() => {
+    if (!me) return false;
+    const isAdmin = (me?.roles || []).some((r: string) => String(r || '').toLowerCase() === 'admin');
+    if (isAdmin) return true;
+    const perms = me?.permissions || [];
+    return (
+      perms.includes('business:customers:read') ||
+      perms.includes('business:construction:projects:read') ||
+      perms.includes('business:rm:projects:read') ||
+      perms.includes('hr:attendance:read') ||
+      perms.includes('hr:attendance:write') ||
+      perms.includes('hr:users:view:general') ||
+      perms.includes('users:read')
+    );
+  }, [me]);
+
+  const canEditTraining = useMemo(() => {
+    if (!me) return false;
+    const isAdmin = (me?.roles || []).some((r: string) => String(r || '').toLowerCase() === 'admin');
+    if (isAdmin) return true;
+    const perms = me?.permissions || [];
+    return hasEditPermission || perms.includes('users:write') || perms.includes('hr:users:edit:general');
+  }, [me, hasEditPermission]);
+
+  const canViewReports = useMemo(() => {
+    if (!me) return false;
+    const isAdmin = (me?.roles || []).some((r: string) => String(r || '').toLowerCase() === 'admin');
+    if (isAdmin) return true;
+    const perms = me?.permissions || [];
+    return perms.includes('hr:users:view:general') || perms.includes('users:read');
+  }, [me]);
+
+  const canEditReports = useMemo(() => {
+    if (!me) return false;
+    const isAdmin = (me?.roles || []).some((r: string) => String(r || '').toLowerCase() === 'admin');
+    if (isAdmin) return true;
+    const perms = me?.permissions || [];
+    return hasEditPermission || perms.includes('hr:users:write') || perms.includes('users:write');
+  }, [me, hasEditPermission]);
+
   const { data, isLoading, refetch } = useQuery({
     queryKey: ['subcontractor-worker', id],
     queryFn: () => api<WorkerBundle>('GET', `/subcontractors/workers/${id}`),
@@ -278,12 +309,6 @@ export default function SubcontractorWorkerPage() {
     queryKey: ['subcontractor-worker-activity', id],
     queryFn: () => api<ActivityFeedItem[]>('GET', `/subcontractors/workers/${id}/activity-feed`),
     enabled: !!id && activeTab === 'activity',
-  });
-
-  const { data: reportsSummary } = useQuery({
-    queryKey: ['subcontractor-worker-reports', id],
-    queryFn: () => api<ReportsSummary>('GET', `/subcontractors/workers/${id}/reports-summary`),
-    enabled: !!id && activeTab === 'reports',
   });
 
   const scanUrl = useMemo(() => {
@@ -367,7 +392,7 @@ export default function SubcontractorWorkerPage() {
       qc.invalidateQueries({ queryKey: ['subcontractor-worker', id] });
       qc.invalidateQueries({ queryKey: ['subcontractor-workers'] });
       qc.invalidateQueries({ queryKey: ['subcontractor-worker-activity', id] });
-      setEditingPersonal(false);
+      setPersonalEditSection(null);
       setEditingJob(false);
     },
     onError: (e: Error) => toast.error(e.message),
@@ -431,19 +456,19 @@ export default function SubcontractorWorkerPage() {
     });
   }, [data?.worker]);
 
-  const beginPersonalEdit = useCallback(() => {
+  const beginPersonalEditSection = useCallback((section: PersonalEditSection) => {
     setEditingJob(false);
     resetWfFromWorker();
-    setEditingPersonal(true);
+    setPersonalEditSection(section);
   }, [resetWfFromWorker]);
 
   const cancelPersonalEdit = useCallback(() => {
     resetWfFromWorker();
-    setEditingPersonal(false);
+    setPersonalEditSection(null);
   }, [resetWfFromWorker]);
 
   const beginJobEdit = useCallback(() => {
-    setEditingPersonal(false);
+    setPersonalEditSection(null);
     resetWfFromWorker();
     setEditingJob(true);
   }, [resetWfFromWorker]);
@@ -494,17 +519,29 @@ export default function SubcontractorWorkerPage() {
     });
   }, []);
 
-  if (!id) return null;
+  const tabStrip: { key: WorkerSubTab; label: string }[] = useMemo(
+    () =>
+      [
+        { key: 'personal', label: 'Personal' },
+        { key: 'job', label: 'Job' },
+        { key: 'docs', label: 'Docs' },
+        { key: 'timesheet', label: 'Timesheet' },
+        ...(canViewTraining ? ([{ key: 'training', label: 'Training' }] as const) : []),
+        ...(canViewReports ? ([{ key: 'reports', label: 'Reports' }] as const) : []),
+        { key: 'activity', label: 'Activity' },
+      ] as { key: WorkerSubTab; label: string }[],
+    [canViewTraining, canViewReports],
+  );
 
-  const tabStrip: { key: WorkerSubTab; label: string }[] = [
-    { key: 'personal', label: 'Personal' },
-    { key: 'job', label: 'Job' },
-    { key: 'docs', label: 'Docs' },
-    { key: 'timesheet', label: 'Timesheet' },
-    { key: 'training', label: 'Training' },
-    { key: 'reports', label: 'Reports' },
-    { key: 'activity', label: 'Activity' },
-  ];
+  useEffect(() => {
+    if (activeTab === 'training' && !canViewTraining) setTab('personal');
+  }, [activeTab, canViewTraining]);
+
+  useEffect(() => {
+    if (activeTab === 'reports' && !canViewReports) setTab('personal');
+  }, [activeTab, canViewReports]);
+
+  if (!id) return null;
 
   const backHref = data?.worker?.company_id
     ? `/business/subcontractors/companies/${data.worker.company_id}`
@@ -724,214 +761,20 @@ export default function SubcontractorWorkerPage() {
             <div className="rounded-xl border bg-white">
               <div className="p-5">
             {activeTab === 'personal' && (
-              <div className={`space-y-6 ${editingPersonal ? 'relative pb-2' : ''}`}>
-                {!hasEditPermission || !editingPersonal ? (
-                  <div className="space-y-6">
+              <div className={`space-y-6 ${personalEditSection ? 'relative pb-2' : ''}`}>
+                <div className="space-y-6">
                     <PersonalUserSection
                       tone="blue"
                       heading="Basic Information"
-                      showPencil={hasEditPermission}
-                      onEditClick={beginPersonalEdit}
+                      showPencil={hasEditPermission && personalEditSection !== 'basic'}
+                      onEditClick={hasEditPermission ? () => beginPersonalEditSection('basic') : undefined}
                       icon={
                         <svg className="w-5 h-5 text-blue-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
                         </svg>
                       }
                     >
-                      <div className="grid md:grid-cols-2 gap-4">
-                        <StaticWorkerField label="First name" value={data.worker.first_name || ''} />
-                        <StaticWorkerField label="Last name" value={data.worker.last_name || ''} />
-                        <StaticWorkerField label="Middle name" value={data.worker.middle_name || ''} />
-                        <StaticWorkerField label="Preferred name" value={data.worker.preferred_name || ''} />
-                        <StaticWorkerField label="Gender" value={data.worker.gender || ''} />
-                      </div>
-                    </PersonalUserSection>
-
-                    <PersonalUserSection
-                      tone="yellow"
-                      heading="Contact"
-                      showPencil={hasEditPermission}
-                      onEditClick={beginPersonalEdit}
-                      icon={
-                        <svg className="w-5 h-5 text-yellow-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            strokeWidth={2}
-                            d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z"
-                          />
-                        </svg>
-                      }
-                    >
-                      <div className="grid md:grid-cols-2 gap-4">
-                        <StaticWorkerField label="Email" value={data.worker.email || ''} />
-                        <StaticWorkerField label="Phone" value={data.worker.phone || ''} />
-                      </div>
-                    </PersonalUserSection>
-
-                    <PersonalUserSection
-                      tone="green"
-                      heading="Address"
-                      showPencil={hasEditPermission}
-                      onEditClick={beginPersonalEdit}
-                      icon={
-                        <svg className="w-5 h-5 text-green-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
-                        </svg>
-                      }
-                    >
-                      <div className="grid md:grid-cols-2 gap-4">
-                        <StaticWorkerField label="Address line 1" value={data.worker.address_line1 || ''} />
-                        <StaticWorkerField label="Address line 2" value={data.worker.address_line2 || ''} />
-                        <StaticWorkerField label="City" value={data.worker.city || ''} />
-                        <StaticWorkerField label="Province" value={data.worker.province || ''} />
-                        <StaticWorkerField label="Country" value={data.worker.country || ''} />
-                        <StaticWorkerField label="Postal code" value={data.worker.postal_code || ''} />
-                      </div>
-                    </PersonalUserSection>
-
-                    <PersonalUserSection
-                      tone="orange"
-                      heading="Emergency Contacts"
-                      showPencil={hasEditPermission}
-                      onEditClick={beginPersonalEdit}
-                      icon={
-                        <svg className="w-5 h-5 text-orange-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            strokeWidth={2}
-                            d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"
-                          />
-                        </svg>
-                      }
-                    >
-                      {data.worker.emergency_contact_name ||
-                      data.worker.emergency_contact_phone ||
-                      data.worker.emergency_contact_home_phone ||
-                      data.worker.emergency_contact_work_phone ||
-                      data.worker.emergency_contact_email ||
-                      data.worker.emergency_contact_address ||
-                      data.worker.emergency_contact_relationship ? (
-                        <div className="rounded-xl border border-gray-200 bg-white overflow-hidden flex max-w-2xl">
-                          <div className="w-24 sm:w-28 bg-gray-100 flex items-center justify-center shrink-0">
-                            <div className="w-16 h-16 sm:w-20 sm:h-20 rounded bg-gray-200 grid place-items-center text-base sm:text-lg font-bold text-gray-600">
-                              {(data.worker.emergency_contact_name || '?').slice(0, 2).toUpperCase()}
-                            </div>
-                          </div>
-                          <div className="flex-1 p-3 text-sm min-w-0">
-                            <div className="font-semibold text-gray-900">{data.worker.emergency_contact_name || '—'}</div>
-                            {data.worker.emergency_contact_relationship && (
-                              <div className="text-gray-600 text-xs mt-1">{data.worker.emergency_contact_relationship}</div>
-                            )}
-                            <div className="mt-2 space-y-1">
-                              {data.worker.emergency_contact_phone && (
-                                <div>
-                                  <div className="text-[11px] uppercase text-gray-500">Mobile</div>
-                                  <div className="text-gray-700">{data.worker.emergency_contact_phone}</div>
-                                </div>
-                              )}
-                              {data.worker.emergency_contact_home_phone && (
-                                <div>
-                                  <div className="text-[11px] uppercase text-gray-500">Home</div>
-                                  <div className="text-gray-700">{data.worker.emergency_contact_home_phone}</div>
-                                </div>
-                              )}
-                              {data.worker.emergency_contact_work_phone && (
-                                <div>
-                                  <div className="text-[11px] uppercase text-gray-500">Work</div>
-                                  <div className="text-gray-700">{data.worker.emergency_contact_work_phone}</div>
-                                </div>
-                              )}
-                              {data.worker.emergency_contact_email && (
-                                <div>
-                                  <div className="text-[11px] uppercase text-gray-500">Email</div>
-                                  <div className="text-gray-700 break-all">{data.worker.emergency_contact_email}</div>
-                                </div>
-                              )}
-                              {data.worker.emergency_contact_address && (
-                                <div>
-                                  <div className="text-[11px] uppercase text-gray-500">Address</div>
-                                  <div className="text-gray-700 whitespace-pre-wrap">{data.worker.emergency_contact_address}</div>
-                                </div>
-                              )}
-                            </div>
-                          </div>
-                        </div>
-                      ) : (
-                        <p className="text-sm text-gray-600">No emergency contact on file.</p>
-                      )}
-                    </PersonalUserSection>
-
-                    <PersonalUserSection
-                      tone="slate"
-                      heading="Notes"
-                      showPencil={hasEditPermission}
-                      onEditClick={beginPersonalEdit}
-                      icon={
-                        <svg className="w-5 h-5 text-slate-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            strokeWidth={2}
-                            d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
-                          />
-                        </svg>
-                      }
-                    >
-                      <StaticWorkerField label="Internal notes" value={data.worker.notes || ''} />
-                    </PersonalUserSection>
-
-                    <PersonalUserSection
-                      tone="red"
-                      heading="Clock-in QR"
-                      icon={
-                        <svg className="w-5 h-5 text-red-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            strokeWidth={2}
-                            d="M12 4v1m6 11h2m-6 0h-2v4m0-11v3m0 0h.01M12 12h4.01M16 20h4M4 12h4m12 0h.01M5 8h2a1 1 0 001-1V5a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1zm12 0h2a1 1 0 001-1V5a1 1 0 00-1-1h-2a1 1 0 00-1 1v2a1 1 0 001 1zM5 20h2a1 1 0 001-1v-2a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1z"
-                          />
-                        </svg>
-                      }
-                    >
-                      <p className="text-xs text-gray-600 -mt-1 mb-3">
-                        Site QR for this worker (same role as kiosk access on Users — opens the subcontractor scan flow for clock-in/out).
-                      </p>
-                      {qrDataUrl && (
-                        <div className="flex flex-col sm:flex-row sm:items-start gap-4">
-                          <img src={qrDataUrl} alt="" className="border rounded-lg p-2 bg-white w-[200px] h-[200px] object-contain" />
-                          <div className="text-sm space-y-2">
-                            <a
-                              href={qrDataUrl}
-                              download={`qr-${workerDisplayHeroName(data.worker).replace(/\s+/g, '-')}.png`}
-                              className="inline-flex px-3 py-1.5 rounded-lg text-xs font-semibold text-white bg-gradient-to-r from-brand-red to-[#ee2b2b] shadow-sm hover:opacity-95"
-                            >
-                              Download PNG
-                            </a>
-                            <div>
-                              <button type="button" className="text-xs font-semibold text-brand-red underline" onClick={() => window.print()}>
-                                Print
-                              </button>
-                            </div>
-                          </div>
-                        </div>
-                      )}
-                    </PersonalUserSection>
-                  </div>
-                ) : (
-                  <div className="space-y-6">
-                    <PersonalUserSection
-                      tone="blue"
-                      heading="Basic Information"
-                      icon={
-                        <svg className="w-5 h-5 text-blue-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
-                        </svg>
-                      }
-                    >
+                      {personalEditSection === 'basic' ? (
                       <div className="grid md:grid-cols-2 gap-4">
                         <div>
                           <div className="text-xs font-medium text-gray-600 mb-1.5">First name</div>
@@ -981,11 +824,22 @@ export default function SubcontractorWorkerPage() {
                           </select>
                         </div>
                       </div>
+                      ) : (
+                      <div className="grid md:grid-cols-2 gap-4">
+                        <StaticWorkerField label="First name" value={data.worker.first_name || ''} />
+                        <StaticWorkerField label="Last name" value={data.worker.last_name || ''} />
+                        <StaticWorkerField label="Middle name" value={data.worker.middle_name || ''} />
+                        <StaticWorkerField label="Preferred name" value={data.worker.preferred_name || ''} />
+                        <StaticWorkerField label="Gender" value={data.worker.gender || ''} />
+                      </div>
+                      )}
                     </PersonalUserSection>
 
                     <PersonalUserSection
                       tone="yellow"
                       heading="Contact"
+                      showPencil={hasEditPermission && personalEditSection !== 'contact'}
+                      onEditClick={hasEditPermission ? () => beginPersonalEditSection('contact') : undefined}
                       icon={
                         <svg className="w-5 h-5 text-yellow-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                           <path
@@ -997,6 +851,7 @@ export default function SubcontractorWorkerPage() {
                         </svg>
                       }
                     >
+                      {personalEditSection === 'contact' ? (
                       <div className="grid md:grid-cols-2 gap-4">
                         <div>
                           <div className="text-xs font-medium text-gray-600 mb-1.5">Email</div>
@@ -1015,11 +870,19 @@ export default function SubcontractorWorkerPage() {
                           />
                         </div>
                       </div>
+                      ) : (
+                      <div className="grid md:grid-cols-2 gap-4">
+                        <StaticWorkerField label="Email" value={data.worker.email || ''} />
+                        <StaticWorkerField label="Phone" value={data.worker.phone || ''} />
+                      </div>
+                      )}
                     </PersonalUserSection>
 
                     <PersonalUserSection
                       tone="green"
                       heading="Address"
+                      showPencil={hasEditPermission && personalEditSection !== 'address'}
+                      onEditClick={hasEditPermission ? () => beginPersonalEditSection('address') : undefined}
                       icon={
                         <svg className="w-5 h-5 text-green-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
@@ -1027,6 +890,7 @@ export default function SubcontractorWorkerPage() {
                         </svg>
                       }
                     >
+                      {personalEditSection === 'address' ? (
                       <div className="space-y-4">
                         <div>
                           <div className="text-xs font-medium text-gray-600 mb-1.5">Address line 1</div>
@@ -1087,11 +951,23 @@ export default function SubcontractorWorkerPage() {
                           </div>
                         </div>
                       </div>
+                      ) : (
+                      <div className="grid md:grid-cols-2 gap-4">
+                        <StaticWorkerField label="Address line 1" value={data.worker.address_line1 || ''} />
+                        <StaticWorkerField label="Address line 2" value={data.worker.address_line2 || ''} />
+                        <StaticWorkerField label="City" value={data.worker.city || ''} />
+                        <StaticWorkerField label="Province" value={data.worker.province || ''} />
+                        <StaticWorkerField label="Country" value={data.worker.country || ''} />
+                        <StaticWorkerField label="Postal code" value={data.worker.postal_code || ''} />
+                      </div>
+                      )}
                     </PersonalUserSection>
 
                     <PersonalUserSection
                       tone="orange"
                       heading="Emergency Contacts"
+                      showPencil={hasEditPermission && personalEditSection !== 'emergency'}
+                      onEditClick={hasEditPermission ? () => beginPersonalEditSection('emergency') : undefined}
                       icon={
                         <svg className="w-5 h-5 text-orange-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                           <path
@@ -1103,6 +979,7 @@ export default function SubcontractorWorkerPage() {
                         </svg>
                       }
                     >
+                      {personalEditSection === 'emergency' ? (
                       <div className="grid md:grid-cols-2 gap-3">
                         <div className="md:col-span-2">
                           <div className="text-xs font-medium text-gray-600 mb-1.5">Name</div>
@@ -1163,11 +1040,72 @@ export default function SubcontractorWorkerPage() {
                           />
                         </div>
                       </div>
+                      ) : (
+                      <>
+                      {data.worker.emergency_contact_name ||
+                      data.worker.emergency_contact_phone ||
+                      data.worker.emergency_contact_home_phone ||
+                      data.worker.emergency_contact_work_phone ||
+                      data.worker.emergency_contact_email ||
+                      data.worker.emergency_contact_address ||
+                      data.worker.emergency_contact_relationship ? (
+                        <div className="rounded-xl border border-gray-200 bg-white overflow-hidden flex max-w-2xl">
+                          <div className="w-24 sm:w-28 bg-gray-100 flex items-center justify-center shrink-0">
+                            <div className="w-16 h-16 sm:w-20 sm:h-20 rounded bg-gray-200 grid place-items-center text-base sm:text-lg font-bold text-gray-600">
+                              {(data.worker.emergency_contact_name || '?').slice(0, 2).toUpperCase()}
+                            </div>
+                          </div>
+                          <div className="flex-1 p-3 text-sm min-w-0">
+                            <div className="font-semibold text-gray-900">{data.worker.emergency_contact_name || '—'}</div>
+                            {data.worker.emergency_contact_relationship && (
+                              <div className="text-gray-600 text-xs mt-1">{data.worker.emergency_contact_relationship}</div>
+                            )}
+                            <div className="mt-2 space-y-1">
+                              {data.worker.emergency_contact_phone && (
+                                <div>
+                                  <div className="text-[11px] uppercase text-gray-500">Mobile</div>
+                                  <div className="text-gray-700">{data.worker.emergency_contact_phone}</div>
+                                </div>
+                              )}
+                              {data.worker.emergency_contact_home_phone && (
+                                <div>
+                                  <div className="text-[11px] uppercase text-gray-500">Home</div>
+                                  <div className="text-gray-700">{data.worker.emergency_contact_home_phone}</div>
+                                </div>
+                              )}
+                              {data.worker.emergency_contact_work_phone && (
+                                <div>
+                                  <div className="text-[11px] uppercase text-gray-500">Work</div>
+                                  <div className="text-gray-700">{data.worker.emergency_contact_work_phone}</div>
+                                </div>
+                              )}
+                              {data.worker.emergency_contact_email && (
+                                <div>
+                                  <div className="text-[11px] uppercase text-gray-500">Email</div>
+                                  <div className="text-gray-700 break-all">{data.worker.emergency_contact_email}</div>
+                                </div>
+                              )}
+                              {data.worker.emergency_contact_address && (
+                                <div>
+                                  <div className="text-[11px] uppercase text-gray-500">Address</div>
+                                  <div className="text-gray-700 whitespace-pre-wrap">{data.worker.emergency_contact_address}</div>
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      ) : (
+                        <p className="text-sm text-gray-600">No emergency contact on file.</p>
+                      )}
+                      </>
+                      )}
                     </PersonalUserSection>
 
                     <PersonalUserSection
                       tone="slate"
                       heading="Notes"
+                      showPencil={hasEditPermission && personalEditSection !== 'notes'}
+                      onEditClick={hasEditPermission ? () => beginPersonalEditSection('notes') : undefined}
                       icon={
                         <svg className="w-5 h-5 text-slate-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                           <path
@@ -1179,6 +1117,7 @@ export default function SubcontractorWorkerPage() {
                         </svg>
                       }
                     >
+                      {personalEditSection === 'notes' ? (
                       <div>
                         <div className="text-xs font-medium text-gray-600 mb-1.5">Internal notes</div>
                         <textarea
@@ -1188,8 +1127,50 @@ export default function SubcontractorWorkerPage() {
                           onChange={(e) => setWf((s) => ({ ...s, notes: e.target.value }))}
                         />
                       </div>
+                      ) : (
+                      <StaticWorkerField label="Internal notes" value={data.worker.notes || ''} />
+                      )}
                     </PersonalUserSection>
 
+                    <PersonalUserSection
+                      tone="red"
+                      heading="Clock-in QR"
+                      icon={
+                        <svg className="w-5 h-5 text-red-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth={2}
+                            d="M12 4v1m6 11h2m-6 0h-2v4m0-11v3m0 0h.01M12 12h4.01M16 20h4M4 12h4m12 0h.01M5 8h2a1 1 0 001-1V5a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1zm12 0h2a1 1 0 001-1V5a1 1 0 00-1-1h-2a1 1 0 00-1 1v2a1 1 0 001 1zM5 20h2a1 1 0 001-1v-2a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1z"
+                          />
+                        </svg>
+                      }
+                    >
+                      <p className="text-xs text-gray-600 -mt-1 mb-3">
+                        Site QR for this worker (same role as kiosk access on Users — opens the subcontractor scan flow for clock-in/out).
+                      </p>
+                      {qrDataUrl && (
+                        <div className="flex flex-col sm:flex-row sm:items-start gap-4">
+                          <img src={qrDataUrl} alt="" className="border rounded-lg p-2 bg-white w-[200px] h-[200px] object-contain" />
+                          <div className="text-sm space-y-2">
+                            <a
+                              href={qrDataUrl}
+                              download={`qr-${workerDisplayHeroName(data.worker).replace(/\s+/g, '-')}.png`}
+                              className="inline-flex px-3 py-1.5 rounded-lg text-xs font-semibold text-white bg-gradient-to-r from-brand-red to-[#ee2b2b] shadow-sm hover:opacity-95"
+                            >
+                              Download PNG
+                            </a>
+                            <div>
+                              <button type="button" className="text-xs font-semibold text-brand-red underline" onClick={() => window.print()}>
+                                Print
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      )}
+                    </PersonalUserSection>
+
+                    {personalEditSection && (
                     <div className="sticky bottom-0 z-10 -mx-5 mt-2 flex flex-wrap items-center justify-end gap-2 border-t border-gray-200 bg-white px-5 py-3 shadow-[0_-4px_12px_rgba(0,0,0,0.06)]">
                       <button
                         type="button"
@@ -1207,8 +1188,8 @@ export default function SubcontractorWorkerPage() {
                         Save changes
                       </button>
                     </div>
+                    )}
                   </div>
-                )}
               </div>
             )}
 
@@ -1321,17 +1302,14 @@ export default function SubcontractorWorkerPage() {
             )}
 
             {activeTab === 'docs' && id && (
-              <div className="space-y-4 pb-24">
-                <div>
-                  <h2 className="text-sm font-semibold text-gray-900">Documents</h2>
-                  <p className="text-xs text-gray-500 mt-0.5 max-w-2xl">
-                    Same pattern as the User Documents area: library files with categories and previews. Files are stored against this worker record (not an internal user account).
-                  </p>
-                </div>
+              <div className="pb-24">
                 <SubcontractorWorkerFilesTabEnhanced
                   workerId={id}
                   files={workerFiles || []}
-                  onRefresh={() => void refetchWorkerFiles()}
+                  onRefresh={() => {
+                    void refetchWorkerFiles();
+                    qc.invalidateQueries({ queryKey: ['subcontractor-worker-activity', id] });
+                  }}
                   hasEditPermission={hasEditPermission}
                 />
               </div>
@@ -1345,103 +1323,91 @@ export default function SubcontractorWorkerPage() {
                 onBundleInvalidate={() => {
                   void refetch();
                   qc.invalidateQueries({ queryKey: ['subcontractor-worker-activity', id] });
-                  qc.invalidateQueries({ queryKey: ['subcontractor-worker-reports', id] });
+                  qc.invalidateQueries({ queryKey: ['reports', 'worker', id] });
                   qc.invalidateQueries({ queryKey: ['settings-attendance'] });
                   qc.invalidateQueries({ queryKey: ['sc-worker-attendance'], exact: false });
                 }}
               />
             )}
 
-            {activeTab === 'training' && (
+            {activeTab === 'training' && id && canViewTraining && (
               <div className="space-y-6 pb-24">
-                <div>
-                  <h2 className="text-sm font-semibold text-gray-900">Training</h2>
-                  <p className="text-xs text-gray-500 mt-0.5 max-w-2xl">
-                    On Users, this tab shows LMS-linked training. Subcontractor workers are not linked to internal employees or the LMS — this panel explains that honestly instead of showing an empty course list.
-                  </p>
-                </div>
-                <SectionCard title="Learning & certifications">
-                  <div className="rounded-lg bg-gray-50 border border-gray-100 p-4 text-sm text-gray-700">
-                    <p className="mb-2">No LMS enrollment for this worker.</p>
-                    <p className="text-xs text-gray-600">
-                      Store orientation cards, WHMIS, or toolbox PDFs under{' '}
-                      <button type="button" className="text-brand-red font-semibold underline" onClick={() => setTab('docs')}>
-                        Documents
-                      </button>{' '}
-                      so they stay with the rest of the file library.
-                    </p>
-                  </div>
-                </SectionCard>
+                <EmployeeTrainingSection variant="worker" workerId={id} canEdit={canEditTraining} />
               </div>
             )}
 
-            {activeTab === 'reports' && (
-              <div className="space-y-6 pb-24">
-                <div>
-                  <h2 className="text-sm font-semibold text-gray-900">Reports</h2>
-                  <p className="text-xs text-gray-500 mt-0.5 max-w-2xl">
-                    Lightweight summary from subcontractor attendance (not the same as internal user project reports or finance exports).
-                  </p>
-                </div>
-                {reportsSummary?.note && <p className="text-xs text-gray-500">{reportsSummary.note}</p>}
-                <SectionCard title="Hours by project">
-                  <div className="overflow-x-auto text-sm rounded-lg border border-gray-200">
-                    <table className="min-w-full">
-                      <thead>
-                        <tr className="text-left text-[10px] font-semibold text-gray-600 uppercase tracking-wide bg-gray-50 border-b border-gray-200">
-                          <th className="py-2 pr-2">Project</th>
-                          <th className="py-2 pr-2">Sessions</th>
-                          <th className="py-2 pr-2">Hours</th>
-                          <th className="py-2">Last out</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {(reportsSummary?.projects || []).map((r) => (
-                          <tr key={r.project_id} className="border-b border-gray-100">
-                            <td className="py-2 pr-2">{r.project_name || r.project_id}</td>
-                            <td className="py-2 pr-2">{r.session_count}</td>
-                            <td className="py-2 pr-2">{r.total_hours != null ? Number(r.total_hours).toFixed(2) : '—'}</td>
-                            <td className="py-2">{r.last_clock_out ? new Date(r.last_clock_out).toLocaleString() : '—'}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                    {!(reportsSummary?.projects || []).length && (
-                      <div className="text-gray-500 text-sm py-4 px-3">No closed sessions with recorded hours yet.</div>
-                    )}
-                  </div>
-                </SectionCard>
-              </div>
+            {activeTab === 'reports' && id && canViewReports && (
+              <UserReports variant="worker" workerId={id} canEdit={canEditReports} />
             )}
 
             {activeTab === 'activity' && (
               <div className="space-y-6 pb-24">
-                <div>
-                  <h2 className="text-sm font-semibold text-gray-900">Activity</h2>
-                  <p className="text-xs text-gray-500 mt-0.5 max-w-2xl">
-                    Timeline built from attendance and worker file events — similar in purpose to the User activity view, without internal audit plumbing.
-                  </p>
-                </div>
-                <SectionCard title="Timeline">
-                  <div className="space-y-3">
-                    {(activityFeed || []).map((ev, i) => (
-                      <div key={`${ev.type}-${ev.at}-${i}`} className="flex gap-3 text-sm border-b border-gray-100 pb-3 last:border-0">
-                        <div className="w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center text-xs flex-shrink-0">
-                          {ev.type === 'clock_in' ? '▶' : ev.type === 'clock_out' ? '■' : ev.type === 'document_removed' ? '−' : '+'}
-                        </div>
-                        <div className="min-w-0 flex-1">
-                          <div className="font-medium text-gray-900">{ev.title}</div>
-                          {ev.subtitle && <div className="text-gray-600 text-xs truncate">{ev.subtitle}</div>}
-                          <div className="text-[11px] text-gray-500 mt-0.5">{new Date(ev.at).toLocaleString()}</div>
-                          {ev.type === 'clock_out' && ev.total_hours != null && (
-                            <div className="text-xs text-gray-600 mt-1">{Number(ev.total_hours).toFixed(2)} h</div>
-                          )}
-                        </div>
+                <PersonalUserSection
+                  tone="slate"
+                  heading="Activity"
+                  icon={
+                    <svg className="w-5 h-5 text-slate-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"
+                      />
+                    </svg>
+                  }
+                >
+                  <div className="rounded-lg border border-gray-200 bg-white overflow-hidden">
+                    {(activityFeed || []).length ? (
+                      <div className="divide-y divide-gray-100">
+                        {(activityFeed || []).map((ev, i) => (
+                          <div
+                            key={`${ev.type}-${ev.at}-${ev.audit_id ?? ev.attendance_id ?? ev.worker_file_id ?? i}`}
+                            className="px-3 py-2.5 hover:bg-gray-50/90 grid grid-cols-1 md:grid-cols-12 gap-2 text-xs"
+                          >
+                            <div className="md:col-span-2 text-gray-500 tabular-nums whitespace-nowrap shrink-0">
+                              {new Date(ev.at).toLocaleString()}
+                            </div>
+                            <div className="md:col-span-7 min-w-0">
+                              <div className="font-semibold text-gray-900">{ev.title}</div>
+                              {ev.subtitle ? (
+                                <div className="text-gray-600 mt-0.5 break-words">{ev.subtitle}</div>
+                              ) : null}
+                              {ev.type === 'clock_out' && ev.total_hours != null ? (
+                                <div className="text-gray-600 mt-1 tabular-nums">
+                                  {formatDecimalHoursAsHMin(ev.total_hours)}
+                                </div>
+                              ) : null}
+                              {ev.detail_lines && ev.detail_lines.length > 0 ? (
+                                <ul className="mt-1.5 space-y-0.5 font-mono text-[11px] text-gray-600 border-l-2 border-gray-200 pl-2 max-h-40 overflow-y-auto">
+                                  {ev.detail_lines.map((line, j) => (
+                                    <li key={j} className="break-words">
+                                      {line}
+                                    </li>
+                                  ))}
+                                </ul>
+                              ) : null}
+                            </div>
+                            <div className="md:col-span-3 text-gray-500 md:text-right">
+                              {ev.by_username ? (
+                                <span>
+                                  By <span className="font-medium text-gray-800">{ev.by_username}</span>
+                                </span>
+                              ) : ev.by_user_id ? (
+                                <span className="font-mono text-[10px] text-gray-500" title={ev.by_user_id}>
+                                  By user {ev.by_user_id.slice(0, 8)}…
+                                </span>
+                              ) : (
+                                <span className="text-gray-400">—</span>
+                              )}
+                            </div>
+                          </div>
+                        ))}
                       </div>
-                    ))}
-                    {!(activityFeed || []).length && <div className="text-gray-500 text-sm">No activity yet.</div>}
+                    ) : (
+                      <div className="text-gray-500 text-sm py-6 px-3">No activity yet.</div>
+                    )}
                   </div>
-                </SectionCard>
+                </PersonalUserSection>
               </div>
             )}
               </div>
