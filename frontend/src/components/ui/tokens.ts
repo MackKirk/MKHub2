@@ -20,6 +20,20 @@ export const uiBorders = {
   subtle: 'border border-gray-200',
   input: 'border border-gray-300',
   strong: 'border border-gray-300',
+  createDashed: 'border-2 border-dashed border-gray-300',
+} as const;
+
+/** First list/grid item for “add new” flows (opens create page or modal). */
+export const uiListCreateItem = {
+  base: uiCx(
+    uiBorders.createDashed,
+    'bg-white text-center transition-all hover:border-brand-red hover:bg-gray-50',
+    'flex w-full items-center justify-center gap-2',
+    'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-red/30',
+  ),
+  label: 'font-medium text-xs text-gray-700',
+  card: 'min-h-[200px] p-2.5',
+  row: 'min-h-[60px] p-2.5',
 } as const;
 
 export const uiColors = {

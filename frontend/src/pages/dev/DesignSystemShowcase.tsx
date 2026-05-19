@@ -6,6 +6,7 @@ import {
   AppCard,
   AppEmptyState,
   AppInput,
+  AppListCreateItem,
   AppModal,
   AppPageHeader,
   AppSectionHeader,
@@ -148,6 +149,39 @@ export default function DesignSystemShowcase() {
                 Cards should remain subtle with rounded corners, soft borders, and concise hierarchy.
               </p>
             </AppCard>
+          </div>
+        </AppCard>
+
+        <AppCard
+          title="List create item (first in list)"
+          subtitle="Dashed placeholder rendered before existing rows/cards. Opens a create route or modal."
+        >
+          <p className={uiCx(uiTypography.helper, 'mb-4')}>
+            Always place this as the <strong className="font-semibold text-gray-800">first item</strong> in the list or grid,
+            then map your data items after it (same pattern as Opportunities → New Opportunity).
+          </p>
+          <div className="space-y-6">
+            <div>
+              <p className={uiCx(uiTypography.overline, 'mb-2')}>Grid / cards — layout=&quot;card&quot;</p>
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                <AppListCreateItem label="New Opportunity" layout="card" onClick={() => undefined} />
+                <div className={uiCx(uiRadius.card, 'border border-gray-200 bg-white p-4', uiTypography.helper)}>
+                  Existing list card (example)
+                </div>
+                <div className={uiCx(uiRadius.card, 'border border-gray-200 bg-gray-50 p-4', uiTypography.helper)}>
+                  Existing list card (example)
+                </div>
+              </div>
+            </div>
+            <div>
+              <p className={uiCx(uiTypography.overline, 'mb-2')}>Row / table-style list — layout=&quot;row&quot;</p>
+              <div className="flex flex-col gap-2">
+                <AppListCreateItem label="New Opportunity" layout="row" onClick={() => undefined} />
+                <div className={uiCx(uiRadius.control, 'border border-gray-200 bg-gray-50 px-4 py-3 text-xs text-gray-600')}>
+                  Existing row (example)
+                </div>
+              </div>
+            </div>
           </div>
         </AppCard>
 
