@@ -2,7 +2,8 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import NewSubcontractorWorkerModal from '@/components/NewSubcontractorWorkerModal';
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
-import { api, withFileAccessTokenIfNeeded } from '@/lib/api';
+import { api, withFileAccessToken, withFileAccessTokenIfNeeded } from '@/lib/api';
+import ImagePicker from '@/components/ImagePicker';
 import toast from 'react-hot-toast';
 import LoadingOverlay from '@/components/LoadingOverlay';
 import AddressAutocomplete from '@/components/AddressAutocomplete';
@@ -10,6 +11,7 @@ import { useConfirm } from '@/components/ConfirmProvider';
 import { formatAddressDisplay } from '@/lib/addressUtils';
 import { useUnsavedChangesGuard } from '@/hooks/useUnsavedChangesGuard';
 import SubcontractorContactsCard from '@/components/SubcontractorContactsCard';
+import OverlayPortal from '@/components/OverlayPortal';
 import { SubcontractorCompanyFilesTabEnhanced } from '@/pages/SubcontractorCompanyFilesTabEnhanced';
 import type { ClientFileForFiles } from '@/pages/CustomerFilesTabEnhanced';
 
@@ -63,12 +65,6 @@ function tabFromSearchParams(sp: URLSearchParams): SubcontractorCompanyTab {
   if (!raw || raw === 'overview') return null;
   if (VALID_TABS.has(raw)) return raw as Exclude<SubcontractorCompanyTab, null>;
   return null;
-}
-
-function companyInitials(name: string): string {
-  const parts = name.trim().split(/\s+/).filter(Boolean);
-  if (parts.length >= 2) return (parts[0][0] + parts[1][0]).toUpperCase();
-  return (name.trim().slice(0, 2) || '?').toUpperCase();
 }
 
 type GeneralForm = {
@@ -149,6 +145,9 @@ export default function SubcontractorCompanyPage() {
   };
 
   const [isHeroCollapsed, setIsHeroCollapsed] = useState(false);
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const [editHeroAddressOpen, setEditHeroAddressOpen] = useState(false);
+  const [editHeroStatusOpen, setEditHeroStatusOpen] = useState(false);
   const [isEditingGeneral, setIsEditingGeneral] = useState(false);
   const [generalForm, setGeneralForm] = useState<GeneralForm | null>(null);
   const [generalDirty, setGeneralDirty] = useState(false);
@@ -213,6 +212,14 @@ export default function SubcontractorCompanyPage() {
   }, [company?.document_attachment_ids]);
 
   const documentCount = companyFiles != null ? companyFiles.length : docIds.length;
+
+  const companyLogoRec = useMemo(
+    () => (companyFiles || []).find((f) => String(f.category || '').toLowerCase() === 'subcontractor-company-logo-derived'),
+    [companyFiles],
+  );
+  const companyAvatarLarge = companyLogoRec
+    ? withFileAccessToken(`/files/${companyLogoRec.file_object_id}/thumbnail?w=800`)
+    : '/ui/assets/placeholders/customer.png';
 
   const basePath = useMemo(() => `/business/subcontractors/companies/${id}`, [id]);
 
@@ -365,10 +372,11 @@ export default function SubcontractorCompanyPage() {
             </div>
 
             {/* Hero — CustomerDetail-style expanded / collapsed */}
-            <div className={`relative mb-4 transition-all duration-[1200ms] ease-in-out ${isHeroCollapsed ? 'min-h-[72px]' : ''}`}>
+            <div className={`transition-all ${isHeroCollapsed ? 'duration-[1200ms]' : 'duration-[1800ms]'} ease-in-out ${isHeroCollapsed ? 'mb-2' : 'mb-4'}`}>
+              <div className="relative" style={{ minHeight: isHeroCollapsed ? 'auto' : 'auto' }}>
               <div
-                className={`rounded-xl border bg-white overflow-hidden transition-all ${isHeroCollapsed ? 'duration-[1200ms]' : 'duration-[1800ms]'} ease-in-out relative ${
-                  isHeroCollapsed ? 'opacity-0 max-h-0 pointer-events-none' : 'opacity-100 max-h-[2000px] pointer-events-auto'
+                className={`rounded-xl border bg-white overflow-hidden transition-all ${isHeroCollapsed ? 'duration-[1200ms]' : 'duration-[1800ms]'} ease-in-out ${
+                  isHeroCollapsed ? 'opacity-0 max-h-0 pointer-events-none relative' : 'opacity-100 max-h-[2000px] pointer-events-auto relative'
                 }`}
                 style={{
                   transitionProperty: 'max-height, opacity',
@@ -377,58 +385,61 @@ export default function SubcontractorCompanyPage() {
                 }}
               >
                 <div className="p-3 overflow-visible">
-                  <div className="text-xs text-gray-500 mb-2">
-                    <Link to="/business/subcontractors" className="text-[#7f1010] hover:underline">
-                      Subcontractors
-                    </Link>
-                    <span className="text-gray-400"> / </span>
-                    <span className="text-gray-800">{company.name}</span>
-                  </div>
                   <div className="flex gap-3 items-start">
                     <div className="w-48 flex-shrink-0">
-                      <div className="w-48 h-36 rounded-xl border border-gray-200 bg-gray-100 flex items-center justify-center text-2xl font-bold text-gray-600">
-                        {companyInitials(company.name)}
+                      <div className="w-48 h-36 rounded-xl border overflow-hidden group relative">
+                        <img src={companyAvatarLarge} className="w-full h-full object-cover" alt="" />
+                        {hasEditPermission && (
+                          <button
+                            type="button"
+                            onClick={() => setPickerOpen(true)}
+                            className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center text-white transition-opacity text-xs"
+                          >
+                            ✏️ Change
+                          </button>
+                        )}
                       </div>
                     </div>
                     <div className="flex-1 min-w-0">
-                      <div className="mb-2 flex flex-wrap items-center gap-2 justify-between">
+                      <div className="mb-2">
                         <h3 className="text-sm font-bold text-gray-900 truncate">{company.name}</h3>
-                        <span
-                          className={`inline-flex px-2 py-0.5 rounded-full border text-[10px] font-medium ${
-                            company.is_active ? 'border-green-200 text-green-800 bg-green-50' : 'border-amber-200 text-amber-800 bg-amber-50'
-                          }`}
-                        >
-                          {company.is_active ? 'Active' : 'Inactive'}
-                        </span>
                       </div>
-                      <div className="grid grid-cols-[minmax(5rem,auto)_1fr] gap-x-2 gap-y-1.5">
-                        <div className="min-w-0">
-                          <span className="text-[10px] font-bold text-gray-500 uppercase tracking-wide">ID</span>
-                          <div className="text-xs font-semibold text-gray-900 mt-0.5 truncate">{company.id.slice(0, 8)}…</div>
-                        </div>
-                        <div className="min-w-0">
-                          <span className="text-[10px] font-bold text-gray-500 uppercase tracking-wide">Address</span>
-                          <div className="text-xs font-semibold text-gray-900 mt-0.5 truncate" title={addressLine}>
+                      <div className="flex flex-col gap-y-1.5 min-w-0">
+                        <div>
+                          <div className="flex items-center gap-1.5 mb-1.5">
+                            <span className="text-[10px] font-medium text-gray-500 uppercase tracking-wide">Address</span>
+                            {hasEditPermission && (
+                              <HeroFieldEditButton onClick={() => setEditHeroAddressOpen(true)} title="Edit address" />
+                            )}
+                          </div>
+                          <div className="text-xs font-semibold text-gray-900 truncate" title={addressLine}>
                             {addressLine}
                           </div>
                         </div>
-                        <div className="min-w-0">
-                          <span className="text-[10px] font-bold text-gray-500 uppercase tracking-wide">Primary contact</span>
-                          <div className="text-xs font-semibold text-gray-900 mt-0.5 truncate" title={primaryContactLine}>
+                        <div>
+                          <span className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1.5">
+                            Primary contact
+                          </span>
+                          <div className="text-xs font-semibold text-gray-900 truncate" title={primaryContactLine}>
                             {primaryContactLine}
                           </div>
                         </div>
-                        <div className="min-w-0">
-                          <span className="text-[10px] font-bold text-gray-500 uppercase tracking-wide">Workers</span>
-                          <div className="text-xs font-semibold text-gray-900 mt-0.5">
-                            {totalWorkers} total · {activeWorkerCount} active · {inactiveWorkerCount} inactive
+                        <div>
+                          <div className="flex items-center gap-1.5 mb-1.5">
+                            <span className="text-[10px] font-medium text-gray-500 uppercase tracking-wide">Status</span>
+                            {hasEditPermission && (
+                              <HeroFieldEditButton onClick={() => setEditHeroStatusOpen(true)} title="Edit status" />
+                            )}
                           </div>
-                        </div>
-                        <div className="min-w-0">
-                          <span className="text-[10px] font-bold text-gray-500 uppercase tracking-wide">Created</span>
-                          <div className="text-xs font-semibold text-gray-900 mt-0.5">
-                            {company.created_at ? new Date(company.created_at).toLocaleDateString() : '—'}
-                          </div>
+                          <span
+                            className={`px-2 py-0.5 rounded text-[10px] font-medium inline-block ${
+                              company.is_active
+                                ? 'bg-green-50 text-green-800 border border-green-200'
+                                : 'bg-amber-50 text-amber-800 border border-amber-200'
+                            }`}
+                          >
+                            {company.is_active ? 'Active' : 'Inactive'}
+                          </span>
                         </div>
                       </div>
                     </div>
@@ -436,7 +447,7 @@ export default function SubcontractorCompanyPage() {
                 </div>
                 <button
                   type="button"
-                  onClick={() => setIsHeroCollapsed(true)}
+                  onClick={() => setIsHeroCollapsed(!isHeroCollapsed)}
                   className="absolute bottom-2 right-2 p-1 rounded hover:bg-gray-100 transition-colors text-gray-500 hover:text-gray-700"
                   title="Collapse"
                 >
@@ -457,14 +468,10 @@ export default function SubcontractorCompanyPage() {
                 }}
               >
                 <div className="px-3 py-3 pr-10 min-h-[60px] flex items-center justify-between gap-4">
-                  <div className="min-w-0 flex items-center gap-2 flex-1">
-                    <div className="w-9 h-9 rounded-lg border border-gray-200 bg-gray-100 flex items-center justify-center text-xs font-bold text-gray-600 flex-shrink-0">
-                      {companyInitials(company.name)}
-                    </div>
+                  <div className="min-w-0 flex items-center flex-1">
                     <h3 className="text-sm font-bold text-gray-900 truncate">{company.name}</h3>
                   </div>
                   <div className="flex items-center gap-2 flex-shrink-0">
-                    <span className="text-xs text-gray-500 font-medium">{company.id.slice(0, 8)}</span>
                     <span
                       className={`px-2 py-0.5 rounded text-[10px] font-medium ${
                         company.is_active ? 'bg-green-50 text-green-800 border border-green-200' : 'bg-amber-50 text-amber-800 border border-amber-200'
@@ -476,7 +483,7 @@ export default function SubcontractorCompanyPage() {
                 </div>
                 <button
                   type="button"
-                  onClick={() => setIsHeroCollapsed(false)}
+                  onClick={() => setIsHeroCollapsed(!isHeroCollapsed)}
                   className="absolute bottom-2 right-2 p-1 rounded hover:bg-gray-100 transition-colors text-gray-500 hover:text-gray-700"
                   title="Expand"
                 >
@@ -484,6 +491,7 @@ export default function SubcontractorCompanyPage() {
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
                   </svg>
                 </button>
+              </div>
               </div>
             </div>
 
@@ -515,49 +523,47 @@ export default function SubcontractorCompanyPage() {
 
             <div className="rounded-xl border bg-white p-5 mb-4">
               {tab === null && (
-                <div className="space-y-6">
-                  <p className="text-sm text-gray-600">Quick summary of this subcontractor company. Open a tab below for full details.</p>
-                  <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-                    <div className="rounded-lg border border-gray-200 bg-gray-50/80 p-3">
-                      <div className="text-[10px] font-bold text-gray-500 uppercase tracking-wide">Workers</div>
-                      <div className="text-lg font-semibold text-gray-900 tabular-nums mt-1">{totalWorkers}</div>
+                <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+                  <button
+                    type="button"
+                    onClick={() => setWorkerFilters({ status: 'all' })}
+                    className="rounded-xl border border-gray-200/90 bg-white shadow-md overflow-hidden transition-shadow duration-200 hover:shadow-lg hover:border-gray-300/80 relative text-left w-full cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-[#7f1010]/40"
+                  >
+                    <div className="p-3">
+                      <div className="text-[10px] font-bold text-gray-500 uppercase tracking-wide mb-0.5">Workers</div>
+                      <div className="text-lg font-semibold text-gray-900 tabular-nums">{totalWorkers}</div>
                     </div>
-                    <div className="rounded-lg border border-gray-200 bg-gray-50/80 p-3">
-                      <div className="text-[10px] font-bold text-gray-500 uppercase tracking-wide">Active</div>
-                      <div className="text-lg font-semibold text-gray-900 tabular-nums mt-1">{activeWorkerCount}</div>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setWorkerFilters({ status: 'active' })}
+                    className="rounded-xl border border-gray-200/90 bg-white shadow-md overflow-hidden transition-shadow duration-200 hover:shadow-lg hover:border-gray-300/80 relative text-left w-full cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-[#7f1010]/40"
+                  >
+                    <div className="p-3">
+                      <div className="text-[10px] font-bold text-gray-500 uppercase tracking-wide mb-0.5">Active</div>
+                      <div className="text-lg font-semibold text-gray-900 tabular-nums">{activeWorkerCount}</div>
                     </div>
-                    <div className="rounded-lg border border-gray-200 bg-gray-50/80 p-3">
-                      <div className="text-[10px] font-bold text-gray-500 uppercase tracking-wide">Inactive</div>
-                      <div className="text-lg font-semibold text-gray-900 tabular-nums mt-1">{inactiveWorkerCount}</div>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setWorkerFilters({ status: 'inactive' })}
+                    className="rounded-xl border border-gray-200/90 bg-white shadow-md overflow-hidden transition-shadow duration-200 hover:shadow-lg hover:border-gray-300/80 relative text-left w-full cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-[#7f1010]/40"
+                  >
+                    <div className="p-3">
+                      <div className="text-[10px] font-bold text-gray-500 uppercase tracking-wide mb-0.5">Inactive</div>
+                      <div className="text-lg font-semibold text-gray-900 tabular-nums">{inactiveWorkerCount}</div>
                     </div>
-                    <div className="rounded-lg border border-gray-200 bg-gray-50/80 p-3">
-                      <div className="text-[10px] font-bold text-gray-500 uppercase tracking-wide">Documents</div>
-                      <div className="text-lg font-semibold text-gray-900 tabular-nums mt-1">{documentCount}</div>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => goTab('files')}
+                    className="rounded-xl border border-gray-200/90 bg-white shadow-md overflow-hidden transition-shadow duration-200 hover:shadow-lg hover:border-gray-300/80 relative text-left w-full cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-[#7f1010]/40"
+                  >
+                    <div className="p-3">
+                      <div className="text-[10px] font-bold text-gray-500 uppercase tracking-wide mb-0.5">Documents</div>
+                      <div className="text-lg font-semibold text-gray-900 tabular-nums">{documentCount}</div>
                     </div>
-                  </div>
-                  <div className="flex flex-wrap gap-2">
-                    <button
-                      type="button"
-                      onClick={() => goTab('workers')}
-                      className="px-3 py-1.5 rounded-lg text-xs font-medium border border-gray-200 text-gray-700 hover:bg-gray-50"
-                    >
-                      Go to Workers
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => goTab('files')}
-                      className="px-3 py-1.5 rounded-lg text-xs font-medium border border-gray-200 text-gray-700 hover:bg-gray-50"
-                    >
-                      Go to Files
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => goTab('general')}
-                      className="px-3 py-1.5 rounded-lg text-xs font-medium border border-gray-200 text-gray-700 hover:bg-gray-50"
-                    >
-                      Edit company
-                    </button>
-                  </div>
+                  </button>
                 </div>
               )}
 
@@ -901,7 +907,11 @@ export default function SubcontractorCompanyPage() {
                         province: w.province ?? undefined,
                       });
                       return (
-                        <div key={w.id} className="rounded-xl border bg-white overflow-hidden flex">
+                        <Link
+                          key={w.id}
+                          to={`/business/subcontractors/workers/${w.id}`}
+                          className="rounded-xl border border-gray-200/90 bg-white overflow-hidden flex shadow-sm transition-shadow duration-200 hover:shadow-md hover:border-gray-300/80 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#7f1010]/40"
+                        >
                           <div className="w-28 bg-gray-100 flex items-center justify-center flex-shrink-0">
                             {photo ? (
                               <img className="w-20 h-20 object-cover rounded border" src={photo} alt="" />
@@ -913,9 +923,7 @@ export default function SubcontractorCompanyPage() {
                           </div>
                           <div className="flex-1 p-3 text-sm min-w-0">
                             <div className="flex items-start justify-between gap-2">
-                              <Link to={`/business/subcontractors/workers/${w.id}`} className="font-semibold text-[#7f1010] hover:underline truncate">
-                                {w.name}
-                              </Link>
+                              <div className="font-semibold text-gray-900 truncate">{w.name}</div>
                               <span
                                 className={`flex-shrink-0 inline-flex px-2 py-0.5 rounded-full border text-[10px] font-medium ${
                                   w.is_active ? 'border-green-200 text-green-800 bg-green-50' : 'border-amber-200 text-amber-800 bg-amber-50'
@@ -927,13 +935,8 @@ export default function SubcontractorCompanyPage() {
                             {w.job_title && <div className="text-xs text-gray-600 mt-0.5 truncate">{w.job_title}</div>}
                             <div className="text-gray-600 text-xs mt-2 break-all">{w.email || w.phone || '—'}</div>
                             {addrSnippet && <div className="text-[11px] text-gray-500 mt-1 truncate">{addrSnippet}</div>}
-                            <div className="mt-2">
-                              <Link to={`/business/subcontractors/workers/${w.id}`} className="text-xs text-[#7f1010] hover:underline">
-                                Open profile
-                              </Link>
-                            </div>
                           </div>
-                        </div>
+                        </Link>
                       );
                     })}
                   </div>
@@ -950,6 +953,50 @@ export default function SubcontractorCompanyPage() {
         )}
       </LoadingOverlay>
 
+      {id && hasEditPermission && (
+        <ImagePicker
+          isOpen={pickerOpen}
+          onClose={() => setPickerOpen(false)}
+          targetWidth={800}
+          targetHeight={600}
+          allowEdit={true}
+          onConfirm={async (blob) => {
+            if (!id) return;
+            try {
+              const up: { upload_url: string; key: string } = await api('POST', '/files/upload', {
+                project_id: null,
+                client_id: null,
+                employee_id: null,
+                category_id: 'subcontractor-company-logo-derived',
+                original_name: 'company-logo.jpg',
+                content_type: 'image/jpeg',
+              });
+              await fetch(up.upload_url, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'image/jpeg', 'x-ms-blob-type': 'BlockBlob' },
+                body: blob,
+              });
+              const conf: { id: string } = await api('POST', '/files/confirm', {
+                key: up.key,
+                size_bytes: blob.size,
+                checksum_sha256: 'na',
+                content_type: 'image/jpeg',
+              });
+              await api(
+                'POST',
+                `/subcontractors/companies/${id}/files?file_object_id=${encodeURIComponent(conf.id)}&category=subcontractor-company-logo-derived&original_name=company-logo.jpg`,
+              );
+              toast.success('Logo updated');
+              refetchCompanyFiles();
+            } catch {
+              toast.error('Failed to update logo');
+            } finally {
+              setPickerOpen(false);
+            }
+          }}
+        />
+      )}
+
       {id && (
         <NewSubcontractorWorkerModal
           open={addWorkerOpen}
@@ -957,7 +1004,304 @@ export default function SubcontractorCompanyPage() {
           companyId={id}
         />
       )}
+
+      {id && company && editHeroAddressOpen && (
+        <EditHeroAddressModal
+          companyId={id}
+          company={company}
+          onClose={() => setEditHeroAddressOpen(false)}
+          onSaved={() => {
+            qc.invalidateQueries({ queryKey: ['subcontractor-company', id] });
+            qc.invalidateQueries({ queryKey: ['subcontractor-companies'] });
+          }}
+        />
+      )}
+
+      {id && company && editHeroStatusOpen && (
+        <EditHeroStatusModal
+          companyId={id}
+          isActive={company.is_active}
+          activeWorkerCount={activeWorkerCount}
+          confirm={confirm}
+          onClose={() => setEditHeroStatusOpen(false)}
+          onSaved={() => {
+            qc.invalidateQueries({ queryKey: ['subcontractor-company', id] });
+            qc.invalidateQueries({ queryKey: ['subcontractor-companies'] });
+          }}
+        />
+      )}
+
     </div>
+  );
+}
+
+function HeroFieldEditButton({ onClick, title }: { onClick: () => void; title: string }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="p-0.5 text-gray-400 hover:text-[#7f1010] transition-colors"
+      title={title}
+    >
+      <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          strokeWidth={2}
+          d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"
+        />
+      </svg>
+    </button>
+  );
+}
+
+function HeroEditModalShell({
+  title,
+  subtitle,
+  onClose,
+  children,
+  footer,
+}: {
+  title: string;
+  subtitle: string;
+  onClose: () => void;
+  children: ReactNode;
+  footer: ReactNode;
+}) {
+  return (
+    <OverlayPortal>
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={onClose}>
+        <div
+          className="max-w-lg w-full max-h-[90vh] flex flex-col rounded-xl border border-gray-200 bg-gray-100 shadow-xl overflow-hidden"
+          onClick={(e) => e.stopPropagation()}
+        >
+          <div className="flex-shrink-0 rounded-t-xl border-b border-gray-200 bg-white p-4">
+            <div className="flex items-center gap-2">
+              <button type="button" onClick={onClose} className="p-1 rounded-lg hover:bg-gray-100 text-gray-600">
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                </svg>
+              </button>
+              <div>
+                <h2 className="text-sm font-semibold text-gray-900">{title}</h2>
+                <p className="text-xs text-gray-500 mt-0.5">{subtitle}</p>
+              </div>
+            </div>
+          </div>
+          <div className="flex-1 overflow-y-auto p-4 min-h-0">
+            <div className="rounded-xl border border-gray-200 bg-white p-4 space-y-4">{children}</div>
+          </div>
+          <div className="flex-shrink-0 border-t border-gray-200 bg-white p-4 flex justify-end gap-2">{footer}</div>
+        </div>
+      </div>
+    </OverlayPortal>
+  );
+}
+
+function EditHeroAddressModal({
+  companyId,
+  company,
+  onClose,
+  onSaved,
+}: {
+  companyId: string;
+  company: Company;
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const [form, setForm] = useState({
+    address_line1: (company.address_line1 as string) || '',
+    address_line2: (company.address_line2 as string) || '',
+    city: (company.city as string) || '',
+    province: (company.province as string) || '',
+    postal_code: (company.postal_code as string) || '',
+    country: (company.country as string) || '',
+  });
+  const [saving, setSaving] = useState(false);
+
+  const handleSave = async () => {
+    setSaving(true);
+    try {
+      await api('PATCH', `/subcontractors/companies/${companyId}`, {
+        address_line1: form.address_line1.trim() || null,
+        address_line2: form.address_line2.trim() || null,
+        city: form.city.trim() || null,
+        province: form.province.trim() || null,
+        postal_code: form.postal_code.trim() || null,
+        country: form.country.trim() || null,
+      });
+      toast.success('Address updated');
+      onSaved();
+      onClose();
+    } catch (e: unknown) {
+      toast.error(e instanceof Error ? e.message : 'Failed to update address');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <HeroEditModalShell
+      title="Edit address"
+      subtitle="Update the company mailing and location address"
+      onClose={onClose}
+      footer={
+        <>
+          <button type="button" onClick={onClose} className="px-3 py-1.5 rounded-lg border border-gray-300 text-sm text-gray-700 hover:bg-gray-50">
+            Cancel
+          </button>
+          <button
+            type="button"
+            disabled={saving}
+            onClick={() => void handleSave()}
+            className="px-3 py-1.5 rounded-lg bg-brand-red text-white text-sm font-medium hover:opacity-90 disabled:opacity-50"
+          >
+            {saving ? 'Saving…' : 'Save'}
+          </button>
+        </>
+      }
+    >
+      <div>
+        <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">Address 1</label>
+        <AddressAutocomplete
+          value={form.address_line1}
+          onChange={(v) => setForm((f) => ({ ...f, address_line1: v }))}
+          onAddressSelect={(a) =>
+            setForm((f) => ({
+              ...f,
+              address_line1: a.address_line1 || f.address_line1,
+              address_line2: a.address_line2 ?? f.address_line2,
+              city: a.city ?? f.city,
+              province: a.province ?? f.province,
+              postal_code: a.postal_code ?? f.postal_code,
+              country: a.country ?? f.country,
+            }))
+          }
+          className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white"
+        />
+      </div>
+      <div>
+        <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">Address 2</label>
+        <input
+          className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"
+          value={form.address_line2}
+          onChange={(e) => setForm((f) => ({ ...f, address_line2: e.target.value }))}
+        />
+      </div>
+      <div className="grid grid-cols-2 gap-3">
+        <div>
+          <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">City</label>
+          <input
+            className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"
+            value={form.city}
+            onChange={(e) => setForm((f) => ({ ...f, city: e.target.value }))}
+          />
+        </div>
+        <div>
+          <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">Province</label>
+          <input
+            className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"
+            value={form.province}
+            onChange={(e) => setForm((f) => ({ ...f, province: e.target.value }))}
+          />
+        </div>
+        <div>
+          <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">Postal code</label>
+          <input
+            className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"
+            value={form.postal_code}
+            onChange={(e) => setForm((f) => ({ ...f, postal_code: e.target.value }))}
+          />
+        </div>
+        <div>
+          <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">Country</label>
+          <input
+            className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"
+            value={form.country}
+            onChange={(e) => setForm((f) => ({ ...f, country: e.target.value }))}
+          />
+        </div>
+      </div>
+    </HeroEditModalShell>
+  );
+}
+
+function EditHeroStatusModal({
+  companyId,
+  isActive,
+  activeWorkerCount,
+  confirm,
+  onClose,
+  onSaved,
+}: {
+  companyId: string;
+  isActive: boolean;
+  activeWorkerCount: number;
+  confirm: (opts: { title: string; message: string }) => Promise<boolean>;
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const [active, setActive] = useState(isActive);
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    setActive(isActive);
+  }, [isActive]);
+
+  const handleSave = async () => {
+    if (isActive && !active && activeWorkerCount > 0) {
+      const ok = await confirm({
+        title: 'Deactivate company',
+        message: `This company has ${activeWorkerCount} active worker(s). Deactivate the company anyway?`,
+      });
+      if (!ok) return;
+    }
+    setSaving(true);
+    try {
+      await api('PATCH', `/subcontractors/companies/${companyId}`, { is_active: active });
+      toast.success('Status updated');
+      onSaved();
+      onClose();
+    } catch (e: unknown) {
+      toast.error(e instanceof Error ? e.message : 'Failed to update status');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <HeroEditModalShell
+      title="Edit status"
+      subtitle="Active companies appear in most pickers and lists"
+      onClose={onClose}
+      footer={
+        <>
+          <button type="button" onClick={onClose} className="px-3 py-1.5 rounded-lg border border-gray-300 text-sm text-gray-700 hover:bg-gray-50">
+            Cancel
+          </button>
+          <button
+            type="button"
+            disabled={saving}
+            onClick={() => void handleSave()}
+            className="px-3 py-1.5 rounded-lg bg-brand-red text-white text-sm font-medium hover:opacity-90 disabled:opacity-50"
+          >
+            {saving ? 'Saving…' : 'Save'}
+          </button>
+        </>
+      }
+    >
+      <div>
+        <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">Status</label>
+        <select
+          value={active ? 'active' : 'inactive'}
+          onChange={(e) => setActive(e.target.value === 'active')}
+          className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-gray-300 focus:border-gray-300"
+        >
+          <option value="active">Active</option>
+          <option value="inactive">Inactive</option>
+        </select>
+      </div>
+    </HeroEditModalShell>
   );
 }
 

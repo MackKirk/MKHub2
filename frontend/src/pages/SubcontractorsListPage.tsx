@@ -1,7 +1,7 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { api } from '@/lib/api';
+import { api, withFileAccessTokenIfNeeded } from '@/lib/api';
 import LoadingOverlay from '@/components/LoadingOverlay';
 import NewSubcontractorCompanyModal from '@/components/NewSubcontractorCompanyModal';
 
@@ -16,6 +16,7 @@ type Company = {
   is_active: boolean;
   worker_count?: number;
   created_at?: string | null;
+  logo_url?: string | null;
 };
 
 type CompaniesResponse = {
@@ -275,36 +276,7 @@ export default function SubcontractorsListPage() {
                 </div>
                 <div className="rounded-b-lg border border-t-0 border-gray-200 overflow-hidden min-w-[800px]">
                   {listItems.map((c) => (
-                    <button
-                      type="button"
-                      key={c.id}
-                      onClick={() => nav(`/business/subcontractors/companies/${c.id}`)}
-                      className="grid grid-cols-[18fr_11fr_11fr_14fr_10fr_6fr_10fr_8fr] gap-2 sm:gap-3 items-center px-4 py-3 w-full hover:bg-gray-50 cursor-pointer border-b border-gray-100 last:border-b-0 min-h-[52px] text-left bg-white"
-                    >
-                      <div className="min-w-0">
-                        <div className="text-xs font-semibold text-gray-900 truncate">{c.name}</div>
-                        {c.contact_name && <div className="text-[10px] text-gray-500 truncate">{c.contact_name}</div>}
-                      </div>
-                      <div className="min-w-0 text-xs text-gray-600 truncate">{c.city || '—'}</div>
-                      <div className="min-w-0 text-xs text-gray-600 truncate">{c.province || '—'}</div>
-                      <div className="min-w-0">
-                        <div className="text-xs text-gray-700 truncate">{c.email || '—'}</div>
-                      </div>
-                      <div className="min-w-0 text-xs text-gray-600 truncate">{c.phone || '—'}</div>
-                      <div className="min-w-0 text-xs text-gray-700">{c.worker_count ?? 0}</div>
-                      <div className="min-w-0 text-[10px] text-gray-600">
-                        {c.created_at ? new Date(c.created_at).toLocaleDateString() : '—'}
-                      </div>
-                      <div className="min-w-0">
-                        <span
-                          className={`inline-flex px-2 py-0.5 rounded-full border text-[10px] font-medium ${
-                            c.is_active ? 'border-green-200 text-green-800 bg-green-50' : 'border-amber-200 text-amber-800 bg-amber-50'
-                          }`}
-                        >
-                          {c.is_active ? 'Active' : 'Inactive'}
-                        </span>
-                      </div>
-                    </button>
+                    <CompanyRow key={c.id} c={c} onOpen={() => nav(`/business/subcontractors/companies/${c.id}`)} />
                   ))}
                 </div>
               </>
@@ -380,6 +352,47 @@ export default function SubcontractorsListPage() {
           }}
         />
       )}
+    </div>
+  );
+}
+
+function CompanyRow({ c, onOpen }: { c: Company; onOpen: () => void }) {
+  const avatarUrl = withFileAccessTokenIfNeeded(c.logo_url) || '/ui/assets/placeholders/customer.png';
+  return (
+    <div
+      className="grid grid-cols-[18fr_11fr_11fr_14fr_10fr_6fr_10fr_8fr] gap-2 sm:gap-3 items-center px-4 py-3 w-full hover:bg-gray-50 cursor-pointer border-b border-gray-100 last:border-b-0 min-h-[52px] text-left bg-white"
+      onClick={onOpen}
+    >
+      <div className="min-w-0 flex items-center gap-3">
+        <img
+          src={avatarUrl}
+          className="w-10 h-10 rounded-lg border border-gray-200 object-cover flex-shrink-0"
+          alt={c.name || 'Company logo'}
+        />
+        <div className="min-w-0 flex flex-col justify-center">
+          <div className="text-xs font-semibold text-gray-900 truncate">{c.name}</div>
+          {c.contact_name && <div className="text-[10px] text-gray-500 truncate">{c.contact_name}</div>}
+        </div>
+      </div>
+      <div className="min-w-0 text-xs text-gray-600 truncate">{c.city || '—'}</div>
+      <div className="min-w-0 text-xs text-gray-600 truncate">{c.province || '—'}</div>
+      <div className="min-w-0">
+        <div className="text-xs text-gray-700 truncate">{c.email || '—'}</div>
+      </div>
+      <div className="min-w-0 text-xs text-gray-600 truncate">{c.phone || '—'}</div>
+      <div className="min-w-0 text-xs text-gray-700">{c.worker_count ?? 0}</div>
+      <div className="min-w-0 text-[10px] text-gray-600">
+        {c.created_at ? new Date(c.created_at).toLocaleDateString() : '—'}
+      </div>
+      <div className="min-w-0">
+        <span
+          className={`inline-flex px-2 py-0.5 rounded-full border text-[10px] font-medium ${
+            c.is_active ? 'border-green-200 text-green-800 bg-green-50' : 'border-amber-200 text-amber-800 bg-amber-50'
+          }`}
+        >
+          {c.is_active ? 'Active' : 'Inactive'}
+        </span>
+      </div>
     </div>
   );
 }

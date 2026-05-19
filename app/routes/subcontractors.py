@@ -397,10 +397,48 @@ def _open_attendance_for_worker(db: Session, worker_id: uuid.UUID) -> Optional[S
     )
 
 
-def _company_row_to_dict(c: SubcontractorCompany, worker_count: int = 0) -> dict:
+SUBCONTRACTOR_COMPANY_LOGO_CATEGORY = "subcontractor-company-logo-derived"
+
+
+def _company_logo_file_by_ids(db: Session, company_ids: List[Any]) -> dict[Any, SubcontractorCompanyFile]:
+    """First logo file per company (category subcontractor-company-logo-derived)."""
+    if not company_ids:
+        return {}
+    logo_rows = (
+        db.query(SubcontractorCompanyFile)
+        .filter(
+            SubcontractorCompanyFile.company_id.in_(company_ids),
+            SubcontractorCompanyFile.category.ilike(SUBCONTRACTOR_COMPANY_LOGO_CATEGORY),
+            SubcontractorCompanyFile.deleted_at.is_(None),
+        )
+        .all()
+    )
+    out: dict[Any, SubcontractorCompanyFile] = {}
+    for cf in logo_rows:
+        if cf.company_id not in out:
+            out[cf.company_id] = cf
+    return out
+
+
+def _attach_logo_url(company_dict: dict, logo_file: Optional[SubcontractorCompanyFile]) -> dict:
+    company_dict["logo_url"] = None
+    if logo_file:
+        timestamp = logo_file.uploaded_at.isoformat() if logo_file.uploaded_at else None
+        timestamp_param = f"&t={timestamp}" if timestamp else ""
+        company_dict["logo_url"] = (
+            f"/files/{logo_file.file_object_id}/thumbnail?w=96{timestamp_param}"
+        )
+    return company_dict
+
+
+def _company_row_to_dict(
+    c: SubcontractorCompany,
+    worker_count: int = 0,
+    logo_file: Optional[SubcontractorCompanyFile] = None,
+) -> dict:
     d = _company_to_dict(c)
     d["worker_count"] = worker_count
-    return d
+    return _attach_logo_url(d, logo_file)
 
 
 @router.get("/companies")
@@ -485,7 +523,11 @@ def list_companies(
         )
         counts = {cid: int(n) for cid, n in cnt_rows}
 
-    items = [_company_row_to_dict(c, counts.get(c.id, 0)) for c in rows]
+    logo_files = _company_logo_file_by_ids(db, ids)
+    items = [
+        _company_row_to_dict(c, counts.get(c.id, 0), logo_files.get(c.id))
+        for c in rows
+    ]
     total_pages = max(1, (total + limit - 1) // limit) if total else 1
     return {
         "items": items,

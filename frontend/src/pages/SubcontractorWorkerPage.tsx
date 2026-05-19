@@ -78,14 +78,14 @@ function composeWorkerNameFromWf(wf: {
   return n || 'Worker';
 }
 
-/** North American phone mask: (000) 000 - 0000 */
+/** North American phone mask: (000) 000-0000 */
 function formatWorkerPhone(v: string): string {
   const d = String(v || '')
     .replace(/\D+/g, '')
     .slice(0, 10);
   if (d.length <= 3) return d;
   if (d.length <= 6) return `(${d.slice(0, 3)}) ${d.slice(3)}`;
-  return `(${d.slice(0, 3)}) ${d.slice(3, 6)} - ${d.slice(6)}`;
+  return `(${d.slice(0, 3)}) ${d.slice(3, 6)}-${d.slice(6)}`;
 }
 
 function displayWorkerPhone(phone: string | undefined | null): string {
@@ -827,19 +827,11 @@ export default function SubcontractorWorkerPage() {
             <div className="min-w-0">
               <h5 className="text-sm font-semibold text-blue-900">Subcontractor worker</h5>
               <p className="text-xs text-gray-600 mt-0.5">
-                Personal details, employer, documents, and site attendance — same layout as Users, adapted for third-party workers.
+                Personal details, employer, documents, and site attendance
               </p>
             </div>
           </div>
-          <div className="text-right flex flex-col items-end gap-2 shrink-0">
-            {data?.worker?.company_id && (
-              <Link
-                to={`/business/subcontractors/companies/${data.worker.company_id}`}
-                className="px-3 py-1.5 rounded-lg text-xs font-semibold text-white bg-gradient-to-r from-brand-red to-[#ee2b2b] shadow-sm hover:opacity-95 border border-transparent"
-              >
-                Open company
-              </Link>
-            )}
+          <div className="text-right shrink-0">
             <div>
               <div className="text-[10px] text-gray-400 mb-1 font-medium uppercase tracking-wide">Today</div>
               <div className="text-xs font-semibold text-gray-700">{todayLabel}</div>
