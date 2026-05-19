@@ -13,6 +13,7 @@ import CommunityCommentRichTextEditor from '@/components/community/CommunityComm
 import { useConfirm } from '@/components/ConfirmProvider';
 import { extractMentionsFromEditor } from '@/lib/communityPostEditorUtils';
 import { isCommunityEditorHtmlEmpty, sanitizeCommunityPostHtml } from '@/lib/communityPostHtml';
+import { sortByLabel } from '@/lib/sortOptions';
 import {
   AppBadge,
   AppButton,
@@ -553,16 +554,24 @@ export default function EmployeeCommunity({
   };
 
   const areaSelectOptions = useMemo(
-    () => Object.entries(AREA_LABELS).map(([k, lab]) => ({ value: k, label: lab })),
+    () =>
+      sortByLabel(
+        Object.entries(AREA_LABELS).map(([k, lab]) => ({ value: k, label: lab })),
+        (o) => o.label,
+      ),
     [],
   );
   const prioritySelectOptions = useMemo(
-    () => [
-      { value: 'normal', label: 'Normal' },
-      { value: 'important', label: 'Important' },
-      { value: 'urgent', label: 'Urgent' },
-      { value: 'critical', label: 'Critical' },
-    ],
+    () =>
+      sortByLabel(
+        [
+          { value: 'normal', label: 'Normal' },
+          { value: 'important', label: 'Important' },
+          { value: 'urgent', label: 'Urgent' },
+          { value: 'critical', label: 'Critical' },
+        ],
+        (o) => o.label,
+      ),
     [],
   );
 

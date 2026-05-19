@@ -4,6 +4,8 @@ import { api } from '@/lib/api';
 import toast from 'react-hot-toast';
 import { useConfirm } from '@/components/ConfirmProvider';
 import OverlayPortal from '@/components/OverlayPortal';
+import { JobSearchCombobox } from '@/components/JobSearchCombobox';
+import { formatJobPickerLine, getPredefinedJob, isPredefinedJobId } from '@/constants/predefinedJobs';
 
 function formatTime12h(timeStr: string | null | undefined): string {
   if (!timeStr || timeStr === '--:--' || timeStr === '-') return timeStr || '--:--';
@@ -54,14 +56,6 @@ type Project = {
   name: string;
   code?: string;
 };
-
-const PREDEFINED_JOBS = [
-  { id: '0', code: '0', name: 'No Project Assigned' },
-  { id: '37', code: '37', name: 'Repairs' },
-  { id: '47', code: '47', name: 'Shop' },
-  { id: '53', code: '53', name: 'YPK Developments' },
-  { id: '136', code: '136', name: 'Stat Holiday' },
-];
 
 function isHoursWorked(attendance: Attendance | null): boolean {
   if (!attendance?.reason_text) return false;
@@ -202,19 +196,11 @@ export function ClockInOutModalLayer({
     enabled: !!selectedDateShift?.project_id,
   });
 
-  const { data: projects = [] } = useQuery({
-    queryKey: ['projects-list'],
-    queryFn: () => api<Project[]>('GET', '/projects'),
+  const { data: selectedJobProject } = useQuery({
+    queryKey: ['clock-modal-selected-job-project', selectedJob],
+    queryFn: () => api<Project>('GET', `/projects/${selectedJob}`),
+    enabled: !!selectedJob && !isPredefinedJobId(selectedJob),
   });
-
-  const jobOptions = useMemo(() => {
-    const projectJobs = (projects || []).map((p) => ({
-      id: p.id,
-      code: p.code || p.id,
-      name: p.name,
-    }));
-    return [...PREDEFINED_JOBS, ...projectJobs];
-  }, [projects]);
 
   const { openClockIn, hasOpenClockIn } = useMemo(() => {
     const events = (allAttendancesForDate || [])
@@ -364,20 +350,29 @@ export function ClockInOutModalLayer({
     }
   }, [clockType, isJobLocked, hasOpenClockIn, jobTouched, nextPendingShift?.project_id]);
 
+  const { data: clockInJobTypeProject } = useQuery({
+    queryKey: ['clock-modal-clock-in-job-project', clockInJobType],
+    queryFn: () => api<Project>('GET', `/projects/${clockInJobType}`),
+    enabled:
+      !!clockInJobType &&
+      !isPredefinedJobId(clockInJobType) &&
+      !(openClockIn?.shift_id && !!project),
+  });
+
   const clockInJobName = useMemo(() => {
     if (!openClockIn || !clockInJobType) return null;
 
     if (openClockIn.shift_id && project) {
-      return project.name || project.code || 'Unknown Project';
+      return formatJobPickerLine(project);
     }
 
-    const jobOption = jobOptions.find((j) => j.id === clockInJobType);
-    if (jobOption) {
-      return `${jobOption.code} - ${jobOption.name}`;
-    }
+    const pre = getPredefinedJob(clockInJobType);
+    if (pre) return formatJobPickerLine(pre);
+
+    if (clockInJobTypeProject) return formatJobPickerLine(clockInJobTypeProject);
 
     return clockInJobType;
-  }, [openClockIn, clockInJobType, project, jobOptions]);
+  }, [openClockIn, clockInJobType, project, clockInJobTypeProject]);
 
   useEffect(() => {
     if (clockType) {
@@ -552,8 +547,10 @@ export function ClockInOutModalLayer({
     if (clockType === 'out' && clockInJobName) {
       projectJobName = clockInJobName;
     } else if (selectedJob) {
-      const jobOption = jobOptions.find((j) => j.id === selectedJob);
-      projectJobName = jobOption ? `${jobOption.code} - ${jobOption.name}` : selectedJob;
+      const pre = getPredefinedJob(selectedJob);
+      if (pre) projectJobName = formatJobPickerLine(pre);
+      else if (selectedJobProject) projectJobName = formatJobPickerLine(selectedJobProject);
+      else projectJobName = selectedJob;
     }
 
     let confirmationMessage = '';
@@ -830,23 +827,14 @@ export function ClockInOutModalLayer({
 
                 {clockType === 'in' && (
                   <div>
-                    <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">Job *</label>
-                    <select
+                    <JobSearchCombobox
                       value={selectedJob}
-                      onChange={(e) => {
+                      onChange={(jobId) => {
                         setJobTouched(true);
-                        setSelectedJob(e.target.value);
+                        setSelectedJob(jobId);
                       }}
-                      className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm placeholder:text-gray-400 focus:outline-none focus:ring-1 focus:ring-gray-300 focus:border-gray-300"
-                      required
-                    >
-                      <option value="">Select a job...</option>
-                      {jobOptions.map((job) => (
-                        <option key={job.id} value={job.id}>
-                          {job.code} - {job.name}
-                        </option>
-                      ))}
-                    </select>
+                      disabled={isJobLocked}
+                    />
                     {selectedDateShift && project && (
                       <p className="text-[10px] text-gray-500 mt-1">Pre-filled from your scheduled shift</p>
                     )}
