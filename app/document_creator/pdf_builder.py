@@ -7,7 +7,12 @@ from typing import Optional
 
 from reportlab.lib.pagesizes import A4
 from reportlab.lib import colors
+from reportlab.lib.enums import TA_CENTER, TA_LEFT, TA_RIGHT
+from reportlab.lib.styles import ParagraphStyle
+from reportlab.lib.utils import simpleSplit
+from reportlab.platypus import Paragraph
 from reportlab.pdfgen import canvas
+from xml.sax.saxutils import escape
 from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.pdfmetrics import getAscentDescent
 from reportlab.pdfbase.ttfonts import TTFont
@@ -28,6 +33,8 @@ from ..proposals.pdf_image_optimizer import pil_image_to_jpeg_bytes_for_document
 CANVAS_REFERENCE_WIDTH_PX = 910.0
 TEXT_INNER_PADDING_PX = 4.0
 CSS_NORMAL_LINE_HEIGHT = 1.2
+
+_FONTS_MAP: Optional[dict] = None
 
 
 def _font_ascent_descent(font_name: str, font_size: float) -> tuple[float, float]:
@@ -92,7 +99,30 @@ def _register_fonts():
 
     if "Montserrat" not in result:
         result["Montserrat"] = ("Helvetica", "Helvetica-Bold", "Helvetica-Oblique", "Helvetica-BoldOblique")
+
+    # Register family aliases for ReportLab (optional; helps some APIs).
+    try:
+        for family, entry in result.items():
+            reg, bold, italic, bolditalic = (entry + (entry[0],))[:4]
+            if reg in pdfmetrics.getRegisteredFontNames():
+                pdfmetrics.registerFontFamily(
+                    family.replace(" ", ""),
+                    normal=reg,
+                    bold=bold,
+                    italic=italic,
+                    boldItalic=bolditalic,
+                )
+    except Exception:
+        pass
+
     return result
+
+
+def _get_fonts_map() -> dict:
+    global _FONTS_MAP
+    if _FONTS_MAP is None:
+        _FONTS_MAP = _register_fonts()
+    return _FONTS_MAP
 
 
 def _pick_font(fonts_map: dict, family: str, bold: bool, italic: bool) -> str:
@@ -121,70 +151,309 @@ def _parse_hex_color(hex_str: Optional[str]):
     return colors.black
 
 
-def _wrap_text_to_width(c: canvas.Canvas, text: str, font_name: str, font_size: float, max_width: float) -> list[str]:
+def _wrap_text_to_width(
+    _c: canvas.Canvas,
+    text: str,
+    font_name: str,
+    font_size: float,
+    max_width: float,
+) -> list[str]:
     """
-    Word-wrap `text` so each line fits within `max_width` (points), using actual font metrics.
-    Respects explicit newlines. Returns a list of lines (may include empty strings).
+    Word-wrap at word boundaries (never splits words mid-character).
+    Uses ReportLab simpleSplit — same strategy as proposals PDFs.
     """
     if text is None:
         return []
     s = str(text).replace("\r\n", "\n")
     if s == "":
         return [""]
-
-    def fits(line: str) -> bool:
-        return c.stringWidth(line, font_name, font_size) <= max_width
-
-    def break_long_word(word: str) -> list[str]:
-        # Fallback: break a single long word by characters.
-        out: list[str] = []
-        cur = ""
-        for ch in word:
-            nxt = cur + ch
-            if cur and not fits(nxt):
-                out.append(cur)
-                cur = ch
-            else:
-                cur = nxt
-        if cur:
-            out.append(cur)
-        return out or [word]
+    if max_width <= 0:
+        return [s]
 
     lines: list[str] = []
     for para in s.split("\n"):
         if para.strip() == "":
             lines.append("")
             continue
-        words = para.split(" ")
-        cur = ""
-        for w in words:
-            if w == "":
-                # preserve multi-space runs somewhat
-                candidate = (cur + " ") if cur else " "
-            else:
-                candidate = (cur + " " + w) if cur else w
-            if cur and not fits(candidate):
-                lines.append(cur)
-                cur = w
-                if cur and not fits(cur):
-                    broken = break_long_word(cur)
-                    lines.extend(broken[:-1])
-                    cur = broken[-1]
-            else:
-                cur = candidate
-                # A word that starts a fresh line may itself be too long to fit
-                if cur and not fits(cur):
-                    broken = break_long_word(cur)
-                    lines.extend(broken[:-1])
-                    cur = broken[-1]
-        if cur != "":
-            if not fits(cur):
-                broken = break_long_word(cur)
-                lines.extend(broken[:-1])
-                cur = broken[-1]
-            if cur != "":
-                lines.append(cur)
+        wrapped = simpleSplit(para, font_name, font_size, max_width)
+        lines.extend(wrapped if wrapped else [""])
     return lines
+
+
+def _clip_text_area(c: canvas.Canvas, text_x: float, text_y: float, text_w: float, text_h: float) -> bool:
+    """Clip drawing to the inner text box (matches preview overflow-hidden). Returns True if clipped."""
+    if text_w <= 0 or text_h <= 0:
+        return False
+    p = c.beginPath()
+    p.rect(text_x, text_y, text_w, text_h)
+    c.saveState()
+    c.clipPath(p, stroke=0, fill=0)
+    return True
+
+
+def _color_to_hex_str(clr) -> str:
+    try:
+        if hasattr(clr, "hexval"):
+            hv = clr.hexval()
+            if isinstance(hv, str):
+                if hv.startswith("0x"):
+                    return "#" + hv[2:].upper()
+                if hv.startswith("#"):
+                    return hv.upper()
+    except Exception:
+        pass
+    return "#000000"
+
+
+def _text_align_to_reportlab(align: Optional[str]) -> int:
+    a = (align or "left").strip().lower()
+    if a == "center":
+        return TA_CENTER
+    if a == "right":
+        return TA_RIGHT
+    return TA_LEFT
+
+
+def _normalize_rich_lines_for_content(content: str, rich_lines: Optional[list]) -> list[list[dict]]:
+    """
+    Align richLines with content newlines. When many rich rows map to one content
+    paragraph (soft-wrap artifact), merge them so PDF wraps like the browser block.
+    """
+    content_norm = str(content or "").replace("\r\n", "\n")
+    content_lines = content_norm.split("\n") if content_norm else [""]
+    if not rich_lines or not isinstance(rich_lines, list):
+        return [[{"text": ln}] if ln else [{"text": ""}] for ln in content_lines]
+
+    def runs_plain(runs: list) -> str:
+        return "".join(r.get("text", "") if isinstance(r, dict) else str(r) for r in runs)
+
+    flat_rich = runs_plain([r for rl in rich_lines if isinstance(rl, list) for r in rl])
+    content_flat = content_norm.replace("\n", "")
+
+    if len(content_lines) == 1 and len(rich_lines) > 1 and flat_rich == content_flat:
+        merged: list[dict] = []
+        for rl in rich_lines:
+            if isinstance(rl, list):
+                merged.extend([r for r in rl if isinstance(r, dict)])
+        return [merged] if merged else [[{"text": content_norm}]]
+
+    if len(rich_lines) == len(content_lines):
+        return [
+            rl if isinstance(rl, list) else [{"text": content_lines[i]}]
+            for i, rl in enumerate(rich_lines)
+        ]
+
+    return [[{"text": ln}] if ln else [{"text": ""}] for ln in content_lines]
+
+
+def _run_to_markup_fragment(
+    run: dict,
+    fonts_map: dict,
+    font_family: str,
+    font_size_px: float,
+    px_to_pt: float,
+    is_bold: bool,
+    is_italic: bool,
+    default_color,
+) -> str:
+    text = run.get("text", "")
+    if not text:
+        return ""
+    safe = escape(text).replace("\n", " ")
+    r_bold = run.get("bold") if run.get("bold") is not None else is_bold
+    r_italic = run.get("italic") if run.get("italic") is not None else is_italic
+    r_family = run.get("fontFamily") or font_family
+    r_font_px = float(run.get("fontSize") or font_size_px)
+    r_font_pt = max(1.0, r_font_px * px_to_pt)
+    r_font_name = _pick_font(fonts_map, r_family, bool(r_bold), bool(r_italic))
+    r_color = _parse_hex_color(run.get("color")) if run.get("color") else default_color
+    hc = _color_to_hex_str(r_color)
+    inner = safe
+    if r_bold:
+        inner = f"<b>{inner}</b>"
+    if r_italic:
+        inner = f"<i>{inner}</i>"
+    return f'<font name="{r_font_name}" color="{hc}" size="{r_font_pt:.2f}">{inner}</font>'
+
+
+def _runs_to_paragraph_markup(
+    runs: Optional[list],
+    line_text: str,
+    fonts_map: dict,
+    font_family: str,
+    font_size_px: float,
+    px_to_pt: float,
+    is_bold: bool,
+    is_italic: bool,
+    default_color,
+) -> str:
+    line_norm = line_text.replace("\r\n", "\n")
+    if not runs:
+        return escape(line_norm) if line_norm else "&nbsp;"
+    runs_plain = "".join(r.get("text", "") if isinstance(r, dict) else str(r) for r in runs)
+    if runs_plain != line_norm:
+        fn = _pick_font(fonts_map, font_family, is_bold, is_italic)
+        pt = max(1.0, font_size_px * px_to_pt)
+        hc = _color_to_hex_str(default_color)
+        safe = escape(line_norm) if line_norm else "&nbsp;"
+        inner = safe
+        if is_bold:
+            inner = f"<b>{inner}</b>"
+        if is_italic:
+            inner = f"<i>{inner}</i>"
+        return f'<font name="{fn}" color="{hc}" size="{pt:.2f}">{inner}</font>'
+    parts = [
+        _run_to_markup_fragment(
+            r, fonts_map, font_family, font_size_px, px_to_pt, is_bold, is_italic, default_color
+        )
+        for r in runs
+        if isinstance(r, dict)
+    ]
+    joined = "".join(parts)
+    return joined if joined.strip() else "&nbsp;"
+
+
+def _draw_text_in_box(
+    c: canvas.Canvas,
+    *,
+    content: str,
+    rich_lines: Optional[list],
+    fonts_map: dict,
+    text_x: float,
+    text_y: float,
+    text_w: float,
+    text_h: float,
+    font_size_px: float,
+    px_to_pt: float,
+    font_family: str,
+    is_bold: bool,
+    is_italic: bool,
+    el_color,
+    text_align: str,
+    vertical_align: str,
+    list_style: Optional[str],
+    line_list_styles_raw: Optional[list],
+    line_text_aligns: Optional[list],
+) -> None:
+    """Draw text using ReportLab Paragraph (word wrap matches browser block layout)."""
+    if text_w <= 0 or text_h <= 0:
+        return
+
+    font_size = max(1.0, font_size_px * px_to_pt)
+    line_height = max(6.0, font_size * CSS_NORMAL_LINE_HEIGHT)
+    active_font = _pick_font(fonts_map, font_family, is_bold, is_italic)
+    content_norm = str(content or "").replace("\r\n", "\n")
+    content_lines = content_norm.split("\n") if content_norm else [""]
+    normalized_rich = _normalize_rich_lines_for_content(content_norm, rich_lines)
+
+    para_items: list[tuple[Paragraph, float]] = []
+    for li, line_text in enumerate(content_lines):
+        runs = normalized_rich[li] if li < len(normalized_rich) else None
+        ls_val = "none"
+        if isinstance(line_list_styles_raw, list) and li < len(line_list_styles_raw):
+            ls_val = str(line_list_styles_raw[li] or "none").strip().lower()
+        elif list_style:
+            ls_val = str(list_style or "none").strip().lower()
+        if ls_val not in ("bullet", "numbered", "lettered"):
+            ls_val = "none"
+
+        line_align = text_align
+        if isinstance(line_text_aligns, list) and li < len(line_text_aligns) and line_text_aligns[li]:
+            line_align = str(line_text_aligns[li])
+
+        markup_body = _runs_to_paragraph_markup(
+            runs,
+            line_text,
+            fonts_map,
+            font_family,
+            font_size_px,
+            px_to_pt,
+            is_bold,
+            is_italic,
+            el_color,
+        )
+
+        left_indent = 0.0
+        prefix_markup = ""
+        if ls_val in ("bullet", "numbered", "lettered"):
+            ordinal = 1
+            for prev_li in range(li):
+                prev_ls = "none"
+                if isinstance(line_list_styles_raw, list) and prev_li < len(line_list_styles_raw):
+                    prev_ls = str(line_list_styles_raw[prev_li] or "none").strip().lower()
+                elif list_style:
+                    prev_ls = str(list_style).strip().lower()
+                if prev_ls == ls_val:
+                    ordinal += 1
+            if ls_val == "bullet":
+                prefix_markup = "&#8226;&nbsp;"
+            elif ls_val == "numbered":
+                prefix_markup = f"{ordinal}.&nbsp;"
+            else:
+                prefix_markup = (
+                    f"{chr(ord('a') + ordinal - 1)}.&nbsp;" if ordinal <= 26 else f"{ordinal}.&nbsp;"
+                )
+            gap = max(font_size * 0.35, 3.0)
+            pw = c.stringWidth(prefix_markup.replace("&nbsp;", " "), active_font, font_size)
+            left_indent = pw + gap
+
+        markup = prefix_markup + markup_body if prefix_markup else markup_body
+
+        max_pt = font_size
+        if runs:
+            for r in runs:
+                if isinstance(r, dict) and r.get("fontSize"):
+                    max_pt = max(max_pt, max(1.0, float(r["fontSize"]) * px_to_pt))
+        leading = max(line_height, max_pt * CSS_NORMAL_LINE_HEIGHT)
+
+        style = ParagraphStyle(
+            name=f"DocTextLine{li}",
+            fontName=active_font,
+            fontSize=font_size,
+            leading=leading,
+            textColor=el_color,
+            alignment=_text_align_to_reportlab(line_align),
+            leftIndent=left_indent,
+            firstLineIndent=0.0,
+            rightIndent=0,
+            spaceBefore=0,
+            spaceAfter=0,
+        )
+        para = Paragraph(markup, style)
+        _pw, ph = para.wrap(text_w, text_h)
+        para_items.append((para, ph))
+
+    if not para_items:
+        return
+
+    total_h = sum(ph for _, ph in para_items)
+    if total_h > text_h:
+        acc = 0.0
+        kept: list[tuple[Paragraph, float]] = []
+        for para, ph in para_items:
+            if acc + ph <= text_h + 0.5:
+                kept.append((para, ph))
+                acc += ph
+            else:
+                break
+        para_items = kept
+        total_h = sum(ph for _, ph in para_items)
+
+    if vertical_align == "bottom":
+        y_cursor = text_y + total_h
+    elif vertical_align == "center":
+        y_cursor = text_y + (text_h + total_h) / 2.0
+    else:
+        y_cursor = text_y + text_h
+
+    clipped = _clip_text_area(c, text_x, text_y, text_w, text_h)
+    try:
+        for para, ph in para_items:
+            y_cursor -= ph
+            para.drawOn(c, text_x, y_cursor)
+    finally:
+        if clipped:
+            c.restoreState()
 
 
 def _prepare_pdf_text_rows(
@@ -347,7 +616,7 @@ def _read_file_bytes(db: Session, file_id: uuid.UUID) -> Optional[bytes]:
 
 def build_pdf_bytes(db: Session, doc: UserDocument, canvas_width_px: Optional[float] = None) -> bytes:
     """Generate PDF bytes for the given UserDocument."""
-    fonts_map = _register_fonts()
+    fonts_map = _get_fonts_map()
     buf = io.BytesIO()
     page_width, page_height = A4  # 595.28 x 841.89 points
     # Keep the optional argument for API compatibility, but do not let runtime
@@ -416,12 +685,9 @@ def build_pdf_bytes(db: Session, doc: UserDocument, canvas_width_px: Optional[fl
                     content = el.get("content") or ""
                     if el_type == "text":
                         font_size_px = float(el.get("fontSize") or el.get("font_size", 11) or 11)
-                        font_size = max(1.0, font_size_px * px_to_pt)
-                        line_height = max(6.0, font_size * CSS_NORMAL_LINE_HEIGHT)
                         is_bold = el.get("fontWeight") == "bold"
                         is_italic = el.get("fontStyle") == "italic"
                         font_family = el.get("fontFamily") or "Montserrat"
-                        active_font = _pick_font(fonts_map, font_family, is_bold, is_italic)
                         el_color = _parse_hex_color(el.get("color"))
                         text_align = el.get("textAlign") or "left"
                         vertical_align = el.get("verticalAlign") or "top"
@@ -432,196 +698,27 @@ def build_pdf_bytes(db: Session, doc: UserDocument, canvas_width_px: Optional[fl
 
                         rich_lines = el.get("richLines") or el.get("rich_lines")
                         line_text_aligns = el.get("lineTextAligns") or el.get("line_text_aligns") or []
-
-                        if rich_lines and isinstance(rich_lines, list):
-                            # ── Rich text path: per-run font/color ─────────────────────
-                            list_style = el.get("listStyle") or el.get("list_style")
-                            line_list_styles_raw = el.get("lineListStyles") or el.get("line_list_styles")
-
-                            # Build flat rows: each row = list of (x_offset, fragment, font_name, font_size_pt, color)
-                            RichRow = list  # list of (x_off, text, font, size, color)
-                            all_rows: list[RichRow] = []
-                            line_aligns_out: list[str] = []
-
-                            for li, line_runs in enumerate(rich_lines):
-                                if not isinstance(line_runs, list):
-                                    continue
-                                plain_text = "".join(r.get("text", "") if isinstance(r, dict) else str(r) for r in line_runs)
-                                ls_val = None
-                                if isinstance(line_list_styles_raw, list) and li < len(line_list_styles_raw):
-                                    ls_val = str(line_list_styles_raw[li] or "none").strip().lower()
-                                elif list_style:
-                                    ls_val = str(list_style).strip().lower()
-                                if ls_val not in ("bullet", "numbered", "lettered"):
-                                    ls_val = "none"
-
-                                line_align = text_align
-                                if li < len(line_text_aligns) and line_text_aligns[li]:
-                                    line_align = str(line_text_aligns[li])
-
-                                # Build run segments for this line
-                                run_segments: list[tuple[str, str, float, object]] = []
-                                for run in line_runs:
-                                    if not isinstance(run, dict):
-                                        continue
-                                    run_text = run.get("text", "")
-                                    if not run_text:
-                                        continue
-                                    r_bold = run.get("bold") if run.get("bold") is not None else is_bold
-                                    r_italic = run.get("italic") if run.get("italic") is not None else is_italic
-                                    r_family = run.get("fontFamily") or font_family
-                                    r_font_px = float(run.get("fontSize") or font_size_px)
-                                    r_font_pt = max(1.0, r_font_px * px_to_pt)
-                                    r_font_name = _pick_font(fonts_map, r_family, bool(r_bold), bool(r_italic))
-                                    r_color = _parse_hex_color(run.get("color")) if run.get("color") else el_color
-                                    run_segments.append((run_text, r_font_name, r_font_pt, r_color))
-
-                                if not run_segments:
-                                    # Preserve blank lines as empty rows so they occupy vertical space
-                                    all_rows.append([(0.0, "", active_font, font_size, el_color)])
-                                    line_aligns_out.append(line_align)
-                                    continue
-
-                                # Word-wrap each run while keeping track of current x offset
-                                # For simplicity: wrap the whole plain line with the first run's font, then assign runs proportionally
-                                # (full per-run wrapping is complex; use element font for wrap measurement)
-                                c.setFont(active_font, font_size)
-                                wrapped_lines = _wrap_text_to_width(c, plain_text, active_font, font_size, text_w) or [""]
-
-                                # Build rows: for each wrapped line, find which runs contribute
-                                run_cursor = 0  # char position in plain_text
-                                char_cursor = 0
-                                for wl in wrapped_lines:
-                                    row_segs: list[tuple[float, str, str, float, object]] = []
-                                    x_off = 0.0
-                                    wl_len = len(wl)
-                                    wl_remain = wl_len
-                                    seg_i = 0
-                                    seg_pos = run_cursor  # current position within run segments
-
-                                    # Distribute characters of this wrapped line across run segments
-                                    for seg_idx, (seg_text, seg_font, seg_pt, seg_color) in enumerate(run_segments):
-                                        if seg_pos >= char_cursor + wl_len:
-                                            break
-                                        seg_start_in_line = max(0, seg_pos - char_cursor)
-                                        # How many chars of this segment fall in this line?
-                                        seg_total = len(seg_text)
-                                        taken = min(seg_total - max(0, char_cursor - seg_pos), wl_remain)
-                                        if taken <= 0:
-                                            seg_pos += seg_total
-                                            continue
-                                        frag_text = seg_text[max(0, char_cursor - seg_pos):max(0, char_cursor - seg_pos) + taken]
-                                        if frag_text:
-                                            row_segs.append((x_off, frag_text, seg_font, seg_pt, seg_color))
-                                            x_off += c.stringWidth(frag_text, seg_font, seg_pt)
-                                        wl_remain -= taken
-                                        seg_pos += seg_total
-                                        if wl_remain <= 0:
-                                            break
-
-                                    if not row_segs:
-                                        row_segs = [(0.0, wl, active_font, font_size, el_color)]
-
-                                    # Add list prefix for first wrapped line of each content line
-                                    if wrapped_lines.index(wl) == 0 and ls_val in ("bullet", "numbered", "lettered"):
-                                        # Count ordinal
-                                        ordinal = 1
-                                        for prev_li in range(li):
-                                            prev_ls = None
-                                            if isinstance(line_list_styles_raw, list) and prev_li < len(line_list_styles_raw):
-                                                prev_ls = str(line_list_styles_raw[prev_li] or "none").strip().lower()
-                                            elif list_style:
-                                                prev_ls = str(list_style).strip().lower()
-                                            if prev_ls == ls_val:
-                                                ordinal += 1
-                                        if ls_val == "bullet":
-                                            prefix = "• "
-                                        elif ls_val == "numbered":
-                                            prefix = f"{ordinal}. "
-                                        else:
-                                            prefix = f"{chr(ord('a') + ordinal - 1)}. " if ordinal <= 26 else f"{ordinal}. "
-                                        pw = c.stringWidth(prefix, active_font, font_size)
-                                        shifted = [(off + pw + max(font_size * 0.35, 3.0), t, fn, fp, fc) for off, t, fn, fp, fc in row_segs]
-                                        row_segs = [(0.0, prefix, active_font, font_size, el_color)] + shifted
-
-                                    all_rows.append(row_segs)
-                                    line_aligns_out.append(line_align)
-                                    char_cursor += wl_len
-
-                            max_lines = int(text_h // line_height) if text_h > 0 else 0
-                            if max_lines > 0 and len(all_rows) > max_lines:
-                                all_rows = all_rows[:max_lines]
-                                line_aligns_out = line_aligns_out[:max_lines]
-
-                            n = len(all_rows)
-                            if n > 0:
-                                ascent, descent = _font_ascent_descent(active_font, font_size)
-                                half_leading = max(0.0, (line_height - font_size) / 2.0)
-                                first_line_offset = half_leading + ascent
-                                last_line_descent = half_leading + abs(descent)
-                                block_h = (n - 1) * line_height + first_line_offset + last_line_descent
-                                if vertical_align == "bottom":
-                                    baseline_first = text_y + block_h - first_line_offset
-                                elif vertical_align == "center":
-                                    block_top = text_y + ((text_h + block_h) / 2.0)
-                                    baseline_first = block_top - first_line_offset
-                                else:
-                                    baseline_first = text_y + text_h - first_line_offset
-
-                                for i, row_segs in enumerate(all_rows):
-                                    line_y = baseline_first - i * line_height
-                                    la = line_aligns_out[i] if i < len(line_aligns_out) else text_align
-                                    row_w = sum(c.stringWidth(t, fn, fp) for _, t, fn, fp, _ in row_segs)
-                                    if la == "center":
-                                        line_shift = (text_w - row_w) / 2.0
-                                    elif la == "right":
-                                        line_shift = text_w - row_w
-                                    else:
-                                        line_shift = 0.0
-                                    for x_off, frag, fnt, fsz, clr in row_segs:
-                                        c.setFont(fnt, fsz)
-                                        c.setFillColor(clr)
-                                        c.drawString(text_x + line_shift + x_off, line_y, frag)
-                        else:
-                            # ── Plain text path (legacy / no rich runs) ─────────────────
-                            c.setFont(active_font, font_size)
-                            c.setFillColor(el_color)
-                            list_style = el.get("listStyle") or el.get("list_style")
-                            line_list_styles = el.get("lineListStyles") or el.get("line_list_styles")
-                            rows, _n_all = _prepare_pdf_text_rows(
-                                c, str(content), list_style, line_list_styles, active_font, font_size, text_w
-                            )
-                            max_lines = int(text_h // line_height) if text_h > 0 else 0
-                            if max_lines > 0 and len(rows) > max_lines:
-                                rows = rows[:max_lines]
-                            n = len(rows)
-                            if n > 0:
-                                ascent, descent = _font_ascent_descent(active_font, font_size)
-                                half_leading = max(0.0, (line_height - font_size) / 2.0)
-                                first_line_offset = half_leading + ascent
-                                last_line_descent = half_leading + abs(descent)
-                                block_h = (n - 1) * line_height + first_line_offset + last_line_descent
-                                if vertical_align == "bottom":
-                                    baseline_first = text_y + block_h - first_line_offset
-                                elif vertical_align == "center":
-                                    block_top = text_y + ((text_h + block_h) / 2.0)
-                                    baseline_first = block_top - first_line_offset
-                                else:
-                                    baseline_first = text_y + text_h - first_line_offset
-
-                                for i, row in enumerate(rows):
-                                    line_y = baseline_first - i * line_height
-                                    tw_row = 0.0
-                                    for off, frag in row:
-                                        tw_row = max(tw_row, off + c.stringWidth(frag, active_font, font_size))
-                                    if text_align == "center":
-                                        shift = (text_w - tw_row) / 2.0
-                                    elif text_align == "right":
-                                        shift = text_w - tw_row
-                                    else:
-                                        shift = 0.0
-                                    for off, frag in row:
-                                        c.drawString(text_x + shift + off, line_y, frag)
+                        _draw_text_in_box(
+                            c,
+                            content=str(content),
+                            rich_lines=rich_lines if isinstance(rich_lines, list) else None,
+                            fonts_map=fonts_map,
+                            text_x=text_x,
+                            text_y=text_y,
+                            text_w=text_w,
+                            text_h=text_h,
+                            font_size_px=font_size_px,
+                            px_to_pt=px_to_pt,
+                            font_family=font_family,
+                            is_bold=is_bold,
+                            is_italic=is_italic,
+                            el_color=el_color,
+                            text_align=text_align,
+                            vertical_align=vertical_align,
+                            list_style=el.get("listStyle") or el.get("list_style"),
+                            line_list_styles_raw=el.get("lineListStyles") or el.get("line_list_styles"),
+                            line_text_aligns=line_text_aligns,
+                        )
                     elif el_type == "image" and content:
                         try:
                             fid = uuid.UUID(content) if isinstance(content, str) else None

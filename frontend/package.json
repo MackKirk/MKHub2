@@ -28,6 +28,7 @@
     "@tiptap/suggestion": "2.27.2",
     "dompurify": "^3.3.3",
     "framer-motion": "^11.2.10",
+    "html-to-image": "^1.11.13",
     "html5-qrcode": "^2.3.8",
     "pdfjs-dist": "^4.4.168",
     "qrcode": "^1.5.4",

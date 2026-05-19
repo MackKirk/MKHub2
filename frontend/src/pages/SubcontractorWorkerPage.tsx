@@ -1,6 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Link, useParams, useNavigate, useSearchParams } from 'react-router-dom';
-import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
+import { forwardRef, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { toPng } from 'html-to-image';
 import QRCode from 'qrcode';
 import { api, withFileAccessTokenIfNeeded } from '@/lib/api';
 import toast from 'react-hot-toast';
@@ -76,6 +77,172 @@ function composeWorkerNameFromWf(wf: {
   const n = wf.name.trim();
   return n || 'Worker';
 }
+
+/** North American phone mask: (000) 000 - 0000 */
+function formatWorkerPhone(v: string): string {
+  const d = String(v || '')
+    .replace(/\D+/g, '')
+    .slice(0, 10);
+  if (d.length <= 3) return d;
+  if (d.length <= 6) return `(${d.slice(0, 3)}) ${d.slice(3)}`;
+  return `(${d.slice(0, 3)}) ${d.slice(3, 6)} - ${d.slice(6)}`;
+}
+
+function displayWorkerPhone(phone: string | undefined | null): string {
+  if (!phone?.trim()) return '';
+  return formatWorkerPhone(phone);
+}
+
+const MKHUB_LOGO_LIGHT = '/ui/assets/login/logo-light.svg';
+
+async function waitForImages(el: HTMLElement): Promise<void> {
+  const imgs = Array.from(el.querySelectorAll('img'));
+  await Promise.all(
+    imgs.map(
+      (img) =>
+        new Promise<void>((resolve, reject) => {
+          if (img.complete && img.naturalWidth > 0) {
+            resolve();
+            return;
+          }
+          img.onload = () => resolve();
+          img.onerror = () => reject(new Error('Failed to load badge image'));
+        }),
+    ),
+  );
+}
+
+/** Capture the on-screen badge card so PNG matches the modal exactly. */
+async function captureQrBadgePng(el: HTMLElement): Promise<string> {
+  await waitForImages(el);
+  return toPng(el, { cacheBust: true, pixelRatio: 2 });
+}
+
+/** Print PNG without window.open (avoids popup blockers). */
+function printPngDataUrl(pngDataUrl: string, docTitle: string): void {
+  const iframe = document.createElement('iframe');
+  iframe.setAttribute('aria-hidden', 'true');
+  iframe.style.cssText = 'position:fixed;width:0;height:0;border:0;visibility:hidden';
+  document.body.appendChild(iframe);
+
+  const win = iframe.contentWindow;
+  const doc = iframe.contentDocument ?? win?.document;
+  if (!doc || !win) {
+    iframe.remove();
+    throw new Error('Print frame unavailable');
+  }
+
+  const safeTitle = docTitle.replace(/[<>&]/g, '');
+  doc.open();
+  doc.write(
+    `<!DOCTYPE html><html><head><title>${safeTitle}</title><style>
+      @page { size: auto; margin: 8mm; }
+      html, body { margin: 0; padding: 0; height: auto; }
+      body {
+        display: flex;
+        justify-content: center;
+        align-items: flex-start;
+        padding: 4mm 0;
+        background: #fff;
+      }
+      img {
+        display: block;
+        width: 68mm;
+        max-width: calc(100% - 4mm);
+        height: auto;
+        max-height: 99mm;
+        object-fit: contain;
+        page-break-inside: avoid;
+      }
+    </style></head><body><img id="print-img" src="${pngDataUrl}" alt="QR badge" /></body></html>`,
+  );
+  doc.close();
+
+  const cleanup = () => {
+    win.removeEventListener('afterprint', cleanup);
+    iframe.remove();
+  };
+  win.addEventListener('afterprint', cleanup);
+
+  const runPrint = () => {
+    win.focus();
+    win.print();
+  };
+
+  const img = doc.getElementById('print-img') as HTMLImageElement | null;
+  if (img?.complete) {
+    runPrint();
+  } else {
+    img?.addEventListener('load', runPrint, { once: true });
+    img?.addEventListener(
+      'error',
+      () => {
+        cleanup();
+        throw new Error('Failed to load print image');
+      },
+      { once: true },
+    );
+  }
+}
+
+const WorkerQrBadgeCard = forwardRef<
+  HTMLDivElement,
+  {
+    workerName: string;
+    companyName: string;
+    phone: string;
+    qrDataUrl: string;
+    variant?: 'preview' | 'full';
+    className?: string;
+  }
+>(function WorkerQrBadgeCard(
+  { workerName, companyName, phone, qrDataUrl, variant = 'full', className = '' },
+  ref,
+) {
+  const isPreview = variant === 'preview';
+  return (
+    <div ref={ref} className={`relative overflow-hidden rounded-2xl bg-white shadow-lg ring-1 ring-black/5 ${className}`}>
+      <div className="relative bg-gradient-to-br from-brand-red via-[#e01e1e] to-[#b91c1c] px-4 py-3.5 flex items-start justify-between gap-3">
+        <div className="pointer-events-none absolute -right-6 -top-6 h-24 w-24 rounded-full bg-white/10" />
+        <div className="pointer-events-none absolute -left-4 bottom-0 h-16 w-16 rounded-full bg-white/5" />
+        <div className="min-w-0">
+          <p className={`font-semibold text-white ${isPreview ? 'text-[10px]' : 'text-xs'}`}>Site clock-in badge</p>
+          <p className={`text-white/70 ${isPreview ? 'text-[9px]' : 'text-[10px]'}`}>Subcontractor worker</p>
+        </div>
+        <img
+          src={MKHUB_LOGO_LIGHT}
+          alt="MK Hub"
+          className={`shrink-0 object-contain object-right ${isPreview ? 'h-5 max-w-[72px]' : 'h-7 max-w-[100px]'}`}
+        />
+      </div>
+      <div className={`bg-white text-center ${isPreview ? 'px-3 pb-3 pt-4' : 'px-6 pb-6 pt-5'}`}>
+        <div
+          className={`mx-auto w-fit rounded-xl border-2 border-gray-100 bg-white shadow-inner ${
+            isPreview ? 'p-1.5' : 'p-3'
+          }`}
+        >
+          <img
+            src={qrDataUrl}
+            alt="Worker clock-in QR code"
+            className={`object-contain ${isPreview ? 'h-[88px] w-[88px]' : 'h-[200px] w-[200px]'}`}
+          />
+        </div>
+        <div className={`space-y-0.5 ${isPreview ? 'mt-2.5' : 'mt-4'}`}>
+          <p className={`font-bold text-gray-900 leading-tight ${isPreview ? 'text-xs' : 'text-lg'}`}>{workerName}</p>
+          {companyName ? (
+            <p className={`text-gray-600 ${isPreview ? 'text-[10px]' : 'text-sm'}`}>{companyName}</p>
+          ) : null}
+          {phone ? (
+            <p className={`font-medium text-gray-500 tabular-nums ${isPreview ? 'text-[10px]' : 'text-sm'}`}>{phone}</p>
+          ) : null}
+        </div>
+        {!isPreview ? (
+          <p className="mt-4 text-[11px] text-gray-400">Scan to clock in or out on site</p>
+        ) : null}
+      </div>
+    </div>
+  );
+});
 
 type WorkerSubTab = 'personal' | 'job' | 'docs' | 'timesheet' | 'training' | 'reports' | 'activity';
 
@@ -216,6 +383,10 @@ export default function SubcontractorWorkerPage() {
 
   const qc = useQueryClient();
   const [qrDataUrl, setQrDataUrl] = useState<string>('');
+  const [qrModalOpen, setQrModalOpen] = useState(false);
+  const [qrCardExporting, setQrCardExporting] = useState(false);
+  const qrCardPngCacheRef = useRef<string | null>(null);
+  const qrBadgeExportRef = useRef<HTMLDivElement>(null);
   const [personalEditSection, setPersonalEditSection] = useState<PersonalEditSection | null>(null);
   const [editingJob, setEditingJob] = useState(false);
   const [isEmployeeCardMinimized, setIsEmployeeCardMinimized] = useState(false);
@@ -319,7 +490,7 @@ export default function SubcontractorWorkerPage() {
   useEffect(() => {
     if (!scanUrl) return;
     let cancelled = false;
-    QRCode.toDataURL(scanUrl, { width: 200, margin: 1 }).then((u) => {
+    QRCode.toDataURL(scanUrl, { width: 280, margin: 2, errorCorrectionLevel: 'M' }).then((u) => {
       if (!cancelled) setQrDataUrl(u);
     });
     return () => {
@@ -337,7 +508,7 @@ export default function SubcontractorWorkerPage() {
         last_name: w.last_name || '',
         preferred_name: w.preferred_name || '',
         gender: w.gender || '',
-        phone: w.phone || '',
+        phone: formatWorkerPhone(w.phone || ''),
         email: w.email || '',
         notes: w.notes || '',
         is_active: w.is_active,
@@ -350,9 +521,9 @@ export default function SubcontractorWorkerPage() {
         country: w.country || '',
         emergency_contact_name: w.emergency_contact_name || '',
         emergency_contact_relationship: w.emergency_contact_relationship || '',
-        emergency_contact_phone: w.emergency_contact_phone || '',
-        emergency_contact_home_phone: w.emergency_contact_home_phone || '',
-        emergency_contact_work_phone: w.emergency_contact_work_phone || '',
+        emergency_contact_phone: formatWorkerPhone(w.emergency_contact_phone || ''),
+        emergency_contact_home_phone: formatWorkerPhone(w.emergency_contact_home_phone || ''),
+        emergency_contact_work_phone: formatWorkerPhone(w.emergency_contact_work_phone || ''),
         emergency_contact_email: w.emergency_contact_email || '',
         emergency_contact_address: w.emergency_contact_address || '',
       });
@@ -425,6 +596,92 @@ export default function SubcontractorWorkerPage() {
     patchWorkerStatusMut.mutate(workerStatusDraft);
   };
 
+  const qrCardInfo = useMemo(() => {
+    if (!data?.worker) return null;
+    return {
+      workerName: workerDisplayHeroName(data.worker),
+      companyName: data.company?.name || '',
+      phone: displayWorkerPhone(data.worker.phone),
+    };
+  }, [data?.worker, data?.company?.name]);
+
+  useEffect(() => {
+    qrCardPngCacheRef.current = null;
+  }, [qrDataUrl, qrCardInfo]);
+
+  useEffect(() => {
+    if (!qrModalOpen || !qrDataUrl || !qrCardInfo) {
+      if (!qrModalOpen) qrCardPngCacheRef.current = null;
+      return;
+    }
+    let cancelled = false;
+    const timer = window.setTimeout(() => {
+      const el = qrBadgeExportRef.current;
+      if (!el || cancelled) return;
+      captureQrBadgePng(el)
+        .then((png) => {
+          if (!cancelled) qrCardPngCacheRef.current = png;
+        })
+        .catch(() => {});
+    }, 200);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [qrModalOpen, qrDataUrl, qrCardInfo]);
+
+  const getQrCardPng = useCallback(async (): Promise<string> => {
+    if (!qrDataUrl || !qrCardInfo) throw new Error('QR not ready');
+    if (qrCardPngCacheRef.current) return qrCardPngCacheRef.current;
+    const el = qrBadgeExportRef.current;
+    if (!el) throw new Error('QR badge not visible');
+    const png = await captureQrBadgePng(el);
+    qrCardPngCacheRef.current = png;
+    return png;
+  }, [qrDataUrl, qrCardInfo]);
+
+  const downloadQrCard = useCallback(async () => {
+    if (!qrDataUrl || !qrCardInfo) return;
+    const el = qrBadgeExportRef.current;
+    if (!el) {
+      toast.error('Open the QR badge modal to download');
+      return;
+    }
+    setQrCardExporting(true);
+    try {
+      const png = await captureQrBadgePng(el);
+      qrCardPngCacheRef.current = png;
+      const a = document.createElement('a');
+      a.href = png;
+      a.download = `clock-in-qr-${qrCardInfo.workerName.replace(/\s+/g, '-').toLowerCase()}.png`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+    } catch {
+      toast.error('Could not export QR badge');
+    } finally {
+      setQrCardExporting(false);
+    }
+  }, [qrDataUrl, qrCardInfo]);
+
+  const printQrCard = useCallback(() => {
+    if (!qrDataUrl || !qrCardInfo) return;
+    const cached = qrCardPngCacheRef.current;
+    if (cached) {
+      try {
+        printPngDataUrl(cached, `Print QR — ${qrCardInfo.workerName}`);
+      } catch {
+        toast.error('Could not print QR badge');
+      }
+      return;
+    }
+    setQrCardExporting(true);
+    getQrCardPng()
+      .then((png) => printPngDataUrl(png, `Print QR — ${qrCardInfo.workerName}`))
+      .catch(() => toast.error('Could not print QR badge'))
+      .finally(() => setQrCardExporting(false));
+  }, [qrDataUrl, qrCardInfo, getQrCardPng]);
+
   const resetWfFromWorker = useCallback(() => {
     const w = data?.worker;
     if (!w) return;
@@ -435,7 +692,7 @@ export default function SubcontractorWorkerPage() {
       last_name: w.last_name || '',
       preferred_name: w.preferred_name || '',
       gender: w.gender || '',
-      phone: w.phone || '',
+      phone: formatWorkerPhone(w.phone || ''),
       email: w.email || '',
       notes: w.notes || '',
       is_active: w.is_active,
@@ -448,9 +705,9 @@ export default function SubcontractorWorkerPage() {
       country: w.country || '',
       emergency_contact_name: w.emergency_contact_name || '',
       emergency_contact_relationship: w.emergency_contact_relationship || '',
-      emergency_contact_phone: w.emergency_contact_phone || '',
-      emergency_contact_home_phone: w.emergency_contact_home_phone || '',
-      emergency_contact_work_phone: w.emergency_contact_work_phone || '',
+      emergency_contact_phone: formatWorkerPhone(w.emergency_contact_phone || ''),
+      emergency_contact_home_phone: formatWorkerPhone(w.emergency_contact_home_phone || ''),
+      emergency_contact_work_phone: formatWorkerPhone(w.emergency_contact_work_phone || ''),
       emergency_contact_email: w.emergency_contact_email || '',
       emergency_contact_address: w.emergency_contact_address || '',
     });
@@ -698,7 +955,7 @@ export default function SubcontractorWorkerPage() {
                       <div className="text-xs text-gray-600 mt-0.5">{data.company?.name || '—'}</div>
                     </div>
                     <div className="grid md:grid-cols-3 gap-x-3 gap-y-1.5">
-                      <Field label="Phone">{data.worker.phone || '—'}</Field>
+                      <Field label="Phone">{displayWorkerPhone(data.worker.phone) || '—'}</Field>
                       <Field label="Email">{data.worker.email || '—'}</Field>
                       <Field label="Address">
                         {formatAddressDisplay({
@@ -866,14 +1123,14 @@ export default function SubcontractorWorkerPage() {
                           <input
                             className={userInputClass}
                             value={wf.phone}
-                            onChange={(e) => setWf((s) => ({ ...s, phone: e.target.value }))}
+                            onChange={(e) => setWf((s) => ({ ...s, phone: formatWorkerPhone(e.target.value) }))}
                           />
                         </div>
                       </div>
                       ) : (
                       <div className="grid md:grid-cols-2 gap-4">
                         <StaticWorkerField label="Email" value={data.worker.email || ''} />
-                        <StaticWorkerField label="Phone" value={data.worker.phone || ''} />
+                        <StaticWorkerField label="Phone" value={displayWorkerPhone(data.worker.phone)} />
                       </div>
                       )}
                     </PersonalUserSection>
@@ -1002,7 +1259,7 @@ export default function SubcontractorWorkerPage() {
                           <input
                             className={userInputClass}
                             value={wf.emergency_contact_phone}
-                            onChange={(e) => setWf((s) => ({ ...s, emergency_contact_phone: e.target.value }))}
+                            onChange={(e) => setWf((s) => ({ ...s, emergency_contact_phone: formatWorkerPhone(e.target.value) }))}
                           />
                         </div>
                         <div>
@@ -1010,7 +1267,7 @@ export default function SubcontractorWorkerPage() {
                           <input
                             className={userInputClass}
                             value={wf.emergency_contact_home_phone}
-                            onChange={(e) => setWf((s) => ({ ...s, emergency_contact_home_phone: e.target.value }))}
+                            onChange={(e) => setWf((s) => ({ ...s, emergency_contact_home_phone: formatWorkerPhone(e.target.value) }))}
                           />
                         </div>
                         <div>
@@ -1018,7 +1275,7 @@ export default function SubcontractorWorkerPage() {
                           <input
                             className={userInputClass}
                             value={wf.emergency_contact_work_phone}
-                            onChange={(e) => setWf((s) => ({ ...s, emergency_contact_work_phone: e.target.value }))}
+                            onChange={(e) => setWf((s) => ({ ...s, emergency_contact_work_phone: formatWorkerPhone(e.target.value) }))}
                           />
                         </div>
                         <div className="md:col-span-2">
@@ -1064,19 +1321,19 @@ export default function SubcontractorWorkerPage() {
                               {data.worker.emergency_contact_phone && (
                                 <div>
                                   <div className="text-[11px] uppercase text-gray-500">Mobile</div>
-                                  <div className="text-gray-700">{data.worker.emergency_contact_phone}</div>
+                                  <div className="text-gray-700">{displayWorkerPhone(data.worker.emergency_contact_phone)}</div>
                                 </div>
                               )}
                               {data.worker.emergency_contact_home_phone && (
                                 <div>
                                   <div className="text-[11px] uppercase text-gray-500">Home</div>
-                                  <div className="text-gray-700">{data.worker.emergency_contact_home_phone}</div>
+                                  <div className="text-gray-700">{displayWorkerPhone(data.worker.emergency_contact_home_phone)}</div>
                                 </div>
                               )}
                               {data.worker.emergency_contact_work_phone && (
                                 <div>
                                   <div className="text-[11px] uppercase text-gray-500">Work</div>
-                                  <div className="text-gray-700">{data.worker.emergency_contact_work_phone}</div>
+                                  <div className="text-gray-700">{displayWorkerPhone(data.worker.emergency_contact_work_phone)}</div>
                                 </div>
                               )}
                               {data.worker.emergency_contact_email && (
@@ -1149,25 +1406,23 @@ export default function SubcontractorWorkerPage() {
                       <p className="text-xs text-gray-600 -mt-1 mb-3">
                         Site QR for this worker (same role as kiosk access on Users — opens the subcontractor scan flow for clock-in/out).
                       </p>
-                      {qrDataUrl && (
-                        <div className="flex flex-col sm:flex-row sm:items-start gap-4">
-                          <img src={qrDataUrl} alt="" className="border rounded-lg p-2 bg-white w-[200px] h-[200px] object-contain" />
-                          <div className="text-sm space-y-2">
-                            <a
-                              href={qrDataUrl}
-                              download={`qr-${workerDisplayHeroName(data.worker).replace(/\s+/g, '-')}.png`}
-                              className="inline-flex px-3 py-1.5 rounded-lg text-xs font-semibold text-white bg-gradient-to-r from-brand-red to-[#ee2b2b] shadow-sm hover:opacity-95"
-                            >
-                              Download PNG
-                            </a>
-                            <div>
-                              <button type="button" className="text-xs font-semibold text-brand-red underline" onClick={() => window.print()}>
-                                Print
-                              </button>
-                            </div>
-                          </div>
-                        </div>
-                      )}
+                      {qrDataUrl && qrCardInfo ? (
+                        <button
+                          type="button"
+                          onClick={() => setQrModalOpen(true)}
+                          className="group text-left rounded-2xl focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-red focus-visible:ring-offset-2 transition-transform hover:scale-[1.02] active:scale-[0.99]"
+                          title="View QR badge"
+                        >
+                          <WorkerQrBadgeCard
+                            variant="preview"
+                            workerName={qrCardInfo.workerName}
+                            companyName={qrCardInfo.companyName}
+                            phone={qrCardInfo.phone}
+                            qrDataUrl={qrDataUrl}
+                            className="w-[168px] cursor-pointer group-hover:shadow-xl transition-shadow"
+                          />
+                        </button>
+                      ) : null}
                     </PersonalUserSection>
 
                     {personalEditSection && (
@@ -1423,6 +1678,73 @@ export default function SubcontractorWorkerPage() {
                 hideEditButton
                 fileObjectId={data.worker.photo_file_id || undefined}
               />
+            )}
+
+            {qrModalOpen && qrDataUrl && qrCardInfo && (
+              <OverlayPortal>
+                <div
+                  className="fixed inset-0 z-50 flex items-center justify-center bg-black/55 p-4"
+                  onClick={() => setQrModalOpen(false)}
+                >
+                  <div
+                    className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden flex flex-col"
+                    onClick={(e) => e.stopPropagation()}
+                    role="dialog"
+                    aria-labelledby="worker-qr-modal-title"
+                    aria-modal="true"
+                  >
+                    <div className="px-4 py-3 border-b border-gray-200 flex items-center justify-between bg-gray-50/80">
+                      <h2 id="worker-qr-modal-title" className="text-sm font-semibold text-gray-900">
+                        Clock-in QR badge
+                      </h2>
+                      <button
+                        type="button"
+                        className="w-8 h-8 rounded-lg text-gray-500 hover:bg-gray-100 hover:text-gray-800 text-lg leading-none"
+                        aria-label="Close"
+                        onClick={() => setQrModalOpen(false)}
+                      >
+                        ×
+                      </button>
+                    </div>
+                    <div className="p-5 flex flex-col items-center">
+                      <WorkerQrBadgeCard
+                        ref={qrBadgeExportRef}
+                        variant="full"
+                        workerName={qrCardInfo.workerName}
+                        companyName={qrCardInfo.companyName}
+                        phone={qrCardInfo.phone}
+                        qrDataUrl={qrDataUrl}
+                        className="w-full max-w-[320px]"
+                      />
+                    </div>
+                    <div className="px-4 py-3 border-t border-gray-100 bg-gray-50 flex flex-wrap justify-center gap-2">
+                      <button
+                        type="button"
+                        disabled={qrCardExporting}
+                        onClick={() => void downloadQrCard()}
+                        className="px-3 py-1.5 rounded-lg text-xs font-semibold text-white bg-gradient-to-r from-brand-red to-[#ee2b2b] shadow-sm hover:opacity-95 disabled:opacity-50"
+                      >
+                        {qrCardExporting ? 'Preparing…' : 'Download PNG'}
+                      </button>
+                      <button
+                        type="button"
+                        disabled={qrCardExporting}
+                        onClick={() => void printQrCard()}
+                        className="px-3 py-1.5 rounded-lg text-xs font-semibold border border-gray-300 bg-white text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+                      >
+                        Print
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setQrModalOpen(false)}
+                        className="px-3 py-1.5 rounded-lg text-xs font-semibold border border-gray-300 bg-white text-gray-700 hover:bg-gray-50"
+                      >
+                        Close
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </OverlayPortal>
             )}
 
             {workerStatusModalOpen && (
