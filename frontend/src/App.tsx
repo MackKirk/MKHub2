@@ -100,6 +100,7 @@ import SystemAdmin from './pages/SystemAdmin';
 import Attendance from './pages/Attendance';
 import Notifications from './pages/Notifications';
 import Install from './pages/Install';
+import DesignSystemShowcase from './pages/dev/DesignSystemShowcase';
 import { BusinessLineProvider } from './context/BusinessLineContext';
 import { BUSINESS_LINE_REPAIRS_MAINTENANCE } from './lib/businessLine';
 
@@ -261,6 +262,7 @@ export default function App(){
           <Route path="/logs" element={<AppShell><SystemAdmin /></AppShell>} />
           <Route path="/admin/system" element={<Navigate to="/logs" replace />} />
           <Route path="/notifications" element={<AppShell><Notifications/></AppShell>} />
+          <Route path="/dev/design-system" element={<AppShell><DesignSystemShowcase/></AppShell>} />
         </Route>
         <Route path="*" element={<Navigate to={getToken()? '/home':'/login'} replace />} />
       </Routes>
