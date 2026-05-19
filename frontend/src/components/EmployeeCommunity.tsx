@@ -13,6 +13,21 @@ import CommunityCommentRichTextEditor from '@/components/community/CommunityComm
 import { useConfirm } from '@/components/ConfirmProvider';
 import { extractMentionsFromEditor } from '@/lib/communityPostEditorUtils';
 import { isCommunityEditorHtmlEmpty, sanitizeCommunityPostHtml } from '@/lib/communityPostHtml';
+import {
+  AppBadge,
+  AppButton,
+  AppEmptyState,
+  AppInput,
+  AppSelect,
+  AppTabs,
+  uiBorders,
+  uiColors,
+  uiCx,
+  uiRadius,
+  uiSpacing,
+  uiTypography,
+} from '@/components/ui';
+import { Search } from 'lucide-react';
 
 type CommunityPost = {
   id: string;
@@ -78,9 +93,14 @@ function buildPostsQuery(params: Record<string, string | undefined>): string {
 type EmployeeCommunityProps = {
   expanded?: boolean;
   feedMode?: boolean;
+  onUnreadCountChange?: (count: number) => void;
 };
 
-export default function EmployeeCommunity({ expanded = false, feedMode = false }: EmployeeCommunityProps) {
+export default function EmployeeCommunity({
+  expanded = false,
+  feedMode = false,
+  onUnreadCountChange,
+}: EmployeeCommunityProps) {
   const [searchParams, setSearchParams] = useSearchParams();
   const [filter, setFilter] = useState<'all' | 'unread' | 'required' | 'urgent'>('all');
   const [searchQ, setSearchQ] = useState('');
@@ -518,6 +538,11 @@ export default function EmployeeCommunity({ expanded = false, feedMode = false }
     () => (Array.isArray(posts) ? posts.filter((p: CommunityPost) => p.is_unread).length : 0),
     [posts]
   );
+
+  useEffect(() => {
+    onUnreadCountChange?.(unreadCount);
+  }, [unreadCount, onUnreadCountChange]);
+
   const hasActiveRefinements = Boolean(searchQ.trim() || relatedAreaFilter || priorityFilter || confirmedOnly);
 
   const clearRefinements = () => {
@@ -527,120 +552,118 @@ export default function EmployeeCommunity({ expanded = false, feedMode = false }
     setConfirmedOnly(false);
   };
 
+  const areaSelectOptions = useMemo(
+    () => Object.entries(AREA_LABELS).map(([k, lab]) => ({ value: k, label: lab })),
+    [],
+  );
+  const prioritySelectOptions = useMemo(
+    () => [
+      { value: 'normal', label: 'Normal' },
+      { value: 'important', label: 'Important' },
+      { value: 'urgent', label: 'Urgent' },
+      { value: 'critical', label: 'Critical' },
+    ],
+    [],
+  );
+
   return (
-    <div className={`rounded-2xl border border-gray-200 bg-white shadow-sm p-5 ${expanded ? 'h-full flex flex-col' : feedMode ? 'h-full flex flex-col min-w-0' : ''}`}>
-      <div className="mb-5 flex items-start justify-between gap-3 flex-shrink-0">
-        <div>
-          <h3 className="text-lg font-semibold text-gray-900 tracking-tight">Employee Community</h3>
-          <p className="text-xs text-gray-500 mt-0.5">Company updates and required communications.</p>
+    <div
+      className={uiCx(
+        'flex min-w-0 flex-col',
+        feedMode || expanded ? 'h-full min-h-0' : '',
+        !feedMode && !expanded ? uiCx(uiRadius.card, uiBorders.subtle, uiColors.surface, uiSpacing.cardPadding) : '',
+      )}
+    >
+      {!feedMode ? (
+        <header className="mb-4 flex shrink-0 items-start justify-between gap-3">
+          <div>
+            <h3 className={uiTypography.sectionTitle}>Employee Community</h3>
+            <p className={uiTypography.sectionSubtitle}>Company updates and required communications.</p>
+          </div>
+          <div className={uiCx(uiRadius.control, uiBorders.subtle, uiColors.surfaceSubtle, 'px-2.5 py-1 text-right')}>
+            <div className={uiTypography.overline}>Unread</div>
+            <div className={uiTypography.sectionTitle}>{unreadCount}</div>
+          </div>
+        </header>
+      ) : null}
+
+      <div
+        className={uiCx(
+          'mb-3 shrink-0',
+          uiRadius.control,
+          uiBorders.subtle,
+          uiColors.surfaceSubtle,
+          uiSpacing.compactCardPadding,
+          uiSpacing.sectionStack,
+        )}
+      >
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-end">
+          <AppInput
+            type="search"
+            placeholder="Search title or content..."
+            value={searchQ}
+            onChange={(e) => setSearchQ(e.target.value)}
+            leftIcon={<Search className="h-4 w-4" />}
+            className="min-w-[200px] flex-1"
+          />
+          <AppTabs
+            className="shrink-0"
+            tabs={[
+              { key: 'all', label: 'All' },
+              { key: 'unread', label: 'Unread' },
+              { key: 'urgent', label: 'Urgent' },
+              { key: 'required', label: 'Required' },
+            ]}
+            value={filter}
+            onChange={(key) => setFilter(key as typeof filter)}
+          />
         </div>
-        <div className="rounded-lg border border-gray-200 bg-gray-50 px-2.5 py-1 text-right">
-          <div className="text-[10px] uppercase tracking-wide text-gray-500 font-semibold">Unread</div>
-          <div className="text-xs font-semibold text-gray-800">{unreadCount}</div>
+
+        <div className="flex flex-col gap-2 md:flex-row md:flex-wrap md:items-end">
+          <AppSelect
+            value={relatedAreaFilter}
+            onChange={(e) => setRelatedAreaFilter(e.target.value)}
+            options={areaSelectOptions}
+            placeholder="All areas"
+            className="min-w-[170px] flex-1"
+          />
+          <AppSelect
+            value={priorityFilter}
+            onChange={(e) => setPriorityFilter(e.target.value)}
+            options={prioritySelectOptions}
+            placeholder="All priorities"
+            className="min-w-[170px] flex-1"
+          />
+          <AppButton
+            type="button"
+            size="sm"
+            variant={confirmedOnly ? 'primary' : 'secondary'}
+            onClick={() => setConfirmedOnly((v) => !v)}
+          >
+            Confirmed by me
+          </AppButton>
+          {hasActiveRefinements ? (
+            <AppButton type="button" size="sm" variant="ghost" className="md:ml-auto" onClick={clearRefinements}>
+              Clear filters
+            </AppButton>
+          ) : null}
         </div>
       </div>
 
-      <div className="mb-4 rounded-xl border border-slate-200 bg-slate-50/40 p-3 flex-shrink-0">
-        <div className="flex flex-col gap-3">
-          <div className="flex flex-col gap-2 lg:flex-row lg:items-center">
-            <div className="relative flex-1 min-w-[200px]">
-              <svg
-                className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-                aria-hidden
-              >
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="m21 21-4.35-4.35M10.5 18a7.5 7.5 0 1 1 0-15 7.5 7.5 0 0 1 0 15Z" />
-              </svg>
-              <input
-                type="search"
-                placeholder="Search title or content..."
-                value={searchQ}
-                onChange={(e) => setSearchQ(e.target.value)}
-                className="h-9 w-full rounded-lg border border-slate-300 bg-white pl-9 pr-3 text-sm text-slate-700 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-200 focus:border-slate-400"
-              />
-            </div>
-            <div className="flex gap-1.5 overflow-x-auto pb-1 lg:pb-0">
-              {(['all', 'unread', 'urgent', 'required'] as const).map((f) => (
-                <button
-                  key={f}
-                  type="button"
-                  onClick={() => setFilter(f)}
-                  className={`
-                    h-9 px-3 rounded-lg text-xs whitespace-nowrap transition-all duration-150 font-semibold tracking-wide uppercase border
-                    ${filter === f
-                      ? 'bg-slate-900 text-white border-slate-900 shadow-sm'
-                      : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-100 active:bg-slate-200'
-                    }
-                  `}
-                >
-                  {f.charAt(0).toUpperCase() + f.slice(1)}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          <div className="flex flex-col gap-2 md:flex-row md:flex-wrap md:items-center">
-            <select
-              value={relatedAreaFilter}
-              onChange={(e) => setRelatedAreaFilter(e.target.value)}
-              className="h-9 min-w-[170px] rounded-lg border border-slate-300 bg-white px-3 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-slate-200 focus:border-slate-400"
-            >
-              <option value="">All areas</option>
-              {Object.entries(AREA_LABELS).map(([k, lab]) => (
-                <option key={k} value={k}>
-                  {lab}
-                </option>
-              ))}
-            </select>
-            <select
-              value={priorityFilter}
-              onChange={(e) => setPriorityFilter(e.target.value)}
-              className="h-9 min-w-[170px] rounded-lg border border-slate-300 bg-white px-3 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-slate-200 focus:border-slate-400"
-            >
-              <option value="">All priorities</option>
-              <option value="normal">Normal</option>
-              <option value="important">Important</option>
-              <option value="urgent">Urgent</option>
-              <option value="critical">Critical</option>
-            </select>
-
-            <button
-              type="button"
-              onClick={() => setConfirmedOnly((v) => !v)}
-              className={`h-9 inline-flex items-center rounded-lg border px-3 text-xs font-semibold tracking-wide uppercase transition ${
-                confirmedOnly
-                  ? 'border-emerald-300 bg-emerald-50 text-emerald-700'
-                  : 'border-slate-300 bg-white text-slate-600 hover:bg-slate-100'
-              }`}
-            >
-              Confirmed by me
-            </button>
-
-            {hasActiveRefinements && (
-              <button
-                type="button"
-                onClick={clearRefinements}
-                className="h-9 md:ml-auto inline-flex items-center rounded-lg border border-slate-300 bg-white px-3 text-xs font-semibold text-slate-600 hover:bg-slate-100"
-              >
-                Clear filters
-              </button>
-            )}
-          </div>
-        </div>
-      </div>
-
-      {/* Posts feed */}
-      <div 
+      <div
         ref={feedContainerRef}
-        className={`space-y-3 overflow-y-auto pt-1 ${expanded ? 'flex-1 min-h-0' : feedMode ? 'flex-1 min-h-0' : ''}`} 
-        style={feedMode ? {} : (!expanded ? { maxHeight: '600px', height: '600px' } : { maxHeight: '100%' })}
+        className={uiCx(
+          uiSpacing.sectionStack,
+          'min-h-0 overflow-y-auto pt-1',
+          expanded || feedMode ? 'flex-1' : '',
+        )}
+        style={feedMode ? {} : !expanded ? { maxHeight: '600px', height: '600px' } : { maxHeight: '100%' }}
       >
         {filteredPosts.length === 0 ? (
-          <div className="text-center text-gray-500 py-10 rounded-xl border border-dashed border-gray-200 bg-gray-50/50">
-            {posts.length === 0 ? 'No posts yet' : `No ${filter} posts`}
-          </div>
+          <AppEmptyState
+            title={posts.length === 0 ? 'No posts yet' : `No ${filter} posts`}
+            className="py-8"
+          />
         ) : (
           filteredPosts.map((post) => (
             <CommunityFeedPostSnippet

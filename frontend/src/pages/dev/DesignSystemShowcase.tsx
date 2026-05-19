@@ -14,6 +14,7 @@ import {
   AppTable,
   AppTabs,
   AppTextarea,
+  uiBorders,
   uiCx,
   uiLayout,
   uiRadius,
@@ -104,7 +105,7 @@ export default function DesignSystemShowcase() {
 
   return (
     <main className={uiCx('min-h-full bg-gray-50', uiSpacing.pageY)}>
-      <div className={uiCx(uiLayout.contentContainer, uiSpacing.pageX, uiSpacing.pageStack)}>
+      <div className={uiCx('w-full', uiSpacing.pageStack)}>
         <AppPageHeader
           title="Design System Showcase"
           subtitle="MK Hub reusable enterprise UI foundation based on Human Resources User Details patterns."
@@ -266,6 +267,38 @@ export default function DesignSystemShowcase() {
             <AppCalendarBase monthLabel="May 2026" days={[...sampleDays]} />
           </AppCard>
         </div>
+
+        <AppCard
+          title="Page two-column layout"
+          subtitle="Schedule and Clock In/Out — primary column left, sidebar right, tops aligned."
+        >
+          <p className={uiCx(uiTypography.helper, 'mb-4')}>
+            Use <code className="rounded bg-gray-100 px-1 py-0.5 text-[11px]">uiLayout.pageTwoColumn</code> (Schedule,
+            Clock In/Out) or <code className="rounded bg-gray-100 px-1 py-0.5 text-[11px]">uiLayout.pageOverview</code>{' '}
+            (Overview feed + sidebar). Stack cards inside each column with{' '}
+            <code className="rounded bg-gray-100 px-1 py-0.5 text-[11px]">uiSpacing.sectionStack</code>. Do{' '}
+            <strong className="font-semibold text-gray-800">not</strong> put{' '}
+            <code className="rounded bg-gray-100 px-1 py-0.5 text-[11px]">space-y-*</code> on the grid wrapper — it
+            misaligns column tops.
+          </p>
+          <div className={uiLayout.pageTwoColumn}>
+            <div className={uiSpacing.sectionStack}>
+              <div className={uiCx(uiRadius.card, uiBorders.subtle, 'bg-white p-4', uiTypography.helper)}>
+                Primary column (e.g. Clock Actions + Today Status)
+              </div>
+              <div className={uiCx(uiRadius.card, uiBorders.subtle, 'bg-white p-4', uiTypography.helper)}>
+                Stacked card in primary column
+              </div>
+            </div>
+            <div className={uiCx(uiRadius.card, uiBorders.subtle, 'bg-white p-4', uiTypography.helper)}>
+              Sidebar column (e.g. Weekly Summary) — top aligned with gap-2 from primary
+            </div>
+          </div>
+          <div className={uiCx('mt-4 rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900', uiRadius.control)}>
+            <strong className="font-semibold">Avoid:</strong>{' '}
+            <code className="text-[11px]">grid … items-start space-y-3</code> on the two-column wrapper.
+          </div>
+        </AppCard>
 
         <div className={uiLayout.sectionGrid2}>
           <AppCard title="Spacing Rules" subtitle="Reference spacing rhythm for page and section composition.">

@@ -4,8 +4,10 @@ import { useQuery } from '@tanstack/react-query';
 import FadeInOnMount from '@/components/FadeInOnMount';
 import LoadingOverlay from '@/components/LoadingOverlay';
 import { useAnimationReady } from '@/contexts/AnimationReadyContext';
+import { AppButton, AppEmptyState, uiBorders, uiCx, uiRadius, uiTypography } from '@/components/ui';
 import { api } from '@/lib/api';
 import { formatDateLocal } from '@/lib/dateUtils';
+import { ChevronLeft, ChevronRight } from 'lucide-react';
 
 type Shift = {
   id: string;
@@ -36,9 +38,10 @@ function formatDayShort(dateStr: string): string {
 
 type ScheduleWidgetProps = {
   config?: Record<string, unknown>;
+  embedded?: boolean;
 };
 
-export function ScheduleWidget({ config: _config }: ScheduleWidgetProps) {
+export function ScheduleWidget({ config: _config, embedded = false }: ScheduleWidgetProps) {
   const { ready } = useAnimationReady();
   const [anchorDate, setAnchorDate] = useState<Date>(() => {
     const d = new Date();
@@ -61,7 +64,7 @@ export function ScheduleWidget({ config: _config }: ScheduleWidgetProps) {
   }, [anchorDate]);
   const dateRange = useMemo(
     () => `${formatDateLocal(weekStart)},${formatDateLocal(weekEnd)}`,
-    [weekStart, weekEnd]
+    [weekStart, weekEnd],
   );
 
   const { data: shifts = [], isLoading, error } = useQuery<Shift[]>({
@@ -115,8 +118,8 @@ export function ScheduleWidget({ config: _config }: ScheduleWidgetProps) {
 
   if (isLoading) {
     return (
-      <div className="flex flex-col min-h-0 h-full w-full">
-        <LoadingOverlay isLoading minHeight="min-h-[120px]" className="flex-1 min-h-0">
+      <div className="flex h-full min-h-0 w-full flex-col">
+        <LoadingOverlay isLoading minHeight="min-h-[120px]" className="min-h-0 flex-1">
           <div className="min-h-[120px]" />
         </LoadingOverlay>
       </div>
@@ -124,7 +127,7 @@ export function ScheduleWidget({ config: _config }: ScheduleWidgetProps) {
   }
   if (error) {
     return (
-      <div className="rounded-lg border border-red-200 bg-red-50/50 px-3 py-2 text-sm text-red-600">
+      <div className={uiCx(uiRadius.control, 'border border-red-200 bg-red-50/50 px-3 py-2 text-sm text-red-600')}>
         Failed to load schedule
       </div>
     );
@@ -133,58 +136,64 @@ export function ScheduleWidget({ config: _config }: ScheduleWidgetProps) {
   const dateKeys = Object.keys(shiftsByDate).sort();
   const totalShifts = shifts.length;
 
-  return (
-    <FadeInOnMount enabled={ready} className="flex flex-col min-h-0 h-full w-full">
-      <div className="flex items-center justify-between shrink-0 mb-2">
-        <span className="text-[10px] font-semibold text-gray-600 truncate">{weekLabel}</span>
-        <div className="flex items-center gap-0.5 shrink-0">
-          <button
-            type="button"
-            onClick={goToPrev}
-            className="p-1 rounded hover:bg-gray-100 text-gray-500 text-xs"
-            aria-label="Previous week"
-          >
-            ←
-          </button>
-          <button
-            type="button"
-            onClick={goToToday}
-            className="px-1.5 py-0.5 rounded text-[10px] font-medium text-gray-600 hover:bg-gray-100"
-          >
-            Today
-          </button>
-          <button
-            type="button"
-            onClick={goToNext}
-            className="p-1 rounded hover:bg-gray-100 text-gray-500 text-xs"
-            aria-label="Next week"
-          >
-            →
-          </button>
-        </div>
+  const weekControls = embedded ? (
+    <div className="mb-3 flex shrink-0 items-center justify-between gap-2 border-b border-gray-100 pb-3">
+      <span className={uiCx(uiTypography.controlLabel, 'truncate font-semibold text-gray-700')}>{weekLabel}</span>
+      <div className="flex shrink-0 items-center gap-1">
+        <AppButton variant="secondary" size="sm" leftIcon={<ChevronLeft className="h-4 w-4" />} onClick={goToPrev} aria-label="Previous week" />
+        <AppButton variant="secondary" size="sm" onClick={goToToday}>
+          Today
+        </AppButton>
+        <AppButton variant="secondary" size="sm" rightIcon={<ChevronRight className="h-4 w-4" />} onClick={goToNext} aria-label="Next week" />
       </div>
-      <div className="flex-1 min-h-0 overflow-y-auto space-y-2 pr-1">
+    </div>
+  ) : (
+    <div className="mb-2 flex shrink-0 items-center justify-between">
+      <span className="truncate text-[10px] font-semibold text-gray-600">{weekLabel}</span>
+      <div className="flex shrink-0 items-center gap-0.5">
+        <button type="button" onClick={goToPrev} className="rounded p-1 text-xs text-gray-500 hover:bg-gray-100" aria-label="Previous week">
+          ←
+        </button>
+        <button type="button" onClick={goToToday} className="rounded px-1.5 py-0.5 text-[10px] font-medium text-gray-600 hover:bg-gray-100">
+          Today
+        </button>
+        <button type="button" onClick={goToNext} className="rounded p-1 text-xs text-gray-500 hover:bg-gray-100" aria-label="Next week">
+          →
+        </button>
+      </div>
+    </div>
+  );
+
+  const content = (
+    <>
+      {weekControls}
+      <div className="min-h-0 flex-1 space-y-2 overflow-y-auto pr-1">
         {totalShifts === 0 ? (
-          <div className="rounded-lg border border-dashed border-gray-200 bg-gray-50/50 px-3 py-4 text-center text-xs text-gray-500">
-            No shifts this week
-          </div>
+          embedded ? (
+            <AppEmptyState title="No shifts this week" className="py-6" />
+          ) : (
+            <div className={uiCx(uiRadius.control, 'border border-dashed border-gray-200 bg-gray-50/50 px-3 py-4 text-center text-xs text-gray-500')}>
+              No shifts this week
+            </div>
+          )
         ) : (
           dateKeys.map((dateStr) => (
             <div key={dateStr} className="shrink-0">
-              <div className="text-[10px] font-semibold text-gray-500 mb-1">
-                {formatDayShort(dateStr)}
-              </div>
-              <ul className="space-y-1.5">
+              <div className={uiTypography.overline}>{formatDayShort(dateStr)}</div>
+              <ul className="mt-1 space-y-1.5">
                 {(shiftsByDate[dateStr] ?? []).map((shift) => (
                   <li key={shift.id}>
                     <Link
-                      to={`/schedule?date=${dateStr}`}
-                      className="block rounded-lg border border-gray-200 bg-white px-2.5 py-2 shadow-sm transition-all hover:border-brand-red/30 hover:shadow-md hover:bg-gray-50/50"
+                      to={`/schedule?date=${encodeURIComponent(dateStr)}&shift=${encodeURIComponent(shift.id)}`}
+                      className={uiCx(
+                        'block px-2.5 py-2 transition-colors hover:bg-gray-50/80',
+                        uiRadius.control,
+                        uiBorders.subtle,
+                        'bg-white',
+                      )}
                     >
-                      <div className="font-medium text-gray-900 text-xs truncate">
-                        {shift.project_name || 'Shift'}
-                      </div>
-                      <div className="text-[10px] text-gray-500 mt-0.5">
+                      <div className={uiCx(uiTypography.sectionTitle, 'truncate')}>{shift.project_name || 'Shift'}</div>
+                      <div className={uiCx(uiTypography.helper, 'mt-0.5')}>
                         {formatTime12h(shift.start_time)} – {formatTime12h(shift.end_time)}
                       </div>
                     </Link>
@@ -195,11 +204,16 @@ export function ScheduleWidget({ config: _config }: ScheduleWidgetProps) {
           ))
         )}
       </div>
-      <div className="shrink-0 pt-2 border-t border-gray-100">
-        <Link to="/schedule" className="text-xs font-medium text-brand-red hover:underline">
-          View full schedule →
-        </Link>
-      </div>
+    </>
+  );
+
+  if (embedded) {
+    return <div className="flex min-h-0 w-full flex-col">{content}</div>;
+  }
+
+  return (
+    <FadeInOnMount enabled={ready} className="flex h-full min-h-0 w-full flex-col">
+      {content}
     </FadeInOnMount>
   );
 }

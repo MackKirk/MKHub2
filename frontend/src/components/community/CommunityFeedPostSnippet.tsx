@@ -208,7 +208,7 @@ export function CommunityFeedPostSnippet({
             </button>
             <span className="text-xs text-gray-400">· {formatTimeAgo(post.created_at)}</span>
             {post.related_area && (
-              <span className="text-[10px] px-1.5 py-0.5 rounded bg-slate-50 text-slate-600 border border-slate-200">
+              <span className="rounded border border-gray-200 bg-gray-50 px-1.5 py-0.5 text-[10px] text-gray-600">
                 {COMMUNITY_FEED_AREA_LABELS[post.related_area] || post.related_area}
               </span>
             )}
@@ -308,7 +308,7 @@ export function CommunityFeedPostSnippet({
                   e.stopPropagation();
                   onOpenClick(e);
                 }}
-                className="ml-auto px-2 py-1 text-xs font-semibold text-slate-600 hover:text-slate-900 hover:bg-slate-50 active:bg-slate-100 rounded-lg transition-all duration-150 active:scale-[0.98]"
+                className="ml-auto rounded-lg px-2 py-1 text-xs font-semibold text-gray-600 transition-all duration-150 hover:bg-gray-50 hover:text-gray-900 active:scale-[0.98] active:bg-gray-100"
               >
                 Open
               </button>

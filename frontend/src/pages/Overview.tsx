@@ -1,13 +1,26 @@
 import EmployeeCommunity from '@/components/EmployeeCommunity';
-import { useEffect, useMemo, useState, type ReactNode } from 'react';
+import { ClockActionTile } from '@/components/ClockActionTile';
+import { ClockInOutModalLayer } from '@/components/ClockInOutModalLayer';
+import {
+  AppBadge,
+  AppCard,
+  AppPageHeader,
+  uiBorders,
+  uiColors,
+  uiCx,
+  uiLayout,
+  uiRadius,
+  uiSpacing,
+  uiTypography,
+} from '@/components/ui';
+import { ScheduleWidget } from '@/pages/home-dashboard/widgets/ScheduleWidget';
+import { useEffect, useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 import { api } from '@/lib/api';
-import { ScheduleWidget } from '@/pages/home-dashboard/widgets/ScheduleWidget';
 import { getTodayLocal } from '@/lib/dateUtils';
-import { ClockInOutModalLayer } from '@/components/ClockInOutModalLayer';
+import { ChevronRight, LayoutGrid } from 'lucide-react';
 
-// Helper function to get time-based greeting
 function getTimeBasedGreeting(): string {
   const hour = new Date().getHours();
   if (hour < 12) return 'Good morning';
@@ -33,37 +46,25 @@ type Attendance = {
   reason_text?: string;
 };
 
-function formatTime12h(timeStr: string | null | undefined): string {
-  if (!timeStr || timeStr === '--:--' || timeStr === '-') return timeStr || '--:--';
-  const parts = timeStr.split(':');
-  if (parts.length < 2) return timeStr;
-  const hours = parseInt(parts[0], 10);
-  const minutes = parts[1];
-  if (Number.isNaN(hours)) return timeStr;
-  const period = hours >= 12 ? 'PM' : 'AM';
-  const hours12 = hours === 0 ? 12 : hours > 12 ? hours - 12 : hours;
-  return `${hours12}:${minutes} ${period}`;
-}
-
 function isHoursWorked(a: Attendance): boolean {
   return !!a.reason_text && a.reason_text.includes('HOURS_WORKED:');
 }
 
-export default function Overview(){
-  const { data: meProfile } = useQuery({ 
-    queryKey: ['me-profile'], 
-    queryFn: () => api<any>('GET', '/auth/me/profile') 
+export default function Overview() {
+  const { data: meProfile } = useQuery({
+    queryKey: ['me-profile'],
+    queryFn: () => api<any>('GET', '/auth/me/profile'),
   });
-  
+
   const profile = meProfile?.profile || {};
   const user = meProfile?.user || {};
-  const displayName = profile.preferred_name || 
-    [profile.first_name, profile.last_name].filter(Boolean).join(' ') || 
-    user.username || 
+  const displayName =
+    profile.preferred_name ||
+    [profile.first_name, profile.last_name].filter(Boolean).join(' ') ||
+    user.username ||
     'User';
   const jobTitle = profile.job_title || '';
-  
-  // Get current date formatted (same as Business Dashboard)
+
   const todayLabel = useMemo(() => {
     return new Date().toLocaleDateString('en-CA', {
       weekday: 'long',
@@ -73,64 +74,52 @@ export default function Overview(){
     });
   }, []);
 
+  const greetingTitle = `${getTimeBasedGreeting()}, ${displayName}`;
+  const [communityUnread, setCommunityUnread] = useState(0);
+
   return (
-    <div className="space-y-4 min-h-screen">
-      {/* Title Bar - preserved in the same simple format used before the redesign */}
-      <div className="rounded-xl border bg-white p-4 mb-4">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-3 flex-1">
-            <div>
-              <div className="text-sm font-semibold text-gray-900">
-                {getTimeBasedGreeting()}, {displayName}
-              </div>
-              {jobTitle && <div className="text-xs text-gray-500 mt-0.5">{jobTitle}</div>}
-            </div>
-          </div>
+    <div className={uiCx(uiSpacing.pageStack, 'min-h-screen w-full')}>
+      <AppPageHeader
+        title={greetingTitle}
+        subtitle={jobTitle || undefined}
+        icon={<LayoutGrid className="h-4 w-4" />}
+        actions={
           <div className="text-right">
-            <div className="text-[10px] font-medium text-gray-500 uppercase tracking-wide">Today</div>
-            <div className="text-xs font-semibold text-gray-700 mt-0.5">{todayLabel}</div>
+            <div className={uiTypography.overline}>Today</div>
+            <div className={uiCx(uiTypography.sectionTitle, 'mt-0.5')}>{todayLabel}</div>
           </div>
-        </div>
-      </div>
+        }
+      />
 
-      <div className="grid min-w-0 grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1fr)_360px] 2xl:grid-cols-[minmax(0,1fr)_400px]">
-        <div className="min-w-0 min-h-[720px]">
-          <EmployeeCommunity feedMode={true} />
-        </div>
+      <div className={uiLayout.pageOverview}>
+        <AppCard
+          title="Employee Community"
+          subtitle="Company updates and required communications"
+          className="flex min-h-[720px] min-w-0 flex-col"
+          bodyClassName="flex min-h-0 flex-1 flex-col"
+          actions={
+            <div className={uiCx('flex items-center gap-2', uiRadius.control, uiBorders.subtle, uiColors.surfaceSubtle, uiSpacing.compactCardPadding)}>
+              <span className={uiTypography.overline}>Unread</span>
+              <AppBadge variant={communityUnread > 0 ? 'danger' : 'neutral'}>{communityUnread}</AppBadge>
+            </div>
+          }
+        >
+          <EmployeeCommunity feedMode onUnreadCountChange={setCommunityUnread} />
+        </AppCard>
 
-        <aside className="min-w-0 space-y-4">
-          <EnterpriseUtilityCard title="Clock In / Out" subtitle="Start or finish your work session">
+        <aside className={uiCx('min-w-0', uiSpacing.sectionStack)}>
+          <AppCard title="Clock In / Out" subtitle="Start or finish your work session">
             <OverviewClockPanel />
-          </EnterpriseUtilityCard>
-          <EnterpriseUtilityCard title="Schedule" subtitle="Your weekly shift snapshot">
-            <ScheduleWidget />
-          </EnterpriseUtilityCard>
-          <EnterpriseUtilityCard title="Quick Links" subtitle="Secondary actions">
+          </AppCard>
+          <AppCard title="Schedule" subtitle="Your weekly shift snapshot">
+            <ScheduleWidget embedded />
+          </AppCard>
+          <AppCard title="Quick Links" subtitle="Secondary actions">
             <OverviewQuickLinks />
-          </EnterpriseUtilityCard>
+          </AppCard>
         </aside>
       </div>
     </div>
-  );
-}
-
-function EnterpriseUtilityCard({
-  title,
-  subtitle,
-  children,
-}: {
-  title: string;
-  subtitle: string;
-  children: ReactNode;
-}) {
-  return (
-    <section className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm">
-      <div className="mb-3">
-        <h3 className="text-sm font-semibold text-gray-900">{title}</h3>
-        <p className="text-xs text-gray-500">{subtitle}</p>
-      </div>
-      <div className="min-h-[200px]">{children}</div>
-    </section>
   );
 }
 
@@ -150,7 +139,7 @@ function OverviewClockPanel() {
       if (!currentUser?.id) return { attendances: [], shifts: [] };
       const shifts = await api<Shift[]>(
         'GET',
-        `/dispatch/shifts?date_range=${todayStr},${todayStr}&worker_id=${currentUser.id}`
+        `/dispatch/shifts?date_range=${todayStr},${todayStr}&worker_id=${currentUser.id}`,
       ).catch(() => []);
       const attendances: Attendance[] = [];
 
@@ -199,9 +188,7 @@ function OverviewClockPanel() {
   const hasOpenClockIn = !!openClockIn;
   const canClockIn = !hasOpenClockIn;
   const canClockOut =
-    hasOpenClockIn &&
-    !!openClockIn &&
-    (openClockIn.status === 'approved' || openClockIn.status === 'pending');
+    hasOpenClockIn && !!openClockIn && (openClockIn.status === 'approved' || openClockIn.status === 'pending');
 
   const workingDurationLive = useMemo(() => {
     if (!openClockIn?.clock_in_time) return null;
@@ -219,7 +206,7 @@ function OverviewClockPanel() {
   }, [hasOpenClockIn]);
 
   return (
-    <div className="space-y-3">
+    <div className={uiSpacing.sectionStack}>
       {clockModal && (
         <ClockInOutModalLayer
           selectedDate={todayStr}
@@ -227,9 +214,9 @@ function OverviewClockPanel() {
           onClose={() => setClockModal(null)}
         />
       )}
-      <div className="rounded-lg border border-gray-200 bg-gray-50/60 px-3 py-2">
-        <div className="text-[10px] font-medium text-gray-500 uppercase tracking-wide">Today Status</div>
-        <div className="mt-0.5 text-sm font-semibold text-gray-900">
+      <div className={uiCx(uiRadius.control, uiBorders.subtle, uiColors.surfaceSubtle, uiSpacing.compactCardPadding)}>
+        <div className={uiTypography.overline}>Today Status</div>
+        <div className={uiCx(uiTypography.sectionTitle, 'mt-0.5')}>
           {isLoading
             ? 'Loading attendance...'
             : hasOpenClockIn
@@ -238,85 +225,31 @@ function OverviewClockPanel() {
         </div>
       </div>
 
-      <button
-        type="button"
+      <ClockActionTile
+        kind="in"
+        enabled={canClockIn}
         onClick={() => setClockModal('in')}
-        disabled={!canClockIn}
-        className={`w-full rounded-xl border-2 p-4 text-left transition-all duration-200 ${
-          canClockIn
-            ? 'border-green-200 bg-green-50/50 hover:border-green-300 hover:bg-green-50 hover:shadow-md hover:-translate-y-0.5 active:scale-[0.98] cursor-pointer'
-            : 'border-gray-200 bg-gray-50/50 cursor-not-allowed opacity-60'
-        }`}
-        title={!canClockIn ? 'You must clock out first' : ''}
-      >
-        <div className="flex items-start gap-3">
-          <ClockActionIcon tone={canClockIn ? 'green' : 'disabled'} direction="in" />
-          <div className="flex-1 min-w-0">
-            <div className={`text-base font-semibold mb-1 ${canClockIn ? 'text-gray-900' : 'text-gray-400'}`}>
-              Clock In
-            </div>
-            <div className={`text-xs ${canClockIn ? 'text-gray-600' : 'text-gray-400'}`}>
-              Start tracking your work time
-            </div>
-          </div>
-        </div>
-      </button>
-
-      <button
-        type="button"
+        title={!canClockIn ? 'You must clock out first' : undefined}
+      />
+      <ClockActionTile
+        kind="out"
+        enabled={canClockOut}
         onClick={() => setClockModal('out')}
-        disabled={!canClockOut}
-        className={`w-full rounded-xl border-2 p-4 text-left transition-all duration-200 ${
-          canClockOut
-            ? 'border-red-200 bg-red-50/50 hover:border-red-300 hover:bg-red-50 hover:shadow-md hover:-translate-y-0.5 active:scale-[0.98] cursor-pointer'
-            : 'border-gray-200 bg-gray-50/50 cursor-not-allowed opacity-60'
-        }`}
         title={
           !canClockOut
             ? hasOpenClockIn && openClockIn
               ? 'Clock-in must be approved or pending'
               : 'No open clock-in found'
-            : ''
+            : undefined
         }
-      >
-        <div className="flex items-start gap-3">
-          <ClockActionIcon tone={canClockOut ? 'red' : 'disabled'} direction="out" />
-          <div className="flex-1 min-w-0">
-            <div className={`text-base font-semibold mb-1 ${canClockOut ? 'text-gray-900' : 'text-gray-400'}`}>
-              Clock Out
-            </div>
-            <div className={`text-xs ${canClockOut ? 'text-gray-600' : 'text-gray-400'}`}>
-              End your current work session
-            </div>
-          </div>
-        </div>
-      </button>
-    </div>
-  );
-}
-
-function ClockActionIcon({ tone, direction }: { tone: 'green' | 'red' | 'disabled'; direction: 'in' | 'out' }) {
-  const toneClass =
-    tone === 'green' ? 'bg-green-600 text-white' : tone === 'red' ? 'bg-red-600 text-white' : 'bg-gray-300 text-gray-500';
-
-  return (
-    <div className={`flex-shrink-0 w-10 h-10 rounded-lg flex items-center justify-center ${toneClass}`}>
-      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="2">
-        <circle cx="12" cy="12" r="9" />
-        <path strokeLinecap="round" strokeLinejoin="round" d="M12 8v4l3 3" />
-        {direction === 'in' ? (
-          <path strokeLinecap="round" strokeLinejoin="round" d="M19 12h-3m3 0l-2 2m2-2l-2-2" />
-        ) : (
-          <path strokeLinecap="round" strokeLinejoin="round" d="M5 12h3m-3 0l2 2m-2-2l2-2" />
-        )}
-      </svg>
+      />
     </div>
   );
 }
 
 function OverviewQuickLinks() {
   return (
-    <div className="divide-y divide-gray-100 rounded-xl border border-gray-200">
+    <div className="divide-y divide-gray-100">
       <QuickLink to="/tasks" label="Tasks" description="Open your task queue" />
       <QuickLink to="/task-requests" label="Requests" description="Review pending task requests" />
       <QuickLink to="/clock-in-out" label="Clock History" description="Manage attendance records" />
@@ -329,14 +262,17 @@ function QuickLink({ to, label, description }: { to: string; label: string; desc
     <Link
       to={to}
       state={{ fromHome: true }}
-      className="block px-3 py-2.5 transition-colors first:rounded-t-xl last:rounded-b-xl hover:bg-gray-50"
+      className="block py-2.5 transition-colors hover:bg-gray-50"
     >
       <div className="flex items-center justify-between gap-3">
         <div className="min-w-0">
-          <div className="text-sm font-semibold text-gray-900">{label}</div>
-          <div className="text-xs text-gray-500 truncate">{description}</div>
+          <div className={uiTypography.sectionTitle}>{label}</div>
+          <div className={uiCx(uiTypography.helper, 'truncate')}>{description}</div>
         </div>
-        <span className="text-xs font-semibold text-brand-red">Open</span>
+        <span className="inline-flex items-center gap-0.5 text-xs font-semibold text-brand-red">
+          Open
+          <ChevronRight className="h-3.5 w-3.5" />
+        </span>
       </div>
     </Link>
   );

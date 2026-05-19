@@ -74,4 +74,9 @@ export const uiLayout = {
   sectionGrid2: 'grid grid-cols-1 md:grid-cols-2 gap-4',
   sectionGrid3: 'grid grid-cols-1 md:grid-cols-3 gap-4',
   actionsRow: 'flex flex-wrap items-center gap-2',
+  /** Primary (left) + sidebar (right). Use on full-width pages (Schedule, Clock In/Out). */
+  pageTwoColumn: 'grid grid-cols-[1.5fr_1fr] items-start gap-2',
+  /** Overview: community feed + fixed-width utility sidebar. */
+  pageOverview:
+    'grid min-w-0 grid-cols-1 items-start gap-2 xl:grid-cols-[minmax(0,1fr)_360px] 2xl:grid-cols-[minmax(0,1fr)_400px]',
 } as const;

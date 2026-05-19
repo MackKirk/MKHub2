@@ -4,8 +4,24 @@ import { useSearchParams, useNavigate, useLocation } from 'react-router-dom';
 import { api } from '@/lib/api';
 import toast from 'react-hot-toast';
 import { formatDateLocal, getTodayLocal } from '@/lib/dateUtils';
-import OverlayPortal from '@/components/OverlayPortal';
+import { ClockActionTile } from '@/components/ClockActionTile';
 import { ClockInOutModalLayer } from '@/components/ClockInOutModalLayer';
+import {
+  AppBadge,
+  AppButton,
+  AppCard,
+  AppEmptyState,
+  AppModal,
+  AppPageHeader,
+  AppSelect,
+  uiBorders,
+  uiCx,
+  uiLayout,
+  uiRadius,
+  uiSpacing,
+  uiTypography,
+} from '@/components/ui';
+import { CalendarDays, ChevronLeft, ChevronRight, Clock, Pencil } from 'lucide-react';
 
 // Helper function to convert 24h time (HH:MM:SS or HH:MM) to 12h format (h:mm AM/PM)
 function formatTime12h(timeStr: string | null | undefined): string {
@@ -43,6 +59,12 @@ function formatDateWithYear(dateStr: string): string {
     day: 'numeric',
     year: 'numeric',
   });
+}
+
+function attendanceBadgeVariant(status: string): 'success' | 'warning' | 'danger' {
+  if (status === 'approved') return 'success';
+  if (status === 'pending') return 'warning';
+  return 'danger';
 }
 
 type Shift = {
@@ -916,37 +938,83 @@ export default function ClockInOut() {
     });
   }, []);
 
+  const hourSelectOptions = useMemo(
+    () => Array.from({ length: 12 }, (_, i) => ({ value: String(i + 1), label: String(i + 1) })),
+    [],
+  );
+  const minuteSelectOptions = useMemo(
+    () =>
+      Array.from({ length: 12 }, (_, i) => {
+        const m = i * 5;
+        return { value: String(m).padStart(2, '0'), label: String(m).padStart(2, '0') };
+      }),
+    [],
+  );
+  const amPmSelectOptions = useMemo(
+    () => [
+      { value: 'AM', label: 'AM' },
+      { value: 'PM', label: 'PM' },
+    ],
+    [],
+  );
+  const breakHourOptions = useMemo(
+    () => Array.from({ length: 3 }, (_, i) => ({ value: String(i), label: String(i) })),
+    [],
+  );
+  const breakMinuteOptions = useMemo(
+    () =>
+      Array.from({ length: 12 }, (_, i) => {
+        const m = i * 5;
+        return { value: String(m).padStart(2, '0'), label: String(m).padStart(2, '0') };
+      }),
+    [],
+  );
+
+  const closeEditModal = () => {
+    setEditingAttendance(null);
+    setEditingType(null);
+    setEditTime('');
+    setEditHour12('');
+    setEditMinute('');
+    setEditAmPm('AM');
+  };
+
+  const closeBreakTimeModal = () => {
+    setEditingBreakTimeAttendance(null);
+    setEditBreakTimeHours('0');
+    setEditBreakTimeMinutes('0');
+  };
+
   return (
-    <div className="w-full min-h-screen">
-      {/* Title Bar - same layout and font sizes as Projects / Customers */}
-      <div className="rounded-xl border bg-white p-4 mb-4">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-3 flex-1">
-            <div>
-              <div className="text-sm font-semibold text-gray-900">Clock In / Out</div>
-              <div className="text-xs text-gray-500 mt-0.5">Track your work hours and manage your attendance</div>
-            </div>
-          </div>
+    <div className={uiCx(uiSpacing.pageStack, 'min-h-screen w-full')}>
+      <AppPageHeader
+        title="Clock In / Out"
+        subtitle="Track your work hours and manage your attendance"
+        icon={<Clock className="h-4 w-4" />}
+        actions={
           <div className="text-right">
-            <div className="text-[10px] font-medium text-gray-500 uppercase tracking-wide">Today</div>
-            <div className="text-xs font-semibold text-gray-700 mt-0.5">{todayLabel}</div>
+            <div className={uiTypography.overline}>Today</div>
+            <div className={uiCx(uiTypography.sectionTitle, 'mt-0.5')}>{todayLabel}</div>
           </div>
-        </div>
-      </div>
+        }
+      />
 
-      <div className="grid grid-cols-[1.2fr_1fr] gap-4">
+      <div className={uiLayout.pageTwoColumn}>
         {/* Left Column - Two Stacked Cards */}
-        <div className="space-y-4">
-          {/* CARD 1 — Clock Actions (Action-Focused) */}
-          <div className="rounded-xl border border-gray-200 bg-white p-4 space-y-4">
-            <div className="flex items-center justify-between gap-3">
-              <div className="text-sm font-semibold text-gray-900">Clock Actions</div>
-
-              {/* Date selector (compact, right-aligned) */}
+        <div className={uiSpacing.sectionStack}>
+          <AppCard
+            title="Clock Actions"
+            actions={
               <div className="relative">
                 <label htmlFor="clock-actions-date" className="sr-only">Date</label>
                 <div
-                  className="relative w-[220px] max-w-[60vw] rounded-lg border border-gray-200 bg-white px-3 py-2 hover:border-gray-300 transition-all duration-200 cursor-pointer"
+                  className={uiCx(
+                    'relative w-[220px] max-w-[60vw] cursor-pointer bg-white transition-colors hover:border-gray-300',
+                    uiRadius.control,
+                    uiBorders.input,
+                    uiSpacing.controlX,
+                    uiSpacing.controlY,
+                  )}
                   onClick={openDatePicker}
                   role="button"
                   tabIndex={0}
@@ -959,16 +1027,14 @@ export default function ClockInOut() {
                   aria-label="Select date"
                 >
                   <div className="flex items-center gap-2">
-                    <div className="w-7 h-7 rounded-lg bg-gray-100 flex items-center justify-center flex-shrink-0">
-                      <svg className="w-4 h-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                      </svg>
+                    <div className={uiCx('flex h-7 w-7 flex-shrink-0 items-center justify-center bg-gray-100', uiRadius.control)}>
+                      <CalendarDays className="h-4 w-4 text-gray-500" />
                     </div>
                     <div className="min-w-0 flex-1">
-                      <div className="text-[14px] font-semibold text-gray-500 uppercase tracking-wide leading-tight">
+                      <div className={uiCx(uiTypography.overline, 'leading-tight')}>
                         {selectedDate === todayStr ? 'Today' : formatDayName(selectedDate)}
                       </div>
-                      <div className="text-sm font-semibold text-gray-900 leading-tight truncate">
+                      <div className={uiCx(uiTypography.sectionTitle, 'truncate leading-tight')}>
                         {formatDateWithYear(selectedDate)}
                       </div>
                     </div>
@@ -988,112 +1054,38 @@ export default function ClockInOut() {
                   />
                 </div>
               </div>
-            </div>
-            
-            <div className="space-y-3">
-              {/* Clock In Action Tile */}
-              <button
+            }
+          >
+            <div className={uiSpacing.sectionStack}>
+              <ClockActionTile
+                kind="in"
+                enabled={!hasOpenClockIn && canClockIn}
+                disabled={modalSubmitting}
                 onClick={() => setClockType('in')}
-                disabled={hasOpenClockIn || !canClockIn || modalSubmitting}
-                className={`w-full rounded-xl border-2 p-4 text-left transition-all duration-200 ${
-                  !hasOpenClockIn && canClockIn && !modalSubmitting
-                    ? 'border-green-200 bg-green-50/50 hover:border-green-300 hover:bg-green-50 hover:shadow-md hover:-translate-y-0.5 active:scale-[0.98] cursor-pointer'
-                    : 'border-gray-200 bg-gray-50/50 cursor-not-allowed opacity-60'
-                }`}
                 title={
-                  hasOpenClockIn ? 'You must clock out first' : 
-                  !canClockIn && hasOpenClockIn ? 'You have an open clock-in. Please clock out first.' :
-                  !canClockIn ? 'Cannot clock in' : ''
+                  hasOpenClockIn
+                    ? 'You must clock out first'
+                    : !canClockIn && hasOpenClockIn
+                      ? 'You have an open clock-in. Please clock out first.'
+                      : !canClockIn
+                        ? 'Cannot clock in'
+                        : undefined
                 }
-              >
-                <div className="flex items-start gap-3">
-                  <div className={`flex-shrink-0 w-10 h-10 rounded-lg flex items-center justify-center ${
-                    !hasOpenClockIn && canClockIn && !modalSubmitting
-                      ? 'bg-green-600 text-white'
-                      : 'bg-gray-300 text-gray-500'
-                  }`}>
-                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="2">
-                      {/* Clock circle */}
-                      <circle cx="12" cy="12" r="9" />
-                      {/* Clock hands */}
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M12 8v4l3 3" />
-                      {/* Arrow pointing in (right side) */}
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M19 12h-3m3 0l-2 2m2-2l-2-2" />
-                    </svg>
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <div className={`text-base font-semibold mb-1 ${
-                      !hasOpenClockIn && canClockIn && !modalSubmitting
-                        ? 'text-gray-900'
-                        : 'text-gray-400'
-                    }`}>
-                      Clock In
-                    </div>
-                    <div className={`text-xs ${
-                      !hasOpenClockIn && canClockIn && !modalSubmitting
-                        ? 'text-gray-600'
-                        : 'text-gray-400'
-                    }`}>
-                      Start tracking your work time
-                    </div>
-                  </div>
-                </div>
-              </button>
-
-              {/* Clock Out Action Tile */}
-              <button
+              />
+              <ClockActionTile
+                kind="out"
+                enabled={hasOpenClockIn && canClockOut}
+                disabled={modalSubmitting}
                 onClick={() => setClockType('out')}
-                disabled={!hasOpenClockIn || !canClockOut || modalSubmitting}
-                className={`w-full rounded-xl border-2 p-4 text-left transition-all duration-200 ${
-                  hasOpenClockIn && canClockOut && !modalSubmitting
-                    ? 'border-red-200 bg-red-50/50 hover:border-red-300 hover:bg-red-50 hover:shadow-md hover:-translate-y-0.5 active:scale-[0.98] cursor-pointer'
-                    : 'border-gray-200 bg-gray-50/50 cursor-not-allowed opacity-60'
-                }`}
-                title={!canClockOut && hasOpenClockIn ? 'Clock-in must be approved or pending' : ''}
-              >
-                <div className="flex items-start gap-3">
-                  <div className={`flex-shrink-0 w-10 h-10 rounded-lg flex items-center justify-center ${
-                    hasOpenClockIn && canClockOut && !modalSubmitting
-                      ? 'bg-red-600 text-white'
-                      : 'bg-gray-300 text-gray-500'
-                  }`}>
-                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="2">
-                      {/* Clock circle */}
-                      <circle cx="12" cy="12" r="9" />
-                      {/* Clock hands */}
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M12 8v4l3 3" />
-                      {/* Arrow pointing out (left side) */}
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M5 12h3m-3 0l2 2m-2-2l2-2" />
-                    </svg>
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <div className={`text-base font-semibold mb-1 ${
-                      hasOpenClockIn && canClockOut && !modalSubmitting
-                        ? 'text-gray-900'
-                        : 'text-gray-400'
-                    }`}>
-                      Clock Out
-                    </div>
-                    <div className={`text-xs ${
-                      hasOpenClockIn && canClockOut && !modalSubmitting
-                        ? 'text-gray-600'
-                        : 'text-gray-400'
-                    }`}>
-                      End your current work session
-                    </div>
-                  </div>
-                </div>
-              </button>
+                title={!canClockOut && hasOpenClockIn ? 'Clock-in must be approved or pending' : undefined}
+              />
             </div>
-          </div>
+          </AppCard>
 
-          {/* CARD 2 — Today Status (Informational Only) */}
-          <div className="rounded-xl border border-gray-200 bg-white p-4 space-y-4">
-            <div className="text-sm font-semibold text-gray-900">
-              {selectedDate === todayStr ? 'Today Status' : `Status - ${formatDate(selectedDate)}`}
-            </div>
-            
-            <div className="space-y-4">
+          <AppCard
+            title={selectedDate === todayStr ? 'Today Status' : `Status - ${formatDate(selectedDate)}`}
+          >
+            <div className={uiSpacing.sectionStack}>
               {/* Show all attendances for the selected date */}
               {(() => {
                 // Combine open clock-ins and complete attendances
@@ -1121,7 +1113,7 @@ export default function ClockInOut() {
                 
                 if (allAttendancesToShow.length === 0) {
                   return (
-                    <div className="text-xs text-gray-500">No attendance records for this date</div>
+                    <AppEmptyState title="No attendance records for this date" className="py-6" />
                   );
                 }
                 
@@ -1190,15 +1182,16 @@ export default function ClockInOut() {
                               })}
                             </div>
                             {isAttendanceFromToday(attendance) && (
-                              <button
+                              <AppButton
+                                variant="ghost"
+                                size="sm"
+                                className="h-8 w-8 p-0"
                                 onClick={() => openEditModal(attendance, 'in')}
-                                className="active:scale-95 transition-all hover:opacity-70"
                                 title="Edit clock-in time"
+                                aria-label="Edit clock-in time"
                               >
-                                <svg className="w-4 h-4 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                                </svg>
-                              </button>
+                                <Pencil className="h-4 w-4" />
+                              </AppButton>
                             )}
                           </div>
                         </div>
@@ -1217,15 +1210,16 @@ export default function ClockInOut() {
                               })}
                             </div>
                             {isAttendanceFromToday(attendance) && (
-                              <button
+                              <AppButton
+                                variant="ghost"
+                                size="sm"
+                                className="h-8 w-8 p-0"
                                 onClick={() => openEditModal(attendance, 'out')}
-                                className="active:scale-95 transition-all hover:opacity-70"
                                 title="Edit clock-out time"
+                                aria-label="Edit clock-out time"
                               >
-                                <svg className="w-4 h-4 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                                </svg>
-                              </button>
+                                <Pencil className="h-4 w-4" />
+                              </AppButton>
                             )}
                           </div>
                         </div>
@@ -1242,15 +1236,16 @@ export default function ClockInOut() {
                                 : '0h 00m'}
                             </div>
                             {isAttendanceFromToday(attendance) && (
-                              <button
+                              <AppButton
+                                variant="ghost"
+                                size="sm"
+                                className="h-8 w-8 p-0"
                                 onClick={() => openEditBreakTimeModal(attendance)}
-                                className="active:scale-95 transition-all hover:opacity-70"
                                 title="Edit break time"
+                                aria-label="Edit break time"
                               >
-                                <svg className="w-4 h-4 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                                </svg>
-                              </button>
+                                <Pencil className="h-4 w-4" />
+                              </AppButton>
                             )}
                           </div>
                         </div>
@@ -1287,13 +1282,9 @@ export default function ClockInOut() {
                       {attendance.status && (
                         <div className="mb-3">
                           <div className="text-xs text-gray-500 mb-1 font-medium uppercase tracking-wide">Approval Status</div>
-                          <span className={`inline-block text-xs px-2.5 py-1 rounded font-medium ${
-                            attendance.status === 'approved' ? 'bg-green-50 text-green-700' :
-                            attendance.status === 'pending' ? 'bg-yellow-50 text-yellow-700' :
-                            'bg-red-50 text-red-700'
-                          }`}>
+                          <AppBadge variant={attendanceBadgeVariant(attendance.status)}>
                             {attendance.status}
-                          </span>
+                          </AppBadge>
                         </div>
                       )}
 
@@ -1358,35 +1349,22 @@ export default function ClockInOut() {
                 )}
               </div>
             </div>
-          </div>
+          </AppCard>
 
         </div>
 
-        {/* Right Column - Weekly Summary Panel */}
-        <div className="rounded-xl border border-gray-200 bg-white p-4 space-y-4">
-          <div className="flex items-center justify-between">
-            <div className="text-sm font-semibold text-gray-900">Weekly Summary</div>
+        <AppCard
+          title="Weekly Summary"
+          actions={
             <div className="flex items-center gap-1">
-              <button
-                onClick={goToPreviousWeek}
-                className="rounded-lg px-3 py-2 border border-gray-200 hover:bg-gray-50 active:bg-gray-100 active:scale-[0.98] text-xs font-medium text-gray-600 transition-all duration-150"
-              >
-                ←
-              </button>
-              <button
-                onClick={goToCurrentWeek}
-                className="rounded-lg px-3 py-2 border border-gray-200 hover:bg-gray-50 active:bg-gray-100 active:scale-[0.98] text-xs font-medium text-gray-600 transition-all duration-150"
-              >
+              <AppButton variant="secondary" size="sm" leftIcon={<ChevronLeft className="h-4 w-4" />} onClick={goToPreviousWeek} aria-label="Previous week" />
+              <AppButton variant="secondary" size="sm" onClick={goToCurrentWeek}>
                 Today
-              </button>
-              <button
-                onClick={goToNextWeek}
-                className="rounded-lg px-3 py-2 border border-gray-200 hover:bg-gray-50 active:bg-gray-100 active:scale-[0.98] text-xs font-medium text-gray-600 transition-all duration-150"
-              >
-                →
-              </button>
+              </AppButton>
+              <AppButton variant="secondary" size="sm" rightIcon={<ChevronRight className="h-4 w-4" />} onClick={goToNextWeek} aria-label="Next week" />
             </div>
-          </div>
+          }
+        >
 
           {weeklySummary && (
             <>
@@ -1485,15 +1463,13 @@ export default function ClockInOut() {
                   })}
 
                   {(!weeklySummary.days || weeklySummary.days.filter(d => d.clock_in || d.clock_out).length === 0) && (
-                    <div className="text-center text-gray-400 py-6 text-xs">
-                      No attendance records for this week
-                    </div>
+                    <AppEmptyState title="No attendance records for this week" className="py-6" />
                   )}
                 </div>
               </div>
             </>
           )}
-        </div>
+        </AppCard>
       </div>
 
       {clockType && (
@@ -1507,208 +1483,99 @@ export default function ClockInOut() {
       )}
 
 
-      {/* Edit Attendance Modal */}
-      {editingAttendance && editingType && (
-        <OverlayPortal>
-        <div 
-          className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4"
-          onClick={(e) => {
-            if (e.target === e.currentTarget) {
-              setEditingAttendance(null);
-              setEditingType(null);
-              setEditTime('');
-              setEditHour12('');
-              setEditMinute('');
-              setEditAmPm('AM');
-            }
-          }}
-        >
-          <div 
-            className="bg-white rounded-2xl shadow-xl max-w-md w-full border border-gray-200/60 flex flex-col"
-            onClick={(e) => e.stopPropagation()}
-          >
-            {/* Header */}
-            <div className="p-6 border-b border-gray-200/60 flex-shrink-0">
-              <h3 className="text-xl font-semibold text-gray-900">
-                Edit Clock {editingType === 'in' ? 'In' : 'Out'} Time
-              </h3>
-            </div>
-
-            {/* Body */}
-            <div className="p-6 space-y-5 flex-1 overflow-y-auto">
-              {/* Time selector */}
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Time *</label>
-                <div className="flex gap-2 items-center">
-                  <select
-                    value={editHour12}
-                    onChange={(e) => {
-                      const hour12 = e.target.value;
-                      setEditHour12(hour12);
-                      updateEditTimeFrom12h(hour12, editMinute, editAmPm);
-                    }}
-                    className="flex-1 border border-gray-200/60 rounded-lg px-4 py-2.5 focus:ring-2 focus:ring-brand-red/40 focus:border-brand-red/60 transition-colors"
-                    required
-                  >
-                    <option value="">Hour</option>
-                    {Array.from({ length: 12 }, (_, i) => (
-                      <option key={i + 1} value={String(i + 1)}>
-                        {i + 1}
-                      </option>
-                    ))}
-                  </select>
-                  <span className="text-gray-500 font-medium">:</span>
-                  <select
-                    value={editMinute}
-                    onChange={(e) => {
-                      const minute = e.target.value;
-                      setEditMinute(minute);
-                      updateEditTimeFrom12h(editHour12, minute, editAmPm);
-                    }}
-                    className="flex-1 border border-gray-200/60 rounded-lg px-4 py-2.5 focus:ring-2 focus:ring-brand-red/40 focus:border-brand-red/60 transition-colors"
-                    required
-                  >
-                    <option value="">Min</option>
-                    {Array.from({ length: 12 }, (_, i) => {
-                      const m = i * 5;
-                      return (
-                        <option key={m} value={String(m).padStart(2, '0')}>
-                          {String(m).padStart(2, '0')}
-                        </option>
-                      );
-                    })}
-                  </select>
-                  <select
-                    value={editAmPm}
-                    onChange={(e) => {
-                      const amPm = e.target.value as 'AM' | 'PM';
-                      setEditAmPm(amPm);
-                      updateEditTimeFrom12h(editHour12, editMinute, amPm);
-                    }}
-                    className="flex-1 border border-gray-200/60 rounded-lg px-4 py-2.5 focus:ring-2 focus:ring-brand-red/40 focus:border-brand-red/60 transition-colors"
-                    required
-                  >
-                    <option value="AM">AM</option>
-                    <option value="PM">PM</option>
-                  </select>
-                </div>
-              </div>
-
-            </div>
-
-            {/* Footer */}
-            <div className="p-6 border-t border-gray-200/60 bg-gray-50/50 flex items-center justify-end gap-3 flex-shrink-0">
-              <button
-                onClick={() => {
-                  setEditingAttendance(null);
-                  setEditingType(null);
-                  setEditTime('');
-                  setEditHour12('');
-                  setEditMinute('');
-                  setEditAmPm('AM');
-                }}
-                className="px-4 py-2.5 rounded-lg border border-gray-200/60 hover:bg-gray-50 transition-colors text-sm font-medium"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleEditAttendance}
-                disabled={editingSubmitting || !editTime}
-                className="px-4 py-2.5 rounded-lg bg-brand-red text-white hover:bg-red-700 transition-colors text-sm font-medium disabled:opacity-60 disabled:cursor-not-allowed"
-              >
-                {editingSubmitting ? 'Updating...' : 'Update'}
-              </button>
-            </div>
+      <AppModal
+        open={Boolean(editingAttendance && editingType)}
+        onClose={closeEditModal}
+        title={`Edit Clock ${editingType === 'in' ? 'In' : 'Out'} Time`}
+        size="sm"
+        footer={
+          <div className="flex justify-end gap-2">
+            <AppButton variant="secondary" onClick={closeEditModal}>
+              Cancel
+            </AppButton>
+            <AppButton onClick={handleEditAttendance} disabled={editingSubmitting || !editTime} loading={editingSubmitting}>
+              {editingSubmitting ? 'Updating...' : 'Update'}
+            </AppButton>
+          </div>
+        }
+      >
+        <div className="space-y-2">
+          <span className={uiTypography.controlLabel}>Time *</span>
+          <div className="flex items-center gap-2">
+            <AppSelect
+              className="flex-1"
+              value={editHour12}
+              onChange={(e) => {
+                const hour12 = e.target.value;
+                setEditHour12(hour12);
+                updateEditTimeFrom12h(hour12, editMinute, editAmPm);
+              }}
+              options={hourSelectOptions}
+              placeholder="Hour"
+              required
+            />
+            <span className="font-medium text-gray-500">:</span>
+            <AppSelect
+              className="flex-1"
+              value={editMinute}
+              onChange={(e) => {
+                const minute = e.target.value;
+                setEditMinute(minute);
+                updateEditTimeFrom12h(editHour12, minute, editAmPm);
+              }}
+              options={minuteSelectOptions}
+              placeholder="Min"
+              required
+            />
+            <AppSelect
+              className="flex-1"
+              value={editAmPm}
+              onChange={(e) => {
+                const amPm = e.target.value as 'AM' | 'PM';
+                setEditAmPm(amPm);
+                updateEditTimeFrom12h(editHour12, editMinute, amPm);
+              }}
+              options={amPmSelectOptions}
+              required
+            />
           </div>
         </div>
-        </OverlayPortal>
-      )}
+      </AppModal>
 
-      {/* Edit Break Time Only Modal */}
-      {editingBreakTimeAttendance && (
-        <OverlayPortal>
-        <div 
-          className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4"
-          onClick={(e) => {
-            if (e.target === e.currentTarget) {
-              setEditingBreakTimeAttendance(null);
-              setEditBreakTimeHours('0');
-              setEditBreakTimeMinutes('0');
-            }
-          }}
-        >
-          <div 
-            className="bg-white rounded-2xl shadow-xl max-w-md w-full border border-gray-200/60 flex flex-col"
-            onClick={(e) => e.stopPropagation()}
-          >
-            {/* Header */}
-            <div className="p-6 border-b border-gray-200/60 flex-shrink-0">
-              <h3 className="text-xl font-semibold text-gray-900">
-                Edit Break Time
-              </h3>
-            </div>
-
-            {/* Body */}
-            <div className="p-6 space-y-5 flex-1 overflow-y-auto">
-              {/* Break Time */}
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Break Time</label>
-                <div className="flex gap-3 items-center">
-                  <label className="text-sm text-gray-600 w-16">Hours:</label>
-                  <select
-                    value={editBreakTimeHours}
-                    onChange={(e) => setEditBreakTimeHours(e.target.value)}
-                    className="flex-1 border border-gray-200/60 rounded-lg px-4 py-2.5 focus:ring-2 focus:ring-brand-red/40 focus:border-brand-red/60 transition-colors"
-                  >
-                    {Array.from({ length: 3 }, (_, i) => (
-                      <option key={i} value={String(i)}>
-                        {i}
-                      </option>
-                    ))}
-                  </select>
-                  <label className="text-sm text-gray-600 w-16">Minutes:</label>
-                  <select
-                    value={editBreakTimeMinutes}
-                    onChange={(e) => setEditBreakTimeMinutes(e.target.value)}
-                    className="flex-1 border border-gray-200/60 rounded-lg px-4 py-2.5 focus:ring-2 focus:ring-brand-red/40 focus:border-brand-red/60 transition-colors"
-                  >
-                    {Array.from({ length: 12 }, (_, i) => {
-                      const m = i * 5;
-                      return (
-                        <option key={m} value={String(m).padStart(2, '0')}>
-                          {String(m).padStart(2, '0')}
-                        </option>
-                      );
-                    })}
-                  </select>
-                </div>
-              </div>
-            </div>
-
-            {/* Footer */}
-            <div className="p-6 border-t border-gray-200/60 bg-gray-50/50 flex items-center justify-end gap-3 flex-shrink-0">
-              <button
-                onClick={() => {
-                  setEditingBreakTimeAttendance(null);
-                  setEditBreakTimeHours('0');
-                  setEditBreakTimeMinutes('0');
-                }}
-                className="px-4 py-2.5 rounded-lg border border-gray-200/60 hover:bg-gray-50 transition-colors text-sm font-medium"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleEditBreakTimeOnly}
-                disabled={editingBreakTimeSubmitting}
-                className="px-4 py-2.5 rounded-lg bg-brand-red text-white hover:bg-red-700 transition-colors text-sm font-medium disabled:opacity-60 disabled:cursor-not-allowed"
-              >
-                {editingBreakTimeSubmitting ? 'Updating...' : 'Update'}
-              </button>
-            </div>
+      <AppModal
+        open={Boolean(editingBreakTimeAttendance)}
+        onClose={closeBreakTimeModal}
+        title="Edit Break Time"
+        size="sm"
+        footer={
+          <div className="flex justify-end gap-2">
+            <AppButton variant="secondary" onClick={closeBreakTimeModal}>
+              Cancel
+            </AppButton>
+            <AppButton onClick={handleEditBreakTimeOnly} disabled={editingBreakTimeSubmitting} loading={editingBreakTimeSubmitting}>
+              {editingBreakTimeSubmitting ? 'Updating...' : 'Update'}
+            </AppButton>
           </div>
+        }
+      >
+        <div className="flex flex-wrap items-end gap-3">
+          <AppSelect
+            label="Hours"
+            value={editBreakTimeHours}
+            onChange={(e) => setEditBreakTimeHours(e.target.value)}
+            options={breakHourOptions}
+            className="min-w-[100px] flex-1"
+          />
+          <AppSelect
+            label="Minutes"
+            value={editBreakTimeMinutes}
+            onChange={(e) => setEditBreakTimeMinutes(e.target.value)}
+            options={breakMinuteOptions}
+            className="min-w-[100px] flex-1"
+          />
         </div>
-        </OverlayPortal>
-      )}
+      </AppModal>
+
     </div>
   );
 }
