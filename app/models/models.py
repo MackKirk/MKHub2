@@ -1015,7 +1015,12 @@ class EmployeeTrainingRecord(Base):
     __tablename__ = "employee_training_records"
 
     id: Mapped[uuid.UUID] = uuid_pk()
-    user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    user_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=True, index=True
+    )
+    subcontractor_worker_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("subcontractor_workers.id", ondelete="CASCADE"), nullable=True, index=True
+    )
     title: Mapped[str] = mapped_column(String(500), nullable=False)
     provider: Mapped[Optional[str]] = mapped_column(String(500))
     category: Mapped[Optional[str]] = mapped_column(String(100))
@@ -1038,6 +1043,8 @@ class EmployeeTrainingRecord(Base):
     updated_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
     created_by_user_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"))
     updated_by_user_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"))
+
+    worker = relationship("SubcontractorWorker", back_populates="training_records", foreign_keys=[subcontractor_worker_id])
 
 
 class EmployeeVisa(Base):
@@ -1365,7 +1372,12 @@ class EmployeeReport(Base):
     __tablename__ = "employee_reports"
 
     id: Mapped[uuid.UUID] = uuid_pk()
-    user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    user_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=True, index=True
+    )
+    subcontractor_worker_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("subcontractor_workers.id", ondelete="CASCADE"), nullable=True, index=True
+    )
     
     # Basic information
     report_type: Mapped[str] = mapped_column(String(50), nullable=False)  # Fine, Warning, Suspension, Behavior Note, Other
@@ -1400,6 +1412,7 @@ class EmployeeReport(Base):
     updated_by: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"))
     
     # Relationships
+    worker = relationship("SubcontractorWorker", back_populates="reports", foreign_keys=[subcontractor_worker_id])
     attachments = relationship("ReportAttachment", back_populates="report", cascade="all, delete-orphan", order_by="ReportAttachment.created_at")
     comments = relationship("ReportComment", back_populates="report", cascade="all, delete-orphan", order_by="ReportComment.created_at")
     
@@ -2094,6 +2107,12 @@ class SubcontractorWorker(Base):
     worker_files = relationship(
         "SubcontractorWorkerFile", back_populates="worker", cascade="all, delete-orphan"
     )
+    training_records = relationship(
+        "EmployeeTrainingRecord", back_populates="worker", foreign_keys="EmployeeTrainingRecord.subcontractor_worker_id"
+    )
+    reports = relationship(
+        "EmployeeReport", back_populates="worker", foreign_keys="EmployeeReport.subcontractor_worker_id"
+    )
 
 
 class SubcontractorWorkerFile(Base):
@@ -2157,7 +2176,9 @@ class SubcontractorAttendance(Base):
     )
 
     total_hours: Mapped[Optional[float]] = mapped_column(Numeric(12, 4))
+    break_minutes: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     status: Mapped[str] = mapped_column(String(20), default="open", nullable=False)  # open|finalized
+    hr_status: Mapped[str] = mapped_column(String(20), default="approved", nullable=False)  # pending|approved|rejected
     notes: Mapped[Optional[str]] = mapped_column(Text)
 
     __table_args__ = (

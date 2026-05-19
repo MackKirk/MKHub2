@@ -1,8 +1,9 @@
-import { useRef, useCallback, useState, useEffect } from 'react';
+import { useRef, useCallback, useState, useEffect, useLayoutEffect } from 'react';
 import toast from 'react-hot-toast';
 import { api } from '@/lib/api';
 
-const CSS_W = 480;
+const CSS_W_MAX = 480;
+const CSS_W_MIN = 200;
 const CSS_H = 160;
 const MAX_DPR = 2;
 
@@ -14,29 +15,48 @@ type Props = {
 };
 
 export default function SubcontractorSimpleSignature({ projectId, disabled, onUploaded, onClear }: Props) {
+  const containerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const drawing = useRef(false);
   const [uploading, setUploading] = useState(false);
   const [hasInk, setHasInk] = useState(false);
+  const [logicalW, setLogicalW] = useState(320);
+
+  useLayoutEffect(() => {
+    const el = containerRef.current;
+    if (!el || typeof ResizeObserver === 'undefined') return;
+    const measure = () => {
+      const w = el.getBoundingClientRect().width;
+      if (w < 48) return;
+      const capped = Math.max(CSS_W_MIN, Math.min(CSS_W_MAX, Math.floor(w)));
+      setLogicalW((prev) => (prev === capped ? prev : capped));
+    };
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
 
   const layoutCanvas = useCallback(() => {
     const c = canvasRef.current;
     if (!c) return;
+    const W = logicalW;
     const dpr = Math.min(window.devicePixelRatio || 1, MAX_DPR);
-    c.width = Math.floor(CSS_W * dpr);
+    c.width = Math.floor(W * dpr);
     c.height = Math.floor(CSS_H * dpr);
-    c.style.width = `${CSS_W}px`;
+    c.style.width = `${W}px`;
     c.style.height = `${CSS_H}px`;
+    c.style.maxWidth = '100%';
     const ctx = c.getContext('2d');
     if (!ctx) return;
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.fillStyle = '#fff';
-    ctx.fillRect(0, 0, CSS_W, CSS_H);
+    ctx.fillRect(0, 0, W, CSS_H);
     ctx.strokeStyle = '#111';
     ctx.lineWidth = 2;
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
-  }, []);
+  }, [logicalW]);
 
   useEffect(() => {
     layoutCanvas();
@@ -115,10 +135,10 @@ export default function SubcontractorSimpleSignature({ projectId, disabled, onUp
   };
 
   return (
-    <div className="space-y-2">
+    <div ref={containerRef} className="space-y-2 w-full max-w-full min-w-0">
       <canvas
         ref={canvasRef}
-        className="border border-gray-300 rounded touch-none cursor-crosshair bg-white"
+        className="block border border-gray-300 rounded touch-none cursor-crosshair bg-white max-w-full"
         onMouseDown={start}
         onMouseMove={move}
         onMouseUp={end}

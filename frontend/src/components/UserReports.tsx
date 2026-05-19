@@ -49,6 +49,10 @@ type ReportDetail = Report & {
   }>;
 };
 
+export type UserReportsProps =
+  | { variant?: 'user'; userId: string; canEdit?: boolean }
+  | { variant: 'worker'; workerId: string; canEdit?: boolean };
+
 function formatDate(dateStr: string | null | undefined): string {
   if (!dateStr) return '-';
   try {
@@ -68,7 +72,17 @@ function formatCurrency(value: number): string {
   }).format(value);
 }
 
-export default function UserReports({ userId, canEdit = true }: { userId: string; canEdit?: boolean }) {
+export default function UserReports(props: UserReportsProps) {
+  const canEdit = props.canEdit ?? true;
+  const variant = props.variant ?? 'user';
+  const isWorker = variant === 'worker';
+  const subjectId = isWorker ? props.workerId : props.userId;
+  const reportsPrefix = isWorker
+    ? `/subcontractors/workers/${props.workerId}/reports`
+    : `/employees/${props.userId}/reports`;
+  const reportsListQueryKey = ['reports', variant, subjectId] as const;
+  const fileUploadEmployeeId: string | null = isWorker ? null : props.userId;
+
   const queryClient = useQueryClient();
   const confirm = useConfirm();
   const [showCreateModal, setShowCreateModal] = useState(false);
@@ -85,8 +99,8 @@ export default function UserReports({ userId, canEdit = true }: { userId: string
   const [filterDateTo, setFilterDateTo] = useState<string>('');
 
   const { data: reports, refetch: refetchReports } = useQuery<Report[]>({
-    queryKey: ['reports', userId],
-    queryFn: () => api<Report[]>('GET', `/employees/${userId}/reports`),
+    queryKey: reportsListQueryKey,
+    queryFn: () => api<Report[]>('GET', reportsPrefix),
   });
 
   // Filter reports
@@ -141,8 +155,8 @@ export default function UserReports({ userId, canEdit = true }: { userId: string
   }, [reports, searchQuery, filterType, filterStatus, filterSeverity, filterDateFrom, filterDateTo]);
 
   const { data: reportDetail } = useQuery<ReportDetail>({
-    queryKey: ['report-detail', userId, showReportDetail],
-    queryFn: () => api<ReportDetail>('GET', `/employees/${userId}/reports/${showReportDetail}`),
+    queryKey: ['report-detail', variant, subjectId, showReportDetail],
+    queryFn: () => api<ReportDetail>('GET', `${reportsPrefix}/${showReportDetail}`),
     enabled: !!showReportDetail,
   });
 
@@ -342,7 +356,7 @@ export default function UserReports({ userId, canEdit = true }: { userId: string
                           <button
                             onClick={async () => {
                               try {
-                                const reportDetail = await api<ReportDetail>('GET', `/employees/${userId}/reports/${report.id}`);
+                                const reportDetail = await api<ReportDetail>('GET', `${reportsPrefix}/${report.id}`);
                                 setEditingReport(reportDetail);
                                 setShowCreateModal(true);
                               } catch (e: any) {
@@ -367,7 +381,9 @@ export default function UserReports({ userId, canEdit = true }: { userId: string
       {/* Create/Edit Report Modal */}
       {showCreateModal && (
         <CreateReportModal
-          userId={userId}
+          reportsPrefix={reportsPrefix}
+          reportsListQueryKey={reportsListQueryKey}
+          fileUploadEmployeeId={fileUploadEmployeeId}
           report={editingReport || undefined}
           onClose={() => {
             setShowCreateModal(false);
@@ -380,7 +396,11 @@ export default function UserReports({ userId, canEdit = true }: { userId: string
       {/* Report Detail Modal */}
       {showReportDetail && (
         <ReportDetailView
-          userId={userId}
+          reportsPrefix={reportsPrefix}
+          reportsListQueryKey={reportsListQueryKey}
+          fileUploadEmployeeId={fileUploadEmployeeId}
+          variant={variant}
+          subjectId={subjectId}
           reportId={showReportDetail}
           isEditing={editingReportId === showReportDetail}
           canEdit={canEdit}
@@ -400,7 +420,19 @@ export default function UserReports({ userId, canEdit = true }: { userId: string
   );
 }
 
-function CreateReportModal({ userId, report, onClose }: { userId: string; report?: ReportDetail; onClose: () => void }) {
+function CreateReportModal({
+  reportsPrefix,
+  reportsListQueryKey,
+  fileUploadEmployeeId,
+  report,
+  onClose,
+}: {
+  reportsPrefix: string;
+  reportsListQueryKey: readonly ['reports', 'user' | 'worker', string];
+  fileUploadEmployeeId: string | null;
+  report?: ReportDetail;
+  onClose: () => void;
+}) {
   const queryClient = useQueryClient();
   const [reportType, setReportType] = useState('Other');
   const [title, setTitle] = useState('');
@@ -548,7 +580,7 @@ function CreateReportModal({ userId, report, onClose }: { userId: string; report
       const up: any = await api('POST', '/files/upload', {
         project_id: null,
         client_id: null,
-        employee_id: userId,
+        employee_id: fileUploadEmployeeId,
         category_id: 'report-attachment',
         original_name: file.name,
         content_type: file.type || 'application/octet-stream'
@@ -633,15 +665,15 @@ function CreateReportModal({ userId, report, onClose }: { userId: string; report
 
       if (report) {
         // Update existing report
-        await api('PATCH', `/employees/${userId}/reports/${report.id}`, payload);
+        await api('PATCH', `${reportsPrefix}/${report.id}`, payload);
         toast.success('Report updated');
       } else {
         // Create new report
-        const result = await api('POST', `/employees/${userId}/reports`, payload);
+        const result = await api<{ id: string }>('POST', reportsPrefix, payload);
         
         // Add attachments
         for (const att of attachments) {
-          await api('POST', `/employees/${userId}/reports/${result.id}/attachments`, {
+          await api('POST', `${reportsPrefix}/${result.id}/attachments`, {
             file_id: att.file_id,
             file_name: att.file_name,
             file_size: att.file_size,
@@ -651,7 +683,7 @@ function CreateReportModal({ userId, report, onClose }: { userId: string; report
         toast.success('Report created');
       }
       
-      queryClient.invalidateQueries({ queryKey: ['reports', userId] });
+      queryClient.invalidateQueries({ queryKey: [...reportsListQueryKey] });
       onClose();
     } catch (e: any) {
       toast.error(e?.response?.data?.detail || 'Failed to create report');
@@ -1066,14 +1098,22 @@ function CreateReportModal({ userId, report, onClose }: { userId: string; report
 }
 
 function ReportDetailView({
-  userId,
+  reportsPrefix,
+  reportsListQueryKey,
+  fileUploadEmployeeId,
+  variant,
+  subjectId,
   reportId,
   isEditing,
   canEdit,
   onClose,
   onEdit,
 }: {
-  userId: string;
+  reportsPrefix: string;
+  reportsListQueryKey: readonly ['reports', 'user' | 'worker', string];
+  fileUploadEmployeeId: string | null;
+  variant: 'user' | 'worker';
+  subjectId: string;
   reportId: string;
   isEditing: boolean;
   canEdit: boolean;
@@ -1138,8 +1178,8 @@ function ReportDetailView({
   }, [editSelectedProjectsDepartments, editProjects, editSettings]);
 
   const { data: report, refetch: refetchReport } = useQuery<ReportDetail>({
-    queryKey: ['report-detail', userId, reportId],
-    queryFn: () => api<ReportDetail>('GET', `/employees/${userId}/reports/${reportId}`),
+    queryKey: ['report-detail', variant, subjectId, reportId],
+    queryFn: () => api<ReportDetail>('GET', `${reportsPrefix}/${reportId}`),
   });
 
   useEffect(() => {
@@ -1200,14 +1240,14 @@ function ReportDetailView({
     if (!newComment.trim()) return;
     
     try {
-      await api('POST', `/employees/${userId}/reports/${reportId}/comments`, {
+      await api('POST', `${reportsPrefix}/${reportId}/comments`, {
         comment_text: newComment.trim(),
         comment_type: 'comment',
       });
       toast.success('Comment added');
       setNewComment('');
       refetchReport();
-      queryClient.invalidateQueries({ queryKey: ['report-detail', userId, reportId] });
+      queryClient.invalidateQueries({ queryKey: ['report-detail', variant, subjectId, reportId] });
     } catch (e: any) {
       toast.error(e?.response?.data?.detail || 'Failed to add comment');
     }
@@ -1222,7 +1262,7 @@ function ReportDetailView({
       const up: any = await api('POST', '/files/upload', {
         project_id: null,
         client_id: null,
-        employee_id: userId,
+        employee_id: fileUploadEmployeeId,
         category_id: 'report-attachment',
         original_name: file.name,
         content_type: file.type || 'application/octet-stream'
@@ -1243,7 +1283,7 @@ function ReportDetailView({
         content_type: file.type || 'application/octet-stream'
       });
       
-      await api('POST', `/employees/${userId}/reports/${reportId}/attachments`, {
+      await api('POST', `${reportsPrefix}/${reportId}/attachments`, {
         file_id: conf.id,
         file_name: file.name,
         file_size: file.size,
@@ -1252,7 +1292,7 @@ function ReportDetailView({
       
       toast.success('File uploaded');
       refetchReport();
-      queryClient.invalidateQueries({ queryKey: ['report-detail', userId, reportId] });
+      queryClient.invalidateQueries({ queryKey: ['report-detail', variant, subjectId, reportId] });
     } catch (e: any) {
       toast.error(e?.message || 'Failed to upload file');
     } finally {
@@ -1265,10 +1305,10 @@ function ReportDetailView({
 
   const handleDeleteAttachment = async (attachmentId: string) => {
     try {
-      await api('DELETE', `/employees/${userId}/reports/${reportId}/attachments/${attachmentId}`);
+      await api('DELETE', `${reportsPrefix}/${reportId}/attachments/${attachmentId}`);
       toast.success('Attachment removed');
       refetchReport();
-      queryClient.invalidateQueries({ queryKey: ['report-detail', userId, reportId] });
+      queryClient.invalidateQueries({ queryKey: ['report-detail', variant, subjectId, reportId] });
     } catch (e: any) {
       toast.error(e?.response?.data?.detail || 'Failed to remove attachment');
     }
@@ -1306,11 +1346,11 @@ function ReportDetailView({
         payload.behavior_note_type = editBehaviorNoteType || undefined;
       }
 
-      await api('PATCH', `/employees/${userId}/reports/${reportId}`, payload);
+      await api('PATCH', `${reportsPrefix}/${reportId}`, payload);
       toast.success('Report updated');
       setEditing(false);
       refetchReport();
-      queryClient.invalidateQueries({ queryKey: ['reports', userId] });
+      queryClient.invalidateQueries({ queryKey: [...reportsListQueryKey] });
     } catch (e: any) {
       toast.error(e?.response?.data?.detail || 'Failed to update report');
     }
@@ -1916,13 +1956,15 @@ function ReportDetailView({
       {/* Edit Modal Overlay */}
       {showEditModal && editingReportData && (
         <CreateReportModal
-          userId={userId}
+          reportsPrefix={reportsPrefix}
+          reportsListQueryKey={reportsListQueryKey}
+          fileUploadEmployeeId={fileUploadEmployeeId}
           report={editingReportData}
           onClose={() => {
             setShowEditModal(false);
             setEditingReportData(null);
             refetchReport();
-            queryClient.invalidateQueries({ queryKey: ['reports', userId] });
+            queryClient.invalidateQueries({ queryKey: [...reportsListQueryKey] });
           }}
         />
       )}

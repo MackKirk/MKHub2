@@ -3386,7 +3386,7 @@ export default function UserInfo(){
               {tab==='loans' && canViewLoans && <UserLoans userId={String(userId)} canEdit={canEditGeneral || (me?.roles || []).some((r: string) => String(r || '').toLowerCase() === 'admin') || (me?.permissions || []).includes('hr:users:write') || (me?.permissions || []).includes('users:write')} />}
               {tab==='training' && canViewTraining && (
                 <div className="space-y-6 pb-24">
-                  <EmployeeTrainingSection userId={String(userId)} canEdit={canEditTraining} />
+                  <EmployeeTrainingSection variant="user" userId={String(userId)} canEdit={canEditTraining} />
                 </div>
               )}
               {tab==='assets' && canViewAssets && (
@@ -8266,6 +8266,44 @@ async function uploadTrainingCertificateToDocs(
   });
 }
 
+async function uploadTrainingCertificateToWorkerFiles(
+  workerId: string,
+  file: File,
+  meta: { docTitle?: string; trainingTitle: string },
+) {
+  const name = file.name;
+  const contentType = file.type || 'application/octet-stream';
+  const up = await api<any>('POST', '/files/upload', {
+    original_name: name,
+    content_type: contentType,
+    employee_id: null,
+    project_id: null,
+    client_id: null,
+    category_id: 'files',
+  });
+  const putResp = await fetch(up.upload_url, {
+    method: 'PUT',
+    headers: { 'Content-Type': contentType, 'x-ms-blob-type': 'BlockBlob' },
+    body: file,
+  });
+  if (!putResp.ok) {
+    throw new Error(`Upload failed (${putResp.status})`);
+  }
+  const conf = await api<{ id: string }>('POST', '/files/confirm', {
+    key: up.key,
+    size_bytes: file.size,
+    checksum_sha256: 'na',
+    content_type: contentType,
+  });
+  const title = (meta.docTitle && meta.docTitle.trim()) || `${meta.trainingTitle} — ${name}`;
+  const q = new URLSearchParams({
+    file_object_id: conf.id,
+    category: 'Training certificates',
+    original_name: title,
+  });
+  await api<{ id: string }>('POST', `/subcontractors/workers/${encodeURIComponent(workerId)}/files?${q.toString()}`);
+}
+
 function trainingStatusPill(status: string | null | undefined) {
   const s = (status || '').toLowerCase().replace(/_/g, ' ');
   const base = 'inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium border';
@@ -8332,22 +8370,37 @@ function _parseSessionTimeToHHmm(sessionTime: string): { time_start: string; tim
   return { time_start: pad(m[1]), time_end: pad(m[2]) };
 }
 
-function EmployeeTrainingSection({ userId, canEdit }: { userId: string; canEdit: boolean }) {
+function EmployeeTrainingSection(
+  props:
+    | { variant: 'user'; userId: string; canEdit: boolean }
+    | { variant: 'worker'; workerId: string; canEdit: boolean },
+) {
+  const isWorker = props.variant === 'worker';
+  const subjectId = isWorker ? props.workerId : props.userId;
+  const { canEdit } = props;
+  const trainingRecordsBase = isWorker
+    ? `/subcontractors/workers/${encodeURIComponent(subjectId)}/training-records`
+    : `/auth/users/${encodeURIComponent(subjectId)}/training-records`;
+  const trainingMatrixBase = isWorker
+    ? `/subcontractors/workers/${encodeURIComponent(subjectId)}/training-matrix`
+    : `/auth/users/${encodeURIComponent(subjectId)}/training-matrix`;
+  const trainingQueryScope = isWorker ? ('worker' as const) : ('user' as const);
+
   const confirm = useConfirm();
   const queryClient = useQueryClient();
   const { data: rows = [], refetch, isLoading } = useQuery({
-    queryKey: ['employee-training-records', userId],
-    queryFn: () => api<any[]>('GET', `/auth/users/${encodeURIComponent(userId)}/training-records`),
-    enabled: !!userId,
+    queryKey: ['employee-training-records', trainingQueryScope, subjectId],
+    queryFn: () => api<any[]>('GET', trainingRecordsBase),
+    enabled: !!subjectId,
   });
   const { data: matrixSnap, isLoading: matrixLoading } = useQuery({
-    queryKey: ['user-training-matrix', userId],
+    queryKey: ['user-training-matrix', trainingQueryScope, subjectId],
     queryFn: () =>
       api<{ items: Array<{ id: string; label: string; cell_kind: string; display: string; record: any | null }> }>(
         'GET',
-        `/auth/users/${encodeURIComponent(userId)}/training-matrix`,
+        trainingMatrixBase,
       ),
-    enabled: !!userId,
+    enabled: !!subjectId,
   });
   const { data: matrixCatalog } = useQuery({
     queryKey: ['training-matrix-catalog'],
@@ -8556,21 +8609,33 @@ function EmployeeTrainingSection({ userId, canEdit }: { userId: string; canEdit:
     setSaving(true);
     try {
       if (editing) {
-        await api('PATCH', `/auth/users/${encodeURIComponent(userId)}/training-records/${editing.id}`, payload);
+        await api('PATCH', `${trainingRecordsBase}/${encodeURIComponent(editing.id)}`, payload);
       } else {
-        await api('POST', `/auth/users/${encodeURIComponent(userId)}/training-records`, payload);
+        await api('POST', trainingRecordsBase, payload);
       }
       if (certificateFile && canEdit) {
         try {
-          await uploadTrainingCertificateToDocs(userId, certificateFile, {
-            docTitle: certificateDocTitle,
-            issuedDate: effectiveCompletionDate(),
-            expiryDate: form.expiry_date,
-            trainingTitle: form.title.trim(),
-          });
-          toast.success(
-            editing ? 'Record updated; certificate saved to Docs.' : 'Record added; certificate saved to Docs.',
-          );
+          if (isWorker) {
+            await uploadTrainingCertificateToWorkerFiles(subjectId, certificateFile, {
+              docTitle: certificateDocTitle,
+              trainingTitle: form.title.trim(),
+            });
+            toast.success(
+              editing
+                ? 'Record updated; certificate saved to worker Documents.'
+                : 'Record added; certificate saved to worker Documents.',
+            );
+          } else {
+            await uploadTrainingCertificateToDocs(subjectId, certificateFile, {
+              docTitle: certificateDocTitle,
+              issuedDate: effectiveCompletionDate(),
+              expiryDate: form.expiry_date,
+              trainingTitle: form.title.trim(),
+            });
+            toast.success(
+              editing ? 'Record updated; certificate saved to Docs.' : 'Record added; certificate saved to Docs.',
+            );
+          }
         } catch (upErr: any) {
           console.error(upErr);
           toast.error(
@@ -8582,9 +8647,13 @@ function EmployeeTrainingSection({ userId, canEdit }: { userId: string; canEdit:
       } else {
         toast.success(editing ? 'Record updated' : 'Record added');
       }
-      queryClient.invalidateQueries({ queryKey: ['user-docs', userId] });
-      queryClient.invalidateQueries({ queryKey: ['user-folders', userId] });
-      queryClient.invalidateQueries({ queryKey: ['user-training-matrix', userId] });
+      if (!isWorker) {
+        queryClient.invalidateQueries({ queryKey: ['user-docs', subjectId] });
+        queryClient.invalidateQueries({ queryKey: ['user-folders', subjectId] });
+      } else {
+        queryClient.invalidateQueries({ queryKey: ['subcontractor-worker-files', subjectId] });
+      }
+      queryClient.invalidateQueries({ queryKey: ['user-training-matrix', trainingQueryScope, subjectId] });
       closeModal();
       refetch();
     } catch (err: any) {
@@ -8603,9 +8672,9 @@ function EmployeeTrainingSection({ userId, canEdit }: { userId: string; canEdit:
     });
     if (res !== 'confirm') return;
     try {
-      await api('DELETE', `/auth/users/${encodeURIComponent(userId)}/training-records/${r.id}`);
+      await api('DELETE', `${trainingRecordsBase}/${encodeURIComponent(r.id)}`);
       toast.success('Deleted');
-      queryClient.invalidateQueries({ queryKey: ['user-training-matrix', userId] });
+      queryClient.invalidateQueries({ queryKey: ['user-training-matrix', trainingQueryScope, subjectId] });
       refetch();
     } catch (err: any) {
       toast.error(err?.message || 'Delete failed');
@@ -9149,10 +9218,20 @@ function EmployeeTrainingSection({ userId, canEdit }: { userId: string; canEdit:
                               Certificate file (optional)
                             </label>
                             <p className="mb-2 text-xs leading-relaxed text-gray-600">
-                              Uploads to{' '}
-                              <span className="font-medium text-gray-800">Docs</span> →{' '}
-                              <span className="font-medium text-emerald-900">{TRAINING_CERTIFICATES_FOLDER_NAME}</span>{' '}
-                              (folder is created automatically if missing).
+                              {isWorker ? (
+                                <>
+                                  Uploads to this worker&apos;s{' '}
+                                  <span className="font-medium text-gray-800">Documents</span> tab (category{' '}
+                                  <span className="font-medium text-emerald-900">Training certificates</span>).
+                                </>
+                              ) : (
+                                <>
+                                  Uploads to{' '}
+                                  <span className="font-medium text-gray-800">Docs</span> →{' '}
+                                  <span className="font-medium text-emerald-900">{TRAINING_CERTIFICATES_FOLDER_NAME}</span>{' '}
+                                  (folder is created automatically if missing).
+                                </>
+                              )}
                             </p>
                             <input
                               ref={certificateFileInputRef}
@@ -11179,3 +11258,4 @@ function UserDocuments({ userId, canEdit }:{ userId:string, canEdit:boolean }){
   );
 }
 
+export { EmployeeTrainingSection };

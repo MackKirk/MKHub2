@@ -1,7 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { useMemo, useState, useRef, useEffect } from 'react';
+import { useMemo, useState, useRef, useEffect, type ReactNode } from 'react';
 import toast from 'react-hot-toast';
-import { api } from '@/lib/api';
+import { api, withFileAccessToken } from '@/lib/api';
 import { useConfirm } from '@/components/ConfirmProvider';
 import { formatDateLocal, getTodayLocal } from '@/lib/dateUtils';
 import OverlayPortal from '@/components/OverlayPortal';
@@ -35,6 +35,18 @@ type Attendance = {
   shift_deleted?: boolean;
   shift_deleted_by?: string | null;
   shift_deleted_at?: string | null;
+  project_address?: string | null;
+  clock_in_entered_utc?: string | null;
+  clock_out_entered_utc?: string | null;
+  clock_in_notes?: string | null;
+  clock_out_notes?: string | null;
+  session_notes?: string | null;
+  clock_in_signature_file_id?: string | null;
+  clock_out_signature_file_id?: string | null;
+  clock_in_confirmed_by?: string | null;
+  clock_out_confirmed_by?: string | null;
+  gps_accuracy_m?: number | null;
+  hr_status?: string | null;
 };
 
 type AttendanceEvent = {
@@ -62,6 +74,23 @@ type AttendanceEvent = {
   shift_deleted?: boolean;
   shift_deleted_by?: string | null;
   shift_deleted_at?: string | null;
+  project_address?: string | null;
+  clock_in_entered_utc?: string | null;
+  clock_out_entered_utc?: string | null;
+  clock_in_notes?: string | null;
+  clock_out_notes?: string | null;
+  session_notes?: string | null;
+  clock_in_signature_file_id?: string | null;
+  clock_out_signature_file_id?: string | null;
+  clock_in_confirmed_by?: string | null;
+  clock_out_confirmed_by?: string | null;
+  approved_at?: string | null;
+  approved_by?: string | null;
+  source?: string | null;
+  gps_lat?: number | null;
+  gps_lng?: number | null;
+  gps_accuracy_m?: number | null;
+  hr_status?: string | null;
 };
 
 type User = {
@@ -170,6 +199,54 @@ const isHoursWorkedEntry = (reason?: string | null): boolean => {
   return extractHoursWorked(reason) !== null;
 };
 
+/** Parse `GPS:{...}` lines from attendance notes (e.g. session notes from clock-in/out). */
+function extractGpsFromSessionNotes(text?: string | null): { lat: number; lng: number; accuracy_m?: number } | null {
+  if (!text?.trim()) return null;
+  for (const raw of text.split('\n')) {
+    const line = raw.trim();
+    if (!line.startsWith('GPS:')) continue;
+    try {
+      const j = JSON.parse(line.slice(4)) as { lat?: number; lng?: number; accuracy_m?: number };
+      if (typeof j.lat === 'number' && typeof j.lng === 'number') return j;
+    } catch {
+      /* ignore */
+    }
+  }
+  return null;
+}
+
+function DetailField({ label, children }: { label: string; children: ReactNode }) {
+  return (
+    <div className="grid grid-cols-1 sm:grid-cols-[10rem_1fr] gap-x-3 gap-y-0.5 py-2 border-b border-gray-100 last:border-0 text-xs">
+      <div className="text-gray-500 font-medium shrink-0">{label}</div>
+      <div className="text-gray-900 break-words min-w-0">{children}</div>
+    </div>
+  );
+}
+
+function SignaturePreviewBlock({ fileId, label }: { fileId?: string | null; label: string }) {
+  if (!fileId?.trim()) {
+    return (
+      <div className="pt-1">
+        <p className="text-[10px] font-medium text-gray-500 uppercase tracking-wide mb-1">{label}</p>
+        <p className="text-xs text-gray-400">None</p>
+      </div>
+    );
+  }
+  const fid = encodeURIComponent(fileId.trim());
+  const thumb = withFileAccessToken(`/files/${fid}/thumbnail?w=640`);
+  const dl = withFileAccessToken(`/files/${fid}/download`);
+  return (
+    <div className="pt-1 min-w-0">
+      <p className="text-[10px] font-medium text-gray-500 uppercase tracking-wide mb-1">{label}</p>
+      <a href={dl} target="_blank" rel="noopener noreferrer" className="text-[10px] text-blue-600 hover:underline">
+        Open / download
+      </a>
+      <img src={thumb} alt="" className="mt-1.5 max-w-full h-auto rounded border border-gray-200 bg-white" />
+    </div>
+  );
+}
+
 const buildEvents = (attendances: Attendance[], projects: Project[] = []): AttendanceEvent[] => {
   // NEW MODEL: Each attendance record is already a complete event
   // No need to group clock-in and clock-out records together
@@ -197,8 +274,14 @@ const buildEvents = (attendances: Attendance[], projects: Project[] = []): Atten
       hoursWorked = diff / 3600000; // Convert to hours
     }
     
-    // Subtract break minutes from hours_worked if break exists
-    if (hoursWorked !== null && att.break_minutes !== null && att.break_minutes !== undefined && att.break_minutes > 0) {
+    // Subtract break minutes from hours_worked if break exists (internal list may send gross; subcontractor sends net)
+    if (
+      hoursWorked !== null &&
+      att.break_minutes !== null &&
+      att.break_minutes !== undefined &&
+      att.break_minutes > 0 &&
+      att.record_kind !== 'subcontractor'
+    ) {
       hoursWorked = Math.max(0, hoursWorked - (att.break_minutes / 60));
     }
     
@@ -235,14 +318,22 @@ const buildEvents = (attendances: Attendance[], projects: Project[] = []): Atten
       clock_in_time: isHoursWorked && att.clock_in_time
         ? formatDateLocal(new Date(att.clock_in_time)) + 'T00:00:00Z'
         : att.clock_in_time || null,
-      clock_in_status: att.clock_in_time ? att.status : null,
+      clock_in_status: att.clock_in_time
+        ? att.record_kind === 'subcontractor'
+          ? ((att as Attendance).hr_status || 'approved').toLowerCase()
+          : att.status
+        : null,
       clock_in_reason: att.clock_in_time ? att.reason_text : null,
       clock_out_id: att.clock_out_time ? att.id : null,
       // For "hours worked", store the date (not time) so we can use it for editing
       clock_out_time: isHoursWorked && att.clock_out_time
         ? formatDateLocal(new Date(att.clock_out_time)) + 'T00:00:00Z'
         : att.clock_out_time || null,
-      clock_out_status: att.clock_out_time ? att.status : null,
+      clock_out_status: att.clock_out_time
+        ? att.record_kind === 'subcontractor'
+          ? ((att as Attendance).hr_status || 'approved').toLowerCase()
+          : att.status
+        : null,
       clock_out_reason: att.clock_out_time ? att.reason_text : null,
       hours_worked: hoursWorked,
       break_minutes: att.break_minutes || null,
@@ -250,6 +341,23 @@ const buildEvents = (attendances: Attendance[], projects: Project[] = []): Atten
       shift_deleted: att.shift_deleted || false,
       shift_deleted_by: att.shift_deleted_by || null,
       shift_deleted_at: att.shift_deleted_at || null,
+      project_address: att.project_address ?? null,
+      clock_in_entered_utc: att.clock_in_entered_utc ?? null,
+      clock_out_entered_utc: att.clock_out_entered_utc ?? null,
+      clock_in_notes: att.clock_in_notes ?? null,
+      clock_out_notes: att.clock_out_notes ?? null,
+      session_notes: att.session_notes ?? null,
+      clock_in_signature_file_id: att.clock_in_signature_file_id ?? null,
+      clock_out_signature_file_id: att.clock_out_signature_file_id ?? null,
+      clock_in_confirmed_by: att.clock_in_confirmed_by ?? null,
+      clock_out_confirmed_by: att.clock_out_confirmed_by ?? null,
+      approved_at: att.approved_at ?? null,
+      approved_by: att.approved_by ?? null,
+      source: att.source ?? null,
+      gps_lat: att.gps_lat ?? null,
+      gps_lng: att.gps_lng ?? null,
+      gps_accuracy_m: att.gps_accuracy_m ?? null,
+      hr_status: att.hr_status ?? null,
     };
   });
 
@@ -281,6 +389,7 @@ export default function Attendance() {
   });
   const [showModal, setShowModal] = useState(false);
   const [editingEvent, setEditingEvent] = useState<AttendanceEvent | null>(null);
+  const [viewingEvent, setViewingEvent] = useState<AttendanceEvent | null>(null);
   const [selectedWorkers, setSelectedWorkers] = useState<string[]>([]);
   const [workerDropdownOpen, setWorkerDropdownOpen] = useState(false);
   const [workerSearch, setWorkerSearch] = useState('');
@@ -428,10 +537,38 @@ export default function Attendance() {
   };
 
   const handleOpenModal = (event?: AttendanceEvent) => {
+    setViewingEvent(null);
     if (event) {
       setEditingEvent(event);
       setSelectedWorkers([]); // Clear selection when editing
-      
+
+      if (event.record_kind === 'subcontractor') {
+        const projectId = event.project_id || '';
+        const st = (event.hr_status || event.clock_in_status || 'approved').toLowerCase();
+        setFormData({
+          worker_id: event.worker_id,
+          job_type: projectId,
+          clock_in_time: toLocalInputValue(event.clock_in_time),
+          clock_out_time: toLocalInputValue(event.clock_out_time),
+          status: st === 'pending' || st === 'rejected' ? st : 'approved',
+          entry_mode: 'time',
+          hours_worked: '',
+        });
+        if (event.break_minutes && event.break_minutes > 0) {
+          const breakH = Math.floor(event.break_minutes / 60);
+          const breakM = event.break_minutes % 60;
+          setInsertBreakTime(true);
+          setBreakHours(String(breakH));
+          setBreakMinutes(String(breakM).padStart(2, '0'));
+        } else {
+          setInsertBreakTime(false);
+          setBreakHours('0');
+          setBreakMinutes('0');
+        }
+        setShowModal(true);
+        return;
+      }
+
       // Detect if this event was created as "hours worked"
       const isHoursWorked = event.is_hours_worked || 
         (event.clock_in_reason && event.clock_in_reason.includes('HOURS_WORKED:')) ||
@@ -517,6 +654,7 @@ export default function Attendance() {
   };
 
   const handleDeleteEvent = async (event: AttendanceEvent) => {
+    setViewingEvent(null);
     const result = await confirm({
       title: 'Delete Attendance Event',
       message: 'Are you sure you want to delete this attendance event (clock-in/out)? This action cannot be undone.',
@@ -690,12 +828,13 @@ export default function Attendance() {
   };
 
   const handleSubmit = async () => {
+    const isEditingSubcontractor = editingEvent?.record_kind === 'subcontractor';
     // For editing, use formData.worker_id; for creating, use selectedWorkers
     const workersToProcess = editingEvent 
       ? [formData.worker_id] 
       : (Array.isArray(selectedWorkers) && selectedWorkers.length > 0 ? selectedWorkers : []);
     
-    if (workersToProcess.length === 0) {
+    if (!isEditingSubcontractor && workersToProcess.length === 0) {
       toast.error(editingEvent ? 'Please select a worker' : 'Please select at least one worker');
       return;
     }
@@ -705,22 +844,26 @@ export default function Attendance() {
     if (editingEvent) {
       if (!formData.clock_in_time) {
         toast.error('Clock-in time is required');
+        setIsSubmitting(false);
         return;
       }
     } else {
       if (formData.entry_mode === 'time') {
         if (!formData.clock_in_time || !formData.clock_out_time) {
           toast.error('Clock-in and clock-out times are required');
+          setIsSubmitting(false);
           return;
         }
       } else {
         if (!formData.clock_in_time) {
           toast.error('Clock-in time is required when using hours worked');
+          setIsSubmitting(false);
           return;
         }
         const hours = parseFloat(formData.hours_worked || '0');
         if (!formData.hours_worked || isNaN(hours) || hours <= 0) {
           toast.error('Please enter a valid number of hours worked');
+          setIsSubmitting(false);
           return;
         }
       }
@@ -735,6 +878,7 @@ export default function Attendance() {
       const clockOutDate = new Date(clockOutUtc);
       if (clockOutDate <= clockInDate) {
         toast.error('Clock-out time must be after clock-in time. Please select a valid time.');
+        setIsSubmitting(false);
         return;
       }
       
@@ -745,6 +889,7 @@ export default function Attendance() {
         
         if (breakTotalMinutes >= totalMinutes) {
           toast.error('Break time cannot be greater than or equal to the total attendance time. Please adjust the break or clock-out time.');
+          setIsSubmitting(false);
           return;
         }
       }
@@ -776,11 +921,65 @@ export default function Attendance() {
     }
 
     try {
+      if (editingEvent?.record_kind === 'subcontractor') {
+        const attendanceId = editingEvent.event_id;
+        const projectsArray = Array.isArray(projects) ? projects : [];
+        if (!formData.job_type || !projectsArray.some((p) => p.id === formData.job_type)) {
+          toast.error('Select a valid project for this subcontractor attendance');
+          setIsSubmitting(false);
+          return;
+        }
+        if (!clockInUtc) {
+          toast.error('Clock-in time is required');
+          setIsSubmitting(false);
+          return;
+        }
+        if (clockInUtc && clockOutUtc && new Date(clockOutUtc) <= new Date(clockInUtc)) {
+          toast.error('Clock-out time must be after clock-in time. Please select a valid time.');
+          setIsSubmitting(false);
+          return;
+        }
+        try {
+          const patchBody: Record<string, unknown> = {
+            project_id: formData.job_type,
+            clock_in_time: clockInUtc,
+            clock_out_time: clockOutUtc || null,
+            hr_status: formData.status,
+          };
+          if (clockOutUtc) {
+            patchBody.manual_break_minutes = insertBreakTime
+              ? parseInt(breakHours, 10) * 60 + parseInt(breakMinutes, 10)
+              : 0;
+          }
+          await api('PATCH', `/subcontractors/attendance/${attendanceId}`, patchBody);
+          toast.success('Attendance updated');
+          await queryClient.invalidateQueries({
+            queryKey: ['settings-attendance'],
+            exact: false,
+          });
+          await queryClient.refetchQueries({
+            queryKey: ['settings-attendance'],
+            exact: false,
+          });
+          queryClient.invalidateQueries({ queryKey: ['timesheet'], exact: false });
+          await queryClient.refetchQueries({ queryKey: ['timesheet'], exact: false });
+          setRefreshKey((prev) => prev + 1);
+          setShowModal(false);
+          resetForm();
+        } catch (e: any) {
+          toast.error(e?.message || 'Failed to update attendance', { duration: 5000 });
+        } finally {
+          setIsSubmitting(false);
+        }
+        return;
+      }
+
       if (editingEvent) {
         // NEW MODEL: Update single attendance record with both clock_in_time and clock_out_time
         const attendanceId = editingEvent.clock_in_id || editingEvent.clock_out_id;
         if (!attendanceId) {
           toast.error('Cannot find attendance record to update');
+          setIsSubmitting(false);
           return;
         }
 
@@ -831,6 +1030,7 @@ export default function Attendance() {
         // For "hours worked", we MUST have both clock-in and clock-out
         if (formData.entry_mode === 'hours' && !clockOutUtc) {
           toast.error('Failed to calculate clock-out time for hours worked entry');
+          setIsSubmitting(false);
           return;
         }
 
@@ -937,8 +1137,11 @@ export default function Attendance() {
     }
   };
 
+  const projectsList = Array.isArray(projects) ? projects : [];
   const isSubmitDisabled = editingEvent
-    ? (!formData.worker_id || !formData.clock_in_time)
+    ? editingEvent.record_kind === 'subcontractor'
+      ? !formData.clock_in_time || !projectsList.some((p) => p.id === formData.job_type)
+      : !formData.worker_id || !formData.clock_in_time
     : (Array.isArray(selectedWorkers) ? selectedWorkers.length : 0) === 0
     ? true
     : !formData.clock_in_time
@@ -1163,9 +1366,21 @@ export default function Attendance() {
               </tr>
             ) : (
               attendanceEvents.map((event) => (
-                <tr key={event.event_id} className="border-t hover:bg-gray-50">
+                <tr
+                  key={event.event_id}
+                  role="button"
+                  tabIndex={0}
+                  className="border-t hover:bg-gray-50 cursor-pointer"
+                  onClick={() => setViewingEvent(event)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      e.preventDefault();
+                      setViewingEvent(event);
+                    }
+                  }}
+                >
                   {canEditAttendance && (
-                    <td className="p-2.5">
+                    <td className="p-2.5" onClick={(e) => e.stopPropagation()}>
                       <input
                         type="checkbox"
                         checked={selectedEvents.has(event.event_id)}
@@ -1207,7 +1422,11 @@ export default function Attendance() {
                       className={`px-2 py-0.5 rounded-full text-[10px] font-medium ${
                         event.record_kind === 'subcontractor'
                           ? event.clock_out_time
-                            ? 'bg-green-100 text-green-800'
+                            ? (event.hr_status || event.clock_in_status || 'approved') === 'approved'
+                              ? 'bg-green-100 text-green-800'
+                              : (event.hr_status || event.clock_in_status) === 'pending'
+                                ? 'bg-yellow-100 text-yellow-800'
+                                : 'bg-red-100 text-red-800'
                             : 'bg-yellow-100 text-yellow-800'
                           : event.clock_in_status === 'approved' &&
                             (!event.clock_out_status || event.clock_out_status === 'approved')
@@ -1219,7 +1438,7 @@ export default function Attendance() {
                     >
                       {event.record_kind === 'subcontractor'
                         ? event.clock_out_time
-                          ? 'Finalized'
+                          ? `${(event.hr_status || event.clock_in_status || 'approved').charAt(0).toUpperCase()}${(event.hr_status || event.clock_in_status || 'approved').slice(1)}`
                           : 'Open'
                         : event.clock_in_status === 'approved' &&
                           (!event.clock_out_status || event.clock_out_status === 'approved')
@@ -1229,19 +1448,19 @@ export default function Attendance() {
                         : 'Rejected'}
                     </span>
                   </td>
-                  <td className="p-2.5">
+                  <td className="p-2.5" onClick={(e) => e.stopPropagation()}>
                     <div className="flex items-center gap-2">
                       {canEditAttendance && (
                         <>
-                          {event.record_kind !== 'subcontractor' && (
                           <button
+                            type="button"
                             onClick={() => handleOpenModal(event)}
                             className="px-2 py-1 text-[10px] text-blue-600 hover:text-blue-800 font-medium hover:bg-blue-50 rounded transition-colors"
                           >
                             Edit
                           </button>
-                          )}
                           <button
+                            type="button"
                             onClick={() => handleDeleteEvent(event)}
                             disabled={deletingId === event.event_id}
                             className="px-2 py-1 text-[10px] text-red-600 hover:text-red-800 font-medium hover:bg-red-50 rounded transition-colors disabled:opacity-50"
@@ -1268,6 +1487,162 @@ export default function Attendance() {
           </tbody>
         </table>
       </div>
+
+      {viewingEvent && (
+        <OverlayPortal>
+          <div
+            className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 overflow-y-auto"
+            onClick={() => setViewingEvent(null)}
+          >
+            <div
+              className="max-w-lg w-full min-w-0 max-h-[90vh] flex flex-col rounded-xl border border-gray-200 bg-gray-100 shadow-xl overflow-hidden my-auto"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="flex-shrink-0 rounded-t-xl border-b border-gray-200 bg-white p-4">
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setViewingEvent(null)}
+                    className="p-1 rounded-lg hover:bg-gray-100 text-gray-600"
+                    aria-label="Close"
+                  >
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                    </svg>
+                  </button>
+                  <div className="min-w-0">
+                    <h2 className="text-sm font-semibold text-gray-900">Attendance details</h2>
+                    <p className="text-xs text-gray-500 mt-0.5 truncate">Record ID: {viewingEvent.event_id}</p>
+                  </div>
+                </div>
+              </div>
+              <div className="flex-1 overflow-y-auto overflow-x-hidden p-4 min-w-0">
+                <div className="rounded-xl border border-gray-200 bg-white p-4 min-w-0">
+                  {viewingEvent.record_kind === 'subcontractor' ? (
+                    <>
+                      <DetailField label="Worker">{viewingEvent.worker_name}</DetailField>
+                      {viewingEvent.subcontractor_company_name ? (
+                        <DetailField label="Company">{viewingEvent.subcontractor_company_name}</DetailField>
+                      ) : null}
+                      <DetailField label="Project">{viewingEvent.project_name || '—'}</DetailField>
+                      <DetailField label="Project address">{viewingEvent.project_address || '—'}</DetailField>
+                      <DetailField label="Session">{viewingEvent.clock_out_time ? 'Finalized' : 'Open'}</DetailField>
+                      <DetailField label="HR status">
+                        {(viewingEvent.hr_status || viewingEvent.clock_in_status || 'approved').charAt(0).toUpperCase()}
+                        {(viewingEvent.hr_status || viewingEvent.clock_in_status || 'approved').slice(1)}
+                      </DetailField>
+                      <DetailField label="Clock in">{formatDateTime(viewingEvent.clock_in_time)}</DetailField>
+                      <DetailField label="Clock in by (user)">{viewingEvent.clock_in_confirmed_by || '—'}</DetailField>
+                      <DetailField label="Clock out">{formatDateTime(viewingEvent.clock_out_time)}</DetailField>
+                      <DetailField label="Clock out by (user)">{viewingEvent.clock_out_confirmed_by || '—'}</DetailField>
+                      <DetailField label="Hours worked">{formatHours(viewingEvent.hours_worked)}</DetailField>
+                      <DetailField label="Break">{formatBreak(viewingEvent.break_minutes)}</DetailField>
+                      {viewingEvent.clock_in_notes ? (
+                        <DetailField label="Clock-in notes">
+                          <pre className="whitespace-pre-wrap font-sans text-xs">{viewingEvent.clock_in_notes}</pre>
+                        </DetailField>
+                      ) : null}
+                      {viewingEvent.clock_out_notes ? (
+                        <DetailField label="Clock-out notes">
+                          <pre className="whitespace-pre-wrap font-sans text-xs">{viewingEvent.clock_out_notes}</pre>
+                        </DetailField>
+                      ) : null}
+                      {(() => {
+                        const gps = extractGpsFromSessionNotes(viewingEvent.session_notes);
+                        if (!gps) return null;
+                        return (
+                          <DetailField label="Location">
+                            <span className="text-xs">
+                              {gps.lat.toFixed(6)}, {gps.lng.toFixed(6)}
+                              {gps.accuracy_m != null ? ` · ±${Math.round(gps.accuracy_m)}m` : ''}
+                            </span>
+                          </DetailField>
+                        );
+                      })()}
+                      <div className="pt-4 mt-2 border-t border-gray-100">
+                        <SignaturePreviewBlock fileId={viewingEvent.clock_out_signature_file_id} label="Signature" />
+                      </div>
+                    </>
+                  ) : (
+                    <>
+                      <DetailField label="Worker">{viewingEvent.worker_name}</DetailField>
+                      <DetailField label="Company">—</DetailField>
+                      <DetailField label="Record type">Internal</DetailField>
+                      <DetailField label="Job / project">
+                        {viewingEvent.shift_id
+                          ? viewingEvent.project_name || viewingEvent.job_name || 'No Project'
+                          : viewingEvent.job_name ||
+                            viewingEvent.project_name ||
+                            (viewingEvent.job_type
+                              ? jobOptions.find((j) => j.id === viewingEvent.job_type)?.name || 'Unknown'
+                              : 'No Project')}
+                      </DetailField>
+                      <DetailField label="Project address">{viewingEvent.project_address || '—'}</DetailField>
+                      <DetailField label="Status">
+                        {viewingEvent.clock_in_status === 'approved' &&
+                        (!viewingEvent.clock_out_status || viewingEvent.clock_out_status === 'approved')
+                          ? 'Approved'
+                          : viewingEvent.clock_in_status === 'pending' || viewingEvent.clock_out_status === 'pending'
+                            ? 'Pending'
+                            : 'Rejected'}
+                      </DetailField>
+                      <DetailField label="Clock in">
+                        {viewingEvent.is_hours_worked ? '—' : formatDateTime(viewingEvent.clock_in_time)}
+                      </DetailField>
+                      <DetailField label="Clock out">
+                        {viewingEvent.is_hours_worked ? '—' : formatDateTime(viewingEvent.clock_out_time)}
+                      </DetailField>
+                      <DetailField label="Hours worked">{formatHours(viewingEvent.hours_worked)}</DetailField>
+                      <DetailField label="Break">{formatBreak(viewingEvent.break_minutes)}</DetailField>
+                      <DetailField label="Source">{viewingEvent.source || '—'}</DetailField>
+                      {viewingEvent.gps_lat != null && viewingEvent.gps_lng != null ? (
+                        <DetailField label="Location">
+                          <span className="text-xs">
+                            {Number(viewingEvent.gps_lat).toFixed(6)}, {Number(viewingEvent.gps_lng).toFixed(6)}
+                            {viewingEvent.gps_accuracy_m != null
+                              ? ` · ±${Math.round(viewingEvent.gps_accuracy_m)}m`
+                              : ''}
+                          </span>
+                        </DetailField>
+                      ) : null}
+                      {(viewingEvent.clock_in_reason || viewingEvent.clock_out_reason) ? (
+                        <DetailField label="Notes / reason">
+                          <pre className="whitespace-pre-wrap font-sans text-xs">
+                            {viewingEvent.clock_in_reason || viewingEvent.clock_out_reason}
+                          </pre>
+                        </DetailField>
+                      ) : null}
+                      {viewingEvent.is_hours_worked ? (
+                        <DetailField label="Entry mode">Hours worked (no specific clock times)</DetailField>
+                      ) : null}
+                      <DetailField label="Approved at">{formatDateTime(viewingEvent.approved_at)}</DetailField>
+                      <DetailField label="Approved by (user id)">{viewingEvent.approved_by || '—'}</DetailField>
+                      {viewingEvent.shift_deleted ? (
+                        <div className="rounded-lg border border-amber-200 bg-amber-50 p-2 text-xs text-amber-900 mt-2">
+                          Linked shift was deleted
+                          {viewingEvent.shift_deleted_by ? ` by ${viewingEvent.shift_deleted_by}` : ''}
+                          {viewingEvent.shift_deleted_at
+                            ? ` on ${new Date(viewingEvent.shift_deleted_at).toLocaleString()}`
+                            : ''}
+                        </div>
+                      ) : null}
+                    </>
+                  )}
+                </div>
+              </div>
+              <div className="flex-shrink-0 px-4 py-4 border-t border-gray-200 bg-white flex items-center justify-end rounded-b-xl">
+                <button
+                  type="button"
+                  onClick={() => setViewingEvent(null)}
+                  className="px-4 py-2 rounded-lg text-sm font-semibold text-white bg-brand-red hover:bg-[#aa1212]"
+                >
+                  Close
+                </button>
+              </div>
+            </div>
+          </div>
+        </OverlayPortal>
+      )}
 
       {/* Modal */}
       {showModal && (
@@ -1301,7 +1676,11 @@ export default function Attendance() {
                     {editingEvent ? 'Edit Attendance Event' : 'New Attendance'}
                   </h2>
                   <p className="text-xs text-gray-500 mt-0.5">
-                    {editingEvent ? 'Update clock-in/out and status' : 'Add manual clock-in/out or hours worked'}
+                    {editingEvent
+                      ? editingEvent.record_kind === 'subcontractor'
+                        ? 'Update project and clock times (subcontractor attendance).'
+                        : 'Update clock-in/out and status'
+                      : 'Add manual clock-in/out or hours worked'}
                   </p>
                 </div>
               </div>
@@ -1316,7 +1695,19 @@ export default function Attendance() {
                 className="rounded-xl border border-gray-200 bg-white p-4 space-y-3"
               >
               {editingEvent ? (
-                // When editing, show simple select (single worker)
+                editingEvent.record_kind === 'subcontractor' ? (
+                  <div>
+                    <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">
+                      Subcontractor worker
+                    </label>
+                    <div className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm bg-gray-50 text-gray-800">
+                      {editingEvent.worker_name}
+                      {editingEvent.subcontractor_company_name ? (
+                        <span className="text-gray-500"> · {editingEvent.subcontractor_company_name}</span>
+                      ) : null}
+                    </div>
+                  </div>
+                ) : (
                 <div>
                   <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">Worker *</label>
                   <select
@@ -1333,6 +1724,7 @@ export default function Attendance() {
                     ))}
                   </select>
                 </div>
+                )
               ) : (
                 // When creating, show multi-select with search
                 <div>
@@ -1450,7 +1842,9 @@ export default function Attendance() {
               )}
               {/* Job field - always show */}
               <div>
-                <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">Job *</label>
+                <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">
+                  {editingEvent?.record_kind === 'subcontractor' ? 'Project *' : 'Job *'}
+                </label>
                 <select
                   value={formData.job_type}
                   onChange={(e) => setFormData({ ...formData, job_type: e.target.value })}
@@ -1522,7 +1916,7 @@ export default function Attendance() {
                       formData.entry_mode === 'hours'
                         ? 'bg-white text-gray-900'
                         : 'text-gray-600 hover:bg-gray-100'
-                    }`}
+                    } disabled:opacity-40 disabled:cursor-not-allowed`}
                   >
                     Hours Worked
                   </button>
@@ -1583,7 +1977,7 @@ export default function Attendance() {
                       required={!editingEvent}
                     />
                   </div>
-                  {/* Manual Break Time (always available in clock in/out mode) */}
+                  {/* Manual Break Time (clock in/out mode) */}
                   <div>
                     <label className="flex items-center gap-2 mb-1.5">
                       <input

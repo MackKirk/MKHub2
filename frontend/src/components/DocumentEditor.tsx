@@ -292,7 +292,28 @@ export default function DocumentEditor(props: DocumentEditorProps) {
     // Refetch after save (or background refresh) must not replace editor state or wipe undo/redo.
     if (serverDocHydratedForIdRef.current === id) return;
 
-    if (!Array.isArray(doc.pages) || doc.pages.length === 0) return;
+    if (!Array.isArray(doc.pages)) return;
+
+    // Server returned no pages (new doc): still mark hydrated so autosave can run later; do not leave
+    // `serverDocHydratedForIdRef` unset (that used to let debounced save PATCH a blank page over real data).
+    if (doc.pages.length === 0) {
+      const emptyPages: DocumentPage[] = [defaultPage()];
+      const t = doc.title || 'New document';
+      setTitle(t);
+      setPages(emptyPages);
+      lastSavedRef.current = { title: t, pagesStr: JSON.stringify(emptyPages) };
+      stateRef.current = {
+        title: t,
+        pages: emptyPages,
+        currentPageIndex: 0,
+        selectedElementIds: [],
+      };
+      undoRef.current = [];
+      redoRef.current = [];
+      bumpHistory();
+      serverDocHydratedForIdRef.current = id;
+      return;
+    }
 
     const needsTemplateData = doc.pages.some((p) => {
       const hasElements = Array.isArray(p.elements) && p.elements.length > 0;
@@ -923,18 +944,20 @@ export default function DocumentEditor(props: DocumentEditorProps) {
 
   const saveDocument = useCallback(async () => {
     if (!id) return;
+    if (serverDocHydratedForIdRef.current !== id) return;
+    const st = stateRef.current;
+    const payload = {
+      title: st.title,
+      pages: st.pages.map((p) => ({
+        template_id: p.template_id,
+        margins: p.margins ?? undefined,
+        elements: p.elements ?? [],
+      })),
+    };
     setIsSaving(true);
     try {
-      const payload = {
-        title,
-        pages: pages.map((p) => ({
-          template_id: p.template_id,
-          margins: p.margins ?? undefined,
-          elements: p.elements ?? [],
-        })),
-      };
       await api('PATCH', `/document-creator/documents/${id}`, payload);
-      lastSavedRef.current = { title, pagesStr: JSON.stringify(pages) };
+      lastSavedRef.current = { title: st.title, pagesStr: JSON.stringify(st.pages) };
       queryClient.invalidateQueries({ queryKey: ['document-creator-doc', id] });
       queryClient.invalidateQueries({ queryKey: ['document-creator-documents'] });
       if (projectId) {
@@ -945,10 +968,14 @@ export default function DocumentEditor(props: DocumentEditorProps) {
     } finally {
       setIsSaving(false);
     }
-  }, [id, title, pages, projectId, queryClient]);
+  }, [id, projectId, queryClient]);
 
   useEffect(() => {
     if (!id || readOnly) return;
+    // Critical: do not PATCH until the server document has been merged into React state at least once.
+    // Otherwise the debounced save can fire while `pages` is still the initial default ([blank page]) —
+    // e.g. slow GET after a server restart, or hydration waiting on templates — and overwrite real content.
+    if (serverDocHydratedForIdRef.current !== id) return;
     const pagesStr = JSON.stringify(pages);
     if (
       lastSavedRef.current &&

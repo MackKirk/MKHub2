@@ -262,11 +262,16 @@ function applyFormatToLineRuns(runs: RichTextRun[], start: number, end: number, 
   return cleaned.length > 0 ? mergeAdjacentRuns(cleaned) : [{ text: '' }];
 }
 
-/** Get the format at a given character offset within a line's runs. */
+/** Get the format at a given character offset within a line's runs.
+ *  Uses strict `>` so that a run boundary at exactly `offset` resolves to the
+ *  run STARTING at that offset, not the one ending there.  This matters for
+ *  `syncFormatState`: after applying a format to [start, end), the newly
+ *  formatted run begins at `start.offset`, so `getFormatAtOffset(runs, start)`
+ *  must return the new format, not the untouched run before it. */
 function getFormatAtOffset(runs: RichTextRun[], offset: number): RunFormat {
   let pos = 0;
   for (const run of runs) {
-    if (pos + run.text.length >= offset) return runFormat(run);
+    if (pos + run.text.length > offset) return runFormat(run);
     pos += run.text.length;
   }
   return runs.length > 0 ? runFormat(runs[runs.length - 1]) : {};
@@ -561,10 +566,43 @@ function InlineTextEditor({
   const composingRef = useRef(false);
   /** Selection saved just before each user input event (used to apply pending format in handleInput). */
   const preinputSelRef = useRef<{ lineIndex: number; offset: number; endLineIndex: number; endOffset: number } | null>(null);
+  /**
+   * When the user clicks the side inspector (font size input, selects, color), the browser moves
+   * focus and the DOM selection leaves the contentEditable — imperativeSelectionRead returns null.
+   * Bold/Italic avoid that via onMouseDown preventDefault; we snapshot a logical range on mousedown
+   * capture so font size / font / color / preset still apply to the selected text.
+   */
+  const frozenSelForToolbarRef = useRef<{
+    start: { lineIndex: number; offset: number };
+    end: { lineIndex: number; offset: number };
+    collapsed: boolean;
+  } | null>(null);
+  const elementIdRef = useRef(element.id);
+  /** Latest element-level typography (syncFormatState merges with run-level overrides for the inspector). */
+  const elementPropsRef = useRef({
+    fontWeight: 'normal' as string,
+    fontStyle: 'normal' as string,
+    fontSize: 12,
+    color: '#000000',
+    fontFamily: 'Montserrat',
+  });
   const onCommitRef = useRef(onCommit);
   const onEscapeRef = useRef(onEscape);
   useLayoutEffect(() => { onCommitRef.current = onCommit; });
   useLayoutEffect(() => { onEscapeRef.current = onEscape; });
+  useLayoutEffect(() => {
+    elementIdRef.current = element.id;
+  }, [element.id]);
+  useLayoutEffect(() => {
+    elementPropsRef.current = {
+      fontWeight: element.fontWeight ?? 'normal',
+      fontStyle: element.fontStyle ?? 'normal',
+      fontSize: Math.max(8, Math.min(72, element.fontSize ?? 12)),
+      color: element.color ?? '#000000',
+      fontFamily: element.fontFamily ?? 'Montserrat',
+    };
+    elementFontSizeRef.current = elementPropsRef.current.fontSize;
+  }, [element.fontWeight, element.fontStyle, element.fontSize, element.color, element.fontFamily]);
 
   // ── Undo stack ────────────────────────────────────────────────────────────
   type UndoEntry = {
@@ -621,18 +659,61 @@ function InlineTextEditor({
   const syncFormatState = useCallback(() => {
     const root = rootRef.current;
     if (!root) return;
-    const sel = imperativeSelectionRead(root, activeLineRef.current);
-    if (!sel) return;
+    const eid = elementIdRef.current;
+    // Use live selection; fall back to frozen toolbar snapshot so font size / color
+    // applied from the inspector (which steals DOM focus) still reports the right format.
+    const sel = imperativeSelectionRead(root, activeLineRef.current)
+      ?? (frozenSelForToolbarRef.current && !frozenSelForToolbarRef.current.collapsed
+        ? frozenSelForToolbarRef.current
+        : null);
+    if (!sel) {
+      root.removeAttribute(DOCUMENT_TEXT_FORMAT_STATE_ATTR);
+      window.dispatchEvent(new CustomEvent(DOCUMENT_TEXT_FORMAT_STATE_CHANGED_EVENT, { detail: { elementId: eid } }));
+      return;
+    }
+    const ep = elementPropsRef.current;
     const lineRuns = runsRef.current[sel.start.lineIndex] ?? [];
-    const fmt = pendingFormatRef.current ?? getFormatAtOffset(lineRuns, sel.start.offset);
+    const raw = pendingFormatRef.current ?? getFormatAtOffset(lineRuns, sel.start.offset);
+    const fmt: RunFormat = {
+      bold: raw.bold ?? ep.fontWeight === 'bold',
+      italic: raw.italic ?? ep.fontStyle === 'italic',
+      fontSize: raw.fontSize ?? ep.fontSize,
+      color: raw.color ?? ep.color,
+      fontFamily: raw.fontFamily ?? ep.fontFamily,
+    };
     root.setAttribute(DOCUMENT_TEXT_FORMAT_STATE_ATTR, JSON.stringify(fmt));
-    // Notify inspector to re-read (selectionchange doesn't fire when a toolbar button is clicked).
-    window.dispatchEvent(new CustomEvent(DOCUMENT_TEXT_FORMAT_STATE_CHANGED_EVENT, { detail: { elementId: element.id } }));
+    window.dispatchEvent(new CustomEvent(DOCUMENT_TEXT_FORMAT_STATE_CHANGED_EVENT, { detail: { elementId: eid } }));
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Snapshot logical selection before inspector controls steal DOM selection / focus.
+  useEffect(() => {
+    const inspectorAttr = '[data-document-inspector-keep-selection]';
+    const onMouseDownCapture = (e: MouseEvent) => {
+      const root = rootRef.current;
+      if (!root) return;
+      const t = e.target as Node | null;
+      if (!t || root.contains(t)) return;
+      if (!(t instanceof Element) || !t.closest(inspectorAttr)) return;
+      const sel = imperativeSelectionRead(root, activeLineRef.current);
+      if (sel && !sel.collapsed) frozenSelForToolbarRef.current = sel;
+    };
+    const onSelectionChange = () => {
+      const root = rootRef.current;
+      const s = window.getSelection();
+      if (!root || !s?.anchorNode) return;
+      if (root.contains(s.anchorNode)) frozenSelForToolbarRef.current = null;
+    };
+    document.addEventListener('mousedown', onMouseDownCapture, true);
+    document.addEventListener('selectionchange', onSelectionChange);
+    return () => {
+      document.removeEventListener('mousedown', onMouseDownCapture, true);
+      document.removeEventListener('selectionchange', onSelectionChange);
+    };
+  }, [element.id]);
+
   /** Rebuild innerHTML then restore focus + caret. */
-  const repaint = useCallback((focusLineIdx?: number, focusOffset?: number) => {
+  const repaint = useCallback((focusLineIdx?: number, focusOffset?: number, opts?: { skipSyncFormat?: boolean }) => {
     const root = rootRef.current;
     if (!root) return;
     root.innerHTML = buildEditorHtml(linesRef.current, stylesRef.current, runsRef.current, elementFontSizeRef.current);
@@ -641,7 +722,9 @@ function InlineTextEditor({
       root.focus({ preventScroll: true });
       imperativeCaretSet(root, focusLineIdx, focusOffset ?? 0);
     }
-    syncFormatState();
+    if (!opts?.skipSyncFormat) {
+      syncFormatState();
+    }
   }, [syncFormatState]);
 
   // ── Mount / element switch ────────────────────────────────────────────────
@@ -655,6 +738,7 @@ function InlineTextEditor({
     elementFontSizeRef.current = Math.max(8, Math.min(72, element.fontSize ?? 12));
     activeLineRef.current = 0;
     pendingFormatRef.current = null;
+    frozenSelForToolbarRef.current = null;
     undoStackRef.current = [];
     typingSessionActiveRef.current = false;
     if (typingPauseTimerRef.current) clearTimeout(typingPauseTimerRef.current);
@@ -695,7 +779,16 @@ function InlineTextEditor({
       const root = rootRef.current;
       if (!root || elementId !== element.id) return;
 
-      const sel = imperativeSelectionRead(root, activeLineRef.current);
+      const fr = frozenSelForToolbarRef.current;
+      let sel = imperativeSelectionRead(root, activeLineRef.current);
+      let usedFrozen = false;
+      if (sel && !sel.collapsed) {
+        frozenSelForToolbarRef.current = null;
+      }
+      if (!sel && fr && !fr.collapsed) {
+        sel = fr;
+        usedFrozen = true;
+      }
 
       // No selection: set pending format (will be applied to next typed characters).
       if (!sel || sel.collapsed) {
@@ -703,6 +796,9 @@ function InlineTextEditor({
         syncFormatState();
         return;
       }
+      if (usedFrozen) frozenSelForToolbarRef.current = null;
+
+      pendingFormatRef.current = null;
 
       pushUndo();
       const { start, end } = sel;
@@ -728,9 +824,12 @@ function InlineTextEditor({
       }
       runsRef.current = nextRuns;
 
-      repaint();
+      repaint(undefined, undefined, { skipSyncFormat: true });
       root.focus({ preventScroll: true });
       imperativeSelectionRestore(root, sel);
+      // Sync call — selection is already restored above, so imperativeSelectionRead works
+      // immediately. Using async (queueMicrotask+rAF) caused the inspector to still show
+      // the old fontSize, so subsequent clicks computed the wrong next value.
       syncFormatState();
       doCommit();
     };

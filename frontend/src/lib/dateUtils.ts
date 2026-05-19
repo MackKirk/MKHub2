@@ -55,3 +55,12 @@ export function formatReviewPeriodRange(start: string | null | undefined, end: s
   return `Until ${formatFriendlyDate(end)}`;
 }
 
+/** Decimal hours from API (e.g. 0.25) → `0h 15min` (nearest minute). */
+export function formatDecimalHoursAsHMin(hours: number | null | undefined): string {
+  if (hours === undefined || hours === null || Number.isNaN(Number(hours))) return '—';
+  const totalMinutes = Math.round(Number(hours) * 60);
+  const h = Math.floor(totalMinutes / 60);
+  const m = totalMinutes - h * 60;
+  return `${h}h ${m}min`;
+}
+

@@ -4,18 +4,24 @@ from __future__ import annotations
 import os
 import uuid
 from datetime import datetime, timezone
+from decimal import Decimal
 from typing import Any, List, Optional
 
 from fastapi import APIRouter, Body, Depends, HTTPException, Query
-from sqlalchemy import asc, desc, func, or_
+from sqlalchemy import asc, desc, func, nullslast, or_
 from sqlalchemy.orm import Session
 
 from ..auth.security import get_current_user, _has_permission, require_roles
 from ..db import get_db
 from ..models.models import (
+    AuditLog,
     ClientFile,
+    EmployeeReport,
+    EmployeeTrainingRecord,
     FileObject,
     Project,
+    ReportAttachment,
+    ReportComment,
     SubcontractorAttendance,
     SubcontractorCompany,
     SubcontractorCompanyContact,
@@ -25,6 +31,10 @@ from ..models.models import (
     User,
     WorkOrderFile,
 )
+from ..schemas.employee_training import EmployeeTrainingRecordCreate, EmployeeTrainingRecordUpdate
+from ..services.audit import compute_diff, create_audit_log
+from ..services.training_matrix_slots import get_matrix_training_defs, is_valid_matrix_training_id
+from ..training_matrix_catalog import format_record_cell_display, normalize_matrix_training_id
 
 router = APIRouter(prefix="/subcontractors", tags=["subcontractors"])
 
@@ -48,6 +58,120 @@ def _require_subcontractor_write(user: User) -> None:
         return
     if not _has_permission(user, "business:customers:write"):
         raise HTTPException(status_code=403, detail="Forbidden")
+
+
+LMS_PROVIDER_LABEL = "MKHub LMS"
+LMS_NOTE_PREFIX = "[MKHub LMS]"
+
+
+def _worker_training_can_edit(user: User) -> bool:
+    if any((getattr(r, "name", None) or "").lower() == "admin" for r in user.roles):
+        return True
+    return (
+        _has_permission(user, "business:customers:write")
+        or _has_permission(user, "users:write")
+        or _has_permission(user, "hr:users:edit:general")
+    )
+
+
+def _worker_reports_can_view(user: User) -> bool:
+    if any((getattr(r, "name", None) or "").lower() == "admin" for r in user.roles):
+        return True
+    return _has_permission(user, "hr:users:view:general") or _has_permission(user, "users:read")
+
+
+def _worker_reports_can_edit(user: User) -> bool:
+    return _worker_training_can_edit(user)
+
+
+def _serialize_subcontractor_training_row(r: EmployeeTrainingRecord) -> dict[str, Any]:
+    mid = getattr(r, "matrix_training_id", None)
+    uid = getattr(r, "user_id", None)
+    wid = getattr(r, "subcontractor_worker_id", None)
+    return {
+        "id": str(r.id),
+        "user_id": str(uid) if uid else None,
+        "subcontractor_worker_id": str(wid) if wid else None,
+        "title": r.title,
+        "provider": r.provider,
+        "category": r.category,
+        "delivery_format": r.delivery_format,
+        "start_date": r.start_date.isoformat() if r.start_date else None,
+        "end_date": r.end_date.isoformat() if r.end_date else None,
+        "completion_date": r.completion_date.isoformat() if r.completion_date else None,
+        "duration_hours": float(r.duration_hours) if r.duration_hours is not None else None,
+        "status": r.status or "completed",
+        "certificate_number": r.certificate_number,
+        "expiry_date": r.expiry_date.isoformat() if r.expiry_date else None,
+        "notes": r.notes,
+        "crew": getattr(r, "crew", None),
+        "location": getattr(r, "location", None),
+        "session_time": getattr(r, "session_time", None),
+        "matrix_training_id": str(mid).strip() if mid else None,
+        "created_at": r.created_at.isoformat() if r.created_at else None,
+        "updated_at": r.updated_at.isoformat() if r.updated_at else None,
+        "created_by_user_id": str(r.created_by_user_id) if r.created_by_user_id else None,
+        "training_source": (
+            "lms"
+            if (r.provider or "").strip() == LMS_PROVIDER_LABEL or (LMS_NOTE_PREFIX in (r.notes or ""))
+            else "manual"
+        ),
+    }
+
+
+def _enforce_unique_matrix_subcontractor_worker(
+    db: Session,
+    worker_id: uuid.UUID,
+    matrix_training_id: Optional[str],
+    *,
+    exclude_record_id: Optional[uuid.UUID] = None,
+) -> Optional[str]:
+    mid = normalize_matrix_training_id(matrix_training_id)
+    if not mid:
+        return None
+    if not is_valid_matrix_training_id(mid, db):
+        raise HTTPException(status_code=400, detail="Invalid matrix_training_id")
+    q = db.query(EmployeeTrainingRecord).filter(
+        EmployeeTrainingRecord.subcontractor_worker_id == worker_id,
+        EmployeeTrainingRecord.matrix_training_id == mid,
+    )
+    if exclude_record_id:
+        q = q.filter(EmployeeTrainingRecord.id != exclude_record_id)
+    if q.first():
+        raise HTTPException(
+            status_code=400,
+            detail="Another training record already uses this matrix slot for this worker",
+        )
+    return mid
+
+
+def _pick_explicit_matrix_training_record(
+    records: List[EmployeeTrainingRecord], matrix_id: str
+) -> Optional[EmployeeTrainingRecord]:
+    direct = [
+        x
+        for x in records
+        if getattr(x, "matrix_training_id", None) is not None
+        and str(getattr(x, "matrix_training_id")).strip() == matrix_id
+    ]
+    if not direct:
+        return None
+    if len(direct) == 1:
+        return direct[0]
+    return max(
+        direct,
+        key=lambda r: (
+            r.completion_date or r.updated_at or r.created_at,
+            r.id,
+        ),
+    )
+
+
+def _subcontractor_worker_for_training_or_404(db: Session, worker_id: uuid.UUID) -> SubcontractorWorker:
+    w = db.query(SubcontractorWorker).filter(SubcontractorWorker.id == worker_id).first()
+    if not w:
+        raise HTTPException(status_code=404, detail="Worker not found")
+    return w
 
 
 def _norm_opt_str(v: Any) -> Optional[str]:
@@ -139,6 +263,125 @@ def _worker_to_dict(w: SubcontractorWorker, include_qr_token: bool = False) -> d
     if include_qr_token:
         d["qr_token"] = str(w.qr_token)
     return d
+
+
+WORKER_AUDIT_FIELD_LABELS: dict[str, str] = {
+    "name": "Name",
+    "first_name": "First name",
+    "last_name": "Last name",
+    "middle_name": "Middle name",
+    "preferred_name": "Preferred name",
+    "gender": "Gender",
+    "phone": "Phone",
+    "email": "Email",
+    "notes": "Notes",
+    "job_title": "Job title",
+    "address_line1": "Address line 1",
+    "address_line2": "Address line 2",
+    "city": "City",
+    "province": "Province",
+    "postal_code": "Postal code",
+    "country": "Country",
+    "emergency_contact_name": "Emergency contact",
+    "emergency_contact_relationship": "Emergency relationship",
+    "emergency_contact_phone": "Emergency phone",
+    "emergency_contact_home_phone": "Emergency home phone",
+    "emergency_contact_work_phone": "Emergency work phone",
+    "emergency_contact_email": "Emergency email",
+    "emergency_contact_address": "Emergency address",
+    "is_active": "Active status",
+    "photo_file_id": "Photo",
+    "category": "File category",
+    "original_name": "File name",
+}
+
+
+def _snap_str(v: Any) -> Optional[str]:
+    if v is None:
+        return None
+    if isinstance(v, bool):
+        return "Yes" if v else "No"
+    s = str(v).strip()
+    return s if s else None
+
+
+def _subcontractor_worker_audit_fields(w: SubcontractorWorker) -> dict[str, Any]:
+    return {
+        "name": _snap_str(w.name),
+        "first_name": _snap_str(w.first_name),
+        "last_name": _snap_str(w.last_name),
+        "middle_name": _snap_str(w.middle_name),
+        "preferred_name": _snap_str(w.preferred_name),
+        "gender": _snap_str(w.gender),
+        "phone": _snap_str(w.phone),
+        "email": _snap_str(w.email),
+        "notes": _snap_str(w.notes),
+        "job_title": _snap_str(w.job_title),
+        "address_line1": _snap_str(w.address_line1),
+        "address_line2": _snap_str(w.address_line2),
+        "city": _snap_str(w.city),
+        "province": _snap_str(w.province),
+        "postal_code": _snap_str(w.postal_code),
+        "country": _snap_str(w.country),
+        "emergency_contact_name": _snap_str(w.emergency_contact_name),
+        "emergency_contact_relationship": _snap_str(w.emergency_contact_relationship),
+        "emergency_contact_phone": _snap_str(w.emergency_contact_phone),
+        "emergency_contact_home_phone": _snap_str(w.emergency_contact_home_phone),
+        "emergency_contact_work_phone": _snap_str(w.emergency_contact_work_phone),
+        "emergency_contact_email": _snap_str(w.emergency_contact_email),
+        "emergency_contact_address": _snap_str(w.emergency_contact_address),
+        "is_active": bool(w.is_active),
+        "photo_file_id": str(w.photo_file_id) if w.photo_file_id else None,
+    }
+
+
+def _activity_scalar_display(v: Any, field: str = "") -> str:
+    if v is None or v == "":
+        return "—"
+    if field == "is_active":
+        return "Active" if v else "Inactive"
+    if field == "photo_file_id" and isinstance(v, str) and len(v) > 12:
+        return f"{v[:8]}…"
+    s = str(v).replace("\n", " ")
+    if len(s) > 48:
+        return s[:45] + "…"
+    return s
+
+
+def _worker_audit_diff_detail_lines(changes_json: Optional[dict[str, Any]]) -> List[str]:
+    if not changes_json:
+        return []
+    lines: List[str] = []
+    for k, entry in list(changes_json.items())[:14]:
+        if not isinstance(entry, dict):
+            continue
+        b, a = entry.get("before"), entry.get("after")
+        label = WORKER_AUDIT_FIELD_LABELS.get(k, k.replace("_", " ").title())
+        lines.append(
+            f"{label}: {_activity_scalar_display(b, k)} → {_activity_scalar_display(a, k)}"
+        )
+    return lines
+
+
+def _worker_audit_diff_summary(changes_json: Optional[dict[str, Any]], max_labels: int = 6) -> str:
+    if not changes_json:
+        return ""
+    keys = [k for k, e in changes_json.items() if isinstance(e, dict)]
+    if not keys:
+        return ""
+    parts = [WORKER_AUDIT_FIELD_LABELS.get(k, k.replace("_", " ")) for k in keys[:max_labels]]
+    out = ", ".join(parts)
+    if len(keys) > max_labels:
+        out += f" (+{len(keys) - max_labels} more)"
+    return out
+
+
+def _activity_username_map(db: Session, ids: set[uuid.UUID]) -> dict[str, str]:
+    clean = {i for i in ids if i is not None}
+    if not clean:
+        return {}
+    rows = db.query(User.id, User.username).filter(User.id.in_(list(clean))).all()
+    return {str(r[0]): ((r[1] or "").strip() or str(r[0]))[:80] for r in rows}
 
 
 def _open_attendance_for_worker(db: Session, worker_id: uuid.UUID) -> Optional[SubcontractorAttendance]:
@@ -1145,6 +1388,22 @@ def create_worker(
     db.add(w)
     db.commit()
     db.refresh(w)
+    try:
+        create_audit_log(
+            db,
+            "subcontractor_worker",
+            str(w.id),
+            "CREATE",
+            actor_id=str(user.id),
+            source="app",
+            changes_json=None,
+            context={
+                "display_name": w.name,
+                "company_id": str(company_id),
+            },
+        )
+    except Exception:
+        pass
     return _worker_to_dict(w, include_qr_token=True)
 
 
@@ -1250,6 +1509,7 @@ def patch_worker(
     w = db.query(SubcontractorWorker).filter(SubcontractorWorker.id == worker_id).first()
     if not w:
         raise HTTPException(status_code=404, detail="Worker not found")
+    before_snap = _subcontractor_worker_audit_fields(w)
     if "name" in payload and (payload.get("name") or "").strip():
         w.name = (payload.get("name") or "").strip()
     for key in (
@@ -1294,6 +1554,25 @@ def patch_worker(
     w.updated_at = datetime.now(timezone.utc)
     db.commit()
     db.refresh(w)
+    diff = compute_diff(before_snap, _subcontractor_worker_audit_fields(w))
+    if diff:
+        try:
+            create_audit_log(
+                db,
+                "subcontractor_worker",
+                str(worker_id),
+                "UPDATE",
+                actor_id=str(user.id),
+                actor_role=None,
+                source="app",
+                changes_json=diff,
+                context={
+                    "summary": _worker_audit_diff_summary(diff),
+                    "detail_lines": _worker_audit_diff_detail_lines(diff),
+                },
+            )
+        except Exception:
+            pass
     return _worker_to_dict(w, include_qr_token=True)
 
 
@@ -1419,11 +1698,33 @@ def update_worker_file(
     )
     if not row or row.deleted_at is not None:
         raise HTTPException(status_code=404, detail="File not found")
+    before_snap = {"category": _snap_str(row.category), "original_name": _snap_str(row.original_name)}
     if "category" in payload:
         row.category = payload["category"]
     if "original_name" in payload:
         row.original_name = payload["original_name"]
     db.commit()
+    after_snap = {"category": _snap_str(row.category), "original_name": _snap_str(row.original_name)}
+    fdiff = compute_diff(before_snap, after_snap)
+    if fdiff:
+        try:
+            create_audit_log(
+                db,
+                "subcontractor_worker",
+                str(worker_id),
+                "UPDATE",
+                actor_id=str(user.id),
+                source="app",
+                changes_json=fdiff,
+                context={
+                    "scope": "worker_file",
+                    "worker_file_id": str(row.id),
+                    "summary": _worker_audit_diff_summary(fdiff),
+                    "detail_lines": _worker_audit_diff_detail_lines(fdiff),
+                },
+            )
+        except Exception:
+            pass
     return {"status": "ok"}
 
 
@@ -1585,6 +1886,9 @@ def worker_activity_feed(
                     "subtitle": pname,
                     "project_id": str(a.project_id),
                     "attendance_id": str(a.id),
+                    "by_user_id": str(a.clock_in_confirmed_by_user_id)
+                    if a.clock_in_confirmed_by_user_id
+                    else None,
                 }
             )
         if a.clock_out_time:
@@ -1600,6 +1904,9 @@ def worker_activity_feed(
                     "project_id": str(a.project_id),
                     "attendance_id": str(a.id),
                     "total_hours": hours_f,
+                    "by_user_id": str(a.clock_out_confirmed_by_user_id)
+                    if a.clock_out_confirmed_by_user_id
+                    else None,
                 }
             )
 
@@ -1615,6 +1922,7 @@ def worker_activity_feed(
                     "subtitle": label,
                     "worker_file_id": str(wf.id),
                     "file_object_id": str(wf.file_object_id),
+                    "by_user_id": str(wf.uploaded_by) if wf.uploaded_by else None,
                 }
             )
         if wf.deleted_at:
@@ -1626,10 +1934,63 @@ def worker_activity_feed(
                     "subtitle": label,
                     "worker_file_id": str(wf.id),
                     "file_object_id": str(wf.file_object_id),
+                    "by_user_id": str(wf.deleted_by_id) if wf.deleted_by_id else None,
                 }
             )
 
+    audit_rows = (
+        db.query(AuditLog)
+        .filter(AuditLog.entity_type == "subcontractor_worker", AuditLog.entity_id == worker_id)
+        .order_by(AuditLog.timestamp_utc.desc())
+        .limit(200)
+        .all()
+    )
+    for al in audit_rows:
+        ts = al.timestamp_utc
+        at_s = ts.isoformat() if ts is not None else None
+        ctx = al.context if isinstance(al.context, dict) else {}
+        summary = (ctx or {}).get("summary") or ""
+        detail_lines = (ctx or {}).get("detail_lines")
+        if not detail_lines and al.changes_json:
+            detail_lines = _worker_audit_diff_detail_lines(al.changes_json)
+        action = (al.action or "").upper()
+        if action == "CREATE":
+            title = "Worker created"
+            subtitle = (ctx or {}).get("display_name") or summary or None
+        elif (ctx or {}).get("scope") == "worker_file":
+            title = "Document details updated"
+            subtitle = summary or "File metadata"
+        else:
+            title = "Profile updated" if action == "UPDATE" else (action.title() or "Record")
+            subtitle = summary or None
+        items.append(
+            {
+                "type": "audit",
+                "at": at_s,
+                "title": title,
+                "subtitle": subtitle,
+                "by_user_id": str(al.actor_id) if al.actor_id else None,
+                "audit_id": str(al.id),
+                "audit_action": action,
+                "detail_lines": detail_lines or [],
+            }
+        )
+
     items = [x for x in items if x.get("at")]
+    uids: set[uuid.UUID] = set()
+    for it in items:
+        bid = it.get("by_user_id")
+        if not bid:
+            continue
+        try:
+            uids.add(uuid.UUID(str(bid)))
+        except Exception:
+            pass
+    unames = _activity_username_map(db, uids)
+    for it in items:
+        bid = it.get("by_user_id")
+        it["by_username"] = unames.get(str(bid)) if bid else None
+
     items.sort(key=lambda x: x["at"], reverse=True)
     return items[:limit]
 
@@ -1679,6 +2040,485 @@ def worker_reports_summary(
         )
     out.sort(key=lambda x: (x.get("last_clock_out") or ""), reverse=True)
     return {"projects": out, "note": "Hours from subcontractor attendance only (not internal user project reports)."}
+
+
+def _subcontractor_worker_report_list_dict(db: Session, report: EmployeeReport) -> dict[str, Any]:
+    created_by_user = db.query(User).filter(User.id == report.created_by).first()
+    reported_by_user = db.query(User).filter(User.id == report.reported_by).first()
+    updated_by_user = None
+    if report.updated_by:
+        updated_by_user = db.query(User).filter(User.id == report.updated_by).first()
+    return {
+        "id": str(report.id),
+        "report_type": report.report_type,
+        "title": report.title,
+        "description": report.description,
+        "occurrence_date": report.occurrence_date.isoformat() if report.occurrence_date else None,
+        "severity": report.severity,
+        "status": report.status,
+        "vehicle": report.vehicle,
+        "ticket_number": report.ticket_number,
+        "fine_amount": float(report.fine_amount) if report.fine_amount else None,
+        "due_date": report.due_date.isoformat() if report.due_date else None,
+        "related_project_department": report.related_project_department,
+        "suspension_start_date": report.suspension_start_date.isoformat() if report.suspension_start_date else None,
+        "suspension_end_date": report.suspension_end_date.isoformat() if report.suspension_end_date else None,
+        "behavior_note_type": report.behavior_note_type,
+        "reported_by": {
+            "id": str(report.reported_by),
+            "username": reported_by_user.username if reported_by_user else None,
+        },
+        "created_at": report.created_at.isoformat() if report.created_at else None,
+        "created_by": {
+            "id": str(report.created_by),
+            "username": created_by_user.username if created_by_user else None,
+        },
+        "updated_at": report.updated_at.isoformat() if report.updated_at else None,
+        "updated_by": {
+            "id": str(report.updated_by),
+            "username": updated_by_user.username if updated_by_user else None,
+        }
+        if report.updated_by
+        else None,
+        "attachments_count": len(report.attachments) if report.attachments else 0,
+        "comments_count": len(report.comments) if report.comments else 0,
+    }
+
+
+def _subcontractor_worker_report_detail_dict(db: Session, report: EmployeeReport) -> dict[str, Any]:
+    created_by_user = db.query(User).filter(User.id == report.created_by).first()
+    reported_by_user = db.query(User).filter(User.id == report.reported_by).first()
+    updated_by_user = None
+    if report.updated_by:
+        updated_by_user = db.query(User).filter(User.id == report.updated_by).first()
+    attachments: List[dict[str, Any]] = []
+    for att in report.attachments:
+        created_by_att_user = db.query(User).filter(User.id == att.created_by).first()
+        attachments.append(
+            {
+                "id": str(att.id),
+                "file_id": str(att.file_id),
+                "file_name": att.file_name,
+                "file_size": att.file_size,
+                "file_type": att.file_type,
+                "created_at": att.created_at.isoformat() if att.created_at else None,
+                "created_by": {
+                    "id": str(att.created_by),
+                    "username": created_by_att_user.username if created_by_att_user else None,
+                },
+            }
+        )
+    comments: List[dict[str, Any]] = []
+    for comment in report.comments:
+        created_by_comment_user = db.query(User).filter(User.id == comment.created_by).first()
+        comments.append(
+            {
+                "id": str(comment.id),
+                "comment_text": comment.comment_text,
+                "comment_type": comment.comment_type,
+                "created_at": comment.created_at.isoformat() if comment.created_at else None,
+                "created_by": {
+                    "id": str(comment.created_by),
+                    "username": created_by_comment_user.username if created_by_comment_user else None,
+                },
+            }
+        )
+    return {
+        "id": str(report.id),
+        "report_type": report.report_type,
+        "title": report.title,
+        "description": report.description,
+        "occurrence_date": report.occurrence_date.isoformat() if report.occurrence_date else None,
+        "severity": report.severity,
+        "status": report.status,
+        "vehicle": report.vehicle,
+        "ticket_number": report.ticket_number,
+        "fine_amount": float(report.fine_amount) if report.fine_amount else None,
+        "due_date": report.due_date.isoformat() if report.due_date else None,
+        "related_project_department": report.related_project_department,
+        "suspension_start_date": report.suspension_start_date.isoformat() if report.suspension_start_date else None,
+        "suspension_end_date": report.suspension_end_date.isoformat() if report.suspension_end_date else None,
+        "behavior_note_type": report.behavior_note_type,
+        "reported_by": {
+            "id": str(report.reported_by),
+            "username": reported_by_user.username if reported_by_user else None,
+        },
+        "created_at": report.created_at.isoformat() if report.created_at else None,
+        "created_by": {
+            "id": str(report.created_by),
+            "username": created_by_user.username if created_by_user else None,
+        },
+        "updated_at": report.updated_at.isoformat() if report.updated_at else None,
+        "updated_by": {
+            "id": str(report.updated_by),
+            "username": updated_by_user.username if updated_by_user else None,
+        }
+        if report.updated_by
+        else None,
+        "attachments": attachments,
+        "comments": comments,
+    }
+
+
+def _subcontractor_worker_report_for_worker_or_404(db: Session, worker_id: uuid.UUID, report_id: uuid.UUID) -> EmployeeReport:
+    report = (
+        db.query(EmployeeReport)
+        .filter(
+            EmployeeReport.id == report_id,
+            EmployeeReport.subcontractor_worker_id == worker_id,
+        )
+        .first()
+    )
+    if not report:
+        raise HTTPException(status_code=404, detail="Report not found")
+    return report
+
+
+@router.get("/workers/{worker_id}/reports")
+def list_subcontractor_worker_reports(
+    worker_id: uuid.UUID,
+    report_type: Optional[str] = Query(None),
+    status: Optional[str] = Query(None),
+    severity: Optional[str] = Query(None),
+    start_date: Optional[str] = Query(None),
+    end_date: Optional[str] = Query(None),
+    q: Optional[str] = Query(None),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    _require_subcontractor_access(user)
+    if not _worker_reports_can_view(user):
+        raise HTTPException(status_code=403, detail="Forbidden")
+    w = db.query(SubcontractorWorker).filter(SubcontractorWorker.id == worker_id).first()
+    if not w:
+        raise HTTPException(status_code=404, detail="Worker not found")
+    query = db.query(EmployeeReport).filter(EmployeeReport.subcontractor_worker_id == worker_id)
+    if report_type:
+        query = query.filter(EmployeeReport.report_type == report_type)
+    if status:
+        query = query.filter(EmployeeReport.status == status)
+    if severity:
+        query = query.filter(EmployeeReport.severity == severity)
+    if start_date:
+        start = datetime.fromisoformat(start_date.replace("Z", "+00:00"))
+        query = query.filter(EmployeeReport.occurrence_date >= start)
+    if end_date:
+        end = datetime.fromisoformat(end_date.replace("Z", "+00:00"))
+        query = query.filter(EmployeeReport.occurrence_date <= end)
+    if q:
+        like = f"%{q}%"
+        query = query.filter(
+            (EmployeeReport.title.ilike(like))
+            | (EmployeeReport.description.ilike(like))
+            | (EmployeeReport.ticket_number.ilike(like))
+        )
+    reports = query.order_by(EmployeeReport.occurrence_date.desc()).all()
+    return [_subcontractor_worker_report_list_dict(db, report) for report in reports]
+
+
+@router.get("/workers/{worker_id}/reports/{report_id}")
+def get_subcontractor_worker_report_detail(
+    worker_id: uuid.UUID,
+    report_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    _require_subcontractor_access(user)
+    if not _worker_reports_can_view(user):
+        raise HTTPException(status_code=403, detail="Forbidden")
+    w = db.query(SubcontractorWorker).filter(SubcontractorWorker.id == worker_id).first()
+    if not w:
+        raise HTTPException(status_code=404, detail="Worker not found")
+    report = (
+        db.query(EmployeeReport)
+        .filter(EmployeeReport.id == report_id, EmployeeReport.subcontractor_worker_id == worker_id)
+        .first()
+    )
+    if not report:
+        raise HTTPException(status_code=404, detail="Report not found")
+    return _subcontractor_worker_report_detail_dict(db, report)
+
+
+@router.post("/workers/{worker_id}/reports")
+def create_subcontractor_worker_report(
+    worker_id: uuid.UUID,
+    payload: dict,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    _require_subcontractor_access(current_user)
+    if not _worker_reports_can_edit(current_user):
+        raise HTTPException(status_code=403, detail="Forbidden")
+    w = db.query(SubcontractorWorker).filter(SubcontractorWorker.id == worker_id).first()
+    if not w:
+        raise HTTPException(status_code=404, detail="Worker not found")
+    occurrence_date_str = payload.get("occurrence_date")
+    if not occurrence_date_str:
+        occurrence_date = datetime.now(timezone.utc)
+    else:
+        occurrence_date = datetime.fromisoformat(str(occurrence_date_str).replace("Z", "+00:00"))
+    due_date = None
+    if payload.get("due_date"):
+        due_date = datetime.fromisoformat(str(payload.get("due_date")).replace("Z", "+00:00"))
+    suspension_start_date = None
+    if payload.get("suspension_start_date"):
+        suspension_start_date = datetime.fromisoformat(str(payload.get("suspension_start_date")).replace("Z", "+00:00"))
+    suspension_end_date = None
+    if payload.get("suspension_end_date"):
+        suspension_end_date = datetime.fromisoformat(str(payload.get("suspension_end_date")).replace("Z", "+00:00"))
+    report = EmployeeReport(
+        id=uuid.uuid4(),
+        user_id=None,
+        subcontractor_worker_id=w.id,
+        report_type=payload.get("report_type", "Other"),
+        title=payload.get("title", ""),
+        description=payload.get("description"),
+        occurrence_date=occurrence_date,
+        severity=payload.get("severity", "Medium"),
+        status=payload.get("status", "Open"),
+        vehicle=payload.get("vehicle"),
+        ticket_number=payload.get("ticket_number"),
+        fine_amount=Decimal(str(payload.get("fine_amount"))) if payload.get("fine_amount") else None,
+        due_date=due_date,
+        related_project_department=payload.get("related_project_department"),
+        suspension_start_date=suspension_start_date,
+        suspension_end_date=suspension_end_date,
+        behavior_note_type=payload.get("behavior_note_type"),
+        reported_by=current_user.id,
+        created_by=current_user.id,
+    )
+    db.add(report)
+    db.commit()
+    db.refresh(report)
+    comment = ReportComment(
+        id=uuid.uuid4(),
+        report_id=report.id,
+        comment_text=f"Report created: {report.title}",
+        comment_type="system",
+        created_by=current_user.id,
+    )
+    db.add(comment)
+    db.commit()
+    return {"id": str(report.id), "status": "ok"}
+
+
+@router.patch("/workers/{worker_id}/reports/{report_id}")
+def update_subcontractor_worker_report(
+    worker_id: uuid.UUID,
+    report_id: uuid.UUID,
+    payload: dict,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    _require_subcontractor_access(current_user)
+    if not _worker_reports_can_edit(current_user):
+        raise HTTPException(status_code=403, detail="Forbidden")
+    report = _subcontractor_worker_report_for_worker_or_404(db, worker_id, report_id)
+    old_status = report.status
+    changes: List[str] = []
+    if "title" in payload:
+        new_title = payload["title"]
+        if report.title != new_title:
+            report.title = new_title
+            changes.append(f"Title updated to '{new_title}'")
+    if "description" in payload:
+        new_description = payload.get("description")
+        old_description = report.description or ""
+        new_description_str = new_description or ""
+        if old_description != new_description_str:
+            report.description = new_description
+            changes.append("Description updated")
+    if "occurrence_date" in payload:
+        new_occurrence_date = datetime.fromisoformat(payload["occurrence_date"].replace("Z", "+00:00"))
+        if report.occurrence_date != new_occurrence_date:
+            report.occurrence_date = new_occurrence_date
+            changes.append("Occurrence date updated")
+    if "severity" in payload:
+        new_severity = payload["severity"]
+        if report.severity != new_severity:
+            report.severity = new_severity
+            changes.append(f"Severity changed to {new_severity}")
+    if "status" in payload:
+        new_status = payload["status"]
+        if old_status != new_status:
+            report.status = new_status
+            changes.append(f"Status changed from {old_status} to {new_status}")
+    if "vehicle" in payload:
+        new_vehicle = payload.get("vehicle") or None
+        old_vehicle = report.vehicle or None
+        if old_vehicle != new_vehicle:
+            report.vehicle = new_vehicle
+    if "ticket_number" in payload:
+        new_ticket = payload.get("ticket_number") or None
+        old_ticket = report.ticket_number or None
+        if old_ticket != new_ticket:
+            report.ticket_number = new_ticket
+    if "fine_amount" in payload:
+        new_fine_amount = Decimal(str(payload["fine_amount"])) if payload.get("fine_amount") else None
+        old_fine_amount = report.fine_amount
+        if old_fine_amount != new_fine_amount:
+            report.fine_amount = new_fine_amount
+    if "due_date" in payload:
+        new_due_date = (
+            datetime.fromisoformat(payload["due_date"].replace("Z", "+00:00")) if payload.get("due_date") else None
+        )
+        old_due_date = report.due_date
+        if old_due_date != new_due_date:
+            report.due_date = new_due_date
+    if "related_project_department" in payload:
+        new_related = payload.get("related_project_department") or None
+        old_related = report.related_project_department or None
+        if old_related != new_related:
+            report.related_project_department = new_related
+    if "suspension_start_date" in payload:
+        new_start = (
+            datetime.fromisoformat(payload["suspension_start_date"].replace("Z", "+00:00"))
+            if payload.get("suspension_start_date")
+            else None
+        )
+        old_start = report.suspension_start_date
+        if old_start != new_start:
+            report.suspension_start_date = new_start
+    if "suspension_end_date" in payload:
+        new_end = (
+            datetime.fromisoformat(payload["suspension_end_date"].replace("Z", "+00:00"))
+            if payload.get("suspension_end_date")
+            else None
+        )
+        old_end = report.suspension_end_date
+        if old_end != new_end:
+            report.suspension_end_date = new_end
+    if "behavior_note_type" in payload:
+        new_behavior_type = payload.get("behavior_note_type") or None
+        old_behavior_type = report.behavior_note_type or None
+        if old_behavior_type != new_behavior_type:
+            report.behavior_note_type = new_behavior_type
+            old_display = old_behavior_type if old_behavior_type else "Not specified"
+            new_display = new_behavior_type if new_behavior_type else "Not specified"
+            changes.append(f"Behavior note type changed from {old_display} to {new_display}")
+    report.updated_at = datetime.now(timezone.utc)
+    report.updated_by = current_user.id
+    db.commit()
+    if changes:
+        comment_type = "status_change" if old_status != report.status else "system"
+        comment = ReportComment(
+            id=uuid.uuid4(),
+            report_id=report.id,
+            comment_text="; ".join(changes),
+            comment_type=comment_type,
+            created_by=current_user.id,
+        )
+        db.add(comment)
+        db.commit()
+    return {"status": "ok"}
+
+
+@router.post("/workers/{worker_id}/reports/{report_id}/comments")
+def add_subcontractor_worker_report_comment(
+    worker_id: uuid.UUID,
+    report_id: uuid.UUID,
+    payload: dict,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    _require_subcontractor_access(current_user)
+    if not _worker_reports_can_edit(current_user):
+        raise HTTPException(status_code=403, detail="Forbidden")
+    report = _subcontractor_worker_report_for_worker_or_404(db, worker_id, report_id)
+    comment = ReportComment(
+        id=uuid.uuid4(),
+        report_id=report.id,
+        comment_text=payload.get("comment_text", ""),
+        comment_type=payload.get("comment_type", "comment"),
+        created_by=current_user.id,
+    )
+    db.add(comment)
+    report.updated_at = datetime.now(timezone.utc)
+    report.updated_by = current_user.id
+    db.commit()
+    db.refresh(comment)
+    created_by_user = db.query(User).filter(User.id == comment.created_by).first()
+    return {
+        "id": str(comment.id),
+        "comment_text": comment.comment_text,
+        "comment_type": comment.comment_type,
+        "created_at": comment.created_at.isoformat() if comment.created_at else None,
+        "created_by": {
+            "id": str(comment.created_by),
+            "username": created_by_user.username if created_by_user else None,
+        },
+    }
+
+
+@router.post("/workers/{worker_id}/reports/{report_id}/attachments")
+def add_subcontractor_worker_report_attachment(
+    worker_id: uuid.UUID,
+    report_id: uuid.UUID,
+    payload: dict,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    _require_subcontractor_access(current_user)
+    if not _worker_reports_can_edit(current_user):
+        raise HTTPException(status_code=403, detail="Forbidden")
+    report = _subcontractor_worker_report_for_worker_or_404(db, worker_id, report_id)
+    attachment = ReportAttachment(
+        id=uuid.uuid4(),
+        report_id=report.id,
+        file_id=uuid.UUID(str(payload.get("file_id"))),
+        file_name=payload.get("file_name"),
+        file_size=payload.get("file_size"),
+        file_type=payload.get("file_type"),
+        created_by=current_user.id,
+    )
+    db.add(attachment)
+    report.updated_at = datetime.now(timezone.utc)
+    report.updated_by = current_user.id
+    comment = ReportComment(
+        id=uuid.uuid4(),
+        report_id=report.id,
+        comment_text=f"Attachment added: {payload.get('file_name', 'File')}",
+        comment_type="system",
+        created_by=current_user.id,
+    )
+    db.add(comment)
+    db.commit()
+    return {"id": str(attachment.id), "status": "ok"}
+
+
+@router.delete("/workers/{worker_id}/reports/{report_id}/attachments/{attachment_id}")
+def delete_subcontractor_worker_report_attachment(
+    worker_id: uuid.UUID,
+    report_id: uuid.UUID,
+    attachment_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    _require_subcontractor_access(current_user)
+    if not _worker_reports_can_edit(current_user):
+        raise HTTPException(status_code=403, detail="Forbidden")
+    report = _subcontractor_worker_report_for_worker_or_404(db, worker_id, report_id)
+    attachment = (
+        db.query(ReportAttachment)
+        .filter(ReportAttachment.id == attachment_id, ReportAttachment.report_id == report_id)
+        .first()
+    )
+    if not attachment:
+        raise HTTPException(status_code=404, detail="Attachment not found")
+    file_name = attachment.file_name or "File"
+    db.delete(attachment)
+    report.updated_at = datetime.now(timezone.utc)
+    report.updated_by = current_user.id
+    comment = ReportComment(
+        id=uuid.uuid4(),
+        report_id=report.id,
+        comment_text=f"Attachment removed: {file_name}",
+        comment_type="system",
+        created_by=current_user.id,
+    )
+    db.add(comment)
+    db.commit()
+    return {"status": "ok"}
 
 
 @router.post("/attendance/clock-in")
@@ -1735,6 +2575,7 @@ def subcontractor_clock_in(
         clock_in_notes=payload.get("clock_in_notes"),
         clock_in_signature_file_id=sig_uuid,
         status="open",
+        hr_status="pending",
         notes=payload.get("notes"),
     )
     db.add(row)
@@ -1798,17 +2639,20 @@ def subcontractor_clock_out(
     if clock_out < row.clock_in_time:
         raise HTTPException(status_code=400, detail="clock_out_time must be after clock_in_time")
 
-    delta_h = (clock_out - row.clock_in_time).total_seconds() / 3600.0
-
     row.clock_out_time = clock_out
     row.clock_out_entered_utc = now
     row.clock_out_confirmed_by_user_id = user.id
     row.clock_out_notes = payload.get("clock_out_notes")
     row.clock_out_signature_file_id = sig_uuid
-    row.total_hours = round(delta_h, 4)
     row.status = "finalized"
+    if payload.get("hr_status"):
+        row.hr_status = _norm_hr_status(payload.get("hr_status"))
+    else:
+        row.hr_status = "approved"
     if payload.get("notes"):
         row.notes = (row.notes or "") + ("\n" if row.notes else "") + str(payload.get("notes"))
+
+    _recompute_subcontractor_totals(db, row, manual_break_minutes=payload.get("manual_break_minutes"))
 
     db.commit()
     db.refresh(row)
@@ -1822,6 +2666,59 @@ def _opt_uuid(v: Any) -> Optional[uuid.UUID]:
         return uuid.UUID(str(v))
     except Exception:
         raise HTTPException(status_code=400, detail="Invalid UUID value")
+
+
+def _recompute_subcontractor_totals(
+    db: Session,
+    row: SubcontractorAttendance,
+    *,
+    manual_break_minutes: Any = ...,
+) -> None:
+    """Set break_minutes and total_hours (gross time minus break) when session is closed; clear when open."""
+    if not row.clock_in_time or not row.clock_out_time:
+        row.total_hours = None
+        row.break_minutes = None
+        return
+    from ..routes.settings import calculate_break_minutes
+
+    if manual_break_minutes is not ...:
+        if manual_break_minutes is None or manual_break_minutes == "":
+            brk = calculate_break_minutes(
+                db, row.worker_id, row.clock_in_time, row.clock_out_time, manual_break_minutes=None
+            )
+        else:
+            try:
+                m = int(manual_break_minutes)
+            except (TypeError, ValueError):
+                raise HTTPException(status_code=400, detail="manual_break_minutes must be an integer")
+            if m < 0:
+                raise HTTPException(status_code=400, detail="manual_break_minutes cannot be negative")
+            brk = calculate_break_minutes(
+                db, row.worker_id, row.clock_in_time, row.clock_out_time, manual_break_minutes=m
+            )
+    else:
+        brk = calculate_break_minutes(
+            db,
+            row.worker_id,
+            row.clock_in_time,
+            row.clock_out_time,
+            manual_break_minutes=row.break_minutes,
+        )
+    row.break_minutes = brk
+    br = int(brk or 0)
+    gross_h = (row.clock_out_time - row.clock_in_time).total_seconds() / 3600.0
+    if br > 0 and gross_h * 60 <= br:
+        raise HTTPException(status_code=400, detail="Break time cannot be greater than or equal to total attendance time")
+    row.total_hours = round(max(0.0, gross_h - br / 60.0), 4)
+
+
+def _norm_hr_status(v: Any) -> str:
+    if v is None or v == "":
+        return "approved"
+    s = str(v).lower().strip()
+    if s not in ("pending", "approved", "rejected"):
+        raise HTTPException(status_code=400, detail="hr_status must be pending, approved, or rejected")
+    return s
 
 
 @router.post("/workers/{worker_id}/attendance/manual")
@@ -1865,7 +2762,6 @@ def create_subcontractor_attendance_manual(
     if clock_out:
         if clock_out <= clock_in:
             raise HTTPException(status_code=400, detail="clock_out_time must be after clock_in_time")
-        delta_h = (clock_out - clock_in).total_seconds() / 3600.0
         row = SubcontractorAttendance(
             worker_id=worker_id,
             company_id=w.company_id,
@@ -1880,11 +2776,14 @@ def create_subcontractor_attendance_manual(
             clock_out_confirmed_by_user_id=user.id,
             clock_out_notes=_norm_opt_str(payload.get("clock_out_notes")),
             clock_out_signature_file_id=sig_out,
-            total_hours=round(delta_h, 4),
+            total_hours=None,
             status="finalized",
+            hr_status=_norm_hr_status(payload.get("hr_status")),
             notes=notes,
         )
         db.add(row)
+        db.flush()
+        _recompute_subcontractor_totals(db, row, manual_break_minutes=payload.get("manual_break_minutes"))
         db.commit()
         db.refresh(row)
         return {"id": str(row.id), "status": row.status, "total_hours": float(row.total_hours) if row.total_hours is not None else None}
@@ -1904,6 +2803,7 @@ def create_subcontractor_attendance_manual(
         clock_in_notes=_norm_opt_str(payload.get("clock_in_notes")),
         clock_in_signature_file_id=sig_in,
         status="open",
+        hr_status=_norm_hr_status(payload.get("hr_status")),
         notes=notes,
     )
     db.add(row)
@@ -1961,13 +2861,21 @@ def patch_subcontractor_attendance(
     if "notes" in payload:
         row.notes = _norm_opt_str(payload.get("notes"))
 
+    if "hr_status" in payload and payload.get("hr_status") is not None and str(payload.get("hr_status")).strip() != "":
+        row.hr_status = _norm_hr_status(payload.get("hr_status"))
+
+    manual_break_arg: Any = ...
+    if "manual_break_minutes" in payload:
+        manual_break_arg = payload.get("manual_break_minutes")
+
     if row.clock_in_time and row.clock_out_time:
         if row.clock_out_time <= row.clock_in_time:
             raise HTTPException(status_code=400, detail="clock_out_time must be after clock_in_time")
-        row.total_hours = round((row.clock_out_time - row.clock_in_time).total_seconds() / 3600.0, 4)
         row.status = "finalized"
+        _recompute_subcontractor_totals(db, row, manual_break_minutes=manual_break_arg)
     else:
         row.total_hours = None
+        row.break_minutes = None
         row.status = "open"
 
     db.commit()
@@ -2028,7 +2936,212 @@ def list_worker_attendances(
                 "clock_in_time": r.clock_in_time.isoformat() if r.clock_in_time else None,
                 "clock_out_time": r.clock_out_time.isoformat() if r.clock_out_time else None,
                 "total_hours": float(r.total_hours) if r.total_hours is not None else None,
+                "break_minutes": getattr(r, "break_minutes", None),
+                "hr_status": getattr(r, "hr_status", None) or "approved",
                 "status": r.status,
             }
         )
     return out
+
+
+@router.get("/workers/{worker_id}/training-records")
+def list_subcontractor_worker_training_records(
+    worker_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    _require_subcontractor_access(user)
+    _subcontractor_worker_for_training_or_404(db, worker_id)
+    rows = (
+        db.query(EmployeeTrainingRecord)
+        .filter(EmployeeTrainingRecord.subcontractor_worker_id == worker_id)
+        .order_by(nullslast(desc(EmployeeTrainingRecord.completion_date)), desc(EmployeeTrainingRecord.created_at))
+        .all()
+    )
+    return [_serialize_subcontractor_training_row(r) for r in rows]
+
+
+@router.get("/workers/{worker_id}/training-matrix")
+def subcontractor_worker_training_matrix_snapshot(
+    worker_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    _require_subcontractor_access(user)
+    _subcontractor_worker_for_training_or_404(db, worker_id)
+    records = (
+        db.query(EmployeeTrainingRecord)
+        .filter(EmployeeTrainingRecord.subcontractor_worker_id == worker_id)
+        .order_by(nullslast(desc(EmployeeTrainingRecord.completion_date)), desc(EmployeeTrainingRecord.created_at))
+        .all()
+    )
+    defs = get_matrix_training_defs(db)
+    items = []
+    for col in defs:
+        picked = _pick_explicit_matrix_training_record(records, col.id)
+        disp = format_record_cell_display(picked, col.id, defs) if picked else ""
+        items.append(
+            {
+                "id": col.id,
+                "label": col.label,
+                "cell_kind": col.cell_kind,
+                "display": disp,
+                "record": _serialize_subcontractor_training_row(picked) if picked else None,
+            }
+        )
+    return {"items": items}
+
+
+@router.post("/workers/{worker_id}/training-records")
+def create_subcontractor_worker_training_record(
+    worker_id: uuid.UUID,
+    payload: EmployeeTrainingRecordCreate,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    _require_subcontractor_access(user)
+    if not _worker_training_can_edit(user):
+        raise HTTPException(status_code=403, detail="Forbidden")
+    _subcontractor_worker_for_training_or_404(db, worker_id)
+    now = datetime.now(timezone.utc)
+    wid = worker_id
+    mid = _enforce_unique_matrix_subcontractor_worker(db, wid, getattr(payload, "matrix_training_id", None))
+    r = EmployeeTrainingRecord(
+        user_id=None,
+        subcontractor_worker_id=wid,
+        title=payload.title.strip(),
+        provider=(payload.provider or "").strip() or None,
+        category=(payload.category or "").strip() or None,
+        delivery_format=(payload.delivery_format or "").strip() or None,
+        start_date=payload.start_date,
+        end_date=payload.end_date,
+        completion_date=payload.completion_date,
+        duration_hours=payload.duration_hours,
+        status=(payload.status or "completed").strip() or "completed",
+        certificate_number=(payload.certificate_number or "").strip() or None,
+        expiry_date=payload.expiry_date,
+        notes=payload.notes,
+        crew=(payload.crew or "").strip() or None,
+        location=(payload.location or "").strip() or None,
+        session_time=(payload.session_time or "").strip() or None,
+        matrix_training_id=mid,
+        created_at=now,
+        updated_at=now,
+        created_by_user_id=user.id,
+        updated_by_user_id=user.id,
+    )
+    db.add(r)
+    db.commit()
+    db.refresh(r)
+    return _serialize_subcontractor_training_row(r)
+
+
+@router.patch("/workers/{worker_id}/training-records/{record_id}")
+def update_subcontractor_worker_training_record(
+    worker_id: uuid.UUID,
+    record_id: str,
+    payload: EmployeeTrainingRecordUpdate,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    _require_subcontractor_access(user)
+    if not _worker_training_can_edit(user):
+        raise HTTPException(status_code=403, detail="Forbidden")
+    _subcontractor_worker_for_training_or_404(db, worker_id)
+    try:
+        rid = uuid.UUID(str(record_id))
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid record id")
+    r = (
+        db.query(EmployeeTrainingRecord)
+        .filter(
+            EmployeeTrainingRecord.subcontractor_worker_id == worker_id,
+            EmployeeTrainingRecord.id == rid,
+        )
+        .first()
+    )
+    if not r:
+        raise HTTPException(status_code=404, detail="Training record not found")
+
+    data = payload.model_dump(exclude_unset=True)
+    if "matrix_training_id" in data:
+        raw_mid = data["matrix_training_id"]
+        if raw_mid is None or (isinstance(raw_mid, str) and not raw_mid.strip()):
+            r.matrix_training_id = None
+        else:
+            r.matrix_training_id = _enforce_unique_matrix_subcontractor_worker(
+                db, worker_id, raw_mid, exclude_record_id=r.id
+            )
+
+    for key in (
+        "title",
+        "provider",
+        "category",
+        "delivery_format",
+        "start_date",
+        "end_date",
+        "completion_date",
+        "duration_hours",
+        "status",
+        "certificate_number",
+        "expiry_date",
+        "notes",
+        "crew",
+        "location",
+        "session_time",
+    ):
+        if key in data:
+            val = data[key]
+            if key == "title" and val is not None:
+                val = str(val).strip()
+            elif key in ("provider", "category", "delivery_format", "certificate_number") and val is not None:
+                val = str(val).strip() or None
+            elif key in ("crew", "location", "session_time") and val is not None:
+                val = str(val).strip() or None
+            setattr(r, key, val)
+    sd = r.start_date
+    ed = r.end_date
+    if sd and ed and ed < sd:
+        raise HTTPException(status_code=400, detail="end_date must be on or after start_date")
+
+    fst = (r.status or "completed").strip().lower()
+    if fst in ("completed", "expired") and r.completion_date is None:
+        raise HTTPException(
+            status_code=400, detail="completion_date is required when status is completed or expired"
+        )
+
+    r.updated_at = datetime.now(timezone.utc)
+    r.updated_by_user_id = user.id
+    db.commit()
+    db.refresh(r)
+    return _serialize_subcontractor_training_row(r)
+
+
+@router.delete("/workers/{worker_id}/training-records/{record_id}")
+def delete_subcontractor_worker_training_record(
+    worker_id: uuid.UUID,
+    record_id: str,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    _require_subcontractor_access(user)
+    if not _worker_training_can_edit(user):
+        raise HTTPException(status_code=403, detail="Forbidden")
+    _subcontractor_worker_for_training_or_404(db, worker_id)
+    try:
+        rid = uuid.UUID(str(record_id))
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid record id")
+    r = (
+        db.query(EmployeeTrainingRecord)
+        .filter(
+            EmployeeTrainingRecord.subcontractor_worker_id == worker_id,
+            EmployeeTrainingRecord.id == rid,
+        )
+        .first()
+    )
+    if not r:
+        raise HTTPException(status_code=404, detail="Training record not found")
+    db.delete(r)
+    db.commit()
+    return {"status": "ok"}

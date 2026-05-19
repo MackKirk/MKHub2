@@ -2666,7 +2666,7 @@ def _training_row(r):
     mid = getattr(r, "matrix_training_id", None)
     return {
         "id": str(r.id),
-        "user_id": str(r.user_id),
+        "user_id": str(r.user_id) if r.user_id else None,
         "title": r.title,
         "provider": r.provider,
         "category": r.category,
@@ -2710,6 +2710,7 @@ def _enforce_unique_matrix_training(
 
     q = db.query(EmployeeTrainingRecord).filter(
         EmployeeTrainingRecord.user_id == user_id,
+        EmployeeTrainingRecord.subcontractor_worker_id.is_(None),
         EmployeeTrainingRecord.matrix_training_id == mid,
     )
     if exclude_record_id:
