@@ -5,6 +5,7 @@ import {
   AppCalendarBase,
   AppCard,
   AppEmptyState,
+  AppHeroEditButton,
   AppInput,
   AppListCreateItem,
   AppModal,
@@ -150,6 +151,37 @@ export default function DesignSystemShowcase() {
                 Cards should remain subtle with rounded corners, soft borders, and concise hierarchy.
               </p>
             </AppCard>
+          </div>
+        </AppCard>
+
+        <AppCard
+          title="Hero edit button"
+          subtitle="Inline pencil control next to field labels or values — same pattern as opportunity/project hero (e.g. /opportunities/:id)."
+        >
+          <div className="space-y-4">
+            <div>
+              <p className={uiCx(uiTypography.overline, 'mb-2')}>size=&quot;field&quot; (default)</p>
+              <div className="flex items-center gap-1.5">
+                <span className={uiTypography.overline}>Clock-in Time</span>
+                <AppHeroEditButton title="Edit clock-in time" aria-label="Edit clock-in time" onClick={() => undefined} />
+              </div>
+              <p className={uiCx(uiTypography.helper, 'mt-2')}>
+                Gray pencil, <code className="rounded bg-gray-100 px-1 py-0.5 text-[11px]">hover:text-brand-red</code>, 12px icon (
+                <code className="rounded bg-gray-100 px-1 py-0.5 text-[11px]">w-3 h-3</code>),{' '}
+                <code className="rounded bg-gray-100 px-1 py-0.5 text-[11px]">p-0.5</code>. Use beside labels or inline values.
+              </p>
+            </div>
+            <div>
+              <p className={uiCx(uiTypography.overline, 'mb-2')}>size=&quot;title&quot;</p>
+              <div className="flex items-center gap-1.5">
+                <h3 className={uiTypography.sectionTitle}>Opportunity Name</h3>
+                <AppHeroEditButton size="title" title="Edit project name" aria-label="Edit project name" onClick={() => undefined} />
+              </div>
+              <p className={uiCx(uiTypography.helper, 'mt-2')}>
+                Slightly larger icon (
+                <code className="rounded bg-gray-100 px-1 py-0.5 text-[11px]">w-3.5 h-3.5</code>) for heading rows.
+              </p>
+            </div>
           </div>
         </AppCard>
 

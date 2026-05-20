@@ -4,6 +4,28 @@ import toast from 'react-hot-toast';
 import { api, withFileAccessToken } from '@/lib/api';
 import OverlayPortal from '@/components/OverlayPortal';
 import { useNavigate, useLocation } from 'react-router-dom';
+import { FileText } from 'lucide-react';
+import {
+  AppBadge,
+  AppButton,
+  AppCard,
+  AppEmptyState,
+  AppInput,
+  AppListCreateItem,
+  AppModal,
+  AppPageHeader,
+  AppSelect,
+  AppTabs,
+  AppTextarea,
+  uiBorders,
+  uiColors,
+  uiCx,
+  uiLayout,
+  uiRadius,
+  uiShadows,
+  uiSpacing,
+  uiTypography,
+} from '@/components/ui';
 
 type TaskRequestMessage = {
   id: string;
@@ -53,19 +75,30 @@ type UserOption = { id: string; name?: string; username?: string };
 type DivisionOption = { id: string; label: string };
 type ProjectOption = { id: string; name: string; code?: string };
 
-const priorityBadge: Record<string, string> = {
-  urgent: 'bg-red-100 text-red-700 border-red-200',
-  high: 'bg-orange-100 text-orange-700 border-orange-200',
-  normal: 'bg-blue-100 text-blue-700 border-blue-200',
-  low: 'bg-slate-100 text-slate-600 border-slate-200',
-};
+type TaskRequestBadgeVariant = 'neutral' | 'success' | 'warning' | 'danger' | 'info';
 
-const statusColors: Record<string, string> = {
-  new: 'bg-slate-100 text-slate-600 border-slate-200',
-  needs_info: 'bg-amber-100 text-amber-700 border-amber-200',
-  accepted: 'bg-green-100 text-green-700 border-green-200',
-  refused: 'bg-rose-100 text-rose-700 border-rose-200',
-};
+function getStatusBadgeConfig(status: string): { variant: TaskRequestBadgeVariant; label: string } {
+  if (status === 'new') return { variant: 'info', label: 'New' };
+  if (status === 'needs_info') return { variant: 'warning', label: 'Awaiting Info' };
+  if (status === 'accepted') return { variant: 'success', label: 'Completed' };
+  if (status === 'refused') return { variant: 'danger', label: 'Rejected' };
+  return { variant: 'neutral', label: status };
+}
+
+function getPriorityBadgeVariant(priority: string): TaskRequestBadgeVariant {
+  if (priority === 'urgent') return 'danger';
+  if (priority === 'high') return 'warning';
+  if (priority === 'normal') return 'info';
+  return 'neutral';
+}
+
+const requestTabItems = [
+  { key: 'all', label: 'All' },
+  { key: 'received', label: 'Received' },
+  { key: 'sent', label: 'Sent' },
+  { key: 'needs_info', label: 'Awaiting Info' },
+  { key: 'completed', label: 'Completed' },
+] as const;
 
 const priorityOptions = [
   { value: 'low', label: 'Low' },
@@ -73,6 +106,16 @@ const priorityOptions = [
   { value: 'high', label: 'High' },
   { value: 'urgent', label: 'Urgent' },
 ];
+
+/** Same request can appear in both sent and received lists from the API; keep one row per id. */
+function dedupeRequestsById(requests: TaskRequest[]): TaskRequest[] {
+  const seen = new Set<string>();
+  return requests.filter((r) => {
+    if (seen.has(r.id)) return false;
+    seen.add(r.id);
+    return true;
+  });
+}
 
 export default function TaskRequestsPage() {
   const navigate = useNavigate();
@@ -115,8 +158,7 @@ export default function TaskRequestsPage() {
     const totalActiveSent = activeSent.length;
 
     // Get all recent activity (including history for activity feed)
-    const allRequests = [...received, ...sent];
-    const recentActivity = allRequests.sort((a, b) => {
+    const recentActivity = dedupeRequestsById([...received, ...sent]).sort((a, b) => {
       const aTime = new Date(b.updated_at || b.created_at).getTime();
       const bTime = new Date(a.updated_at || a.created_at).getTime();
       return aTime - bTime;
@@ -141,7 +183,7 @@ export default function TaskRequestsPage() {
     const sent = data?.sent || [];
     
     if (activeTab === 'all') {
-      return notifications.recentActivity;
+      return dedupeRequestsById(notifications.recentActivity);
     }
     if (activeTab === 'received') {
       return received.sort((a, b) => {
@@ -158,22 +200,15 @@ export default function TaskRequestsPage() {
       });
     }
     if (activeTab === 'needs_info') {
-      return notifications.recentActivity.filter((r) => r.status === 'needs_info');
+      return dedupeRequestsById(notifications.recentActivity.filter((r) => r.status === 'needs_info'));
     }
     if (activeTab === 'completed') {
-      return notifications.recentActivity.filter((r) => r.status === 'accepted' || r.status === 'refused');
+      return dedupeRequestsById(
+        notifications.recentActivity.filter((r) => r.status === 'accepted' || r.status === 'refused'),
+      );
     }
-    return notifications.recentActivity;
+    return dedupeRequestsById(notifications.recentActivity);
   }, [notifications.recentActivity, activeTab, data]);
-
-  // Get status color system
-  const getStatusConfig = (status: string) => {
-    if (status === 'new') return { bg: 'bg-blue-100', text: 'text-blue-700', border: 'border-blue-200', label: 'New' };
-    if (status === 'needs_info') return { bg: 'bg-amber-100', text: 'text-amber-700', border: 'border-amber-200', label: 'Awaiting Info' };
-    if (status === 'accepted') return { bg: 'bg-green-100', text: 'text-green-700', border: 'border-green-200', label: 'Completed' };
-    if (status === 'refused') return { bg: 'bg-rose-100', text: 'text-rose-700', border: 'border-rose-200', label: 'Rejected' };
-    return { bg: 'bg-gray-100', text: 'text-gray-600', border: 'border-gray-200', label: status };
-  };
 
   // Format relative time
   const formatTimeAgo = (dateStr: string) => {
@@ -220,165 +255,111 @@ export default function TaskRequestsPage() {
   }, []);
 
   return (
-    <div className="space-y-4 min-w-0 overflow-x-hidden">
-      {/* Title Bar - same layout and font sizes as Projects / Customers */}
-      <div className="rounded-xl border bg-white p-4 mb-4">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-3 flex-1">
-            <div>
-              <div className="text-sm font-semibold text-gray-900">Requests</div>
-              <div className="text-xs text-gray-500 mt-0.5">Conversations that may become tasks</div>
-            </div>
-          </div>
+    <div className={uiCx(uiSpacing.pageStack, 'min-w-0 overflow-x-hidden')}>
+      <AppPageHeader
+        title="Requests"
+        subtitle="Conversations that may become tasks"
+        icon={<FileText className="h-4 w-4" />}
+        actions={
           <div className="text-right">
-            <div className="text-[10px] font-medium text-gray-500 uppercase tracking-wide">Today</div>
-            <div className="text-xs font-semibold text-gray-700 mt-0.5">{todayLabel}</div>
+            <div className={uiTypography.overline}>Today</div>
+            <div className={uiCx(uiTypography.sectionTitle, 'mt-0.5')}>{todayLabel}</div>
           </div>
-        </div>
-      </div>
-      
-      {/* Tabs */}
-      <div className="rounded-xl border border-gray-200 bg-white overflow-hidden">
-        <div className="flex items-center gap-1 border-b border-gray-200 px-4">
-          <button
-            onClick={() => setActiveTab('all')}
-            className={`px-3 py-2 text-xs font-medium transition-colors border-b-2 -mb-[1px] ${
-              activeTab === 'all'
-                ? 'border-brand-red text-brand-red'
-                : 'border-transparent text-gray-600 hover:text-gray-900'
-            }`}
-          >
-            All
-          </button>
-          <button
-            onClick={() => setActiveTab('received')}
-            className={`px-3 py-2 text-xs font-medium transition-colors border-b-2 -mb-[1px] ${
-              activeTab === 'received'
-                ? 'border-brand-red text-brand-red'
-                : 'border-transparent text-gray-600 hover:text-gray-900'
-            }`}
-          >
-            Received
-          </button>
-          <button
-            onClick={() => setActiveTab('sent')}
-            className={`px-3 py-2 text-xs font-medium transition-colors border-b-2 -mb-[1px] ${
-              activeTab === 'sent'
-                ? 'border-brand-red text-brand-red'
-                : 'border-transparent text-gray-600 hover:text-gray-900'
-            }`}
-          >
-            Sent
-          </button>
-          <button
-            onClick={() => setActiveTab('needs_info')}
-            className={`px-3 py-2 text-xs font-medium transition-colors border-b-2 -mb-[1px] ${
-              activeTab === 'needs_info'
-                ? 'border-brand-red text-brand-red'
-                : 'border-transparent text-gray-600 hover:text-gray-900'
-            }`}
-          >
-            Awaiting Info
-          </button>
-          <button
-            onClick={() => setActiveTab('completed')}
-            className={`px-3 py-2 text-xs font-medium transition-colors border-b-2 -mb-[1px] ${
-              activeTab === 'completed'
-                ? 'border-brand-red text-brand-red'
-                : 'border-transparent text-gray-600 hover:text-gray-900'
-            }`}
-          >
-            Completed
-          </button>
-      </div>
+        }
+      />
 
-      {/* Two-Column Layout */}
-      <div className="grid grid-cols-1 lg:grid-cols-[1fr_1.5fr] gap-4 min-w-0 rounded-b-xl border border-t-0 border-gray-200 bg-white overflow-hidden">
+      <AppCard className="overflow-hidden" bodyClassName="p-0">
+        <div className={uiCx('border-b border-gray-100', uiSpacing.cardPadding)}>
+          <AppTabs
+            tabs={[...requestTabItems]}
+            value={activeTab}
+            onChange={(key) => setActiveTab(key as typeof activeTab)}
+          />
+        </div>
+
+        <div className="grid min-w-0 grid-cols-1 gap-0 lg:grid-cols-[1fr_1.5fr]">
         {/* Left: Requests List */}
-        <div className="min-w-0 overflow-hidden">
-          {isLoading ? (
-            <div className="p-8 text-center text-xs text-gray-500">Loading requests...</div>
-          ) : filteredRequests.length === 0 ? (
-            <div className="p-8 text-center">
-              <div className="text-xs text-gray-500 mb-2">
+        <div className="min-w-0 overflow-hidden border-r border-gray-100">
+          <div className="max-h-[calc(100vh-300px)] overflow-y-auto overflow-x-hidden">
+            <div className={uiCx(uiSpacing.cardPadding, 'border-b border-gray-100')}>
+              <AppListCreateItem
+                label="New Request"
+                layout="row"
+                className="w-full"
+                onClick={() => setShowCreateModal(true)}
+              />
+            </div>
+            {isLoading ? (
+              <div className={uiCx(uiSpacing.cardPadding, 'text-center', uiTypography.helper)}>Loading requests...</div>
+            ) : filteredRequests.length === 0 ? (
+              <div className={uiCx(uiSpacing.cardPadding, 'text-center', uiTypography.helper)}>
                 {activeTab === 'all'
-                  ? 'No requests yet. Create your first request to get started.'
+                  ? 'No requests yet. Use New Request above to get started.'
                   : `No ${activeTab === 'needs_info' ? 'awaiting info' : activeTab} requests.`}
               </div>
-              {activeTab === 'all' && (
-                <button
-                  onClick={() => setShowCreateModal(true)}
-                  className="mt-4 rounded-lg px-3 py-2 bg-brand-red text-white text-xs font-medium hover:opacity-90 transition-all"
-                >
-                  Create Request
-                </button>
-              )}
-            </div>
-          ) : (
-            <div className="divide-y divide-gray-200 max-h-[calc(100vh-300px)] overflow-y-auto overflow-x-hidden">
-              {/* New Request Card - First position */}
-              <div className="p-4 border-b border-gray-200">
-                <button
-                  type="button"
-                  onClick={() => setShowCreateModal(true)}
-                  className="w-full border-2 border-dashed border-gray-300 rounded-lg p-2.5 hover:border-brand-red hover:bg-gray-50 transition-all text-center bg-white flex items-center justify-center min-h-[60px]"
-                >
-                  <div className="text-lg text-gray-400 mr-2">+</div>
-                  <div className="font-medium text-xs text-gray-700">New Request</div>
-                </button>
-              </div>
-              {filteredRequests.map((req) => {
+            ) : (
+              filteredRequests.map((req) => {
                 const isReceived = data?.received?.some((r) => r.id === req.id);
-                const statusConfig = getStatusConfig(req.status);
+                const statusConfig = getStatusBadgeConfig(req.status);
                 const isSelected = selectedRequestId === req.id;
-                
-                // Get status border color
-                const statusBorderColor = 
-                  req.status === 'new' ? 'border-l-blue-500' :
-                  req.status === 'needs_info' ? 'border-l-amber-500' :
-                  req.status === 'accepted' ? 'border-l-green-500' :
-                  req.status === 'refused' ? 'border-l-rose-500' :
-                  'border-l-gray-400';
 
                 return (
-        <button
+                  <button
                     key={req.id}
+                    type="button"
                     onClick={() => handleRequestClick(req.id)}
-                    className={`w-full text-left p-4 transition-all duration-200 cursor-pointer group relative ${
-                      isSelected 
-                        ? 'bg-brand-red/5 border-l-4 border-l-brand-red' 
-                        : `hover:bg-gray-50 border-l-4 ${statusBorderColor}`
-                    }`}
+                    className={uiCx(
+                      'relative w-full cursor-pointer text-left transition-all duration-200',
+                      uiSpacing.cardPadding,
+                      'border-b border-gray-100 last:border-b-0',
+                      isSelected
+                        ? 'z-[1] border border-brand-red bg-brand-red/5 shadow-md hover:shadow-lg'
+                        : uiCx(
+                            uiColors.surface,
+                            'border border-transparent',
+                            'hover:border-gray-300 hover:bg-gray-50/50 hover:shadow-sm hover:-translate-y-0.5 active:scale-[0.98]',
+                          ),
+                    )}
                   >
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2 mb-1 flex-wrap">
-                          <h3 className={`text-sm font-semibold ${isSelected ? 'text-brand-red' : 'text-gray-900 group-hover:text-brand-red'} transition-colors`}>
-                            {req.title}
-                          </h3>
-                          <span className={`text-[10px] uppercase tracking-wide rounded-full border px-2 py-0.5 font-semibold shrink-0 ${statusConfig.bg} ${statusConfig.text} ${statusConfig.border}`}>
+                    <div
+                      className={uiCx(
+                        'absolute bottom-0 left-0 top-0 w-0.5 rounded-l-lg',
+                        isSelected ? 'bg-brand-red' : 'bg-gray-300',
+                      )}
+                      aria-hidden
+                    />
+                    <div className="flex items-start justify-between gap-3 pl-2">
+                      <div className="min-w-0 flex-1">
+                        <div className="mb-1 flex flex-wrap items-center gap-2">
+                          <h3 className={uiTypography.sectionTitle}>{req.title}</h3>
+                          <AppBadge variant={statusConfig.variant} className="shrink-0">
                             {statusConfig.label}
-                          </span>
-            </div>
-                        <div className="text-xs text-gray-600 mb-1">
+                          </AppBadge>
+                        </div>
+                        <div className={uiCx(uiTypography.helper, 'mb-1')}>
                           {isReceived ? (
-                            <span>From <span className="font-medium text-gray-900">{req.requested_by?.name || 'Unknown'}</span></span>
+                            <span>
+                              From <span className="font-medium text-gray-900">{req.requested_by?.name || 'Unknown'}</span>
+                            </span>
                           ) : (
-                            <span>To <span className="font-medium text-gray-900">
-                              {req.target.type === 'user' 
-                                ? req.target.user_name || 'User'
-                                : req.target.division_label || 'Division'}
-                            </span></span>
+                            <span>
+                              To{' '}
+                              <span className="font-medium text-gray-900">
+                                {req.target.type === 'user'
+                                  ? req.target.user_name || 'User'
+                                  : req.target.division_label || 'Division'}
+                              </span>
+                            </span>
                           )}
-          </div>
+                        </div>
                         <div className="text-xs text-gray-400">{formatTimeAgo(req.updated_at || req.created_at)}</div>
-                </div>
-              </div>
+                      </div>
+                    </div>
                   </button>
                 );
-              })}
-            </div>
-          )}
+              })
+            )}
+          </div>
             </div>
 
         {/* Right: Request Details Panel */}
@@ -386,8 +367,8 @@ export default function TaskRequestsPage() {
           requestId={selectedRequestId}
           onRefresh={invalidateAll}
         />
-      </div>
-      </div>
+        </div>
+      </AppCard>
 
       {/* Create Request Modal */}
       {showCreateModal && (
@@ -484,58 +465,46 @@ function RequestDetailsPanel({
     onError: (err: any) => toast.error(err.response?.data?.detail || 'Failed to accept request'),
   });
 
-  const getStatusConfig = (status: string) => {
-    if (status === 'new') return { bg: 'bg-blue-100', text: 'text-blue-700', border: 'border-blue-200', label: 'New' };
-    if (status === 'needs_info') return { bg: 'bg-amber-100', text: 'text-amber-700', border: 'border-amber-200', label: 'Awaiting Info' };
-    if (status === 'accepted') return { bg: 'bg-green-100', text: 'text-green-700', border: 'border-green-200', label: 'Completed' };
-    if (status === 'refused') return { bg: 'bg-rose-100', text: 'text-rose-700', border: 'border-rose-200', label: 'Rejected' };
-    return { bg: 'bg-gray-100', text: 'text-gray-600', border: 'border-gray-200', label: status };
-  };
-
   if (!requestId) {
     return (
-      <div className="bg-white rounded-xl border border-gray-200 p-8 flex items-center justify-center">
-        <div className="text-center">
-          <div className="text-xs text-gray-500">Select a request to view details</div>
-        </div>
-      </div>
+      <AppCard className="flex min-h-[200px] items-center justify-center lg:min-h-0 lg:h-full" bodyClassName="flex w-full items-center justify-center">
+        <AppEmptyState title="Select a request to view details" className="py-6" />
+      </AppCard>
     );
   }
 
   if (isLoading) {
     return (
-      <div className="bg-white rounded-xl border border-gray-200 p-8">
-        <div className="text-xs text-gray-500">Loading request details...</div>
-      </div>
+      <AppCard className="lg:h-full" bodyClassName={uiTypography.helper}>
+        Loading request details...
+      </AppCard>
     );
   }
 
   if (!request) {
     return (
-      <div className="bg-white rounded-xl border border-gray-200 p-8">
-        <div className="text-xs text-gray-500">Request not found</div>
-      </div>
+      <AppCard className="lg:h-full" bodyClassName={uiTypography.helper}>
+        Request not found
+      </AppCard>
     );
   }
 
-  const statusConfig = getStatusConfig(request.status);
+  const statusConfig = getStatusBadgeConfig(request.status);
 
   return (
-    <div className="bg-white rounded-xl border border-gray-200 flex flex-col min-w-0" style={{ maxHeight: 'calc(100vh - 300px)' }}>
-      {/* Header */}
-      <div className="p-4 border-b border-gray-200 min-w-0">
-        <div className="flex items-start justify-between gap-3 mb-3 min-w-0">
-          <h2 className="text-sm font-semibold text-gray-900 truncate flex-1 min-w-0">{request.title}</h2>
-          <div className="flex items-center gap-2 flex-wrap flex-shrink-0">
-            <span className={`text-xs uppercase tracking-wide rounded-full border px-2 py-1 font-semibold ${statusConfig.bg} ${statusConfig.text} ${statusConfig.border}`}>
-              {statusConfig.label}
-            </span>
-            <span className={`text-xs uppercase tracking-wide rounded-full border px-2 py-1 font-semibold ${priorityBadge[request.priority] || priorityBadge.normal}`}>
-              {request.priority}
-            </span>
-            </div>
+    <AppCard
+      className={uiCx('flex min-w-0 flex-col lg:h-full max-h-[calc(100vh-300px)]')}
+      bodyClassName="flex min-h-0 flex-1 flex-col p-0"
+    >
+      <div className={uiCx('border-b border-gray-100', uiSpacing.cardPadding, 'min-w-0')}>
+        <div className="mb-3 flex min-w-0 items-start justify-between gap-3">
+          <h2 className={uiCx(uiTypography.sectionTitle, 'min-w-0 flex-1 truncate')}>{request.title}</h2>
+          <div className="flex shrink-0 flex-wrap items-center gap-2">
+            <AppBadge variant={statusConfig.variant}>{statusConfig.label}</AppBadge>
+            <AppBadge variant={getPriorityBadgeVariant(request.priority)}>{request.priority}</AppBadge>
           </div>
-        <div className="text-xs text-gray-600 space-y-1">
+        </div>
+        <div className={uiCx(uiTypography.helper, 'space-y-1')}>
           <div>Requested by: <span className="font-medium text-gray-900">{request.requested_by?.name || 'Unknown'}</span></div>
           <div>Target: <span className="font-medium text-gray-900">
             {request.target.type === 'user'
@@ -556,120 +525,123 @@ function RequestDetailsPanel({
         </div>
       </div>
 
-      {/* Body: Conversation Timeline */}
-      <div className="flex-1 overflow-y-auto overflow-x-hidden p-4 space-y-4 min-w-0">
+      <div className={uiCx('min-h-0 flex-1 space-y-4 overflow-y-auto overflow-x-hidden', uiSpacing.cardPadding)}>
         {request.description && (
-          <div className="rounded-xl border border-gray-200 bg-gray-50/50 p-4">
-            <div className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide mb-1">Initial Request</div>
-            <div className="text-xs text-gray-700 whitespace-pre-wrap">{request.description}</div>
+          <div className={uiCx(uiRadius.card, uiBorders.subtle, uiColors.surfaceSubtle, uiSpacing.compactCardPadding)}>
+            <div className={uiCx(uiTypography.overline, 'mb-1')}>Initial Request</div>
+            <div className={uiCx(uiTypography.body, 'whitespace-pre-wrap')}>{request.description}</div>
           </div>
         )}
 
         {request.messages && request.messages.length > 0 ? (
-          <div className="space-y-3">
+          <div className={uiSpacing.sectionStack}>
             {request.messages.map((msg) => (
-              <div key={msg.id} className="rounded-xl border border-gray-200 bg-white p-4">
-                <div className="flex items-center justify-between text-[10px] text-gray-500 mb-2">
-                  <span className="font-medium">{msg.sender_name || 'System'}</span>
+              <div key={msg.id} className={uiCx(uiRadius.card, uiBorders.subtle, uiColors.surface, uiSpacing.compactCardPadding)}>
+                <div className={uiCx('mb-2 flex items-center justify-between', uiTypography.overline)}>
+                  <span>{msg.sender_name || 'System'}</span>
                   <span>{new Date(msg.created_at).toLocaleString()}</span>
                 </div>
-                <div className="text-xs text-gray-800 whitespace-pre-wrap">{msg.body}</div>
+                <div className={uiCx(uiTypography.body, 'whitespace-pre-wrap')}>{msg.body}</div>
               </div>
             ))}
           </div>
         ) : (
-          <div className="text-xs text-gray-500 text-center py-4">No messages yet</div>
+          <p className={uiCx(uiTypography.helper, 'py-4 text-center')}>No messages yet</p>
         )}
       </div>
 
-      {/* Footer: Actions */}
-      <div className="p-4 border-t border-gray-200 space-y-4 bg-gray-50/50">
+      <div className={uiCx('space-y-4 border-t border-gray-100 bg-gray-50/50', uiSpacing.cardPadding)}>
         {request.permissions.can_request_info && (
-          <div className="space-y-2">
-            <label className="block text-xs font-semibold text-gray-700">Request more information</label>
-            <textarea
+          <div className={uiSpacing.sectionStack}>
+            <AppTextarea
+              label="Request more information"
               value={infoMessage}
               onChange={(e) => setInfoMessage(e.target.value)}
               rows={2}
               placeholder="What information do you need?"
-              className="w-full rounded-lg border border-gray-200 px-3 py-2 text-xs focus:ring-2 focus:ring-brand-red/40 focus:border-brand-red/60"
             />
-            <button
+            <AppButton
+              size="sm"
               onClick={() => askInfoMutation.mutate(infoMessage)}
               disabled={askInfoMutation.isLoading || !infoMessage.trim()}
-              className="px-3 py-2 bg-brand-red text-white rounded-lg hover:opacity-90 transition-colors text-xs font-medium disabled:opacity-60"
+              loading={askInfoMutation.isLoading}
             >
               {askInfoMutation.isLoading ? 'Sending...' : 'Send Request'}
-            </button>
+            </AppButton>
           </div>
         )}
 
         {request.permissions.can_provide_info && (
-          <div className="space-y-2">
-            <label className="block text-xs font-semibold text-gray-700">Provide clarification</label>
-            <textarea
+          <div className={uiSpacing.sectionStack}>
+            <AppTextarea
+              label="Provide clarification"
               value={clarificationMessage}
               onChange={(e) => setClarificationMessage(e.target.value)}
               rows={2}
               placeholder="Add the requested information..."
-              className="w-full rounded-lg border border-gray-200 px-3 py-2 text-xs focus:ring-2 focus:ring-brand-red/40 focus:border-brand-red/60"
             />
-            <button
+            <AppButton
+              size="sm"
               onClick={() => provideInfoMutation.mutate(clarificationMessage)}
               disabled={provideInfoMutation.isLoading || !clarificationMessage.trim()}
-              className="px-3 py-2 bg-brand-red text-white rounded-lg hover:opacity-90 transition-colors text-xs font-medium disabled:opacity-60"
+              loading={provideInfoMutation.isLoading}
             >
               {provideInfoMutation.isLoading ? 'Sending...' : 'Send Clarification'}
-            </button>
+            </AppButton>
           </div>
         )}
 
-        <div className="flex items-center gap-2 pt-2 border-t border-gray-200">
+        <div className={uiCx('flex items-center gap-2 border-t border-gray-100 pt-2', uiLayout.actionsRow)}>
           {request.permissions.can_accept && (
-            <button
+            <AppButton
+              size="sm"
+              className="flex-1 border-green-600 bg-green-600 hover:border-green-700 hover:from-green-700 hover:to-green-700"
               onClick={() => acceptMutation.mutate()}
               disabled={acceptMutation.isLoading}
-              className="flex-1 px-3 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors text-xs font-medium disabled:opacity-60"
+              loading={acceptMutation.isLoading}
             >
               {acceptMutation.isLoading ? 'Creating...' : 'Accept & Create Task'}
-            </button>
+            </AppButton>
           )}
           {request.permissions.can_refuse && (
             <>
               {!showRefuseForm ? (
-                <button
+                <AppButton
+                  variant="danger"
+                  size="sm"
                   onClick={() => setShowRefuseForm(true)}
                   disabled={refuseMutation.isLoading || acceptMutation.isLoading}
-                  className="px-3 py-2 bg-rose-600 text-white rounded-lg hover:bg-rose-700 transition-colors text-xs font-medium disabled:opacity-60"
                 >
                   Refuse
-                </button>
+                </AppButton>
               ) : (
-                <div className="flex-1 space-y-2">
-                  <textarea
+                <div className="min-w-0 flex-1 space-y-2">
+                  <AppTextarea
                     value={refuseMessage}
                     onChange={(e) => setRefuseMessage(e.target.value)}
                     rows={2}
                     placeholder="Reason (optional)"
-                    className="w-full rounded-lg border border-gray-200 px-3 py-2 text-xs"
                   />
-                  <div className="flex gap-2">
-                    <button
+                  <div className={uiLayout.actionsRow}>
+                    <AppButton
+                      variant="danger"
+                      size="sm"
                       onClick={() => refuseMutation.mutate(refuseMessage)}
                       disabled={refuseMutation.isLoading}
-                      className="px-3 py-2 bg-rose-600 text-white rounded-lg hover:bg-rose-700 transition-colors text-xs font-medium disabled:opacity-60"
+                      loading={refuseMutation.isLoading}
                     >
                       Confirm Refusal
-                    </button>
-                    <button
+                    </AppButton>
+                    <AppButton
+                      variant="secondary"
+                      size="sm"
                       onClick={() => {
                         setShowRefuseForm(false);
                         setRefuseMessage('');
                       }}
-                      className="px-3 py-2 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors text-xs font-medium"
                     >
                       Cancel
-                    </button>
+                    </AppButton>
                   </div>
                 </div>
               )}
@@ -677,7 +649,7 @@ function RequestDetailsPanel({
           )}
         </div>
       </div>
-    </div>
+    </AppCard>
   );
 }
 
@@ -752,14 +724,6 @@ function ViewRequestModal({
     onError: (err: any) => toast.error(err.response?.data?.detail || 'Failed to accept request'),
   });
 
-  const getStatusConfig = (status: string) => {
-    if (status === 'new') return { bg: 'bg-blue-100', text: 'text-blue-700', border: 'border-blue-200', label: 'New' };
-    if (status === 'needs_info') return { bg: 'bg-amber-100', text: 'text-amber-700', border: 'border-amber-200', label: 'Awaiting Info' };
-    if (status === 'accepted') return { bg: 'bg-green-100', text: 'text-green-700', border: 'border-green-200', label: 'Completed' };
-    if (status === 'refused') return { bg: 'bg-rose-100', text: 'text-rose-700', border: 'border-rose-200', label: 'Rejected' };
-    return { bg: 'bg-gray-100', text: 'text-gray-600', border: 'border-gray-200', label: status };
-  };
-
   if (isLoading) {
                 return (
                   <OverlayPortal>
@@ -796,16 +760,16 @@ function ViewRequestModal({
     );
   }
 
-  const statusConfig = getStatusConfig(request.status);
+  const statusConfig = getStatusBadgeConfig(request.status);
 
   return (
     <OverlayPortal>
     <div 
-      className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
       onClick={onClose}
     >
       <div 
-        className="bg-white rounded-xl shadow-xl w-full max-w-[75vw] max-h-[90vh] overflow-hidden flex flex-col border border-gray-200"
+        className={uiCx('flex max-h-[90vh] w-full max-w-[75vw] flex-col overflow-hidden', uiRadius.modal, uiBorders.subtle, uiColors.surface, uiShadows.elevated)}
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
@@ -912,12 +876,8 @@ function ViewRequestModal({
             <div>
               <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">Status</div>
               <div className="flex flex-wrap gap-2">
-                <span className={`text-xs uppercase tracking-wide rounded-full border px-3 py-1.5 font-semibold ${statusConfig.bg} ${statusConfig.text} ${statusConfig.border}`}>
-                  {statusConfig.label}
-                </span>
-                <span className={`text-xs uppercase tracking-wide rounded-full border px-3 py-1.5 font-semibold ${priorityBadge[request.priority] || priorityBadge.normal}`}>
-                  {request.priority}
-                </span>
+                <AppBadge variant={statusConfig.variant}>{statusConfig.label}</AppBadge>
+                <AppBadge variant={getPriorityBadgeVariant(request.priority)}>{request.priority}</AppBadge>
               </div>
             </div>
 
@@ -965,21 +925,19 @@ function ViewRequestModal({
         </div>
 
         {/* Footer */}
-        <div className="p-4 border-t border-gray-200 bg-gray-50/50 flex items-center justify-end gap-2 flex-shrink-0">
-          <button
-            onClick={onClose}
-            className="px-3 py-2 rounded-lg border border-gray-200 hover:bg-gray-50 transition-colors text-xs font-medium"
-          >
+        <div className={uiCx('flex shrink-0 items-center justify-end gap-2 border-t border-gray-100 bg-gray-50/50', uiSpacing.cardPadding, uiLayout.actionsRow)}>
+          <AppButton variant="secondary" size="sm" onClick={onClose}>
             Close
-          </button>
+          </AppButton>
           {request.permissions.can_refuse && !showRefuseForm && (
-            <button
+            <AppButton
+              variant="danger"
+              size="sm"
               onClick={() => setShowRefuseForm(true)}
               disabled={refuseMutation.isLoading || acceptMutation.isLoading}
-              className="px-3 py-2 bg-rose-600 text-white rounded-lg hover:bg-rose-700 transition-colors text-xs font-medium disabled:opacity-60"
             >
               Refuse
-            </button>
+            </AppButton>
           )}
           {showRefuseForm && request.permissions.can_refuse && (
             <div className="flex-1 space-y-2">
@@ -1011,13 +969,15 @@ function ViewRequestModal({
             </div>
           )}
           {request.permissions.can_accept && (
-            <button
+            <AppButton
+              size="sm"
+              className="border-green-600 bg-green-600 hover:border-green-700 hover:from-green-700 hover:to-green-700"
               onClick={() => acceptMutation.mutate()}
               disabled={acceptMutation.isLoading || (showRefuseForm && refuseMutation.isLoading)}
-              className="px-3 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors text-xs font-medium disabled:opacity-60"
+              loading={acceptMutation.isLoading}
             >
               {acceptMutation.isLoading ? 'Creating...' : 'Accept & Create Task'}
-            </button>
+            </AppButton>
           )}
         </div>
       </div>
@@ -1130,94 +1090,62 @@ function CreateRequestModal({
   };
 
   return (
-    <OverlayPortal>
-    <div 
-      className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4"
-      onClick={onClose}
-    >
-      <div 
-        className="bg-white rounded-xl shadow-xl w-full max-w-[75vw] max-h-[90vh] overflow-hidden flex flex-col border border-gray-200"
-        onClick={(e) => e.stopPropagation()}
-      >
-        {/* Header */}
-        <div className="p-4 border-b border-gray-200 flex-shrink-0">
-          <div className="flex items-start justify-between gap-4">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-xl bg-brand-red/10 flex items-center justify-center">
-                <svg className="w-5 h-5 text-brand-red" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-                </svg>
-              </div>
-              <div>
-                <h2 className="text-sm font-semibold text-gray-900">Create Request</h2>
-                <p className="text-xs text-gray-500 mt-0.5">Start a conversation that may become a task</p>
-              </div>
-            </div>
-            <button
-              onClick={onClose}
-              className="text-2xl font-bold text-gray-400 hover:text-gray-600 w-8 h-8 flex items-center justify-center rounded-lg hover:bg-gray-100 transition-colors"
-            >
-              ×
-            </button>
-          </div>
+    <AppModal
+      open
+      onClose={onClose}
+      title="Create Request"
+      description="Start a conversation that may become a task"
+      size="lg"
+      footer={
+        <div className={uiCx(uiLayout.actionsRow, 'w-full justify-end')}>
+          <AppButton variant="secondary" size="sm" type="button" onClick={onClose}>
+            Cancel
+          </AppButton>
+          <AppButton size="sm" type="button" onClick={handleSubmit} disabled={isSubmitting} loading={isSubmitting}>
+            {isSubmitting ? 'Creating...' : 'Create Request'}
+          </AppButton>
         </div>
+      }
+    >
+        <form onSubmit={handleSubmit} className="flex max-h-[65vh] flex-col overflow-hidden md:flex-row md:gap-0">
+          <div className={uiCx('flex-1 space-y-4 overflow-y-auto md:pr-4', uiSpacing.sectionStack)}>
+          <AppInput
+            label="Title *"
+            value={title}
+            onChange={(e) => setTitle(e.target.value)}
+            placeholder="Short summary"
+          />
 
-        {/* Body - Two Column Layout */}
-        <form onSubmit={handleSubmit} className="flex-1 overflow-hidden flex">
-          {/* Left: Main Form */}
-          <div className="flex-1 overflow-y-auto p-4 space-y-4">
-          <div>
-            <label className="block text-xs font-semibold text-gray-700 mb-1">Title *</label>
-            <input
-              value={title}
-              onChange={(e) => setTitle(e.target.value)}
-              className="w-full rounded-lg border border-gray-200 px-3 py-2 text-xs focus:ring-2 focus:ring-brand-red/40 focus:border-brand-red/60"
-              placeholder="Short summary"
-            />
-          </div>
-
-          <div className="grid md:grid-cols-2 gap-4">
+          <div className={uiLayout.sectionGrid2}>
             <div>
-              <label className="block text-xs font-semibold text-gray-700 mb-2">Send to</label>
-              <div className="flex gap-2">
-                <button
+              <span className={uiTypography.controlLabel}>Send to</span>
+              <div className={uiCx('mt-1.5 flex gap-2', uiLayout.actionsRow)}>
+                <AppButton
                   type="button"
+                  size="sm"
+                  variant={targetType === 'user' ? 'primary' : 'secondary'}
+                  className="flex-1"
                   onClick={() => setTargetType('user')}
-                  className={`flex-1 px-3 py-2 rounded-lg border transition-colors ${
-                    targetType === 'user' 
-                      ? 'bg-brand-red text-white border-brand-red' 
-                      : 'bg-white text-gray-700 border-gray-200/60 hover:bg-gray-50'
-                  }`}
                 >
                   Specific user
-                </button>
-                <button
+                </AppButton>
+                <AppButton
                   type="button"
+                  size="sm"
+                  variant={targetType === 'division' ? 'primary' : 'secondary'}
+                  className="flex-1"
                   onClick={() => setTargetType('division')}
-                  className={`flex-1 px-3 py-2 rounded-lg border transition-colors ${
-                    targetType === 'division' 
-                      ? 'bg-brand-red text-white border-brand-red' 
-                      : 'bg-white text-gray-700 border-gray-200/60 hover:bg-gray-50'
-                  }`}
                 >
                   Division
-                </button>
+                </AppButton>
               </div>
             </div>
-            <div>
-              <label className="block text-xs font-semibold text-gray-700 mb-1">Priority</label>
-              <select
-                value={priority}
-                onChange={(e) => setPriority(e.target.value)}
-                className="w-full rounded-lg border border-gray-200 px-3 py-2 text-xs focus:ring-2 focus:ring-brand-red/40 focus:border-brand-red/60"
-              >
-                {priorityOptions.map((opt) => (
-                  <option key={opt.value} value={opt.value}>
-                    {opt.label}
-                  </option>
-                ))}
-              </select>
-            </div>
+            <AppSelect
+              label="Priority"
+              value={priority}
+              onChange={(e) => setPriority(e.target.value)}
+              options={priorityOptions}
+            />
           </div>
 
           {targetType === 'user' ? (
@@ -1291,95 +1219,51 @@ function CreateRequestModal({
               </div>
             </div>
           ) : (
-            <div>
-              <label className="block text-xs font-semibold text-gray-700 mb-1">Select division</label>
-              <select
-                value={targetDivisionId}
-                onChange={(e) => setTargetDivisionId(e.target.value)}
-                className="w-full rounded-lg border border-gray-200 px-3 py-2 text-xs focus:ring-2 focus:ring-brand-red/40 focus:border-brand-red/60"
-              >
-                <option value="">Choose division...</option>
-                {divisions.map((division) => (
-                  <option key={division.id} value={division.id}>
-                    {division.label}
-                  </option>
-                ))}
-              </select>
-            </div>
+            <AppSelect
+              label="Select division"
+              value={targetDivisionId}
+              onChange={(e) => setTargetDivisionId(e.target.value)}
+              placeholder="Choose division..."
+              options={divisions.map((division) => ({ value: division.id, label: division.label }))}
+            />
           )}
 
-          <div>
-            <label className="block text-xs font-semibold text-gray-700 mb-1">Project (optional)</label>
-            <select
-              value={projectId}
-              onChange={(e) => setProjectId(e.target.value)}
-              className="w-full rounded-lg border border-gray-200 px-3 py-2 text-xs focus:ring-2 focus:ring-brand-red/40 focus:border-brand-red/60"
-            >
-              <option value="">No project</option>
-              {(projects || []).map((project) => (
-                <option key={project.id} value={project.id}>
-                  {project.code ? `${project.code} • ` : ''}
-                  {project.name}
-                </option>
-              ))}
-            </select>
+          <AppSelect
+            label="Project (optional)"
+            value={projectId}
+            onChange={(e) => setProjectId(e.target.value)}
+            placeholder="No project"
+            options={(projects || []).map((project) => ({
+              value: project.id,
+              label: `${project.code ? `${project.code} • ` : ''}${project.name}`,
+            }))}
+          />
+
+          <AppInput
+            label="Due date (optional)"
+            type="date"
+            value={dueDate}
+            onChange={(e) => setDueDate(e.target.value)}
+          />
+
+          <AppTextarea
+            label="Description"
+            value={description}
+            onChange={(e) => setDescription(e.target.value)}
+            rows={4}
+            placeholder="Explain what needs to be done..."
+          />
           </div>
 
-          <div>
-            <label className="block text-xs font-semibold text-gray-700 mb-1">Due date (optional)</label>
-            <input
-              type="date"
-              value={dueDate}
-              onChange={(e) => setDueDate(e.target.value)}
-              className="w-full rounded-lg border border-gray-200 px-3 py-2 text-xs focus:ring-2 focus:ring-brand-red/40 focus:border-brand-red/60"
-            />
-          </div>
-
-          <div>
-            <label className="block text-xs font-semibold text-gray-700 mb-1">Description</label>
-            <textarea
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-              rows={4}
-              className="w-full rounded-lg border border-gray-200 px-3 py-2 text-xs focus:ring-2 focus:ring-brand-red/40 focus:border-brand-red/60"
-              placeholder="Explain what needs to be done..."
-            />
-          </div>
-          </div>
-
-          {/* Right: Context Panel */}
-          <div className="w-80 border-l border-gray-200 bg-gray-50/30 p-4 space-y-4 flex-shrink-0 overflow-y-auto">
-            <div>
-              <div className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide mb-2">Quick Info</div>
-              <div className="text-xs text-gray-600 space-y-2">
-                <p>Requests allow you to start conversations before creating tasks.</p>
-                <p>You can exchange information and clarify requirements before accepting.</p>
-              </div>
+          <div className={uiCx('w-full shrink-0 border-t border-gray-100 bg-gray-50/50 md:w-72 md:border-l md:border-t-0', uiSpacing.cardPadding, uiSpacing.sectionStack)}>
+            <div className={uiTypography.overline}>Quick Info</div>
+            <div className={uiCx(uiTypography.helper, 'space-y-2')}>
+              <p>Requests allow you to start conversations before creating tasks.</p>
+              <p>You can exchange information and clarify requirements before accepting.</p>
             </div>
           </div>
         </form>
-
-        {/* Footer */}
-        <div className="p-4 border-t border-gray-200 bg-gray-50/50 flex items-center justify-end gap-2 flex-shrink-0">
-          <button 
-            type="button" 
-            onClick={onClose} 
-            className="px-3 py-2 rounded-lg border border-gray-200 hover:bg-gray-50 transition-colors text-xs font-medium"
-          >
-            Cancel
-          </button>
-          <button
-            type="submit"
-            onClick={handleSubmit}
-            disabled={isSubmitting}
-            className="px-3 py-2 rounded-lg bg-brand-red text-white hover:opacity-90 transition-colors text-xs font-medium disabled:opacity-60"
-          >
-            {isSubmitting ? 'Creating...' : 'Create Request'}
-          </button>
-        </div>
-      </div>
-    </div>
-    </OverlayPortal>
+    </AppModal>
   );
 }
 
@@ -1554,13 +1438,9 @@ function RequestsListModal({
                   >
                     <div className="flex items-center justify-between gap-2">
                       <div className="font-medium text-sm text-gray-900 truncate">{req.title}</div>
-                      <span
-                        className={`text-xs px-2 py-0.5 rounded-full border shrink-0 ${
-                          statusColors[req.status] || 'bg-gray-100 text-gray-600 border-gray-200'
-                        }`}
-                      >
+                      <AppBadge variant={getStatusBadgeConfig(req.status).variant} className="shrink-0">
                         {req.status_label}
-                      </span>
+                      </AppBadge>
                     </div>
                     <div className="text-xs text-gray-500 flex flex-wrap gap-2">
                       <span className="capitalize">{req.priority || 'normal'}</span>
@@ -1589,20 +1469,12 @@ function RequestsListModal({
                 <div className="flex flex-col gap-1">
                   <div className="flex items-center gap-3 flex-wrap">
                     <h2 className="text-sm font-semibold text-gray-900">{selected.title}</h2>
-                    <span
-                      className={`text-xs px-2 py-0.5 rounded-full border ${
-                        statusColors[selected.status] || 'bg-gray-100 text-gray-600 border-gray-200'
-                      }`}
-                    >
+                    <AppBadge variant={getStatusBadgeConfig(selected.status).variant}>
                       {selected.status_label}
-                    </span>
-                    <span
-                      className={`text-xs px-2 py-0.5 rounded-full border ${
-                        priorityBadge[selected.priority] || priorityBadge.normal
-                      }`}
-                    >
+                    </AppBadge>
+                    <AppBadge variant={getPriorityBadgeVariant(selected.priority)}>
                       Priority: {selected.priority}
-                    </span>
+                    </AppBadge>
                   </div>
                   <div className="text-sm text-gray-600 flex flex-wrap gap-4">
                     <span>
@@ -1857,13 +1729,9 @@ function RequestsHistoryModal({
                   >
                     <div className="flex items-center justify-between gap-2">
                       <div className="font-medium text-sm text-gray-900 truncate">{req.title}</div>
-                      <span
-                        className={`text-xs px-2 py-0.5 rounded-full border shrink-0 ${
-                          statusColors[req.status] || 'bg-gray-100 text-gray-600 border-gray-200'
-                        }`}
-                      >
+                      <AppBadge variant={getStatusBadgeConfig(req.status).variant} className="shrink-0">
                         {req.status_label}
-                      </span>
+                      </AppBadge>
                     </div>
                     <div className="text-xs text-gray-500 flex flex-wrap gap-2">
                       <span className="capitalize">{req.priority || 'normal'}</span>
@@ -1892,20 +1760,12 @@ function RequestsHistoryModal({
                 <div className="flex flex-col gap-1">
                   <div className="flex items-center gap-3 flex-wrap">
                     <h2 className="text-sm font-semibold text-gray-900">{selected.title}</h2>
-                    <span
-                      className={`text-xs px-2 py-0.5 rounded-full border ${
-                        statusColors[selected.status] || 'bg-gray-100 text-gray-600 border-gray-200'
-                      }`}
-                    >
+                    <AppBadge variant={getStatusBadgeConfig(selected.status).variant}>
                       {selected.status_label}
-                    </span>
-                    <span
-                      className={`text-xs px-2 py-0.5 rounded-full border ${
-                        priorityBadge[selected.priority] || priorityBadge.normal
-                      }`}
-                    >
+                    </AppBadge>
+                    <AppBadge variant={getPriorityBadgeVariant(selected.priority)}>
                       Priority: {selected.priority}
-                    </span>
+                    </AppBadge>
                   </div>
                   <div className="text-sm text-gray-600 flex flex-wrap gap-4">
                     <span>
@@ -2034,34 +1894,30 @@ function ActionCard({
   requireText?: boolean;
 }) {
   return (
-    <div
-      className={`rounded-lg border p-4 ${
-        variant === 'danger' ? 'border-rose-200 bg-rose-50' : 'border-gray-200 bg-gray-50'
-      }`}
+    <AppCard
+      className={variant === 'danger' ? 'border-rose-200 bg-rose-50' : uiColors.surfaceSubtle}
+      bodyClassName={uiSpacing.sectionStack}
     >
-      <div className="space-y-2">
-        <div>
-          <div className="font-semibold text-gray-900">{title}</div>
-          <p className="text-sm text-gray-600">{description}</p>
-        </div>
-        <textarea
-          value={textareaValue}
-          onChange={(e) => onChange(e.target.value)}
-          rows={3}
-          placeholder="Type your message..."
-          className="w-full rounded border px-3 py-2 text-sm"
-        />
-        <button
-          onClick={onSubmit}
-          disabled={disabled || (requireText && !textareaValue.trim())}
-          className={`px-4 py-2 rounded text-white transition ${
-            variant === 'danger' ? 'bg-rose-600 hover:bg-rose-700' : 'bg-brand-red hover:bg-red-700'
-          } disabled:opacity-60`}
-        >
-          {actionLabel}
-        </button>
+      <div>
+        <div className={uiTypography.sectionTitle}>{title}</div>
+        <p className={uiTypography.sectionSubtitle}>{description}</p>
       </div>
-    </div>
+      <AppTextarea
+        value={textareaValue}
+        onChange={(e) => onChange(e.target.value)}
+        rows={3}
+        placeholder="Type your message..."
+      />
+      <AppButton
+        variant={variant === 'danger' ? 'danger' : 'primary'}
+        size="sm"
+        onClick={onSubmit}
+        disabled={disabled || (requireText && !textareaValue.trim())}
+        disabled={disabled}
+      >
+        {actionLabel}
+      </AppButton>
+    </AppCard>
   );
 }
 

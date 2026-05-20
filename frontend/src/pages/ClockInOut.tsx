@@ -11,6 +11,7 @@ import {
   AppButton,
   AppCard,
   AppEmptyState,
+  AppHeroEditButton,
   AppModal,
   AppPageHeader,
   AppSelect,
@@ -21,7 +22,7 @@ import {
   uiSpacing,
   uiTypography,
 } from '@/components/ui';
-import { CalendarDays, ChevronLeft, ChevronRight, Clock, Pencil } from 'lucide-react';
+import { CalendarDays, ChevronLeft, ChevronRight, Clock } from 'lucide-react';
 
 // Helper function to convert 24h time (HH:MM:SS or HH:MM) to 12h format (h:mm AM/PM)
 function formatTime12h(timeStr: string | null | undefined): string {
@@ -173,6 +174,7 @@ export default function ClockInOut() {
   });
   const [clockType, setClockType] = useState<'in' | 'out' | null>(null);
   const [modalSubmitting, setModalSubmitting] = useState(false);
+  const [isTodayStatusExpanded, setIsTodayStatusExpanded] = useState(true);
 
   // Edit attendance states
   const [editingAttendance, setEditingAttendance] = useState<Attendance | null>(null);
@@ -999,10 +1001,11 @@ export default function ClockInOut() {
         }
       />
 
-      <div className={uiLayout.pageTwoColumn}>
+      <div className="grid grid-cols-[1.5fr_1fr] items-stretch gap-2">
         {/* Left Column - Two Stacked Cards */}
-        <div className={uiSpacing.sectionStack}>
+        <div className={uiCx(uiSpacing.sectionStack, 'flex h-full min-h-0 flex-col')}>
           <AppCard
+            className="shrink-0"
             title="Clock Actions"
             actions={
               <div className="relative">
@@ -1082,9 +1085,32 @@ export default function ClockInOut() {
             </div>
           </AppCard>
 
+          <div className="flex min-h-0 flex-1 flex-col">
           <AppCard
+            className="flex h-full min-h-0 flex-1 flex-col"
             title={selectedDate === todayStr ? 'Today Status' : `Status - ${formatDate(selectedDate)}`}
+            actions={
+              <button
+                type="button"
+                onClick={() => setIsTodayStatusExpanded((v) => !v)}
+                className="rounded p-1 text-gray-500 transition-colors hover:bg-gray-100 hover:text-gray-700"
+                title={isTodayStatusExpanded ? 'Collapse' : 'Expand'}
+                aria-expanded={isTodayStatusExpanded}
+                aria-label={isTodayStatusExpanded ? 'Collapse status' : 'Expand status'}
+              >
+                <svg
+                  className={uiCx('h-3 w-3 transition-transform', isTodayStatusExpanded && 'rotate-180')}
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                  aria-hidden
+                >
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                </svg>
+              </button>
+            }
           >
+            {isTodayStatusExpanded ? (
             <div className={uiSpacing.sectionStack}>
               {/* Show all attendances for the selected date */}
               {(() => {
@@ -1182,16 +1208,11 @@ export default function ClockInOut() {
                               })}
                             </div>
                             {isAttendanceFromToday(attendance) && (
-                              <AppButton
-                                variant="ghost"
-                                size="sm"
-                                className="h-8 w-8 p-0"
+                              <AppHeroEditButton
                                 onClick={() => openEditModal(attendance, 'in')}
                                 title="Edit clock-in time"
                                 aria-label="Edit clock-in time"
-                              >
-                                <Pencil className="h-4 w-4" />
-                              </AppButton>
+                              />
                             )}
                           </div>
                         </div>
@@ -1210,16 +1231,11 @@ export default function ClockInOut() {
                               })}
                             </div>
                             {isAttendanceFromToday(attendance) && (
-                              <AppButton
-                                variant="ghost"
-                                size="sm"
-                                className="h-8 w-8 p-0"
+                              <AppHeroEditButton
                                 onClick={() => openEditModal(attendance, 'out')}
                                 title="Edit clock-out time"
                                 aria-label="Edit clock-out time"
-                              >
-                                <Pencil className="h-4 w-4" />
-                              </AppButton>
+                              />
                             )}
                           </div>
                         </div>
@@ -1236,16 +1252,11 @@ export default function ClockInOut() {
                                 : '0h 00m'}
                             </div>
                             {isAttendanceFromToday(attendance) && (
-                              <AppButton
-                                variant="ghost"
-                                size="sm"
-                                className="h-8 w-8 p-0"
+                              <AppHeroEditButton
                                 onClick={() => openEditBreakTimeModal(attendance)}
                                 title="Edit break time"
                                 aria-label="Edit break time"
-                              >
-                                <Pencil className="h-4 w-4" />
-                              </AppButton>
+                              />
                             )}
                           </div>
                         </div>
@@ -1349,11 +1360,15 @@ export default function ClockInOut() {
                 )}
               </div>
             </div>
+            ) : null}
           </AppCard>
+          </div>
 
         </div>
 
         <AppCard
+          className="flex h-full min-h-0 flex-col"
+          bodyClassName="flex min-h-0 flex-1 flex-col"
           title="Weekly Summary"
           actions={
             <div className="flex items-center gap-1">
@@ -1367,9 +1382,9 @@ export default function ClockInOut() {
         >
 
           {weeklySummary && (
-            <>
+            <div className="flex min-h-0 flex-1 flex-col">
               {/* SECTION A — Weekly Overview (General Information) */}
-              <div className="pb-4 border-b border-gray-200">
+              <div className="shrink-0 pb-4 border-b border-gray-200">
                 <div className="text-xs text-gray-500 text-center font-medium uppercase tracking-wide mb-4">
                   {weekRangeLabel}
                 </div>
@@ -1396,9 +1411,9 @@ export default function ClockInOut() {
               </div>
 
               {/* SECTION B — Daily Breakdown (Detailed Reference) */}
-              <div className="pt-4">
-                <div className="text-[10px] font-semibold text-gray-600 mb-3 uppercase tracking-wide">Daily Breakdown</div>
-                <div className="space-y-3.5 max-h-[400px] overflow-y-auto">
+              <div className="flex min-h-0 flex-1 flex-col pt-4">
+                <div className="shrink-0 text-[10px] font-semibold text-gray-600 mb-3 uppercase tracking-wide">Daily Breakdown</div>
+                <div className="min-h-0 flex-1 space-y-3.5 overflow-y-auto">
                   {weeklySummary.days.map((day, index) => {
                     const clockInTime = day.clock_in 
                       ? new Date(day.clock_in).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true })
@@ -1467,7 +1482,7 @@ export default function ClockInOut() {
                   )}
                 </div>
               </div>
-            </>
+            </div>
           )}
         </AppCard>
       </div>
