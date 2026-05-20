@@ -1023,6 +1023,57 @@ def create_app() -> FastAPI:
                         db.commit()
                         print("[startup] Added awarded_related_client_ids column to projects table")
 
+                    # ACL visibility ownership on projects
+                    rows = db.execute(
+                        text(
+                            """
+                            SELECT 1
+                            FROM information_schema.columns
+                            WHERE table_name = 'projects'
+                              AND column_name = 'created_by_user_id'
+                            LIMIT 1
+                            """
+                        )
+                    ).fetchall()
+                    if not rows:
+                        db.execute(
+                            text(
+                                "ALTER TABLE projects ADD COLUMN created_by_user_id UUID NULL REFERENCES users(id) ON DELETE SET NULL"
+                            )
+                        )
+                        try:
+                            db.execute(text("CREATE INDEX IF NOT EXISTS idx_projects_created_by_user_id ON projects(created_by_user_id)"))
+                        except Exception:
+                            pass
+                        db.commit()
+                        print("[startup] Added created_by_user_id column to projects table")
+
+                    db.execute(
+                        text(
+                            """
+                            CREATE TABLE IF NOT EXISTS project_members (
+                                id UUID PRIMARY KEY,
+                                project_id UUID NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+                                user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                                member_role VARCHAR(50),
+                                created_at TIMESTAMPTZ DEFAULT NOW(),
+                                added_by_user_id UUID REFERENCES users(id) ON DELETE SET NULL
+                            )
+                            """
+                        )
+                    )
+                    try:
+                        db.execute(
+                            text(
+                                "CREATE UNIQUE INDEX IF NOT EXISTS uq_project_members_project_user ON project_members(project_id, user_id)"
+                            )
+                        )
+                        db.execute(text("CREATE INDEX IF NOT EXISTS idx_project_members_project_id ON project_members(project_id)"))
+                        db.execute(text("CREATE INDEX IF NOT EXISTS idx_project_members_user_id ON project_members(user_id)"))
+                    except Exception:
+                        pass
+                    db.commit()
+
                     # Business line: Construction vs Repairs & Maintenance
                     rows = db.execute(
                         text(

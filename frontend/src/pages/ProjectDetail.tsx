@@ -2239,7 +2239,11 @@ export default function ProjectDetail(){
               {/* Last Notes/History and Project Team Cards */}
               <div className="mb-4 grid md:grid-cols-2 gap-4">
                 <LastReportsCard reports={reports||[]} />
-                <ProjectTeamCard projectId={String(id)} employees={employees||[]} />
+                <ProjectTeamCard
+                  projectId={String(id)}
+                  employees={employees||[]}
+                  canManageMembers={isAdmin || permissions.has('business:projects:members:write')}
+                />
               </div>
             </>
           )}
@@ -10213,12 +10217,22 @@ function LastReportsCard({ reports }: { reports: Report[] }){
   );
 }
 
-function ProjectTeamCard({ projectId, employees }: { projectId: string, employees: any[] }){
+function ProjectTeamCard({ projectId, employees, canManageMembers }: { projectId: string, employees: any[], canManageMembers: boolean }){
+  const queryClient = useQueryClient();
   const { data: shifts = [] } = useQuery({
     queryKey: ['projectShifts', projectId],
     queryFn: () => projectId ? api<any[]>('GET', `/dispatch/projects/${projectId}/shifts`) : Promise.resolve([]),
     enabled: !!projectId,
   });
+  const { data: aclMembers = [] } = useQuery({
+    queryKey: ['projectMembers', projectId],
+    queryFn: () => projectId ? api<any[]>('GET', `/projects/${projectId}/members`) : Promise.resolve([]),
+    enabled: !!projectId,
+  });
+  const [showAddMember, setShowAddMember] = useState(false);
+  const [selectedUserId, setSelectedUserId] = useState('');
+  const [savingMember, setSavingMember] = useState(false);
+  const [removingMemberId, setRemovingMemberId] = useState<string | null>(null);
 
   // Extract unique worker IDs from shifts
   const workerIds = useMemo(() => {
@@ -10235,25 +10249,118 @@ function ProjectTeamCard({ projectId, employees }: { projectId: string, employee
   const teamMembers = useMemo(() => {
     return workerIds.map(wid => employees.find((e: any) => String(e.id) === String(wid))).filter(Boolean);
   }, [workerIds, employees]);
+  const aclMemberUserIds = useMemo(() => new Set((aclMembers || []).map((m: any) => String(m.user_id))), [aclMembers]);
+  const availableEmployees = useMemo(
+    () => (employees || []).filter((e: any) => !aclMemberUserIds.has(String(e.id))),
+    [employees, aclMemberUserIds],
+  );
+
+  const onAddMember = async () => {
+    if (!selectedUserId) return;
+    setSavingMember(true);
+    try {
+      await api('POST', `/projects/${projectId}/members`, { user_id: selectedUserId });
+      setSelectedUserId('');
+      setShowAddMember(false);
+      await queryClient.invalidateQueries({ queryKey: ['projectMembers', projectId] });
+      toast.success('Member added');
+    } catch (err: any) {
+      toast.error(err?.message || 'Failed to add member');
+    } finally {
+      setSavingMember(false);
+    }
+  };
+
+  const onRemoveMember = async (member: any) => {
+    setRemovingMemberId(String(member.user_id));
+    try {
+      await api('DELETE', `/projects/${projectId}/members/${member.user_id}`);
+      await queryClient.invalidateQueries({ queryKey: ['projectMembers', projectId] });
+      toast.success('Member removed');
+    } catch (err: any) {
+      toast.error(err?.message || 'Failed to remove member');
+    } finally {
+      setRemovingMemberId(null);
+    }
+  };
 
   return (
     <div className="rounded-xl border bg-white p-4">
-      <h4 className="font-semibold mb-3">Project Team</h4>
-      {teamMembers.length > 0 ? (
+      <div className="flex items-center justify-between mb-3">
+        <h4 className="font-semibold">Project Team</h4>
+        {canManageMembers && (
+          <button
+            onClick={() => setShowAddMember((v) => !v)}
+            className="px-2 py-1 rounded border text-xs bg-white hover:bg-gray-50"
+          >
+            Add people
+          </button>
+        )}
+      </div>
+
+      {showAddMember && canManageMembers && (
+        <div className="mb-3 p-2 rounded border bg-gray-50 flex items-center gap-2">
+          <select
+            value={selectedUserId}
+            onChange={(e) => setSelectedUserId(e.target.value)}
+            className="flex-1 px-2 py-1.5 rounded border text-sm"
+          >
+            <option value="">Select user...</option>
+            {availableEmployees.map((e: any) => (
+              <option key={String(e.id)} value={String(e.id)}>
+                {e.name || e.username || e.email_personal || String(e.id)}
+              </option>
+            ))}
+          </select>
+          <button
+            onClick={onAddMember}
+            disabled={!selectedUserId || savingMember}
+            className="px-3 py-1.5 rounded bg-brand-red text-white text-sm disabled:opacity-50"
+          >
+            Add
+          </button>
+        </div>
+      )}
+
+      {(aclMembers || []).length > 0 ? (
         <div className="grid grid-cols-2 gap-2">
-          {teamMembers.map((member: any) => (
+          {(aclMembers || []).map((member: any) => (
             <div key={member.id} className="flex items-center gap-2 p-2 rounded border hover:bg-gray-50 transition-colors">
               <div className="w-8 h-8 rounded-full bg-indigo-600 flex items-center justify-center text-white text-xs font-semibold flex-shrink-0">
                 {(member.name||member.username||'U')[0].toUpperCase()}
               </div>
               <div className="flex-1 min-w-0">
                 <div className="text-sm font-medium text-gray-900 truncate">{member.name||member.username}</div>
+                <div className="text-[11px] text-gray-500">
+                  {member.is_creator ? 'Creator' : (member.member_role || 'Member')}
+                </div>
               </div>
+              {canManageMembers && !member.is_creator && (
+                <button
+                  onClick={() => onRemoveMember(member)}
+                  disabled={removingMemberId === String(member.user_id)}
+                  className="text-xs text-red-600 hover:text-red-700 disabled:opacity-50"
+                >
+                  Remove
+                </button>
+              )}
             </div>
           ))}
         </div>
       ) : (
         <div className="text-sm text-gray-500">No team members assigned yet</div>
+      )}
+      {teamMembers.length > 0 && (
+        <div className="mt-3 pt-3 border-t">
+          <div className="text-xs font-medium text-gray-500 mb-2">Scheduled workers</div>
+          <div className="flex flex-wrap gap-1.5">
+            {teamMembers.map((member: any) => (
+              <span key={member.id} className="px-2 py-1 rounded-full border text-xs bg-white">
+                {member.name || member.username}
+              </span>
+            ))}
+          </div>
+        </div>
       )}
     </div>
   );

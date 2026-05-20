@@ -27,6 +27,12 @@ def _merge_line_perms(perm_map: dict) -> None:
     if perm_map.get("business:projects:read"):
         perm_map["business:construction:projects:read"] = True
         perm_map["business:rm:projects:read"] = True
+        perm_map["business:construction:projects:read:all"] = True
+        perm_map["business:rm:projects:read:all"] = True
+    if perm_map.get("business:construction:projects:read"):
+        perm_map["business:construction:projects:read:all"] = True
+    if perm_map.get("business:rm:projects:read"):
+        perm_map["business:rm:projects:read:all"] = True
     if perm_map.get("business:projects:write"):
         perm_map["business:construction:projects:write"] = True
         perm_map["business:rm:projects:write"] = True

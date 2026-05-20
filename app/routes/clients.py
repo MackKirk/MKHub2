@@ -16,6 +16,7 @@ from ..schemas.clients import (
 )
 from ..auth.security import require_permissions, get_current_user, require_roles
 from ..services.standard_file_categories import get_categories_for_client_api, get_default_folder_rows
+from ..services.project_visibility import project_visibility_clause_for_user
 
 
 router = APIRouter(prefix="/clients", tags=["clients"])
@@ -535,6 +536,7 @@ def get_client_project_participations(
     bl_filter = _business_line_filter_for_user(user)
     if bl_filter is None:
         return {"rollup": [], "related_memberships": []}
+    bl_filter = and_(bl_filter, project_visibility_clause_for_user(user))
 
     rollup, related_memberships = build_participation_payload(db, client_uuid, bl_filter, limit=limit)
     return {"rollup": rollup, "related_memberships": related_memberships}
