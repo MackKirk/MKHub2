@@ -57,6 +57,27 @@ export function getStatusBadgeClass(status: TaskStatus): string {
   return 'bg-slate-100 text-slate-600 border-slate-200';
 }
 
+export type TaskStatusBadgeVariant = 'neutral' | 'success' | 'warning' | 'info';
+
+export function getStatusBadgeVariant(status: TaskStatus): TaskStatusBadgeVariant {
+  if (status === 'done') return 'success';
+  if (status === 'in_progress') return 'info';
+  if (status === 'blocked') return 'warning';
+  return 'neutral';
+}
+
+export function getPriorityBadgeVariant(priority?: string | null): TaskStatusBadgeVariant {
+  if (priority === 'urgent') return 'danger';
+  if (priority === 'high') return 'warning';
+  if (priority === 'normal') return 'info';
+  return 'neutral';
+}
+
+export function getPriorityLabel(priority?: string | null): string {
+  const p = priority || 'normal';
+  return p.charAt(0).toUpperCase() + p.slice(1);
+}
+
 export function getStatusBorderColor(status?: TaskStatus): string {
   if (status === 'done') return 'bg-green-500';
   if (status === 'in_progress') return 'bg-blue-500';

@@ -221,6 +221,28 @@ export default function TaskRequestsPage() {
     return dedupeRequestsById(notifications.recentActivity);
   }, [notifications.recentActivity, activeTab, data]);
 
+  const requestTabCounts = useMemo(() => {
+    const received = data?.received || [];
+    const sent = data?.sent || [];
+    const all = dedupeRequestsById([...received, ...sent]);
+    return {
+      all: all.length,
+      received: received.length,
+      sent: sent.length,
+      needs_info: all.filter((r) => r.status === 'needs_info').length,
+      completed: all.filter((r) => r.status === 'accepted' || r.status === 'refused').length,
+    };
+  }, [data]);
+
+  const requestTabs = useMemo(
+    () =>
+      requestTabItems.map((tab) => ({
+        ...tab,
+        count: requestTabCounts[tab.key],
+      })),
+    [requestTabCounts],
+  );
+
   // Format relative time
   const formatTimeAgo = (dateStr: string) => {
     const now = new Date();
@@ -284,7 +306,7 @@ export default function TaskRequestsPage() {
           <div className="shrink-0 border-b border-gray-100">
             <div className={uiSpacing.cardPadding}>
               <AppTabs
-                tabs={[...requestTabItems]}
+                tabs={requestTabs}
                 value={activeTab}
                 onChange={(key) => setActiveTab(key as typeof activeTab)}
               />

@@ -1,7 +1,15 @@
+import { AppBadge, uiBorders, uiColors, uiCx, uiRadius, uiSpacing, uiTypography } from '@/components/ui';
+
 type Props = { description: string };
 
+function severityVariant(severity: string): 'danger' | 'warning' | 'success' | 'neutral' {
+  if (severity === 'High') return 'danger';
+  if (severity === 'Medium') return 'warning';
+  if (severity === 'Low') return 'success';
+  return 'neutral';
+}
+
 export default function BugReportDescription({ description }: Props) {
-  // Parse bug report description to extract structured information
   const lines = description.split('\n');
   const mainDescription: string[] = [];
   const bugDetails: Record<string, string> = {};
@@ -13,24 +21,20 @@ export default function BugReportDescription({ description }: Props) {
     const line = lines[i];
     const trimmed = line.trim();
 
-    // Skip separator lines
     if (trimmed.startsWith('═') || trimmed.startsWith('─') || trimmed === '') {
       continue;
     }
 
-    // Detect start of bug report section
     if (trimmed.includes('BUG REPORT INFORMATION')) {
       inBugSection = true;
       continue;
     }
 
-    // Detect metadata section
     if (trimmed.includes('Technical Metadata')) {
       inMetadata = true;
       continue;
     }
 
-    // Parse JSON metadata
     if (inMetadata && trimmed.startsWith('{')) {
       const jsonLines = [line];
       let braceCount = line.split('{').length - line.split('}').length;
@@ -49,13 +53,12 @@ export default function BugReportDescription({ description }: Props) {
         if (!bugDetails.screen && parsed.report_screen) {
           bugDetails.screen = `${parsed.report_screen.width} × ${parsed.report_screen.height}`;
         }
-      } catch (e) {
-        // Ignore JSON parse errors
+      } catch {
+        // ignore parse errors
       }
       continue;
     }
 
-    // Parse bug details lines
     if (inBugSection && !inMetadata) {
       const severityMatch = trimmed.match(/[🔴🟡🟢⚪]?\s*Severity:\s*(.+)/i);
       if (severityMatch) {
@@ -81,9 +84,7 @@ export default function BugReportDescription({ description }: Props) {
         continue;
       }
 
-      // Browser info section
       if (trimmed.includes('Browser & Device Information')) {
-        // Next non-empty line is the user agent
         i++;
         while (i < lines.length && lines[i].trim() === '') i++;
         if (i < lines.length && !lines[i].trim().startsWith('─')) {
@@ -93,7 +94,6 @@ export default function BugReportDescription({ description }: Props) {
       }
     }
 
-    // Collect main description (before bug section)
     if (!inBugSection && trimmed) {
       mainDescription.push(line);
     }
@@ -102,45 +102,30 @@ export default function BugReportDescription({ description }: Props) {
   const mainDescText = mainDescription.join('\n').trim();
 
   return (
-    <div className="space-y-4">
+    <div className={uiSpacing.sectionStack}>
       {mainDescText && (
-        <div>
-          <div className="text-xs font-semibold text-gray-500 uppercase mb-2 tracking-wide">Description</div>
-          <div className="text-gray-900 whitespace-pre-wrap leading-relaxed bg-white rounded p-3 border border-gray-200">
-            {mainDescText}
-          </div>
-        </div>
+        <div className={uiCx(uiTypography.body, 'whitespace-pre-wrap leading-relaxed')}>{mainDescText}</div>
       )}
 
       {(bugDetails.severity || bugDetails.page_url || bugDetails.screen || bugDetails.reported_by) && (
-        <div className="border-t pt-4">
-          <div className="text-xs font-semibold text-gray-500 uppercase mb-3 tracking-wide">Bug Report Details</div>
-          <div className="bg-white rounded-lg border border-gray-200 p-4 space-y-3">
+        <div className={uiSpacing.sectionStack}>
+          <div className={uiTypography.overline}>Bug report details</div>
+          <div className={uiCx(uiRadius.card, uiBorders.subtle, uiColors.surface, uiSpacing.compactCardPadding, uiSpacing.sectionStack)}>
             {bugDetails.severity && (
               <div className="flex items-center gap-3">
-                <span className="text-gray-500 font-medium text-xs min-w-[90px]">Severity:</span>
-                <span
-                  className={`font-semibold text-sm px-2 py-1 rounded ${
-                    bugDetails.severity === 'High'
-                      ? 'bg-red-100 text-red-700'
-                      : bugDetails.severity === 'Medium'
-                        ? 'bg-yellow-100 text-yellow-700'
-                        : 'bg-green-100 text-green-700'
-                  }`}
-                >
-                  {bugDetails.severity}
-                </span>
+                <span className={uiCx(uiTypography.helper, 'min-w-[5.5rem] shrink-0 font-medium')}>Severity</span>
+                <AppBadge variant={severityVariant(bugDetails.severity)}>{bugDetails.severity}</AppBadge>
               </div>
             )}
 
             {bugDetails.page_url && (
               <div className="flex items-start gap-3">
-                <span className="text-gray-500 font-medium text-xs min-w-[90px] pt-1">Page URL:</span>
+                <span className={uiCx(uiTypography.helper, 'min-w-[5.5rem] shrink-0 pt-0.5 font-medium')}>Page URL</span>
                 <a
                   href={bugDetails.page_url}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="text-blue-600 hover:text-blue-800 underline break-all text-sm flex-1"
+                  className={uiCx(uiTypography.body, 'flex-1 break-all text-brand-red hover:underline')}
                 >
                   {bugDetails.page_url}
                 </a>
@@ -149,22 +134,27 @@ export default function BugReportDescription({ description }: Props) {
 
             {bugDetails.screen && (
               <div className="flex items-center gap-3">
-                <span className="text-gray-500 font-medium text-xs min-w-[90px]">Screen:</span>
-                <span className="text-gray-700 text-sm font-mono">{bugDetails.screen}</span>
+                <span className={uiCx(uiTypography.helper, 'min-w-[5.5rem] shrink-0 font-medium')}>Screen</span>
+                <span className={uiCx(uiTypography.body, 'font-mono')}>{bugDetails.screen}</span>
               </div>
             )}
 
             {bugDetails.reported_by && (
               <div className="flex items-center gap-3">
-                <span className="text-gray-500 font-medium text-xs min-w-[90px]">Reported by:</span>
-                <span className="text-gray-700 text-sm">{bugDetails.reported_by}</span>
+                <span className={uiCx(uiTypography.helper, 'min-w-[5.5rem] shrink-0 font-medium')}>Reported by</span>
+                <span className={uiTypography.body}>{bugDetails.reported_by}</span>
               </div>
             )}
 
             {bugDetails.user_agent && (
-              <div className="flex items-start gap-3 pt-2 border-t">
-                <span className="text-gray-500 font-medium text-xs min-w-[90px] pt-1">Browser:</span>
-                <span className="text-gray-600 text-xs font-mono break-all flex-1 bg-gray-50 p-2 rounded border">
+              <div className="flex items-start gap-3 border-t border-gray-100 pt-3">
+                <span className={uiCx(uiTypography.helper, 'min-w-[5.5rem] shrink-0 pt-0.5 font-medium')}>Browser</span>
+                <span
+                  className={uiCx(
+                    uiTypography.helper,
+                    'flex-1 break-all rounded border border-gray-100 bg-gray-50 p-2 font-mono',
+                  )}
+                >
                   {bugDetails.user_agent}
                 </span>
               </div>
@@ -175,4 +165,3 @@ export default function BugReportDescription({ description }: Props) {
     </div>
   );
 }
-

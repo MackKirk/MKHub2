@@ -8,6 +8,7 @@ import {
   AppUserSelect,
   AppCard,
   AppEmptyState,
+  AppFileUpload,
   AppFormModal,
   AppHeroEditButton,
   AppInput,
@@ -109,6 +110,8 @@ export default function DesignSystemShowcase() {
   const [showcaseDueDate, setShowcaseDueDate] = useState('');
   const [showcaseUserId, setShowcaseUserId] = useState('');
   const [showcaseUserIds, setShowcaseUserIds] = useState<string[]>([]);
+  const [showcaseAttachment, setShowcaseAttachment] = useState<File | null>(null);
+  const [showcaseAttachments, setShowcaseAttachments] = useState<File[]>([]);
   const tableRows = useMemo(
     () => [
       [<span key="u1">RC-2044</span>, <span key="n1">Atlas Office Buildout</span>, <AppBadge key="s1" variant="info">In Progress</AppBadge>, <span key="o1">May 26, 2026</span>],
@@ -399,6 +402,21 @@ export default function DesignSystemShowcase() {
                 placeholder="Write concise internal notes..."
                 fieldHint="Notes\n\nVisible to internal staff only; keep factual and action-oriented."
                 helperText="Helper text stays visible below the field; fieldHint is hover/focus on ?."
+              />
+              <AppFileUpload
+                mode="multiple"
+                value={showcaseAttachments}
+                onChange={setShowcaseAttachments}
+                accept="image/*,.pdf,.doc,.docx"
+                label="Attachments (optional – multiple allowed)"
+                fieldHint="Attachments\n\nDrag, click, or Ctrl+V. Same control as Opportunities → Notes → New Note."
+              />
+              <AppFileUpload
+                mode="single"
+                value={showcaseAttachment}
+                onChange={setShowcaseAttachment}
+                label="Single attachment"
+                fieldHint="Single file\n\nOne file with preview; non-images show as file row."
               />
             </div>
           </AppCard>

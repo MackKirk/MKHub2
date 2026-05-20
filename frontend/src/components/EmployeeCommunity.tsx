@@ -82,6 +82,14 @@ const AREA_LABELS: Record<string, string> = {
   training: 'Training',
 };
 
+function postMatchesCommunityTab(post: CommunityPost, tab: 'all' | 'unread' | 'required' | 'urgent'): boolean {
+  if (tab === 'all') return true;
+  if (tab === 'unread') return Boolean(post.is_unread);
+  if (tab === 'required') return Boolean(post.requires_read_confirmation);
+  const pr = post.priority || '';
+  return pr === 'urgent' || pr === 'critical' || Boolean(post.is_urgent);
+}
+
 function buildPostsQuery(params: Record<string, string | undefined>): string {
   const sp = new URLSearchParams();
   Object.entries(params).forEach(([k, v]) => {
@@ -161,13 +169,13 @@ export default function EmployeeCommunity({
   }, [modalPost?.id, activePostPanel]);
 
   const listParams = useMemo(() => {
-    const p: Record<string, string | undefined> = { filter: filter === 'urgent' ? 'urgent' : filter };
+    const p: Record<string, string | undefined> = { filter: 'all' };
     if (searchQ.trim()) p.q = searchQ.trim();
     if (relatedAreaFilter) p.related_area = relatedAreaFilter;
     if (priorityFilter) p.priority = priorityFilter;
     if (confirmedOnly) p.confirmed_only = 'true';
     return p;
-  }, [filter, searchQ, relatedAreaFilter, priorityFilter, confirmedOnly]);
+  }, [searchQ, relatedAreaFilter, priorityFilter, confirmedOnly]);
 
   const { data: posts = [], refetch: refetchPosts } = useQuery({
     queryKey: ['community-posts', listParams],
@@ -198,13 +206,44 @@ export default function EmployeeCommunity({
     sessionStorage.setItem('communityHighPriToastIds', JSON.stringify([...seen].slice(-120)));
   }, [posts]);
 
-  const filteredPosts = useMemo(() => {
+  const postsForActiveTab = useMemo(() => {
     if (!Array.isArray(posts)) return [];
-    if (feedMode && visiblePostsCount < posts.length) {
-      return posts.slice(0, visiblePostsCount);
+    return posts.filter((p: CommunityPost) => postMatchesCommunityTab(p, filter));
+  }, [posts, filter]);
+
+  const communityTabCounts = useMemo(() => {
+    if (!Array.isArray(posts)) {
+      return { all: 0, unread: 0, urgent: 0, required: 0 };
     }
-    return posts;
-  }, [posts, feedMode, visiblePostsCount]);
+    return {
+      all: posts.length,
+      unread: posts.filter((p: CommunityPost) => postMatchesCommunityTab(p, 'unread')).length,
+      urgent: posts.filter((p: CommunityPost) => postMatchesCommunityTab(p, 'urgent')).length,
+      required: posts.filter((p: CommunityPost) => postMatchesCommunityTab(p, 'required')).length,
+    };
+  }, [posts]);
+
+  const communityTabs = useMemo(
+    () =>
+      [
+        { key: 'all', label: 'All' },
+        { key: 'unread', label: 'Unread' },
+        { key: 'urgent', label: 'Urgent' },
+        { key: 'required', label: 'Required' },
+      ].map((tab) => ({
+        ...tab,
+        count: communityTabCounts[tab.key as keyof typeof communityTabCounts],
+      })),
+    [communityTabCounts],
+  );
+
+  const filteredPosts = useMemo(() => {
+    if (!Array.isArray(postsForActiveTab)) return [];
+    if (feedMode && visiblePostsCount < postsForActiveTab.length) {
+      return postsForActiveTab.slice(0, visiblePostsCount);
+    }
+    return postsForActiveTab;
+  }, [postsForActiveTab, feedMode, visiblePostsCount]);
 
   // Reset visible posts count when filter changes
   useEffect(() => {
@@ -222,13 +261,13 @@ export default function EmployeeCommunity({
       const { scrollTop, scrollHeight, clientHeight } = container;
       // Load more when user scrolls to within 100px of the bottom
       if (scrollHeight - scrollTop - clientHeight < 100) {
-        setVisiblePostsCount(prev => Math.min(prev + 3, posts.length));
+        setVisiblePostsCount(prev => Math.min(prev + 3, postsForActiveTab.length));
       }
     };
 
     container.addEventListener('scroll', handleScroll);
     return () => container.removeEventListener('scroll', handleScroll);
-  }, [feedMode, posts, listParams]);
+  }, [feedMode, postsForActiveTab, listParams]);
 
   const queryClient = useQueryClient();
   const confirm = useConfirm();
@@ -617,12 +656,7 @@ export default function EmployeeCommunity({
           />
           <AppTabs
             className="shrink-0"
-            tabs={[
-              { key: 'all', label: 'All' },
-              { key: 'unread', label: 'Unread' },
-              { key: 'urgent', label: 'Urgent' },
-              { key: 'required', label: 'Required' },
-            ]}
+            tabs={communityTabs}
             value={filter}
             onChange={(key) => setFilter(key as typeof filter)}
           />

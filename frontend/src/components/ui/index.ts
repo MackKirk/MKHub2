@@ -29,3 +29,4 @@ export * from './AppEmptyState';
 export * from './AppListCreateItem';
 export * from './AppCalendarBase';
 export * from './AppHeroEditButton';
+export * from './AppFileUpload';
