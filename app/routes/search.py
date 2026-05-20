@@ -6,7 +6,7 @@ from sqlalchemy import or_, and_
 from sqlalchemy.orm import Session
 
 from ..db import get_db
-from ..auth.security import get_current_user, _has_permission
+from ..auth.security import get_current_user, _has_permission, can_access_business_line
 from ..models.models import (
     User,
     EmployeeProfile,
@@ -18,6 +18,11 @@ from ..models.models import (
     WorkOrder,
     CompanyCreditCard,
 )
+from ..services.business_line import (
+    BUSINESS_LINE_CONSTRUCTION,
+    BUSINESS_LINE_REPAIRS_MAINTENANCE,
+)
+from ..services.project_visibility import project_visibility_clause_for_user
 
 
 router = APIRouter(prefix="/search", tags=["search"])
@@ -43,9 +48,17 @@ def global_search(
 
     like = f"%{q}%"
     sections: list[dict] = []
+    project_line_conds = []
+    if can_access_business_line(user, BUSINESS_LINE_CONSTRUCTION):
+        project_line_conds.append(Project.business_line == BUSINESS_LINE_CONSTRUCTION)
+    if can_access_business_line(user, BUSINESS_LINE_REPAIRS_MAINTENANCE):
+        project_line_conds.append(Project.business_line == BUSINESS_LINE_REPAIRS_MAINTENANCE)
+    project_scope = None
+    if project_line_conds:
+        project_scope = and_(or_(*project_line_conds), project_visibility_clause_for_user(user))
 
     # ----- Projects (non-bidding) -----
-    if _has_permission(user, "business:projects:read"):
+    if project_scope is not None:
         try:
             rows = (
                 db.query(Project, Client)
@@ -54,6 +67,7 @@ def global_search(
                     and_(Project.client_id == Client.id, Client.deleted_at.is_(None)),
                 )
                 .filter(Project.is_bidding.is_(False), Project.deleted_at.is_(None))
+                .filter(project_scope)
                 .filter(
                     or_(
                         Project.name.ilike(like),
@@ -98,7 +112,7 @@ def global_search(
             pass
 
     # ----- Opportunities (bidding) -----
-    if _has_permission(user, "business:projects:read"):
+    if project_scope is not None:
         try:
             rows = (
                 db.query(Project, Client)
@@ -107,6 +121,7 @@ def global_search(
                     and_(Project.client_id == Client.id, Client.deleted_at.is_(None)),
                 )
                 .filter(Project.is_bidding.is_(True), Project.deleted_at.is_(None))
+                .filter(project_scope)
                 .filter(
                     or_(
                         Project.name.ilike(like),

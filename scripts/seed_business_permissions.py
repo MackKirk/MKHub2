@@ -121,6 +121,24 @@ def seed_business_permissions():
                 "description": "Allows creating, updating, and deleting Repairs & Maintenance projects and opportunities",
                 "sort_index": 27,
             },
+            {
+                "key": "business:construction:projects:read:all",
+                "label": "View All Projects & Opportunities (Construction)",
+                "description": "Allows viewing all construction projects and opportunities regardless of direct assignment",
+                "sort_index": 28,
+            },
+            {
+                "key": "business:rm:projects:read:all",
+                "label": "View All Projects & Opportunities (Repairs & Maintenance)",
+                "description": "Allows viewing all Repairs & Maintenance projects and opportunities regardless of direct assignment",
+                "sort_index": 29,
+            },
+            {
+                "key": "business:projects:members:write",
+                "label": "Manage Project Members",
+                "description": "Allows adding and removing project members from project detail",
+                "sort_index": 30,
+            },
             # Projects - Sub-permissions
             {
                 "key": "business:projects:reports:read",

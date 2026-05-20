@@ -1,7 +1,7 @@
 import copy
 import logging
 from fastapi import APIRouter, Depends, HTTPException, Query, Body
-from sqlalchemy.orm import Session, defer
+from sqlalchemy.orm import Session, defer, object_session
 from sqlalchemy.orm.attributes import flag_modified
 from sqlalchemy.exc import ProgrammingError
 from sqlalchemy import func, extract, select, literal, or_
@@ -35,6 +35,7 @@ from ..models.models import (
     EstimateItem,
     ProjectFolder,
     FormTemplate,
+    ProjectMember,
 )
 from datetime import datetime, timezone, time, timedelta
 from ..auth.security import (
@@ -55,6 +56,12 @@ from ..services.business_line import (
     BUSINESS_LINE_CONSTRUCTION,
     BUSINESS_LINE_REPAIRS_MAINTENANCE,
     normalize_business_line,
+)
+from ..services.project_visibility import (
+    can_manage_project_members,
+    is_project_visible_to_user,
+    project_related_to_user_clause,
+    project_visibility_clause_for_user,
 )
 from sqlalchemy import or_, and_, cast, String, Date
 
@@ -141,6 +148,9 @@ def _business_project_order_parts(sort: Optional[str], sort_dir: Optional[str], 
 
 def _assert_project_line_read(user: User, proj: Project) -> None:
     if not can_access_business_line(user, getattr(proj, "business_line", None)):
+        raise HTTPException(status_code=403, detail="Forbidden")
+    db = object_session(proj)
+    if db is not None and not is_project_visible_to_user(db, user, proj):
         raise HTTPException(status_code=403, detail="Forbidden")
 
 
@@ -661,8 +671,12 @@ def _dashboard_business_line_clause(user: User, business_line: Optional[str]):
         bl = normalize_business_line(business_line)
         if not can_access_business_line(user, bl):
             raise HTTPException(status_code=403, detail="Forbidden")
-        return Project.business_line == bl
-    return _business_line_filter_for_user(user)
+        base_clause = Project.business_line == bl
+    else:
+        base_clause = _business_line_filter_for_user(user)
+    if base_clause is None:
+        return None
+    return and_(base_clause, project_visibility_clause_for_user(user))
 
 
 def calculate_proposal_grand_total(proposal_data: dict) -> float:
@@ -915,10 +929,30 @@ def create_project(payload: dict, db: Session = Depends(get_db), user=Depends(ge
         else:
             raise HTTPException(status_code=400, detail="related_client_ids must be a list or null")
     
+    payload["created_by_user_id"] = user.id
     proj = Project(**payload)
     db.add(proj)
     db.commit()
     db.refresh(proj)
+
+    try:
+        exists_member = (
+            db.query(ProjectMember.id)
+            .filter(ProjectMember.project_id == proj.id, ProjectMember.user_id == user.id)
+            .first()
+        )
+        if not exists_member:
+            db.add(
+                ProjectMember(
+                    project_id=proj.id,
+                    user_id=user.id,
+                    member_role="creator",
+                    added_by_user_id=user.id,
+                )
+            )
+            db.commit()
+    except Exception:
+        db.rollback()
 
     # Create audit log for project/opportunity creation (immediately after commit, before any other logic)
     try:
@@ -1004,16 +1038,10 @@ def list_projects(
     user: User = Depends(get_current_user),
 ):
     query = db.query(Project).filter(Project.deleted_at.is_(None))  # soft delete: exclude removed projects
-    if business_line:
-        bl = normalize_business_line(business_line)
-        if not can_access_business_line(user, bl):
-            raise HTTPException(status_code=403, detail="Forbidden")
-        query = query.filter(Project.business_line == bl)
-    else:
-        bl_filter = _business_line_filter_for_user(user)
-        if bl_filter is None:
-            return []
-        query = query.filter(bl_filter)
+    bl_clause = _dashboard_business_line_clause(user, business_line)
+    if bl_clause is None:
+        return []
+    query = query.filter(bl_clause)
     if client:
         query = query.filter(Project.client_id == client)
     if site:
@@ -1109,12 +1137,10 @@ def get_project(
     p = db.query(Project).filter(Project.id == project_id, Project.deleted_at.is_(None)).first()
     if not p:
         raise HTTPException(status_code=404, detail="Not found")
-    if can_access_business_line(user, getattr(p, "business_line", None)):
-        pass
-    elif sign_inspection_id and user_has_sign_request_for_inspection(db, user, project_id, sign_inspection_id):
+    if sign_inspection_id and user_has_sign_request_for_inspection(db, user, project_id, sign_inspection_id):
         pass
     else:
-        raise HTTPException(status_code=403, detail="Forbidden")
+        _assert_project_line_read(user, p)
     client = None
     if getattr(p, 'client_id', None):
         try:
@@ -2031,6 +2057,129 @@ def delete_project_folder(
     except Exception:
         pass
 
+    return {"status": "ok"}
+
+
+def _serialize_project_member_row(db: Session, row: ProjectMember, creator_id: Optional[uuid.UUID]) -> dict:
+    member_user = (
+        db.query(User, EmployeeProfile)
+        .outerjoin(EmployeeProfile, EmployeeProfile.user_id == User.id)
+        .filter(User.id == row.user_id)
+        .first()
+    )
+    user_obj = member_user[0] if member_user else None
+    profile_obj = member_user[1] if member_user else None
+    full_name = " ".join(
+        [x for x in [getattr(profile_obj, "first_name", None), getattr(profile_obj, "last_name", None)] if x]
+    ).strip()
+    display_name = (
+        (getattr(profile_obj, "preferred_name", None) or "").strip()
+        or full_name
+        or (getattr(user_obj, "username", None) or "")
+    )
+    return {
+        "id": str(row.id),
+        "user_id": str(row.user_id),
+        "name": display_name or str(row.user_id),
+        "username": getattr(user_obj, "username", None) if user_obj else None,
+        "member_role": getattr(row, "member_role", None),
+        "is_creator": bool(creator_id and row.user_id == creator_id),
+        "created_at": row.created_at.isoformat() if getattr(row, "created_at", None) else None,
+    }
+
+
+@router.get("/{project_id}/members")
+def list_project_members(
+    project_id: str,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    proj = db.query(Project).filter(Project.id == project_id, Project.deleted_at.is_(None)).first()
+    if not proj:
+        raise HTTPException(status_code=404, detail="Project not found")
+    _assert_project_line_read(user, proj)
+    rows = (
+        db.query(ProjectMember)
+        .filter(ProjectMember.project_id == proj.id)
+        .order_by(ProjectMember.created_at.asc())
+        .all()
+    )
+    return [_serialize_project_member_row(db, row, getattr(proj, "created_by_user_id", None)) for row in rows]
+
+
+@router.post("/{project_id}/members")
+def add_project_member(
+    project_id: str,
+    payload: dict = Body(...),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    proj = db.query(Project).filter(Project.id == project_id, Project.deleted_at.is_(None)).first()
+    if not proj:
+        raise HTTPException(status_code=404, detail="Project not found")
+    _assert_project_line_read(user, proj)
+    if not can_manage_project_members(user):
+        raise HTTPException(status_code=403, detail="Forbidden")
+
+    raw_user_id = payload.get("user_id")
+    if not raw_user_id:
+        raise HTTPException(status_code=400, detail="user_id is required")
+    try:
+        member_user_id = uuid.UUID(str(raw_user_id))
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid user_id")
+
+    target_user = db.query(User).filter(User.id == member_user_id, User.is_active.is_(True)).first()
+    if not target_user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    existing = (
+        db.query(ProjectMember)
+        .filter(ProjectMember.project_id == proj.id, ProjectMember.user_id == member_user_id)
+        .first()
+    )
+    if existing:
+        return _serialize_project_member_row(db, existing, getattr(proj, "created_by_user_id", None))
+
+    row = ProjectMember(
+        project_id=proj.id,
+        user_id=member_user_id,
+        member_role=(payload.get("member_role") or None),
+        added_by_user_id=user.id,
+    )
+    db.add(row)
+    db.commit()
+    db.refresh(row)
+    return _serialize_project_member_row(db, row, getattr(proj, "created_by_user_id", None))
+
+
+@router.delete("/{project_id}/members/{member_user_id}")
+def remove_project_member(
+    project_id: str,
+    member_user_id: str,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    proj = db.query(Project).filter(Project.id == project_id, Project.deleted_at.is_(None)).first()
+    if not proj:
+        raise HTTPException(status_code=404, detail="Project not found")
+    _assert_project_line_read(user, proj)
+    if not can_manage_project_members(user):
+        raise HTTPException(status_code=403, detail="Forbidden")
+    try:
+        member_uid = uuid.UUID(str(member_user_id))
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid user id")
+
+    row = (
+        db.query(ProjectMember)
+        .filter(ProjectMember.project_id == proj.id, ProjectMember.user_id == member_uid)
+        .first()
+    )
+    if not row:
+        raise HTTPException(status_code=404, detail="Member not found")
+    db.delete(row)
+    db.commit()
     return {"status": "ok"}
 
 
@@ -5357,21 +5506,8 @@ def calculate_estimate_values(estimate, db: Session) -> tuple[Optional[float], O
 
 
 def _project_related_to_user_filter(user_id):
-    """Filter projects/opportunities where the current user is estimator, project_admin, or onsite_lead (or in estimator_ids / division_onsite_leads)."""
-    # Scalar fields: estimator_id, project_admin_id, onsite_lead_id
-    scalar = or_(
-        Project.estimator_id == user_id,
-        Project.project_admin_id == user_id,
-        Project.onsite_lead_id == user_id,
-    )
-    # estimator_ids: JSON array of user UUIDs; division_onsite_leads: JSON dict of division_id -> user_id
-    # Use cast + like for portability (works on SQLite and PostgreSQL); user_id is UUID so substring false positives are unlikely
-    user_id_str = str(user_id)
-    json_related = or_(
-        cast(Project.estimator_ids, String).like(f'%{user_id_str}%'),
-        cast(Project.division_onsite_leads, String).like(f'%{user_id_str}%'),
-    )
-    return or_(scalar, json_related)
+    """Filter projects/opportunities where the user is related via ACL (creator/member) or legacy fields."""
+    return project_related_to_user_clause(user_id, include_legacy=True)
 
 
 @router.get("/business/dashboard")
