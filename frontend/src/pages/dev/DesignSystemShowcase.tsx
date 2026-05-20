@@ -3,14 +3,21 @@ import {
   AppBadge,
   AppButton,
   AppCalendarBase,
+  AppCombobox,
+  AppDatePicker,
+  AppUserSelect,
   AppCard,
   AppEmptyState,
+  AppFileUpload,
+  AppFormModal,
   AppHeroEditButton,
   AppInput,
   AppListCreateItem,
   AppModal,
   AppPageHeader,
   AppSectionHeader,
+  AppMultiSelect,
+  AppProjectSelect,
   AppSelect,
   AppTable,
   AppTabs,
@@ -95,6 +102,16 @@ const spacingTokens = [
 export default function DesignSystemShowcase() {
   const [activeTab, setActiveTab] = useState('overview');
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isFormModalOpen, setIsFormModalOpen] = useState(false);
+  const [showcaseJob, setShowcaseJob] = useState('');
+  const [showcaseProjectId, setShowcaseProjectId] = useState('');
+  const [showcaseDepartment, setShowcaseDepartment] = useState('');
+  const [showcaseDepartmentsMulti, setShowcaseDepartmentsMulti] = useState<string[]>([]);
+  const [showcaseDueDate, setShowcaseDueDate] = useState('');
+  const [showcaseUserId, setShowcaseUserId] = useState('');
+  const [showcaseUserIds, setShowcaseUserIds] = useState<string[]>([]);
+  const [showcaseAttachment, setShowcaseAttachment] = useState<File | null>(null);
+  const [showcaseAttachments, setShowcaseAttachments] = useState<File[]>([]);
   const tableRows = useMemo(
     () => [
       [<span key="u1">RC-2044</span>, <span key="n1">Atlas Office Buildout</span>, <AppBadge key="s1" variant="info">In Progress</AppBadge>, <span key="o1">May 26, 2026</span>],
@@ -238,40 +255,199 @@ export default function DesignSystemShowcase() {
         </div>
 
         <div className={uiLayout.sectionGrid2}>
-          <AppCard title="Form Controls" subtitle="Unified inputs, selects, and textareas for data entry.">
+          <AppCard
+            title="Form Controls"
+            subtitle="Unified inputs, selects, and textareas — pages, cards, and modals."
+          >
+            <div className={uiCx('mb-4 space-y-2 rounded-lg border border-gray-200 bg-gray-50 p-3', uiRadius.control)}>
+              <p className={uiTypography.body}>
+                <strong className="font-semibold text-gray-800">Field hint (?)</strong> — use prop{' '}
+                <code className="rounded bg-white px-1 py-0.5 text-[11px]">fieldHint</code> on{' '}
+                <code className="text-[11px]">AppInput</code>, <code className="text-[11px]">AppSelect</code>, or{' '}
+                <code className="text-[11px]">AppTextarea</code> anywhere in the app (not only inside modals). Same red
+                ? icon and tooltip as in <strong className="font-semibold text-gray-800">AppFormModal</strong> and Director
+                Meetings.
+              </p>
+              <p className={uiTypography.helper}>
+                String format: <code className="text-[11px]">{'Title\\n\\nExplanation body.'}</code> (title + body).
+                Labels: uppercase 10px semibold gray; trailing <code className="text-[11px]">*</code> on the label string
+                renders in brand red for required fields.
+              </p>
+              <p className={uiTypography.helper}>
+                Standalone: <code className="text-[11px]">AppFieldHint</code> or legacy{' '}
+                <code className="text-[11px]">FieldHint</code> next to custom labels when not using App* controls.
+              </p>
+              <p className={uiTypography.helper}>
+                Searchable lists: <code className="text-[11px]">AppCombobox</code> — trigger matches{' '}
+                <code className="text-[11px]">AppInput</code> (<code className="text-[11px]">rounded-lg</code>); portaled
+                menu uses <code className="text-[11px]">uiDropdown.menu</code> (
+                <code className="text-[11px]">rounded-xl</code>). <code className="text-[11px]">AppSelect</code> — single
+                value; <code className="text-[11px]">searchable</code> adds a filter field in the menu.{' '}
+                <code className="text-[11px]">AppMultiSelect</code> — multiple values (checkboxes + chips, same menu shell;
+                also supports <code className="text-[11px]">searchable</code>).
+              </p>
+              <p className={uiTypography.helper}>
+                Dates: <code className="text-[11px]">AppDatePicker</code> — click the month label to pick month/year, then
+                choose a day. Portaled panel uses <code className="text-[11px]">uiDatePicker</code> (not the native browser
+                picker).
+              </p>
+              <p className={uiTypography.helper}>
+                Projects: <code className="text-[11px]">AppProjectSelect</code> — searchable jobs from{' '}
+                <code className="text-[11px]">/projects</code> (name, code, address); same pattern as Clock In project
+                rows. Use <code className="text-[11px]">JobSearchCombobox</code> when predefined jobs (Shop/Yard) are
+                included. Optional: <code className="text-[11px]">allowEmpty</code>.
+              </p>
+              <p className={uiTypography.helper}>
+                Users: <code className="text-[11px]">AppUserSelect</code> —{' '}
+                <code className="text-[11px]">mode=&quot;single&quot;</code> (default) or{' '}
+                <code className="text-[11px]">mode=&quot;multiple&quot;</code>. Loads active users from{' '}
+                <code className="text-[11px]">/auth/users/options</code> (alphabetical, search, infinite scroll, profile
+                photo). Single shows the user in the field only (no chip below); multiple keeps the menu open with
+                checkboxes and chips.
+              </p>
+            </div>
             <div className="space-y-3">
+              <AppInput
+                id="showcase-title"
+                label="Title *"
+                placeholder="Short summary"
+                fieldHint="Title\n\nA short summary shown in lists and notifications."
+              />
               <AppInput
                 id="showcase-search"
                 label="Search"
                 placeholder="Search by employee, project, or ID"
                 leftIcon={<Search className="h-4 w-4" />}
+                fieldHint="Search\n\nMatches employee name, project code, or internal ID."
+              />
+              <AppProjectSelect
+                id="showcase-project"
+                label="Project (optional)"
+                value={showcaseProjectId}
+                onChange={setShowcaseProjectId}
+                allowEmpty
+                emptyOptionLabel="No project"
+                placeholder="Search by name, code, or address…"
+                fieldHint="Project\n\nReal projects from the API (excludes bidding by default). Clock In uses JobSearchCombobox when Shop/Yard jobs are included."
+              />
+              <AppCombobox
+                id="showcase-job"
+                label="Job * (static demo)"
+                placeholder="Search by name, code, or address…"
+                fieldHint="Job\n\nStatic AppCombobox demo only — production Clock In uses JobSearchCombobox."
+                options={[
+                  { value: 'shop', label: 'Shop / Yard', description: 'Predefined · SHOP' },
+                  { value: 'p1', label: 'North Tower Renovation', description: 'PRJ-1042 · Vancouver, BC' },
+                  { value: 'p2', label: 'Warehouse Leak Investigation', description: 'PRJ-2088 · Burnaby, BC' },
+                ]}
+                value={showcaseJob}
+                onChange={setShowcaseJob}
+              />
+              <AppDatePicker
+                id="showcase-due-date"
+                label="Due date (optional)"
+                placeholder="yyyy-mm-dd"
+                value={showcaseDueDate}
+                onChange={(e) => setShowcaseDueDate(e.target.value)}
+                fieldHint="Due date\n\nOptional deadline for the task or request."
+              />
+              <AppUserSelect
+                id="showcase-assignee"
+                mode="single"
+                label="Assign to user *"
+                placeholder="Search or select user…"
+                value={showcaseUserId}
+                onChange={setShowcaseUserId}
+                fieldHint="Assign to user\n\nSingle user target for a task or request (Task Requests / Equipment assign pattern)."
+              />
+              <AppUserSelect
+                id="showcase-signers"
+                mode="multiple"
+                label="Additional signers"
+                placeholder="Search users to add…"
+                value={showcaseUserIds}
+                onChange={setShowcaseUserIds}
+                fieldHint="Additional signers\n\nMultiple users who must sign a document (Safety / approvals pattern)."
               />
               <AppSelect
                 id="showcase-department"
                 label="Department"
-                placeholder="Select department"
+                placeholder="Search or select department…"
+                searchable
+                value={showcaseDepartment}
+                onChange={(e) => setShowcaseDepartment(e.target.value)}
+                fieldHint="Department\n\nSingle choice with search in the menu — same pattern as AppUserSelect."
                 options={[
                   { value: 'hr', label: 'Human Resources' },
                   { value: 'operations', label: 'Operations' },
                   { value: 'fleet', label: 'Fleet' },
                 ]}
               />
+              <AppMultiSelect
+                id="showcase-departments-multi"
+                label="Departments (multi)"
+                placeholder="Search departments…"
+                searchable
+                value={showcaseDepartmentsMulti}
+                onChange={setShowcaseDepartmentsMulti}
+                fieldHint="Departments (multi)\n\nStatic options with search, checkboxes, chips, and portaled menu — use anywhere you need multiple enum values (not users)."
+                options={[
+                  { value: 'hr', label: 'Human Resources' },
+                  { value: 'operations', label: 'Operations' },
+                  { value: 'fleet', label: 'Fleet' },
+                  { value: 'estimating', label: 'Estimating' },
+                  { value: 'safety', label: 'Safety' },
+                ]}
+              />
               <AppTextarea
                 id="showcase-notes"
                 label="Notes"
                 placeholder="Write concise internal notes..."
-                helperText="Keep notes objective and action-oriented."
+                fieldHint="Notes\n\nVisible to internal staff only; keep factual and action-oriented."
+                helperText="Helper text stays visible below the field; fieldHint is hover/focus on ?."
+              />
+              <AppFileUpload
+                mode="multiple"
+                value={showcaseAttachments}
+                onChange={setShowcaseAttachments}
+                accept="image/*,.pdf,.doc,.docx"
+                label="Attachments (optional – multiple allowed)"
+                fieldHint="Attachments\n\nDrag, click, or Ctrl+V. Same control as Opportunities → Notes → New Note."
+              />
+              <AppFileUpload
+                mode="single"
+                value={showcaseAttachment}
+                onChange={setShowcaseAttachment}
+                label="Single attachment"
+                fieldHint="Single file\n\nOne file with preview; non-images show as file row."
               />
             </div>
           </AppCard>
 
-          <AppCard title="Modal" subtitle="Modal shell only, reusable across features.">
+          <AppCard
+            title="Modals"
+            subtitle="AppModal for confirmations; AppFormModal for create/edit flows. Backdrop uses blur + dim (Task Requests pattern)."
+          >
             <p className={uiTypography.body}>
-              Use one modal visual system for all features to maintain consistency.
+              Import from <code className="rounded bg-gray-100 px-1 py-0.5 text-[11px]">@/components/ui</code>. Changes
+              here propagate everywhere these components are used.
             </p>
-            <div className="mt-4">
-              <AppButton onClick={() => setIsModalOpen(true)} leftIcon={<ClipboardList className="h-4 w-4" />}>
-                Open Modal
+            <ul className={uiCx(uiTypography.helper, 'mt-2 list-inside list-disc space-y-1')}>
+              <li>
+                <strong className="font-semibold text-gray-800">AppFormModal</strong> — scrollable form body, optional{' '}
+                <code className="text-[11px]">quickInfo</code> panel toggled via ? next to close
+              </li>
+              <li>
+                <strong className="font-semibold text-gray-800">fieldHint</strong> — same ? tooltips as Form Controls;
+                use on modal fields and on any other form in the system
+              </li>
+            </ul>
+            <div className={uiCx('mt-4 flex flex-wrap gap-2', uiLayout.actionsRow)}>
+              <AppButton onClick={() => setIsModalOpen(true)} variant="secondary" leftIcon={<ClipboardList className="h-4 w-4" />}>
+                Simple modal
+              </AppButton>
+              <AppButton onClick={() => setIsFormModalOpen(true)} leftIcon={<Plus className="h-4 w-4" />}>
+                Form modal (standard)
               </AppButton>
             </div>
           </AppCard>
@@ -302,13 +478,15 @@ export default function DesignSystemShowcase() {
 
         <AppCard
           title="Page two-column layout"
-          subtitle="Schedule and Clock In/Out — primary column left, sidebar right, tops aligned."
+          subtitle="Schedule and Clock In/Out — equal-height columns via items-stretch + h-full cards."
         >
           <p className={uiCx(uiTypography.helper, 'mb-4')}>
             Use <code className="rounded bg-gray-100 px-1 py-0.5 text-[11px]">uiLayout.pageTwoColumn</code> (Schedule,
             Clock In/Out) or <code className="rounded bg-gray-100 px-1 py-0.5 text-[11px]">uiLayout.pageOverview</code>{' '}
-            (Overview feed + sidebar). Stack cards inside each column with{' '}
-            <code className="rounded bg-gray-100 px-1 py-0.5 text-[11px]">uiSpacing.sectionStack</code>. Do{' '}
+            (Overview feed + sidebar; <code className="text-[11px]">items-stretch</code> keeps both columns equal height).
+            Stack cards inside the sidebar with{' '}
+            <code className="rounded bg-gray-100 px-1 py-0.5 text-[11px]">uiSpacing.sectionStack</code>; give the primary
+            card <code className="text-[11px]">h-full flex flex-col</code>. Do{' '}
             <strong className="font-semibold text-gray-800">not</strong> put{' '}
             <code className="rounded bg-gray-100 px-1 py-0.5 text-[11px]">space-y-*</code> on the grid wrapper — it
             misaligns column tops.
@@ -381,6 +559,50 @@ export default function DesignSystemShowcase() {
           <p className="text-xs text-gray-600">Backdrop, border radius, spacing, and title hierarchy remain consistent.</p>
         </div>
       </AppModal>
+
+      <AppFormModal
+        open={isFormModalOpen}
+        onClose={() => setIsFormModalOpen(false)}
+        title="Create Request"
+        description="Start a conversation that may become a task"
+        quickInfo={
+          <>
+            <p>Requests allow you to start conversations before creating tasks.</p>
+            <p>You can exchange information and clarify requirements before accepting.</p>
+          </>
+        }
+        footer={
+          <div className={uiCx(uiLayout.actionsRow, 'w-full justify-end')}>
+            <AppButton variant="secondary" size="sm" onClick={() => setIsFormModalOpen(false)}>
+              Cancel
+            </AppButton>
+            <AppButton size="sm" onClick={() => setIsFormModalOpen(false)}>
+              Create Request
+            </AppButton>
+          </div>
+        }
+      >
+        <AppInput
+          label="Title *"
+          placeholder="Short summary"
+          fieldHint="Title\n\nA short summary shown in lists and notifications."
+        />
+        <AppSelect
+          label="Priority"
+          fieldHint={'Priority\n\nHow urgent this request is for the recipient.'}
+          options={[
+            { value: 'low', label: 'Low' },
+            { value: 'normal', label: 'Normal' },
+            { value: 'high', label: 'High' },
+          ]}
+        />
+        <AppTextarea
+          label="Description"
+          rows={4}
+          placeholder="Explain what needs to be done..."
+          fieldHint="Description\n\nOptional detail for the recipient before the request becomes a task."
+        />
+      </AppFormModal>
     </main>
   );
 }

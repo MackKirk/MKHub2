@@ -3,8 +3,9 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
 import { api } from '@/lib/api';
 import { useConfirm } from '@/components/ConfirmProvider';
+import { AppBadge, AppButton, uiBorders, uiCx, uiRadius, uiShadows, uiTypography } from '@/components/ui';
 import type { Task, TaskStatus } from './types';
-import { getStatusBadgeClass, getStatusLabel, getTaskSourceLabel, priorityDot } from './taskUi';
+import { getStatusBadgeVariant, getStatusLabel, getTaskSourceLabel, priorityDot } from './taskUi';
 
 type Props = {
   task: Task;
@@ -39,9 +40,15 @@ function statusSince(task: Task): string | null {
   if (task.status === 'accepted') return task.created_at;
   if (task.status === 'in_progress') return task.started_at || task.updated_at || task.created_at;
   if (task.status === 'done') return task.concluded_at || task.updated_at || task.created_at;
-  // blocked
   return task.updated_at || task.started_at || task.created_at;
 }
+
+const statusLeftBorder: Record<TaskStatus, string> = {
+  accepted: 'border-l-slate-300',
+  in_progress: 'border-l-blue-500',
+  blocked: 'border-l-amber-500',
+  done: 'border-l-green-500',
+};
 
 export default function TaskCard({ task, onClick, showActions = true }: Props) {
   const qc = useQueryClient();
@@ -50,14 +57,7 @@ export default function TaskCard({ task, onClick, showActions = true }: Props) {
   const statusLabel = getStatusLabel(task.status);
   const dotClass = priorityDot[task.priority] || priorityDot.normal;
   const age = useMemo(() => timeAgoCompact(statusSince(task)), [task.status, task.created_at, task.updated_at, task.started_at, task.concluded_at]);
-  const leftBorder =
-    task.status === 'in_progress'
-      ? 'border-l-blue-500'
-      : task.status === 'blocked'
-        ? 'border-l-amber-500'
-        : task.status === 'done'
-          ? 'border-l-green-500'
-          : 'border-l-slate-300';
+  const leftBorder = statusLeftBorder[task.status] || statusLeftBorder.accepted;
 
   const invalidate = async () => {
     await qc.invalidateQueries({ queryKey: ['tasks'] });
@@ -192,20 +192,31 @@ export default function TaskCard({ task, onClick, showActions = true }: Props) {
     <button
       type="button"
       onClick={onClick}
-      className={`w-full text-left rounded-lg border border-gray-200 bg-white shadow-sm p-4 border-l-4 ${leftBorder} transition-all duration-200 ease-out hover:-translate-y-0.5 hover:shadow-md relative`}
+      className={uiCx(
+        'relative w-full border-l-4 text-left transition-all duration-200 ease-out hover:-translate-y-0.5',
+        uiRadius.control,
+        uiBorders.subtle,
+        uiShadows.card,
+        'bg-white p-4 hover:shadow-md',
+        leftBorder,
+      )}
     >
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0 flex-1">
           <div className="flex items-start gap-2">
-            <div className="text-sm font-semibold text-gray-900 truncate min-w-0 flex-1" title={task.title}>{task.title}</div>
+            <div className={uiCx(uiTypography.sectionTitle, 'min-w-0 flex-1 truncate')} title={task.title}>
+              {task.title}
+            </div>
             {showActions && (
-              <div className="flex items-center gap-1 shrink-0">
+              <div className="flex shrink-0 items-center gap-1">
                 {actions
                   .filter((a) => a.show)
                   .slice(0, 2)
                   .map((a) => (
-                    <button
+                    <AppButton
                       key={a.key}
+                      variant="secondary"
+                      size="sm"
                       type="button"
                       title={a.title}
                       aria-label={a.title}
@@ -215,33 +226,26 @@ export default function TaskCard({ task, onClick, showActions = true }: Props) {
                         e.stopPropagation();
                         a.onClick();
                       }}
-                      className="px-3 py-1.5 rounded-lg text-xs font-medium border border-gray-200 bg-white hover:bg-gray-50 disabled:opacity-60"
                     >
                       {a.label}
-                    </button>
+                    </AppButton>
                   ))}
               </div>
             )}
           </div>
           <div className="mt-2 flex items-center justify-between gap-3">
-            <div className="text-xs text-gray-600 font-medium">{source}</div>
-            <div className="flex items-center gap-3 shrink-0">
+            <div className={uiCx(uiTypography.helper, 'font-medium')}>{source}</div>
+            <div className="flex shrink-0 items-center gap-3">
+              <AppBadge variant={getStatusBadgeVariant(task.status)}>{statusLabel}</AppBadge>
               <span
-                className={`text-[10px] uppercase font-semibold tracking-wide px-2 py-0.5 rounded-full border ${getStatusBadgeClass(
-                  task.status
-                )}`}
-              >
-                {statusLabel}
-              </span>
-              <span
-                className={`w-2.5 h-2.5 rounded-full ${dotClass}`}
+                className={uiCx('h-2.5 w-2.5 rounded-full', dotClass)}
                 title={`Priority: ${task.priority || 'normal'}`}
                 aria-label={`Priority: ${task.priority || 'normal'}`}
               />
             </div>
           </div>
           {age && age !== 'now' && (
-            <div className="mt-2 text-[11px] text-gray-500">
+            <div className={uiCx('mt-2 text-[11px]', uiTypography.helper)}>
               In this status: <span className="font-medium text-gray-700">{age}</span>
             </div>
           )}

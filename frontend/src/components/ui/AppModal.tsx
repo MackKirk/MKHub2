@@ -5,12 +5,22 @@ import { uiBorders, uiColors, uiCx, uiRadius, uiShadows, uiSpacing, uiTypography
 
 type AppModalProps = {
   open: boolean;
-  title: ReactNode;
+  title?: ReactNode;
   description?: ReactNode;
   children: ReactNode;
   footer?: ReactNode;
   onClose: () => void;
   size?: 'sm' | 'md' | 'lg';
+  /** Rendered between the title block and the close button (e.g. quick-info toggle). */
+  headerActions?: ReactNode;
+  /** Replaces the default title/description block; close button remains on the right. */
+  headerContent?: ReactNode;
+  /** When false, only the dialog shell and body render (no title row). */
+  showHeader?: boolean;
+  /** Extra classes on the dialog panel (e.g. width transitions). */
+  dialogClassName?: string;
+  /** Body wrapper classes; when set, default body padding is omitted. */
+  bodyClassName?: string;
 };
 
 const sizeClasses = {
@@ -19,7 +29,20 @@ const sizeClasses = {
   lg: 'max-w-4xl',
 } as const;
 
-export function AppModal({ open, title, description, children, footer, onClose, size = 'md' }: AppModalProps) {
+export function AppModal({
+  open,
+  title,
+  description,
+  children,
+  footer,
+  onClose,
+  size = 'md',
+  headerActions,
+  headerContent,
+  showHeader = true,
+  dialogClassName,
+  bodyClassName,
+}: AppModalProps) {
   useEffect(() => {
     if (!open) return;
     const onKeyDown = (event: KeyboardEvent) => {
@@ -34,42 +57,52 @@ export function AppModal({ open, title, description, children, footer, onClose, 
   return (
     <OverlayPortal>
       <div
-        className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+        className="fixed inset-0 z-50 flex items-center justify-center bg-black/35 p-4 backdrop-blur-sm"
         onMouseDown={onClose}
         role="presentation"
       >
         <div
           className={uiCx(
-            'w-full overflow-hidden',
+            'flex max-h-[90vh] w-full flex-col overflow-hidden',
             uiRadius.modal,
             uiShadows.elevated,
             uiColors.surface,
             sizeClasses[size],
+            dialogClassName,
           )}
           onMouseDown={(event) => event.stopPropagation()}
           role="dialog"
           aria-modal="true"
         >
-          <header className={uiCx('flex items-start justify-between gap-3', uiSpacing.cardPadding, uiBorders.subtle)}>
-            <div className="min-w-0 space-y-1">
-              <h3 className={uiTypography.sectionTitle}>{title}</h3>
-              {description ? <p className={uiTypography.sectionSubtitle}>{description}</p> : null}
-            </div>
-            <button
-              type="button"
-              onClick={onClose}
-              className={uiCx(
-                'inline-flex h-8 w-8 items-center justify-center bg-white text-gray-600 transition-colors hover:bg-gray-100',
-                uiRadius.control,
-                uiBorders.input,
+          {showHeader ? (
+            <header className={uiCx('flex shrink-0 items-start justify-between gap-3', uiSpacing.cardPadding, uiBorders.subtle)}>
+              {headerContent ?? (
+                <div className="min-w-0 space-y-1">
+                  {title ? <h3 className={uiTypography.sectionTitle}>{title}</h3> : null}
+                  {description ? <p className={uiTypography.sectionSubtitle}>{description}</p> : null}
+                </div>
               )}
-              aria-label="Close modal"
-            >
-              <X className="h-4 w-4" />
-            </button>
-          </header>
-          <div className={uiSpacing.cardPadding}>{children}</div>
-          {footer ? <footer className={uiCx(uiSpacing.cardPadding, 'border-t border-gray-100')}>{footer}</footer> : null}
+              <div className="flex shrink-0 items-center gap-1.5">
+                {headerActions}
+                <button
+                  type="button"
+                  onClick={onClose}
+                  className={uiCx(
+                    'inline-flex h-8 w-8 items-center justify-center bg-white text-gray-600 transition-colors hover:bg-gray-100',
+                    uiRadius.control,
+                    uiBorders.input,
+                  )}
+                  aria-label="Close modal"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+            </header>
+          ) : null}
+          <div className={uiCx(bodyClassName === undefined ? uiSpacing.cardPadding : '', bodyClassName)}>{children}</div>
+          {footer ? (
+            <footer className={uiCx('shrink-0', uiSpacing.cardPadding, uiBorders.subtle)}>{footer}</footer>
+          ) : null}
         </div>
       </div>
     </OverlayPortal>

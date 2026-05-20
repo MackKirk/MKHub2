@@ -3,7 +3,21 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import ReactGridLayout, { WidthProvider } from 'react-grid-layout/legacy';
 import type { Layout as RGLLayout } from 'react-grid-layout/legacy';
+import { ChevronDown, LayoutDashboard } from 'lucide-react';
 import { api } from '@/lib/api';
+import {
+  AppButton,
+  AppEmptyState,
+  AppPageHeader,
+  uiBorders,
+  uiColors,
+  uiCx,
+  uiLayout,
+  uiRadius,
+  uiShadows,
+  uiSpacing,
+  uiTypography,
+} from '@/components/ui';
 
 const GridLayout = WidthProvider(ReactGridLayout);
 import toast from 'react-hot-toast';
@@ -258,55 +272,56 @@ export default function Home() {
   return (
     <LoadingOverlay isLoading={showLoading} text="Loading dashboard…" minHeight="min-h-[50vh]">
     <AnimationReadyProvider loaded={!isLoading} delay={80}>
-    <div className="max-w-[1600px] mx-auto space-y-4">
-      {/* Title Bar - same as Overview (personal) */}
-      <div className="rounded-xl border bg-white p-4">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-3 flex-1">
-            <div>
-              <div className="text-xl font-semibold text-gray-900">My Dashboard</div>
-            </div>
-          </div>
+    <main className={uiCx('min-h-full bg-gray-50', uiSpacing.pageY)}>
+    <div className={uiCx('mx-auto w-full max-w-[1600px]', uiSpacing.pageStack)}>
+      <AppPageHeader
+        title="My Dashboard"
+        icon={<LayoutDashboard className="h-4 w-4" />}
+        actions={
           <div className="text-right">
-            <div className="text-[10px] font-medium text-gray-500 uppercase tracking-wide">Today</div>
-            <div className="text-xs font-semibold text-gray-700 mt-0.5">{todayLabel}</div>
+            <div className={uiTypography.overline}>Today</div>
+            <div className={uiCx(uiTypography.sectionTitle, 'mt-0.5')}>{todayLabel}</div>
           </div>
-        </div>
-      </div>
+        }
+      />
 
-      <div className="mb-4 flex flex-wrap items-center justify-start gap-2">
+      <div className={uiLayout.actionsRow}>
           {isEditMode ? (
             <>
-              <button
-                type="button"
-                onClick={() => setAddModalOpen(true)}
-                className="px-3 py-2 rounded-lg border border-gray-300 bg-white text-gray-700 hover:bg-gray-50 text-sm font-medium"
-              >
+              <AppButton type="button" variant="secondary" size="sm" onClick={() => setAddModalOpen(true)}>
                 Add Widget
-              </button>
+              </AppButton>
               {showTemplatesMenu && (
                 <div className="relative" ref={templatesMenuRef}>
-                  <button
+                  <AppButton
                     type="button"
+                    variant="secondary"
+                    size="sm"
                     onClick={() => setTemplatesMenuOpen((o) => !o)}
-                    className="px-3 py-2 rounded-lg border border-gray-300 bg-white text-gray-700 hover:bg-gray-50 text-sm font-medium inline-flex items-center gap-1"
+                    rightIcon={<ChevronDown className="h-4 w-4 text-gray-500" />}
                     aria-expanded={templatesMenuOpen}
                     aria-haspopup="true"
                   >
                     Templates
-                    <svg className="w-4 h-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                    </svg>
-                  </button>
+                  </AppButton>
                   {templatesMenuOpen && (
                     <div
-                      className="absolute left-0 mt-1 min-w-[10rem] rounded-lg border border-gray-200 bg-white py-1 shadow-lg z-20"
+                      className={uiCx(
+                        'absolute left-0 z-20 mt-1 min-w-[10rem] py-1',
+                        uiRadius.control,
+                        uiBorders.subtle,
+                        uiColors.surface,
+                        uiShadows.elevated,
+                      )}
                       role="menu"
                     >
                       <button
                         type="button"
                         role="menuitem"
-                        className="w-full text-left px-3 py-2 text-sm text-gray-800 hover:bg-gray-50"
+                        className={uiCx(
+                          'w-full px-3 py-2 text-left transition-colors hover:bg-gray-50',
+                          uiTypography.body,
+                        )}
                         onClick={() => void handleApplyEstimatorTemplate()}
                       >
                         Estimator
@@ -315,52 +330,34 @@ export default function Home() {
                   )}
                 </div>
               )}
-              <button
-                type="button"
-                onClick={handleReset}
-                className="px-3 py-2 rounded-lg border border-gray-300 bg-white text-gray-700 hover:bg-gray-50 text-sm font-medium"
-              >
+              <AppButton type="button" variant="secondary" size="sm" onClick={handleReset}>
                 Reset to default
-              </button>
-              <button
-                type="button"
-                onClick={handleCancelEdit}
-                className="px-3 py-2 rounded-lg border border-gray-300 bg-white text-gray-700 hover:bg-gray-50 text-sm font-medium"
-              >
+              </AppButton>
+              <AppButton type="button" variant="secondary" size="sm" onClick={handleCancelEdit}>
                 Cancel
-              </button>
-              <button
-                type="button"
-                onClick={handleDoneEdit}
-                className="px-3 py-2 rounded-lg bg-[#7f1010] text-white hover:bg-[#a31414] text-sm font-medium"
-              >
+              </AppButton>
+              <AppButton type="button" size="sm" onClick={handleDoneEdit}>
                 Done
-              </button>
+              </AppButton>
             </>
           ) : (
-            <button
-              type="button"
-              onClick={() => setIsEditMode(true)}
-              className="px-3 py-2 rounded-lg border border-gray-300 bg-white text-gray-700 hover:bg-gray-50 text-sm font-medium"
-            >
+            <AppButton type="button" variant="secondary" size="sm" onClick={() => setIsEditMode(true)}>
               Customize / Edit dashboard
-            </button>
+            </AppButton>
           )}
       </div>
 
       {visibleWidgets.length === 0 ? (
-        <div className="rounded-xl border border-dashed border-gray-300 bg-gray-50/50 p-12 text-center">
-          <p className="text-gray-500 mb-4">No widgets yet. Add widgets to build your dashboard.</p>
-          {isEditMode && (
-            <button
-              type="button"
-              onClick={() => setAddModalOpen(true)}
-              className="px-4 py-2 rounded-lg bg-[#7f1010] text-white hover:bg-[#a31414]"
-            >
-              Add Widget
-            </button>
-          )}
-        </div>
+        <AppEmptyState
+          title="No widgets yet. Add widgets to build your dashboard."
+          action={
+            isEditMode ? (
+              <AppButton type="button" size="sm" onClick={() => setAddModalOpen(true)}>
+                Add Widget
+              </AppButton>
+            ) : undefined
+          }
+        />
       ) : (
       <GridLayout
         className="layout"
@@ -405,6 +402,7 @@ export default function Home() {
         onSave={handleSaveConfig}
       />
     </div>
+    </main>
     </AnimationReadyProvider>
     </LoadingOverlay>
   );

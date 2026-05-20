@@ -7,6 +7,18 @@ import DirectorMeetingSlotPicker, {
   normalizeDirectorMeetingSlots,
   revieweeUserIdsEqual,
 } from '@/components/DirectorMeetingSlotPicker';
+import {
+  AppEmptyState,
+  AppSectionHeader,
+  AppSelect,
+  uiBorders,
+  uiColors,
+  uiCx,
+  uiRadius,
+  uiSpacing,
+  uiTypography,
+} from '@/components/ui';
+import { CalendarDays } from 'lucide-react';
 
 type BoardSlot = {
   starts_at: string;
@@ -105,44 +117,35 @@ export default function MyReviewsDirectorMeetingTab() {
   const hasWindows = (board?.windows?.length ?? 0) > 0;
   const hasSlots = boardSlotsNorm.length > 0;
 
+  const cycleOptions = cyclesFromSelf.map((c) => ({ value: c.id, label: c.name }));
+
   return (
-    <div className="space-y-5">
-      <header className="space-y-2">
-        <h2 className="text-lg font-semibold text-gray-900">Director 1:1 meeting</h2>
-        <p className="text-sm text-gray-600 leading-relaxed w-full">
-          After your self-review, pick a day on the calendar, then book a closing conversation with leadership. Slots
-          appear when HR publishes availability for this review cycle.
-        </p>
-      </header>
+    <div className={uiSpacing.sectionStack}>
+      <AppSectionHeader
+        title="Director 1:1 meeting"
+        description="After your self-review, pick a day on the calendar, then book a closing conversation with leadership. Slots appear when HR publishes availability for this review cycle."
+        icon={<CalendarDays className="h-4 w-4" />}
+      />
 
       {!cyclesFromSelf.length ? (
-        <div className="rounded-lg border border-dashed border-gray-200 bg-gray-50/80 px-4 py-10 text-center text-sm text-gray-600">
-          You are not included in a review cycle yet, so there is nothing to schedule here.
-        </div>
+        <AppEmptyState title="You are not included in a review cycle yet, so there is nothing to schedule here." />
       ) : (
         <>
-          <div className="flex flex-wrap items-center gap-2">
-            <label className="text-sm font-medium text-gray-700">Review cycle</label>
-            <select
-              className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm min-w-[240px]"
-              value={cycleId}
-              onChange={(e) => setCycleId(e.target.value)}
-            >
-              {cyclesFromSelf.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.name}
-                </option>
-              ))}
-            </select>
-          </div>
+          <AppSelect
+            label="Review cycle"
+            value={cycleId}
+            onChange={(e) => setCycleId(e.target.value)}
+            options={cycleOptions}
+            triggerClassName="min-w-[240px]"
+          />
 
           {hrRescheduleNudge ? (
             <div
               role="status"
-              className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-2.5 text-sm text-amber-950 shadow-sm"
+              className={uiCx(uiRadius.control, uiBorders.subtle, 'border-amber-300 bg-amber-50', uiSpacing.compactCardPadding)}
             >
-              <p className="font-semibold text-amber-950">Your director meeting needs a new time</p>
-              <p className="mt-1 text-amber-900/90 leading-relaxed">
+              <p className={uiTypography.sectionTitle}>Your director meeting needs a new time</p>
+              <p className={uiCx(uiTypography.body, 'mt-1')}>
                 HR cancelled your previous booking. Please book another slot below when you are ready
                 {hrRescheduleNudge.since
                   ? ` (updated ${formatDirectorSlotDayLabel(hrRescheduleNudge.since)})`
@@ -150,8 +153,17 @@ export default function MyReviewsDirectorMeetingTab() {
                 .
               </p>
               {hrRescheduleNudge.message ? (
-                <div className="mt-2 rounded-md border border-amber-200/80 bg-white/70 px-2.5 py-2 text-xs text-amber-950/95 whitespace-pre-wrap">
-                  <span className="font-medium text-amber-950">Message from HR: </span>
+                <div
+                  className={uiCx(
+                    'mt-2 whitespace-pre-wrap',
+                    uiRadius.control,
+                    uiBorders.subtle,
+                    uiColors.surface,
+                    uiSpacing.compactCardPadding,
+                    uiTypography.helper,
+                  )}
+                >
+                  <span className={uiTypography.sectionTitle}>Message from HR: </span>
                   {hrRescheduleNudge.message}
                 </div>
               ) : null}
@@ -159,24 +171,19 @@ export default function MyReviewsDirectorMeetingTab() {
           ) : null}
 
           {activeBookingSlot && !hrRescheduleNudge ? (
-            <p className="text-sm text-green-800 bg-green-50 border border-green-200 rounded-lg px-3 py-2">
-              <span className="font-medium">Your meeting:</span>{' '}
+            <p className={uiCx(uiTypography.body, uiRadius.control, uiBorders.subtle, 'border-green-200 bg-green-50', uiSpacing.compactCardPadding)}>
+              <span className={uiTypography.sectionTitle}>Your meeting:</span>{' '}
               {formatDirectorSlotDayLabel(activeBookingSlot.starts_at)} ·{' '}
               {formatDirectorSlotTimeRange(activeBookingSlot.starts_at, activeBookingSlot.ends_at)}
             </p>
           ) : null}
 
           {boardLoading ? (
-            <p className="text-sm text-gray-500">Loading availability…</p>
+            <p className={uiTypography.helper}>Loading availability…</p>
           ) : !hasWindows ? (
-            <div className="rounded-lg border border-amber-100 bg-amber-50/80 px-4 py-8 text-center text-sm text-amber-900">
-              No available dates right now. HR has not published meeting times for this cycle yet.
-            </div>
+            <AppEmptyState title="No available dates right now. HR has not published meeting times for this cycle yet." />
           ) : !hasSlots ? (
-            <div className="rounded-lg border border-amber-100 bg-amber-50/80 px-4 py-8 text-center text-sm text-amber-900">
-              No available dates right now. The published windows do not yield any bookable slot (check back after HR
-              updates availability).
-            </div>
+            <AppEmptyState title="No available dates right now. The published windows do not yield any bookable slot (check back after HR updates availability)." />
           ) : (
             <DirectorMeetingSlotPicker
               cycleId={cycleId}

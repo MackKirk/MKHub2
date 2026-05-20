@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect, useRef } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useSearchParams, useNavigate, useLocation } from 'react-router-dom';
 import { api } from '@/lib/api';
@@ -10,6 +10,7 @@ import {
   AppBadge,
   AppButton,
   AppCard,
+  AppDatePicker,
   AppEmptyState,
   AppHeroEditButton,
   AppModal,
@@ -143,22 +144,8 @@ export default function ClockInOut() {
   const [searchParams, setSearchParams] = useSearchParams();
   const navigate = useNavigate();
   const location = useLocation();
-  const dateInputRef = useRef<HTMLInputElement>(null);
   const fromHome = location.state?.fromHome === true;
 
-  const openDatePicker = () => {
-    const el = dateInputRef.current;
-    if (!el) return;
-    const anyEl = el as any;
-    // Chrome/Edge support showPicker(); fallback to focus+click for others
-    if (typeof anyEl.showPicker === 'function') {
-      anyEl.showPicker();
-      return;
-    }
-    el.focus();
-    el.click();
-  };
-  
   // Get query params for auto-opening modal from Schedule page
   const shiftIdFromUrl = searchParams.get('shift_id');
   const typeFromUrl = searchParams.get('type') as 'in' | 'out' | null;
@@ -1008,26 +995,19 @@ export default function ClockInOut() {
             className="shrink-0"
             title="Clock Actions"
             actions={
-              <div className="relative">
-                <label htmlFor="clock-actions-date" className="sr-only">Date</label>
+              <div className="group relative w-[220px] max-w-[60vw] shrink-0">
+                <label htmlFor="clock-actions-date" className="sr-only">
+                  Select date
+                </label>
                 <div
                   className={uiCx(
-                    'relative w-[220px] max-w-[60vw] cursor-pointer bg-white transition-colors hover:border-gray-300',
+                    'pointer-events-none relative bg-white transition-colors group-hover:border-gray-300',
                     uiRadius.control,
                     uiBorders.input,
                     uiSpacing.controlX,
                     uiSpacing.controlY,
                   )}
-                  onClick={openDatePicker}
-                  role="button"
-                  tabIndex={0}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter' || e.key === ' ') {
-                      e.preventDefault();
-                      openDatePicker();
-                    }
-                  }}
-                  aria-label="Select date"
+                  aria-hidden
                 >
                   <div className="flex items-center gap-2">
                     <div className={uiCx('flex h-7 w-7 flex-shrink-0 items-center justify-center bg-gray-100', uiRadius.control)}>
@@ -1042,20 +1022,20 @@ export default function ClockInOut() {
                       </div>
                     </div>
                   </div>
-
-                  {/* Transparent native input kept in the DOM to allow the picker to open */}
-                  <input
-                    ref={dateInputRef}
-                    id="clock-actions-date"
-                    type="date"
-                    value={selectedDate}
-                    onChange={(e) => setSelectedDate(e.target.value)}
-                    className="absolute inset-0 opacity-0 cursor-pointer"
-                    aria-hidden="true"
-                    tabIndex={-1}
-                    required
-                  />
                 </div>
+                <AppDatePicker
+                  id="clock-actions-date"
+                  value={selectedDate}
+                  onChange={(e) => setSelectedDate(e.target.value)}
+                  className={uiCx(
+                    'absolute inset-0 z-[1] !m-0 !space-y-0',
+                    '[&>div.relative]:h-full',
+                    '[&_button]:absolute [&_button]:inset-0 [&_button]:h-full [&_button]:w-full [&_button]:cursor-pointer',
+                    '[&_button]:border-0 [&_button]:bg-transparent [&_button]:opacity-0 [&_button]:shadow-none',
+                    '[&_button]:ring-0 [&_button:focus-visible]:ring-2 [&_button:focus-visible]:ring-brand-red/30',
+                    '[&_svg]:pointer-events-none [&_svg]:opacity-0',
+                  )}
+                />
               </div>
             }
           >

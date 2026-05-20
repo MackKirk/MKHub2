@@ -10,11 +10,17 @@ import {
   AppButton,
   AppCard,
   AppEmptyState,
+  AppDatePicker,
   AppInput,
   AppListCreateItem,
+  AppControlLabelRow,
+  AppFieldHint,
+  AppFormModal,
   AppModal,
   AppPageHeader,
   AppSelect,
+  AppProjectSelect,
+  AppUserSelect,
   AppTabs,
   AppTextarea,
   uiBorders,
@@ -106,6 +112,11 @@ const priorityOptions = [
   { value: 'high', label: 'High' },
   { value: 'urgent', label: 'Urgent' },
 ];
+
+/** One request row in the left list (p-4 + title/badge + meta + time). */
+const REQUEST_LIST_ROW_HEIGHT_REM = 5.75;
+const REQUEST_LIST_VISIBLE_ROWS = 6;
+const requestListScrollMaxHeight = `calc(${REQUEST_LIST_ROW_HEIGHT_REM}rem * ${REQUEST_LIST_VISIBLE_ROWS})`;
 
 /** Same request can appear in both sent and received lists from the API; keep one row per id. */
 function dedupeRequestsById(requests: TaskRequest[]): TaskRequest[] {
@@ -210,6 +221,28 @@ export default function TaskRequestsPage() {
     return dedupeRequestsById(notifications.recentActivity);
   }, [notifications.recentActivity, activeTab, data]);
 
+  const requestTabCounts = useMemo(() => {
+    const received = data?.received || [];
+    const sent = data?.sent || [];
+    const all = dedupeRequestsById([...received, ...sent]);
+    return {
+      all: all.length,
+      received: received.length,
+      sent: sent.length,
+      needs_info: all.filter((r) => r.status === 'needs_info').length,
+      completed: all.filter((r) => r.status === 'accepted' || r.status === 'refused').length,
+    };
+  }, [data]);
+
+  const requestTabs = useMemo(
+    () =>
+      requestTabItems.map((tab) => ({
+        ...tab,
+        count: requestTabCounts[tab.key],
+      })),
+    [requestTabCounts],
+  );
+
   // Format relative time
   const formatTimeAgo = (dateStr: string) => {
     const now = new Date();
@@ -268,27 +301,31 @@ export default function TaskRequestsPage() {
         }
       />
 
-      <AppCard className="overflow-hidden" bodyClassName="p-0">
-        <div className={uiCx('border-b border-gray-100', uiSpacing.cardPadding)}>
-          <AppTabs
-            tabs={[...requestTabItems]}
-            value={activeTab}
-            onChange={(key) => setActiveTab(key as typeof activeTab)}
-          />
-        </div>
-
-        <div className="grid min-w-0 grid-cols-1 gap-0 lg:grid-cols-[1fr_1.5fr]">
-        {/* Left: Requests List */}
-        <div className="min-w-0 overflow-hidden border-r border-gray-100">
-          <div className="max-h-[calc(100vh-300px)] overflow-y-auto overflow-x-hidden">
-            <div className={uiCx(uiSpacing.cardPadding, 'border-b border-gray-100')}>
-              <AppListCreateItem
-                label="New Request"
-                layout="row"
-                className="w-full"
-                onClick={() => setShowCreateModal(true)}
+      <div className="grid min-h-[calc(100vh-220px)] min-w-0 grid-cols-[4fr_6fr] items-stretch gap-2">
+        <AppCard className="flex h-full min-h-0 min-w-0 flex-col overflow-hidden" bodyClassName="flex h-full min-h-0 flex-1 flex-col p-0">
+          <div className="shrink-0 border-b border-gray-100">
+            <div className={uiSpacing.cardPadding}>
+              <AppTabs
+                tabs={requestTabs}
+                value={activeTab}
+                onChange={(key) => setActiveTab(key as typeof activeTab)}
               />
             </div>
+          </div>
+
+          <div className={uiCx('shrink-0', uiSpacing.cardPadding)}>
+            <AppListCreateItem
+              label="New Request"
+              layout="row"
+              className="w-full"
+              onClick={() => setShowCreateModal(true)}
+            />
+          </div>
+
+          <div
+            className="min-h-0 shrink-0 overflow-y-auto overflow-x-hidden"
+            style={{ maxHeight: requestListScrollMaxHeight }}
+          >
             {isLoading ? (
               <div className={uiCx(uiSpacing.cardPadding, 'text-center', uiTypography.helper)}>Loading requests...</div>
             ) : filteredRequests.length === 0 ? (
@@ -309,7 +346,7 @@ export default function TaskRequestsPage() {
                     type="button"
                     onClick={() => handleRequestClick(req.id)}
                     className={uiCx(
-                      'relative w-full cursor-pointer text-left transition-all duration-200',
+                      'relative w-full min-h-[5.75rem] cursor-pointer text-left transition-all duration-200',
                       uiSpacing.cardPadding,
                       'border-b border-gray-100 last:border-b-0',
                       isSelected
@@ -360,15 +397,15 @@ export default function TaskRequestsPage() {
               })
             )}
           </div>
-            </div>
+        </AppCard>
 
-        {/* Right: Request Details Panel */}
-        <RequestDetailsPanel
-          requestId={selectedRequestId}
-          onRefresh={invalidateAll}
-        />
+        <div className="flex h-full min-h-0 min-w-0 flex-col">
+          <RequestDetailsPanel
+            requestId={selectedRequestId}
+            onRefresh={invalidateAll}
+          />
         </div>
-      </AppCard>
+      </div>
 
       {/* Create Request Modal */}
       {showCreateModal && (
@@ -467,7 +504,10 @@ function RequestDetailsPanel({
 
   if (!requestId) {
     return (
-      <AppCard className="flex min-h-[200px] items-center justify-center lg:min-h-0 lg:h-full" bodyClassName="flex w-full items-center justify-center">
+      <AppCard
+        className="flex h-full min-h-0 min-w-0 items-center justify-center"
+        bodyClassName="flex w-full items-center justify-center"
+      >
         <AppEmptyState title="Select a request to view details" className="py-6" />
       </AppCard>
     );
@@ -475,7 +515,7 @@ function RequestDetailsPanel({
 
   if (isLoading) {
     return (
-      <AppCard className="lg:h-full" bodyClassName={uiTypography.helper}>
+      <AppCard className="flex h-full min-h-0 min-w-0 flex-1 flex-col" bodyClassName={uiTypography.helper}>
         Loading request details...
       </AppCard>
     );
@@ -483,7 +523,7 @@ function RequestDetailsPanel({
 
   if (!request) {
     return (
-      <AppCard className="lg:h-full" bodyClassName={uiTypography.helper}>
+      <AppCard className="flex h-full min-h-0 min-w-0 flex-1 flex-col" bodyClassName={uiTypography.helper}>
         Request not found
       </AppCard>
     );
@@ -493,7 +533,7 @@ function RequestDetailsPanel({
 
   return (
     <AppCard
-      className={uiCx('flex min-w-0 flex-col lg:h-full max-h-[calc(100vh-300px)]')}
+      className="flex h-full min-h-0 min-w-0 flex-1 flex-col"
       bodyClassName="flex min-h-0 flex-1 flex-col p-0"
     >
       <div className={uiCx('border-b border-gray-100', uiSpacing.cardPadding, 'min-w-0')}>
@@ -591,18 +631,7 @@ function RequestDetailsPanel({
           </div>
         )}
 
-        <div className={uiCx('flex items-center gap-2 border-t border-gray-100 pt-2', uiLayout.actionsRow)}>
-          {request.permissions.can_accept && (
-            <AppButton
-              size="sm"
-              className="flex-1 border-green-600 bg-green-600 hover:border-green-700 hover:from-green-700 hover:to-green-700"
-              onClick={() => acceptMutation.mutate()}
-              disabled={acceptMutation.isLoading}
-              loading={acceptMutation.isLoading}
-            >
-              {acceptMutation.isLoading ? 'Creating...' : 'Accept & Create Task'}
-            </AppButton>
-          )}
+        <div className={uiCx('flex flex-wrap items-center justify-end gap-2 border-t border-gray-100 pt-2')}>
           {request.permissions.can_refuse && (
             <>
               {!showRefuseForm ? (
@@ -646,6 +675,16 @@ function RequestDetailsPanel({
                 </div>
               )}
             </>
+          )}
+          {request.permissions.can_accept && !showRefuseForm && (
+            <AppButton
+              size="sm"
+              onClick={() => acceptMutation.mutate()}
+              disabled={acceptMutation.isLoading}
+              loading={acceptMutation.isLoading}
+            >
+              {acceptMutation.isLoading ? 'Creating...' : 'Accept & Create Task'}
+            </AppButton>
           )}
         </div>
       </div>
@@ -971,7 +1010,6 @@ function ViewRequestModal({
           {request.permissions.can_accept && (
             <AppButton
               size="sm"
-              className="border-green-600 bg-green-600 hover:border-green-700 hover:from-green-700 hover:to-green-700"
               onClick={() => acceptMutation.mutate()}
               disabled={acceptMutation.isLoading || (showRefuseForm && refuseMutation.isLoading)}
               loading={acceptMutation.isLoading}
@@ -996,7 +1034,6 @@ function CreateRequestModal({
 }) {
   const [targetType, setTargetType] = useState<'user' | 'division'>('user');
   const [targetUserId, setTargetUserId] = useState('');
-  const [userSearch, setUserSearch] = useState('');
   const [targetDivisionId, setTargetDivisionId] = useState('');
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
@@ -1004,55 +1041,12 @@ function CreateRequestModal({
   const [dueDate, setDueDate] = useState('');
   const [priority, setPriority] = useState('normal');
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [workerDropdownOpen, setWorkerDropdownOpen] = useState(false);
-  const workerDropdownRef = useRef<HTMLDivElement>(null);
 
   const { data: settings } = useQuery({
     queryKey: ['settings'],
     queryFn: () => api<any>('GET', '/settings'),
   });
-  const { data: usersOptions } = useQuery({
-    queryKey: ['usersOptions'],
-    queryFn: () => api<UserOption[]>('GET', '/auth/users/options?limit=500'),
-  });
-  const { data: projects } = useQuery({
-    queryKey: ['projects-all'],
-    queryFn: () => api<ProjectOption[]>('GET', '/projects'),
-  });
-  const { data: employees } = useQuery({
-    queryKey: ['employees'],
-    queryFn: () => api<any[]>('GET', '/employees'),
-  });
-
   const divisions: DivisionOption[] = (settings?.divisions || []) as DivisionOption[];
-
-  useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      if (workerDropdownRef.current && !workerDropdownRef.current.contains(event.target as Node)) {
-        setWorkerDropdownOpen(false);
-      }
-    };
-    if (workerDropdownOpen) {
-      document.addEventListener('mousedown', handleClickOutside);
-    }
-    return () => {
-      document.removeEventListener('mousedown', handleClickOutside);
-    };
-  }, [workerDropdownOpen]);
-
-  const filteredUsers = useMemo(() => {
-    if (!usersOptions) return [];
-    if (!userSearch.trim()) return usersOptions;
-    const searchLower = userSearch.toLowerCase();
-    return usersOptions.filter((u) => {
-      const name = `${u.name || ''} ${u.username || ''}`.toLowerCase();
-      return name.includes(searchLower);
-    });
-  }, [usersOptions, userSearch]);
-
-  const toggleUser = (userId: string) => {
-    setTargetUserId(prev => prev === userId ? '' : userId);
-  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -1090,180 +1084,133 @@ function CreateRequestModal({
   };
 
   return (
-    <AppModal
+    <AppFormModal
       open
       onClose={onClose}
       title="Create Request"
       description="Start a conversation that may become a task"
-      size="lg"
+      quickInfo={
+        <>
+          <p>Requests let you start a conversation before it becomes a task.</p>
+          <p>Recipients can ask for more information; you can clarify before someone accepts.</p>
+          <p>Send to a specific user or a whole division — only one recipient path per request.</p>
+        </>
+      }
       footer={
         <div className={uiCx(uiLayout.actionsRow, 'w-full justify-end')}>
           <AppButton variant="secondary" size="sm" type="button" onClick={onClose}>
             Cancel
           </AppButton>
-          <AppButton size="sm" type="button" onClick={handleSubmit} disabled={isSubmitting} loading={isSubmitting}>
+          <AppButton
+            size="sm"
+            type="submit"
+            form="create-request-form"
+            disabled={isSubmitting}
+            loading={isSubmitting}
+          >
             {isSubmitting ? 'Creating...' : 'Create Request'}
           </AppButton>
         </div>
       }
     >
-        <form onSubmit={handleSubmit} className="flex max-h-[65vh] flex-col overflow-hidden md:flex-row md:gap-0">
-          <div className={uiCx('flex-1 space-y-4 overflow-y-auto md:pr-4', uiSpacing.sectionStack)}>
-          <AppInput
-            label="Title *"
-            value={title}
-            onChange={(e) => setTitle(e.target.value)}
-            placeholder="Short summary"
-          />
+      <form id="create-request-form" onSubmit={handleSubmit} className={uiCx('space-y-4', uiSpacing.sectionStack)}>
+        <AppInput
+          label="Title *"
+          value={title}
+          onChange={(e) => setTitle(e.target.value)}
+          placeholder="Short summary"
+          fieldHint="Title\n\nA short summary shown in lists and notifications."
+        />
 
-          <div className={uiLayout.sectionGrid2}>
-            <div>
-              <span className={uiTypography.controlLabel}>Send to</span>
-              <div className={uiCx('mt-1.5 flex gap-2', uiLayout.actionsRow)}>
-                <AppButton
-                  type="button"
-                  size="sm"
-                  variant={targetType === 'user' ? 'primary' : 'secondary'}
-                  className="flex-1"
-                  onClick={() => setTargetType('user')}
-                >
-                  Specific user
-                </AppButton>
-                <AppButton
-                  type="button"
-                  size="sm"
-                  variant={targetType === 'division' ? 'primary' : 'secondary'}
-                  className="flex-1"
-                  onClick={() => setTargetType('division')}
-                >
-                  Division
-                </AppButton>
-              </div>
-            </div>
-            <AppSelect
-              label="Priority"
-              value={priority}
-              onChange={(e) => setPriority(e.target.value)}
-              options={priorityOptions}
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-[minmax(0,1.35fr)_minmax(0,1fr)]">
+          <div className="space-y-1.5 min-w-0">
+            <AppControlLabelRow
+              label="Send to"
+              fieldHint={
+                <AppFieldHint hint="Send to\n\nChoose whether this request goes to one person or everyone in a division." />
+              }
             />
+            <div className="flex flex-nowrap gap-2">
+              <AppButton
+                type="button"
+                size="sm"
+                variant={targetType === 'user' ? 'primary' : 'secondary'}
+                className="min-w-0 flex-1 whitespace-nowrap px-2"
+                onClick={() => setTargetType('user')}
+              >
+                Specific user
+              </AppButton>
+              <AppButton
+                type="button"
+                size="sm"
+                variant={targetType === 'division' ? 'primary' : 'secondary'}
+                className="min-w-0 shrink-0 whitespace-nowrap px-2"
+                onClick={() => {
+                  setTargetType('division');
+                  setTargetUserId('');
+                }}
+              >
+                Division
+              </AppButton>
+            </div>
           </div>
-
-          {targetType === 'user' ? (
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Choose a user {targetUserId && '(1 selected)'}
-              </label>
-              <div className="relative" ref={workerDropdownRef}>
-                <button
-                  type="button"
-                  onClick={() => setWorkerDropdownOpen(!workerDropdownOpen)}
-                  className="w-full border border-gray-200/60 rounded-lg px-3 py-2 text-left bg-white flex items-center justify-between hover:bg-gray-50"
-                >
-                  <span className="text-sm text-gray-600">
-                    {!targetUserId
-                      ? 'Select user...'
-                      : (() => {
-                          const selectedUser = usersOptions?.find((u) => u.id === targetUserId);
-                          return selectedUser?.name || selectedUser?.username || 'Selected';
-                        })()}
-                  </span>
-                  <span className="text-gray-400">{workerDropdownOpen ? '▲' : '▼'}</span>
-                </button>
-                {workerDropdownOpen && (
-                  <div className="absolute z-50 mt-1 w-full rounded-lg border border-gray-200/60 bg-white shadow-lg max-h-60 overflow-auto">
-                    <div className="p-2 border-b border-gray-200/60">
-                      <input
-                        type="text"
-                        placeholder="Search user..."
-                        value={userSearch}
-                        onChange={(e) => setUserSearch(e.target.value)}
-                        className="w-full border border-gray-200/60 rounded-lg px-2 py-1 text-sm"
-                      />
-                    </div>
-                    <div className="p-2">
-                      {filteredUsers.length > 0 ? (
-                        filteredUsers.map((user) => {
-                          const employee = employees?.find((e: any) => e.id === user.id);
-                          return (
-                            <label
-                              key={user.id}
-                              className="flex items-center gap-2 p-2 hover:bg-gray-50 cursor-pointer rounded"
-                            >
-                              <input
-                                type="checkbox"
-                                checked={targetUserId === user.id}
-                                onChange={() => toggleUser(user.id)}
-                                className="rounded"
-                              />
-                              <div className="flex items-center gap-2 flex-1">
-                                {employee?.profile_photo_file_id ? (
-                                  <img
-                                    src={withFileAccessToken(`/files/${employee.profile_photo_file_id}/thumbnail?w=64`)}
-                                    className="w-6 h-6 rounded-full object-cover"
-                                    alt=""
-                                  />
-                                ) : (
-                                  <span className="w-6 h-6 rounded-full bg-gray-200 inline-block" />
-                                )}
-                                <span className="text-sm">{user.name || user.username}</span>
-                              </div>
-                            </label>
-                          );
-                        })
-                      ) : (
-                        <div className="p-2 text-sm text-gray-600">No users found</div>
-                      )}
-                    </div>
-                  </div>
-                )}
-              </div>
-            </div>
-          ) : (
-            <AppSelect
-              label="Select division"
-              value={targetDivisionId}
-              onChange={(e) => setTargetDivisionId(e.target.value)}
-              placeholder="Choose division..."
-              options={divisions.map((division) => ({ value: division.id, label: division.label }))}
-            />
-          )}
-
           <AppSelect
-            label="Project (optional)"
-            value={projectId}
-            onChange={(e) => setProjectId(e.target.value)}
-            placeholder="No project"
-            options={(projects || []).map((project) => ({
-              value: project.id,
-              label: `${project.code ? `${project.code} • ` : ''}${project.name}`,
-            }))}
+            label="Priority"
+            value={priority}
+            onChange={(e) => setPriority(e.target.value)}
+            options={priorityOptions}
+            fieldHint="Priority\n\nHow urgent this request is for the recipient."
           />
+        </div>
 
-          <AppInput
-            label="Due date (optional)"
-            type="date"
-            value={dueDate}
-            onChange={(e) => setDueDate(e.target.value)}
+        {targetType === 'user' ? (
+          <AppUserSelect
+            mode="single"
+            label="Choose a user *"
+            value={targetUserId}
+            onChange={setTargetUserId}
+            placeholder="Search or select user…"
+            showSelectedChip={false}
+            fieldHint="Choose a user\n\nWho should receive this task request."
           />
-
-          <AppTextarea
-            label="Description"
-            value={description}
-            onChange={(e) => setDescription(e.target.value)}
-            rows={4}
-            placeholder="Explain what needs to be done..."
+        ) : (
+          <AppSelect
+            label="Select division *"
+            value={targetDivisionId}
+            onChange={(e) => setTargetDivisionId(e.target.value)}
+            placeholder="Choose division..."
+            fieldHint="Select division\n\nEveryone in this division will see the request until someone accepts it."
+            options={divisions.map((division) => ({ value: division.id, label: division.label }))}
           />
-          </div>
+        )}
 
-          <div className={uiCx('w-full shrink-0 border-t border-gray-100 bg-gray-50/50 md:w-72 md:border-l md:border-t-0', uiSpacing.cardPadding, uiSpacing.sectionStack)}>
-            <div className={uiTypography.overline}>Quick Info</div>
-            <div className={uiCx(uiTypography.helper, 'space-y-2')}>
-              <p>Requests allow you to start conversations before creating tasks.</p>
-              <p>You can exchange information and clarify requirements before accepting.</p>
-            </div>
-          </div>
-        </form>
-    </AppModal>
+        <AppProjectSelect
+          label="Project (optional)"
+          value={projectId}
+          onChange={setProjectId}
+          allowEmpty
+          emptyOptionLabel="No project"
+          placeholder="Search by name, code, or address…"
+          fieldHint="Project (optional)\n\nLink this request to a job site when relevant."
+        />
+
+        <AppDatePicker
+          label="Due date (optional)"
+          value={dueDate}
+          onChange={(e) => setDueDate(e.target.value)}
+          fieldHint="Due date\n\nOptional deadline for the recipient."
+        />
+
+        <AppTextarea
+          label="Description"
+          value={description}
+          onChange={(e) => setDescription(e.target.value)}
+          rows={4}
+          placeholder="Explain what needs to be done..."
+          fieldHint="Description\n\nOptional detail for the recipient before the request becomes a task."
+        />
+      </form>
+    </AppFormModal>
   );
 }
 
@@ -1579,24 +1526,26 @@ function RequestsListModal({
                             </div>
                           )}
                         </div>
-                        <div className="flex items-center gap-2">
+                        <div className={uiCx(uiLayout.actionsRow, 'justify-end')}>
                           {selected.permissions.can_refuse && (
-                            <button
+                            <AppButton
+                              variant="danger"
+                              size="sm"
                               onClick={() => setShowRefuseForm(!showRefuseForm)}
                               disabled={refuseMutation.isLoading || acceptMutation.isLoading}
-                              className="px-4 py-2 rounded bg-red-600 text-white hover:bg-red-700 transition disabled:opacity-60"
                             >
                               Refuse request
-                            </button>
+                            </AppButton>
                           )}
                           {selected.permissions.can_accept && (
-                            <button
+                            <AppButton
+                              size="sm"
                               onClick={() => acceptMutation.mutate()}
                               disabled={acceptMutation.isLoading || (showRefuseForm && refuseMutation.isLoading)}
-                              className="px-4 py-2 rounded bg-green-600 text-white hover:bg-green-700 transition disabled:opacity-60"
+                              loading={acceptMutation.isLoading}
                             >
-                              {acceptMutation.isLoading ? 'Creating...' : 'Accept and create Task'}
-                            </button>
+                              {acceptMutation.isLoading ? 'Creating...' : 'Accept & Create Task'}
+                            </AppButton>
                           )}
                         </div>
                       </div>
@@ -2289,17 +2238,11 @@ function CreateTaskRequestModal({
               </select>
             </div>
 
-            <div className="grid md:grid-cols-2 gap-4">
-              <div>
-                <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">Due date (optional)</label>
-                <input
-                  type="date"
-                  value={dueDate}
-                  onChange={(e) => setDueDate(e.target.value)}
-                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm placeholder:text-gray-400 focus:outline-none focus:ring-1 focus:ring-gray-300 focus:border-gray-300"
-                />
-              </div>
-            </div>
+            <AppDatePicker
+              label="Due date (optional)"
+              value={dueDate}
+              onChange={(e) => setDueDate(e.target.value)}
+            />
 
             <div>
               <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">Description</label>
