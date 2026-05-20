@@ -9,6 +9,12 @@ import { formatDateLocal, getCurrentMonthLocal } from '@/lib/dateUtils';
 import UserLoans from '@/components/UserLoans';
 import OverlayPortal from '@/components/OverlayPortal';
 import UserEmployeeReviewsTab from '@/components/UserEmployeeReviewsTab';
+import { IMPLEMENTED_PERMISSIONS } from '@/lib/implementedPermissions';
+import {
+  applyPermissionUncheckCascade,
+  canEnablePermission,
+  permissionEnableBlockedMessage,
+} from '@/lib/permissionDependencies';
 
 // Helper function to convert 24h time (HH:MM:SS or HH:MM) to 12h format (h:mm AM/PM)
 function formatTime12h(timeStr: string | null | undefined): string {
@@ -250,32 +256,6 @@ export default function UserDetail(){
   );
 }
 
-// List of implemented permissions (permissions that are actually checked in the codebase)
-const IMPLEMENTED_PERMISSIONS = new Set([
-  // Legacy permissions
-  "users:read", "users:write",
-  "timesheet:read", "timesheet:write", "timesheet:approve", // Legacy, mantido para compatibilidade
-  "clients:read", "clients:write",
-  "inventory:read", "inventory:write",
-  "reviews:read", "reviews:admin",
-  // Human Resources permissions
-  "hr:access",
-  "hr:users:read", "hr:users:write",
-  "hr:users:view:general", "hr:users:edit:general",
-  "hr:users:view:timesheet", "hr:users:view:permissions", "hr:users:view:activity", "hr:users:edit:permissions",
-  "hr:attendance:read", "hr:attendance:write",
-  "hr:community:read", "hr:community:write",
-  "hr:reviews:admin",
-  "hr:timesheet:read", "hr:timesheet:write", "hr:timesheet:approve", "hr:timesheet:unrestricted_clock",
-  // Settings permissions
-  "settings:access",
-  // Documents permissions
-  "documents:access",
-  "documents:read", "documents:write", "documents:delete", "documents:move",
-  // Fleet & Equipment permissions
-  "fleet:access",
-]);
-
 function UserPermissions({ userId, user: userProp, canEdit = true }:{ userId:string, user?: any, canEdit?: boolean }){
   const { data:userFromQuery, refetch: refetchUser } = useQuery({ queryKey:['user', userId], queryFn: ()=> api<any>('GET', `/users/${userId}`) });
   const user = userProp || userFromQuery;
@@ -316,37 +296,41 @@ function UserPermissions({ userId, user: userProp, canEdit = true }:{ userId:str
 
   const handleToggle = (key: string, categoryId?: string) => {
     setPermissions((prev) => {
-      const newPerms = { ...prev };
       const newValue = !prev[key];
-      newPerms[key] = newValue;
-      
-      // Hierarchical logic: if blocking area access, block all sub-permissions
-      // Format: area:access (e.g., hr:access)
+      if (newValue && !canEnablePermission(key, prev)) {
+        toast.error(permissionEnableBlockedMessage(key) || 'Required permissions must be enabled first');
+        return prev;
+      }
+
+      let newPerms = { ...prev, [key]: newValue };
+
       if (key.endsWith(':access') && !newValue) {
         const area = key.replace(':access', '');
-        // Block all permissions that start with this area prefix
-        Object.keys(newPerms).forEach(permKey => {
-          if (permKey.startsWith(area + ':') && permKey !== key) {
+        Object.keys(newPerms).forEach((permKey) => {
+          if (permKey.startsWith(`${area}:`) && permKey !== key) {
             newPerms[permKey] = false;
           }
         });
+      } else if (!newValue) {
+        newPerms = applyPermissionUncheckCascade(key, newPerms);
       }
-      
-      // If enabling a sub-permission, ensure area access is enabled
+
       if (newValue && key.includes(':')) {
-        const parts = key.split(':');
-        if (parts.length >= 2) {
-          const area = parts[0];
-          const areaAccessKey = `${area}:access`;
-          // Only auto-enable if area access permission exists
-          if (permissionsData?.permissions_by_category?.some((cat: any) => 
+        const area = key.split(':')[0];
+        const areaAccessKey = `${area}:access`;
+        if (
+          permissionsData?.permissions_by_category?.some((cat: any) =>
             cat.permissions.some((p: any) => p.key === areaAccessKey)
-          )) {
-            newPerms[areaAccessKey] = true;
-          }
+          )
+        ) {
+          newPerms[areaAccessKey] = true;
         }
       }
-      
+
+      if (newValue && key.startsWith('fleet:') && key !== 'fleet:access') {
+        newPerms['fleet:access'] = true;
+      }
+
       return newPerms;
     });
   };
@@ -431,6 +415,9 @@ function UserPermissions({ userId, user: userProp, canEdit = true }:{ userId:str
   if (!permissionsData) {
     return <div className="h-24 bg-gray-100 animate-pulse rounded" />;
   }
+
+  const canTogglePermission = (permKey: string) =>
+    canEdit && (!!permissions[permKey] || canEnablePermission(permKey, permissions));
 
   return (
     <div className="rounded-xl border bg-white p-4">
@@ -650,8 +637,8 @@ function UserPermissions({ userId, user: userProp, canEdit = true }:{ userId:str
                                       <input
                                         type="checkbox"
                                         checked={permissions[perm.key] || false}
-                                        onChange={() => canEdit && handleToggle(perm.key, cat.category.id)}
-                                        disabled={!canEdit}
+                                        onChange={() => canTogglePermission(perm.key) && handleToggle(perm.key, cat.category.id)}
+                                        disabled={!canTogglePermission(perm.key)}
                                         className="mt-1 w-4 h-4 rounded border-gray-300 text-brand-red focus:ring-brand-red disabled:opacity-50 disabled:cursor-not-allowed flex-shrink-0"
                                       />
                                       <div className="flex-1 min-w-0">
@@ -678,13 +665,13 @@ function UserPermissions({ userId, user: userProp, canEdit = true }:{ userId:str
                                   {editPerms.map((perm: any) => (
                                     <label
                                       key={perm.id}
-                                      className={`flex items-start gap-2 p-2 rounded bg-white ${canEdit ? 'hover:bg-gray-50 cursor-pointer' : 'cursor-default'}`}
+                                      className={`flex items-start gap-2 p-2 rounded bg-white ${canTogglePermission(perm.key) ? 'hover:bg-gray-50 cursor-pointer' : 'cursor-default'}`}
                                     >
                                       <input
                                         type="checkbox"
                                         checked={permissions[perm.key] || false}
-                                        onChange={() => canEdit && handleToggle(perm.key, cat.category.id)}
-                                        disabled={!canEdit}
+                                        onChange={() => canTogglePermission(perm.key) && handleToggle(perm.key, cat.category.id)}
+                                        disabled={!canTogglePermission(perm.key)}
                                         className="mt-1 w-4 h-4 rounded border-gray-300 text-brand-red focus:ring-brand-red disabled:opacity-50 disabled:cursor-not-allowed flex-shrink-0"
                                       />
                                       <div className="flex-1 min-w-0">
@@ -715,13 +702,13 @@ function UserPermissions({ userId, user: userProp, canEdit = true }:{ userId:str
                       {subPermissions.map((perm: any) => (
                         <label
                           key={perm.id}
-                          className={`flex items-start gap-3 p-2 rounded ${canEdit ? 'hover:bg-gray-50 cursor-pointer' : 'cursor-default'}`}
+                          className={`flex items-start gap-3 p-2 rounded ${canTogglePermission(perm.key) ? 'hover:bg-gray-50 cursor-pointer' : 'cursor-default'}`}
                         >
                           <input
                             type="checkbox"
                             checked={permissions[perm.key] || false}
-                            onChange={() => canEdit && handleToggle(perm.key, cat.category.id)}
-                            disabled={!canEdit}
+                            onChange={() => canTogglePermission(perm.key) && handleToggle(perm.key, cat.category.id)}
+                            disabled={!canTogglePermission(perm.key)}
                             className="mt-1 w-4 h-4 rounded border-gray-300 text-brand-red focus:ring-brand-red disabled:opacity-50 disabled:cursor-not-allowed"
                           />
                           <div className="flex-1">
@@ -750,13 +737,13 @@ function UserPermissions({ userId, user: userProp, canEdit = true }:{ userId:str
                   {cat.permissions.map((perm: any) => (
                     <label
                       key={perm.id}
-                      className={`flex items-start gap-3 p-2 rounded ${canEdit ? 'hover:bg-gray-50 cursor-pointer' : 'cursor-default'}`}
+                      className={`flex items-start gap-3 p-2 rounded ${canTogglePermission(perm.key) ? 'hover:bg-gray-50 cursor-pointer' : 'cursor-default'}`}
                     >
                       <input
                         type="checkbox"
                         checked={permissions[perm.key] || false}
-                        onChange={() => canEdit && handleToggle(perm.key, cat.category.id)}
-                        disabled={!canEdit}
+                        onChange={() => canTogglePermission(perm.key) && handleToggle(perm.key, cat.category.id)}
+                        disabled={!canTogglePermission(perm.key)}
                         className="mt-1 w-4 h-4 rounded border-gray-300 text-brand-red focus:ring-brand-red disabled:opacity-50 disabled:cursor-not-allowed"
                       />
                       <div className="flex-1">

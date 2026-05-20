@@ -84,13 +84,20 @@ def _employee_directory_payload(u: User, ep: Optional[EmployeeProfile], division
 
 
 @router.get("")
-def list_employees(q: Optional[str] = None, db: Session = Depends(get_db), _=Depends(get_current_user)):
+def list_employees(
+    q: Optional[str] = None,
+    limit: int = 200,
+    db: Session = Depends(get_db),
+    _=Depends(get_current_user),
+):
     # Join users with employee profile when available (no joinedload to avoid holding connection long)
+    max_limit = 5000
+    effective_limit = min(max(1, limit), max_limit)
     query = db.query(User, EmployeeProfile).outerjoin(EmployeeProfile, EmployeeProfile.user_id == User.id)
     if q:
         like = f"%{q}%"
         query = query.filter((User.username.ilike(like)) | (EmployeeProfile.first_name.ilike(like)) | (EmployeeProfile.last_name.ilike(like)) | (EmployeeProfile.preferred_name.ilike(like)))
-    rows = query.order_by(User.created_at.desc()).limit(200).all()
+    rows = query.order_by(User.created_at.desc()).limit(effective_limit).all()
 
     # Load divisions in one batch query to avoid N+1 and heavy joinedload
     user_ids = [u.id for u, _ in rows]

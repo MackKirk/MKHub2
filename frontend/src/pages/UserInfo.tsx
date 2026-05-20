@@ -17,56 +17,12 @@ import { DivisionIcon } from '@/components/DivisionIcon';
 import OverlayPortal from '@/components/OverlayPortal';
 import { CanadianDriversLicenseSection } from '@/components/CanadianDriversLicenseSection';
 import UserEmployeeReviewsTab from '@/components/UserEmployeeReviewsTab';
-
-// List of implemented permissions (permissions that are actually checked in the codebase)
-const IMPLEMENTED_PERMISSIONS = new Set([
-  // Legacy permissions
-  "users:read", "users:write",
-  "timesheet:read", "timesheet:write", "timesheet:approve", "timesheet:unrestricted_clock", // Legacy, mantido para compatibilidade
-  "clients:read", "clients:write",
-  "inventory:read", "inventory:write",
-  "reviews:read", "reviews:admin",
-  // Human Resources permissions
-  "hr:access",
-  "hr:users:read", "hr:users:write",
-  "hr:users:view:general", "hr:users:view:job:compensation", "hr:users:edit:general",
-  "hr:users:view:timesheet", "hr:users:edit:timesheet", "hr:users:view:permissions", "hr:users:view:activity", "hr:users:edit:permissions",
-  "hr:attendance:read", "hr:attendance:write",
-  "hr:community:read", "hr:community:write",
-  "hr:reviews:admin",
-  "hr:timesheet:read", "hr:timesheet:write", "hr:timesheet:approve", "hr:timesheet:unrestricted_clock",
-  // Settings permissions
-  "settings:access",
-  // Documents permissions
-  "documents:access",
-  "documents:read", "documents:write", "documents:delete", "documents:move",
-  // Fleet & Equipment permissions
-  "fleet:access",
-  "fleet:vehicles:read", "fleet:vehicles:write",
-  "fleet:equipment:read", "fleet:equipment:write",
-  // Inventory permissions
-  "inventory:access",
-  "inventory:suppliers:read", "inventory:suppliers:write",
-  "inventory:products:read", "inventory:products:write",
-  // Business permissions
-  "business:access",
-  "business:customers:read", "business:customers:write",
-  "business:projects:read", "business:projects:write",
-  "business:construction:projects:read", "business:construction:projects:write",
-  "business:rm:projects:read", "business:rm:projects:write",
-  "business:projects:reports:read", "business:projects:reports:write",
-  "business:projects:workload:read", "business:projects:workload:write",
-  "business:projects:timesheet:read", "business:projects:timesheet:write",
-  "business:projects:files:read", "business:projects:files:write",
-  "business:projects:documents:read", "business:projects:documents:write",
-  "business:projects:proposal:read", "business:projects:proposal:write",
-  "business:projects:estimate:read", "business:projects:estimate:write",
-  "business:projects:orders:read", "business:projects:orders:write",
-  "business:projects:safety:read", "business:projects:safety:write",
-  // Sales permissions
-  "sales:access",
-  "sales:quotations:read", "sales:quotations:write",
-]);
+import { IMPLEMENTED_PERMISSIONS, isBusinessProjectPermissionKey } from '@/lib/implementedPermissions';
+import {
+  applyPermissionUncheckCascade,
+  canEnablePermission,
+  permissionEnableBlockedMessage,
+} from '@/lib/permissionDependencies';
 
 function SyncBambooHRButton({ userId, onSuccess }: { userId: string; onSuccess?: () => void }) {
   const [syncing, setSyncing] = useState(false);
@@ -514,6 +470,11 @@ const UserPermissions = forwardRef<UserPermissionsRef, { userId: string; onDirty
     setPermissions((prev) => {
       const newPerms = { ...prev };
       const newValue = !prev[key];
+
+      if (newValue && !canEnablePermission(key, prev)) {
+        toast.error(permissionEnableBlockedMessage(key) || 'Required permissions must be enabled first');
+        return prev;
+      }
       
       // Check dependencies for view permissions
       if (key === 'hr:users:view:general' || key === 'hr:users:view:timesheet' || key === 'hr:users:view:permissions' || key === 'hr:users:view:activity') {
@@ -706,63 +667,15 @@ const UserPermissions = forwardRef<UserPermissionsRef, { userId: string; onDirty
           const editKey = key.replace(':read', ':write');
           newPerms[editKey] = false;
         }
+        return applyPermissionUncheckCascade(key, newPerms);
       }
       
       return newPerms;
     });
   };
   
-  // Helper function to check if a permission can be enabled (for both view and edit permissions)
-  const canEnableEditPermission = (permKey: string, permissions: Record<string, boolean>): boolean => {
-    // View permissions require hr:users:read
-    if (permKey === 'hr:users:view:general' || permKey === 'hr:users:view:timesheet' || permKey === 'hr:users:view:permissions' || permKey === 'hr:users:view:activity') {
-      return !!permissions['hr:users:read'];
-    }
-    // Job compensation view requires hr:users:read and hr:users:view:general
-    if (permKey === 'hr:users:view:job:compensation') {
-      return !!(permissions['hr:users:read'] && permissions['hr:users:view:general']);
-    }
-    // Invite user requires hr:users:read
-    if (permKey === 'hr:users:write') {
-      return !!permissions['hr:users:read'];
-    }
-    // Edit Projects & Opportunities requires View Projects & Opportunities
-    if (permKey === 'business:projects:write') {
-      return !!permissions['business:projects:read'];
-    }
-    // Edit Customers requires View Customers
-    if (permKey === 'business:customers:write') {
-      return !!permissions['business:customers:read'];
-    }
-    // Edit Quotations requires View Quotations
-    if (permKey === 'sales:quotations:write') {
-      return !!permissions['sales:quotations:read'];
-    }
-    // Edit permissions require hr:users:read and the corresponding view permission
-    if (permKey === 'hr:users:edit:general') {
-      return !!(permissions['hr:users:read'] && permissions['hr:users:view:general']);
-    } else if (permKey === 'hr:users:edit:timesheet') {
-      return !!(permissions['hr:users:read'] && permissions['hr:users:view:timesheet']);
-    } else if (permKey === 'hr:users:edit:permissions') {
-      return !!(permissions['hr:users:read'] && permissions['hr:users:view:permissions']);
-    }
-    // Projects & Opportunities view sub-permissions require business:projects:read
-    if (permKey.startsWith('business:projects:') && permKey.endsWith(':read') && permKey !== 'business:projects:read') {
-      return !!permissions['business:projects:read'];
-    }
-    // Projects & Opportunities edit sub-permissions require only the corresponding view permission
-    if (permKey.startsWith('business:projects:') && permKey.endsWith(':write') && permKey !== 'business:projects:write') {
-      const viewKey = permKey.replace(':write', ':read');
-      return !!permissions[viewKey];
-    }
-    if (permKey === 'fleet:vehicles:write') {
-      return !!permissions['fleet:vehicles:read'];
-    }
-    if (permKey === 'fleet:equipment:write') {
-      return !!permissions['fleet:equipment:read'];
-    }
-    return true; // Default: no restrictions
-  };
+  const canEnableEditPermission = (permKey: string, permissions: Record<string, boolean>): boolean =>
+    canEnablePermission(permKey, permissions);
 
   const applyTemplateMerge = useCallback(() => {
     if (!selectedTemplateId) return;
@@ -1039,7 +952,7 @@ const UserPermissions = forwardRef<UserPermissionsRef, { userId: string; onDirty
             permissionsData.permissions_by_category?.forEach((cat: any) => {
               if (cat.category.name === 'business') {
                 // Split business into Services (projects) and Business (customers)
-                const hasProjects = cat.permissions.some((p: any) => p.key.includes('business:projects'));
+                const hasProjects = cat.permissions.some((p: any) => isBusinessProjectPermissionKey(p.key));
                 const hasCustomers = cat.permissions.some((p: any) => p.key.includes('business:customers'));
                 
                 if (hasProjects) {
@@ -1052,7 +965,7 @@ const UserPermissions = forwardRef<UserPermissionsRef, { userId: string; onDirty
                       label: 'Services',
                       id: 'services'
                     },
-                    permissions: cat.permissions.filter((p: any) => p.key.includes('business:projects'))
+                    permissions: cat.permissions.filter((p: any) => isBusinessProjectPermissionKey(p.key))
                   });
                 }
                 

@@ -2223,10 +2223,10 @@ export default function ProjectDetail(){
         <div className="mt-16 mb-4 shrink-0" aria-hidden />
       )}
 
-      {/* Calendar and Costs Cards - Only show on overview */}
+      {/* Calendar / team / costs — overview (primary page, tab null) */}
       {!tab && (
         <>
-          {!isOpportunityStyleTabs && (
+          {!isOpportunityStyleTabs ? (
             <>
               <div className="mb-4 grid md:grid-cols-2 gap-4">
                 <div className="rounded-xl border bg-white p-4">
@@ -2246,6 +2246,22 @@ export default function ProjectDetail(){
                 />
               </div>
             </>
+          ) : (
+            <div className="mb-4 grid md:grid-cols-2 gap-4">
+              <div className="rounded-xl border bg-white p-4">
+                <h4 className="font-semibold mb-3">Workload</h4>
+                <CalendarMock
+                  title={proj?.is_bidding ? 'Opportunity Calendar' : 'Project Calendar'}
+                  projectId={String(id)}
+                  hasEditPermission={hasEditPermission}
+                />
+              </div>
+              <ProjectTeamCard
+                projectId={String(id)}
+                employees={employees||[]}
+                canManageMembers={isAdmin || permissions.has('business:projects:members:write')}
+              />
+            </div>
           )}
         </>
       )}
@@ -10224,6 +10240,11 @@ function ProjectTeamCard({ projectId, employees, canManageMembers }: { projectId
     queryFn: () => projectId ? api<any[]>('GET', `/dispatch/projects/${projectId}/shifts`) : Promise.resolve([]),
     enabled: !!projectId,
   });
+  const { data: allUsers = [] } = useQuery({
+    queryKey: ['employeesDirectory', 'all'],
+    queryFn: () => api<any[]>('GET', '/employees?limit=5000'),
+    staleTime: 300_000,
+  });
   const { data: aclMembers = [] } = useQuery({
     queryKey: ['projectMembers', projectId],
     queryFn: () => projectId ? api<any[]>('GET', `/projects/${projectId}/members`) : Promise.resolve([]),
@@ -10250,9 +10271,14 @@ function ProjectTeamCard({ projectId, employees, canManageMembers }: { projectId
     return workerIds.map(wid => employees.find((e: any) => String(e.id) === String(wid))).filter(Boolean);
   }, [workerIds, employees]);
   const aclMemberUserIds = useMemo(() => new Set((aclMembers || []).map((m: any) => String(m.user_id))), [aclMembers]);
+  const userLabel = (u: any) => (u?.name || u?.username || u?.email_personal || u?.email || String(u?.id || '')).toString();
   const availableEmployees = useMemo(
-    () => (employees || []).filter((e: any) => !aclMemberUserIds.has(String(e.id))),
-    [employees, aclMemberUserIds],
+    () =>
+      sortByLabel(
+        (allUsers || []).filter((u: any) => u?.id && !aclMemberUserIds.has(String(u.id))),
+        userLabel,
+      ),
+    [allUsers, aclMemberUserIds],
   );
 
   const onAddMember = async () => {
@@ -10308,7 +10334,7 @@ function ProjectTeamCard({ projectId, employees, canManageMembers }: { projectId
             <option value="">Select user...</option>
             {availableEmployees.map((e: any) => (
               <option key={String(e.id)} value={String(e.id)}>
-                {e.name || e.username || e.email_personal || String(e.id)}
+                {userLabel(e)}
               </option>
             ))}
           </select>

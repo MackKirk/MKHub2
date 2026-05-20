@@ -8,6 +8,11 @@ import { useConfirm } from '@/components/ConfirmProvider';
 import { effectiveShowInProject, effectiveShowInOpportunity } from '@/lib/projectStatusVisibility';
 import DocumentTemplatesTab from '@/components/DocumentTemplatesTab';
 import DocumentTypesTab from '@/components/DocumentTypesTab';
+import { IMPLEMENTED_PERMISSIONS, isBusinessProjectPermissionKey } from '@/lib/implementedPermissions';
+import {
+  applyPermissionUncheckCascadeSet,
+  canEnablePermissionSet,
+} from '@/lib/permissionDependencies';
 
 type Item = { id:string, label:string, value?:string, sort_index?:number, meta?: any };
 
@@ -1061,47 +1066,6 @@ type PermTemplate = { id: string; name: string; permission_keys: string[] };
 type PermDefItem = { id: string; key: string; label: string; description?: string };
 type PermDefCategory = { id: string; name: string; label: string; description?: string; permissions: PermDefItem[] };
 
-// Same list as UserInfo: only permissions NOT in this set show [WIP]
-const IMPLEMENTED_PERMISSIONS = new Set([
-  'users:read', 'users:write',
-  'timesheet:read', 'timesheet:write', 'timesheet:approve', 'timesheet:unrestricted_clock',
-  'clients:read', 'clients:write',
-  'inventory:read', 'inventory:write',
-  'reviews:read', 'reviews:admin',
-  'hr:access',
-  'hr:users:read', 'hr:users:write',
-  'hr:users:view:general', 'hr:users:view:job:compensation', 'hr:users:edit:general',
-  'hr:users:view:timesheet', 'hr:users:edit:timesheet', 'hr:users:view:permissions', 'hr:users:view:activity', 'hr:users:edit:permissions',
-  'hr:attendance:read', 'hr:attendance:write',
-  'hr:community:read', 'hr:community:write',
-  'hr:reviews:admin',
-  'hr:timesheet:read', 'hr:timesheet:write', 'hr:timesheet:approve', 'hr:timesheet:unrestricted_clock',
-  'settings:access',
-  'documents:access',
-  'documents:read', 'documents:write', 'documents:delete', 'documents:move',
-  'fleet:access',
-  'fleet:vehicles:read', 'fleet:vehicles:write',
-  'fleet:equipment:read', 'fleet:equipment:write',
-  'company_cards:read', 'company_cards:write',
-  'inventory:access',
-  'inventory:suppliers:read', 'inventory:suppliers:write',
-  'inventory:products:read', 'inventory:products:write',
-  'business:access',
-  'business:customers:read', 'business:customers:write',
-  'business:projects:read', 'business:projects:write',
-  'business:projects:reports:read', 'business:projects:reports:write',
-  'business:projects:workload:read', 'business:projects:workload:write',
-  'business:projects:timesheet:read', 'business:projects:timesheet:write',
-  'business:projects:files:read', 'business:projects:files:write',
-  'business:projects:documents:read', 'business:projects:documents:write',
-  'business:projects:proposal:read', 'business:projects:proposal:write',
-  'business:projects:estimate:read', 'business:projects:estimate:write',
-  'business:projects:orders:read', 'business:projects:orders:write',
-  'business:projects:safety:read', 'business:projects:safety:write',
-  'sales:access',
-  'sales:quotations:read', 'sales:quotations:write',
-]);
-
 function PermissionTemplatesSection() {
   const qc = useQueryClient();
   const confirm = useConfirm();
@@ -1128,7 +1092,7 @@ function PermissionTemplatesSection() {
     let inventoryCat: PermDefCategory | null = null;
     raw.forEach((cat) => {
       if (cat.name === 'business') {
-        const hasProjects = (cat.permissions || []).some((p) => p.key.includes('business:projects'));
+        const hasProjects = (cat.permissions || []).some((p) => isBusinessProjectPermissionKey(p.key));
         const hasCustomers = (cat.permissions || []).some((p) => p.key.includes('business:customers'));
         if (hasProjects) {
           processed.push({
@@ -1137,7 +1101,7 @@ function PermissionTemplatesSection() {
             name: 'services',
             label: 'Services',
             description: cat.description || 'Permissions for Business area. Blocking access blocks all sub-permissions.',
-            permissions: (cat.permissions || []).filter((p) => p.key.includes('business:projects')),
+            permissions: (cat.permissions || []).filter((p) => isBusinessProjectPermissionKey(p.key)),
           });
         }
         if (hasCustomers) {
@@ -1194,93 +1158,11 @@ function PermissionTemplatesSection() {
   };
 
   // Same as UserInfo: whether this permission can be enabled given current selection (dependencies met)
-  const canEnableEditPermission = (permKey: string, selectedKeys: Set<string>): boolean => {
-    const has = (k: string) => selectedKeys.has(k);
-    if (permKey === 'hr:users:view:general' || permKey === 'hr:users:view:timesheet' || permKey === 'hr:users:view:permissions' || permKey === 'hr:users:view:activity') {
-      return has('hr:users:read');
-    }
-    if (permKey === 'hr:users:view:job:compensation') {
-      return has('hr:users:read') && has('hr:users:view:general');
-    }
-    if (permKey === 'hr:users:write') {
-      return has('hr:users:read');
-    }
-    if (permKey === 'business:projects:write') {
-      return has('business:projects:read');
-    }
-    if (permKey === 'business:customers:write') {
-      return has('business:customers:read');
-    }
-    if (permKey === 'sales:quotations:write') {
-      return has('sales:quotations:read');
-    }
-    if (permKey === 'hr:users:edit:general') {
-      return has('hr:users:read') && has('hr:users:view:general');
-    }
-    if (permKey === 'hr:users:edit:timesheet') {
-      return has('hr:users:read') && has('hr:users:view:timesheet');
-    }
-    if (permKey === 'hr:users:edit:permissions') {
-      return has('hr:users:read') && has('hr:users:view:permissions');
-    }
-    if (permKey.startsWith('business:projects:') && permKey.endsWith(':read') && permKey !== 'business:projects:read') {
-      return has('business:projects:read');
-    }
-    if (permKey.startsWith('business:projects:') && permKey.endsWith(':write') && permKey !== 'business:projects:write') {
-      return has(permKey.replace(':write', ':read'));
-    }
-    return true;
-  };
+  const canEnableEditPermission = (permKey: string, selectedKeys: Set<string>): boolean =>
+    canEnablePermissionSet(permKey, selectedKeys);
 
-  // When unchecking a key, remove dependent keys (same cascade as UserInfo)
-  const applyCascadeUncheck = (uncheckedKey: string, current: Set<string>): Set<string> => {
-    const next = new Set(current);
-    const remove = (k: string) => next.delete(k);
-    if (uncheckedKey === 'hr:users:view:general') {
-      remove('hr:users:edit:general');
-      remove('hr:users:view:job:compensation');
-    } else if (uncheckedKey === 'hr:users:view:timesheet') {
-      remove('hr:users:edit:timesheet');
-    } else if (uncheckedKey === 'hr:users:view:permissions') {
-      remove('hr:users:edit:permissions');
-    } else if (uncheckedKey === 'hr:users:read') {
-      remove('hr:users:write');
-      remove('hr:users:view:general');
-      remove('hr:users:view:job:compensation');
-      remove('hr:users:view:timesheet');
-      remove('hr:users:view:permissions');
-      remove('hr:users:view:activity');
-      remove('hr:users:edit:general');
-      remove('hr:users:edit:timesheet');
-      remove('hr:users:edit:permissions');
-    } else if (uncheckedKey === 'business:customers:read') {
-      remove('business:customers:write');
-    } else if (uncheckedKey === 'sales:quotations:read') {
-      remove('sales:quotations:write');
-    } else if (uncheckedKey === 'business:projects:read') {
-      remove('business:projects:write');
-      remove('business:projects:reports:read');
-      remove('business:projects:workload:read');
-      remove('business:projects:timesheet:read');
-      remove('business:projects:files:read');
-      remove('business:projects:proposal:read');
-      remove('business:projects:estimate:read');
-      remove('business:projects:orders:read');
-      remove('business:projects:safety:read');
-    } else if (uncheckedKey === 'business:projects:write') {
-      remove('business:projects:reports:write');
-      remove('business:projects:workload:write');
-      remove('business:projects:timesheet:write');
-      remove('business:projects:files:write');
-      remove('business:projects:proposal:write');
-      remove('business:projects:estimate:write');
-      remove('business:projects:orders:write');
-      remove('business:projects:safety:write');
-    } else if (uncheckedKey.startsWith('business:projects:') && uncheckedKey.endsWith(':read') && uncheckedKey !== 'business:projects:read') {
-      remove(uncheckedKey.replace(':read', ':write'));
-    }
-    return next;
-  };
+  const applyCascadeUncheck = (uncheckedKey: string, current: Set<string>): Set<string> =>
+    applyPermissionUncheckCascadeSet(uncheckedKey, current);
 
   const createMutation = useMutation({
     mutationFn: (payload: { name: string; permission_keys: string[] }) =>
