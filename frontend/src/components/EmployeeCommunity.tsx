@@ -5,7 +5,6 @@ import { useSearchParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api, withFileAccessTokenIfNeeded } from '@/lib/api';
 import toast from 'react-hot-toast';
-import OverlayPortal from '@/components/OverlayPortal';
 import { CommunityPostBody } from '@/components/community/CommunityPostBody';
 import { CommunityFeedPostSnippet } from '@/components/community/CommunityFeedPostSnippet';
 import CommunityDirectoryUserPeekModal from '@/components/community/CommunityDirectoryUserPeekModal';
@@ -19,6 +18,7 @@ import {
   AppButton,
   AppEmptyState,
   AppInput,
+  AppModal,
   AppSelect,
   AppTabs,
   uiBorders,
@@ -755,78 +755,61 @@ export default function EmployeeCommunity({
         };
 
         return (
-          <OverlayPortal>
-            <div
-              className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/55 p-4 backdrop-blur-sm"
-              onClick={closeModal}
-            >
-              <div
-                className="flex h-[min(92dvh,920px)] w-full max-w-5xl flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl"
-                onClick={(e) => e.stopPropagation()}
-                role="dialog"
-                aria-modal="true"
-              >
-                <div className="shrink-0 border-b border-slate-200 bg-white px-5 py-4">
-                  <div className="flex items-start gap-3">
+          <AppModal
+            open
+            onClose={closeModal}
+            size="lg"
+            dialogClassName="!max-w-5xl !h-[min(92dvh,920px)] !max-h-none flex flex-col"
+            bodyClassName="flex min-h-0 flex-1 flex-col overflow-hidden p-0"
+            headerContent={
+              <div className="flex items-start gap-3">
+                <button
+                  type="button"
+                  className="flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-full bg-slate-100 ring-offset-2 hover:ring-2 hover:ring-[#7f1010]/35 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#7f1010]/45"
+                  onClick={() => modalPost.author_id && setDirectoryCardUserId(modalPost.author_id)}
+                  aria-label={`View profile: ${modalPost.author_name || 'Author'}`}
+                >
+                  {modalPost.author_avatar ? (
+                    <img
+                      src={withFileAccessTokenIfNeeded(modalPost.author_avatar)}
+                      alt=""
+                      className="h-full w-full object-cover"
+                    />
+                  ) : (
+                    <span className="text-sm font-semibold text-slate-500">
+                      {(modalPost.author_name || 'U')[0].toUpperCase()}
+                    </span>
+                  )}
+                </button>
+                <div className="min-w-0 flex-1">
+                  <h3 className="line-clamp-2 text-lg font-semibold leading-snug text-slate-950">{modalPost.title}</h3>
+                  <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-slate-500">
                     <button
                       type="button"
-                      className="h-11 w-11 shrink-0 rounded-full bg-slate-100 flex items-center justify-center overflow-hidden ring-offset-2 hover:ring-2 hover:ring-[#7f1010]/35 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#7f1010]/45"
+                      className="font-semibold text-slate-700 hover:text-[#7f1010] hover:underline"
                       onClick={() => modalPost.author_id && setDirectoryCardUserId(modalPost.author_id)}
-                      aria-label={`View profile: ${modalPost.author_name || 'Author'}`}
                     >
-                      {modalPost.author_avatar ? (
-                        <img
-                          src={withFileAccessTokenIfNeeded(modalPost.author_avatar)}
-                          alt=""
-                          className="h-full w-full object-cover"
-                        />
-                      ) : (
-                        <span className="text-sm font-semibold text-slate-500">
-                          {(modalPost.author_name || 'U')[0].toUpperCase()}
-                        </span>
-                      )}
+                      {modalPost.author_name || 'Unknown'}
                     </button>
-                    <div className="min-w-0 flex-1">
-                      <h3 className="line-clamp-2 text-lg font-semibold leading-snug text-slate-950">
-                        {modalPost.title}
-                      </h3>
-                      <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-slate-500">
-                        <button
-                          type="button"
-                          className="font-semibold text-slate-700 hover:text-[#7f1010] hover:underline"
-                          onClick={() => modalPost.author_id && setDirectoryCardUserId(modalPost.author_id)}
-                        >
-                          {modalPost.author_name || 'Unknown'}
-                        </button>
-                        <span>{formatTimeAgo(modalPost.created_at)}</span>
-                        {modalPost.related_area && (
-                          <span className="rounded-md border border-slate-200 bg-slate-50 px-1.5 py-0.5 font-medium text-slate-600">
-                            {AREA_LABELS[modalPost.related_area] || modalPost.related_area}
-                          </span>
-                        )}
-                        <span className="rounded-md border border-slate-200 bg-slate-50 px-1.5 py-0.5 font-medium text-slate-600">
-                          {audienceLabel}
-                        </span>
-                        {priorityLabel && (
-                          <span className="rounded-md border border-red-100 bg-red-50 px-1.5 py-0.5 font-semibold text-red-700">
-                            {priorityLabel}
-                          </span>
-                        )}
-                      </div>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={closeModal}
-                      className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-slate-400 transition hover:bg-slate-100 hover:text-slate-700"
-                      aria-label="Close post"
-                    >
-                      <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                      </svg>
-                    </button>
+                    <span>{formatTimeAgo(modalPost.created_at)}</span>
+                    {modalPost.related_area && (
+                      <span className="rounded-md border border-slate-200 bg-slate-50 px-1.5 py-0.5 font-medium text-slate-600">
+                        {AREA_LABELS[modalPost.related_area] || modalPost.related_area}
+                      </span>
+                    )}
+                    <span className="rounded-md border border-slate-200 bg-slate-50 px-1.5 py-0.5 font-medium text-slate-600">
+                      {audienceLabel}
+                    </span>
+                    {priorityLabel && (
+                      <span className="rounded-md border border-red-100 bg-red-50 px-1.5 py-0.5 font-semibold text-red-700">
+                        {priorityLabel}
+                      </span>
+                    )}
                   </div>
                 </div>
-
+              </div>
+            }
+          >
                 <div className="flex min-h-0 flex-1 flex-col overflow-hidden bg-white">
                   <motion.div
                     layout
@@ -1239,9 +1222,7 @@ export default function EmployeeCommunity({
                     )}
                   </div>
                 </div>
-              </div>
-            </div>
-          </OverlayPortal>
+          </AppModal>
         );
       })()}
 

@@ -3,9 +3,40 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import toast from 'react-hot-toast';
 import { useConfirm } from '@/components/ConfirmProvider';
-import OverlayPortal from '@/components/OverlayPortal';
 import { JobSearchCombobox } from '@/components/JobSearchCombobox';
 import { formatJobPickerLine, getPredefinedJob, isPredefinedJobId } from '@/constants/predefinedJobs';
+import {
+  AppButton,
+  AppControlLabelRow,
+  AppFieldHint,
+  AppFormModal,
+  AppModal,
+  AppSelect,
+  uiBorders,
+  uiCx,
+  uiDropdown,
+  uiLayout,
+  uiRadius,
+  uiShadows,
+  uiSpacing,
+  uiTypography,
+} from '@/components/ui';
+
+const hourSelectOptions = Array.from({ length: 12 }, (_, i) => ({
+  value: String(i + 1),
+  label: String(i + 1),
+}));
+
+const minuteSelectOptions = Array.from({ length: 12 }, (_, i) => {
+  const m = i * 5;
+  const v = String(m).padStart(2, '0');
+  return { value: v, label: v };
+});
+
+const amPmSelectOptions = [
+  { value: 'AM', label: 'AM' },
+  { value: 'PM', label: 'PM' },
+] as const;
 
 function formatTime12h(timeStr: string | null | undefined): string {
   if (!timeStr || timeStr === '--:--' || timeStr === '-') return timeStr || '--:--';
@@ -719,320 +750,271 @@ export function ClockInOutModalLayer({
     return performClockInOut(null);
   };
 
+  const closeShiftPick = () => {
+    setShiftPickOpen(false);
+    setShiftPickOptions([]);
+    setShiftPickSelectedId('');
+  };
+
   return (
     <>
-      <OverlayPortal>
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
-          onClick={closeModal}
-        >
-          <div
-            className="max-w-md w-full max-h-[90vh] flex flex-col rounded-xl border border-gray-200 bg-gray-100 shadow-xl overflow-hidden"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="flex-shrink-0 rounded-t-xl border-b border-gray-200 bg-white p-4">
-              <div className="flex items-center gap-2">
-                <button type="button" onClick={closeModal} className="p-1 rounded-lg hover:bg-gray-100 text-gray-600">
-                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-                  </svg>
-                </button>
-                <div>
-                  <h3 className="text-sm font-semibold text-gray-900">Clock {clockType === 'in' ? 'In' : 'Out'}</h3>
-                  <p className="text-xs text-gray-500 mt-0.5">
-                    {clockType === 'in' ? 'Record your clock-in time and job' : 'Record your clock-out time'}
-                  </p>
-                </div>
-              </div>
-            </div>
-
-            <div className="flex-1 overflow-y-auto p-4">
-              <div className="rounded-xl border border-gray-200 bg-white p-4 space-y-4">
-                <div>
-                  <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">Time *</label>
-                  {!hasUnrestrictedClock ? (
-                    <div className="flex gap-2 items-center pointer-events-none">
-                      <div className="flex-1 border border-gray-200 rounded-lg px-3 py-2 bg-gray-100 opacity-60 text-gray-500 text-sm">
-                        {selectedHour12 || 'Hour'}
-                      </div>
-                      <span className="text-gray-500 font-medium">:</span>
-                      <div className="flex-1 border border-gray-200 rounded-lg px-3 py-2 bg-gray-100 opacity-60 text-gray-500 text-sm">
-                        {selectedMinute || 'Min'}
-                      </div>
-                      <div className="flex-1 border border-gray-200 rounded-lg px-3 py-2 bg-gray-100 opacity-60 text-gray-500 text-sm">
-                        {selectedAmPm || 'AM'}
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="flex gap-2 items-center">
-                      <select
-                        value={selectedHour12}
-                        onChange={(e) => {
-                          const hour12 = e.target.value;
-                          setSelectedHour12(hour12);
-                          updateTimeFrom12h(hour12, selectedMinute, selectedAmPm);
-                        }}
-                        className="flex-1 border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-gray-300 focus:border-gray-300"
-                        required
-                      >
-                        <option value="">Hour</option>
-                        {Array.from({ length: 12 }, (_, i) => (
-                          <option key={i + 1} value={String(i + 1)}>
-                            {i + 1}
-                          </option>
-                        ))}
-                      </select>
-                      <span className="text-gray-500 font-medium">:</span>
-                      <select
-                        value={selectedMinute}
-                        onChange={(e) => {
-                          const minute = e.target.value;
-                          setSelectedMinute(minute);
-                          updateTimeFrom12h(selectedHour12, minute, selectedAmPm);
-                        }}
-                        className="flex-1 border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-gray-300 focus:border-gray-300"
-                        required
-                      >
-                        <option value="">Min</option>
-                        {Array.from({ length: 12 }, (_, i) => {
-                          const m = i * 5;
-                          return (
-                            <option key={m} value={String(m).padStart(2, '0')}>
-                              {String(m).padStart(2, '0')}
-                            </option>
-                          );
-                        })}
-                      </select>
-                      <select
-                        value={selectedAmPm}
-                        onChange={(e) => {
-                          const amPm = e.target.value as 'AM' | 'PM';
-                          setSelectedAmPm(amPm);
-                          updateTimeFrom12h(selectedHour12, selectedMinute, amPm);
-                        }}
-                        className="flex-1 border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-gray-300 focus:border-gray-300"
-                        required
-                      >
-                        <option value="AM">AM</option>
-                        <option value="PM">PM</option>
-                      </select>
-                    </div>
-                  )}
-                  {!hasUnrestrictedClock && (
-                    <p className="text-[10px] text-gray-500 mt-1.5">
-                      Time is locked. Contact an administrator to enable time editing.
-                    </p>
-                  )}
-                </div>
-
-                {clockType === 'in' && (
-                  <div>
-                    <JobSearchCombobox
-                      value={selectedJob}
-                      onChange={(jobId) => {
-                        setJobTouched(true);
-                        setSelectedJob(jobId);
-                      }}
-                      disabled={isJobLocked}
-                    />
-                    {selectedDateShift && project && (
-                      <p className="text-[10px] text-gray-500 mt-1">Pre-filled from your scheduled shift</p>
-                    )}
-                  </div>
-                )}
-
-                {clockType === 'out' && (
-                  <div>
-                    <label className="flex items-center gap-2 cursor-pointer">
-                      <input
-                        type="checkbox"
-                        checked={insertBreakTime}
-                        onChange={(e) => setInsertBreakTime(e.target.checked)}
-                        className="w-3.5 h-3.5 rounded border-gray-200 text-brand-red focus:ring-brand-red"
-                      />
-                      <span className="text-[10px] font-medium text-gray-500 uppercase tracking-wide">Insert Break Time</span>
-                    </label>
-                    {insertBreakTime && (
-                      <div className="mt-2 ml-5 space-y-2">
-                        <div className="flex gap-2 items-center">
-                          <label className="text-[10px] text-gray-500 w-12">Hours:</label>
-                          <select
-                            value={breakHours}
-                            onChange={(e) => setBreakHours(e.target.value)}
-                            className="flex-1 border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-gray-300 focus:border-gray-300"
-                          >
-                            {Array.from({ length: 3 }, (_, i) => (
-                              <option key={i} value={String(i)}>
-                                {i}
-                              </option>
-                            ))}
-                          </select>
-                          <label className="text-[10px] text-gray-500 w-12">Minutes:</label>
-                          <select
-                            value={breakMinutes}
-                            onChange={(e) => setBreakMinutes(e.target.value)}
-                            className="flex-1 border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-gray-300 focus:border-gray-300"
-                          >
-                            {Array.from({ length: 12 }, (_, i) => {
-                              const m = i * 5;
-                              return (
-                                <option key={m} value={String(m).padStart(2, '0')}>
-                                  {String(m).padStart(2, '0')}
-                                </option>
-                              );
-                            })}
-                          </select>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                )}
-
-                <div>
-                  {gpsLocation ? (
-                    <div className="p-3 bg-green-50 border border-green-200 rounded-lg">
-                      <div className="flex items-center gap-2 text-green-800 font-medium text-sm">
-                        <svg className="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                        </svg>
-                        <span>Location captured</span>
-                      </div>
-                      <div className="text-xs text-green-700 mt-1">Accuracy: {Math.round(gpsLocation.accuracy)}m</div>
-                    </div>
-                  ) : gpsLoading ? (
-                    <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg">
-                      <div className="flex items-center gap-2 text-blue-800 text-sm">
-                        <div className="animate-spin rounded-full h-3.5 w-3.5 border-2 border-blue-800 border-t-transparent" />
-                        <span>Getting location...</span>
-                      </div>
-                    </div>
-                  ) : gpsError ? (
-                    <div className="p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
-                      <div className="text-sm text-yellow-800">
-                        {gpsError}
-                        <button
-                          type="button"
-                          onClick={getCurrentLocation}
-                          className="ml-2 text-xs underline font-medium hover:text-yellow-900"
-                        >
-                          Try again
-                        </button>
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="p-3 bg-gray-50 border border-gray-200 rounded-lg">
-                      <div className="text-sm text-gray-600">No location data</div>
-                    </div>
-                  )}
-                </div>
-              </div>
-            </div>
-
-            <div className="flex-shrink-0 px-4 py-4 border-t border-gray-200 bg-white flex items-center justify-end gap-3 rounded-b-xl">
-              <button
-                type="button"
-                onClick={closeModal}
-                className="px-3 py-1.5 rounded-lg text-sm font-medium text-gray-700 border border-gray-200 hover:bg-gray-50"
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                onClick={handleClockInOut}
-                disabled={submitting}
-                className="px-4 py-2 rounded-lg text-sm font-semibold text-white bg-brand-red hover:bg-[#aa1212] disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                {submitting ? 'Submitting...' : 'Submit'}
-              </button>
-            </div>
+      <AppFormModal
+        open
+        onClose={closeModal}
+        title={`Clock ${clockType === 'in' ? 'In' : 'Out'}`}
+        description={
+          clockType === 'in' ? 'Record your clock-in time and job' : 'Record your clock-out time'
+        }
+        quickInfo={
+          <>
+            <p>Your location may be captured when you submit clock in/out.</p>
+            <p>
+              {!hasUnrestrictedClock
+                ? 'Time is locked to the current time unless an administrator enables time editing.'
+                : 'You can adjust the time when unrestricted clock editing is enabled on your account.'}
+            </p>
+            {clockType === 'in' && selectedDateShift && project ? (
+              <p>Job is pre-filled from your scheduled shift when applicable.</p>
+            ) : null}
+          </>
+        }
+        footer={
+          <div className={uiCx(uiLayout.actionsRow, 'w-full justify-end')}>
+            <AppButton variant="secondary" size="sm" onClick={closeModal}>
+              Cancel
+            </AppButton>
+            <AppButton size="sm" onClick={handleClockInOut} loading={submitting} disabled={submitting}>
+              Submit
+            </AppButton>
+          </div>
+        }
+      >
+        <div className="space-y-1.5">
+          <AppControlLabelRow
+            label="Time *"
+            fieldHint={
+              <AppFieldHint
+                hint={
+                  hasUnrestrictedClock
+                    ? 'Time\n\nThe clock time for this entry. You can adjust it when time editing is enabled on your account.'
+                    : 'Time\n\nLocked to the current time. Contact an administrator to enable time editing.'
+                }
+              />
+            }
+          />
+          <div className="flex items-center gap-2">
+            <AppSelect
+              className="min-w-0 flex-1"
+              value={selectedHour12}
+              onChange={(e) => {
+                const hour12 = e.target.value;
+                setSelectedHour12(hour12);
+                updateTimeFrom12h(hour12, selectedMinute, selectedAmPm);
+              }}
+              options={hourSelectOptions}
+              placeholder="Hour"
+              disabled={!hasUnrestrictedClock}
+              required
+            />
+            <span className="shrink-0 text-xs font-medium text-gray-500">:</span>
+            <AppSelect
+              className="min-w-0 flex-1"
+              value={selectedMinute}
+              onChange={(e) => {
+                const minute = e.target.value;
+                setSelectedMinute(minute);
+                updateTimeFrom12h(selectedHour12, minute, selectedAmPm);
+              }}
+              options={minuteSelectOptions}
+              placeholder="Min"
+              disabled={!hasUnrestrictedClock}
+              required
+            />
+            <AppSelect
+              className="min-w-0 flex-1"
+              value={selectedAmPm}
+              onChange={(e) => {
+                const amPm = e.target.value as 'AM' | 'PM';
+                setSelectedAmPm(amPm);
+                updateTimeFrom12h(selectedHour12, selectedMinute, amPm);
+              }}
+              options={[...amPmSelectOptions]}
+              disabled={!hasUnrestrictedClock}
+              required
+            />
           </div>
         </div>
-      </OverlayPortal>
 
-      {shiftPickOpen && (
-        <OverlayPortal>
-          <div
-            className="fixed inset-0 z-[60] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4"
-            onClick={(e) => {
-              if (e.target === e.currentTarget) {
-                setShiftPickOpen(false);
-                setShiftPickOptions([]);
-                setShiftPickSelectedId('');
+        {clockType === 'in' && (
+          <div>
+            <JobSearchCombobox
+              value={selectedJob}
+              onChange={(jobId) => {
+                setJobTouched(true);
+                setSelectedJob(jobId);
+              }}
+              disabled={isJobLocked}
+              fieldHint={
+                selectedDateShift && project
+                  ? 'Job\n\nPre-filled from your scheduled shift for today. Change only if you are clocking in to a different job.'
+                  : 'Job\n\nThe project or predefined job you are clocking in to.'
               }
-            }}
-          >
-            <div
-              className="bg-white rounded-2xl shadow-xl max-w-2xl w-full border border-gray-200/60 flex flex-col"
-              onClick={(e) => e.stopPropagation()}
-            >
-              <div className="p-6 border-b border-gray-200/60">
-                <h3 className="text-xl font-semibold text-gray-900">Select Shift</h3>
-                <p className="text-sm text-gray-600 mt-1">
-                  You have multiple shifts for this project on {formatDateShort(selectedDate)}. Choose which shift you are clocking in for.
-                </p>
-              </div>
+            />
+          </div>
+        )}
 
-              <div className="p-6 space-y-3 overflow-y-auto max-h-[60vh]">
-                {shiftPickOptions.map((s) => (
-                  <button
-                    key={s.id}
-                    type="button"
-                    onClick={() => setShiftPickSelectedId(s.id)}
-                    className={`w-full text-left rounded-xl border p-4 hover:bg-gray-50 transition-colors ${
-                      shiftPickSelectedId === s.id ? 'border-brand-red ring-2 ring-brand-red/30' : 'border-gray-200/60'
-                    }`}
-                  >
-                    <div className="flex items-center justify-between gap-4">
-                      <div className="min-w-0">
-                        <div className="text-sm font-semibold text-gray-900 truncate">
-                          {s.project_name || 'Project'} <span className="text-gray-400 font-medium">•</span>{' '}
-                          {formatTime12h(s.start_time)} - {formatTime12h(s.end_time)}
-                        </div>
-                      </div>
-                      <div
-                        className={`w-4 h-4 rounded-full border flex-shrink-0 ${
-                          shiftPickSelectedId === s.id ? 'border-brand-red bg-brand-red' : 'border-gray-300'
-                        }`}
-                      />
-                    </div>
-                  </button>
-                ))}
+        {clockType === 'out' && (
+          <div className="space-y-2">
+            <div className="space-y-1.5">
+              <AppControlLabelRow
+                label="Insert Break Time"
+                fieldHint={
+                  <AppFieldHint hint="Break time\n\nOptional unpaid break deducted from hours worked on clock out." />
+                }
+              />
+              <label className="flex cursor-pointer items-center gap-2">
+                <input
+                  type="checkbox"
+                  checked={insertBreakTime}
+                  onChange={(e) => setInsertBreakTime(e.target.checked)}
+                  className="h-3.5 w-3.5 rounded border-gray-300 text-brand-red focus:ring-brand-red"
+                />
+                <span className={uiTypography.helper}>Include break in this clock out</span>
+              </label>
+            </div>
+            {insertBreakTime && (
+              <div className="grid grid-cols-2 gap-3">
+                <AppSelect
+                  label="Hours"
+                  value={breakHours}
+                  onChange={(e) => setBreakHours(e.target.value)}
+                  options={Array.from({ length: 3 }, (_, i) => ({ value: String(i), label: String(i) }))}
+                />
+                <AppSelect
+                  label="Minutes"
+                  value={breakMinutes}
+                  onChange={(e) => setBreakMinutes(e.target.value)}
+                  options={Array.from({ length: 12 }, (_, i) => {
+                    const m = i * 5;
+                    const v = String(m).padStart(2, '0');
+                    return { value: v, label: v };
+                  })}
+                />
               </div>
+            )}
+          </div>
+        )}
 
-              <div className="p-6 border-t border-gray-200/60 bg-gray-50/50 flex items-center justify-end gap-3">
+        <div className="space-y-1.5">
+          <AppControlLabelRow
+            label="Location"
+            fieldHint={
+              <AppFieldHint hint="Location\n\nGPS coordinates may be captured when you submit. Allow location access in your browser if prompted." />
+            }
+          />
+          {gpsLocation ? (
+            <div className={uiCx('rounded-lg border border-green-200 bg-green-50 p-3', uiRadius.control)}>
+              <div className="flex items-center gap-2 text-xs font-medium text-green-800">
+                <svg className="h-4 w-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                </svg>
+                <span>Location captured</span>
+              </div>
+              <div className="mt-1 text-xs text-green-700">Accuracy: {Math.round(gpsLocation.accuracy)}m</div>
+            </div>
+          ) : gpsLoading ? (
+            <div className={uiCx('rounded-lg border border-blue-200 bg-blue-50 p-3', uiRadius.control)}>
+              <div className="flex items-center gap-2 text-xs text-blue-800">
+                <div className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-blue-800 border-t-transparent" />
+                <span>Getting location...</span>
+              </div>
+            </div>
+          ) : gpsError ? (
+            <div className={uiCx('rounded-lg border border-yellow-200 bg-yellow-50 p-3', uiRadius.control)}>
+              <div className="text-xs text-yellow-800">
+                {gpsError}
                 <button
                   type="button"
-                  onClick={() => {
-                    setShiftPickOpen(false);
-                    setShiftPickOptions([]);
-                    setShiftPickSelectedId('');
-                  }}
-                  className="px-4 py-2.5 rounded-lg border border-gray-200/60 hover:bg-gray-50 transition-colors text-sm font-medium"
+                  onClick={getCurrentLocation}
+                  className="ml-2 font-medium underline hover:text-yellow-900"
                 >
-                  Cancel
-                </button>
-                <button
-                  type="button"
-                  onClick={async () => {
-                    if (!shiftPickSelectedId) {
-                      toast.error('Please select a shift');
-                      return;
-                    }
-                    const selected = shiftPickSelectedId;
-                    setShiftPickOpen(false);
-                    setShiftPickOptions([]);
-                    setShiftPickSelectedId('');
-                    await performClockInOut(selected);
-                  }}
-                  className="px-4 py-2.5 rounded-lg bg-brand-red text-white hover:bg-red-700 transition-colors text-sm font-medium"
-                >
-                  Confirm Shift
+                  Try again
                 </button>
               </div>
             </div>
+          ) : (
+            <div className={uiCx('rounded-lg border border-gray-200 bg-gray-50 p-3', uiRadius.control)}>
+              <div className="text-xs text-gray-600">No location data</div>
+            </div>
+          )}
+        </div>
+      </AppFormModal>
+
+      <AppModal
+        open={shiftPickOpen}
+        onClose={closeShiftPick}
+        title="Select Shift"
+        description={`You have multiple shifts for this project on ${formatDateShort(selectedDate)}. Choose which shift you are clocking in for.`}
+        size="md"
+        footer={
+          <div className={uiCx(uiLayout.actionsRow, 'w-full justify-end')}>
+            <AppButton variant="secondary" size="sm" onClick={closeShiftPick}>
+              Cancel
+            </AppButton>
+            <AppButton
+              size="sm"
+              onClick={async () => {
+                if (!shiftPickSelectedId) {
+                  toast.error('Please select a shift');
+                  return;
+                }
+                const selected = shiftPickSelectedId;
+                closeShiftPick();
+                await performClockInOut(selected);
+              }}
+            >
+              Confirm Shift
+            </AppButton>
           </div>
-        </OverlayPortal>
-      )}
+        }
+      >
+        <ul
+          className={uiCx(
+            uiSpacing.sectionStack,
+            uiRadius.dropdownMenu,
+            uiBorders.subtle,
+            uiShadows.elevated,
+            'max-h-[60vh] overflow-y-auto py-1.5',
+          )}
+          role="listbox"
+        >
+          {shiftPickOptions.map((s) => (
+            <li key={s.id} role="option" aria-selected={shiftPickSelectedId === s.id}>
+              <button
+                type="button"
+                onClick={() => setShiftPickSelectedId(s.id)}
+                className={uiCx(
+                  uiDropdown.option,
+                  'flex items-center justify-between gap-4',
+                  shiftPickSelectedId === s.id && uiDropdown.optionSelected,
+                )}
+              >
+                <span className="min-w-0 truncate text-xs text-gray-900">
+                  {s.project_name || 'Project'} <span className="text-gray-400">•</span>{' '}
+                  {formatTime12h(s.start_time)} - {formatTime12h(s.end_time)}
+                </span>
+                <span
+                  className={uiCx(
+                    'h-4 w-4 shrink-0 rounded-full border',
+                    shiftPickSelectedId === s.id ? 'border-brand-red bg-brand-red' : 'border-gray-300',
+                  )}
+                  aria-hidden
+                />
+              </button>
+            </li>
+          ))}
+        </ul>
+      </AppModal>
     </>
   );
 }

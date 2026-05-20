@@ -1,8 +1,11 @@
 import type { ReactNode, TextareaHTMLAttributes } from 'react';
+import { AppControlLabelRow } from './AppControlLabel';
+import { AppFieldHint } from './AppFieldHint';
 import { uiBorders, uiCx, uiRadius, uiSpacing, uiTypography } from './tokens';
 
 export type AppTextareaProps = {
   label?: ReactNode;
+  fieldHint?: ReactNode;
   helperText?: ReactNode;
   error?: ReactNode;
   textareaClassName?: string;
@@ -10,6 +13,7 @@ export type AppTextareaProps = {
 
 export function AppTextarea({
   label,
+  fieldHint,
   helperText,
   error,
   className,
@@ -20,7 +24,7 @@ export function AppTextarea({
 }: AppTextareaProps) {
   return (
     <label className={uiCx('block space-y-1.5', className)} htmlFor={id}>
-      {label ? <span className={uiTypography.controlLabel}>{label}</span> : null}
+      {label ? <AppControlLabelRow label={label} fieldHint={fieldHint ? <AppFieldHint hint={fieldHint} /> : undefined} /> : null}
       <textarea
         id={id}
         rows={rows}

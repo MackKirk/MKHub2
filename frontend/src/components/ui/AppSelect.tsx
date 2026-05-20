@@ -1,6 +1,17 @@
-import type { ReactNode, SelectHTMLAttributes } from 'react';
+import {
+  useMemo,
+  useState,
+  type ChangeEvent,
+  type ReactNode,
+  type SelectHTMLAttributes,
+} from 'react';
+import { createPortal } from 'react-dom';
 import { ChevronDown } from 'lucide-react';
-import { uiBorders, uiCx, uiRadius, uiSpacing, uiTypography } from './tokens';
+import { sortByLabel } from '@/lib/sortOptions';
+import { AppControlLabelRow } from './AppControlLabel';
+import { AppFieldHint } from './AppFieldHint';
+import { uiCx, uiDropdown, uiTypography } from './tokens';
+import { useComboboxDropdown } from './useComboboxDropdown';
 
 export type AppSelectOption = {
   value: string;
@@ -9,51 +20,174 @@ export type AppSelectOption = {
 
 export type AppSelectProps = {
   label?: ReactNode;
+  fieldHint?: ReactNode;
   helperText?: ReactNode;
   error?: ReactNode;
   options: AppSelectOption[];
   placeholder?: string;
+  /** @deprecated Use triggerClassName */
   selectClassName?: string;
-} & SelectHTMLAttributes<HTMLSelectElement>;
+  triggerClassName?: string;
+} & Omit<SelectHTMLAttributes<HTMLSelectElement>, 'children'>;
+
+function fireSelectChange(
+  onChange: AppSelectProps['onChange'],
+  name: string | undefined,
+  next: string,
+) {
+  if (!onChange) return;
+  const synthetic = {
+    target: { value: next, name: name ?? '' },
+    currentTarget: { value: next, name: name ?? '' },
+  } as ChangeEvent<HTMLSelectElement>;
+  onChange(synthetic);
+}
 
 export function AppSelect({
   label,
+  fieldHint,
   helperText,
   error,
   className,
   selectClassName,
+  triggerClassName,
   options,
   placeholder,
   id,
-  ...props
+  value,
+  defaultValue,
+  onChange,
+  disabled,
+  required,
+  name,
+  ...rest
 }: AppSelectProps) {
-  return (
-    <label className={uiCx('block space-y-1.5', className)} htmlFor={id}>
-      {label ? <span className={uiTypography.controlLabel}>{label}</span> : null}
-      <span className="relative block">
-        <select
-          id={id}
-          className={uiCx(
-            'w-full appearance-none bg-white text-xs text-gray-900 outline-none transition-colors focus:border-gray-400 focus:ring-1 focus:ring-gray-400 disabled:cursor-not-allowed disabled:bg-gray-100',
-            uiSpacing.controlX,
-            uiSpacing.controlY,
-            'pr-8',
-            uiRadius.control,
-            uiBorders.input,
-            selectClassName,
-          )}
-          {...props}
-        >
-          {placeholder ? <option value="">{placeholder}</option> : null}
-          {options.map((option) => (
-            <option key={option.value} value={option.value}>
+  const [open, setOpen] = useState(false);
+  const { anchorRef, portalListId, menuRect, closeDropdown } = useComboboxDropdown(open, setOpen);
+
+  const isControlled = value !== undefined;
+  const [internalValue, setInternalValue] = useState(() =>
+    defaultValue !== undefined && defaultValue !== null ? String(defaultValue) : '',
+  );
+
+  const currentValue = isControlled ? String(value ?? '') : internalValue;
+
+  const sortedOptions = useMemo(() => sortByLabel(options, (o) => o.label), [options]);
+
+  const selected = useMemo(
+    () => sortedOptions.find((o) => o.value === currentValue) ?? null,
+    [sortedOptions, currentValue],
+  );
+
+  const setValue = (next: string) => {
+    if (!isControlled) setInternalValue(next);
+    fireSelectChange(onChange, name, next);
+  };
+
+  const showPlaceholder = !!placeholder && !currentValue;
+  const triggerLabel = selected?.label ?? placeholder ?? 'Select…';
+
+  const dropdown =
+    open && menuRect ? (
+      <ul
+        id={portalListId}
+        role="listbox"
+        aria-labelledby={id}
+        className={uiDropdown.menu}
+        style={{ top: menuRect.top, left: menuRect.left, width: menuRect.width }}
+      >
+        {placeholder ? (
+          <li role="option" aria-selected={!currentValue}>
+            <button
+              type="button"
+              className={uiCx(uiDropdown.option, !currentValue && uiDropdown.optionSelected)}
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={() => {
+                setValue('');
+                closeDropdown();
+              }}
+            >
+              {placeholder}
+            </button>
+          </li>
+        ) : null}
+        {sortedOptions.map((option) => (
+          <li key={option.value} role="option" aria-selected={currentValue === option.value}>
+            <button
+              type="button"
+              className={uiCx(
+                uiDropdown.option,
+                currentValue === option.value && uiDropdown.optionSelected,
+              )}
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={() => {
+                setValue(option.value);
+                closeDropdown();
+              }}
+            >
               {option.label}
-            </option>
-          ))}
-        </select>
-        <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
-      </span>
-      {error ? <span className="block text-xs text-red-600">{error}</span> : helperText ? <span className={uiTypography.helper}>{helperText}</span> : null}
-    </label>
+            </button>
+          </li>
+        ))}
+      </ul>
+    ) : null;
+
+  const triggerClasses = uiCx(
+    uiDropdown.trigger,
+    'flex w-full items-center justify-between gap-2 pr-8 text-left',
+    showPlaceholder && 'text-gray-400',
+    open && !disabled && 'border-gray-400 ring-1 ring-inset ring-gray-400/35',
+    triggerClassName ?? selectClassName,
+  );
+
+  return (
+    <div className={uiCx('block space-y-1.5', className)}>
+      {label ? (
+        <AppControlLabelRow label={label} fieldHint={fieldHint ? <AppFieldHint hint={fieldHint} /> : undefined} />
+      ) : null}
+      {name ? <input type="hidden" name={name} value={currentValue} required={required} /> : null}
+      <div ref={anchorRef} className="relative">
+        <button
+          id={id}
+          type="button"
+          role="combobox"
+          aria-expanded={open}
+          aria-haspopup="listbox"
+          aria-controls={open ? portalListId : undefined}
+          disabled={disabled}
+          className={triggerClasses}
+          onClick={() => {
+            if (!disabled) setOpen((o) => !o);
+          }}
+          onKeyDown={(e) => {
+            if (e.key === 'Escape') {
+              e.stopPropagation();
+              closeDropdown();
+            }
+            if (e.key === 'Enter' || e.key === ' ') {
+              e.preventDefault();
+              if (!open) setOpen(true);
+            }
+          }}
+          {...rest}
+        >
+          <span className="min-w-0 truncate">{triggerLabel}</span>
+        </button>
+        <ChevronDown
+          className={uiCx(
+            'pointer-events-none absolute right-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400',
+            open && 'rotate-180',
+            'transition-transform duration-150',
+          )}
+          aria-hidden
+        />
+      </div>
+      {error ? (
+        <span className="block text-xs text-red-600">{error}</span>
+      ) : helperText ? (
+        <span className={uiTypography.helper}>{helperText}</span>
+      ) : null}
+      {typeof document !== 'undefined' && dropdown ? createPortal(dropdown, document.body) : null}
+    </div>
   );
 }

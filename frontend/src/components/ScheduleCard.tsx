@@ -364,7 +364,7 @@ export default function ScheduleCard() {
   return (
     <div className={uiLayout.pageTwoColumn}>
       {/* LEFT COLUMN - Weekly Schedule */}
-      <AppCard title="Weekly Schedule">
+      <AppCard title="Weekly Schedule" className="flex h-full min-h-0 min-w-0 flex-col">
         {/* Week Controls */}
         <div className={uiCx('mb-4 flex items-center justify-between border-b border-gray-100 pb-4')}>
           <AppButton variant="secondary" size="sm" leftIcon={<ChevronLeft className="h-4 w-4" />} onClick={goToPreviousWeek}>
@@ -537,7 +537,11 @@ export default function ScheduleCard() {
       </AppCard>
 
       {/* RIGHT COLUMN - Shift Details Panel */}
-      <AppCard title="Shift Details">
+      <AppCard
+        title="Shift Details"
+        className="flex h-full min-h-0 min-w-0 flex-col"
+        bodyClassName={selectedShift ? undefined : 'flex min-h-0 flex-1 flex-col justify-center'}
+      >
         {selectedShift ? (
           <div className={uiSpacing.sectionStack}>
             {/* Core Info Section */}

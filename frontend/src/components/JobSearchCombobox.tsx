@@ -1,11 +1,11 @@
-import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import { PREDEFINED_JOBS, formatJobPickerLine, isPredefinedJobId } from '@/constants/predefinedJobs';
 import { sortByLabel } from '@/lib/sortOptions';
-import type { ProjectPickerItem } from '@/components/ProjectSearchCombobox';
-import { formatProjectAddressLine } from '@/components/ProjectSearchCombobox';
+import { formatProjectAddressLine, type ProjectPickerItem } from '@/components/ui/projectPickerUtils';
+import { AppControlLabelRow, AppFieldHint, uiCx, uiDropdown, useComboboxDropdown } from '@/components/ui';
 
 export type JobPickerItem = {
   id: string;
@@ -19,18 +19,15 @@ export type JobPickerItem = {
   address_country?: string | null;
 };
 
-function JobNameWithCode({ job }: { job: JobPickerItem }) {
+function JobNameWithCode({ job, selected }: { job: JobPickerItem; selected?: boolean }) {
   const code = job.code?.trim();
   return (
-    <div className="text-gray-900">
-      <span className="font-medium">{job.name}</span>
-      {code ? <span className="text-xs font-normal text-gray-500">{` (${code})`}</span> : null}
+    <div className="text-xs text-gray-900">
+      <span className={selected ? 'font-medium' : undefined}>{job.name}</span>
+      {code ? <span className="font-normal text-gray-500">{` (${code})`}</span> : null}
     </div>
   );
 }
-
-const defaultInputClass =
-  'w-full border border-gray-200 rounded-lg pl-9 pr-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-gray-300 focus:border-gray-300';
 
 type Props = {
   value: string;
@@ -40,6 +37,7 @@ type Props = {
   placeholder?: string;
   inputClassName?: string;
   label?: string;
+  fieldHint?: ReactNode;
 };
 
 export function JobSearchCombobox({
@@ -48,16 +46,18 @@ export function JobSearchCombobox({
   disabled,
   id,
   placeholder = 'Search by name, code, or address…',
-  inputClassName = defaultInputClass,
+  inputClassName,
   label = 'Job *',
+  fieldHint,
 }: Props) {
   const [text, setText] = useState('');
   const [open, setOpen] = useState(false);
   const [debouncedQ, setDebouncedQ] = useState('');
-  const anchorRef = useRef<HTMLDivElement>(null);
-  const [menuRect, setMenuRect] = useState<{ top: number; left: number; width: number } | null>(null);
   const [lastPicked, setLastPicked] = useState<JobPickerItem | null>(null);
-  const portalListId = useId();
+  const { anchorRef, portalListId, menuRect, closeDropdown: closeDropdownBase } = useComboboxDropdown(
+    open,
+    setOpen,
+  );
 
   useEffect(() => {
     const t = window.setTimeout(() => setDebouncedQ(text.trim()), 300);
@@ -118,7 +118,10 @@ export function JobSearchCombobox({
     );
   }, [projects]);
 
-  const combinedOptions = useMemo(() => [...staticJobs, ...projectJobs], [staticJobs, projectJobs]);
+  const combinedOptions = useMemo(
+    () => sortByLabel([...staticJobs, ...projectJobs], (j) => formatJobPickerLine(j)),
+    [staticJobs, projectJobs],
+  );
 
   useEffect(() => {
     if (!value) {
@@ -163,38 +166,11 @@ export function JobSearchCombobox({
     if (!value && !open) setText('');
   }, [value, open]);
 
-  useLayoutEffect(() => {
-    if (!open) {
-      setMenuRect(null);
-      return;
-    }
-    const el = anchorRef.current;
-    if (!el) return;
-    const update = () => {
-      const r = el.getBoundingClientRect();
-      setMenuRect({ top: r.bottom + 4, left: r.left, width: r.width });
-    };
-    update();
-    window.addEventListener('scroll', update, true);
-    window.addEventListener('resize', update);
-    return () => {
-      window.removeEventListener('scroll', update, true);
-      window.removeEventListener('resize', update);
-    };
-  }, [open, text, debouncedQ]);
-
-  useEffect(() => {
-    if (!open) return;
-    const onDoc = (e: MouseEvent) => {
-      const t = e.target as Node;
-      if (anchorRef.current?.contains(t)) return;
-      const portal = document.getElementById(portalListId);
-      if (portal?.contains(t)) return;
-      setOpen(false);
-    };
-    document.addEventListener('mousedown', onDoc);
-    return () => document.removeEventListener('mousedown', onDoc);
-  }, [open, portalListId]);
+  const closeDropdown = useCallback(() => {
+    closeDropdownBase();
+    if (value && displayClosed) setText(displayClosed);
+    else if (!value) setText('');
+  }, [value, displayClosed, closeDropdownBase]);
 
   const inputValue = open ? text : displayClosed || text;
 
@@ -203,13 +179,13 @@ export function JobSearchCombobox({
       <ul
         id={portalListId}
         role="listbox"
-        className="fixed z-[100050] max-h-56 overflow-auto rounded-lg border border-gray-200 bg-white py-1 shadow-xl"
+        className={uiDropdown.menu}
         style={{ top: menuRect.top, left: menuRect.left, width: menuRect.width }}
       >
         {isLoading && combinedOptions.length === 0 ? (
-          <li className="px-3 py-2 text-sm text-gray-500">Loading…</li>
+          <li className={uiDropdown.optionMuted}>Loading…</li>
         ) : combinedOptions.length === 0 ? (
-          <li className="px-3 py-2 text-sm text-amber-800">No jobs match. Try another search.</li>
+          <li className={uiDropdown.optionEmpty}>No jobs match. Try another search.</li>
         ) : (
           combinedOptions.map((job) => {
             const addr = job.kind === 'project' ? formatProjectAddressLine(job) : '';
@@ -217,9 +193,7 @@ export function JobSearchCombobox({
               <li key={`${job.kind}-${job.id}`} role="option">
                 <button
                   type="button"
-                  className={`w-full px-3 py-2 text-left text-sm hover:bg-gray-50 ${
-                    value === job.id ? 'bg-gray-50 font-medium' : ''
-                  }`}
+                  className={uiCx(uiDropdown.option, value === job.id && uiDropdown.optionSelected)}
                   onMouseDown={(e) => e.preventDefault()}
                   onClick={() => {
                     onChange(job.id);
@@ -228,7 +202,7 @@ export function JobSearchCombobox({
                     setOpen(false);
                   }}
                 >
-                  <JobNameWithCode job={job} />
+                  <JobNameWithCode job={job} selected={value === job.id} />
                   {addr ? <div className="mt-0.5 truncate text-xs text-gray-500">{addr}</div> : null}
                 </button>
               </li>
@@ -239,20 +213,22 @@ export function JobSearchCombobox({
     ) : null;
 
   return (
-    <div className="relative">
-      <label htmlFor={id} className="mb-1 block text-[10px] font-medium uppercase tracking-wide text-gray-500">
-        {label}
-      </label>
+    <div className="relative space-y-1.5">
+      <AppControlLabelRow
+        label={label}
+        fieldHint={fieldHint ? <AppFieldHint hint={fieldHint} /> : undefined}
+      />
       <div ref={anchorRef} className="relative">
-        <svg
-          className="pointer-events-none absolute left-3 top-1/2 z-10 h-4 w-4 -translate-y-1/2 text-gray-400"
-          fill="none"
-          stroke="currentColor"
-          viewBox="0 0 24 24"
-          aria-hidden
-        >
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-        </svg>
+        <span className={uiDropdown.leftIcon} aria-hidden>
+          <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth={2}
+              d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
+            />
+          </svg>
+        </span>
         <input
           id={id}
           type="text"
@@ -273,7 +249,22 @@ export function JobSearchCombobox({
             setOpen(true);
             if (value && displayClosed) setText(displayClosed);
           }}
-          className={inputClassName}
+          onBlur={() => {
+            window.setTimeout(() => {
+              const active = document.activeElement;
+              if (anchorRef.current?.contains(active)) return;
+              const portal = document.getElementById(portalListId);
+              if (portal?.contains(active)) return;
+              closeDropdown();
+            }, 0);
+          }}
+          onKeyDown={(e) => {
+            if (e.key === 'Escape') {
+              e.stopPropagation();
+              closeDropdown();
+            }
+          }}
+          className={uiCx(uiDropdown.trigger, uiDropdown.triggerWithLeftIcon, inputClassName)}
         />
       </div>
       {typeof document !== 'undefined' && dropdown ? createPortal(dropdown, document.body) : null}

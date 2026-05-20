@@ -1,8 +1,8 @@
 import { useCallback, useState, type MouseEvent } from 'react';
 import { communityContentLooksLikeHtml, sanitizeCommunityPostHtml } from '@/lib/communityPostHtml';
 import { injectFileAccessTokensInHtml } from '@/lib/trainingRichText';
-import OverlayPortal from '@/components/OverlayPortal';
 import CommunityDirectoryUserPeekModal from '@/components/community/CommunityDirectoryUserPeekModal';
+import { AppButton, AppModal, uiLayout, uiCx } from '@/components/ui';
 import './communityPostBody.css';
 
 type Props = {
@@ -82,31 +82,23 @@ export function CommunityPostBody({ html, className = '', stripMedia = false }: 
           }}
         />
         <CommunityDirectoryUserPeekModal userId={peekUserId} onClose={() => setPeekUserId(null)} />
-        {peekEntity && (
-          <OverlayPortal>
-            <div
-              className="fixed inset-0 z-[200010] flex items-center justify-center bg-slate-900/40 p-4 backdrop-blur-[2px]"
-              onClick={() => setPeekEntity(null)}
-            >
-              <div
-                className="w-full max-w-sm rounded-2xl border border-slate-200 bg-white p-6 shadow-2xl"
-                onClick={(ev) => ev.stopPropagation()}
-                role="dialog"
-                aria-modal="true"
-              >
-                <div className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">{peekEntity.title}</div>
-                <p className="mt-2 text-lg font-semibold text-slate-900">{peekEntity.subtitle}</p>
-                <button
-                  type="button"
-                  className="mt-6 w-full rounded-xl border border-slate-200 py-2.5 text-sm font-medium text-slate-700 hover:bg-slate-50"
-                  onClick={() => setPeekEntity(null)}
-                >
+        <AppModal
+          open={!!peekEntity}
+          onClose={() => setPeekEntity(null)}
+          title={peekEntity?.title}
+          size="sm"
+          footer={
+            peekEntity ? (
+              <div className={uiCx(uiLayout.actionsRow, 'w-full justify-end')}>
+                <AppButton variant="secondary" size="sm" onClick={() => setPeekEntity(null)}>
                   Close
-                </button>
+                </AppButton>
               </div>
-            </div>
-          </OverlayPortal>
-        )}
+            ) : undefined
+          }
+        >
+          {peekEntity ? <p className="text-lg font-semibold text-gray-900">{peekEntity.subtitle}</p> : null}
+        </AppModal>
       </>
     );
   }

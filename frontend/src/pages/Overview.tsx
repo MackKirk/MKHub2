@@ -95,7 +95,7 @@ export default function Overview() {
         <AppCard
           title="Employee Community"
           subtitle="Company updates and required communications"
-          className="flex min-h-[720px] min-w-0 flex-col"
+          className="flex h-full min-h-0 min-w-0 flex-col"
           bodyClassName="flex min-h-0 flex-1 flex-col"
           actions={
             <div className={uiCx('flex items-center gap-2', uiRadius.control, uiBorders.subtle, uiColors.surfaceSubtle, uiSpacing.compactCardPadding)}>
@@ -107,7 +107,7 @@ export default function Overview() {
           <EmployeeCommunity feedMode onUnreadCountChange={setCommunityUnread} />
         </AppCard>
 
-        <aside className={uiCx('min-w-0', uiSpacing.sectionStack)}>
+        <aside className={uiCx('flex h-full min-h-0 min-w-0 flex-col', uiSpacing.sectionStack)}>
           <AppCard title="Clock In / Out" subtitle="Start or finish your work session">
             <OverviewClockPanel />
           </AppCard>

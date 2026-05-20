@@ -1395,30 +1395,50 @@ def _user_option_display_name(u: User, ep: Optional[EmployeeProfile]) -> str:
 def users_options(
     q: Optional[str] = None,
     limit: int = Query(100, ge=1, le=5000),
+    offset: int = Query(0, ge=0),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    query = db.query(User, EmployeeProfile).outerjoin(EmployeeProfile, EmployeeProfile.user_id == User.id).filter(User.is_active == True)
+    query = (
+        db.query(User, EmployeeProfile)
+        .outerjoin(EmployeeProfile, EmployeeProfile.user_id == User.id)
+        .filter(User.is_active == True)
+    )
     if q:
         like = f"%{q}%"
         query = query.filter(
-            (User.username.ilike(like)) 
+            (User.username.ilike(like))
             | (User.email_personal.ilike(like))
             | (EmployeeProfile.first_name.ilike(like))
             | (EmployeeProfile.last_name.ilike(like))
             | (EmployeeProfile.preferred_name.ilike(like))
         )
-    rows = query.limit(limit).all()
-    
+    query = query.order_by(
+        nullslast(asc(func.lower(func.coalesce(EmployeeProfile.first_name, "")))),
+        nullslast(asc(func.lower(func.coalesce(EmployeeProfile.last_name, "")))),
+        asc(func.lower(func.coalesce(User.username, ""))),
+    )
+    rows = query.offset(offset).limit(limit).all()
+
     result = []
     for u, ep in rows:
+        dept = None
+        if ep:
+            dept = (getattr(ep, "department", None) or getattr(ep, "division", None) or "").strip() or None
         result.append({
             "id": str(u.id),
             "username": u.username,
             "email": u.email_personal,
             "name": _user_option_display_name(u, ep),
+            "first_name": (getattr(ep, "first_name", None) or "").strip() or None if ep else None,
+            "last_name": (getattr(ep, "last_name", None) or "").strip() or None if ep else None,
+            "preferred_name": (getattr(ep, "preferred_name", None) or "").strip() or None if ep else None,
+            "department": dept,
+            "profile_photo_file_id": (
+                str(ep.profile_photo_file_id) if ep and getattr(ep, "profile_photo_file_id", None) else None
+            ),
         })
-    
+
     return result
 
 
