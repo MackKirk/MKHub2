@@ -28,6 +28,7 @@ import OverlayPortal from '@/components/OverlayPortal';
 import SubcontractorClockModal from '@/components/SubcontractorClockModal';
 import { BUSINESS_LINE_REPAIRS_MAINTENANCE } from '@/lib/businessLine';
 import { filterStatusesForOpportunity, filterStatusesForProject } from '@/lib/projectStatusVisibility';
+import { isHiddenReportCategory, isHiddenReportNote } from '@/lib/reportCategories';
 
 function salesListPaths(project: { business_line?: string; is_bidding?: boolean; is_leak_investigation?: boolean } | undefined | null) {
   const rm = project?.business_line === BUSINESS_LINE_REPAIRS_MAINTENANCE;
@@ -4597,6 +4598,10 @@ function UpdatesTab({ projectId, items, onRefresh }:{ projectId:string, items: U
   );
 }
 
+function normalizeReportCategoryId(categoryId?: string | null): string {
+  return String(categoryId || '').trim() || 'uncategorized';
+}
+
 function ReportsTabEnhanced({ projectId, items, onRefresh }:{ projectId:string, items: Report[], onRefresh: ()=>any }){
   const confirm = useConfirm();
   const [showCreateModal, setShowCreateModal] = useState(false);
@@ -4612,6 +4617,50 @@ function ReportsTabEnhanced({ projectId, items, onRefresh }:{ projectId:string, 
   const isAdminReports = (meReports?.roles||[]).includes('admin');
   const permissionsReports = new Set(meReports?.permissions || []);
   const canEditReports = isAdminReports || permissionsReports.has('business:projects:reports:write');
+
+  const { data: reportCategoryPerms } = useQuery({
+    queryKey: ['project-reports-category-perms'],
+    queryFn: () => api<any>('GET', '/auth/me/project-reports-category-permissions'),
+  });
+  const readAllowList: string[] | null = Array.isArray(reportCategoryPerms?.read_categories)
+    ? reportCategoryPerms.read_categories
+    : null;
+  const writeAllowList: string[] | null = Array.isArray(reportCategoryPerms?.write_categories)
+    ? reportCategoryPerms.write_categories
+    : null;
+
+  const isReadCategoryAllowed = useCallback(
+    (categoryId?: string | null) => {
+      const key = normalizeReportCategoryId(categoryId);
+      return readAllowList === null ? true : readAllowList.includes(key);
+    },
+    [readAllowList]
+  );
+
+  const isWriteCategoryAllowed = useCallback(
+    (categoryId?: string | null) => {
+      const key = normalizeReportCategoryId(categoryId);
+      return writeAllowList === null ? true : writeAllowList.includes(key);
+    },
+    [writeAllowList]
+  );
+
+  const visibleItems = useMemo(
+    () =>
+      items.filter(
+        (r) => !isHiddenReportNote(r) && isReadCategoryAllowed(r.category_id)
+      ),
+    [items, isReadCategoryAllowed]
+  );
+
+  const canCreateNote =
+    canEditReports &&
+    (writeAllowList === null ||
+      (settings?.report_categories || []).some(
+        (cat: any) =>
+          !isHiddenReportCategory(cat) &&
+          isWriteCategoryAllowed(cat?.value || cat?.label)
+      ));
   
   const reportCategories = (settings?.report_categories || []) as any[];
 
@@ -4620,45 +4669,57 @@ function ReportsTabEnhanced({ projectId, items, onRefresh }:{ projectId:string, 
     return reportCategories
       .filter(cat => {
         const meta = cat.meta || {};
-        return meta.group === 'commercial';
+        return (
+          meta.group === 'commercial' &&
+          !isHiddenReportCategory(cat) &&
+          isReadCategoryAllowed(cat.value || cat.label)
+        );
       })
       .sort((a, b) => (a.sort_index || 0) - (b.sort_index || 0));
-  }, [reportCategories]);
+  }, [reportCategories, isReadCategoryAllowed]);
   
   const productionCategories = useMemo(() => {
     return reportCategories
       .filter(cat => {
         const meta = cat.meta || {};
-        return meta.group === 'production';
+        return (
+          meta.group === 'production' &&
+          !isHiddenReportCategory(cat) &&
+          isReadCategoryAllowed(cat.value || cat.label)
+        );
       })
       .sort((a, b) => (a.sort_index || 0) - (b.sort_index || 0));
-  }, [reportCategories]);
+  }, [reportCategories, isReadCategoryAllowed]);
   
   const financialCategories = useMemo(() => {
     return reportCategories
       .filter(cat => {
         const meta = cat.meta || {};
-        return meta.group === 'financial';
+        return (
+          meta.group === 'financial' &&
+          !isHiddenReportCategory(cat) &&
+          isReadCategoryAllowed(cat.value || cat.label)
+        );
       })
       .sort((a, b) => (a.sort_index || 0) - (b.sort_index || 0));
-  }, [reportCategories]);
+  }, [reportCategories, isReadCategoryAllowed]);
 
   // Calculate counts per category
   const categoryCounts = useMemo(() => {
     const counts: Record<string, number> = {};
     // Count "All" (total reports)
-    counts[''] = items.length;
+    counts[''] = visibleItems.length;
     // Count by category
-    items.forEach(report => {
+    visibleItems.forEach(report => {
       const catId = report.category_id || '';
       counts[catId] = (counts[catId] || 0) + 1;
     });
     return counts;
-  }, [items]);
+  }, [visibleItems]);
 
   // Filter and sort reports
   const sortedReports = useMemo(() => {
-    let filtered = [...items];
+    let filtered = [...visibleItems];
     
     // Apply category filter
     if (selectedCategoryFilter) {
@@ -4671,7 +4732,7 @@ function ReportsTabEnhanced({ projectId, items, onRefresh }:{ projectId:string, 
       const dateB = b.created_at ? new Date(b.created_at).getTime() : 0;
       return dateB - dateA;
     });
-  }, [items, selectedCategoryFilter]);
+  }, [visibleItems, selectedCategoryFilter]);
 
   const selectedReport = useMemo(() => {
     return selectedReportId ? sortedReports.find(r => r.id === selectedReportId) : null;
@@ -4805,7 +4866,7 @@ function ReportsTabEnhanced({ projectId, items, onRefresh }:{ projectId:string, 
               </select>
             </div>
             <div className="divide-y">
-              {canEditReports && (
+              {canCreateNote && (
                 <div className="p-3 pb-3">
                   <div
                     onClick={() => setShowCreateModal(true)}
@@ -4871,7 +4932,7 @@ function ReportsTabEnhanced({ projectId, items, onRefresh }:{ projectId:string, 
             }) : (
               <div className="p-8 text-center text-gray-500">
                 <div className="text-sm mb-2">No notes yet</div>
-                {canEditReports && (
+                {canCreateNote && (
                   <div className="text-xs">Click "New Note" to create your first note</div>
                 )}
               </div>
@@ -4922,7 +4983,7 @@ function ReportsTabEnhanced({ projectId, items, onRefresh }:{ projectId:string, 
                       </div>
                     </div>
                     <div className="flex items-center gap-2">
-                      {selectedReport.financial_type === 'estimate-changes' && selectedReport.approval_status === 'pending' && canEditReports && (
+                      {selectedReport.financial_type === 'estimate-changes' && selectedReport.approval_status === 'pending' && canEditReports && isWriteCategoryAllowed(selectedReport.category_id) && (
                         <button
                           onClick={async () => {
                             const result = await confirm({
@@ -4957,7 +5018,7 @@ function ReportsTabEnhanced({ projectId, items, onRefresh }:{ projectId:string, 
                            'Rejected'}
                         </span>
                       )}
-                      {canEditReports && (
+                      {canEditReports && isWriteCategoryAllowed(selectedReport.category_id) && (
                         <button
                           onClick={async () => {
                             const result = await confirm({
@@ -5220,6 +5281,7 @@ function ReportsTabEnhanced({ projectId, items, onRefresh }:{ projectId:string, 
         <CreateReportModal
           projectId={projectId}
           reportCategories={reportCategories}
+          isWriteCategoryAllowed={isWriteCategoryAllowed}
           onClose={() => setShowCreateModal(false)}
           onSuccess={async () => {
             setShowCreateModal(false);
@@ -5255,9 +5317,10 @@ function ReportsTabEnhanced({ projectId, items, onRefresh }:{ projectId:string, 
   );
 }
 
-function CreateReportModal({ projectId, reportCategories, onClose, onSuccess }: {
+function CreateReportModal({ projectId, reportCategories, isWriteCategoryAllowed, onClose, onSuccess }: {
   projectId: string,
   reportCategories: any[],
+  isWriteCategoryAllowed: (categoryId?: string | null) => boolean,
   onClose: () => void,
   onSuccess: () => Promise<void>
 }){
@@ -5269,35 +5332,44 @@ function CreateReportModal({ projectId, reportCategories, onClose, onSuccess }: 
   const [uploading, setUploading] = useState(false);
   const { data:project } = useQuery({ queryKey:['project', projectId], queryFn: ()=>api<any>('GET', `/projects/${projectId}`) });
   
-  // Separate categories into commercial and production based on meta.group
-  // Filter out 'estimate-changes' category as Change Orders are now handled in Proposals
   const commercialCategories = useMemo(() => {
     return reportCategories
       .filter(cat => {
         const meta = cat.meta || {};
-        return meta.group === 'commercial';
+        return (
+          meta.group === 'commercial' &&
+          !isHiddenReportCategory(cat) &&
+          isWriteCategoryAllowed(cat.value || cat.label)
+        );
       })
       .sort((a, b) => (a.sort_index || 0) - (b.sort_index || 0));
-  }, [reportCategories]);
+  }, [reportCategories, isWriteCategoryAllowed]);
   
   const productionCategories = useMemo(() => {
     return reportCategories
       .filter(cat => {
         const meta = cat.meta || {};
-        return meta.group === 'production';
+        return (
+          meta.group === 'production' &&
+          !isHiddenReportCategory(cat) &&
+          isWriteCategoryAllowed(cat.value || cat.label)
+        );
       })
       .sort((a, b) => (a.sort_index || 0) - (b.sort_index || 0));
-  }, [reportCategories]);
+  }, [reportCategories, isWriteCategoryAllowed]);
   
   const financialCategories = useMemo(() => {
     return reportCategories
       .filter(cat => {
         const meta = cat.meta || {};
-        // Exclude 'estimate-changes' as Change Orders are now in Proposals
-        return meta.group === 'financial' && cat.value !== 'estimate-changes' && cat.label !== 'Change Order';
+        return (
+          meta.group === 'financial' &&
+          !isHiddenReportCategory(cat) &&
+          isWriteCategoryAllowed(cat.value || cat.label)
+        );
       })
       .sort((a, b) => (a.sort_index || 0) - (b.sort_index || 0));
-  }, [reportCategories]);
+  }, [reportCategories, isWriteCategoryAllowed]);
   
   // If it's an opportunity (is_bidding), show only commercial categories
   const isBidding = project?.is_bidding === true;
@@ -5478,18 +5550,6 @@ function CreateReportModal({ projectId, reportCategories, onClose, onSuccess }: 
                 onChange={e => setDesc(e.target.value)}
               />
             </div>
-            {category === 'estimate-changes' && (
-              <div>
-                <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">Additional notes (change order)</label>
-                <textarea
-                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm placeholder:text-gray-400 focus:outline-none focus:ring-1 focus:ring-gray-300 focus:border-gray-300"
-                  rows={4}
-                  placeholder="Additional notes about this change order..."
-                  value={desc}
-                  onChange={e => setDesc(e.target.value)}
-                />
-              </div>
-            )}
             <ReportAttachmentAreaMultiple files={files} setFiles={setFiles} accept="image/*,.pdf,.doc,.docx" label="Attachments (optional – multiple allowed)" />
           </form>
         </div>
@@ -10103,13 +10163,16 @@ function LastReportsCard({ reports }: { reports: Report[] }){
   const [selectedCategoryFilter, setSelectedCategoryFilter] = useState<string>(''); // Empty string = all categories
   const { data: settings } = useQuery({ queryKey:['settings'], queryFn: ()=>api<any>('GET','/settings') });
   const reportCategories = (settings?.report_categories || []) as any[];
+  const visibleReports = useMemo(
+    () => reports.filter((r) => !isHiddenReportNote(r)),
+    [reports]
+  );
 
-  // Separate categories into commercial and production based on meta.group
   const commercialCategories = useMemo(() => {
     return reportCategories
       .filter(cat => {
         const meta = cat.meta || {};
-        return meta.group === 'commercial';
+        return meta.group === 'commercial' && !isHiddenReportCategory(cat);
       })
       .sort((a, b) => (a.sort_index || 0) - (b.sort_index || 0));
   }, [reportCategories]);
@@ -10118,7 +10181,7 @@ function LastReportsCard({ reports }: { reports: Report[] }){
     return reportCategories
       .filter(cat => {
         const meta = cat.meta || {};
-        return meta.group === 'production';
+        return meta.group === 'production' && !isHiddenReportCategory(cat);
       })
       .sort((a, b) => (a.sort_index || 0) - (b.sort_index || 0));
   }, [reportCategories]);
@@ -10127,40 +10190,32 @@ function LastReportsCard({ reports }: { reports: Report[] }){
     return reportCategories
       .filter(cat => {
         const meta = cat.meta || {};
-        return meta.group === 'financial';
+        return meta.group === 'financial' && !isHiddenReportCategory(cat);
       })
       .sort((a, b) => (a.sort_index || 0) - (b.sort_index || 0));
   }, [reportCategories]);
 
-  // Calculate counts per category
   const categoryCounts = useMemo(() => {
     const counts: Record<string, number> = {};
-    // Count "All" (total reports)
-    counts[''] = reports.length;
-    // Count by category
-    reports.forEach(report => {
+    counts[''] = visibleReports.length;
+    visibleReports.forEach(report => {
       const catId = report.category_id || '';
       counts[catId] = (counts[catId] || 0) + 1;
     });
     return counts;
-  }, [reports]);
+  }, [visibleReports]);
 
-  // Filter and sort reports
   const recentReports = useMemo(() => {
-    let filtered = [...(reports||[])];
-    
-    // Apply category filter
+    let filtered = [...visibleReports];
     if (selectedCategoryFilter) {
       filtered = filtered.filter(r => r.category_id === selectedCategoryFilter);
     }
-    
-    // Sort by date (newest first) and take top 5
     return filtered.sort((a, b) => {
       const dateA = a.created_at ? new Date(a.created_at).getTime() : 0;
       const dateB = b.created_at ? new Date(b.created_at).getTime() : 0;
       return dateB - dateA;
     }).slice(0, 5);
-  }, [reports, selectedCategoryFilter]);
+  }, [visibleReports, selectedCategoryFilter]);
 
   return (
     <div className="rounded-xl border bg-white p-4">

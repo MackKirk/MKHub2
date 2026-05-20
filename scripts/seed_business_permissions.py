@@ -142,14 +142,14 @@ def seed_business_permissions():
             # Projects - Sub-permissions
             {
                 "key": "business:projects:reports:read",
-                "label": "View Reports",
-                "description": "Allows viewing the Reports tab in project details",
+                "label": "View Notes/History",
+                "description": "Allows viewing the Notes/History tab in project and opportunity details",
                 "sort_index": 6,
             },
             {
                 "key": "business:projects:reports:write",
-                "label": "Edit Reports",
-                "description": "Allows editing the Reports tab in project details",
+                "label": "Edit Notes/History",
+                "description": "Allows creating, editing, and deleting notes in the Notes/History tab",
                 "sort_index": 7,
             },
             {

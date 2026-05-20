@@ -117,6 +117,9 @@ export function permissionEnableBlockedMessage(permKey: string): string | null {
   ) {
     return 'Requires a project view permission first';
   }
+  if (permKey === 'business:projects:reports:write') {
+    return 'Requires "View Notes/History" first';
+  }
   if (
     permKey.startsWith('business:projects:') &&
     permKey.endsWith(':write') &&

@@ -19,6 +19,13 @@ FILE_CATEGORY_CONFIG_KEYS = {
     "business:projects:files:categories:write",
 }
 
+REPORT_CATEGORY_CONFIG_KEYS = {
+    "business:projects:reports:categories:read",
+    "business:projects:reports:categories:write",
+}
+
+PERMISSION_CONFIG_KEYS = FILE_CATEGORY_CONFIG_KEYS | REPORT_CATEGORY_CONFIG_KEYS
+
 
 # =====================
 # Permission Definitions Management
@@ -171,7 +178,7 @@ def get_user_permissions(
     # Expose supported configs separately so the UI can drive modals without treating them as booleans
     overrides = getattr(user, "permissions_override", None) or {}
     configs: Dict[str, Any] = {}
-    for k in FILE_CATEGORY_CONFIG_KEYS:
+    for k in PERMISSION_CONFIG_KEYS:
         v = overrides.get(k, None)
         if isinstance(v, list):
             configs[k] = v
@@ -208,7 +215,7 @@ def update_user_permissions(
     for k, v in (permissions or {}).items():
         if isinstance(v, bool):
             bool_updates[k] = v
-        elif k in FILE_CATEGORY_CONFIG_KEYS:
+        elif k in PERMISSION_CONFIG_KEYS:
             if v is None:
                 config_updates[k] = []
             elif isinstance(v, list) and all(isinstance(x, str) for x in v):

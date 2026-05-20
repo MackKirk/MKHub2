@@ -17,7 +17,15 @@ import { DivisionIcon } from '@/components/DivisionIcon';
 import OverlayPortal from '@/components/OverlayPortal';
 import { CanadianDriversLicenseSection } from '@/components/CanadianDriversLicenseSection';
 import UserEmployeeReviewsTab from '@/components/UserEmployeeReviewsTab';
-import { IMPLEMENTED_PERMISSIONS, isBusinessProjectPermissionKey } from '@/lib/implementedPermissions';
+import ProjectReportCategoriesModal, {
+  type ProjectReportCategoriesMode,
+} from '@/components/ProjectReportCategoriesModal';
+import {
+  IMPLEMENTED_PERMISSIONS,
+  isConstructionProjectPermissionKey,
+  isLegacyProjectPermissionKey,
+  isRepairsProjectPermissionKey,
+} from '@/lib/implementedPermissions';
 import {
   applyPermissionUncheckCascade,
   canEnablePermission,
@@ -382,6 +390,14 @@ const UserPermissions = forwardRef<UserPermissionsRef, { userId: string; onDirty
   const [projectFilesCategoriesModalOpen, setProjectFilesCategoriesModalOpen] = useState(false);
   const [projectFilesCategoriesMode, setProjectFilesCategoriesMode] = useState<ProjectFilesCategoriesMode>('read');
 
+  const [projectReportsReadCategories, setProjectReportsReadCategories] = useState<string[] | null>(null);
+  const [projectReportsWriteCategories, setProjectReportsWriteCategories] = useState<string[] | null>(null);
+  const [initialProjectReportsReadCategories, setInitialProjectReportsReadCategories] = useState<string[] | null>(null);
+  const [initialProjectReportsWriteCategories, setInitialProjectReportsWriteCategories] = useState<string[] | null>(null);
+  const [projectReportsCategoriesModalOpen, setProjectReportsCategoriesModalOpen] = useState(false);
+  const [projectReportsCategoriesMode, setProjectReportsCategoriesMode] =
+    useState<ProjectReportCategoriesMode>('read');
+
   // Initialize permissions from API data
   useEffect(() => {
     if (permissionsData?.permissions_by_category) {
@@ -403,6 +419,17 @@ const UserPermissions = forwardRef<UserPermissionsRef, { userId: string; onDirty
     setProjectFilesWriteCategories(writeCfg);
     setInitialProjectFilesReadCategories(readCfg);
     setInitialProjectFilesWriteCategories(writeCfg);
+
+    const reportsReadCfg = Array.isArray(cfg['business:projects:reports:categories:read'])
+      ? cfg['business:projects:reports:categories:read']
+      : null;
+    const reportsWriteCfg = Array.isArray(cfg['business:projects:reports:categories:write'])
+      ? cfg['business:projects:reports:categories:write']
+      : null;
+    setProjectReportsReadCategories(reportsReadCfg);
+    setProjectReportsWriteCategories(reportsWriteCfg);
+    setInitialProjectReportsReadCategories(reportsReadCfg);
+    setInitialProjectReportsWriteCategories(reportsWriteCfg);
   }, [permissionsData]);
 
   // Initialize admin state from user data
@@ -444,6 +471,13 @@ const UserPermissions = forwardRef<UserPermissionsRef, { userId: string; onDirty
     if (JSON.stringify(aRead) !== JSON.stringify(bRead)) return true;
     if (JSON.stringify(aWrite) !== JSON.stringify(bWrite)) return true;
 
+    const aReportsRead = norm(projectReportsReadCategories);
+    const bReportsRead = norm(initialProjectReportsReadCategories);
+    const aReportsWrite = norm(projectReportsWriteCategories);
+    const bReportsWrite = norm(initialProjectReportsWriteCategories);
+    if (JSON.stringify(aReportsRead) !== JSON.stringify(bReportsRead)) return true;
+    if (JSON.stringify(aReportsWrite) !== JSON.stringify(bReportsWrite)) return true;
+
     return false;
   }, [
     permissions,
@@ -454,11 +488,20 @@ const UserPermissions = forwardRef<UserPermissionsRef, { userId: string; onDirty
     initialProjectFilesReadCategories,
     projectFilesWriteCategories,
     initialProjectFilesWriteCategories,
+    projectReportsReadCategories,
+    initialProjectReportsReadCategories,
+    projectReportsWriteCategories,
+    initialProjectReportsWriteCategories,
   ]);
 
   const openProjectFilesCategoriesModal = (mode: ProjectFilesCategoriesMode) => {
     setProjectFilesCategoriesMode(mode);
     setProjectFilesCategoriesModalOpen(true);
+  };
+
+  const openProjectReportsCategoriesModal = (mode: ProjectReportCategoriesMode) => {
+    setProjectReportsCategoriesMode(mode);
+    setProjectReportsCategoriesModalOpen(true);
   };
 
   // Notify parent of dirty state changes
@@ -574,7 +617,7 @@ const UserPermissions = forwardRef<UserPermissionsRef, { userId: string; onDirty
         const viewKey = key.replace(':write', ':read');
         // Requires only the corresponding view permission
         if (newValue && !prev[viewKey]) {
-          const viewLabel = viewKey.includes(':reports:') ? 'View Reports' :
+          const viewLabel = viewKey.includes(':reports:') ? 'View Notes/History' :
                            viewKey.includes(':workload:') ? 'View Workload' :
                            viewKey.includes(':timesheet:') ? 'View Timesheet' :
                            viewKey.includes(':files:') ? 'View Files' :
@@ -741,6 +784,8 @@ const UserPermissions = forwardRef<UserPermissionsRef, { userId: string; onDirty
         // Config keys: null means "all categories" => send [] to clear override
         'business:projects:files:categories:read': projectFilesReadCategories ?? [],
         'business:projects:files:categories:write': projectFilesWriteCategories ?? [],
+        'business:projects:reports:categories:read': projectReportsReadCategories ?? [],
+        'business:projects:reports:categories:write': projectReportsWriteCategories ?? [],
       };
       await api('PUT', `/permissions/users/${userId}`, payload);
       toast.success('Permissions saved');
@@ -751,10 +796,14 @@ const UserPermissions = forwardRef<UserPermissionsRef, { userId: string; onDirty
       setInitialIsAdmin(isAdminLocal);
       setInitialProjectFilesReadCategories(projectFilesReadCategories);
       setInitialProjectFilesWriteCategories(projectFilesWriteCategories);
+      setInitialProjectReportsReadCategories(projectReportsReadCategories);
+      setInitialProjectReportsWriteCategories(projectReportsWriteCategories);
       
       // If editing own permissions, invalidate /auth/me cache to refresh permissions
       if (currentUser && currentUser.id === userId) {
         await queryClient.invalidateQueries({ queryKey: ['me'] });
+        await queryClient.invalidateQueries({ queryKey: ['project-files-category-perms'] });
+        await queryClient.invalidateQueries({ queryKey: ['project-reports-category-perms'] });
       }
     } catch (e: any) {
       toast.error(e?.detail || 'Failed to save permissions');
@@ -767,6 +816,8 @@ const UserPermissions = forwardRef<UserPermissionsRef, { userId: string; onDirty
     permissions,
     projectFilesReadCategories,
     projectFilesWriteCategories,
+    projectReportsReadCategories,
+    projectReportsWriteCategories,
     currentUser,
     queryClient,
     refetchUser,
@@ -794,6 +845,20 @@ const UserPermissions = forwardRef<UserPermissionsRef, { userId: string; onDirty
         onSave={(next) => {
           if (projectFilesCategoriesMode === 'read') setProjectFilesReadCategories(next);
           else setProjectFilesWriteCategories(next);
+        }}
+      />
+      <ProjectReportCategoriesModal
+        mode={projectReportsCategoriesMode}
+        open={projectReportsCategoriesModalOpen}
+        value={
+          projectReportsCategoriesMode === 'read'
+            ? projectReportsReadCategories
+            : projectReportsWriteCategories
+        }
+        onClose={() => setProjectReportsCategoriesModalOpen(false)}
+        onSave={(next) => {
+          if (projectReportsCategoriesMode === 'read') setProjectReportsReadCategories(next);
+          else setProjectReportsWriteCategories(next);
         }}
       />
       <div className="rounded-xl border bg-white p-4">
@@ -944,101 +1009,104 @@ const UserPermissions = forwardRef<UserPermissionsRef, { userId: string; onDirty
 
         <div className="space-y-6">
           {(() => {
-            // Process categories and reorganize them
+            // Process categories and reorganize them to match sidebar language:
+            // Construction, Repairs & Maintenance, Business, Quotations.
             const processedCategories: any[] = [];
             let businessCategory: any = null;
             let inventoryCategory: any = null;
-            
+            let quotationsCategory: any = null;
+
             permissionsData.permissions_by_category?.forEach((cat: any) => {
               if (cat.category.name === 'business') {
-                // Split business into Services (projects) and Business (customers)
-                const hasProjects = cat.permissions.some((p: any) => isBusinessProjectPermissionKey(p.key));
+                const constructionPerms = cat.permissions.filter((p: any) => isConstructionProjectPermissionKey(p.key));
+                const repairsPerms = cat.permissions.filter((p: any) => isRepairsProjectPermissionKey(p.key));
+                const legacyProjectPerms = cat.permissions.filter((p: any) => isLegacyProjectPermissionKey(p.key));
                 const hasCustomers = cat.permissions.some((p: any) => p.key.includes('business:customers'));
-                
-                if (hasProjects) {
-                  // Create Services category with only projects
+
+                const constructionWithShared = [...constructionPerms, ...legacyProjectPerms];
+                if (constructionWithShared.length > 0) {
                   processedCategories.push({
                     ...cat,
                     category: {
                       ...cat.category,
-                      name: 'services',
-                      label: 'Services',
-                      id: 'services'
+                      name: 'construction',
+                      label: 'Construction',
+                      id: 'construction',
                     },
-                    permissions: cat.permissions.filter((p: any) => isBusinessProjectPermissionKey(p.key))
+                    permissions: constructionWithShared,
                   });
                 }
-                
+
+                if (repairsPerms.length > 0) {
+                  processedCategories.push({
+                    ...cat,
+                    category: {
+                      ...cat.category,
+                      name: 'repairs_maintenance',
+                      label: 'Repairs & Maintenance',
+                      id: 'repairs_maintenance',
+                    },
+                    permissions: repairsPerms,
+                  });
+                }
+
                 if (hasCustomers) {
-                  // Store customers for later (will be added to Business)
                   businessCategory = {
                     ...cat,
-                    permissions: cat.permissions.filter((p: any) => p.key.includes('business:customers'))
+                    permissions: cat.permissions.filter((p: any) => p.key.includes('business:customers')),
                   };
                 }
               } else if (cat.category.name === 'inventory') {
-                // Store inventory for later (will be renamed to Business and combined with customers)
                 inventoryCategory = cat;
               } else if (cat.category.name === 'sales') {
-                // Sales category (if exists from backend)
-                processedCategories.push(cat);
+                quotationsCategory = cat;
               } else {
-                // Other categories as-is
                 processedCategories.push(cat);
               }
             });
-            
-            // Create Business category combining customers + inventory
-            // Insert it after Services (position 1) and before Sales
+
             if (businessCategory || inventoryCategory) {
               const combinedPermissions = [
                 ...(businessCategory?.permissions || []),
-                ...(inventoryCategory?.permissions || [])
+                ...(inventoryCategory?.permissions || []),
               ];
-              
               if (combinedPermissions.length > 0) {
-                const businessCat = {
+                processedCategories.push({
                   category: {
                     id: 'business',
                     name: 'business',
                     label: 'Business',
-                    description: inventoryCategory?.category?.description || 'Permissions for Business area. Blocking access blocks all sub-permissions.'
+                    description:
+                      inventoryCategory?.category?.description ||
+                      'Permissions for Business area. Blocking access blocks all sub-permissions.',
                   },
-                  permissions: combinedPermissions
-                };
-                // Insert Business after Services (index 1) if Services exists, otherwise at the beginning
-                const servicesIndex = processedCategories.findIndex((c: any) => c.category.name === 'services');
-                if (servicesIndex >= 0) {
-                  processedCategories.splice(servicesIndex + 1, 0, businessCat);
-                } else {
-                  processedCategories.unshift(businessCat);
-                }
+                  permissions: combinedPermissions,
+                });
               }
             }
-            
-            // Create Sales category if it doesn't exist
-            const hasSales = processedCategories.some((c: any) => c.category.name === 'sales');
-            if (!hasSales) {
-              // Insert Sales after Business (position 2) if Business exists
-              const businessIndex = processedCategories.findIndex((c: any) => c.category.name === 'business');
-              const salesCat = {
-                category: {
-                  id: 'sales',
-                  name: 'sales',
-                  label: 'Sales',
-                  description: 'Permissions for Sales area. Blocking access blocks all sub-permissions.'
-                },
-                permissions: []
-              };
-              if (businessIndex >= 0) {
-                processedCategories.splice(businessIndex + 1, 0, salesCat);
-              } else {
-                processedCategories.push(salesCat);
-              }
-            }
-            
-            
-            return processedCategories.map((cat: any) => {
+
+            processedCategories.push({
+              category: {
+                id: 'quotations',
+                name: 'quotations',
+                label: 'Quotations',
+                description:
+                  quotationsCategory?.category?.description ||
+                  'Permissions for Quotations area. Blocking access blocks all sub-permissions.',
+              },
+              permissions: quotationsCategory?.permissions || [],
+            });
+
+            const orderedPrimaryNames = ['construction', 'repairs_maintenance', 'business', 'quotations'];
+            const primaryCategories = orderedPrimaryNames
+              .map((name) => processedCategories.find((c: any) => c.category?.name === name))
+              .filter(Boolean);
+            const remainingCategories = processedCategories.filter(
+              (c: any) => !orderedPrimaryNames.includes(c.category?.name)
+            );
+            const finalCategories = [...primaryCategories, ...remainingCategories];
+
+            return finalCategories.map((cat: any) => {
               // Find area access permission (first permission, ends with :access)
               const areaAccessPerm = cat.permissions.find((p: any) => p.key.endsWith(':access'));
               const subPermissions = cat.permissions.filter((p: any) => !p.key.endsWith(':access'));
@@ -1187,6 +1255,94 @@ const UserPermissions = forwardRef<UserPermissionsRef, { userId: string; onDirty
                             </div>
                           );
                         })}
+                      </div>
+                    ) : cat.category.name === 'repairs_maintenance' ? (
+                      /* Special handling for Repairs & Maintenance category */
+                      <div className="space-y-4">
+                        {(() => {
+                          const rmPerms = subPermissions.filter((p: any) => p.key.includes('business:rm:projects'));
+                          if (rmPerms.length === 0) return null;
+                          const viewPerms = rmPerms.filter((p: any) => p.key.includes(':read'));
+                          const editPerms = rmPerms.filter((p: any) => p.key.includes(':write'));
+
+                          return (
+                            <div className="border rounded-lg p-2.5 bg-gray-50">
+                              <div className="text-xs font-semibold text-gray-700 mb-2">Projects & Opportunities</div>
+                              <div className="grid md:grid-cols-2 gap-2.5">
+                                {viewPerms.length > 0 && (
+                                  <div className="space-y-1.5">
+                                    <div className="text-[10px] font-semibold text-gray-600 mb-1.5 uppercase tracking-wide">View</div>
+                                    {viewPerms.map((perm: any) => {
+                                      const canEnable = canEdit && canEnableEditPermission(perm.key, permissions);
+                                      return (
+                                        <label
+                                          key={perm.id}
+                                          className={`flex items-start gap-1.5 p-1.5 rounded bg-white ${canEnable ? 'hover:bg-gray-50 cursor-pointer' : 'cursor-default'}`}
+                                        >
+                                          <input
+                                            type="checkbox"
+                                            checked={permissions[perm.key] || false}
+                                            onChange={() => canEnable && handleToggle(perm.key)}
+                                            disabled={!canEnable}
+                                            className="mt-0.5 w-3.5 h-3.5 rounded border-gray-300 text-brand-red focus:ring-brand-red flex-shrink-0 disabled:opacity-50 disabled:cursor-not-allowed"
+                                          />
+                                          <div className="flex-1 min-w-0">
+                                            <div className="text-xs font-medium text-gray-900 flex items-center gap-1.5">
+                                              <span className="truncate">{perm.label}</span>
+                                              {!IMPLEMENTED_PERMISSIONS.has(perm.key) && (
+                                                <span className="text-[10px] px-1 py-0.5 bg-yellow-100 text-yellow-800 rounded border border-yellow-300 flex-shrink-0">
+                                                  [WIP]
+                                                </span>
+                                              )}
+                                            </div>
+                                            {perm.description && (
+                                              <div className="text-[10px] text-gray-500 mt-0.5 line-clamp-1">{perm.description}</div>
+                                            )}
+                                          </div>
+                                        </label>
+                                      );
+                                    })}
+                                  </div>
+                                )}
+                                {editPerms.length > 0 && (
+                                  <div className="space-y-1.5">
+                                    <div className="text-[10px] font-semibold text-gray-600 mb-1.5 uppercase tracking-wide">Edit</div>
+                                    {editPerms.map((perm: any) => {
+                                      const canEnable = canEdit && canEnableEditPermission(perm.key, permissions);
+                                      return (
+                                        <label
+                                          key={perm.id}
+                                          className={`flex items-start gap-1.5 p-1.5 rounded bg-white ${canEnable ? 'hover:bg-gray-50 cursor-pointer' : 'cursor-default'}`}
+                                        >
+                                          <input
+                                            type="checkbox"
+                                            checked={permissions[perm.key] || false}
+                                            onChange={() => canEnable && handleToggle(perm.key)}
+                                            disabled={!canEnable}
+                                            className="mt-0.5 w-3.5 h-3.5 rounded border-gray-300 text-brand-red focus:ring-brand-red flex-shrink-0 disabled:opacity-50 disabled:cursor-not-allowed"
+                                          />
+                                          <div className="flex-1 min-w-0">
+                                            <div className="text-xs font-medium text-gray-900 flex items-center gap-1.5">
+                                              <span className="truncate">{perm.label}</span>
+                                              {!IMPLEMENTED_PERMISSIONS.has(perm.key) && (
+                                                <span className="text-[10px] px-1 py-0.5 bg-yellow-100 text-yellow-800 rounded border border-yellow-300 flex-shrink-0">
+                                                  [WIP]
+                                                </span>
+                                              )}
+                                            </div>
+                                            {perm.description && (
+                                              <div className="text-[10px] text-gray-500 mt-0.5 line-clamp-1">{perm.description}</div>
+                                            )}
+                                          </div>
+                                        </label>
+                                      );
+                                    })}
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          );
+                        })()}
                       </div>
                     ) : cat.category.name === 'business' ? (
                       /* Special handling for Business category - Customers, Suppliers and Products */
@@ -1466,30 +1622,48 @@ const UserPermissions = forwardRef<UserPermissionsRef, { userId: string; onDirty
                           );
                         })}
                       </div>
-                    ) : cat.category.name === 'services' ? (
-                      /* Special handling for Services category - only Projects & Opportunities */
+                    ) : cat.category.name === 'construction' ? (
+                      /* Special handling for Construction category - Projects & Opportunities */
                       <div className="space-y-4">
-                        {/* Projects & Opportunities */}
+                        {/* Construction Projects & Opportunities */}
                         {(() => {
-                          const allProjectsPerms = subPermissions.filter((p: any) => p.key.includes('business:projects'));
+                          const allProjectsPerms = subPermissions.filter((p: any) =>
+                            p.key.includes('business:projects') || p.key.includes('business:construction:projects')
+                          );
                           if (allProjectsPerms.length === 0) return null;
                           
-                          // Main permissions (business:projects:read and business:projects:write)
-                          const mainViewPerm = allProjectsPerms.find((p: any) => p.key === 'business:projects:read');
-                          const mainEditPerm = allProjectsPerms.find((p: any) => p.key === 'business:projects:write');
+                          // Main permissions (prefer construction line keys, fallback to shared legacy keys)
+                          const mainViewPerm =
+                            allProjectsPerms.find((p: any) => p.key === 'business:construction:projects:read') ||
+                            allProjectsPerms.find((p: any) => p.key === 'business:projects:read');
+                          const mainEditPerm =
+                            allProjectsPerms.find((p: any) => p.key === 'business:construction:projects:write') ||
+                            allProjectsPerms.find((p: any) => p.key === 'business:projects:write');
+                          const viewAllPerm = allProjectsPerms.find(
+                            (p: any) => p.key === 'business:construction:projects:read:all'
+                          );
+                          const membersWritePerm = allProjectsPerms.find(
+                            (p: any) => p.key === 'business:projects:members:write'
+                          );
                           
                           // Sub-permissions (reports, workload, timesheet, files, proposal, estimate, orders, safety)
                           const subViewPerms = allProjectsPerms.filter((p: any) => 
-                            p.key.includes(':read') && 
+                            p.key.includes(':read') &&
                             p.key !== 'business:projects:read' &&
+                            p.key !== 'business:construction:projects:read' &&
+                            p.key !== 'business:construction:projects:read:all' &&
                             (p.key.includes(':reports:') || p.key.includes(':workload:') || p.key.includes(':timesheet:') || 
-                             p.key.includes(':files:') || p.key.includes(':documents:') || p.key.includes(':proposal:') || p.key.includes(':estimate:') || p.key.includes(':orders:') || p.key.includes(':safety:'))
+                             p.key.includes(':files:') || p.key.includes(':documents:') || p.key.includes(':proposal:') ||
+                             p.key.includes(':estimate:') || p.key.includes(':orders:') || p.key.includes(':safety:'))
                           );
                           const subEditPerms = allProjectsPerms.filter((p: any) => 
                             p.key.includes(':write') && 
                             p.key !== 'business:projects:write' &&
+                            p.key !== 'business:construction:projects:write' &&
+                            p.key !== 'business:projects:members:write' &&
                             (p.key.includes(':reports:') || p.key.includes(':workload:') || p.key.includes(':timesheet:') || 
-                             p.key.includes(':files:') || p.key.includes(':documents:') || p.key.includes(':proposal:') || p.key.includes(':estimate:') || p.key.includes(':orders:') || p.key.includes(':safety:'))
+                             p.key.includes(':files:') || p.key.includes(':documents:') || p.key.includes(':proposal:') ||
+                             p.key.includes(':estimate:') || p.key.includes(':orders:') || p.key.includes(':safety:'))
                           );
                           
                           return (
@@ -1567,6 +1741,24 @@ const UserPermissions = forwardRef<UserPermissionsRef, { userId: string; onDirty
                                               </svg>
                                             </button>
                                           )}
+                                          {perm.key === 'business:projects:reports:read' && !!permissions[perm.key] && canEdit && (
+                                            <button
+                                              type="button"
+                                              onClick={(e) => {
+                                                e.preventDefault();
+                                                e.stopPropagation();
+                                                openProjectReportsCategoriesModal('read');
+                                              }}
+                                              className="ml-auto w-5 h-5 rounded hover:bg-gray-100 grid place-items-center text-gray-500 hover:text-gray-800"
+                                              title="Configure allowed Notes/History categories"
+                                              aria-label="Configure allowed Notes/History categories"
+                                            >
+                                              <svg className="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                                              </svg>
+                                            </button>
+                                          )}
                                         </div>
                                         {perm.description && (
                                           <div className="text-[10px] text-gray-500 mt-0.5 line-clamp-1">{perm.description}</div>
@@ -1575,6 +1767,36 @@ const UserPermissions = forwardRef<UserPermissionsRef, { userId: string; onDirty
                                     </label>
                                     );
                                   })}
+                                  {viewAllPerm && (() => {
+                                    const canEnable = canEdit && canEnableEditPermission(viewAllPerm.key, permissions);
+                                    return (
+                                    <label
+                                      key={viewAllPerm.id}
+                                      className={`flex items-start gap-1.5 p-1.5 rounded bg-white ${canEnable ? 'hover:bg-gray-50 cursor-pointer' : 'cursor-default'} ml-4`}
+                                    >
+                                      <input
+                                        type="checkbox"
+                                        checked={permissions[viewAllPerm.key] || false}
+                                        onChange={() => canEnable && handleToggle(viewAllPerm.key)}
+                                        disabled={!canEnable}
+                                        className="mt-0.5 w-3.5 h-3.5 rounded border-gray-300 text-brand-red focus:ring-brand-red flex-shrink-0 disabled:opacity-50 disabled:cursor-not-allowed"
+                                      />
+                                      <div className="flex-1 min-w-0">
+                                        <div className="text-xs font-medium text-gray-900 flex items-center gap-1.5">
+                                          <span className="truncate">{viewAllPerm.label}</span>
+                                          {!IMPLEMENTED_PERMISSIONS.has(viewAllPerm.key) && (
+                                            <span className="text-[10px] px-1 py-0.5 bg-yellow-100 text-yellow-800 rounded border border-yellow-300 flex-shrink-0">
+                                              [WIP]
+                                            </span>
+                                          )}
+                                        </div>
+                                        {viewAllPerm.description && (
+                                          <div className="text-[10px] text-gray-500 mt-0.5 line-clamp-1">{viewAllPerm.description}</div>
+                                        )}
+                                      </div>
+                                    </label>
+                                    );
+                                  })()}
                                 </div>
                                 
                                 {/* Edit Permissions Column */}
@@ -1651,6 +1873,24 @@ const UserPermissions = forwardRef<UserPermissionsRef, { userId: string; onDirty
                                               </svg>
                                             </button>
                                           )}
+                                          {perm.key === 'business:projects:reports:write' && !!permissions[perm.key] && canEdit && (
+                                            <button
+                                              type="button"
+                                              onClick={(e) => {
+                                                e.preventDefault();
+                                                e.stopPropagation();
+                                                openProjectReportsCategoriesModal('write');
+                                              }}
+                                              className="ml-auto w-5 h-5 rounded hover:bg-gray-100 grid place-items-center text-gray-500 hover:text-gray-800"
+                                              title="Configure allowed Notes/History categories"
+                                              aria-label="Configure allowed Notes/History categories"
+                                            >
+                                              <svg className="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                                              </svg>
+                                            </button>
+                                          )}
                                         </div>
                                         {perm.description && (
                                           <div className="text-[10px] text-gray-500 mt-0.5 line-clamp-1">{perm.description}</div>
@@ -1659,6 +1899,36 @@ const UserPermissions = forwardRef<UserPermissionsRef, { userId: string; onDirty
                                     </label>
                                     );
                                   })}
+                                  {membersWritePerm && (() => {
+                                    const canEnable = canEdit && canEnableEditPermission(membersWritePerm.key, permissions);
+                                    return (
+                                    <label
+                                      key={membersWritePerm.id}
+                                      className={`flex items-start gap-1.5 p-1.5 rounded bg-white ${canEnable ? 'hover:bg-gray-50 cursor-pointer' : 'cursor-default'} ml-4`}
+                                    >
+                                      <input
+                                        type="checkbox"
+                                        checked={permissions[membersWritePerm.key] || false}
+                                        onChange={() => canEnable && handleToggle(membersWritePerm.key)}
+                                        disabled={!canEnable}
+                                        className="mt-0.5 w-3.5 h-3.5 rounded border-gray-300 text-brand-red focus:ring-brand-red flex-shrink-0 disabled:opacity-50 disabled:cursor-not-allowed"
+                                      />
+                                      <div className="flex-1 min-w-0">
+                                        <div className="text-xs font-medium text-gray-900 flex items-center gap-1.5">
+                                          <span className="truncate">{membersWritePerm.label}</span>
+                                          {!IMPLEMENTED_PERMISSIONS.has(membersWritePerm.key) && (
+                                            <span className="text-[10px] px-1 py-0.5 bg-yellow-100 text-yellow-800 rounded border border-yellow-300 flex-shrink-0">
+                                              [WIP]
+                                            </span>
+                                          )}
+                                        </div>
+                                        {membersWritePerm.description && (
+                                          <div className="text-[10px] text-gray-500 mt-0.5 line-clamp-1">{membersWritePerm.description}</div>
+                                        )}
+                                      </div>
+                                    </label>
+                                    );
+                                  })()}
                                 </div>
                               </div>
                             </div>
@@ -1837,8 +2107,8 @@ const UserPermissions = forwardRef<UserPermissionsRef, { userId: string; onDirty
                           );
                         })}
                       </div>
-                    ) : cat.category.name === 'sales' ? (
-                      /* Special handling for Sales category - Quotations permissions */
+                    ) : cat.category.name === 'quotations' ? (
+                      /* Special handling for Quotations category */
                       <div className="space-y-4">
                         {['quotations'].map((area: string) => {
                           const areaPerms = subPermissions.filter((p: any) => p.key.includes(`sales:${area}`));

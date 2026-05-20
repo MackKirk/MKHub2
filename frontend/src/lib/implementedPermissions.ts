@@ -85,11 +85,26 @@ export const IMPLEMENTED_PERMISSIONS = new Set([
   'sales:quotations:write',
 ]);
 
-/** Project-related business permissions (Services category). */
+/** Legacy/shared project permissions used across project lines. */
+export function isLegacyProjectPermissionKey(key: string): boolean {
+  return key.startsWith('business:projects:');
+}
+
+/** Construction line permissions (Sales in sidebar). */
+export function isConstructionProjectPermissionKey(key: string): boolean {
+  return key.startsWith('business:construction:');
+}
+
+/** Repairs & Maintenance line permissions. */
+export function isRepairsProjectPermissionKey(key: string): boolean {
+  return key.startsWith('business:rm:');
+}
+
+/** Backward-compatible union helper for project-related business permissions. */
 export function isBusinessProjectPermissionKey(key: string): boolean {
   return (
-    key.startsWith('business:projects:') ||
-    key.startsWith('business:construction:') ||
-    key.startsWith('business:rm:')
+    isLegacyProjectPermissionKey(key) ||
+    isConstructionProjectPermissionKey(key) ||
+    isRepairsProjectPermissionKey(key)
   );
 }

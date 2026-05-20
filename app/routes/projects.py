@@ -46,6 +46,9 @@ from ..auth.security import (
     has_project_files_category_permission,
     can_access_business_line,
     can_write_business_line,
+    has_project_permission,
+    has_any_project_permission,
+    has_project_reports_category_permission,
     _has_permission,
 )
 from ..services.safety_sign_request_access import (
@@ -156,6 +159,31 @@ def _assert_project_line_read(user: User, proj: Project) -> None:
 
 def _assert_project_line_write(user: User, proj: Project) -> None:
     if not can_write_business_line(user, getattr(proj, "business_line", None)):
+        raise HTTPException(status_code=403, detail="Forbidden")
+
+
+def _assert_project_visible(user: User, proj: Project) -> None:
+    if not can_access_business_line(user, getattr(proj, "business_line", None)):
+        raise HTTPException(status_code=403, detail="Forbidden")
+    db = object_session(proj)
+    if db is not None and not is_project_visible_to_user(db, user, proj):
+        raise HTTPException(status_code=403, detail="Forbidden")
+
+
+def _assert_project_reports_read(user: User, proj: Project) -> None:
+    _assert_project_visible(user, proj)
+    if not has_any_project_permission(
+        user,
+        proj,
+        "business:projects:reports:read",
+        "business:projects:reports:write",
+    ):
+        raise HTTPException(status_code=403, detail="Forbidden")
+
+
+def _assert_project_reports_write(user: User, proj: Project) -> None:
+    _assert_project_visible(user, proj)
+    if not has_project_permission(user, proj, "business:projects:reports:write"):
         raise HTTPException(status_code=403, detail="Forbidden")
 
 
@@ -2647,10 +2675,13 @@ def list_project_reports(project_id: str, db: Session = Depends(get_db), user: U
     p = db.query(Project).filter(Project.id == project_id, Project.deleted_at.is_(None)).first()
     if not p:
         raise HTTPException(status_code=404, detail="Not found")
-    _assert_project_line_read(user, p)
+    _assert_project_reports_read(user, p)
     rows = db.query(ProjectReport).filter(ProjectReport.project_id == project_id).order_by(ProjectReport.created_at.desc() if hasattr(ProjectReport, 'created_at') else ProjectReport.id.desc()).all()
     out = []
     for r in rows:
+        cat_id = getattr(r, "category_id", None)
+        if not has_project_reports_category_permission(user, cat_id, action="read", project=p):
+            continue
         out.append({
             "id": str(r.id),
             "title": getattr(r, 'title', None),
@@ -2676,7 +2707,10 @@ def create_project_report(project_id: str, payload: dict, db: Session = Depends(
     p = db.query(Project).filter(Project.id == project_id, Project.deleted_at.is_(None)).first()
     if not p:
         raise HTTPException(status_code=404, detail="Not found")
-    _assert_project_line_write(user, p)
+    _assert_project_reports_write(user, p)
+    category_id = payload.get("category_id")
+    if not has_project_reports_category_permission(user, category_id, action="write", project=p):
+        raise HTTPException(status_code=403, detail="Forbidden")
     financial_type = payload.get("financial_type")
     approval_status = None
     if financial_type == "estimate-changes":
@@ -2735,10 +2769,12 @@ def delete_project_report(project_id: str, report_id: str, db: Session = Depends
     p = db.query(Project).filter(Project.id == project_id, Project.deleted_at.is_(None)).first()
     if not p:
         raise HTTPException(status_code=404, detail="Not found")
-    _assert_project_line_write(user, p)
+    _assert_project_reports_write(user, p)
     row = db.query(ProjectReport).filter(ProjectReport.id == report_id, ProjectReport.project_id == project_id).first()
     if not row:
         return {"status": "ok"}
+    if not has_project_reports_category_permission(user, getattr(row, "category_id", None), action="write", project=p):
+        raise HTTPException(status_code=403, detail="Forbidden")
     
     # Capture report info before deletion for audit log
     report_info = {
@@ -3414,7 +3450,7 @@ def approve_estimate_changes_report(project_id: str, report_id: str, db: Session
     proj_scope = db.query(Project).filter(Project.id == project_id, Project.deleted_at.is_(None)).first()
     if not proj_scope:
         raise HTTPException(status_code=404, detail="Project not found")
-    _assert_project_line_write(user, proj_scope)
+    _assert_project_reports_write(user, proj_scope)
     
     # Get the report
     report = db.query(ProjectReport).filter(
@@ -3424,6 +3460,10 @@ def approve_estimate_changes_report(project_id: str, report_id: str, db: Session
     
     if not report:
         raise HTTPException(status_code=404, detail="Report not found")
+    if not has_project_reports_category_permission(
+        user, getattr(report, "category_id", None), action="write", project=proj_scope
+    ):
+        raise HTTPException(status_code=403, detail="Forbidden")
     
     # Validate it's an estimate-changes report
     if getattr(report, 'financial_type', None) != "estimate-changes":
@@ -3737,6 +3777,10 @@ def get_project_financial_totals(project_id: str, db: Session = Depends(get_db),
     additional_expense = 0.0
     
     for report in reports:
+        if not has_project_reports_category_permission(
+            user, getattr(report, "category_id", None), action="read", project=p
+        ):
+            continue
         financial_value = getattr(report, 'financial_value', None) or 0.0
         financial_type = getattr(report, 'financial_type', None)
         

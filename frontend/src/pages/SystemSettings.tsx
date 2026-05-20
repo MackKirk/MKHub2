@@ -8,7 +8,12 @@ import { useConfirm } from '@/components/ConfirmProvider';
 import { effectiveShowInProject, effectiveShowInOpportunity } from '@/lib/projectStatusVisibility';
 import DocumentTemplatesTab from '@/components/DocumentTemplatesTab';
 import DocumentTypesTab from '@/components/DocumentTypesTab';
-import { IMPLEMENTED_PERMISSIONS, isBusinessProjectPermissionKey } from '@/lib/implementedPermissions';
+import {
+  IMPLEMENTED_PERMISSIONS,
+  isConstructionProjectPermissionKey,
+  isLegacyProjectPermissionKey,
+  isRepairsProjectPermissionKey,
+} from '@/lib/implementedPermissions';
 import {
   applyPermissionUncheckCascadeSet,
   canEnablePermissionSet,
@@ -1084,24 +1089,37 @@ function PermissionTemplatesSection() {
   // Expandable categories for permission list (same as UserInfo): start collapsed
   const [expandedCategories, setExpandedCategories] = useState<Set<string>>(new Set());
 
-  // Process definitions like UserInfo: split business into Services + Business, add Sales
+  // Process definitions like UserInfo: Construction + Repairs + Business + Quotations.
   const processedDefinitions = useMemo(() => {
     const raw = (definitions || []) as PermDefCategory[];
     const processed: PermDefCategory[] = [];
     let businessCat: PermDefCategory | null = null;
     let inventoryCat: PermDefCategory | null = null;
+    let quotationsCat: PermDefCategory | null = null;
     raw.forEach((cat) => {
       if (cat.name === 'business') {
-        const hasProjects = (cat.permissions || []).some((p) => isBusinessProjectPermissionKey(p.key));
+        const constructionPerms = (cat.permissions || []).filter((p) => isConstructionProjectPermissionKey(p.key));
+        const repairsPerms = (cat.permissions || []).filter((p) => isRepairsProjectPermissionKey(p.key));
+        const legacyPerms = (cat.permissions || []).filter((p) => isLegacyProjectPermissionKey(p.key));
         const hasCustomers = (cat.permissions || []).some((p) => p.key.includes('business:customers'));
-        if (hasProjects) {
+        if (constructionPerms.length > 0 || legacyPerms.length > 0) {
           processed.push({
             ...cat,
-            id: 'services',
-            name: 'services',
-            label: 'Services',
+            id: 'construction',
+            name: 'construction',
+            label: 'Construction',
             description: cat.description || 'Permissions for Business area. Blocking access blocks all sub-permissions.',
-            permissions: (cat.permissions || []).filter((p) => isBusinessProjectPermissionKey(p.key)),
+            permissions: [...constructionPerms, ...legacyPerms],
+          });
+        }
+        if (repairsPerms.length > 0) {
+          processed.push({
+            ...cat,
+            id: 'repairs_maintenance',
+            name: 'repairs_maintenance',
+            label: 'Repairs & Maintenance',
+            description: cat.description || 'Permissions for Business area. Blocking access blocks all sub-permissions.',
+            permissions: repairsPerms,
           });
         }
         if (hasCustomers) {
@@ -1110,7 +1128,7 @@ function PermissionTemplatesSection() {
       } else if (cat.name === 'inventory') {
         inventoryCat = cat;
       } else if (cat.name === 'sales') {
-        processed.push(cat);
+        quotationsCat = cat;
       } else {
         processed.push(cat);
       }
@@ -1128,25 +1146,25 @@ function PermissionTemplatesSection() {
           description: inventoryCat?.description || 'Permissions for Business area. Blocking access blocks all sub-permissions.',
           permissions: combined,
         };
-        const idx = processed.findIndex((c) => c.name === 'services');
-        if (idx >= 0) processed.splice(idx + 1, 0, insert);
-        else processed.unshift(insert);
+        processed.push(insert);
       }
     }
-    const hasSales = processed.some((c) => c.name === 'sales');
-    if (!hasSales) {
-      const salesCat: PermDefCategory = {
-        id: 'sales',
-        name: 'sales',
-        label: 'Sales',
-        description: 'Permissions for Sales area. Blocking access blocks all sub-permissions.',
-        permissions: [],
-      };
-      const idx = processed.findIndex((c) => c.name === 'business');
-      if (idx >= 0) processed.splice(idx + 1, 0, salesCat);
-      else processed.push(salesCat);
-    }
-    return processed;
+    const normalizedQuotations: PermDefCategory = {
+      id: 'quotations',
+      name: 'quotations',
+      label: 'Quotations',
+      description:
+        quotationsCat?.description ||
+        'Permissions for Quotations area. Blocking access blocks all sub-permissions.',
+      permissions: quotationsCat?.permissions || [],
+    };
+    processed.push(normalizedQuotations);
+    const orderedPrimaryNames = ['construction', 'repairs_maintenance', 'business', 'quotations'];
+    const primaryCategories = orderedPrimaryNames
+      .map((name) => processed.find((c) => c.name === name))
+      .filter(Boolean) as PermDefCategory[];
+    const remainingCategories = processed.filter((c) => !orderedPrimaryNames.includes(c.name));
+    return [...primaryCategories, ...remainingCategories];
   }, [definitions]);
 
 
@@ -1314,15 +1332,57 @@ function PermissionTemplatesSection() {
 
               {isExpanded && subPermissions.length > 0 && (
                 <div className="px-4 pb-4 border-t border-gray-200 pt-3 mt-0">
-                  {cat.name === 'services' ? (
-                    /* Projects & Opportunities */
+                  {cat.name === 'construction' ? (
+                    /* Construction Projects & Opportunities */
                     (() => {
-                      const all = subPermissions.filter((p) => p.key.includes('business:projects'));
+                      const all = subPermissions.filter(
+                        (p) => p.key.includes('business:projects') || p.key.includes('business:construction:projects')
+                      );
                       if (all.length === 0) return null;
-                      const mainView = all.find((p) => p.key === 'business:projects:read');
-                      const mainEdit = all.find((p) => p.key === 'business:projects:write');
-                      const subView = all.filter((p) => p.key.includes(':read') && p.key !== 'business:projects:read' && (p.key.includes(':reports:') || p.key.includes(':workload:') || p.key.includes(':timesheet:') || p.key.includes(':files:') || p.key.includes(':documents:') || p.key.includes(':proposal:') || p.key.includes(':estimate:') || p.key.includes(':orders:') || p.key.includes(':safety:')));
-                      const subEdit = all.filter((p) => p.key.includes(':write') && p.key !== 'business:projects:write' && (p.key.includes(':reports:') || p.key.includes(':workload:') || p.key.includes(':timesheet:') || p.key.includes(':files:') || p.key.includes(':documents:') || p.key.includes(':proposal:') || p.key.includes(':estimate:') || p.key.includes(':orders:') || p.key.includes(':safety:')));
+                      const mainView =
+                        all.find((p) => p.key === 'business:construction:projects:read') ||
+                        all.find((p) => p.key === 'business:projects:read');
+                      const mainEdit =
+                        all.find((p) => p.key === 'business:construction:projects:write') ||
+                        all.find((p) => p.key === 'business:projects:write');
+                      const viewAll = all.find(
+                        (p) => p.key === 'business:construction:projects:read:all'
+                      );
+                      const membersWrite = all.find(
+                        (p) => p.key === 'business:projects:members:write'
+                      );
+                      const subView = all.filter(
+                        (p) =>
+                          p.key.includes(':read') &&
+                          p.key !== 'business:projects:read' &&
+                          p.key !== 'business:construction:projects:read' &&
+                          p.key !== 'business:construction:projects:read:all' &&
+                          (p.key.includes(':reports:') ||
+                            p.key.includes(':workload:') ||
+                            p.key.includes(':timesheet:') ||
+                            p.key.includes(':files:') ||
+                            p.key.includes(':documents:') ||
+                            p.key.includes(':proposal:') ||
+                            p.key.includes(':estimate:') ||
+                            p.key.includes(':orders:') ||
+                            p.key.includes(':safety:'))
+                      );
+                      const subEdit = all.filter(
+                        (p) =>
+                          p.key.includes(':write') &&
+                          p.key !== 'business:projects:write' &&
+                          p.key !== 'business:construction:projects:write' &&
+                          p.key !== 'business:projects:members:write' &&
+                          (p.key.includes(':reports:') ||
+                            p.key.includes(':workload:') ||
+                            p.key.includes(':timesheet:') ||
+                            p.key.includes(':files:') ||
+                            p.key.includes(':documents:') ||
+                            p.key.includes(':proposal:') ||
+                            p.key.includes(':estimate:') ||
+                            p.key.includes(':orders:') ||
+                            p.key.includes(':safety:'))
+                      );
                       return (
                         <div className="border rounded-lg p-2.5 bg-gray-50">
                           <div className="text-xs font-semibold text-gray-700 mb-2">Projects & Opportunities</div>
@@ -1331,13 +1391,28 @@ function PermissionTemplatesSection() {
                               <div className="text-[10px] font-semibold text-gray-600 mb-1.5 uppercase tracking-wide">View</div>
                               {mainView && permRow(mainView)}
                               {subView.map((p) => permRow(p, true))}
+                              {viewAll && permRow(viewAll, true)}
                             </div>
                             <div className="space-y-1.5">
                               <div className="text-[10px] font-semibold text-gray-600 mb-1.5 uppercase tracking-wide">Edit</div>
                               {mainEdit && permRow(mainEdit)}
                               {subEdit.map((p) => permRow(p, true))}
+                              {membersWrite && permRow(membersWrite, true)}
                             </div>
                           </div>
+                        </div>
+                      );
+                    })()
+                  ) : cat.name === 'repairs_maintenance' ? (
+                    (() => {
+                      const rm = subPermissions.filter((p) => p.key.includes('business:rm:projects'));
+                      if (rm.length === 0) return null;
+                      const viewPerms = rm.filter((p) => p.key.includes(':read'));
+                      const editPerms = rm.filter((p) => p.key.includes(':write'));
+                      return (
+                        <div className="border rounded-lg p-2.5 bg-gray-50">
+                          <div className="text-xs font-semibold text-gray-700 mb-2">Projects & Opportunities</div>
+                          {viewEditBlock(viewPerms, editPerms)}
                         </div>
                       );
                     })()
@@ -1404,8 +1479,8 @@ function PermissionTemplatesSection() {
                         );
                       })}
                     </div>
-                  ) : cat.name === 'sales' ? (
-                    /* Sales: Quotations (same as UserInfo) */
+                  ) : cat.name === 'quotations' ? (
+                    /* Quotations */
                     <div className="space-y-4">
                       {['quotations'].map((area) => {
                         const areaPerms = subPermissions.filter((p) => p.key.includes(`sales:${area}`));

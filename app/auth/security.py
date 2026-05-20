@@ -382,6 +382,55 @@ def has_project_files_category_permission(
         return True
 
     cat = (category_id or "uncategorized").strip() or "uncategorized"
+    allowed = [str(x) for x in allow_list if isinstance(x, str)]
+    if cat in allowed:
+        return True
+    cat_l = cat.lower()
+    if cat_l in {a.lower() for a in allowed}:
+        return True
+    # Legacy slug overlap (Pictures vs photos)
+    if cat_l in {"pictures", "photos"} and any(a.lower() in {"pictures", "photos"} for a in allowed):
+        return True
+    return False
+
+
+def has_project_reports_category_permission(
+    user: User,
+    category_id: Optional[str],
+    action: Literal["read", "write"] = "read",
+    project: Optional[Any] = None,
+) -> bool:
+    """
+    Category-level access control for Project > Notes/History (reports).
+
+    Rules mirror Project > Files:
+    - read: business:projects:reports:read OR business:projects:reports:write
+    - write: business:projects:reports:write
+    - Missing allow-list config => all categories allowed (default).
+    """
+    if project is not None and not can_access_business_line(user, getattr(project, "business_line", None)):
+        return False
+    if action not in ("read", "write"):
+        return False
+
+    if action == "write":
+        if not _has_permission(user, "business:projects:reports:write"):
+            return False
+    else:
+        if not (
+            _has_permission(user, "business:projects:reports:read")
+            or _has_permission(user, "business:projects:reports:write")
+        ):
+            return False
+
+    perm_map = _get_user_permission_map(user)
+    cfg_key = f"business:projects:reports:categories:{action}"
+    allow_list = perm_map.get(cfg_key, None)
+
+    if not isinstance(allow_list, list):
+        return True
+
+    cat = (category_id or "uncategorized").strip() or "uncategorized"
     return cat in [str(x) for x in allow_list if isinstance(x, str)]
 
 

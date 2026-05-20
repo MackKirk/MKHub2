@@ -232,6 +232,10 @@ def assert_can_read_storage_key(user: User, db: Session, storage_key: str) -> No
             fo = db.query(FileObject).filter(FileObject.key == candidate).first()
             if fo and _is_employee_profile_photo_file(db, fo):
                 return
+    fo_by_key = _find_file_object_by_storage_key(db, storage_key)
+    if fo_by_key:
+        assert_can_read_file_object(user, db, fo_by_key)
+        return
     p, c, e, cat = infer_scope_from_storage_key(db, storage_key)
     if p:
         try:
@@ -287,6 +291,54 @@ def _resolve_file_scope_from_references(
         return None, cf.client_id, None
 
     return None, None, None
+
+
+def _find_file_object_by_storage_key(db: Session, storage_key: str) -> Optional[FileObject]:
+    """Resolve FileObject row from blob/local storage path (preview uses local-inline paths)."""
+    norm = storage_key.strip().replace("\\", "/").lstrip("/")
+    if not norm:
+        return None
+    candidates: list[str] = []
+    for key in (norm, f"/{norm}", norm if norm.startswith("org/") else f"org/{norm}"):
+        if key not in candidates:
+            candidates.append(key)
+        slash_key = key if key.startswith("/") else f"/{key}"
+        if slash_key not in candidates:
+            candidates.append(slash_key)
+    for key in candidates:
+        fo = db.query(FileObject).filter(FileObject.key == key).first()
+        if fo:
+            return fo
+    return None
+
+
+def _client_file_category_for_file_object(
+    db: Session,
+    fo: FileObject,
+    *,
+    project_id: Optional[uuid.UUID] = None,
+    client_id: Optional[uuid.UUID] = None,
+) -> Optional[str]:
+    """
+    Project/customer files store the permission category on ClientFile.category (slug),
+    not on FileObject.category_id (legacy UUID column).
+    """
+    q = db.query(ClientFile).filter(
+        ClientFile.file_object_id == fo.id,
+        ClientFile.deleted_at.is_(None),
+    )
+    if client_id:
+        q = q.filter(ClientFile.client_id == client_id)
+    elif project_id:
+        proj = (
+            db.query(Project)
+            .filter(Project.id == project_id, Project.deleted_at.is_(None))
+            .first()
+        )
+        if proj and proj.client_id:
+            q = q.filter(ClientFile.client_id == proj.client_id)
+    row = q.order_by(ClientFile.uploaded_at.desc()).first()
+    return (row.category or None) if row else None
 
 
 def _is_employee_profile_photo_file(db: Session, fo: FileObject) -> bool:
@@ -437,7 +489,8 @@ def _can_read_file_object_via_inferred_storage_scope(
         proj = db.query(Project).filter(Project.id == pid, Project.deleted_at.is_(None)).first()
         if not proj:
             return False
-        if has_project_files_category_permission(user, cat, action="read", project=proj):
+        effective_cat = _client_file_category_for_file_object(db, fo, project_id=pid) or cat
+        if has_project_files_category_permission(user, effective_cat, action="read", project=proj):
             return True
         return _can_read_project_file_via_proposal_tab(user, db, proj, fo)
 
@@ -576,7 +629,7 @@ def assert_can_read_file_object(user: User, db: Session, fo: FileObject) -> None
         if not can_access_project_for_proposal_assets(user, proj):
             if not user_has_any_sign_request_on_project(db, user, str(proj.id)):
                 raise HTTPException(status_code=403, detail="Forbidden")
-        cat = str(fo.category_id) if fo.category_id else None
+        cat = _client_file_category_for_file_object(db, fo, project_id=pid)
         if has_project_files_category_permission(
             user, cat, action="read", project=proj
         ):
