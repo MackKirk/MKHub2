@@ -5,7 +5,19 @@ import { getChartMetricLabel } from './widgets/chartShared';
 import type { GalleryItem } from './galleryConfig';
 import type { WidgetDef } from './types';
 import type { LayoutItem } from './types';
-import OverlayPortal from '@/components/OverlayPortal';
+import {
+  AppButton,
+  AppModal,
+  AppTabs,
+  uiBorders,
+  uiColors,
+  uiCx,
+  uiLayout,
+  uiRadius,
+  uiShadows,
+  uiSpacing,
+  uiTypography,
+} from '@/components/ui';
 import type { MeForHomeWidgets } from './widgetVisibility';
 import { isGalleryItemAllowed } from './widgetVisibility';
 
@@ -139,7 +151,15 @@ function GalleryCard({
     <button
       type="button"
       onClick={onSelect}
-      className="w-full text-left rounded-xl border-2 border-gray-200 bg-white p-4 shadow-sm transition-all duration-150 hover:border-brand-red hover:shadow-md hover:bg-gray-50/50 active:scale-[0.98] focus:outline-none focus:ring-2 focus:ring-brand-red focus:ring-offset-2"
+      className={uiCx(
+        'w-full text-left transition-all duration-150 hover:border-brand-red hover:bg-gray-50/50 hover:shadow-md active:scale-[0.98]',
+        'focus:outline-none focus:ring-2 focus:ring-brand-red focus:ring-offset-2',
+        uiRadius.card,
+        uiBorders.strong,
+        uiColors.surface,
+        uiShadows.card,
+        uiSpacing.cardPadding,
+      )}
     >
       {isKpi && (
         <>
@@ -265,110 +285,71 @@ export function AddWidgetModal({
     onClose();
   };
 
-  if (!open) return null;
+  const tabItems = useMemo(
+    () => GALLERY_TABS.map((tab) => ({ key: tab, label: TAB_LABELS[tab] })),
+    [],
+  );
 
   return (
-    <OverlayPortal><div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
-      onClick={onClose}
-    >
-      <div
-        className="max-w-2xl w-full max-h-[90vh] flex flex-col rounded-xl border border-gray-200 bg-gray-100 shadow-xl overflow-hidden"
-        onClick={(e) => e.stopPropagation()}
-      >
-        {/* Header - same style as New Note */}
-        <div className="flex-shrink-0 rounded-t-xl border-b border-gray-200 bg-white p-4">
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={onClose}
-              className="p-1 rounded-lg hover:bg-gray-100 text-gray-600"
-            >
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-              </svg>
-            </button>
-            <div>
-              <h2 className="text-sm font-semibold text-gray-900">Add Widget</h2>
-              <p className="text-xs text-gray-500 mt-0.5">Choose a widget to add to your dashboard. Click any card to add it.</p>
-            </div>
-          </div>
-        </div>
-
-        <div className="border-b border-gray-200 shrink-0 bg-white">
-          <nav className="flex gap-0 px-4" role="tablist">
-            {GALLERY_TABS.map((tab) => (
-              <button
-                key={tab}
-                type="button"
-                role="tab"
-                aria-selected={activeTab === tab}
-                onClick={() => setActiveTab(tab)}
-                className={`px-4 py-3 text-xs font-medium border-b-2 transition-colors -mb-px ${
-                  activeTab === tab
-                    ? 'border-brand-red text-brand-red'
-                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-                }`}
-              >
-                {TAB_LABELS[tab]}
-              </button>
-            ))}
-          </nav>
-        </div>
-
-        <div className="flex-1 overflow-y-auto p-4 min-h-0 bg-gray-100">
-          {itemsByTab.length === 0 ? (
-            <p className="text-xs text-gray-500 py-8 text-center">
-              No widgets in this category.
-            </p>
-          ) : (
-            <>
-              {activeTab === 'Charts' && chartGroups ? (
-                <div className="space-y-6">
-                  <div>
-                    <div className="text-xs font-semibold text-gray-700 mb-2">Opportunities</div>
-                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-                      {chartGroups.opportunities.map((item) => (
-                        <GalleryCard key={item.id} item={item} onSelect={() => handleSelect(item)} />
-                      ))}
-                    </div>
-                  </div>
-                  <div>
-                    <div className="text-xs font-semibold text-gray-700 mb-2">Projects</div>
-                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-                      {chartGroups.projects.map((item) => (
-                        <GalleryCard key={item.id} item={item} onSelect={() => handleSelect(item)} />
-                      ))}
-                    </div>
-                  </div>
-                </div>
-              ) : activeTab === 'Shortcuts' ? (
-                <div className="grid grid-cols-4 sm:grid-cols-4 gap-3">
-                  {itemsByTab.map((item) => (
-                    <GalleryCard key={item.id} item={item} onSelect={() => handleSelect(item)} />
-                  ))}
-                </div>
-              ) : (
-                <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
-                  {itemsByTab.map((item) => (
-                    <GalleryCard key={item.id} item={item} onSelect={() => handleSelect(item)} />
-                  ))}
-                </div>
-              )}
-            </>
-          )}
-        </div>
-
-        <div className="flex-shrink-0 px-4 py-4 border-t border-gray-200 bg-white flex items-center justify-end gap-3 rounded-b-xl">
-          <button
-            type="button"
-            onClick={onClose}
-            className="px-3 py-1.5 rounded-lg text-sm font-medium text-gray-700 border border-gray-200 hover:bg-gray-50"
-          >
+    <AppModal
+      open={open}
+      onClose={onClose}
+      title="Add Widget"
+      description="Choose a widget to add to your dashboard. Click any card to add it."
+      size="md"
+      bodyClassName="flex min-h-0 flex-col p-0"
+      footer={
+        <div className={uiCx(uiLayout.actionsRow, 'w-full justify-end')}>
+          <AppButton type="button" variant="secondary" size="sm" onClick={onClose}>
             Cancel
-          </button>
+          </AppButton>
         </div>
+      }
+    >
+      <div className={uiCx('shrink-0 border-b border-gray-100', uiColors.surface, uiSpacing.cardPadding)}>
+        <AppTabs tabs={tabItems} value={activeTab} onChange={(key) => setActiveTab(key as (typeof GALLERY_TABS)[number])} />
       </div>
-    </div></OverlayPortal>
+
+      <div className={uiCx('min-h-0 flex-1 overflow-y-auto', uiColors.surfaceSubtle, uiSpacing.cardPadding)}>
+        {itemsByTab.length === 0 ? (
+          <p className={uiCx(uiTypography.helper, 'py-8 text-center')}>No widgets in this category.</p>
+        ) : (
+          <>
+            {activeTab === 'Charts' && chartGroups ? (
+              <div className={uiSpacing.sectionStack}>
+                <div>
+                  <div className={uiCx(uiTypography.sectionTitle, 'mb-2')}>Opportunities</div>
+                  <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
+                    {chartGroups.opportunities.map((item) => (
+                      <GalleryCard key={item.id} item={item} onSelect={() => handleSelect(item)} />
+                    ))}
+                  </div>
+                </div>
+                <div>
+                  <div className={uiCx(uiTypography.sectionTitle, 'mb-2')}>Projects</div>
+                  <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
+                    {chartGroups.projects.map((item) => (
+                      <GalleryCard key={item.id} item={item} onSelect={() => handleSelect(item)} />
+                    ))}
+                  </div>
+                </div>
+              </div>
+            ) : activeTab === 'Shortcuts' ? (
+              <div className="grid grid-cols-4 gap-3 sm:grid-cols-4">
+                {itemsByTab.map((item) => (
+                  <GalleryCard key={item.id} item={item} onSelect={() => handleSelect(item)} />
+                ))}
+              </div>
+            ) : (
+              <div className="grid grid-cols-2 gap-4 sm:grid-cols-3">
+                {itemsByTab.map((item) => (
+                  <GalleryCard key={item.id} item={item} onSelect={() => handleSelect(item)} />
+                ))}
+              </div>
+            )}
+          </>
+        )}
+      </div>
+    </AppModal>
   );
 }

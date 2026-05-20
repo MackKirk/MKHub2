@@ -6,6 +6,7 @@ import LoadingOverlay from '@/components/LoadingOverlay';
 import { useAnimationReady } from '@/contexts/AnimationReadyContext';
 import { api } from '@/lib/api';
 import { formatDateLocal } from '@/lib/dateUtils';
+import { AppButton, AppCalendarBase, type AppCalendarDay, uiCx, uiLayout, uiTypography } from '@/components/ui';
 
 type Shift = {
   id: string;
@@ -38,15 +39,15 @@ export function CalendarWidget({ config: _config }: CalendarWidgetProps) {
 
   const monthStart = useMemo(
     () => new Date(currentMonth.getFullYear(), currentMonth.getMonth(), 1),
-    [currentMonth]
+    [currentMonth],
   );
   const monthEnd = useMemo(
     () => new Date(currentMonth.getFullYear(), currentMonth.getMonth() + 1, 0),
-    [currentMonth]
+    [currentMonth],
   );
   const dateRange = useMemo(
     () => `${formatDateLocal(monthStart)},${formatDateLocal(monthEnd)}`,
-    [monthStart, monthEnd]
+    [monthStart, monthEnd],
   );
 
   const { data: shifts = [], isLoading: shiftsLoading } = useQuery<Shift[]>({
@@ -57,7 +58,7 @@ export function CalendarWidget({ config: _config }: CalendarWidgetProps) {
       try {
         const result = await api<Shift[] | { data: Shift[] }>(
           'GET',
-          `/dispatch/shifts?date_range=${dateRange}&worker_id=${workerId}`
+          `/dispatch/shifts?date_range=${dateRange}&worker_id=${workerId}`,
         );
         if (Array.isArray(result)) return result;
         if (result && Array.isArray((result as { data: Shift[] }).data)) return (result as { data: Shift[] }).data;
@@ -104,10 +105,32 @@ export function CalendarWidget({ config: _config }: CalendarWidgetProps) {
     navigate(`/schedule?date=${formatDateLocal(date)}`);
   };
 
+  const monthLabel = `${MONTH_NAMES[currentMonth.getMonth()]} ${currentMonth.getFullYear()}`;
+
+  const appDays: AppCalendarDay[] = useMemo(
+    () =>
+      calendarDays.map((date) => {
+        if (!date) {
+          return { dateLabel: '', isMuted: true };
+        }
+        const dateStr = formatDateLocal(date);
+        const shiftCount = datesWithShifts[dateStr] ?? 0;
+        const dayIsToday = Boolean(isToday(date));
+        return {
+          dateLabel: String(date.getDate()),
+          isToday: dayIsToday,
+          hasMarker: shiftCount > 0,
+          onClick: () => handleDayClick(date),
+          title: shiftCount > 0 ? `${shiftCount} shift(s)` : dayIsToday ? 'Today' : undefined,
+        };
+      }),
+    [calendarDays, datesWithShifts, todayStr],
+  );
+
   if (shiftsLoading && currentUser?.id) {
     return (
-      <div className="flex flex-col min-h-0 h-full w-full">
-        <LoadingOverlay isLoading minHeight="min-h-[120px]" className="flex-1 min-h-0">
+      <div className="flex h-full min-h-0 w-full flex-col">
+        <LoadingOverlay isLoading minHeight="min-h-[120px]" className="min-h-0 flex-1">
           <div className="min-h-[120px]" />
         </LoadingOverlay>
       </div>
@@ -115,72 +138,25 @@ export function CalendarWidget({ config: _config }: CalendarWidgetProps) {
   }
 
   return (
-    <FadeInOnMount enabled={ready} className="flex flex-col min-h-0 h-full w-full">
-      <div className="flex items-center justify-between shrink-0 mb-2">
-        <span className="text-xs font-semibold text-gray-800">
-          {MONTH_NAMES[currentMonth.getMonth()]} {currentMonth.getFullYear()}
-        </span>
-        <div className="flex items-center gap-0.5">
-          <button
-            type="button"
-            onClick={goToPrev}
-            className="p-1 rounded hover:bg-gray-100 text-gray-600 text-[10px] font-medium"
-            aria-label="Previous month"
-          >
-            ←
-          </button>
-          <button
-            type="button"
-            onClick={goToToday}
-            className="px-1.5 py-0.5 rounded text-[10px] font-medium text-gray-600 hover:bg-gray-100"
-          >
+    <FadeInOnMount enabled={ready} className="flex h-full min-h-0 w-full flex-col">
+      <AppCalendarBase
+        bare
+        compact
+        monthLabel={monthLabel}
+        weekDayLabels={DAY_NAMES}
+        days={appDays}
+        onPrevious={goToPrev}
+        onNext={goToNext}
+        headerExtra={
+          <AppButton type="button" variant="ghost" size="sm" onClick={goToToday} className="h-6 min-h-0 px-1.5 text-[10px]">
             Today
-          </button>
-          <button
-            type="button"
-            onClick={goToNext}
-            className="p-1 rounded hover:bg-gray-100 text-gray-600 text-[10px] font-medium"
-            aria-label="Next month"
-          >
-            →
-          </button>
-        </div>
-      </div>
-      <div className="grid grid-cols-7 gap-0.5 shrink-0">
-        {DAY_NAMES.map((d, i) => (
-          <div key={i} className="text-center text-[9px] font-semibold text-gray-400 py-0.5">
-            {d}
-          </div>
-        ))}
-        {calendarDays.map((date, idx) => {
-          if (!date) return <div key={`e-${idx}`} className="aspect-square min-w-0" />;
-          const dateStr = formatDateLocal(date);
-          const shiftCount = datesWithShifts[dateStr] ?? 0;
-          const dayIsToday = isToday(date);
-          return (
-            <button
-              key={dateStr}
-              type="button"
-              onClick={() => handleDayClick(date)}
-              className={`
-                relative aspect-square min-w-0 rounded flex flex-col items-center justify-center text-[10px] font-medium
-                transition-all duration-150 hover:shadow-sm active:scale-95
-                ${dayIsToday ? 'bg-brand-red/15 text-brand-red border border-brand-red/40 ring-1 ring-brand-red/20' : 'border border-transparent hover:border-gray-300 hover:bg-gray-50 text-gray-700'}
-                ${shiftCount > 0 && !dayIsToday ? 'bg-blue-50/80 hover:bg-blue-100/80' : ''}
-              `}
-              title={shiftCount > 0 ? `${shiftCount} shift(s)` : dayIsToday ? 'Today' : ''}
-            >
-              {date.getDate()}
-              {shiftCount > 0 && (
-                <span className="absolute bottom-0.5 left-1/2 -translate-x-1/2 w-1 h-1 rounded-full bg-blue-600" aria-hidden />
-              )}
-            </button>
-          );
-        })}
-      </div>
-      <div className="mt-2 shrink-0 flex items-center justify-between text-[9px] text-gray-500">
-        <span>Click day → Schedule</span>
-        <Link to="/schedule" className="text-brand-red hover:underline font-medium">
+          </AppButton>
+        }
+        className="flex min-h-0 flex-1 flex-col"
+      />
+      <div className={uiCx(uiLayout.actionsRow, 'mt-2 shrink-0 justify-between', uiTypography.helper)}>
+        <span className="text-[9px]">Click day → Schedule</span>
+        <Link to="/schedule" className="text-[9px] font-medium text-brand-red hover:underline">
           Open Schedule
         </Link>
       </div>

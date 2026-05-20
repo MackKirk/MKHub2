@@ -1,9 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import { useState, useMemo, useEffect, type ReactNode } from 'react';
-import { useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
-import OverlayPortal from '@/components/OverlayPortal';
 import DynamicSafetyForm from '@/components/DynamicSafetyForm';
 import {
   EmployeeReviewRatingScalePanel,
@@ -21,6 +19,33 @@ import {
   normalizeDirectorMeetingSlots,
   revieweeUserIdsEqual,
 } from '@/components/DirectorMeetingSlotPicker';
+import {
+  AppBadge,
+  AppButton,
+  AppCard,
+  AppEmptyState,
+  AppFormModal,
+  AppPageHeader,
+  AppSectionHeader,
+  AppTable,
+  AppTabs,
+  uiBorders,
+  uiColors,
+  uiCx,
+  uiLayout,
+  uiRadius,
+  uiShadows,
+  uiSpacing,
+  uiTypography,
+} from '@/components/ui';
+import {
+  Calendar,
+  CheckCircle2,
+  ClipboardCheck,
+  PartyPopper,
+  User,
+  Users,
+} from 'lucide-react';
 
 type AssignmentQuestionsResponse = {
   definition: SafetyFormDefinition;
@@ -66,64 +91,15 @@ function isSubmitted(a: { status?: string }) {
   return String(a.status || '').toLowerCase() === 'submitted';
 }
 
-function StatusPill({ status }: { status: string }) {
-  const s = String(status || '').toLowerCase();
-  const done = s === 'submitted';
+function reviewStatusBadgeVariant(status: string): 'success' | 'warning' {
+  return String(status || '').toLowerCase() === 'submitted' ? 'success' : 'warning';
+}
+
+function StatusBadge({ status }: { status: string }) {
   return (
-    <span
-      className={`inline-flex px-2.5 py-0.5 rounded-full text-xs font-medium ${
-        done ? 'bg-green-100 text-green-800' : 'bg-amber-50 text-amber-800'
-      }`}
-    >
+    <AppBadge variant={reviewStatusBadgeVariant(status)} className="normal-case">
       {status || '—'}
-    </span>
-  );
-}
-
-function IconUserSolid() {
-  return (
-    <svg className="w-5 h-5 text-blue-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
-    </svg>
-  );
-}
-
-function IconUsersTeam() {
-  return (
-    <svg className="w-5 h-5 text-blue-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-      <path
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        strokeWidth={2}
-        d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z"
-      />
-    </svg>
-  );
-}
-
-function IconClipboardReview() {
-  return (
-    <svg className="w-5 h-5 text-blue-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-      <path
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        strokeWidth={2}
-        d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"
-      />
-    </svg>
-  );
-}
-
-function IconCalendar({ className = 'w-4 h-4 text-gray-500 shrink-0' }: { className?: string }) {
-  return (
-    <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-      <path
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        strokeWidth={2}
-        d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"
-      />
-    </svg>
+    </AppBadge>
   );
 }
 
@@ -132,32 +108,6 @@ type DirectorMeetingBoardPeek = {
   slots: unknown[];
   hr_pending_reschedule?: { since: string; message?: string | null } | null;
 };
-
-function IconPartyPopper({ className }: { className?: string }) {
-  return (
-    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden>
-      <path
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        strokeWidth={1.75}
-        d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.847a4.5 4.5 0 003.09 3.09L15.75 12l-2.847.813a4.5 4.5 0 00-3.09 3.09zM18.259 8.715L18 9.75l-.259-1.035a3.375 3.375 0 00-2.455-2.456L14.25 6l1.036-.259a3.375 3.375 0 002.455-2.456L18 2.25l.259 1.035a3.375 3.375 0 002.456 2.456L21.75 6l-1.035.259a3.375 3.375 0 00-2.456 2.456zM16.894 20.567L16.5 21.75l-.394-1.183a2.25 2.25 0 00-1.423-1.423L13.5 18.75l1.183-.394a2.25 2.25 0 001.423-1.423l.394-1.183.394 1.183a2.25 2.25 0 001.423 1.423l1.183.394-1.183.394a2.25 2.25 0 00-1.423 1.423z"
-      />
-    </svg>
-  );
-}
-
-function IconCheckCircle({ className }: { className?: string }) {
-  return (
-    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden>
-      <path
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        strokeWidth={1.75}
-        d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
-      />
-    </svg>
-  );
-}
 
 function DirectorMeetingScheduleRow({
   cycleId,
@@ -187,12 +137,12 @@ function DirectorMeetingScheduleRow({
 
   if (isLoading) {
     return (
-      <div
-        className="mt-4 rounded-xl border border-amber-200/80 bg-gradient-to-br from-amber-50/90 via-white to-orange-50/50 px-4 py-3.5 shadow-sm"
-        role="status"
+      <AppCard
+        className={uiCx('mt-4 border-amber-200 bg-amber-50/80', uiShadows.card)}
+        bodyClassName={uiSpacing.compactCardPadding}
       >
-        <p className="text-sm text-amber-950/80">Checking director meeting status…</p>
-      </div>
+        <p className={uiTypography.body}>Checking director meeting status…</p>
+      </AppCard>
     );
   }
 
@@ -200,50 +150,37 @@ function DirectorMeetingScheduleRow({
     const reason = (pendingReschedule.message && String(pendingReschedule.message).trim()) || '';
 
     return (
-      <div className="mt-4 space-y-3">
-        <div
-          className="rounded-xl border border-red-200/90 bg-gradient-to-br from-red-50/95 via-red-50/70 to-rose-50/50 px-4 py-3.5 shadow-sm ring-1 ring-red-100/80"
-          role="status"
-        >
-          <p className="text-xs font-bold uppercase tracking-wide text-red-900/90">Booking cancelled</p>
-          <p className="mt-1 text-sm text-red-900/85 leading-relaxed">
+      <div className={uiCx('mt-4', uiSpacing.sectionStack)}>
+        <AppCard className="border-red-200 bg-red-50" bodyClassName={uiSpacing.compactCardPadding}>
+          <p className={uiTypography.overline}>Booking cancelled</p>
+          <p className={uiCx(uiTypography.body, 'mt-1')}>
             HR cancelled this time slot. What happened is summarized below; use the yellow section to pick a new time.
           </p>
           {reason ? (
-            <div className="mt-2.5 rounded-lg border border-red-200/80 bg-white/85 px-3 py-2.5 text-sm text-red-950 shadow-sm">
-              <span className="font-semibold text-red-950">Reason: </span>
-              <span className="whitespace-pre-wrap">{reason}</span>
+            <div className={uiCx('mt-2.5', uiRadius.control, uiBorders.subtle, uiColors.surface, uiSpacing.compactCardPadding)}>
+              <span className={uiTypography.sectionTitle}>Reason: </span>
+              <span className={uiCx(uiTypography.body, 'whitespace-pre-wrap')}>{reason}</span>
             </div>
           ) : null}
-        </div>
+        </AppCard>
 
-        <div
-          className="rounded-xl border-2 border-amber-400/70 bg-gradient-to-br from-amber-50 via-orange-50/60 to-amber-100/30 px-4 py-4 shadow-md"
-          role="region"
-          aria-label="Reschedule director meeting"
-        >
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
+        <AppCard className="border-2 border-amber-400 bg-amber-50" bodyClassName={uiSpacing.cardPadding}>
+          <div className={uiCx(uiLayout.actionsRow, 'flex-col items-stretch sm:flex-row sm:items-center')}>
             <div className="flex min-w-0 gap-3">
-              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-amber-200/80 text-amber-900">
-                <IconCalendar className="h-5 w-5 text-amber-950" />
+              <div className={uiCx('flex h-10 w-10 shrink-0 items-center justify-center bg-amber-200 text-amber-900', uiRadius.control)}>
+                <Calendar className="h-5 w-5" aria-hidden />
               </div>
               <div className="min-w-0">
-                <p className="text-xs font-bold uppercase tracking-wide text-amber-950">Action needed</p>
-                <p className="mt-1 text-sm font-semibold text-amber-950">Pick a new time for your director 1:1</p>
-                <p className="mt-0.5 text-sm text-amber-950/90 leading-relaxed">
-                  Choose another time when it works for you.
-                </p>
+                <p className={uiTypography.overline}>Action needed</p>
+                <p className={uiCx(uiTypography.sectionTitle, 'mt-1')}>Pick a new time for your director 1:1</p>
+                <p className={uiTypography.helper}>Choose another time when it works for you.</p>
               </div>
             </div>
-            <button
-              type="button"
-              onClick={onGoToSchedule}
-              className="shrink-0 self-stretch rounded-lg bg-brand-red px-4 py-2.5 text-sm font-semibold text-white shadow-md transition hover:opacity-95 sm:self-center"
-            >
+            <AppButton type="button" onClick={onGoToSchedule} className="shrink-0 sm:self-center">
               Book a new time
-            </button>
+            </AppButton>
           </div>
-        </div>
+        </AppCard>
       </div>
     );
   }
@@ -251,67 +188,70 @@ function DirectorMeetingScheduleRow({
   if (activeSlot) {
     return (
       <div
-        className="mt-4 rounded-xl border border-emerald-200/90 bg-gradient-to-br from-emerald-50/95 via-teal-50/40 to-white px-4 py-4 shadow-sm ring-1 ring-emerald-100/80"
-        role="region"
-        aria-label="Director meeting scheduled"
+        role="button"
+        tabIndex={0}
+        onClick={onGoToSchedule}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            onGoToSchedule();
+          }
+        }}
+        className={uiCx(
+          'mt-4 w-full cursor-pointer text-left transition-colors',
+          'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-red/30',
+          uiRadius.card,
+        )}
+        aria-label="View or change director 1:1 meeting"
       >
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
+        <AppCard
+          className={uiCx(
+            'border-emerald-200 bg-emerald-50/80 transition-colors hover:border-emerald-300 hover:bg-emerald-50',
+            uiShadows.card,
+          )}
+          bodyClassName={uiSpacing.cardPadding}
+        >
           <div className="flex min-w-0 gap-3">
-            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-emerald-100 text-emerald-700">
-              <IconCheckCircle className="h-5 w-5" />
+            <div className={uiCx('flex h-10 w-10 shrink-0 items-center justify-center bg-emerald-100 text-emerald-700', uiRadius.control)}>
+              <CheckCircle2 className="h-5 w-5" aria-hidden />
             </div>
             <div className="min-w-0">
-              <p className="text-xs font-semibold uppercase tracking-wide text-emerald-800/90">Director 1:1</p>
-              <p className="mt-1 text-sm font-semibold text-emerald-950">You&apos;re on the calendar</p>
-              <p className="mt-0.5 text-sm text-emerald-900/90 leading-relaxed">
+              <p className={uiTypography.overline}>Director 1:1</p>
+              <p className={uiCx(uiTypography.sectionTitle, 'mt-1')}>You&apos;re on the calendar</p>
+              <p className={uiTypography.body}>
                 {formatDirectorSlotDayLabel(activeSlot.starts_at)} ·{' '}
                 {formatDirectorSlotTimeRange(activeSlot.starts_at, activeSlot.ends_at)}
               </p>
             </div>
           </div>
-          <button
-            type="button"
-            onClick={onGoToSchedule}
-            className="shrink-0 self-stretch rounded-lg border border-emerald-300/90 bg-white px-4 py-2.5 text-sm font-semibold text-emerald-900 shadow-sm transition hover:bg-emerald-50/80 sm:self-center"
-          >
-            View or change
-          </button>
-        </div>
+        </AppCard>
       </div>
     );
   }
 
   return (
-    <div
-      className="mt-4 rounded-xl border border-amber-300/80 bg-gradient-to-br from-amber-50 via-amber-50/70 to-orange-50/50 px-4 py-4 shadow-md ring-1 ring-amber-200/50"
-      role="region"
-      aria-label="Schedule director meeting"
-    >
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
+    <AppCard className={uiCx('mt-4 border-amber-300 bg-amber-50', uiShadows.card)} bodyClassName={uiSpacing.cardPadding}>
+      <div className={uiCx(uiLayout.actionsRow, 'flex-col items-stretch sm:flex-row sm:items-center')}>
         <div className="flex min-w-0 gap-3">
-          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-amber-200/70 text-amber-900">
-            <IconPartyPopper className="h-5 w-5" />
+          <div className={uiCx('flex h-10 w-10 shrink-0 items-center justify-center bg-amber-200 text-amber-900', uiRadius.control)}>
+            <PartyPopper className="h-5 w-5" aria-hidden />
           </div>
           <div className="min-w-0">
-            <p className="text-xs font-bold uppercase tracking-wide text-amber-950/90">Nice work</p>
-            <p className="mt-1 text-sm font-semibold text-amber-950 leading-snug">
+            <p className={uiTypography.overline}>Nice work</p>
+            <p className={uiCx(uiTypography.sectionTitle, 'mt-1')}>
               You finished your self-review — ready for the next step
             </p>
-            <p className="mt-1 text-sm text-amber-950/85 leading-relaxed">
+            <p className={uiTypography.helper}>
               Book a short closing conversation with leadership. Slots open when HR publishes availability for this
               cycle.
             </p>
           </div>
         </div>
-        <button
-          type="button"
-          onClick={onGoToSchedule}
-          className="shrink-0 self-stretch rounded-lg bg-brand-red px-5 py-2.5 text-sm font-semibold text-white shadow-md transition hover:opacity-95 sm:self-center"
-        >
+        <AppButton type="button" onClick={onGoToSchedule} className="shrink-0 sm:self-center">
           Schedule director 1:1
-        </button>
+        </AppButton>
       </div>
-    </div>
+    </AppCard>
   );
 }
 
@@ -331,58 +271,50 @@ function SelfReviewHeroCard({
   const name = personLabel(a);
 
   return (
-    <div
+    <AppCard
       className={
         done
-          ? 'rounded-2xl border border-gray-200 bg-gray-50/80 p-5 md:p-6 shadow-sm'
-          : 'relative overflow-hidden rounded-2xl border-2 border-brand-red/25 bg-gradient-to-br from-red-50/95 via-white to-white p-5 md:p-6 shadow-md ring-1 ring-brand-red/10'
+          ? uiCx(uiColors.surfaceSubtle, uiShadows.card)
+          : uiCx('relative overflow-hidden border-2 border-brand-red/25 bg-brand-red/5', uiShadows.card)
       }
+      bodyClassName={uiCx(uiSpacing.cardPadding, 'md:p-6')}
     >
       {!done ? (
         <div className="pointer-events-none absolute -right-8 -top-8 h-36 w-36 rounded-full bg-brand-red/[0.07] blur-2xl" />
       ) : null}
       <div className="relative flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
-        <div className="min-w-0 flex-1 space-y-2">
+        <div className={uiCx('min-w-0 flex-1', uiSpacing.sectionStack)}>
           {!done ? (
-            <p className="text-[10px] font-bold uppercase tracking-wider text-brand-red">Your self-review</p>
+            <p className={uiCx(uiTypography.overline, 'text-brand-red')}>Your self-review</p>
           ) : (
-            <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-500">Completed self-review</p>
+            <p className={uiTypography.overline}>Completed self-review</p>
           )}
-          <h3 className="text-xl font-bold leading-tight text-gray-900">{a.cycle_name || 'Review cycle'}</h3>
-          <p className="text-sm text-gray-700">
-            <span className="text-gray-500">Prepared for </span>
-            <span className="font-semibold text-gray-900">{name}</span>
+          <h3 className={uiTypography.pageTitle}>{a.cycle_name || 'Review cycle'}</h3>
+          <p className={uiTypography.body}>
+            <span className={uiColors.textMuted}>Prepared for </span>
+            <span className={uiTypography.sectionTitle}>{name}</span>
           </p>
-          {period ? <p className="text-xs text-gray-500">Cycle period: {period}</p> : null}
-          <div className="flex flex-wrap items-center gap-x-4 gap-y-2 pt-1">
-            <span className="inline-flex items-center gap-2 text-sm text-gray-700">
-              <IconCalendar />
+          {period ? <p className={uiTypography.helper}>Cycle period: {period}</p> : null}
+          <div className={uiCx(uiLayout.actionsRow, 'flex-wrap pt-1')}>
+            <span className={uiCx(uiLayout.actionsRow, uiTypography.body)}>
+              <Calendar className="h-4 w-4 shrink-0 text-gray-500" aria-hidden />
               <span>
-                Due <span className="font-semibold text-gray-900">{formatFriendlyDate(a.due_date)}</span>
+                Due <span className={uiTypography.sectionTitle}>{formatFriendlyDate(a.due_date)}</span>
               </span>
             </span>
-            <StatusPill status={a.status || 'pending'} />
+            <StatusBadge status={a.status || 'pending'} />
           </div>
         </div>
         <div className="flex shrink-0 flex-col items-stretch gap-2 sm:flex-row sm:items-center lg:flex-col xl:flex-row">
-          <button
-            type="button"
-            onClick={() => setOpenId(a.id)}
-            disabled={done}
-            className={
-              done
-                ? 'rounded-xl border border-gray-200 bg-white px-5 py-2.5 text-sm font-medium text-gray-400 cursor-not-allowed'
-                : 'rounded-xl px-6 py-2.5 text-sm font-semibold text-white shadow-md transition hover:opacity-95 bg-gradient-to-r from-brand-red to-[#ee2b2b]'
-            }
-          >
+          <AppButton type="button" onClick={() => setOpenId(a.id)} disabled={done} variant={done ? 'secondary' : undefined}>
             {done ? 'Submitted' : 'Start review'}
-          </button>
+          </AppButton>
         </div>
       </div>
       {done && a.cycle_id && onGoToDirectorTab ? (
         <DirectorMeetingScheduleRow cycleId={String(a.cycle_id)} onGoToSchedule={onGoToDirectorTab} />
       ) : null}
-    </div>
+    </AppCard>
   );
 }
 
@@ -402,61 +334,41 @@ function SelfReviewSpotlightSection({
 
   if (!rows.length) {
     return (
-      <div className="rounded-xl border border-gray-200 bg-white shadow-sm">
-        <div className="border-b border-gray-100 bg-gray-50/90 px-4 py-3">
-          <div className="flex items-start gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-blue-100">
-              <IconUserSolid />
-            </div>
-            <div>
-              <h5 className="text-sm font-semibold text-blue-900">Your self-review</h5>
-              <p className="mt-0.5 text-xs leading-relaxed text-gray-600">
-                When HR includes you in a cycle, your personal questionnaire appears here as a highlighted card.
-              </p>
-            </div>
-          </div>
-        </div>
-        <div className="p-4">
-          <div className="rounded-lg border border-dashed border-gray-200 bg-gray-50/70 px-4 py-10 text-center text-sm text-gray-600">
-            {emptyMessage}
-          </div>
-        </div>
-      </div>
+      <AppCard bodyClassName={uiSpacing.cardPadding}>
+        <AppSectionHeader
+          title="Your self-review"
+          description="When HR includes you in a cycle, your personal questionnaire appears here as a highlighted card."
+          icon={<User className="h-4 w-4" />}
+        />
+        <AppEmptyState title={emptyMessage} className="mt-4" />
+      </AppCard>
     );
   }
 
   return (
-    <div className="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm">
-      <div className="border-b border-gray-100 bg-gray-50/90 px-4 py-3">
-        <div className="flex items-start gap-3">
-          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-blue-100">
-            <IconUserSolid />
-          </div>
-          <div className="min-w-0">
-            <h5 className="text-sm font-semibold text-blue-900">Your self-review</h5>
-            <p className="mt-0.5 text-xs leading-relaxed text-gray-600">
-              This is your own questionnaire — one clear card per cycle so it stays easy to spot.
-            </p>
-          </div>
-        </div>
-      </div>
-      <div className="space-y-8 p-4 md:p-6">
+    <AppCard bodyClassName={uiCx(uiSpacing.cardPadding, 'md:p-6')}>
+      <AppSectionHeader
+        title="Your self-review"
+        description="This is your own questionnaire — one clear card per cycle so it stays easy to spot."
+        icon={<User className="h-4 w-4" />}
+      />
+      <div className={uiCx('mt-6', uiSpacing.sectionStack)}>
         {pending.length > 0 ? (
           <div>
-            <p className="mb-3 text-[10px] font-semibold uppercase tracking-wide text-amber-900/85">To do</p>
-            <div className="space-y-4">
+            <p className={uiCx(uiTypography.overline, 'mb-3 text-amber-900')}>To do</p>
+            <div className={uiSpacing.sectionStack}>
               {pending.map((a) => (
                 <SelfReviewHeroCard key={a.id} a={a} setOpenId={setOpenId} variant="pending" />
               ))}
             </div>
           </div>
         ) : (
-          <p className="text-sm text-gray-500">Nothing pending for your self-review.</p>
+          <p className={uiTypography.helper}>Nothing pending for your self-review.</p>
         )}
         {completed.length > 0 ? (
           <div>
-            <p className="mb-3 text-[10px] font-semibold uppercase tracking-wide text-green-900/85">Completed</p>
-            <div className="space-y-3">
+            <p className={uiCx(uiTypography.overline, 'mb-3 text-green-800')}>Completed</p>
+            <div className={uiSpacing.sectionStack}>
               {completed.map((a) => (
                 <SelfReviewHeroCard
                   key={a.id}
@@ -470,7 +382,7 @@ function SelfReviewSpotlightSection({
           </div>
         ) : null}
       </div>
-    </div>
+    </AppCard>
   );
 }
 
@@ -482,60 +394,37 @@ function TeamAssignmentTable({
   setOpenId: (id: string) => void;
 }) {
   if (!rows.length) {
-    return <p className="py-3 text-sm text-gray-500">No rows.</p>;
+    return <p className={uiCx(uiTypography.helper, 'py-3')}>No rows.</p>;
   }
+
+  const tableRows = rows.map((a) => {
+    const done = isSubmitted(a);
+    const period = formatCyclePeriod(a.cycle_period_start, a.cycle_period_end);
+    return [
+      <span key={`${a.id}-name`} className={uiTypography.sectionTitle}>
+        {personLabel(a)}
+      </span>,
+      <div key={`${a.id}-cycle`} className="min-w-[12rem] whitespace-normal">
+        <div className={uiTypography.sectionTitle}>{a.cycle_name || '—'}</div>
+        {period ? <div className={uiTypography.helper}>{period}</div> : null}
+        {a.cycle_status ? <div className={uiCx(uiTypography.helper, 'capitalize')}>{a.cycle_status}</div> : null}
+      </div>,
+      <span key={`${a.id}-due`}>{formatFriendlyDate(a.due_date)}</span>,
+      <StatusBadge key={`${a.id}-status`} status={a.status || 'pending'} />,
+      <div key={`${a.id}-action`} className="text-right">
+        <AppButton type="button" size="sm" onClick={() => setOpenId(a.id)} disabled={done} variant={done ? 'secondary' : undefined}>
+          {done ? 'Done' : 'Open'}
+        </AppButton>
+      </div>,
+    ];
+  });
+
   return (
-    <div className="overflow-x-auto rounded-lg border border-gray-200 bg-white">
-      <table className="min-w-full text-sm">
-        <thead>
-          <tr className="border-b border-gray-200 bg-gray-50 text-left text-gray-600">
-            <th className="px-3 py-2.5 font-medium">Team member</th>
-            <th className="py-2.5 pr-3 font-medium">Review cycle</th>
-            <th className="py-2.5 pr-3 font-medium">Due</th>
-            <th className="py-2.5 pr-3 font-medium">Status</th>
-            <th className="px-3 py-2.5 text-right font-medium"> </th>
-          </tr>
-        </thead>
-        <tbody>
-          {rows.map((a) => {
-            const done = isSubmitted(a);
-            const period = formatCyclePeriod(a.cycle_period_start, a.cycle_period_end);
-            return (
-              <tr key={a.id} className="border-b border-gray-100 transition-colors last:border-0 hover:bg-gray-50/80">
-                <td className="px-3 py-3 align-top">
-                  <div className="font-semibold text-gray-900">{personLabel(a)}</div>
-                </td>
-                <td className="py-3 pr-3 align-top">
-                  <div className="font-medium text-gray-900">{a.cycle_name || '—'}</div>
-                  {period ? <div className="mt-0.5 text-xs text-gray-500">{period}</div> : null}
-                  {a.cycle_status ? <div className="mt-0.5 text-[11px] capitalize text-gray-400">{a.cycle_status}</div> : null}
-                </td>
-                <td className="whitespace-nowrap py-3 pr-3 align-top text-sm text-gray-800">
-                  {formatFriendlyDate(a.due_date)}
-                </td>
-                <td className="py-3 pr-3 align-top">
-                  <StatusPill status={a.status || 'pending'} />
-                </td>
-                <td className="px-3 py-3 text-right align-top">
-                  <button
-                    type="button"
-                    onClick={() => setOpenId(a.id)}
-                    disabled={done}
-                    className={
-                      done
-                        ? 'cursor-not-allowed rounded-lg border border-gray-200 bg-gray-50 px-3 py-1.5 text-xs text-gray-400'
-                        : 'rounded-lg bg-gradient-to-r from-brand-red to-[#ee2b2b] px-3 py-1.5 text-xs font-semibold text-white shadow-sm hover:opacity-95'
-                    }
-                  >
-                    {done ? 'Done' : 'Open'}
-                  </button>
-                </td>
-              </tr>
-            );
-          })}
-        </tbody>
-      </table>
-    </div>
+    <AppTable
+      columns={['Team member', 'Review cycle', 'Due', 'Status', '']}
+      rows={tableRows}
+      className="[&_td]:!whitespace-normal [&_td:last-child]:text-right"
+    />
   );
 }
 
@@ -558,90 +447,44 @@ function TeamReviewSectionCard({
   const completed = rows.filter((a) => isSubmitted(a));
 
   return (
-    <div className="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm">
-      <div className="flex items-start gap-3 border-b border-gray-100 bg-gray-50/90 px-4 py-3">
-        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-blue-100">{icon}</div>
-        <div className="min-w-0">
-          <h5 className="text-sm font-semibold text-blue-900">{title}</h5>
-          <p className="mt-0.5 text-xs leading-relaxed text-gray-600">{description}</p>
-        </div>
-      </div>
-      <div className="space-y-6 p-4">
+    <AppCard bodyClassName={uiSpacing.cardPadding}>
+      <AppSectionHeader title={title} description={description} icon={icon} />
+      <div className={uiCx('mt-4', uiSpacing.sectionStack)}>
         {!rows.length ? (
-          <div className="rounded-lg border border-dashed border-gray-200 bg-gray-50/70 px-4 py-8 text-center text-sm text-gray-600">
-            {emptyMessage}
-          </div>
+          <AppEmptyState title={emptyMessage} />
         ) : (
           <>
             <div>
-              <div className="mb-2 text-[10px] font-semibold uppercase tracking-wide text-gray-500">To do</div>
+              <p className={uiCx(uiTypography.overline, 'mb-2')}>To do</p>
               {pending.length ? (
                 <TeamAssignmentTable rows={pending as AssignmentRow[]} setOpenId={setOpenId} />
               ) : (
-                <p className="py-2 text-sm text-gray-500">Everyone is caught up here.</p>
+                <p className={uiTypography.helper}>Everyone is caught up here.</p>
               )}
             </div>
             <div>
-              <div className="mb-2 text-[10px] font-semibold uppercase tracking-wide text-gray-500">Completed</div>
+              <p className={uiCx(uiTypography.overline, 'mb-2')}>Completed</p>
               {completed.length ? (
                 <TeamAssignmentTable rows={completed as AssignmentRow[]} setOpenId={setOpenId} />
               ) : (
-                <p className="py-2 text-sm text-gray-500">No completed reviews yet.</p>
+                <p className={uiTypography.helper}>No completed reviews yet.</p>
               )}
             </div>
           </>
         )}
       </div>
-    </div>
+    </AppCard>
   );
 }
 
-function PageHeaderBar({
-  title,
-  subtitle,
-  todayLabel,
-  onBack,
-}: {
-  title: string;
-  subtitle: string;
-  todayLabel: string;
-  onBack: () => void;
-}) {
-  return (
-    <div className="rounded-xl border bg-white p-4 shadow-sm">
-      <div className="flex items-center justify-between gap-4">
-        <div className="flex min-w-0 items-center gap-3">
-          <button
-            type="button"
-            onClick={onBack}
-            className="shrink-0 rounded-lg p-1.5 transition-colors hover:bg-gray-100"
-            title="Back to Overview"
-          >
-            <svg className="h-4 w-4 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
-            </svg>
-          </button>
-          <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-blue-100">
-            <IconClipboardReview />
-          </div>
-          <div className="min-w-0">
-            <h5 className="text-sm font-semibold text-blue-900">{title}</h5>
-            <p className="mt-0.5 text-xs leading-snug text-gray-600">{subtitle}</p>
-          </div>
-        </div>
-        <div className="shrink-0 text-right">
-          <div className="text-[10px] font-medium uppercase tracking-wide text-gray-400">Today</div>
-          <div className="mt-0.5 text-xs font-semibold text-gray-700">{todayLabel}</div>
-        </div>
-      </div>
-    </div>
-  );
-}
+const mainTabItems = [
+  { key: 'reviews', label: 'Reviews' },
+  { key: 'director', label: 'Director 1:1' },
+] as const;
 
 type MainTab = 'reviews' | 'director';
 
 export default function MyReviews() {
-  const navigate = useNavigate();
   const [mainTab, setMainTab] = useState<MainTab>('reviews');
   const todayLabel = useMemo(
     () =>
@@ -726,236 +569,182 @@ export default function MyReviews() {
   const list = assignments || [];
   const hasAny = list.length > 0;
 
+  const pageHeader = (subtitle: string) => (
+    <AppPageHeader
+      title="My reviews"
+      subtitle={subtitle}
+      icon={<ClipboardCheck className="h-4 w-4" />}
+      actions={
+        <div className="text-right">
+          <div className={uiTypography.overline}>Today</div>
+          <div className={uiCx(uiTypography.sectionTitle, 'mt-0.5')}>{todayLabel}</div>
+        </div>
+      }
+    />
+  );
+
+  const reviewModalDescription = [
+    openAssignment?.cycle_name,
+    formatCyclePeriod(openAssignment?.cycle_period_start, openAssignment?.cycle_period_end),
+  ]
+    .filter(Boolean)
+    .join(' · ');
+
   if (availLoading) {
     return (
-      <div className="space-y-4">
-        <PageHeaderBar
-          title="My reviews"
-          subtitle="Loading your review tasks…"
-          todayLabel={todayLabel}
-          onBack={() => navigate('/overview')}
-        />
-        <div className="rounded-xl border bg-white p-5 shadow-sm">
-          <div className="h-28 animate-pulse rounded-lg bg-gray-100" />
+      <main className={uiCx('min-h-full bg-gray-50', uiSpacing.pageY)}>
+        <div className={uiCx('w-full', uiSpacing.pageStack)}>
+          {pageHeader('Loading your review tasks…')}
+          <AppCard bodyClassName={uiSpacing.cardPadding}>
+            <div className={uiCx('h-28 animate-pulse bg-gray-100', uiRadius.control)} />
+          </AppCard>
         </div>
-      </div>
+      </main>
     );
   }
 
   if (reviewsAvailable && !reviewsAvailable.available) {
     return (
-      <div className="space-y-4">
-        <PageHeaderBar
-          title="My reviews"
-          subtitle="Self-reviews and supervisor questionnaires for active HR cycles."
-          todayLabel={todayLabel}
-          onBack={() => navigate('/overview')}
-        />
-        <div className="rounded-xl border bg-white shadow-sm">
-          <div className="p-5">
-            <p className="mb-4 text-sm text-gray-600">
+      <main className={uiCx('min-h-full bg-gray-50', uiSpacing.pageY)}>
+        <div className={uiCx('w-full', uiSpacing.pageStack)}>
+          {pageHeader('Self-reviews and supervisor questionnaires for active HR cycles.')}
+          <AppCard bodyClassName={uiSpacing.cardPadding}>
+            <p className={uiCx(uiTypography.body, 'mb-4')}>
               HR runs review cycles by team. When a cycle is active and you are included, tasks appear here — open{' '}
-              <span className="font-medium text-gray-800">My reviews</span> from the sidebar.
+              <span className={uiTypography.sectionTitle}>My reviews</span> from the sidebar.
             </p>
-            <div className="rounded-lg border border-dashed border-gray-200 bg-gray-50/80 px-4 py-10 text-center text-sm text-gray-600">
-              There is no employee review available for you at this time.
-            </div>
-          </div>
+            <AppEmptyState title="There is no employee review available for you at this time." />
+          </AppCard>
         </div>
-      </div>
+      </main>
     );
   }
 
   return (
-    <div className="space-y-4 pb-8">
-      <PageHeaderBar
-        title="My reviews"
-        subtitle="Your self-review is highlighted below. Supervisor tasks for your team are listed in tables."
-        todayLabel={todayLabel}
-        onBack={() => navigate('/overview')}
-      />
+    <main className={uiCx('min-h-full bg-gray-50', uiSpacing.pageY)}>
+      <div className={uiCx('w-full pb-8', uiSpacing.pageStack)}>
+        {pageHeader('Your self-review is highlighted below. Supervisor tasks for your team are listed in tables.')}
 
-      <div className="flex flex-wrap gap-2 border-b border-gray-200 pb-2">
-        <button
-          type="button"
-          onClick={() => setMainTab('reviews')}
-          className={`rounded-t-lg px-4 py-2 text-sm font-semibold transition-colors ${
-            mainTab === 'reviews'
-              ? 'border-b-2 border-brand-red text-brand-red'
-              : 'text-gray-600 hover:text-gray-900'
-          }`}
-        >
-          Reviews
-        </button>
-        <button
-          type="button"
-          onClick={() => setMainTab('director')}
-          className={`rounded-t-lg px-4 py-2 text-sm font-semibold transition-colors ${
-            mainTab === 'director'
-              ? 'border-b-2 border-brand-red text-brand-red'
-              : 'text-gray-600 hover:text-gray-900'
-          }`}
-        >
-          Director 1:1
-        </button>
-      </div>
+        <AppTabs tabs={[...mainTabItems]} value={mainTab} onChange={(key) => setMainTab(key as MainTab)} />
 
-      {mainTab === 'director' ? (
-        <div className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
-          <MyReviewsDirectorMeetingTab />
-        </div>
-      ) : null}
+        {mainTab === 'director' ? (
+          <AppCard bodyClassName={uiSpacing.cardPadding}>
+            <MyReviewsDirectorMeetingTab />
+          </AppCard>
+        ) : null}
 
-      {mainTab === 'reviews' ? (
-      <div className="rounded-xl border bg-white shadow-sm">
-        <div className="space-y-6 p-5">
-          {assignmentsLoading ? (
-            <div className="h-28 animate-pulse rounded-lg bg-gray-100" />
-          ) : !hasAny ? (
-            <>
-              <p className="text-sm leading-relaxed text-gray-600">
-                When HR generates tasks, your <span className="font-medium text-gray-800">self-review</span> shows as a
-                highlighted card. If you manage people, their reviews appear in the team list.
-              </p>
-              <div className="rounded-lg border border-dashed border-gray-200 bg-gray-50/80 px-4 py-10 text-center text-sm text-gray-600">
-                No review tasks are assigned to you yet for an active cycle. Check back after HR creates tasks for the
-                cycle.
+        {mainTab === 'reviews' ? (
+          <AppCard bodyClassName={uiCx(uiSpacing.cardPadding, uiSpacing.sectionStack)}>
+            {assignmentsLoading ? (
+              <div className={uiCx('h-28 animate-pulse bg-gray-100', uiRadius.control)} />
+            ) : !hasAny ? (
+              <>
+                <p className={uiTypography.body}>
+                  When HR generates tasks, your <span className={uiTypography.sectionTitle}>self-review</span> shows as a
+                  highlighted card. If you manage people, their reviews appear in the team list.
+                </p>
+                <AppEmptyState
+                  title="No review tasks are assigned to you yet for an active cycle. Check back after HR creates tasks for the cycle."
+                />
+              </>
+            ) : isSupervisor ? (
+              <div className={uiSpacing.sectionStack}>
+                <SelfReviewSpotlightSection
+                  rows={selfAssignments as AssignmentRow[]}
+                  setOpenId={setOpenId}
+                  emptyMessage="No self-review row was created for you in this period (HR may still be setting up the cycle)."
+                  onGoToDirectorTab={() => setMainTab('director')}
+                />
+                <TeamReviewSectionCard
+                  title="Your direct reports"
+                  description="These are the people who report to you. Open each row to answer the same questions they had for themselves; use the comment bubble beside a question when you want a supervisor note."
+                  icon={<Users className="h-4 w-4" />}
+                  rows={subordinateAssignments as AssignmentRow[]}
+                  setOpenId={setOpenId}
+                  emptyMessage="No supervisor reviews for your direct reports yet. They appear here after HR generates assignments."
+                />
+                {otherAssignments.length > 0 ? (
+                  <TeamReviewSectionCard
+                    title="Other reviews assigned to you"
+                    description="You are the reviewer, but the employee is not your direct report in the org chart."
+                    icon={<ClipboardCheck className="h-4 w-4" />}
+                    rows={otherAssignments as AssignmentRow[]}
+                    setOpenId={setOpenId}
+                    emptyMessage="No assignments."
+                  />
+                ) : null}
               </div>
-            </>
-          ) : isSupervisor ? (
-            <div className="space-y-6">
+            ) : (
               <SelfReviewSpotlightSection
-                rows={selfAssignments as AssignmentRow[]}
+                rows={list as AssignmentRow[]}
                 setOpenId={setOpenId}
-                emptyMessage="No self-review row was created for you in this period (HR may still be setting up the cycle)."
+                emptyMessage="No assignments."
                 onGoToDirectorTab={() => setMainTab('director')}
               />
-              <TeamReviewSectionCard
-                title="Your direct reports"
-                description="These are the people who report to you. Open each row to answer the same questions they had for themselves; use the comment bubble beside a question when you want a supervisor note."
-                icon={<IconUsersTeam />}
-                rows={subordinateAssignments as AssignmentRow[]}
-                setOpenId={setOpenId}
-                emptyMessage="No supervisor reviews for your direct reports yet. They appear here after HR generates assignments."
-              />
-              {otherAssignments.length > 0 ? (
-                <TeamReviewSectionCard
-                  title="Other reviews assigned to you"
-                  description="You are the reviewer, but the employee is not your direct report in the org chart."
-                  icon={<IconClipboardReview />}
-                  rows={otherAssignments as AssignmentRow[]}
-                  setOpenId={setOpenId}
-                  emptyMessage="No assignments."
-                />
-              ) : null}
-            </div>
-          ) : (
-            <SelfReviewSpotlightSection
-              rows={list as AssignmentRow[]}
-              setOpenId={setOpenId}
-              emptyMessage="No assignments."
-              onGoToDirectorTab={() => setMainTab('director')}
-            />
-          )}
-        </div>
-      </div>
-      ) : null}
+            )}
+          </AppCard>
+        ) : null}
 
-      {openId && (
-        <OverlayPortal>
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-3 sm:p-4" style={{ touchAction: 'none' }}>
-            <div
-              className="relative flex max-h-[92vh] w-full max-w-[min(1200px,calc(100vw-1.5rem))] flex-col rounded-xl border border-gray-200 bg-white shadow-xl"
-              style={{ touchAction: 'auto' }}
-            >
-              <div className="flex flex-shrink-0 items-start justify-between gap-3 border-b border-gray-100 p-4">
-                <div className="min-w-0">
-                  <div className="text-lg font-semibold text-gray-900">{modalTitle}</div>
-                  {openAssignment?.cycle_name ? (
-                    <div className="mt-1 text-xs text-gray-600">{openAssignment.cycle_name}</div>
-                  ) : null}
-                  {formatCyclePeriod(openAssignment?.cycle_period_start, openAssignment?.cycle_period_end) ? (
-                    <div className="mt-0.5 text-xs text-gray-500">
-                      {formatCyclePeriod(openAssignment?.cycle_period_start, openAssignment?.cycle_period_end)}
-                    </div>
-                  ) : null}
-                  {openAssignment?.status ? (
-                    <div className="mt-2">
-                      <StatusPill status={openAssignment.status} />
-                    </div>
-                  ) : null}
-                </div>
-                <button
-                  type="button"
-                  onClick={() => setOpenId('')}
-                  className="shrink-0 rounded-lg border border-gray-300 px-2.5 py-1.5 text-sm text-gray-700 hover:bg-gray-50"
-                >
-                  Close
-                </button>
-              </div>
-              <div
-                className="relative min-h-0 flex-1 overflow-y-auto"
-                style={{ WebkitOverflowScrolling: 'touch' }}
-              >
-                {!definition ? (
-                  <div className="p-4 py-10 text-center text-sm text-gray-500">Loading form…</div>
-                ) : (
-                  <>
-                    <EmployeeReviewWelcomeOverlay
-                      open={!reviewIntroAcknowledged}
-                      variant={showSupervisorCommentFields ? 'supervisor' : 'self'}
-                      revieweeDisplayName={showSupervisorCommentFields ? revieweeModalName : undefined}
-                      onContinue={() => setReviewIntroAcknowledged(true)}
-                    />
-                    <div className="flex flex-col gap-4 p-4 lg:flex-row lg:items-start">
-                      <div className="shrink-0 lg:order-2 lg:w-72">
-                        <EmployeeReviewRatingScalePanel />
-                      </div>
-                      <div className="min-w-0 flex-1 lg:order-1">
-                        <DynamicSafetyForm
-                          definition={normalizedDef}
-                          formPayload={formPayload}
-                          setFormPayload={setFormPayload}
-                          canWrite
-                          readOnly={false}
-                          projectId=""
-                          signerDisplayName="Reviewer"
-                          hideAdditionalCommentsBlock
-                          hideWorkerSignatureBlock
-                          hidePerFieldSideComments={!showSupervisorCommentFields}
-                          fieldCommentTextOnly={showSupervisorCommentFields}
-                        />
-                      </div>
-                    </div>
-                  </>
-                )}
-              </div>
-              <div className="flex flex-shrink-0 flex-col gap-2 border-t border-gray-100 bg-gray-50/50 p-4">
-                <p className="text-center text-xs leading-relaxed text-gray-600 sm:text-left">
-                  After you press <span className="font-medium text-gray-800">Submit</span>, this review is sent in. You
-                  cannot change answers later from this screen.
-                </p>
-                <div className="flex justify-end gap-2">
-                  <button
-                    type="button"
-                    onClick={() => setOpenId('')}
-                    className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-white"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    type="button"
-                    onClick={submit}
-                    className="rounded-lg bg-gradient-to-r from-brand-red to-[#ee2b2b] px-4 py-2 text-sm font-semibold text-white shadow-sm hover:opacity-95"
-                  >
-                    Submit
-                  </button>
-                </div>
+        <AppFormModal
+          open={!!openId}
+          onClose={() => setOpenId('')}
+          layout="detail"
+          size="lg"
+          title={modalTitle}
+          description={reviewModalDescription || undefined}
+          quickInfo={<EmployeeReviewRatingScalePanel />}
+          quickInfoLabel="Rating scale"
+          footer={
+            <div className={uiCx(uiSpacing.sectionStack, 'w-full')}>
+              <p className={uiCx(uiTypography.helper, 'text-center sm:text-left')}>
+                After you press <span className={uiTypography.sectionTitle}>Submit</span>, this review is sent in. You
+                cannot change answers later from this screen.
+              </p>
+              <div className={uiCx(uiLayout.actionsRow, 'w-full justify-end')}>
+                <AppButton variant="secondary" type="button" onClick={() => setOpenId('')}>
+                  Cancel
+                </AppButton>
+                <AppButton type="button" onClick={submit}>
+                  Submit
+                </AppButton>
               </div>
             </div>
-          </div>
-        </OverlayPortal>
-      )}
-    </div>
+          }
+        >
+          {!definition ? (
+            <div className={uiCx(uiSpacing.cardPadding, 'py-10 text-center', uiTypography.helper)}>Loading form…</div>
+          ) : (
+            <>
+              {openAssignment?.status ? (
+                <div className={uiCx(uiSpacing.cardPadding, 'pb-0')}>
+                  <StatusBadge status={openAssignment.status} />
+                </div>
+              ) : null}
+              <EmployeeReviewWelcomeOverlay
+                open={!reviewIntroAcknowledged}
+                variant={showSupervisorCommentFields ? 'supervisor' : 'self'}
+                revieweeDisplayName={showSupervisorCommentFields ? revieweeModalName : undefined}
+                onContinue={() => setReviewIntroAcknowledged(true)}
+              />
+              <div className={uiCx(uiSpacing.cardPadding, 'min-w-0')}>
+                <DynamicSafetyForm
+                  definition={normalizedDef}
+                  formPayload={formPayload}
+                  setFormPayload={setFormPayload}
+                  canWrite
+                  readOnly={false}
+                  projectId=""
+                  signerDisplayName="Reviewer"
+                  hideAdditionalCommentsBlock
+                  hideWorkerSignatureBlock
+                  hidePerFieldSideComments={!showSupervisorCommentFields}
+                  fieldCommentTextOnly={showSupervisorCommentFields}
+                />
+              </div>
+            </>
+          )}
+        </AppFormModal>
+      </div>
+    </main>
   );
 }

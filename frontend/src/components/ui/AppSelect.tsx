@@ -25,10 +25,21 @@ export type AppSelectProps = {
   error?: ReactNode;
   options: AppSelectOption[];
   placeholder?: string;
+  emptyMessage?: string;
+  /** Filter options by label/value while the menu is open. */
+  searchable?: boolean;
   /** @deprecated Use triggerClassName */
   selectClassName?: string;
   triggerClassName?: string;
 } & Omit<SelectHTMLAttributes<HTMLSelectElement>, 'children'>;
+
+function filterOptions(options: AppSelectOption[], query: string): AppSelectOption[] {
+  const q = query.trim().toLowerCase();
+  if (!q) return options;
+  return options.filter(
+    (o) => o.label.toLowerCase().includes(q) || o.value.toLowerCase().includes(q),
+  );
+}
 
 function fireSelectChange(
   onChange: AppSelectProps['onChange'],
@@ -53,6 +64,8 @@ export function AppSelect({
   triggerClassName,
   options,
   placeholder,
+  emptyMessage = 'No options found.',
+  searchable = false,
   id,
   value,
   defaultValue,
@@ -63,6 +76,7 @@ export function AppSelect({
   ...rest
 }: AppSelectProps) {
   const [open, setOpen] = useState(false);
+  const [search, setSearch] = useState('');
   const { anchorRef, portalListId, menuRect, closeDropdown } = useComboboxDropdown(open, setOpen);
 
   const isControlled = value !== undefined;
@@ -73,6 +87,10 @@ export function AppSelect({
   const currentValue = isControlled ? String(value ?? '') : internalValue;
 
   const sortedOptions = useMemo(() => sortByLabel(options, (o) => o.label), [options]);
+  const filteredOptions = useMemo(() => {
+    const list = searchable && open ? filterOptions(sortedOptions, search) : sortedOptions;
+    return sortByLabel(list, (o) => o.label);
+  }, [sortedOptions, searchable, open, search]);
 
   const selected = useMemo(
     () => sortedOptions.find((o) => o.value === currentValue) ?? null,
@@ -96,7 +114,20 @@ export function AppSelect({
         className={uiDropdown.menu}
         style={{ top: menuRect.top, left: menuRect.left, width: menuRect.width }}
       >
-        {placeholder ? (
+        {searchable ? (
+          <li className="sticky top-0 z-[1] border-b border-gray-100 bg-white px-2.5 py-2">
+            <input
+              type="text"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Search…"
+              autoComplete="off"
+              className={uiCx(uiDropdown.trigger, 'text-xs')}
+              onMouseDown={(e) => e.stopPropagation()}
+            />
+          </li>
+        ) : null}
+        {!searchable && placeholder ? (
           <li role="option" aria-selected={!currentValue}>
             <button
               type="button"
@@ -111,24 +142,29 @@ export function AppSelect({
             </button>
           </li>
         ) : null}
-        {sortedOptions.map((option) => (
-          <li key={option.value} role="option" aria-selected={currentValue === option.value}>
-            <button
-              type="button"
-              className={uiCx(
-                uiDropdown.option,
-                currentValue === option.value && uiDropdown.optionSelected,
-              )}
-              onMouseDown={(e) => e.preventDefault()}
-              onClick={() => {
-                setValue(option.value);
-                closeDropdown();
-              }}
-            >
-              {option.label}
-            </button>
-          </li>
-        ))}
+        {filteredOptions.length === 0 ? (
+          <li className={uiDropdown.optionEmpty}>{emptyMessage}</li>
+        ) : (
+          filteredOptions.map((option) => (
+            <li key={option.value} role="option" aria-selected={currentValue === option.value}>
+              <button
+                type="button"
+                className={uiCx(
+                  uiDropdown.option,
+                  currentValue === option.value && uiDropdown.optionSelected,
+                )}
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={() => {
+                  setValue(option.value);
+                  closeDropdown();
+                  setSearch('');
+                }}
+              >
+                {option.label}
+              </button>
+            </li>
+          ))
+        )}
       </ul>
     ) : null;
 
@@ -157,12 +193,16 @@ export function AppSelect({
           disabled={disabled}
           className={triggerClasses}
           onClick={() => {
-            if (!disabled) setOpen((o) => !o);
+            if (!disabled) {
+              setOpen((o) => !o);
+              if (!open) setSearch('');
+            }
           }}
           onKeyDown={(e) => {
             if (e.key === 'Escape') {
               e.stopPropagation();
               closeDropdown();
+              setSearch('');
             }
             if (e.key === 'Enter' || e.key === ' ') {
               e.preventDefault();

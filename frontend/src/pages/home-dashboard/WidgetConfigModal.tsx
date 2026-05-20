@@ -5,7 +5,20 @@ import { useBusinessLine } from '@/context/BusinessLineContext';
 import type { WidgetDef } from './types';
 import { getWidgetMeta } from './widgetRegistry';
 import { getChartMetricLabel, CHART_PALETTE_OPTIONS, CHART_PALETTES } from './widgets/chartShared';
-import OverlayPortal from '@/components/OverlayPortal';
+import {
+  AppButton,
+  AppDatePicker,
+  AppFormModal,
+  AppInput,
+  AppSelect,
+  uiBorders,
+  uiColors,
+  uiCx,
+  uiLayout,
+  uiRadius,
+  uiSpacing,
+  uiTypography,
+} from '@/components/ui';
 import type { MeForHomeWidgets } from './widgetVisibility';
 import {
   canAccessBusinessLineForHome,
@@ -51,29 +64,29 @@ function KpiStatusSelector({
 
   return (
     <div>
-      <label className="block text-xs font-semibold text-gray-700 mb-2">Status</label>
-      <div className="space-y-2">
-        <label className="flex items-center gap-2 cursor-pointer">
+      <span className={uiCx(uiTypography.controlLabel, 'mb-2 block')}>Status</span>
+      <div className={uiSpacing.sectionStack}>
+        <label className={uiCx(uiLayout.actionsRow, 'cursor-pointer')}>
           <input
             type="checkbox"
             checked={isAllStatus}
             onChange={toggleAllStatus}
             className="rounded border-gray-300 text-brand-red focus:ring-brand-red/40"
           />
-          <span className="text-sm">All status</span>
+          <span className={uiTypography.body}>All status</span>
         </label>
         {statusOptions.map((s) => {
           const label = String(s.label || '');
           const checked = selectedLabels.includes(label);
           return (
-            <label key={s.id} className="flex items-center gap-2 cursor-pointer">
+            <label key={s.id} className={uiCx(uiLayout.actionsRow, 'cursor-pointer')}>
               <input
                 type="checkbox"
                 checked={checked}
                 onChange={() => toggleStatus(label)}
                 className="rounded border-gray-300 text-brand-red focus:ring-brand-red/40"
               />
-              <span className="text-sm">{label}</span>
+              <span className={uiTypography.body}>{label}</span>
             </label>
           );
         })}
@@ -81,6 +94,26 @@ function KpiStatusSelector({
     </div>
   );
 }
+
+const PERIOD_OPTIONS = [
+  { value: 'all', label: 'All time' },
+  { value: 'last_year', label: 'Last year' },
+  { value: 'last_6_months', label: 'Last 6 months' },
+  { value: 'last_3_months', label: 'Last 3 months' },
+  { value: 'last_month', label: 'Last month' },
+];
+
+const CHART_PERIOD_OPTIONS = [
+  ...PERIOD_OPTIONS,
+  { value: 'custom', label: 'Custom range' },
+];
+
+const CHART_TYPE_OPTIONS = [
+  { value: 'bar', label: 'Bar' },
+  { value: 'pie', label: 'Pie' },
+  { value: 'donut', label: 'Donut' },
+  { value: 'line', label: 'Line' },
+];
 
 const SHORTCUT_OPTIONS = [
   { id: 'tasks', label: 'Tasks' },
@@ -167,60 +200,40 @@ export function WidgetConfigModal({ widget, onClose, onSave }: WidgetConfigModal
   };
 
   return (
-    <OverlayPortal><div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={onClose}>
-      <div
-        className="max-w-md w-full max-h-[90vh] flex flex-col rounded-xl border border-gray-200 bg-gray-100 shadow-xl overflow-hidden"
-        onClick={(e) => e.stopPropagation()}
-      >
-        {/* Header - same style as New Note */}
-        <div className="flex-shrink-0 rounded-t-xl border-b border-gray-200 bg-white p-4">
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={onClose}
-              className="p-1 rounded-lg hover:bg-gray-100 text-gray-600"
-            >
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-              </svg>
-            </button>
-            <div>
-              <h2 className="text-sm font-semibold text-gray-900">Widget settings</h2>
-              <p className="text-xs text-gray-500 mt-0.5">Customize this widget</p>
-            </div>
-          </div>
+    <AppFormModal
+      open
+      onClose={onClose}
+      title="Widget settings"
+      description="Customize this widget"
+      footer={
+        <div className={uiCx(uiLayout.actionsRow, 'w-full justify-end')}>
+          <AppButton type="button" variant="secondary" size="sm" onClick={onClose}>
+            Cancel
+          </AppButton>
+          <AppButton type="button" size="sm" onClick={handleSave}>
+            Save
+          </AppButton>
         </div>
-
-        <div className="p-4 overflow-y-auto space-y-4 flex-1 min-h-0 bg-gray-100">
+      }
+    >
+      <div className={uiSpacing.sectionStack}>
           {widget.type !== 'chart' && (
-            <div>
-              <label className="block text-xs font-semibold text-gray-700 mb-1">Title</label>
-              <input
-                type="text"
-                value={title}
-                onChange={(e) => setTitle(e.target.value)}
-                className="w-full rounded-lg border border-gray-200 px-3 py-2 text-xs focus:ring-2 focus:ring-brand-red/40 focus:border-brand-red/60"
-                placeholder={meta?.label}
-              />
-            </div>
+            <AppInput
+              label="Title"
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+              placeholder={meta?.label}
+            />
           )}
 
           {widget.type === 'kpi' && (
             <>
-              <div>
-                <label className="block text-xs font-semibold text-gray-700 mb-1">Period</label>
-                <select
-                  value={String(config.period ?? 'all')}
-                  onChange={(e) => setConfig({ ...config, period: e.target.value })}
-                  className="w-full rounded-lg border border-gray-200 px-3 py-2 text-xs focus:ring-2 focus:ring-brand-red/40 focus:border-brand-red/60"
-                >
-                  <option value="all">All time</option>
-                  <option value="last_year">Last year</option>
-                  <option value="last_6_months">Last 6 months</option>
-                  <option value="last_3_months">Last 3 months</option>
-                  <option value="last_month">Last month</option>
-                </select>
-              </div>
+              <AppSelect
+                label="Period"
+                value={String(config.period ?? 'all')}
+                onChange={(e) => setConfig({ ...config, period: e.target.value })}
+                options={PERIOD_OPTIONS}
+              />
               <KpiStatusSelector
                 config={config}
                 setConfig={setConfig}
@@ -247,113 +260,83 @@ export function WidgetConfigModal({ widget, onClose, onSave }: WidgetConfigModal
               : dataOptions[0].value;
             return (
             <>
-              <label className="flex items-center gap-2 cursor-pointer">
+              <label className={uiCx(uiLayout.actionsRow, 'cursor-pointer')}>
                 <input
                   type="checkbox"
                   checked={Boolean(config.related_to_me)}
                   onChange={(e) => setConfig({ ...config, related_to_me: e.target.checked })}
                   className="rounded border-gray-300 text-brand-red focus:ring-brand-red/40"
                 />
-                <span className="text-sm">
+                <span className={uiTypography.body}>
                   {isOpportunitiesChart
                     ? 'Show only Opportunities related to me'
                     : 'Show only Projects related to me'}
                 </span>
               </label>
               {allowCustomersFilter && (
-              <div>
-                <label className="block text-xs font-semibold text-gray-700 mb-1">Project Owner / Source</label>
-                <select
-                  value={config.customer_id !== undefined && config.customer_id !== '' ? String(config.customer_id) : ''}
-                  onChange={(e) => setConfig({ ...config, customer_id: e.target.value || undefined })}
-                  className="w-full rounded-lg border border-gray-200 px-3 py-2 text-xs focus:ring-2 focus:ring-brand-red/40 focus:border-brand-red/60"
-                >
-                  <option value="">All project owners / sources</option>
-                  {customersList.map((c) => (
-                    <option key={c.id} value={c.id}>
-                      {c.display_name || c.name || c.id}
-                    </option>
-                  ))}
-                </select>
-                <p className="text-[10px] text-gray-500 mt-0.5">Filter chart by project owner / source (projects or opportunities linked to that record only).</p>
-              </div>
+              <AppSelect
+                label="Project Owner / Source"
+                value={config.customer_id !== undefined && config.customer_id !== '' ? String(config.customer_id) : ''}
+                onChange={(e) => setConfig({ ...config, customer_id: e.target.value || undefined })}
+                placeholder="All project owners / sources"
+                options={[
+                  { value: '', label: 'All project owners / sources' },
+                  ...customersList.map((c) => ({
+                    value: c.id,
+                    label: c.display_name || c.name || c.id,
+                  })),
+                ]}
+                helperText="Filter chart by project owner / source (projects or opportunities linked to that record only)."
+              />
               )}
-              <div>
-                <label className="block text-xs font-semibold text-gray-700 mb-1">Data</label>
-                <select
-                  value={validMetric}
-                  onChange={(e) => setConfig({ ...config, metric: e.target.value })}
-                  className="w-full rounded-lg border border-gray-200 px-3 py-2 text-xs focus:ring-2 focus:ring-brand-red/40 focus:border-brand-red/60"
-                >
-                  {dataOptions.map((o) => (
-                    <option key={o.value} value={o.value}>{o.label}</option>
-                  ))}
-                </select>
-              </div>
-              <div>
-                <label className="block text-xs font-semibold text-gray-700 mb-1">Chart type</label>
-                <select
-                  value={String(config.chartType ?? 'bar')}
-                  onChange={(e) => setConfig({ ...config, chartType: e.target.value })}
-                  className="w-full rounded-lg border border-gray-200 px-3 py-2 text-xs focus:ring-2 focus:ring-brand-red/40 focus:border-brand-red/60"
-                >
-                  <option value="bar">Bar</option>
-                  <option value="pie">Pie</option>
-                  <option value="donut">Donut</option>
-                  <option value="line">Line</option>
-                </select>
-              </div>
-              <div>
-                <label className="block text-xs font-semibold text-gray-700 mb-1">Period</label>
-                <select
-                  value={String(config.period ?? 'all')}
-                  onChange={(e) => setConfig({ ...config, period: e.target.value })}
-                  className="w-full rounded-lg border border-gray-200 px-3 py-2 text-xs focus:ring-2 focus:ring-brand-red/40 focus:border-brand-red/60"
-                >
-                  <option value="all">All time</option>
-                  <option value="last_year">Last year</option>
-                  <option value="last_6_months">Last 6 months</option>
-                  <option value="last_3_months">Last 3 months</option>
-                  <option value="last_month">Last month</option>
-                  <option value="custom">Custom range</option>
-                </select>
-              </div>
+              <AppSelect
+                label="Data"
+                value={validMetric}
+                onChange={(e) => setConfig({ ...config, metric: e.target.value })}
+                options={dataOptions}
+              />
+              <AppSelect
+                label="Chart type"
+                value={String(config.chartType ?? 'bar')}
+                onChange={(e) => setConfig({ ...config, chartType: e.target.value })}
+                options={CHART_TYPE_OPTIONS}
+              />
+              <AppSelect
+                label="Period"
+                value={String(config.period ?? 'all')}
+                onChange={(e) => setConfig({ ...config, period: e.target.value })}
+                options={CHART_PERIOD_OPTIONS}
+              />
               {config.period === 'custom' && (
                 <>
-                  <div>
-                    <label className="block text-xs font-semibold text-gray-700 mb-1">Start date</label>
-                    <input
-                      type="date"
-                      value={String(config.customStart ?? '')}
-                      onChange={(e) => setConfig({ ...config, customStart: e.target.value })}
-                      className="w-full rounded-lg border border-gray-200 px-3 py-2 text-xs focus:ring-2 focus:ring-brand-red/40 focus:border-brand-red/60"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-semibold text-gray-700 mb-1">End date</label>
-                    <input
-                      type="date"
-                      value={String(config.customEnd ?? '')}
-                      onChange={(e) => setConfig({ ...config, customEnd: e.target.value })}
-                      className="w-full rounded-lg border border-gray-200 px-3 py-2 text-xs focus:ring-2 focus:ring-brand-red/40 focus:border-brand-red/60"
-                    />
-                  </div>
+                  <AppDatePicker
+                    label="Start date"
+                    value={String(config.customStart ?? '')}
+                    onChange={(e) => setConfig({ ...config, customStart: e.target.value })}
+                  />
+                  <AppDatePicker
+                    label="End date"
+                    value={String(config.customEnd ?? '')}
+                    onChange={(e) => setConfig({ ...config, customEnd: e.target.value })}
+                  />
                 </>
               )}
+              <AppSelect
+                label="Display"
+                value={allowServicesWidgets ? String(config.mode ?? 'quantity') : 'quantity'}
+                onChange={(e) => setConfig({ ...config, mode: e.target.value })}
+                options={
+                  allowServicesWidgets
+                    ? [
+                        { value: 'quantity', label: 'Count' },
+                        { value: 'value', label: 'Value' },
+                      ]
+                    : [{ value: 'quantity', label: 'Count' }]
+                }
+              />
               <div>
-                <label className="block text-xs font-semibold text-gray-700 mb-1">Display</label>
-                <select
-                  value={allowServicesWidgets ? String(config.mode ?? 'quantity') : 'quantity'}
-                  onChange={(e) => setConfig({ ...config, mode: e.target.value })}
-                  className="w-full rounded-lg border border-gray-200 px-3 py-2 text-xs focus:ring-2 focus:ring-brand-red/40 focus:border-brand-red/60"
-                >
-                  <option value="quantity">Count</option>
-                  {allowServicesWidgets ? <option value="value">Value</option> : null}
-                </select>
-              </div>
-              <div>
-                <label className="block text-xs font-semibold text-gray-700 mb-2">Color palette</label>
-                <div className="flex flex-wrap gap-2">
+                <span className={uiCx(uiTypography.controlLabel, 'mb-2 block')}>Color palette</span>
+                <div className={uiLayout.actionsRow}>
                   {CHART_PALETTE_OPTIONS.map((opt) => {
                     const isOpp = (config.metric as string)?.startsWith?.('opportunities');
                     const defaultPalette = isOpp ? 'green' : 'cool';
@@ -364,18 +347,20 @@ export function WidgetConfigModal({ widget, onClose, onSave }: WidgetConfigModal
                         key={opt.value}
                         type="button"
                         onClick={() => setConfig({ ...config, palette: opt.value })}
-                        className={`flex items-center gap-1.5 px-2 py-1.5 rounded-lg border-2 transition-colors ${
+                        className={uiCx(
+                          'flex items-center gap-1.5 px-2 py-1.5 transition-colors',
+                          uiRadius.control,
                           isSelected
-                            ? 'border-brand-red bg-brand-red/5'
-                            : 'border-gray-200 hover:border-gray-300 bg-white'
-                        }`}
+                            ? 'border-2 border-brand-red bg-brand-red/5'
+                            : uiCx(uiBorders.strong, uiColors.surface, 'hover:border-gray-300'),
+                        )}
                         title={opt.label}
                       >
                         <div className="flex gap-0.5">
                           {colors.slice(0, 6).map((c, i) => (
                             <span
                               key={i}
-                              className="w-3 h-3 rounded-sm shrink-0"
+                              className="h-3 w-3 shrink-0 rounded-sm"
                               style={{ backgroundColor: c }}
                             />
                           ))}
@@ -390,28 +375,30 @@ export function WidgetConfigModal({ widget, onClose, onSave }: WidgetConfigModal
           })()}
 
           {(widget.type === 'list_tasks' || widget.type === 'list_projects' || widget.type === 'list_opportunities') && (
-            <div>
-              <label className="block text-xs font-semibold text-gray-700 mb-1">Number of items</label>
-              <input
-                type="number"
-                min={1}
-                max={20}
-                value={Number(config.limit) || 5}
-                onChange={(e) => setConfig({ ...config, limit: Math.max(1, Math.min(20, parseInt(e.target.value, 10) || 5)) })}
-                className="w-full rounded-lg border border-gray-200 px-3 py-2 text-xs focus:ring-2 focus:ring-brand-red/40 focus:border-brand-red/60"
-              />
-            </div>
+            <AppInput
+              label="Number of items"
+              type="number"
+              min={1}
+              max={20}
+              value={String(Number(config.limit) || 5)}
+              onChange={(e) =>
+                setConfig({
+                  ...config,
+                  limit: Math.max(1, Math.min(20, parseInt(e.target.value, 10) || 5)),
+                })
+              }
+            />
           )}
 
           {widget.type === 'shortcuts' && (
             <div>
-              <label className="block text-xs font-semibold text-gray-700 mb-2">Shortcuts</label>
-              <div className="space-y-2">
+              <span className={uiCx(uiTypography.controlLabel, 'mb-2 block')}>Shortcuts</span>
+              <div className={uiSpacing.sectionStack}>
                 {SHORTCUT_OPTIONS.filter((opt) => isShortcutItemAllowed(opt.id, me, lineForPermissions)).map((opt) => {
                   const items = (config.items as string[]) ?? ['tasks', 'projects', 'schedule'];
                   const checked = items.includes(opt.id);
                   return (
-                    <label key={opt.id} className="flex items-center gap-2 cursor-pointer">
+                    <label key={opt.id} className={uiCx(uiLayout.actionsRow, 'cursor-pointer')}>
                       <input
                         type="checkbox"
                         checked={checked}
@@ -423,23 +410,14 @@ export function WidgetConfigModal({ widget, onClose, onSave }: WidgetConfigModal
                         }}
                         className="rounded border-gray-300 text-brand-red focus:ring-brand-red/40"
                       />
-                      <span className="text-sm">{opt.label}</span>
+                      <span className={uiTypography.body}>{opt.label}</span>
                     </label>
                   );
                 })}
               </div>
             </div>
           )}
-        </div>
-        <div className="flex-shrink-0 px-4 py-4 border-t border-gray-200 bg-white flex items-center justify-end gap-3 rounded-b-xl">
-          <button type="button" onClick={onClose} className="px-3 py-1.5 rounded-lg text-sm font-medium text-gray-700 border border-gray-200 hover:bg-gray-50">
-            Cancel
-          </button>
-          <button type="button" onClick={handleSave} className="px-4 py-2 rounded-lg text-sm font-semibold text-white bg-brand-red hover:bg-[#aa1212]">
-            Save
-          </button>
-        </div>
       </div>
-    </div></OverlayPortal>
+    </AppFormModal>
   );
 }

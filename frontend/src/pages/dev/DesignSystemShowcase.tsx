@@ -282,8 +282,9 @@ export default function DesignSystemShowcase() {
                 <code className="text-[11px]">AppInput</code> (<code className="text-[11px]">rounded-lg</code>); portaled
                 menu uses <code className="text-[11px]">uiDropdown.menu</code> (
                 <code className="text-[11px]">rounded-xl</code>). <code className="text-[11px]">AppSelect</code> — single
-                value; <code className="text-[11px]">AppMultiSelect</code> — multiple values (checkboxes + chips, same menu
-                shell).
+                value; <code className="text-[11px]">searchable</code> adds a filter field in the menu.{' '}
+                <code className="text-[11px]">AppMultiSelect</code> — multiple values (checkboxes + chips, same menu shell;
+                also supports <code className="text-[11px]">searchable</code>).
               </p>
               <p className={uiTypography.helper}>
                 Dates: <code className="text-[11px]">AppDatePicker</code> — click the month label to pick month/year, then
@@ -371,10 +372,11 @@ export default function DesignSystemShowcase() {
               <AppSelect
                 id="showcase-department"
                 label="Department"
-                placeholder="Select department"
+                placeholder="Search or select department…"
+                searchable
                 value={showcaseDepartment}
                 onChange={(e) => setShowcaseDepartment(e.target.value)}
-                fieldHint="Department\n\nSingle choice — same trigger/menu as multi, one value only."
+                fieldHint="Department\n\nSingle choice with search in the menu — same pattern as AppUserSelect."
                 options={[
                   { value: 'hr', label: 'Human Resources' },
                   { value: 'operations', label: 'Operations' },
@@ -384,10 +386,11 @@ export default function DesignSystemShowcase() {
               <AppMultiSelect
                 id="showcase-departments-multi"
                 label="Departments (multi)"
-                placeholder="Select departments"
+                placeholder="Search departments…"
+                searchable
                 value={showcaseDepartmentsMulti}
                 onChange={setShowcaseDepartmentsMulti}
-                fieldHint="Departments (multi)\n\nStatic options with checkboxes, chips, and portaled menu — use anywhere you need multiple enum values (not users)."
+                fieldHint="Departments (multi)\n\nStatic options with search, checkboxes, chips, and portaled menu — use anywhere you need multiple enum values (not users)."
                 options={[
                   { value: 'hr', label: 'Human Resources' },
                   { value: 'operations', label: 'Operations' },

@@ -1,6 +1,8 @@
 import type { WidgetDef } from './types';
 import { getWidgetIcon } from './widgetRegistry';
 import { getChartMetricLabel } from './widgets/chartShared';
+import { AppButton, uiBorders, uiColors, uiCx, uiRadius, uiShadows, uiSpacing, uiTypography } from '@/components/ui';
+import { Settings, Trash2 } from 'lucide-react';
 
 type WidgetWrapperProps = {
   widget: WidgetDef;
@@ -13,23 +15,35 @@ type WidgetWrapperProps = {
 export function WidgetWrapper({ widget, isEditMode, onRemove, onOpenConfig, children }: WidgetWrapperProps) {
   const isShortcut = widget.type === 'shortcuts';
 
-  const cardClass =
-    'h-full relative rounded-xl border border-gray-200/90 bg-white shadow-md overflow-hidden transition-shadow duration-200';
-  const cardHoverClass = !isEditMode ? 'hover:shadow-lg hover:border-gray-300/80' : '';
+  const cardClass = uiCx(
+    'relative h-full overflow-hidden transition-shadow duration-200 [container-type:size] [container-name:widget]',
+    uiRadius.card,
+    uiBorders.subtle,
+    uiColors.surface,
+    uiShadows.card,
+  );
+  const cardHoverClass = !isEditMode ? 'hover:border-gray-300/80 hover:shadow-lg' : '';
 
   if (isShortcut) {
     return (
-      <div className={`${cardClass} ${cardHoverClass} [container-type:size] [container-name:widget]`}>
+      <div className={uiCx(cardClass, cardHoverClass)}>
         {children}
         {isEditMode && (
-          <button
+          <AppButton
             type="button"
-            onClick={(e) => { e.preventDefault(); e.stopPropagation(); onRemove(); }}
-            className="absolute top-2 right-2 p-1.5 rounded-lg bg-white/90 shadow-sm hover:bg-red-100 text-gray-500 hover:text-red-600 z-10"
+            variant="ghost"
+            size="sm"
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              onRemove();
+            }}
+            className="absolute right-2 top-2 z-10 bg-white/90 shadow-sm hover:bg-red-50 hover:text-red-600"
             title="Remove"
+            aria-label="Remove widget"
           >
-            <span aria-hidden>🗑️</span>
-          </button>
+            <Trash2 className="h-4 w-4" />
+          </AppButton>
         )}
       </div>
     );
@@ -42,48 +56,54 @@ export function WidgetWrapper({ widget, isEditMode, onRemove, onOpenConfig, chil
   const icon = getWidgetIcon(widget);
 
   return (
-    <div className={`${cardClass} flex flex-col ${cardHoverClass} [container-type:size] [container-name:widget]`}>
+    <div className={uiCx(cardClass, 'flex flex-col', cardHoverClass)}>
       <div
-        className="flex items-center justify-between border-b border-gray-100 bg-gray-50/80 shrink-0 min-h-0"
-        style={{ padding: 'clamp(0.25rem, 2cqh, 0.5rem) clamp(0.5rem, 3cqw, 0.75rem)' }}
+        className={uiCx(
+          'flex shrink-0 min-h-0 items-center justify-between border-b border-gray-100',
+          uiColors.surfaceSubtle,
+          'px-[clamp(0.5rem,3cqw,0.75rem)] py-[clamp(0.25rem,2cqh,0.5rem)]',
+        )}
       >
         <span
-          className="font-medium text-gray-800 truncate flex items-center gap-1 min-w-0"
-          style={{ fontSize: 'clamp(0.625rem, 5.5cqw, 0.875rem)' }}
+          className={uiCx(
+            'flex min-w-0 items-center gap-1 truncate font-medium text-gray-800',
+            'text-[clamp(0.625rem,5.5cqw,0.875rem)]',
+          )}
           title={typeof title === 'string' ? title : undefined}
         >
-          <span className="shrink-0" style={{ fontSize: 'clamp(0.625rem, 5cqh, 0.875rem)' }} aria-hidden>{icon}</span>
+          <span className="shrink-0 text-[clamp(0.625rem,5cqh,0.875rem)]" aria-hidden>
+            {icon}
+          </span>
           {title}
         </span>
-        <div className="flex items-center gap-0.5 shrink-0">
-          <button
+        <div className="flex shrink-0 items-center gap-0.5">
+          <AppButton
             type="button"
+            variant="ghost"
+            size="sm"
             onClick={onOpenConfig}
-            className="rounded hover:bg-gray-200 text-gray-500 hover:text-gray-700 transition-colors p-1"
-            style={{ padding: 'clamp(0.125rem, 1.5cqh, 0.375rem)' }}
+            className="h-auto min-h-0 p-[clamp(0.125rem,1.5cqh,0.375rem)]"
             title="Settings"
+            aria-label="Widget settings"
           >
-            <span aria-hidden>⚙️</span>
-          </button>
+            <Settings className="h-3.5 w-3.5" />
+          </AppButton>
           {isEditMode && (
-            <button
+            <AppButton
               type="button"
+              variant="ghost"
+              size="sm"
               onClick={onRemove}
-              className="rounded hover:bg-red-100 text-gray-500 hover:text-red-600 transition-colors p-1"
-              style={{ padding: 'clamp(0.125rem, 1.5cqh, 0.375rem)' }}
+              className="h-auto min-h-0 p-[clamp(0.125rem,1.5cqh,0.375rem)] hover:bg-red-50 hover:text-red-600"
               title="Remove"
+              aria-label="Remove widget"
             >
-              <span aria-hidden>🗑️</span>
-            </button>
+              <Trash2 className="h-3.5 w-3.5" />
+            </AppButton>
           )}
         </div>
       </div>
-      <div
-        className="flex-1 min-h-0 overflow-auto"
-        style={{ padding: 'clamp(0.25rem, 2cqh, 0.75rem)' }}
-      >
-        {children}
-      </div>
+      <div className="min-h-0 flex-1 overflow-auto p-[clamp(0.25rem,2cqh,0.75rem)]">{children}</div>
     </div>
   );
 }
