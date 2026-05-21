@@ -35,7 +35,7 @@ export const uiListCreateItem = {
   ),
   label: 'font-medium text-xs text-gray-700',
   card: 'min-h-[200px] p-2.5',
-  row: 'min-h-[60px] p-2.5',
+  row: 'box-border min-h-[60px] px-3 py-3',
 } as const;
 
 export const uiColors = {
@@ -93,6 +93,15 @@ export const uiDropdown = {
     uiBorders.subtle,
     uiShadows.elevated,
   ),
+  /** Search field stays fixed; only `menuOptionsList` scrolls (avoids options showing through the search bar). */
+  menuSearchable: uiCx(
+    'fixed z-[100050] flex max-h-56 flex-col overflow-hidden bg-white',
+    uiRadius.dropdownMenu,
+    uiBorders.subtle,
+    uiShadows.elevated,
+  ),
+  menuSearchHeader: 'shrink-0 border-b border-gray-100 bg-white px-2.5 py-2',
+  menuOptionsList: 'min-h-0 flex-1 list-none overflow-y-auto overscroll-contain py-1.5',
   option: uiCx(
     'w-full text-left text-xs text-gray-900 transition-colors hover:bg-gray-50',
     uiSpacing.controlX,

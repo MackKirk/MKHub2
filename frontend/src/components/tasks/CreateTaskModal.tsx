@@ -5,6 +5,7 @@ import { api } from '@/lib/api';
 import {
   AppButton,
   AppControlLabelRow,
+  AppFieldHint,
   AppFormModal,
   AppInput,
   AppMultiSelect,
@@ -135,6 +136,7 @@ export default function CreateTaskModal({ open, onClose, onCreated }: Props) {
             onChange={(e) => setStatus(e.target.value as TaskStatus)}
             options={statusOptions}
             disabled={createMutation.isPending}
+            fieldHint="Status\n\nWhere this task sits in your workflow (to do, in progress, blocked, or done)."
           />
           <AppSelect
             label="Priority"
@@ -142,6 +144,7 @@ export default function CreateTaskModal({ open, onClose, onCreated }: Props) {
             onChange={(e) => setPriority(e.target.value)}
             options={priorityOptions}
             disabled={createMutation.isPending}
+            fieldHint="Priority\n\nHow urgent this task is relative to others in your queue."
           />
         </div>
 
@@ -152,6 +155,7 @@ export default function CreateTaskModal({ open, onClose, onCreated }: Props) {
           placeholder="What needs to be done?"
           disabled={createMutation.isPending}
           autoFocus
+          fieldHint="Title\n\nA short summary shown in lists and notifications."
         />
 
         <AppTextarea
@@ -161,10 +165,16 @@ export default function CreateTaskModal({ open, onClose, onCreated }: Props) {
           rows={6}
           placeholder="Add details…"
           disabled={createMutation.isPending}
+          fieldHint="Description\n\nOptional detail to clarify scope, context, or acceptance criteria."
         />
 
         <div className={uiSpacing.sectionStack}>
-          <AppControlLabelRow label="Assign to (optional)" />
+          <AppControlLabelRow
+            label="Assign to (optional)"
+            fieldHint={
+              <AppFieldHint hint="Assign to\n\nOptional. Assign to users or divisions; each assignee gets their own copy of the task." />
+            }
+          />
           <div className={uiLayout.actionsRow}>
             <AppButton
               type="button"
@@ -200,6 +210,7 @@ export default function CreateTaskModal({ open, onClose, onCreated }: Props) {
               onChange={setSelectedUserIds}
               placeholder="Search or select users…"
               disabled={createMutation.isPending}
+              fieldHint="Users\n\nOne or more people who own this task. Each selected user gets their own copy."
             />
           ) : (
             <>
@@ -211,6 +222,7 @@ export default function CreateTaskModal({ open, onClose, onCreated }: Props) {
                 placeholder="Select divisions..."
                 searchable
                 disabled={createMutation.isPending}
+                fieldHint="Divisions\n\nOne or more divisions. A copy of the task is created for every active user in each selected division."
               />
               {selectedDivisionIds.length > 0 && (
                 <p className={uiTypography.helper}>

@@ -1,9 +1,21 @@
+import { useMemo } from 'react';
+import { Trash2 } from 'lucide-react';
 import { FilterRule, FieldConfig } from './types';
 import { isRangeOperator, getOperatorLabel } from './utils';
 import { sortByLabel } from '@/lib/sortOptions';
+import {
+  AppButton,
+  AppDatePicker,
+  AppInput,
+  AppSelect,
+  type AppSelectOption,
+  uiCx,
+  uiLayout,
+  uiTypography,
+} from '@/components/ui';
 
 function sortOptionsByLabel<T extends { label: string }>(options: T[]): T[] {
-  return sortByLabel(options, o => o.label);
+  return sortByLabel(options, (o) => o.label);
 }
 
 interface FilterRuleRowProps {
@@ -11,7 +23,31 @@ interface FilterRuleRowProps {
   onUpdate: (rule: FilterRule) => void;
   onDelete: () => void;
   fields: FieldConfig[];
-  getFieldData: (fieldId: string) => any; // Function to get data for a field (e.g., options list)
+  getFieldData: (fieldId: string) => any;
+}
+
+function buildValueSelectOptions(fieldConfig: FieldConfig): AppSelectOption[] {
+  const emptyLabel = `Select ${fieldConfig.label.toLowerCase()}...`;
+  const groupedOptions = fieldConfig.getGroupedOptions ? fieldConfig.getGroupedOptions() : null;
+
+  if (groupedOptions && groupedOptions.length > 0) {
+    const sortedGroups = sortOptionsByLabel(groupedOptions.map((g) => ({ ...g, label: g.label }))).map((g) => ({
+      label: g.label,
+      options: sortOptionsByLabel(g.options),
+    }));
+    return [
+      { value: '', label: emptyLabel },
+      ...sortedGroups.flatMap((group) =>
+        group.options.map((opt) => ({
+          value: opt.value,
+          label: `${group.label} — ${opt.label}`,
+        })),
+      ),
+    ];
+  }
+
+  const options = sortOptionsByLabel(fieldConfig.getOptions ? fieldConfig.getOptions() : []);
+  return [{ value: '', label: emptyLabel }, ...options];
 }
 
 export default function FilterRuleRow({
@@ -19,20 +55,33 @@ export default function FilterRuleRow({
   onUpdate,
   onDelete,
   fields,
-  getFieldData,
 }: FilterRuleRowProps) {
-  const fieldConfig = fields.find(f => f.id === rule.field) || fields[0];
-  const operators = fieldConfig?.operators.map(op => ({
-    value: op,
-    label: getOperatorLabel(op),
-  })) || [];
+  const fieldConfig = fields.find((f) => f.id === rule.field) || fields[0];
+  const operators = useMemo(
+    () =>
+      fieldConfig?.operators.map((op) => ({
+        value: op,
+        label: getOperatorLabel(op),
+      })) || [],
+    [fieldConfig],
+  );
   const isRange = isRangeOperator(rule.operator);
   const currentValue = rule.value;
   const value1 = Array.isArray(currentValue) ? currentValue[0] : currentValue;
   const value2 = Array.isArray(currentValue) ? currentValue[1] : '';
 
+  const fieldOptions = useMemo(
+    () => sortOptionsByLabel(fields.map((f) => ({ value: f.id, label: f.label }))),
+    [fields],
+  );
+
+  const valueSelectOptions = useMemo(
+    () => (fieldConfig?.type === 'select' ? buildValueSelectOptions(fieldConfig) : []),
+    [fieldConfig],
+  );
+
   const handleFieldChange = (newFieldId: string) => {
-    const newFieldConfig = fields.find(f => f.id === newFieldId) || fields[0];
+    const newFieldConfig = fields.find((f) => f.id === newFieldId) || fields[0];
     const newOperator = newFieldConfig.operators[0] || 'is';
     onUpdate({
       ...rule,
@@ -43,25 +92,21 @@ export default function FilterRuleRow({
   };
 
   const handleOperatorChange = (newOperator: string) => {
-    const isNewRange = isRangeOperator(newOperator as any);
+    const isNewRange = isRangeOperator(newOperator as FilterRule['operator']);
     const isCurrentRange = isRangeOperator(rule.operator);
-    
-    // Preserve value if switching between compatible operators (both range or both non-range)
+
     let newValue: string | string[];
     if (isNewRange && isCurrentRange) {
-      // Both are range operators - preserve the array
       newValue = Array.isArray(rule.value) ? rule.value : ['', ''];
     } else if (!isNewRange && !isCurrentRange) {
-      // Both are non-range operators - preserve the string value
       newValue = typeof rule.value === 'string' ? rule.value : '';
     } else {
-      // Switching between range and non-range - reset to appropriate type
       newValue = isNewRange ? ['', ''] : '';
     }
-    
+
     onUpdate({
       ...rule,
-      operator: newOperator as any,
+      operator: newOperator as FilterRule['operator'],
       value: newValue,
     });
   };
@@ -79,73 +124,41 @@ export default function FilterRuleRow({
 
   const renderValueInput = () => {
     if (fieldConfig.type === 'select') {
-      // Check if we have grouped options (for optgroup support)
-      const groupedOptions = fieldConfig.getGroupedOptions ? fieldConfig.getGroupedOptions() : null;
-      
-      if (groupedOptions && groupedOptions.length > 0) {
-        const sortedGroups = sortOptionsByLabel(groupedOptions.map(g => ({ ...g, label: g.label }))).map(g => ({
-          label: g.label,
-          options: sortOptionsByLabel(g.options),
-        }));
-        return (
-          <select
-            className="w-full border border-gray-200 rounded-md px-3 py-2 text-sm bg-gray-50/50 text-gray-700 focus:outline-none focus:ring-1 focus:ring-gray-300 focus:border-gray-300 focus:bg-white"
-            value={value1 || ''}
-            onChange={(e) => handleValueChange(e.target.value)}
-          >
-            <option value="">Select {fieldConfig.label.toLowerCase()}...</option>
-            {sortedGroups.map((group) => (
-              <optgroup key={group.label} label={group.label}>
-                {group.options.map((opt) => (
-                  <option key={opt.value} value={opt.value}>{opt.label}</option>
-                ))}
-              </optgroup>
-            ))}
-          </select>
-        );
-      }
-      
-      // Fallback to simple options (always alphabetical by label)
-      const options = sortOptionsByLabel(fieldConfig.getOptions ? fieldConfig.getOptions() : []);
       return (
-        <select
-          className="w-full border border-gray-200 rounded-md px-3 py-2 text-sm bg-gray-50/50 text-gray-700 focus:outline-none focus:ring-1 focus:ring-gray-300 focus:border-gray-300 focus:bg-white"
-          value={value1 || ''}
+        <AppSelect
+          className="min-w-0 flex-1"
+          options={valueSelectOptions}
+          value={String(value1 || '')}
           onChange={(e) => handleValueChange(e.target.value)}
-        >
-          <option value="">Select {fieldConfig.label.toLowerCase()}...</option>
-          {options.map((opt) => (
-            <option key={opt.value} value={opt.value}>{opt.label}</option>
-          ))}
-        </select>
+          triggerClassName="w-full"
+          searchable
+          placeholder={`Search or select ${fieldConfig.label.toLowerCase()}…`}
+        />
       );
     }
 
     if (fieldConfig.type === 'date') {
       if (isRange) {
         return (
-          <div className="flex items-center gap-2">
-            <input
-              type="date"
-              className="flex-1 border border-gray-200 rounded-md px-3 py-2 text-sm bg-gray-50/50 text-gray-700 focus:outline-none focus:ring-1 focus:ring-gray-300 focus:border-gray-300 focus:bg-white"
-              value={value1}
+          <div className={uiCx(uiLayout.actionsRow, 'min-w-0 flex-1 items-center')}>
+            <AppDatePicker
+              className="min-w-0 flex-1"
+              value={String(value1 || '')}
               onChange={(e) => handleValueChange(e.target.value, 0)}
             />
-            <span className="text-xs text-gray-400">→</span>
-            <input
-              type="date"
-              className="flex-1 border border-gray-200 rounded-md px-3 py-2 text-sm bg-gray-50/50 text-gray-700 focus:outline-none focus:ring-1 focus:ring-gray-300 focus:border-gray-300 focus:bg-white"
-              value={value2}
+            <span className={uiTypography.helper}>→</span>
+            <AppDatePicker
+              className="min-w-0 flex-1"
+              value={String(value2 || '')}
               onChange={(e) => handleValueChange(e.target.value, 1)}
             />
           </div>
         );
       }
       return (
-        <input
-          type="date"
-          className="w-full border border-gray-200 rounded-md px-3 py-2 text-sm bg-gray-50/50 text-gray-700 focus:outline-none focus:ring-1 focus:ring-gray-300 focus:border-gray-300 focus:bg-white"
-          value={value1}
+        <AppDatePicker
+          className="min-w-0 flex-1"
+          value={String(value1 || '')}
           onChange={(e) => handleValueChange(e.target.value)}
         />
       );
@@ -154,31 +167,31 @@ export default function FilterRuleRow({
     if (fieldConfig.type === 'number') {
       if (isRange) {
         return (
-          <div className="flex items-center gap-2">
-            <input
+          <div className={uiCx(uiLayout.actionsRow, 'min-w-0 flex-1 items-center')}>
+            <AppInput
+              className="min-w-0 flex-1"
               type="number"
-              className="flex-1 border border-gray-200 rounded-md px-3 py-2 text-sm bg-gray-50/50 text-gray-700 placeholder:text-gray-400 focus:outline-none focus:ring-1 focus:ring-gray-300 focus:border-gray-300 focus:bg-white"
               placeholder="Min"
-              value={value1}
+              value={String(value1 || '')}
               onChange={(e) => handleValueChange(e.target.value, 0)}
             />
-            <span className="text-xs text-gray-400">→</span>
-            <input
+            <span className={uiTypography.helper}>→</span>
+            <AppInput
+              className="min-w-0 flex-1"
               type="number"
-              className="flex-1 border border-gray-200 rounded-md px-3 py-2 text-sm bg-gray-50/50 text-gray-700 placeholder:text-gray-400 focus:outline-none focus:ring-1 focus:ring-gray-300 focus:border-gray-300 focus:bg-white"
               placeholder="Max"
-              value={value2}
+              value={String(value2 || '')}
               onChange={(e) => handleValueChange(e.target.value, 1)}
             />
           </div>
         );
       }
       return (
-        <input
+        <AppInput
+          className="min-w-0 flex-1"
           type="number"
-          className="w-full border border-gray-200 rounded-md px-3 py-2 text-sm bg-gray-50/50 text-gray-700 placeholder:text-gray-400 focus:outline-none focus:ring-1 focus:ring-gray-300 focus:border-gray-300 focus:bg-white"
           placeholder="Enter value..."
-          value={value1}
+          value={String(value1 || '')}
           onChange={(e) => handleValueChange(e.target.value)}
         />
       );
@@ -186,11 +199,11 @@ export default function FilterRuleRow({
 
     if (fieldConfig.type === 'text') {
       return (
-        <input
+        <AppInput
+          className="min-w-0 flex-1"
           type="text"
-          className="w-full border border-gray-200 rounded-md px-3 py-2 text-sm bg-gray-50/50 text-gray-700 placeholder:text-gray-400 focus:outline-none focus:ring-1 focus:ring-gray-300 focus:border-gray-300 focus:bg-white"
           placeholder="Enter text..."
-          value={value1}
+          value={String(value1 || '')}
           onChange={(e) => handleValueChange(e.target.value)}
         />
       );
@@ -200,41 +213,33 @@ export default function FilterRuleRow({
   };
 
   return (
-    <div className="flex items-center gap-3 transition-all duration-200 ease-out">
-      <select
-        className="w-40 border border-gray-200 rounded-md px-3 py-2 text-sm bg-gray-50/50 text-gray-700 focus:outline-none focus:ring-1 focus:ring-gray-300 focus:border-gray-300 focus:bg-white"
+    <div className={uiCx(uiLayout.actionsRow, 'items-start gap-2 sm:items-center sm:gap-3')}>
+      <AppSelect
+        className="w-full shrink-0 sm:w-40"
+        options={fieldOptions}
         value={rule.field}
         onChange={(e) => handleFieldChange(e.target.value)}
-      >
-        {sortOptionsByLabel(fields.map(f => ({ id: f.id, label: f.label }))).map((field) => (
-          <option key={field.id} value={field.id}>{field.label}</option>
-        ))}
-      </select>
-
-      <select
-        className="w-36 border border-gray-200 rounded-md px-3 py-2 text-sm bg-gray-50/50 text-gray-700 focus:outline-none focus:ring-1 focus:ring-gray-300 focus:border-gray-300 focus:bg-white"
+        triggerClassName="w-full"
+      />
+      <AppSelect
+        className="w-full shrink-0 sm:w-36"
+        options={operators}
         value={rule.operator}
         onChange={(e) => handleOperatorChange(e.target.value)}
-      >
-        {operators.map((op) => (
-          <option key={op.value} value={op.value}>{op.label}</option>
-        ))}
-      </select>
-
-      <div className="flex-1">
-        {renderValueInput()}
-      </div>
-
-      <button
+        triggerClassName="w-full"
+      />
+      <div className="min-w-0 flex-1">{renderValueInput()}</div>
+      <AppButton
+        type="button"
+        variant="ghost"
+        size="sm"
+        className="shrink-0 px-2"
         onClick={onDelete}
-        className="w-8 h-8 flex items-center justify-center text-gray-400 hover:text-gray-600 transition-colors duration-150"
         aria-label="Delete rule"
+        title="Delete rule"
       >
-        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-        </svg>
-      </button>
+        <Trash2 className="h-4 w-4 text-gray-500" />
+      </AppButton>
     </div>
   );
 }
-

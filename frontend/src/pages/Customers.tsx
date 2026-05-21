@@ -1,15 +1,31 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, withFileAccessTokenIfNeeded } from '@/lib/api';
 import { useMemo, useState, useEffect, useRef } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
-import { useConfirm } from '@/components/ConfirmProvider';
+import { getClientStatusBadgeVariant } from '@/lib/clientUi';
+import { useNavigate, useSearchParams } from 'react-router-dom';
+import { Search, SlidersHorizontal, Users } from 'lucide-react';
 import LoadingOverlay from '@/components/LoadingOverlay';
-import LoadingSpinner from '@/components/LoadingSpinner';
-import { useSearchParams } from 'react-router-dom';
 import FilterBuilderModal from '@/components/FilterBuilder/FilterBuilderModal';
 import FilterChip from '@/components/FilterBuilder/FilterChip';
 import { FilterRule, FieldConfig } from '@/components/FilterBuilder/types';
 import NewCustomerModal from '@/components/NewCustomerModal';
+import {
+  AppBadge,
+  AppButton,
+  AppCard,
+  AppEmptyState,
+  AppInput,
+  AppListCreateItem,
+  AppPageHeader,
+  uiBorders,
+  uiColors,
+  uiCx,
+  uiLayout,
+  uiRadius,
+  uiShadows,
+  uiSpacing,
+  uiTypography,
+} from '@/components/ui';
 
 type Client = { id:string, name?:string, display_name?:string, code?:string, city?:string, province?:string, client_status?:string, client_type?:string, address_line1?:string, created_at?:string, logo_url?:string };
 
@@ -111,7 +127,6 @@ function convertParamsToRules(params: URLSearchParams): FilterRule[] {
 
 export default function Customers(){
   const nav = useNavigate();
-  const confirm = useConfirm();
   const queryClient = useQueryClient();
   const [searchParams, setSearchParams] = useSearchParams();
   const [newCustomerModalOpen, setNewCustomerModalOpen] = useState(false);
@@ -245,17 +260,6 @@ export default function Customers(){
     }
   }, [isInitialLoading, hasAnimated]);
   
-  const statusColorMap: Record<string,string> = useMemo(()=>{
-    const list = (settings||{}).client_statuses as {label?:string, value?:string, id?:string}[]|undefined;
-    const m: Record<string,string> = {};
-    (list||[]).forEach(it=>{ 
-      const k = String(it.label||'').trim(); 
-      const v = String(it.value||it.id||'').trim(); 
-      if(k){ m[k] = v || ''; } 
-    });
-    return m;
-  }, [settings]);
-  
   const clientStatuses = (settings?.client_statuses || []) as {id?:string, label?:string, value?:string}[];
   const clientTypes = (settings?.client_types || []) as {id?:string, label?:string, value?:string}[];
   
@@ -343,242 +347,296 @@ export default function Customers(){
     return field?.label || fieldId;
   };
 
+  const listCardAnimClass = animationComplete
+    ? undefined
+    : uiCx(
+        'transition-[opacity,transform] duration-[400ms] ease-out',
+        hasAnimated ? 'opacity-100 translate-y-0 scale-100' : 'opacity-0 -translate-y-2 scale-[0.98]',
+      );
+
   return (
-    <div>
-      {/* Title Bar - same layout and font sizes as Projects / Opportunities */}
-      <div className="rounded-xl border bg-white p-4 mb-4">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-3 flex-1">
-            <div>
-              <div className="text-sm font-semibold text-gray-900">Customers</div>
-              <div className="text-xs text-gray-500 mt-0.5">Manage your customer list and sites</div>
+    <main className={uiCx('min-h-full bg-gray-50', uiSpacing.pageY)}>
+      <div className={uiCx('w-full min-w-0', uiSpacing.pageStack)}>
+        <AppPageHeader
+          title="Customers"
+          subtitle="Manage your customer list and sites"
+          icon={<Users className="h-4 w-4" />}
+          actions={
+            <div className="text-right">
+              <div className={uiTypography.overline}>Today</div>
+              <div className={uiCx(uiTypography.sectionTitle, 'mt-0.5')}>{todayLabel}</div>
             </div>
-          </div>
-          <div className="text-right">
-            <div className="text-[10px] font-medium text-gray-500 uppercase tracking-wide">Today</div>
-            <div className="text-xs font-semibold text-gray-700 mt-0.5">{todayLabel}</div>
-          </div>
-        </div>
-      </div>
-
-      {/* Filter Bar - same rounded-xl area as Projects */}
-      <div className="rounded-xl border bg-white p-4 mb-4">
-        <div className="flex items-center gap-4">
-          <div className="flex-1">
-            <div className="relative">
-              <input 
-                className="w-full border border-gray-200 rounded-lg px-3 py-2 pl-9 text-sm bg-gray-50/50 text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-1 focus:ring-gray-300 focus:border-gray-300 focus:bg-white transition-all duration-150" 
-                placeholder="Search by name, display name, code, address, city, province..." 
-                value={q} 
-                onChange={e=>handleQChange(e.target.value)} 
-              />
-              <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-              </svg>
-            </div>
-          </div>
-          <button 
-            onClick={()=>setIsFilterModalOpen(true)}
-            className="px-3 py-1.5 rounded-lg text-xs font-medium text-gray-600 hover:text-gray-900 bg-white border border-gray-200 hover:border-gray-300 transition-colors duration-150 whitespace-nowrap inline-flex items-center gap-1.5"
-          >
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z" />
-            </svg>
-            Filters
-          </button>
-          {hasActiveFilters && (
-            <button 
-              onClick={()=>{
-                const params = new URLSearchParams();
-                if (q) params.set('q', q);
-                params.set('page', '1');
-                setPage(1);
-                setSearchParams(params);
-                refetch();
-              }} 
-              className="px-3 py-1.5 rounded-lg text-xs font-medium text-gray-500 hover:text-gray-700 border border-gray-200 hover:border-gray-300 transition-colors duration-150 whitespace-nowrap"
-            >
-              Clear
-            </button>
-          )}
-        </div>
-      </div>
-
-      {/* Filter Chips */}
-      {hasActiveFilters && (
-        <div className="mb-4 flex items-center gap-2 flex-wrap">
-          {currentRules.map((rule) => (
-            <FilterChip
-              key={rule.id}
-              rule={rule}
-              onRemove={() => {
-                const updatedRules = currentRules.filter(r => r.id !== rule.id);
-                const params = convertRulesToParams(updatedRules);
-                if (q) params.set('q', q);
-                params.set('page', String(page));
-                setSearchParams(params);
-                refetch();
-              }}
-              getValueLabel={formatRuleValue}
-              getFieldLabel={getFieldLabel}
-            />
-          ))}
-        </div>
-      )}
-
-      <LoadingOverlay isLoading={isInitialLoading} text="Loading customers...">
-        <div 
-          className="rounded-xl border border-gray-200 bg-white overflow-hidden"
-          style={animationComplete ? {} : {
-            opacity: hasAnimated ? 1 : 0,
-            transform: hasAnimated ? 'translateY(0) scale(1)' : 'translateY(-8px) scale(0.98)',
-            transition: 'opacity 400ms ease-out, transform 400ms ease-out'
-          }}
-        >
-          <div className="flex flex-col gap-2 overflow-x-auto">
-            {hasEditPermission && (
-              <button
-                onClick={() => setNewCustomerModalOpen(true)}
-                className="border-2 border-dashed border-gray-300 rounded-lg p-2.5 hover:border-brand-red hover:bg-gray-50 transition-all text-center bg-white flex items-center justify-center min-h-[60px] min-w-[640px]"
-              >
-                <div className="text-lg text-gray-400 mr-2">+</div>
-                <div className="font-medium text-xs text-gray-700">New Customer</div>
-              </button>
-            )}
-            {(data?.items || []).length > 0 && (
-              <>
-                {/* Column headers - sortable */}
-                <div 
-                  className="grid grid-cols-[40fr_10fr_25fr_10fr_15fr] gap-2 sm:gap-3 lg:gap-4 items-center px-4 py-2 w-full text-[10px] font-semibold text-gray-700 bg-gray-50 border-b border-gray-200 rounded-t-lg"
-                  role="row"
-                >
-                  <button type="button" onClick={() => setListSort('customer')} className="min-w-0 text-left flex items-center gap-1 hover:text-gray-900 rounded py-0.5 outline-none focus:outline-none" title="Sort by customer name">Customer{sortBy === 'customer' ? (sortDir === 'asc' ? ' ↑' : ' ↓') : ''}</button>
-                  <button type="button" onClick={() => setListSort('code')} className="min-w-0 text-left flex items-center gap-1 hover:text-gray-900 rounded py-0.5 outline-none focus:outline-none" title="Sort by code">Code{sortBy === 'code' ? (sortDir === 'asc' ? ' ↑' : ' ↓') : ''}</button>
-                  <button type="button" onClick={() => setListSort('city')} className="min-w-0 text-left flex items-center gap-1 hover:text-gray-900 rounded py-0.5 outline-none focus:outline-none" title="Sort by city">City{sortBy === 'city' ? (sortDir === 'asc' ? ' ↑' : ' ↓') : ''}</button>
-                  <button type="button" onClick={() => setListSort('status')} className="min-w-0 text-left flex items-center gap-1 hover:text-gray-900 rounded py-0.5 outline-none focus:outline-none" title="Sort by status">Status{sortBy === 'status' ? (sortDir === 'asc' ? ' ↑' : ' ↓') : ''}</button>
-                  <button type="button" onClick={() => setListSort('type')} className="min-w-0 text-left flex items-center gap-1 hover:text-gray-900 rounded py-0.5 outline-none focus:outline-none" title="Sort by type">Type{sortBy === 'type' ? (sortDir === 'asc' ? ' ↑' : ' ↓') : ''}</button>
-                </div>
-                <div className="rounded-b-lg border border-t-0 border-gray-200 overflow-hidden min-w-0">
-                  {listItems.map(c => (
-                    <ClientRow key={c.id} c={c} statusColorMap={statusColorMap} onOpen={()=> nav(`/customers/${encodeURIComponent(c.id)}`)} />
-                  ))}
-                </div>
-              </>
-            )}
-          </div>
-          
-          {/* Pagination Controls */}
-          {data && data.total > 0 && (
-            <div className="p-4 border-t border-gray-200 flex items-center justify-between">
-              <div className="text-xs text-gray-600">
-                Showing {((data.page - 1) * data.limit) + 1} to {Math.min(data.page * data.limit, data.total)} of {data.total} customers
-              </div>
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={() => {
-                    const newPage = Math.max(1, data.page - 1);
-                    setPage(newPage);
-                    const params = new URLSearchParams(searchParams);
-                    params.set('page', String(newPage));
-                    setSearchParams(params);
-                  }}
-                  disabled={data.page <= 1 || isFetching}
-                  className="rounded-lg px-3 py-2 border border-gray-300 text-xs font-medium text-gray-700 bg-white hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
-                >
-                  Previous
-                </button>
-                <div className="text-xs text-gray-700 font-medium">
-                  Page {data.page} of {data.total_pages}
-                </div>
-                <button
-                  onClick={() => {
-                    const newPage = Math.min(data.total_pages, data.page + 1);
-                    setPage(newPage);
-                    const params = new URLSearchParams(searchParams);
-                    params.set('page', String(newPage));
-                    setSearchParams(params);
-                  }}
-                  disabled={data.page >= data.total_pages || isFetching}
-                  className="rounded-lg px-3 py-2 border border-gray-300 text-xs font-medium text-gray-700 bg-white hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
-                >
-                  Next
-                </button>
-              </div>
-            </div>
-          )}
-          
-          {data && data.total === 0 && (
-            <div className="p-8 text-center text-xs text-gray-500">
-              No customers found matching your criteria.
-            </div>
-          )}
-        </div>
-      </LoadingOverlay>
-      
-      {/* Filter Builder Modal */}
-      <FilterBuilderModal
-        isOpen={isFilterModalOpen}
-        onClose={() => setIsFilterModalOpen(false)}
-        onApply={handleApplyFilters}
-        initialRules={currentRules}
-        fields={filterFields}
-        getFieldData={(fieldId) => {
-          // Return data for field if needed
-          return null;
-        }}
-      />
-      
-      {/* New Customer Modal */}
-      {newCustomerModalOpen && (
-        <NewCustomerModal
-          onClose={() => setNewCustomerModalOpen(false)}
-          onSuccess={(customerId) => {
-            setNewCustomerModalOpen(false);
-            queryClient.invalidateQueries({ queryKey: ['clients'] });
-            refetch();
-            if (customerId) {
-              nav(`/customers/${encodeURIComponent(customerId)}`);
-            }
-          }}
+          }
         />
-      )}
-    </div>
+
+        <AppCard bodyClassName={uiSpacing.cardPadding}>
+          <div className={uiCx(uiLayout.actionsRow, 'flex-wrap items-stretch gap-3')}>
+            <div className="min-w-0 flex-1">
+              <AppInput
+                placeholder="Search by name, display name, code, address, city, province..."
+                value={q}
+                onChange={(e) => handleQChange(e.target.value)}
+                leftIcon={<Search className="h-4 w-4" />}
+                fieldHint="Search\n\nMatches customer name, display name, code, address, city, or province."
+                aria-label="Search customers"
+              />
+            </div>
+            <AppButton
+              type="button"
+              variant="secondary"
+              size="sm"
+              leftIcon={<SlidersHorizontal className="h-4 w-4" />}
+              onClick={() => setIsFilterModalOpen(true)}
+            >
+              Filters
+            </AppButton>
+            {hasActiveFilters && (
+              <AppButton
+                type="button"
+                variant="ghost"
+                size="sm"
+                onClick={() => {
+                  const params = new URLSearchParams();
+                  if (q) params.set('q', q);
+                  params.set('page', '1');
+                  setPage(1);
+                  setSearchParams(params);
+                  refetch();
+                }}
+              >
+                Clear
+              </AppButton>
+            )}
+          </div>
+        </AppCard>
+
+        {hasActiveFilters && (
+          <div className={uiCx(uiLayout.actionsRow, 'flex-wrap')}>
+            {currentRules.map((rule) => (
+              <FilterChip
+                key={rule.id}
+                rule={rule}
+                onRemove={() => {
+                  const updatedRules = currentRules.filter((r) => r.id !== rule.id);
+                  const params = convertRulesToParams(updatedRules);
+                  if (q) params.set('q', q);
+                  params.set('page', String(page));
+                  setSearchParams(params);
+                  refetch();
+                }}
+                getValueLabel={formatRuleValue}
+                getFieldLabel={getFieldLabel}
+              />
+            ))}
+          </div>
+        )}
+
+        <LoadingOverlay isLoading={isInitialLoading} text="Loading customers...">
+          <AppCard
+            className={uiCx(uiShadows.card, listCardAnimClass)}
+            bodyClassName="!p-0"
+            footer={
+              data && data.total > 0 ? (
+                <div className={uiCx(uiLayout.actionsRow, 'w-full flex-wrap justify-between gap-3')}>
+                  <p className={uiTypography.helper}>
+                    Showing {((data.page - 1) * data.limit) + 1} to {Math.min(data.page * data.limit, data.total)} of{' '}
+                    {data.total} customers
+                  </p>
+                  <div className={uiCx(uiLayout.actionsRow, 'items-center')}>
+                    <AppButton
+                      type="button"
+                      variant="secondary"
+                      size="sm"
+                      disabled={data.page <= 1 || isFetching}
+                      onClick={() => {
+                        const newPage = Math.max(1, data.page - 1);
+                        setPage(newPage);
+                        const params = new URLSearchParams(searchParams);
+                        params.set('page', String(newPage));
+                        setSearchParams(params);
+                      }}
+                    >
+                      Previous
+                    </AppButton>
+                    <span className={uiTypography.helper}>
+                      Page {data.page} of {data.total_pages}
+                    </span>
+                    <AppButton
+                      type="button"
+                      variant="secondary"
+                      size="sm"
+                      disabled={data.page >= data.total_pages || isFetching}
+                      onClick={() => {
+                        const newPage = Math.min(data.total_pages, data.page + 1);
+                        setPage(newPage);
+                        const params = new URLSearchParams(searchParams);
+                        params.set('page', String(newPage));
+                        setSearchParams(params);
+                      }}
+                    >
+                      Next
+                    </AppButton>
+                  </div>
+                </div>
+              ) : undefined
+            }
+          >
+            <div className="flex flex-col gap-2">
+              {hasEditPermission && (
+                <div className={uiCx(uiSpacing.cardPadding, 'pb-0')}>
+                  <AppListCreateItem
+                    label="New Customer"
+                    layout="row"
+                    className="w-full"
+                    onClick={() => setNewCustomerModalOpen(true)}
+                  />
+                </div>
+              )}
+              {(data?.items || []).length > 0 ? (
+                <div className="overflow-x-auto">
+                  <div
+                    className={uiCx(
+                      'grid min-w-[640px] w-full grid-cols-[40fr_10fr_25fr_10fr_15fr] items-center gap-2 border-b border-gray-200 bg-gray-50 px-4 py-2 sm:gap-3 lg:gap-4',
+                      uiTypography.overline,
+                      'normal-case tracking-normal text-gray-700',
+                    )}
+                    role="row"
+                  >
+                    <SortHeader label="Customer" column="customer" sortBy={sortBy} sortDir={sortDir} onSort={setListSort} title="Sort by customer name" />
+                    <SortHeader label="Code" column="code" sortBy={sortBy} sortDir={sortDir} onSort={setListSort} title="Sort by code" />
+                    <SortHeader label="City" column="city" sortBy={sortBy} sortDir={sortDir} onSort={setListSort} title="Sort by city" />
+                    <SortHeader label="Status" column="status" sortBy={sortBy} sortDir={sortDir} onSort={setListSort} title="Sort by status" />
+                    <SortHeader label="Type" column="type" sortBy={sortBy} sortDir={sortDir} onSort={setListSort} title="Sort by type" />
+                  </div>
+                  <div className={uiCx('min-w-[640px] border-t-0', uiBorders.subtle)}>
+                    {listItems.map((c) => (
+                      <ClientRow
+                        key={c.id}
+                        c={c}
+                        onOpen={() => nav(`/customers/${encodeURIComponent(c.id)}`)}
+                      />
+                    ))}
+                  </div>
+                </div>
+              ) : data && data.total === 0 ? (
+                <div className={uiSpacing.cardPadding}>
+                  <AppEmptyState title="No customers found matching your criteria." className="border-0 bg-transparent shadow-none" />
+                </div>
+              ) : null}
+            </div>
+          </AppCard>
+        </LoadingOverlay>
+
+        <FilterBuilderModal
+          isOpen={isFilterModalOpen}
+          onClose={() => setIsFilterModalOpen(false)}
+          onApply={handleApplyFilters}
+          initialRules={currentRules}
+          fields={filterFields}
+          getFieldData={() => null}
+        />
+
+        {newCustomerModalOpen && (
+          <NewCustomerModal
+            onClose={() => setNewCustomerModalOpen(false)}
+            onSuccess={(customerId) => {
+              setNewCustomerModalOpen(false);
+              queryClient.invalidateQueries({ queryKey: ['clients'] });
+              refetch();
+              if (customerId) {
+                nav(`/customers/${encodeURIComponent(customerId)}`);
+              }
+            }}
+          />
+        )}
+      </div>
+    </main>
   );
 }
 
-function ClientRow({ c, statusColorMap, onOpen }:{ c: Client, statusColorMap: Record<string,string>, onOpen: ()=>void }){
-  const avatarUrl = withFileAccessTokenIfNeeded(c.logo_url) || '/ui/assets/placeholders/customer.png';
-  const status = String(c.client_status||'').trim();
-  const color = status ? (statusColorMap[status] || '') : '';
-  const badgeStyle: any = color ? { backgroundColor: color, borderColor: 'transparent', color: '#000' } : {};
+type SortColumn = 'customer' | 'code' | 'city' | 'status' | 'type';
+
+function SortHeader({
+  label,
+  column,
+  sortBy,
+  sortDir,
+  onSort,
+  title,
+}: {
+  label: string;
+  column: SortColumn;
+  sortBy: SortColumn;
+  sortDir: 'asc' | 'desc';
+  onSort: (column: SortColumn, direction?: 'asc' | 'desc') => void;
+  title: string;
+}) {
   return (
-    <div 
-      className="grid grid-cols-[40fr_10fr_25fr_10fr_15fr] gap-2 sm:gap-3 lg:gap-4 items-center px-4 py-3 w-full hover:bg-gray-50 cursor-pointer border-b border-gray-100 last:border-b-0 min-h-[52px]" 
-      onClick={onOpen}
+    <button
+      type="button"
+      onClick={() => onSort(column)}
+      className="flex min-w-0 items-center gap-1 rounded py-0.5 text-left outline-none hover:text-gray-900 focus:outline-none"
+      title={title}
     >
-      {/* Col 1: Customer (avatar + name, address) - vertically centered */}
-      <div className="min-w-0 flex items-center gap-3">
-        <img src={avatarUrl} className="w-10 h-10 rounded-lg border border-gray-200 object-cover flex-shrink-0" alt={c.display_name || c.name || 'Client logo'}/>
-        <div className="min-w-0 flex flex-col justify-center">
-          <div className="text-xs font-semibold text-gray-900 truncate">{c.display_name||c.name||c.id}</div>
-          {c.address_line1 && <div className="text-[10px] text-gray-500 truncate">{String(c.address_line1)}</div>}
+      {label}
+      {sortBy === column ? (sortDir === 'asc' ? ' ↑' : ' ↓') : ''}
+    </button>
+  );
+}
+
+function ClientRow({ c, onOpen }: { c: Client; onOpen: () => void }) {
+  const avatarUrl = withFileAccessTokenIfNeeded(c.logo_url) || '/ui/assets/placeholders/customer.png';
+  const status = String(c.client_status || '').trim();
+
+  return (
+    <div
+      role="button"
+      tabIndex={0}
+      className={uiCx(
+        'grid min-h-[52px] w-full cursor-pointer grid-cols-[40fr_10fr_25fr_10fr_15fr] items-center gap-2 border-b border-gray-100 px-4 py-3 last:border-b-0 hover:bg-gray-50 sm:gap-3 lg:gap-4',
+      )}
+      onClick={onOpen}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          onOpen();
+        }
+      }}
+    >
+      <div className="flex min-w-0 items-center gap-3">
+        <img
+          src={avatarUrl}
+          className={uiCx('h-10 w-10 shrink-0 object-cover', uiRadius.control, uiBorders.subtle)}
+          alt={c.display_name || c.name || 'Client logo'}
+        />
+        <div className="flex min-w-0 flex-col justify-center">
+          <div className={uiCx(uiTypography.sectionTitle, 'truncate text-xs')}>{c.display_name || c.name || c.id}</div>
+          {c.address_line1 ? (
+            <div className={uiCx(uiTypography.helper, 'truncate text-[10px]')}>{String(c.address_line1)}</div>
+          ) : null}
         </div>
       </div>
-      {/* Col 2: Code - vertically centered */}
-      <div className="min-w-0 flex items-center">
-        <span className="text-xs text-gray-700 truncate">{c.code || '—'}</span>
+      <div className="flex min-w-0 items-center">
+        <span className={uiCx(uiTypography.body, 'truncate text-xs')}>{c.code || '—'}</span>
       </div>
-      {/* Col 3: City */}
-      <div className="min-w-0 flex items-center">
-        <span className="text-xs text-gray-600 truncate">{[c.city, c.province].filter(Boolean).join(', ') || '—'}</span>
+      <div className="flex min-w-0 items-center">
+        <span className={uiCx(uiTypography.helper, 'truncate')}>
+          {[c.city, c.province].filter(Boolean).join(', ') || '—'}
+        </span>
       </div>
-      {/* Col 4: Status - vertically centered (code + status group shifted left via pr-8 on row) */}
-      <div className="min-w-0 flex items-center">
-        <span className="inline-flex px-2 py-0.5 rounded-full border text-[10px] font-medium truncate max-w-full" style={badgeStyle}>{status || '—'}</span>
+      <div className="flex min-w-0 items-center">
+        {status ? (
+          <AppBadge variant={getClientStatusBadgeVariant(status)} className="max-w-full truncate">
+            {status}
+          </AppBadge>
+        ) : (
+          <span className={uiTypography.helper}>—</span>
+        )}
       </div>
-      {/* Col 5: Type */}
-      <div className="min-w-0 flex items-center">
-        <span className="inline-flex px-2 py-0.5 rounded-full border border-gray-200 text-[10px] font-medium text-gray-700 bg-gray-50 truncate">{String(c.client_type||'—')}</span>
+      <div className="flex min-w-0 items-center">
+        <AppBadge variant="neutral" className="max-w-full truncate normal-case tracking-normal">
+          {String(c.client_type || '—')}
+        </AppBadge>
       </div>
     </div>
   );

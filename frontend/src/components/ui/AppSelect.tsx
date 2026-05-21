@@ -105,17 +105,58 @@ export function AppSelect({
   const showPlaceholder = !!placeholder && !currentValue;
   const triggerLabel = selected?.label ?? placeholder ?? 'Select…';
 
+  const menuPosition = menuRect
+    ? { top: menuRect.top, left: menuRect.left, width: menuRect.width }
+    : undefined;
+
+  const optionListContent = (
+    <>
+      {!searchable && placeholder ? (
+        <li role="option" aria-selected={!currentValue}>
+          <button
+            type="button"
+            className={uiCx(uiDropdown.option, !currentValue && uiDropdown.optionSelected)}
+            onMouseDown={(e) => e.preventDefault()}
+            onClick={() => {
+              setValue('');
+              closeDropdown();
+            }}
+          >
+            {placeholder}
+          </button>
+        </li>
+      ) : null}
+      {filteredOptions.length === 0 ? (
+        <li className={uiDropdown.optionEmpty}>{emptyMessage}</li>
+      ) : (
+        filteredOptions.map((option) => (
+          <li key={option.value} role="option" aria-selected={currentValue === option.value}>
+            <button
+              type="button"
+              className={uiCx(
+                uiDropdown.option,
+                currentValue === option.value && uiDropdown.optionSelected,
+              )}
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={() => {
+                setValue(option.value);
+                closeDropdown();
+                setSearch('');
+              }}
+            >
+              {option.label}
+            </button>
+          </li>
+        ))
+      )}
+    </>
+  );
+
   const dropdown =
-    open && menuRect ? (
-      <ul
-        id={portalListId}
-        role="listbox"
-        aria-labelledby={id}
-        className={uiDropdown.menu}
-        style={{ top: menuRect.top, left: menuRect.left, width: menuRect.width }}
-      >
-        {searchable ? (
-          <li className="sticky top-0 z-[1] border-b border-gray-100 bg-white px-2.5 py-2">
+    open && menuPosition ? (
+      searchable ? (
+        <div className={uiDropdown.menuSearchable} style={menuPosition}>
+          <div className={uiDropdown.menuSearchHeader}>
             <input
               type="text"
               value={search}
@@ -125,47 +166,22 @@ export function AppSelect({
               className={uiCx(uiDropdown.trigger, 'text-xs')}
               onMouseDown={(e) => e.stopPropagation()}
             />
-          </li>
-        ) : null}
-        {!searchable && placeholder ? (
-          <li role="option" aria-selected={!currentValue}>
-            <button
-              type="button"
-              className={uiCx(uiDropdown.option, !currentValue && uiDropdown.optionSelected)}
-              onMouseDown={(e) => e.preventDefault()}
-              onClick={() => {
-                setValue('');
-                closeDropdown();
-              }}
-            >
-              {placeholder}
-            </button>
-          </li>
-        ) : null}
-        {filteredOptions.length === 0 ? (
-          <li className={uiDropdown.optionEmpty}>{emptyMessage}</li>
-        ) : (
-          filteredOptions.map((option) => (
-            <li key={option.value} role="option" aria-selected={currentValue === option.value}>
-              <button
-                type="button"
-                className={uiCx(
-                  uiDropdown.option,
-                  currentValue === option.value && uiDropdown.optionSelected,
-                )}
-                onMouseDown={(e) => e.preventDefault()}
-                onClick={() => {
-                  setValue(option.value);
-                  closeDropdown();
-                  setSearch('');
-                }}
-              >
-                {option.label}
-              </button>
-            </li>
-          ))
-        )}
-      </ul>
+          </div>
+          <ul id={portalListId} role="listbox" aria-labelledby={id} className={uiDropdown.menuOptionsList}>
+            {optionListContent}
+          </ul>
+        </div>
+      ) : (
+        <ul
+          id={portalListId}
+          role="listbox"
+          aria-labelledby={id}
+          className={uiDropdown.menu}
+          style={menuPosition}
+        >
+          {optionListContent}
+        </ul>
+      )
     ) : null;
 
   const triggerClasses = uiCx(
