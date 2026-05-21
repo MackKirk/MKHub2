@@ -1107,7 +1107,7 @@ function PermissionTemplatesSection() {
             ...cat,
             id: 'construction',
             name: 'construction',
-            label: 'Construction',
+            label: 'Construction (Sales)',
             description: cat.description || 'Permissions for Business area. Blocking access blocks all sub-permissions.',
             permissions: [...constructionPerms, ...legacyPerms],
           });

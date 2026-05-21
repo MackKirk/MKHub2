@@ -90,7 +90,7 @@ export function isLegacyProjectPermissionKey(key: string): boolean {
   return key.startsWith('business:projects:');
 }
 
-/** Construction line permissions (Sales in sidebar). */
+/** Construction line permissions (Construction (Sales) in sidebar). */
 export function isConstructionProjectPermissionKey(key: string): boolean {
   return key.startsWith('business:construction:');
 }

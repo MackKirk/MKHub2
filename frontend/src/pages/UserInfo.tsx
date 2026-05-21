@@ -1010,7 +1010,7 @@ const UserPermissions = forwardRef<UserPermissionsRef, { userId: string; onDirty
         <div className="space-y-6">
           {(() => {
             // Process categories and reorganize them to match sidebar language:
-            // Construction, Repairs & Maintenance, Business, Quotations.
+            // Construction (Sales), Repairs & Maintenance, Business, Quotations.
             const processedCategories: any[] = [];
             let businessCategory: any = null;
             let inventoryCategory: any = null;
@@ -1030,7 +1030,7 @@ const UserPermissions = forwardRef<UserPermissionsRef, { userId: string; onDirty
                     category: {
                       ...cat.category,
                       name: 'construction',
-                      label: 'Construction',
+                      label: 'Construction (Sales)',
                       id: 'construction',
                     },
                     permissions: constructionWithShared,
