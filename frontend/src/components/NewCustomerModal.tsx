@@ -6,8 +6,27 @@ import { useQuery } from '@tanstack/react-query';
 import { useConfirm } from '@/components/ConfirmProvider';
 import ImagePicker from '@/components/ImagePicker';
 import AddressAutocomplete from '@/components/AddressAutocomplete';
-import OverlayPortal from '@/components/OverlayPortal';
 import { Link } from 'react-router-dom';
+import {
+  employeeHasSalesOrEstimatingDepartment,
+  mapEmployeeToAppUserSelect,
+} from '@/lib/clientUi';
+import {
+  AppButton,
+  AppControlLabelRow,
+  AppFieldHint,
+  AppFormModal,
+  AppInput,
+  AppSectionHeader,
+  AppSelect,
+  AppUserSelect,
+  uiBorders,
+  uiCx,
+  uiLayout,
+  uiRadius,
+  uiSpacing,
+  uiTypography,
+} from '@/components/ui';
 
 const DUPLICATE_STOP_WORDS = new Set(['the', 'and', 'for', 'ltd', 'inc', 'llc', 'corp', 'co', 'lp', 'llp', 'plc', 'sa', 'bv', 'nv', 'of', 'to', 'in']);
 
@@ -299,385 +318,656 @@ export default function NewCustomerModal({ onClose, onSuccess }: NewCustomerModa
   const stepSubtitle =
     step === 1 ? 'Display and legal name' : step === 2 ? 'Company and address' : 'Contacts';
 
+  const controlInputClass = uiCx('w-full text-sm', uiRadius.control, uiBorders.input, uiSpacing.controlX, 'py-2');
+
+  const typeOptions = useMemo(
+    () => sortByLabel(types, (t: any) => (t.label || '').toString()).map((t: any) => ({ value: t.label, label: t.label })),
+    [types],
+  );
+  const leadSourceOptions = useMemo(
+    () => [
+      { value: '', label: 'Select...' },
+      ...sortByLabel(leadSources, (ls: any) => (ls?.label ?? ls?.name ?? String(ls)).toString()).map((ls: any) => {
+        const val = ls?.value ?? ls?.id ?? ls?.label ?? ls?.name ?? String(ls);
+        const label = ls?.label ?? ls?.name ?? String(ls);
+        return { value: String(val), label: String(label) };
+      }),
+    ],
+    [leadSources],
+  );
+  const estimatorUsers = useMemo(
+    () => (employees || []).filter(employeeHasSalesOrEstimatingDepartment).map((emp) => mapEmployeeToAppUserSelect(emp)),
+    [employees],
+  );
+
+  useEffect(() => {
+    if (!form.estimator_id || employees === undefined) return;
+    const allowed = new Set(estimatorUsers.map((u) => u.id));
+    if (!allowed.has(String(form.estimator_id))) {
+      setForm((s: any) => ({ ...s, estimator_id: '' }));
+    }
+  }, [employees, estimatorUsers, form.estimator_id]);
+  const countryOptions = useMemo(
+    () => [
+      { value: '', label: countriesLoaded ? 'Select...' : 'Loading...' },
+      ...allCountries.map((c) => ({ value: c, label: c })),
+    ],
+    [allCountries, countriesLoaded],
+  );
+  const stateOptions = useMemo(
+    () => [
+      { value: '', label: loadingStates ? 'Loading...' : 'Select...' },
+      ...allStates.map((s) => ({ value: s, label: s })),
+    ],
+    [allStates, loadingStates],
+  );
+  const cityOptions = useMemo(
+    () => [
+      { value: '', label: loadingCities ? 'Loading...' : 'Select...' },
+      ...allCities.map((ct) => ({ value: ct, label: ct })),
+    ],
+    [allCities, loadingCities],
+  );
+
+  const stepPillClass = (n: number) =>
+    uiCx(
+      'rounded-full px-2 py-1 text-[10px] font-medium',
+      step === n ? 'bg-gray-900 text-white' : 'bg-gray-200 text-gray-600',
+    );
+
+  const modalFooter = (
+    <div className={uiCx(uiLayout.actionsRow, 'w-full flex-wrap justify-between gap-3')}>
+      <span className={uiTypography.helper}>{step === 1 ? 'Step 1 of 3' : step === 2 ? 'Step 2 of 3' : 'Step 3 of 3'}</span>
+      <div className={uiCx(uiLayout.actionsRow, 'justify-end')}>
+        <AppButton
+          type="button"
+          variant="secondary"
+          size="sm"
+          onClick={async () => {
+            const ok = await confirm({ title: 'Cancel', message: 'Discard this customer draft and close?' });
+            if (!ok) return;
+            resetForm();
+            onClose();
+          }}
+        >
+          Cancel
+        </AppButton>
+        {step > 1 && (
+          <AppButton type="button" variant="secondary" size="sm" onClick={prev}>
+            Back
+          </AppButton>
+        )}
+        {step === 1 && (
+          <AppButton
+            type="button"
+            size="sm"
+            disabled={!canSubmit || checkingDuplicates || !!(duplicateMatches && duplicateMatches.length > 0)}
+            loading={checkingDuplicates}
+            onClick={() => void goNextFromStep1()}
+          >
+            {checkingDuplicates ? 'Checking…' : 'Next'}
+          </AppButton>
+        )}
+        {step === 2 && (
+          <AppButton type="button" size="sm" onClick={goToContactsStep}>
+            Next
+          </AppButton>
+        )}
+        {step === 3 && (
+          <AppButton
+            type="button"
+            size="sm"
+            disabled={isCreating}
+            loading={isCreating}
+            onClick={async () => {
+              if (!canSubmit || isCreating) {
+                toast.error('Missing required fields');
+                return;
+              }
+              if (!contacts.length) {
+                const ok = await confirm({
+                  title: 'No contacts added',
+                  message: 'It is recommended to add at least one contact. Continue without contacts?',
+                });
+                if (!ok) return;
+              }
+              try {
+                setIsCreating(true);
+                const nameValue = (form.display_name || form.name || '').trim();
+                if (!nameValue) {
+                  toast.error('Display name is required');
+                  setIsCreating(false);
+                  return;
+                }
+                const payload: any = {
+                  ...form,
+                  name: nameValue,
+                  display_name: form.display_name || nameValue,
+                  client_type: form.client_type || 'Customer',
+                  client_status: 'Active',
+                };
+                const fieldsToRemove = [
+                  'email',
+                  'phone',
+                  'payment_terms_id',
+                  'tax_number',
+                  'billing_email',
+                  'po_required',
+                  'use_diff_billing',
+                  'billing_address_line1',
+                  'billing_address_line2',
+                  'billing_city',
+                  'billing_province',
+                  'billing_postal_code',
+                  'billing_country',
+                ];
+                fieldsToRemove.forEach((field) => {
+                  delete payload[field];
+                });
+                Object.keys(payload).forEach((key) => {
+                  if (payload[key] === '') {
+                    payload[key] = null;
+                  }
+                  if (key === 'estimator_id') {
+                    if (!payload[key] || payload[key] === '') {
+                      payload[key] = null;
+                    }
+                  }
+                });
+                const created: any = await api('POST', '/clients', payload);
+                if (!created?.id) {
+                  toast.error('Create failed');
+                  setIsCreating(false);
+                  return;
+                }
+                if (contacts.length) {
+                  for (const c of contacts) {
+                    try {
+                      const contactPayload: any = {
+                        name: c.name || 'Contact',
+                        email: c.email || null,
+                        phone: c.phone || null,
+                        role_title: c.role_title || null,
+                        department: c.department || null,
+                        is_primary: !!c.is_primary,
+                      };
+                      const contactCreated: any = await api(
+                        'POST',
+                        `/clients/${encodeURIComponent(created.id)}/contacts`,
+                        contactPayload,
+                      );
+                      if (c.photo_blob && contactCreated?.id) {
+                        try {
+                          const up: any = await api('POST', '/files/upload', {
+                            project_id: null,
+                            client_id: created.id,
+                            employee_id: null,
+                            category_id: 'contact-photo',
+                            original_name: `contact-${contactCreated.id}.jpg`,
+                            content_type: 'image/jpeg',
+                          });
+                          await fetch(up.upload_url, {
+                            method: 'PUT',
+                            headers: { 'Content-Type': 'image/jpeg', 'x-ms-blob-type': 'BlockBlob' },
+                            body: c.photo_blob,
+                          });
+                          const conf: any = await api('POST', '/files/confirm', {
+                            key: up.key,
+                            size_bytes: c.photo_blob.size,
+                            checksum_sha256: 'na',
+                            content_type: 'image/jpeg',
+                          });
+                          await api(
+                            'POST',
+                            `/clients/${encodeURIComponent(created.id)}/files?file_object_id=${encodeURIComponent(conf.id)}&category=${encodeURIComponent('contact-photo-' + contactCreated.id)}&original_name=${encodeURIComponent('contact-' + contactCreated.id + '.jpg')}`,
+                          );
+                        } catch (_e) {
+                          console.error('Failed to upload contact photo', _e);
+                        }
+                      }
+                    } catch (_e) {
+                      console.error('Failed to create contact', _e);
+                    }
+                  }
+                }
+                toast.success('Customer created');
+                resetForm();
+                onSuccess(created.id);
+              } catch (_e: any) {
+                const errorMsg = _e?.message || _e?.detail || 'Failed to create customer';
+                toast.error(errorMsg);
+                console.error('Create customer error:', _e);
+                setIsCreating(false);
+              }
+            }}
+          >
+            {isCreating ? 'Creating...' : 'Create'}
+          </AppButton>
+        )}
+      </div>
+    </div>
+  );
+
+  const stepIndicators = (
+    <div className={uiCx(uiLayout.actionsRow, uiTypography.helper, 'text-[10px] font-medium')}>
+      <span className={stepPillClass(1)}>1</span>
+      <span className="text-gray-400">→</span>
+      <span className={stepPillClass(2)}>2</span>
+      <span className="text-gray-400">→</span>
+      <span className={stepPillClass(3)}>3</span>
+    </div>
+  );
+
   return (
-    <OverlayPortal><div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center overflow-y-auto p-4">
-      <div className="w-[900px] max-w-[95vw] max-h-[90vh] bg-gray-100 rounded-xl overflow-hidden flex flex-col border border-gray-200 shadow-xl">
-        {/* Title bar - same style as New Opportunity (ProjectNew) */}
-        <div className="rounded-t-xl border-b border-gray-200 bg-white p-4 flex-shrink-0">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <button
-                onClick={onClose}
-                className="p-1.5 rounded hover:bg-gray-100 transition-colors flex items-center justify-center"
-                title="Close"
-              >
-                <svg className="w-4 h-4 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
-                </svg>
-              </button>
-              <div>
-                <div className="text-sm font-semibold text-gray-900">New Customer</div>
-                <div className="text-xs text-gray-500 mt-0.5">{stepSubtitle}</div>
-              </div>
-            </div>
-            <div className="inline-flex items-center gap-1.5 text-[10px] font-medium text-gray-500 flex-wrap justify-end">
-              <span className={step === 1 ? 'px-2 py-1 rounded-full bg-gray-900 text-white' : 'px-2 py-1 rounded-full bg-gray-200 text-gray-600'}>1</span>
-              <span className="text-gray-400">→</span>
-              <span className={step === 2 ? 'px-2 py-1 rounded-full bg-gray-900 text-white' : 'px-2 py-1 rounded-full bg-gray-200 text-gray-600'}>2</span>
-              <span className="text-gray-400">→</span>
-              <span className={step === 3 ? 'px-2 py-1 rounded-full bg-gray-900 text-white' : 'px-2 py-1 rounded-full bg-gray-200 text-gray-600'}>3</span>
-            </div>
-          </div>
-        </div>
-        <div className="overflow-y-auto flex-1 p-4">
-          <div className="rounded-xl border bg-white p-4">
+    <>
+      <AppFormModal
+        open
+        onClose={onClose}
+        formWidth="wide"
+        dialogClassName="!max-w-[800px]"
+        dialogClassNameExpanded="!max-w-[calc(800px+1rem+16rem+2rem)]"
+        title="New Customer"
+        description={stepSubtitle}
+        headerExtra={stepIndicators}
+        quickInfo={
+          <>
+            <p>Three steps: company name, company details and address, then optional contacts.</p>
+            <p>We check for similar customers before you continue past step 1.</p>
+            <p>Estimator lists only users in Sales or Sales / Estimating.</p>
+          </>
+        }
+        footer={modalFooter}
+      >
           {step === 1 && (
-            <div className="space-y-4">
-              <div>
-                <div className="flex items-center gap-2"><h4 className="text-sm font-semibold text-gray-900">Company name</h4></div>
-                <div className="text-[10px] text-gray-500 mt-0.5 mb-3">Display name and legal name. We check for similar customers before the next step.</div>
-                <div className="grid md:grid-cols-2 gap-3">
-                  <div className="md:col-span-2"><label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">Display name <span className="text-red-600">*</span></label><input className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" value={form.display_name} onChange={e => setForm((s: any) => ({ ...s, display_name: e.target.value }))} autoComplete="organization" /></div>
-                  <div className="md:col-span-2"><label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">Legal name <span className="text-red-600">*</span></label><input className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" value={form.legal_name} onChange={e => setForm((s: any) => ({ ...s, legal_name: e.target.value }))} /></div>
-                </div>
+            <div className={uiSpacing.sectionStack}>
+              <AppSectionHeader
+                title="Company name"
+                description="Display name and legal name. We check for similar customers before the next step."
+              />
+              <div className="grid gap-3 md:grid-cols-2">
+                <AppInput
+                  className="md:col-span-2"
+                  label="Display name *"
+                  value={form.display_name}
+                  onChange={(e) => setForm((s: any) => ({ ...s, display_name: e.target.value }))}
+                  autoComplete="organization"
+                  fieldHint="Display name\n\nThe name shown in lists and day-to-day use."
+                />
+                <AppInput
+                  className="md:col-span-2"
+                  label="Legal name *"
+                  value={form.legal_name}
+                  onChange={(e) => setForm((s: any) => ({ ...s, legal_name: e.target.value }))}
+                  fieldHint="Legal name\n\nRegistered company name used on contracts and invoices."
+                />
               </div>
               {duplicateMatches && duplicateMatches.length > 0 && (
-                <div className="rounded-lg border border-amber-300 bg-amber-50 p-4 space-y-3">
-                  <div className="text-sm font-semibold text-amber-900">Similar customers already in the system</div>
-                  <p className="text-xs text-amber-950/90">At least one existing customer matches a word in the display or legal name. Review the list below. You can go back to change the name, or continue if this is a different company.</p>
-                  <ul className="max-h-48 overflow-y-auto space-y-2 text-sm border border-amber-200/80 rounded-md bg-white p-2">
+                <div className={uiCx(uiRadius.control, 'space-y-3 border border-amber-300 bg-amber-50 p-4')}>
+                  <div className={uiCx(uiTypography.sectionTitle, 'text-amber-900')}>Similar customers already in the system</div>
+                  <p className={uiCx(uiTypography.helper, 'text-amber-950/90')}>
+                    At least one existing customer matches a word in the display or legal name. Review the list below. You can go back to change the name, or continue if this is a different company.
+                  </p>
+                  <ul className={uiCx(uiRadius.control, 'max-h-48 space-y-2 overflow-y-auto border border-amber-200/80 bg-white p-2 text-sm')}>
                     {duplicateMatches.map((c) => (
-                      <li key={c.id} className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1 py-1.5 border-b border-amber-100 last:border-0">
+                      <li key={c.id} className="flex flex-col gap-1 border-b border-amber-100 py-1.5 last:border-0 sm:flex-row sm:items-center sm:justify-between">
                         <div>
-                          <div className="font-medium text-gray-900">{c.display_name || c.name || '—'}</div>
-                          <div className="text-xs text-gray-600">{c.legal_name ? <span>Legal: {c.legal_name}</span> : null}{c.legal_name && c.city ? ' · ' : ''}{c.city ? <span>{c.city}</span> : null}{c.client_status ? <span className="text-gray-500"> · {c.client_status}</span> : null}</div>
+                          <div className={uiTypography.sectionTitle}>{c.display_name || c.name || '—'}</div>
+                          <div className={uiTypography.helper}>
+                            {c.legal_name ? <span>Legal: {c.legal_name}</span> : null}
+                            {c.legal_name && c.city ? ' · ' : ''}
+                            {c.city ? <span>{c.city}</span> : null}
+                            {c.client_status ? <span className="text-gray-500"> · {c.client_status}</span> : null}
+                          </div>
                         </div>
-                        <Link to={`/customers/${encodeURIComponent(c.id)}`} target="_blank" rel="noreferrer" className="text-xs text-brand-red hover:underline shrink-0">View customer</Link>
+                        <Link to={`/customers/${encodeURIComponent(c.id)}`} target="_blank" rel="noreferrer" className="shrink-0 text-xs text-brand-red hover:underline">
+                          View customer
+                        </Link>
                       </li>
                     ))}
                   </ul>
-                  <div className="flex flex-wrap gap-2 pt-1">
-                    <button type="button" onClick={() => setDuplicateMatches(null)} className="px-3 py-1.5 rounded-lg text-sm font-medium text-gray-800 border border-amber-400/80 bg-white hover:bg-amber-100/80">Cancel</button>
-                    <button type="button" onClick={continuePastDuplicates} className="px-3 py-1.5 rounded-lg text-sm font-medium bg-brand-red text-white hover:bg-[#aa1212]">Continue anyway</button>
+                  <div className={uiCx(uiLayout.actionsRow, 'pt-1')}>
+                    <AppButton type="button" variant="secondary" size="sm" onClick={() => setDuplicateMatches(null)}>
+                      Cancel
+                    </AppButton>
+                    <AppButton type="button" size="sm" onClick={continuePastDuplicates}>
+                      Continue anyway
+                    </AppButton>
                   </div>
                 </div>
               )}
             </div>
           )}
           {step === 2 && (
-            <div className="space-y-4">
-              <div>
-                <div className="flex items-center gap-2"><h4 className="text-sm font-semibold text-gray-900">Company</h4></div>
-                <div className="text-[10px] text-gray-500 mt-0.5 mb-2">Core company identity details.</div>
-                <div className="grid md:grid-cols-2 gap-3">
-                  <div>
-                    <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">Type</label>
-                    <select className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" value={form.client_type} onChange={e => setForm((s: any) => ({ ...s, client_type: e.target.value }))}>
-                      {sortByLabel(types, (t: any) => (t.label || '').toString()).map((t: any) => <option key={t.label} value={t.label}>{t.label}</option>)}
-                    </select>
-                  </div>
-                  <div><label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">Phone</label><input className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" value={form.phone} onChange={e => setForm((s: any) => ({ ...s, phone: formatPhone(e.target.value) }))} /></div>
-                  <div>
-                    <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">Lead source</label>
-                    <select className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" value={form.lead_source || ''} onChange={e => setForm((s: any) => ({ ...s, lead_source: e.target.value }))}>
-                      <option value="">Select...</option>
-                      {sortByLabel(leadSources, (ls: any) => (ls?.label ?? ls?.name ?? String(ls)).toString()).map((ls: any) => { const val = ls?.value ?? ls?.id ?? ls?.label ?? ls?.name ?? String(ls); const label = ls?.label ?? ls?.name ?? String(ls); return <option key={String(val)} value={String(val)}>{label}</option>; })}
-                    </select>
-                  </div>
-                  <div>
-                    <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">Estimator</label>
-                    <select className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" value={form.estimator_id || ''} onChange={e => setForm((s: any) => ({ ...s, estimator_id: e.target.value || null }))}>
-                      <option value="">Select...</option>
-                      {sortByLabel(employees || [], (emp: any) => (emp.name || emp.username || '').toString()).map((emp: any) => <option key={emp.id} value={emp.id}>{emp.name || emp.username}</option>)}
-                    </select>
-                  </div>
-                </div>
+            <div className={uiSpacing.sectionStack}>
+              <AppSectionHeader title="Company" description="Core company identity details." />
+              <div className="grid gap-3 md:grid-cols-2">
+                <AppSelect
+                  label="Type"
+                  value={form.client_type}
+                  onChange={(e) => setForm((s: any) => ({ ...s, client_type: e.target.value }))}
+                  options={typeOptions}
+                  searchable
+                  placeholder="Search or select type…"
+                  fieldHint="Type\n\nCustomer classification."
+                />
+                <AppInput
+                  label="Phone"
+                  value={form.phone}
+                  onChange={(e) => setForm((s: any) => ({ ...s, phone: formatPhone(e.target.value) }))}
+                  fieldHint="Phone\n\nMain company phone number."
+                />
+                <AppSelect
+                  label="Lead source"
+                  value={form.lead_source || ''}
+                  onChange={(e) => setForm((s: any) => ({ ...s, lead_source: e.target.value }))}
+                  options={leadSourceOptions}
+                  searchable
+                  placeholder="Search or select lead source…"
+                  fieldHint="Lead source\n\nWhere did this lead originate?"
+                />
+                <AppUserSelect
+                  label="Estimator"
+                  value={form.estimator_id || ''}
+                  onChange={(id) => setForm((s: any) => ({ ...s, estimator_id: id || null }))}
+                  users={estimatorUsers}
+                  placeholder="Search or select user…"
+                  showSelectedChip={false}
+                  emptyMessage="No users in Sales / Estimating."
+                  fieldHint="Estimator\n\nOptional. Users from Sales / Estimating department."
+                />
               </div>
-              <div>
-                <div className="flex items-center gap-2"><h4 className="text-sm font-semibold text-gray-900">Address</h4></div>
-                <div className="text-[10px] text-gray-500 mt-0.5 mb-2">Primary mailing and location address.</div>
-                <div className="grid md:grid-cols-2 gap-3">
-                  <div className="md:col-span-2">
-                    <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">Address line 1</label>
-                    <AddressAutocomplete
-                      value={form.address_line1}
-                      onChange={(value) => setForm((s: any) => ({ ...s, address_line1: value }))}
-                      onAddressSelect={(address) => {
-                        setForm((s: any) => ({
-                          ...s,
-                          address_line1: address.address_line1 || s.address_line1,
-                          address_line2: address.address_line2 !== undefined ? address.address_line2 : s.address_line2,
-                          city: address.city !== undefined ? address.city : s.city,
-                          province: address.province !== undefined ? address.province : s.province,
-                          country: address.country !== undefined ? address.country : s.country,
-                          postal_code: address.postal_code !== undefined ? address.postal_code : s.postal_code,
-                        }));
-                      }}
-                      className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"
-                    />
-                  </div>
-                  <div className="md:col-span-2">
-                    <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">Address line 2</label>
-                    <AddressAutocomplete
-                      value={form.address_line2}
-                      onChange={(value) => setForm((s: any) => ({ ...s, address_line2: value }))}
-                      className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"
-                    />
-                  </div>
-                  <div>
-                    <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">Country</label>
-                    <select className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" value={form.country || ''} onChange={(e) => setForm((s: any) => ({ ...s, country: e.target.value }))} disabled={!countriesLoaded}>
-                      <option value="">{countriesLoaded ? 'Select...' : 'Loading...'}</option>
-                      {allCountries.map((c) => (
-                        <option key={c} value={c}>{c}</option>
-                      ))}
-                    </select>
-                  </div>
-                  <div>
-                    <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">Province/State</label>
-                    <select className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" value={form.province || ''} onChange={(e) => setForm((s: any) => ({ ...s, province: e.target.value }))} disabled={!form.country || loadingStates}>
-                      <option value="">{loadingStates ? 'Loading...' : 'Select...'}</option>
-                      {allStates.map((s) => (
-                        <option key={s} value={s}>{s}</option>
-                      ))}
-                    </select>
-                  </div>
-                  <div>
-                    <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">City</label>
-                    <select className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" value={form.city || ''} onChange={(e) => setForm((s: any) => ({ ...s, city: e.target.value }))} disabled={!form.country || loadingCities}>
-                      <option value="">{loadingCities ? 'Loading...' : 'Select...'}</option>
-                      {allCities.map((ct) => (
-                        <option key={ct} value={ct}>{ct}</option>
-                      ))}
-                    </select>
-                  </div>
-                  <div>
-                    <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">Postal code</label>
-                    <input className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" value={form.postal_code} onChange={e => setForm((s: any) => ({ ...s, postal_code: e.target.value }))} />
-                  </div>
+              <AppSectionHeader title="Address" description="Primary mailing and location address." />
+              <div className="grid gap-3 md:grid-cols-2">
+                <div className="md:col-span-2 space-y-1.5">
+                  <AppControlLabelRow
+                    label="Address line 1"
+                    fieldHint={
+                      <AppFieldHint hint="Address line 1\n\nStreet address. Suggestions appear as you type." />
+                    }
+                  />
+                  <AddressAutocomplete
+                    value={form.address_line1}
+                    onChange={(value) => setForm((s: any) => ({ ...s, address_line1: value }))}
+                    onAddressSelect={(address) => {
+                      setForm((s: any) => ({
+                        ...s,
+                        address_line1: address.address_line1 || s.address_line1,
+                        address_line2: address.address_line2 !== undefined ? address.address_line2 : s.address_line2,
+                        city: address.city !== undefined ? address.city : s.city,
+                        province: address.province !== undefined ? address.province : s.province,
+                        country: address.country !== undefined ? address.country : s.country,
+                        postal_code: address.postal_code !== undefined ? address.postal_code : s.postal_code,
+                      }));
+                    }}
+                    className={controlInputClass}
+                  />
                 </div>
+                <div className="md:col-span-2 space-y-1.5">
+                  <AppControlLabelRow
+                    label="Address line 2"
+                    fieldHint={
+                      <AppFieldHint hint="Address line 2\n\nSuite, unit, or building (optional)." />
+                    }
+                  />
+                  <AddressAutocomplete
+                    value={form.address_line2}
+                    onChange={(value) => setForm((s: any) => ({ ...s, address_line2: value }))}
+                    className={controlInputClass}
+                  />
+                </div>
+                <AppSelect
+                  label="Country"
+                  value={form.country || ''}
+                  onChange={(e) => setForm((s: any) => ({ ...s, country: e.target.value }))}
+                  disabled={!countriesLoaded}
+                  options={countryOptions}
+                  searchable
+                  placeholder="Search or select country…"
+                  fieldHint="Country\n\nCountry or region for the primary address."
+                />
+                <AppSelect
+                  label="Province/State"
+                  value={form.province || ''}
+                  onChange={(e) => setForm((s: any) => ({ ...s, province: e.target.value }))}
+                  disabled={!form.country || loadingStates}
+                  options={stateOptions}
+                  searchable
+                  placeholder="Search or select province…"
+                  fieldHint="Province/State\n\nState, province, or region."
+                />
+                <AppSelect
+                  label="City"
+                  value={form.city || ''}
+                  onChange={(e) => setForm((s: any) => ({ ...s, city: e.target.value }))}
+                  disabled={!form.country || loadingCities}
+                  options={cityOptions}
+                  searchable
+                  placeholder="Search or select city…"
+                  fieldHint="City\n\nCity or locality."
+                />
+                <AppInput
+                  label="Postal code"
+                  value={form.postal_code}
+                  onChange={(e) => setForm((s: any) => ({ ...s, postal_code: e.target.value }))}
+                  fieldHint="Postal code\n\nZIP or postal code."
+                />
               </div>
             </div>
           )}
           {step === 3 && (
-            <div className="space-y-3">
-              <div className="flex items-center justify-between">
-                <div>
-                  <div className="text-sm font-semibold text-gray-900">Contacts</div>
-                  <div className="text-[10px] text-gray-500 mt-0.5">Add one or more contacts now (optional)</div>
-                </div>
-                <button onClick={() => setContactModalOpen(true)} className="px-3 py-1.5 rounded bg-brand-red text-white">Add Contact</button>
-              </div>
-              <div className="grid md:grid-cols-2 gap-3">
+            <div className={uiSpacing.sectionStack}>
+              <AppSectionHeader
+                title="Contacts"
+                description="Add one or more contacts now (optional)"
+                action={
+                  <AppButton type="button" size="sm" onClick={() => setContactModalOpen(true)}>
+                    Add Contact
+                  </AppButton>
+                }
+              />
+              <div className="grid gap-3 md:grid-cols-2">
                 {(contacts || []).map((c, i) => (
-                  <div key={i} className="rounded border p-3 text-sm flex items-start gap-3">
+                  <div key={i} className={uiCx(uiRadius.control, uiBorders.subtle, 'flex items-start gap-3 p-3 text-sm')}>
                     {c.photo_preview ? (
-                      <img src={c.photo_preview} className="w-16 h-16 object-cover rounded border" alt={c.name || 'Contact'} />
+                      <img src={c.photo_preview} className={uiCx('h-16 w-16 object-cover', uiRadius.control, uiBorders.subtle)} alt={c.name || 'Contact'} />
                     ) : (
-                      <div className="w-16 h-16 rounded bg-gray-200 grid place-items-center text-lg font-bold text-gray-600 flex-shrink-0">{(c.name || '?').slice(0, 2).toUpperCase()}</div>
-                    )}
-                    <div className="flex-1">
-                      <div className="font-semibold flex items-center gap-2">{c.name || '(No name)'} {c.is_primary && <span className="text-[11px] bg-green-50 text-green-700 border border-green-200 rounded-full px-2">Primary</span>}</div>
-                      <div className="text-gray-600">{c.role_title || ''} {c.department ? `· ${c.department}` : ''}</div>
-                      <div className="text-gray-700 mt-1">{[c.email, c.phone].filter(Boolean).join(' · ') || '-'}</div>
-                    </div>
-                    <div className="flex-shrink-0">
-                      <div className="space-x-2">
-                        {!c.is_primary && <button onClick={() => {
-                          setContacts(arr => arr.map((x, idx) => ({ ...x, is_primary: idx === i })));
-                        }} className="px-2 py-1 rounded bg-gray-100">Set Primary</button>}
-                        <button onClick={() => setContacts(arr => arr.filter((_, idx) => idx !== i))} className="px-2 py-1 rounded bg-gray-100">Delete</button>
+                      <div className={uiCx('grid h-16 w-16 shrink-0 place-items-center bg-gray-200 text-lg font-bold text-gray-600', uiRadius.control)}>
+                        {(c.name || '?').slice(0, 2).toUpperCase()}
                       </div>
+                    )}
+                    <div className="min-w-0 flex-1">
+                      <div className={uiCx(uiTypography.sectionTitle, 'flex flex-wrap items-center gap-2')}>
+                        {c.name || '(No name)'}
+                        {c.is_primary && (
+                          <span className={uiCx(uiRadius.badge, 'border border-green-200 bg-green-50 px-2 text-[11px] text-green-700')}>Primary</span>
+                        )}
+                      </div>
+                      <div className={uiTypography.helper}>
+                        {c.role_title || ''} {c.department ? `· ${c.department}` : ''}
+                      </div>
+                      <div className={uiCx(uiTypography.body, 'mt-1')}>{[c.email, c.phone].filter(Boolean).join(' · ') || '-'}</div>
+                    </div>
+                    <div className={uiCx(uiLayout.actionsRow, 'shrink-0')}>
+                      {!c.is_primary && (
+                        <AppButton
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => setContacts((arr) => arr.map((x, idx) => ({ ...x, is_primary: idx === i })))}
+                        >
+                          Set Primary
+                        </AppButton>
+                      )}
+                      <AppButton type="button" variant="ghost" size="sm" onClick={() => setContacts((arr) => arr.filter((_, idx) => idx !== i))}>
+                        Delete
+                      </AppButton>
                     </div>
                   </div>
                 ))}
-                {(!contacts || !contacts.length) && <div className="text-sm text-gray-600">No contacts added yet.</div>}
+                {(!contacts || !contacts.length) && <p className={uiTypography.helper}>No contacts added yet.</p>}
               </div>
             </div>
           )}
-          </div>
-        </div>
-        <div className="flex-shrink-0 px-4 py-4 border-t border-gray-200 bg-white flex items-center justify-between gap-3 rounded-b-xl">
-          <div className="text-xs text-gray-500">{step === 1 ? 'Step 1 of 3' : step === 2 ? 'Step 2 of 3' : 'Step 3 of 3'}</div>
-          <div className="flex items-center gap-2">
-          <button onClick={async () => {
-            const ok = await confirm({ title: 'Cancel', message: 'Discard this customer draft and close?' });
-            if (!ok) return;
-            resetForm();
-            onClose();
-          }} className="px-3 py-1.5 rounded-lg text-sm font-medium text-gray-700 border border-gray-200 hover:bg-gray-50">Cancel</button>
-            {step > 1 && <button className="px-3 py-1.5 rounded-lg text-sm font-medium text-gray-700 border border-gray-200 hover:bg-gray-50" onClick={prev}>Back</button>}
-            {step === 1 && (
-              <button
-                type="button"
-                disabled={!canSubmit || checkingDuplicates || !!(duplicateMatches && duplicateMatches.length > 0)}
-                onClick={() => void goNextFromStep1()}
-                className="px-3 py-1.5 rounded-lg text-sm font-medium bg-brand-red text-white hover:bg-[#aa1212] disabled:opacity-50"
-              >
-                {checkingDuplicates ? 'Checking…' : 'Next'}
-              </button>
-            )}
-            {step === 2 && (
-              <button type="button" onClick={goToContactsStep} className="px-3 py-1.5 rounded-lg text-sm font-medium bg-brand-red text-white hover:bg-[#aa1212]">Next</button>
-            )}
-            {step === 3 && (
-              <button onClick={async () => {
-                if (!canSubmit || isCreating) { toast.error('Missing required fields'); return; }
-                if (!contacts.length) {
-                  const ok = await confirm({ title: 'No contacts added', message: 'It is recommended to add at least one contact. Continue without contacts?' });
-                  if (!ok) return;
-                }
-                try {
-                  setIsCreating(true);
-                  // Ensure name is always a non-empty string
-                  const nameValue = (form.display_name || form.name || '').trim();
-                  if (!nameValue) {
-                    toast.error('Display name is required');
-                    setIsCreating(false);
-                    return;
-                  }
-                  const payload: any = {
-                    ...form,
-                    name: nameValue,
-                    display_name: form.display_name || nameValue,
-                    client_type: form.client_type || 'Customer',
-                    client_status: 'Active',
-                  };
-                  const fieldsToRemove = [
-                    'email', 'phone', 'payment_terms_id',
-                    'tax_number', 'billing_email', 'po_required', 'use_diff_billing',
-                    'billing_address_line1', 'billing_address_line2', 'billing_city', 'billing_province',
-                    'billing_postal_code', 'billing_country',
-                  ];
-                  fieldsToRemove.forEach((field) => {
-                    delete payload[field];
-                  });
+      </AppFormModal>
 
-                  // Remove empty strings and convert to null for optional fields
-                  // Also handle UUID fields that might be empty strings
-                  Object.keys(payload).forEach(key => {
-                    if (payload[key] === '') {
-                      payload[key] = null;
-                    }
-                    // Handle UUID fields - if empty string or invalid, set to null
-                    if (key === 'estimator_id') {
-                      if (!payload[key] || payload[key] === '') {
-                        payload[key] = null;
-                      }
-                    }
-                  });
-                  const created: any = await api('POST', '/clients', payload);
-                  if (!created?.id) { toast.error('Create failed'); setIsCreating(false); return; }
-                  if (contacts.length) {
-                    for (const c of contacts) {
-                      try {
-                        const contactPayload: any = { name: c.name || 'Contact', email: c.email || null, phone: c.phone || null, role_title: c.role_title || null, department: c.department || null, is_primary: !!c.is_primary };
-                        const contactCreated: any = await api('POST', `/clients/${encodeURIComponent(created.id)}/contacts`, contactPayload);
-                        // Upload photo if it exists
-                        if (c.photo_blob && contactCreated?.id) {
-                          try {
-                            const up: any = await api('POST', '/files/upload', { project_id: null, client_id: created.id, employee_id: null, category_id: 'contact-photo', original_name: `contact-${contactCreated.id}.jpg`, content_type: 'image/jpeg' });
-                            await fetch(up.upload_url, { method: 'PUT', headers: { 'Content-Type': 'image/jpeg', 'x-ms-blob-type': 'BlockBlob' }, body: c.photo_blob });
-                            const conf: any = await api('POST', '/files/confirm', { key: up.key, size_bytes: c.photo_blob.size, checksum_sha256: 'na', content_type: 'image/jpeg' });
-                            await api('POST', `/clients/${encodeURIComponent(created.id)}/files?file_object_id=${encodeURIComponent(conf.id)}&category=${encodeURIComponent('contact-photo-' + contactCreated.id)}&original_name=${encodeURIComponent('contact-' + contactCreated.id + '.jpg')}`);
-                          } catch (_e) { console.error('Failed to upload contact photo', _e); }
-                        }
-                      } catch (_e) { console.error('Failed to create contact', _e); }
-                    }
-                  }
-                  toast.success('Customer created');
-                  resetForm();
-                  onSuccess(created.id);
-                } catch (_e: any) {
-                  const errorMsg = _e?.message || _e?.detail || 'Failed to create customer';
-                  toast.error(errorMsg);
-                  console.error('Create customer error:', _e);
-                  setIsCreating(false);
+      <AppFormModal
+        open={contactModalOpen}
+        onClose={() => {
+          setContactModalOpen(false);
+          setCPhotoBlob(null);
+          setCPhotoPreview('');
+        }}
+        title="New Contact"
+        description="Add a contact to this customer draft"
+        quickInfo={
+          <>
+            <p>Contacts are optional but recommended before creating the customer.</p>
+            <p>Mark one contact as primary for default communication.</p>
+          </>
+        }
+        footer={
+          <div className={uiCx(uiLayout.actionsRow, 'w-full justify-end')}>
+            <AppButton
+              type="button"
+              variant="secondary"
+              size="sm"
+              onClick={() => {
+                setContactModalOpen(false);
+                setCPhotoBlob(null);
+                setCPhotoPreview('');
+              }}
+            >
+              Cancel
+            </AppButton>
+            <AppButton
+              type="button"
+              size="sm"
+              onClick={() => {
+                const norm: any = {
+                  name: cName,
+                  email: cEmail,
+                  phone: cPhone,
+                  role_title: cRole,
+                  department: cDept,
+                  is_primary: cPrimary === 'true',
+                };
+                if (cPhotoBlob) {
+                  norm.photo_blob = cPhotoBlob;
+                  norm.photo_preview = cPhotoPreview;
                 }
-              }} disabled={isCreating} className="px-3 py-1.5 rounded-lg text-sm font-medium bg-brand-red text-white hover:bg-[#aa1212] disabled:opacity-50 disabled:cursor-not-allowed">
-                {isCreating ? 'Creating...' : 'Create'}
-              </button>
-            )}
+                setContacts((arr) => {
+                  let updated = [...arr];
+                  if (norm.is_primary) {
+                    updated = updated.map((x) => ({ ...x, is_primary: false }));
+                  }
+                  updated.push(norm);
+                  return updated;
+                });
+                setCName('');
+                setCEmail('');
+                setCPhone('');
+                setCRole('');
+                setCDept('');
+                setCPrimary('false');
+                setCPhotoBlob(null);
+                setCPhotoPreview('');
+                setContactModalOpen(false);
+              }}
+            >
+              Add
+            </AppButton>
+          </div>
+        }
+      >
+        <div className="grid items-start gap-3 md:grid-cols-5">
+          <div className="space-y-1.5 md:col-span-2">
+            <AppControlLabelRow
+              label="Contact Photo"
+              fieldHint={<AppFieldHint hint="Contact Photo\n\nOptional profile image for this contact." />}
+            />
+            <button
+              type="button"
+              onClick={() => setCPickerOpen(true)}
+              className={uiCx(
+                'relative grid h-40 w-full place-items-center overflow-hidden bg-gray-50',
+                uiRadius.control,
+                uiBorders.input,
+              )}
+            >
+              {cPhotoPreview ? (
+                <img src={cPhotoPreview} className="h-full w-full object-cover" alt="Contact preview" />
+              ) : (
+                <span className={uiTypography.helper}>Select Photo</span>
+              )}
+            </button>
+          </div>
+          <div className="grid grid-cols-2 gap-3 md:col-span-3">
+            <AppInput
+              className="col-span-2"
+              label="Name"
+              value={cName}
+              onChange={(e) => setCName(e.target.value)}
+              fieldHint="Name\n\nFull name shown in contact lists."
+            />
+            <AppInput
+              label="Role/Title"
+              value={cRole}
+              onChange={(e) => setCRole(e.target.value)}
+              fieldHint="Role/Title\n\nJob title or role at the company."
+            />
+            <AppInput
+              label="Department"
+              value={cDept}
+              onChange={(e) => setCDept(e.target.value)}
+              fieldHint="Department\n\nDepartment or team (optional)."
+            />
+            <AppInput
+              label="Email"
+              value={cEmail}
+              onChange={(e) => setCEmail(e.target.value)}
+              fieldHint="Email\n\nWork email for this contact."
+            />
+            <AppInput
+              label="Phone"
+              value={cPhone}
+              onChange={(e) => setCPhone(formatPhone(e.target.value))}
+              fieldHint="Phone\n\nDirect phone number for this contact."
+            />
+            <AppSelect
+              label="Primary"
+              value={cPrimary}
+              onChange={(e) => setCPrimary(e.target.value as 'true' | 'false')}
+              options={[
+                { value: 'false', label: 'No' },
+                { value: 'true', label: 'Yes' },
+              ]}
+              fieldHint="Primary\n\nPrimary contact receives default communication for this customer."
+            />
           </div>
         </div>
-      </div>
-      {contactModalOpen && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60">
-          <div className="w-[800px] max-w-[95vw] bg-white rounded-xl overflow-hidden flex flex-col max-h-[90vh]">
-            <div className="flex-shrink-0 px-4 py-3 border-b flex items-center justify-between">
-              <div className="font-semibold">New Contact</div>
-              <button onClick={() => { setContactModalOpen(false); setCPhotoBlob(null); setCPhotoPreview(''); }} className="text-gray-500 hover:text-gray-700 text-2xl font-bold w-8 h-8 flex items-center justify-center rounded hover:bg-gray-100" title="Close">×</button>
-            </div>
-            <div className="flex-1 overflow-y-auto p-4 grid md:grid-cols-5 gap-3 items-start">
-              <div className="md:col-span-2">
-                <div className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">Contact Photo</div>
-                <button onClick={() => setCPickerOpen(true)} className="w-full h-40 border rounded grid place-items-center bg-gray-50 relative overflow-hidden">
-                  {cPhotoPreview ? (
-                    <img src={cPhotoPreview} className="w-full h-full object-cover" alt="Contact preview" />
-                  ) : (
-                    <div className="text-gray-400">Select Photo</div>
-                  )}
-                </button>
-              </div>
-              <div className="md:col-span-3 grid grid-cols-2 gap-2">
-                <div className="col-span-2">
-                  <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">Name</label>
-                  <input className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm col-span-2" value={cName} onChange={e => setCName(e.target.value)} />
-                </div>
-                <div>
-                  <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">Role/Title</label>
-                  <input className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" value={cRole} onChange={e => setCRole(e.target.value)} />
-                </div>
-                <div>
-                  <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">Department</label>
-                  <input className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" value={cDept} onChange={e => setCDept(e.target.value)} />
-                </div>
-                <div>
-                  <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">Email</label>
-                  <input className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" value={cEmail} onChange={e => setCEmail(e.target.value)} />
-                </div>
-                <div>
-                  <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">Phone</label>
-                  <input className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" value={cPhone} onChange={e => setCPhone(formatPhone(e.target.value))} />
-                </div>
-                <div>
-                  <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">Primary</label>
-                  <select className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" value={cPrimary} onChange={e => setCPrimary(e.target.value as any)}>
-                    <option value="false">No</option>
-                    <option value="true">Yes</option>
-                  </select>
-                </div>
-                <div className="col-span-2 text-right">
-                  <button onClick={() => {
-                    const norm: any = { name: cName, email: cEmail, phone: cPhone, role_title: cRole, department: cDept, is_primary: cPrimary === 'true' };
-                    if (cPhotoBlob) {
-                      norm.photo_blob = cPhotoBlob;
-                      norm.photo_preview = cPhotoPreview;
-                    }
-                    setContacts(arr => {
-                      let updated = [...arr];
-                      if (norm.is_primary) { updated = updated.map(x => ({ ...x, is_primary: false })); }
-                      updated.push(norm);
-                      return updated;
-                    });
-                    setCName(''); setCEmail(''); setCPhone(''); setCRole(''); setCDept(''); setCPrimary('false'); setCPhotoBlob(null); setCPhotoPreview(''); setContactModalOpen(false);
-                  }} className="px-4 py-2 rounded-xl bg-gradient-to-r from-brand-red to-[#ee2b2b] text-white font-semibold">Add</button>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
+      </AppFormModal>
+
       {cPickerOpen && (
-        <ImagePicker isOpen={true} onClose={() => setCPickerOpen(false)} clientId={''} targetWidth={400} targetHeight={400} allowEdit={true} onConfirm={async (blob) => {
-          try {
-            setCPhotoBlob(blob);
-            setCPhotoPreview(URL.createObjectURL(blob));
-          } catch (_e) { toast.error('Failed to process image'); }
-          finally { setCPickerOpen(false); }
-        }} />
+        <ImagePicker
+          isOpen
+          onClose={() => setCPickerOpen(false)}
+          clientId=""
+          targetWidth={400}
+          targetHeight={400}
+          allowEdit
+          onConfirm={async (blob) => {
+            try {
+              setCPhotoBlob(blob);
+              setCPhotoPreview(URL.createObjectURL(blob));
+            } catch (_e) {
+              toast.error('Failed to process image');
+            } finally {
+              setCPickerOpen(false);
+            }
+          }}
+        />
       )}
-    </div></OverlayPortal>
+    </>
   );
 }
 

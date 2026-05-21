@@ -281,8 +281,9 @@ export default function DesignSystemShowcase() {
                 Searchable lists: <code className="text-[11px]">AppCombobox</code> — trigger matches{' '}
                 <code className="text-[11px]">AppInput</code> (<code className="text-[11px]">rounded-lg</code>); portaled
                 menu uses <code className="text-[11px]">uiDropdown.menu</code> (
-                <code className="text-[11px]">rounded-xl</code>). <code className="text-[11px]">AppSelect</code> — single
-                value; <code className="text-[11px]">searchable</code> adds a filter field in the menu.{' '}
+                <code className="text-[11px]">rounded-xl</code>).                 <code className="text-[11px]">AppSelect</code> — single
+                value; <code className="text-[11px]">searchable</code> adds a fixed search header in the menu (
+                options scroll in <code className="text-[11px]">uiDropdown.menuOptionsList</code> only).{' '}
                 <code className="text-[11px]">AppMultiSelect</code> — multiple values (checkboxes + chips, same menu shell;
                 also supports <code className="text-[11px]">searchable</code>).
               </p>

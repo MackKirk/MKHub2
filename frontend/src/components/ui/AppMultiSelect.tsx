@@ -123,17 +123,57 @@ export function AppMultiSelect({
     onChange([...value, optionValue]);
   };
 
+  const menuPosition = menuRect
+    ? { top: menuRect.top, left: menuRect.left, width: menuRect.width }
+    : undefined;
+
+  const optionListContent =
+    filteredOptions.length === 0 ? (
+      <li className={uiDropdown.optionEmpty}>{emptyMessage}</li>
+    ) : (
+      filteredOptions.map((option) => {
+        const isSelected = selectedSet.has(option.value);
+
+        return (
+          <li key={option.value} role="option" aria-selected={isSelected}>
+            <label
+              className={uiCx(
+                uiDropdown.option,
+                'flex cursor-pointer',
+                isSelected && uiDropdown.optionSelected,
+              )}
+              onMouseDown={(e) => e.preventDefault()}
+            >
+              <input
+                type="checkbox"
+                className="sr-only"
+                checked={isSelected}
+                disabled={disabled}
+                onChange={() => toggle(option.value)}
+                tabIndex={-1}
+              />
+              <span className="flex min-w-0 flex-1 items-center gap-3">
+                <SelectDropdownCheckbox checked={isSelected} />
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate text-xs text-gray-900">{option.label}</span>
+                  {option.description ? (
+                    <span className="mt-0.5 block truncate text-xs text-gray-500">
+                      {option.description}
+                    </span>
+                  ) : null}
+                </span>
+              </span>
+            </label>
+          </li>
+        );
+      })
+    );
+
   const dropdown =
-    open && menuRect ? (
-      <ul
-        id={portalListId}
-        role="listbox"
-        aria-multiselectable
-        className={uiDropdown.menu}
-        style={{ top: menuRect.top, left: menuRect.left, width: menuRect.width }}
-      >
-        {searchable ? (
-          <li className="sticky top-0 z-[1] border-b border-gray-100 bg-white px-2.5 py-2">
+    open && menuPosition ? (
+      searchable ? (
+        <div className={uiDropdown.menuSearchable} style={menuPosition}>
+          <div className={uiDropdown.menuSearchHeader}>
             <input
               type="text"
               value={search}
@@ -143,49 +183,27 @@ export function AppMultiSelect({
               className={uiCx(uiDropdown.trigger, 'text-xs')}
               onMouseDown={(e) => e.stopPropagation()}
             />
-          </li>
-        ) : null}
-        {filteredOptions.length === 0 ? (
-          <li className={uiDropdown.optionEmpty}>{emptyMessage}</li>
-        ) : (
-          filteredOptions.map((option) => {
-            const isSelected = selectedSet.has(option.value);
-
-            return (
-              <li key={option.value} role="option" aria-selected={isSelected}>
-                <label
-                  className={uiCx(
-                    uiDropdown.option,
-                    'flex cursor-pointer',
-                    isSelected && uiDropdown.optionSelected,
-                  )}
-                  onMouseDown={(e) => e.preventDefault()}
-                >
-                  <input
-                    type="checkbox"
-                    className="sr-only"
-                    checked={isSelected}
-                    disabled={disabled}
-                    onChange={() => toggle(option.value)}
-                    tabIndex={-1}
-                  />
-                  <span className="flex min-w-0 flex-1 items-center gap-3">
-                    <SelectDropdownCheckbox checked={isSelected} />
-                    <span className="min-w-0 flex-1">
-                      <span className="block truncate text-xs text-gray-900">{option.label}</span>
-                      {option.description ? (
-                        <span className="mt-0.5 block truncate text-xs text-gray-500">
-                          {option.description}
-                        </span>
-                      ) : null}
-                    </span>
-                  </span>
-                </label>
-              </li>
-            );
-          })
-        )}
-      </ul>
+          </div>
+          <ul
+            id={portalListId}
+            role="listbox"
+            aria-multiselectable
+            className={uiDropdown.menuOptionsList}
+          >
+            {optionListContent}
+          </ul>
+        </div>
+      ) : (
+        <ul
+          id={portalListId}
+          role="listbox"
+          aria-multiselectable
+          className={uiDropdown.menu}
+          style={menuPosition}
+        >
+          {optionListContent}
+        </ul>
+      )
     ) : null;
 
   const triggerClasses = uiCx(

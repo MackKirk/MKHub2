@@ -7,8 +7,8 @@ import TaskModal from './TaskModal';
 import type { Task } from './types';
 import {
   AppEmptyState,
+  AppFormModal,
   AppInput,
-  AppModal,
   AppSelect,
   uiColors,
   uiCx,
@@ -79,14 +79,22 @@ export default function ArchivedTasksModal({ open, onClose }: Props) {
 
   return (
     <>
-      <AppModal
+      <AppFormModal
         open={open}
         onClose={onClose}
+        layout="detail"
+        size="lg"
         title="Archived Tasks"
         description={description}
-        size="lg"
-        bodyClassName="flex max-h-[60vh] min-h-0 flex-col p-0"
+        quickInfo={
+          <>
+            <p>Archived tasks are removed from your main board but remain searchable here.</p>
+            <p>Use search and filters to narrow long lists; a warning appears when there are many records.</p>
+            <p>Click a task to open its detail, update status, or restore it to your active queue.</p>
+          </>
+        }
       >
+        <div className="flex max-h-[min(60vh,40rem)] min-h-0 flex-col">
         {archivedTasks.length > 50 && (
           <div className={uiCx(uiSpacing.cardPadding, 'border-b border-amber-100 bg-amber-50')}>
             <div className="flex items-start gap-2">
@@ -105,6 +113,7 @@ export default function ArchivedTasksModal({ open, onClose }: Props) {
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             placeholder="Search by title or description..."
+            fieldHint="Search\n\nMatches task title or description text in the archived list."
           />
           <div className="grid grid-cols-2 gap-3">
             <AppSelect
@@ -112,12 +121,14 @@ export default function ArchivedTasksModal({ open, onClose }: Props) {
               value={statusFilter}
               onChange={(e) => setStatusFilter(e.target.value)}
               options={statusFilterOptions}
+              fieldHint="Status\n\nFilter archived tasks by workflow state, or show all."
             />
             <AppSelect
               label="Priority"
               value={priorityFilter}
               onChange={(e) => setPriorityFilter(e.target.value)}
               options={priorityFilterOptions}
+              fieldHint="Priority\n\nFilter archived tasks by urgency, or show all."
             />
           </div>
         </div>
@@ -136,7 +147,8 @@ export default function ArchivedTasksModal({ open, onClose }: Props) {
             ))
           )}
         </div>
-      </AppModal>
+        </div>
+      </AppFormModal>
 
       <TaskModal
         open={!!selectedTaskId}
