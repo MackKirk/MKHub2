@@ -14,7 +14,15 @@ from ..schemas.clients import (
     ClientContactCreate, ClientContactResponse,
     ClientSiteCreate, ClientSiteResponse,
 )
-from ..auth.security import require_permissions, get_current_user, require_roles
+from ..auth.security import (
+    require_permissions,
+    get_current_user,
+    require_roles,
+    has_customer_list_permission,
+    has_customer_detail_access,
+    assert_customer_tab,
+    User,
+)
 from ..services.standard_file_categories import get_categories_for_client_api, get_default_folder_rows
 from ..services.project_visibility import project_visibility_clause_for_user
 
@@ -501,13 +509,13 @@ def get_client_project_participations(
     client_id: str,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
-    _perm=Depends(require_permissions("business:projects:read")),
     limit: int = Query(400, ge=1, le=500),
 ):
     """
     Projects for customer overview rollup (owner + awarded related) and related-membership card.
     Respects business-line visibility like list_projects.
     """
+    assert_customer_tab(user, "overview", "read")
     try:
         client_uuid = uuid.UUID(str(client_id))
     except ValueError:
@@ -543,7 +551,9 @@ def get_client_project_participations(
 
 
 @router.get("/{client_id}", response_model=ClientResponse)
-def get_client(client_id: str, db: Session = Depends(get_db), _=Depends(require_permissions("business:customers:read"))):
+def get_client(client_id: str, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    if not has_customer_detail_access(user):
+        raise HTTPException(status_code=403, detail="Forbidden")
     try:
         c = db.query(Client).filter(Client.id == client_id, Client.deleted_at.is_(None)).first()
     except ProgrammingError as e:
@@ -559,7 +569,8 @@ def get_client(client_id: str, db: Session = Depends(get_db), _=Depends(require_
 
 
 @router.patch("/{client_id}")
-def update_client(client_id: str, payload: dict, db: Session = Depends(get_db), _=Depends(require_permissions("business:customers:write"))):
+def update_client(client_id: str, payload: dict, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    assert_customer_tab(user, "general", "write")
     try:
         c = db.query(Client).filter(Client.id == client_id, Client.deleted_at.is_(None)).first()
     except ProgrammingError as e:
@@ -677,7 +688,8 @@ def restore_client(client_id: str, db: Session = Depends(get_db), user: User = D
 
 
 @router.post("/{client_id}/contacts", response_model=ClientContactResponse)
-def add_contact(client_id: str, payload: ClientContactCreate, db: Session = Depends(get_db), _=Depends(require_permissions("business:customers:write"))):
+def add_contact(client_id: str, payload: ClientContactCreate, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    assert_customer_tab(user, "contacts", "write")
     try:
         # Validate client exists and coerce UUID
         try:
@@ -709,13 +721,15 @@ def add_contact(client_id: str, payload: ClientContactCreate, db: Session = Depe
 
 
 @router.get("/{client_id}/contacts", response_model=List[ClientContactResponse])
-def list_contacts(client_id: str, db: Session = Depends(get_db), _=Depends(require_permissions("business:customers:read"))):
+def list_contacts(client_id: str, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    assert_customer_tab(user, "contacts", "read")
     rows = db.query(ClientContact).filter(ClientContact.client_id == client_id).order_by(ClientContact.sort_index.asc()).all()
     return rows
 
 
 @router.patch("/{client_id}/contacts/{contact_id}")
-def update_contact(client_id: str, contact_id: str, payload: dict, db: Session = Depends(get_db), _=Depends(require_permissions("business:customers:write"))):
+def update_contact(client_id: str, contact_id: str, payload: dict, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    assert_customer_tab(user, "contacts", "write")
     c = db.query(ClientContact).filter(ClientContact.id == contact_id, ClientContact.client_id == client_id).first()
     if not c:
         raise HTTPException(status_code=404, detail="Not found")
@@ -726,7 +740,8 @@ def update_contact(client_id: str, contact_id: str, payload: dict, db: Session =
 
 
 @router.delete("/{client_id}/contacts/{contact_id}")
-def delete_contact(client_id: str, contact_id: str, db: Session = Depends(get_db), _=Depends(require_permissions("business:customers:write"))):
+def delete_contact(client_id: str, contact_id: str, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    assert_customer_tab(user, "contacts", "write")
     c = db.query(ClientContact).filter(ClientContact.id == contact_id, ClientContact.client_id == client_id).first()
     if not c:
         return {"status": "ok"}
@@ -736,7 +751,8 @@ def delete_contact(client_id: str, contact_id: str, db: Session = Depends(get_db
 
 
 @router.post("/{client_id}/contacts/reorder")
-def reorder_contacts(client_id: str, order: list[str], db: Session = Depends(get_db)):
+def reorder_contacts(client_id: str, order: list[str], db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    assert_customer_tab(user, "contacts", "write")
     contacts = db.query(ClientContact).filter(ClientContact.client_id == client_id).all()
     index = {cid: i for i, cid in enumerate(order)}
     for c in contacts:
@@ -747,13 +763,15 @@ def reorder_contacts(client_id: str, order: list[str], db: Session = Depends(get
 
 # ----- Sites -----
 @router.get("/{client_id}/sites", response_model=List[ClientSiteResponse])
-def list_sites(client_id: str, db: Session = Depends(get_db), _=Depends(require_permissions("business:customers:read"))):
+def list_sites(client_id: str, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    assert_customer_tab(user, "sites", "read")
     rows = db.query(ClientSite).filter(ClientSite.client_id == client_id).order_by(ClientSite.sort_index.asc()).all()
     return rows
 
 
 @router.post("/{client_id}/sites", response_model=ClientSiteResponse)
-def create_site(client_id: str, payload: ClientSiteCreate, db: Session = Depends(get_db), _=Depends(require_permissions("business:customers:write"))):
+def create_site(client_id: str, payload: ClientSiteCreate, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    assert_customer_tab(user, "sites", "write")
     row = ClientSite(client_id=client_id, **payload.dict(exclude_unset=True))
     db.add(row)
     db.commit()
@@ -773,7 +791,8 @@ def create_site(client_id: str, payload: ClientSiteCreate, db: Session = Depends
 
 
 @router.patch("/{client_id}/sites/{site_id}")
-def update_site(client_id: str, site_id: str, payload: dict, db: Session = Depends(get_db), _=Depends(require_permissions("business:customers:write"))):
+def update_site(client_id: str, site_id: str, payload: dict, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    assert_customer_tab(user, "sites", "write")
     from ..models.models import Project, Shift
     from datetime import datetime, timezone
     
@@ -891,7 +910,8 @@ def update_site(client_id: str, site_id: str, payload: dict, db: Session = Depen
 
 
 @router.delete("/{client_id}/sites/{site_id}")
-def delete_site(client_id: str, site_id: str, db: Session = Depends(get_db), _=Depends(require_permissions("business:customers:write"))):
+def delete_site(client_id: str, site_id: str, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    assert_customer_tab(user, "sites", "write")
     row = db.query(ClientSite).filter(ClientSite.id == site_id, ClientSite.client_id == client_id).first()
     if not row:
         return {"status": "ok"}
@@ -910,8 +930,9 @@ def list_files(
     limit: Optional[int] = None,
     offset: Optional[int] = None,
     db: Session = Depends(get_db),
-    _=Depends(require_permissions("business:customers:read"))
+    user: User = Depends(get_current_user),
 ):
+    assert_customer_tab(user, "files", "read")
     q = db.query(ClientFile)
     q = q.filter(ClientFile.client_id == client_id, ClientFile.deleted_at.is_(None))
     if site_id:
@@ -1034,9 +1055,10 @@ def update_client_file(
     client_file_id: str,
     payload: dict,
     db: Session = Depends(get_db),
-    _=Depends(require_permissions("business:customers:write")),
+    user: User = Depends(get_current_user),
 ):
     """Update a client file (e.g., change category)."""
+    assert_customer_tab(user, "files", "write")
     try:
         fuid = uuid.UUID(str(client_file_id))
     except ValueError:
@@ -1060,8 +1082,8 @@ def delete_client_file(
     client_file_id: str,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
-    _=Depends(require_permissions("business:customers:write")),
 ):
+    assert_customer_tab(user, "files", "write")
     """Soft-delete file from customer files (same row as project files; project-owned blobs appear in project Deleted tab)."""
     try:
         fid = uuid.UUID(str(client_file_id))
@@ -1198,7 +1220,8 @@ def permanently_delete_client_file_admin(
 
 
 @router.post("/{client_id}/files/reorder")
-def reorder_client_files(client_id: str, order: list[str], db: Session = Depends(get_db), _=Depends(require_permissions("business:customers:write"))):
+def reorder_client_files(client_id: str, order: list[str], db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    assert_customer_tab(user, "files", "write")
     # Persist per-client order using FileObject.tags.client_sort[client_id] = index
     cfiles = db.query(ClientFile).filter(ClientFile.client_id == client_id, ClientFile.deleted_at.is_(None)).all()
     index = {str(cid): i for i, cid in enumerate(order or [])}
@@ -1219,7 +1242,8 @@ def reorder_client_files(client_id: str, order: list[str], db: Session = Depends
 
 
 @router.post("/{client_id}/files")
-def attach_file(client_id: str, file_object_id: str, category: Optional[str] = None, original_name: Optional[str] = None, site_id: Optional[str] = None, db: Session = Depends(get_db), _=Depends(require_permissions("business:customers:write"))):
+def attach_file(client_id: str, file_object_id: str, category: Optional[str] = None, original_name: Optional[str] = None, site_id: Optional[str] = None, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    assert_customer_tab(user, "files", "write")
     fo = db.query(FileObject).filter(FileObject.id == file_object_id).first()
     if not fo:
         raise HTTPException(status_code=404, detail="File not found")
@@ -1282,7 +1306,8 @@ def create_default_folders_for_parent(
 
 # ===== Client Folders & Documents =====
 @router.get("/{client_id}/folders")
-def list_client_folders(client_id: str, db: Session = Depends(get_db), _=Depends(require_permissions("business:customers:read"))):
+def list_client_folders(client_id: str, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    assert_customer_tab(user, "files", "read")
     rows = db.query(ClientFolder).filter(ClientFolder.client_id == client_id).order_by(ClientFolder.sort_index.asc(), ClientFolder.name.asc()).all()
     out = []
     for f in rows:
@@ -1312,9 +1337,10 @@ def create_client_folder(
     name: str = Body(...), 
     parent_id: Optional[str] = Body(None),
     create_default_subfolders: bool = Body(False),
-    db: Session = Depends(get_db), 
-    _=Depends(require_permissions("business:customers:write"))
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
 ):
+    assert_customer_tab(user, "files", "write")
     pid = None
     try:
         pid = uuid.UUID(str(parent_id)) if parent_id else None
@@ -1344,8 +1370,9 @@ def initialize_default_folders(
     parent_folder_id: Optional[str] = Body(None),
     project_id: Optional[str] = Body(None),
     db: Session = Depends(get_db),
-    _=Depends(require_permissions("business:customers:write"))
+    user: User = Depends(get_current_user),
 ):
+    assert_customer_tab(user, "files", "write")
     """
     Initialize default folder structure for a client or project.
     Can be called to create standard folders (Designs, Impressões, etc.)
@@ -1371,7 +1398,8 @@ def initialize_default_folders(
 
 
 @router.put("/{client_id}/folders/{folder_id}")
-def update_client_folder(client_id: str, folder_id: str, name: Optional[str] = Body(None), parent_id: Optional[str] = Body(None), db: Session = Depends(get_db), _=Depends(require_permissions("business:customers:write"))):
+def update_client_folder(client_id: str, folder_id: str, name: Optional[str] = Body(None), parent_id: Optional[str] = Body(None), db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    assert_customer_tab(user, "files", "write")
     try:
         fid = uuid.UUID(str(folder_id))
     except Exception:
@@ -1393,7 +1421,8 @@ def update_client_folder(client_id: str, folder_id: str, name: Optional[str] = B
 
 
 @router.delete("/{client_id}/folders/{folder_id}")
-def delete_client_folder(client_id: str, folder_id: str, db: Session = Depends(get_db), _=Depends(require_permissions("business:customers:write"))):
+def delete_client_folder(client_id: str, folder_id: str, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    assert_customer_tab(user, "files", "write")
     try:
         fid = uuid.UUID(str(folder_id))
     except Exception:
@@ -1408,7 +1437,8 @@ def delete_client_folder(client_id: str, folder_id: str, db: Session = Depends(g
 
 
 @router.get("/{client_id}/documents")
-def list_client_documents(client_id: str, folder_id: Optional[str] = None, db: Session = Depends(get_db), _=Depends(require_permissions("business:customers:read"))):
+def list_client_documents(client_id: str, folder_id: Optional[str] = None, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    assert_customer_tab(user, "files", "read")
     q = db.query(ClientDocument).filter(ClientDocument.client_id == client_id)
     if folder_id:
         tag = f"folder:{folder_id}"
@@ -1434,7 +1464,8 @@ def list_client_documents(client_id: str, folder_id: Optional[str] = None, db: S
 
 
 @router.post("/{client_id}/documents")
-def create_client_document(client_id: str, payload: dict = Body(...), db: Session = Depends(get_db), _=Depends(require_permissions("business:customers:write"))):
+def create_client_document(client_id: str, payload: dict = Body(...), db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    assert_customer_tab(user, "files", "write")
     folder_id = payload.get("folder_id")
     d = ClientDocument(
         client_id=client_id,
@@ -1449,7 +1480,8 @@ def create_client_document(client_id: str, payload: dict = Body(...), db: Sessio
 
 
 @router.put("/{client_id}/documents/{doc_id}")
-def update_client_document(client_id: str, doc_id: str, payload: dict = Body(...), db: Session = Depends(get_db), _=Depends(require_permissions("business:customers:write"))):
+def update_client_document(client_id: str, doc_id: str, payload: dict = Body(...), db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    assert_customer_tab(user, "files", "write")
     d = db.query(ClientDocument).filter(ClientDocument.client_id == client_id, ClientDocument.id == doc_id).first()
     if not d:
         raise HTTPException(status_code=404, detail="Not found")
@@ -1465,7 +1497,8 @@ def update_client_document(client_id: str, doc_id: str, payload: dict = Body(...
 
 
 @router.delete("/{client_id}/documents/{doc_id}")
-def delete_client_document(client_id: str, doc_id: str, db: Session = Depends(get_db), _=Depends(require_permissions("business:customers:write"))):
+def delete_client_document(client_id: str, doc_id: str, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    assert_customer_tab(user, "files", "write")
     db.query(ClientDocument).filter(ClientDocument.client_id == client_id, ClientDocument.id == doc_id).delete()
     db.commit()
     return {"status":"ok"}

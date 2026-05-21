@@ -1,7 +1,7 @@
 """
 Script para adicionar permissões de Business com estrutura hierárquica.
-A primeira permissão sempre é a liberação da área (business:access).
-Se bloquear business:access, automaticamente bloqueia todas as sub-permissões.
+business:access is deprecated (kept in DB for FK safety, is_active=False).
+Granular permissions (customers, projects, construction, R&M, etc.) control access.
 
 IMPORTANT (production-safe):
 - Rows are matched by PermissionDefinition.key (unique). Existing rows keep the same primary key (id);
@@ -62,27 +62,104 @@ def seed_business_permissions():
         
         db.flush()  # To get the category ID
         
-        # Define Business permissions with hierarchical structure
-        # First permission is always the area access
+        # Define Business permissions (granular; business:access deprecated)
         business_permissions = [
             {
                 "key": "business:access",
                 "label": "Access Business",
-                "description": "Grants access to the Business area. Required for all Business functions. If disabled, all Business permissions are blocked.",
+                "description": "Deprecated. No longer shown in the UI; use granular Business permissions instead.",
                 "sort_index": 1,
             },
             # Customers
             {
                 "key": "business:customers:read",
-                "label": "View Customers",
-                "description": "Allows viewing customers list and customer details",
+                "label": "Customers",
+                "description": "Allows viewing the customers list and opening customer records",
                 "sort_index": 2,
             },
             {
                 "key": "business:customers:write",
-                "label": "Edit Customers",
-                "description": "Allows creating, updating, and deleting customers",
+                "label": "Customers (create/delete)",
+                "description": "Allows creating and deleting customer records",
                 "sort_index": 3,
+            },
+            {
+                "key": "business:customers:overview:read",
+                "label": "Overview",
+                "description": "Allows viewing the customer Overview tab (dashboard and participation summary)",
+                "sort_index": 31,
+            },
+            {
+                "key": "business:customers:general:read",
+                "label": "General",
+                "description": "Allows viewing the customer General tab (profile and settings)",
+                "sort_index": 32,
+            },
+            {
+                "key": "business:customers:general:write",
+                "label": "General",
+                "description": "Allows editing customer profile on the General tab",
+                "sort_index": 33,
+            },
+            {
+                "key": "business:customers:contacts:read",
+                "label": "Contacts",
+                "description": "Allows viewing customer contacts",
+                "sort_index": 34,
+            },
+            {
+                "key": "business:customers:contacts:write",
+                "label": "Contacts",
+                "description": "Allows creating, updating, and deleting customer contacts",
+                "sort_index": 35,
+            },
+            {
+                "key": "business:customers:files:read",
+                "label": "Files",
+                "description": "Allows viewing customer files, folders, and documents",
+                "sort_index": 36,
+            },
+            {
+                "key": "business:customers:files:write",
+                "label": "Files",
+                "description": "Allows uploading and managing customer files and folders",
+                "sort_index": 37,
+            },
+            {
+                "key": "business:customers:sites:read",
+                "label": "Sites",
+                "description": "Allows viewing customer construction sites",
+                "sort_index": 38,
+            },
+            {
+                "key": "business:customers:sites:write",
+                "label": "Sites",
+                "description": "Allows creating, updating, and deleting customer sites",
+                "sort_index": 39,
+            },
+            {
+                "key": "business:customers:opportunities:read",
+                "label": "Opportunities",
+                "description": "Allows viewing opportunities linked to the customer",
+                "sort_index": 40,
+            },
+            {
+                "key": "business:customers:opportunities:write",
+                "label": "Opportunities",
+                "description": "Allows creating opportunities from the customer page",
+                "sort_index": 41,
+            },
+            {
+                "key": "business:customers:projects:read",
+                "label": "Projects",
+                "description": "Allows viewing projects linked to the customer",
+                "sort_index": 42,
+            },
+            {
+                "key": "business:customers:projects:write",
+                "label": "Projects",
+                "description": "Allows creating projects from the customer page",
+                "sort_index": 43,
             },
             # Projects & Opportunities
             {
@@ -259,8 +336,8 @@ def seed_business_permissions():
                 permission.label = perm_data["label"]
                 permission.description = perm_data.get("description")
                 permission.sort_index = perm_data["sort_index"]
-                permission.is_active = True
-                print(f"Updated permission: {perm_data['key']}")
+                permission.is_active = perm_data["key"] != "business:access"
+                print(f"Updated permission: {perm_data['key']}" + (" (inactive)" if not permission.is_active else ""))
             else:
                 # Create new permission
                 permission = PermissionDefinition(
@@ -269,9 +346,10 @@ def seed_business_permissions():
                     label=perm_data["label"],
                     description=perm_data.get("description"),
                     sort_index=perm_data["sort_index"],
+                    is_active=perm_data["key"] != "business:access",
                 )
                 db.add(permission)
-                print(f"Created permission: {perm_data['key']}")
+                print(f"Created permission: {perm_data['key']}" + (" (inactive)" if not permission.is_active else ""))
         
         db.commit()
         print(f"\nSuccessfully seeded Business permissions!")

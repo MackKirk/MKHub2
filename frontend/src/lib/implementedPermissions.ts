@@ -50,9 +50,21 @@ export const IMPLEMENTED_PERMISSIONS = new Set([
   'inventory:suppliers:write',
   'inventory:products:read',
   'inventory:products:write',
-  'business:access',
   'business:customers:read',
   'business:customers:write',
+  'business:customers:overview:read',
+  'business:customers:general:read',
+  'business:customers:general:write',
+  'business:customers:contacts:read',
+  'business:customers:contacts:write',
+  'business:customers:files:read',
+  'business:customers:files:write',
+  'business:customers:sites:read',
+  'business:customers:sites:write',
+  'business:customers:opportunities:read',
+  'business:customers:opportunities:write',
+  'business:customers:projects:read',
+  'business:customers:projects:write',
   'business:projects:read',
   'business:projects:write',
   'business:construction:projects:read',
@@ -90,7 +102,7 @@ export function isLegacyProjectPermissionKey(key: string): boolean {
   return key.startsWith('business:projects:');
 }
 
-/** Construction line permissions (Construction (Sales) in sidebar). */
+/** Construction line permissions (Production (Sales) in sidebar). */
 export function isConstructionProjectPermissionKey(key: string): boolean {
   return key.startsWith('business:construction:');
 }

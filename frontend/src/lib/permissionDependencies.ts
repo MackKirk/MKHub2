@@ -39,6 +39,20 @@ export function canEnablePermission(
   if (permKey === 'business:customers:write') {
     return has('business:customers:read');
   }
+  if (
+    permKey.startsWith('business:customers:') &&
+    permKey.endsWith(':read') &&
+    permKey !== 'business:customers:read'
+  ) {
+    return has('business:customers:read');
+  }
+  if (
+    permKey.startsWith('business:customers:') &&
+    permKey.endsWith(':write') &&
+    permKey !== 'business:customers:write'
+  ) {
+    return has(permKey.replace(':write', ':read'));
+  }
   if (permKey === 'sales:quotations:write') {
     return has('sales:quotations:read');
   }
@@ -93,16 +107,16 @@ export function canEnablePermission(
 /** Human-readable message when enabling a permission is blocked. */
 export function permissionEnableBlockedMessage(permKey: string): string | null {
   if (permKey === 'business:construction:projects:read:all') {
-    return 'Requires "View Projects & Opportunities (Construction)" first';
+    return 'Requires "View Projects & Opportunities (Production)" first';
   }
   if (permKey === 'business:rm:projects:read:all') {
     return 'Requires "View Projects & Opportunities (Repairs & Maintenance)" first';
   }
   if (permKey === 'business:projects:members:write') {
-    return 'Requires at least one project view permission (legacy, Construction, or R&M)';
+    return 'Requires at least one project view permission (legacy, Production, or R&M)';
   }
   if (permKey === 'business:construction:projects:write') {
-    return 'Requires "View Projects & Opportunities (Construction)" first';
+    return 'Requires "View Projects & Opportunities (Production)" first';
   }
   if (permKey === 'business:rm:projects:write') {
     return 'Requires "View Projects & Opportunities (Repairs & Maintenance)" first';
@@ -119,6 +133,20 @@ export function permissionEnableBlockedMessage(permKey: string): string | null {
   }
   if (permKey === 'business:projects:reports:write') {
     return 'Requires "View Notes/History" first';
+  }
+  if (
+    permKey.startsWith('business:customers:') &&
+    permKey.endsWith(':write') &&
+    permKey !== 'business:customers:write'
+  ) {
+    return 'Requires the corresponding customer view permission first';
+  }
+  if (
+    permKey.startsWith('business:customers:') &&
+    permKey.endsWith(':read') &&
+    permKey !== 'business:customers:read'
+  ) {
+    return 'Requires "View Customers" first';
   }
   if (
     permKey.startsWith('business:projects:') &&
@@ -164,6 +192,17 @@ export function applyPermissionUncheckCascade(
     newPerms['hr:users:edit:permissions'] = false;
   } else if (uncheckedKey === 'business:customers:read') {
     newPerms['business:customers:write'] = false;
+    Object.keys(newPerms).forEach((k) => {
+      if (k.startsWith('business:customers:') && k !== 'business:customers:read') {
+        newPerms[k] = false;
+      }
+    });
+  } else if (
+    uncheckedKey.startsWith('business:customers:') &&
+    uncheckedKey.endsWith(':read') &&
+    uncheckedKey !== 'business:customers:read'
+  ) {
+    newPerms[uncheckedKey.replace(':read', ':write')] = false;
   } else if (uncheckedKey === 'sales:quotations:read') {
     newPerms['sales:quotations:write'] = false;
   } else if (uncheckedKey === 'business:construction:projects:read') {

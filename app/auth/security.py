@@ -251,15 +251,8 @@ def _has_permission(user: User, perm: str) -> bool:
             
             # If this is not the area access permission itself, check area access first
             if perm != area_access_key:
-                # Special case: business:customers:* and business:projects:* don't require business:access
-                # They are standalone permissions
-                if area == 'business' and (
-                    perm.startswith('business:customers:')
-                    or perm.startswith('business:projects:')
-                    or perm.startswith('business:construction:projects:')
-                    or perm.startswith('business:rm:projects:')
-                ):
-                    # Skip area access check for business customers/projects permissions
+                # business:access is deprecated; granular business:* permissions stand alone
+                if area == 'business' and perm != 'business:access':
                     pass
                 # Special case: inventory:products:* and inventory:suppliers:* don't require inventory:access
                 # They are standalone permissions
@@ -339,6 +332,100 @@ def has_project_permission(user: User, project: Any, perm: str) -> bool:
 
 def has_any_project_permission(user: User, project: Any, *perms: str) -> bool:
     return any(has_project_permission(user, project, p) for p in perms if p)
+
+
+CUSTOMER_TAB_KEYS: tuple[str, ...] = (
+    "overview",
+    "general",
+    "contacts",
+    "files",
+    "sites",
+    "opportunities",
+    "projects",
+)
+
+
+def _has_any_project_line_read_permission(user: User) -> bool:
+    return bool(
+        _has_permission(user, "business:projects:read")
+        or _has_permission(user, "business:construction:projects:read")
+        or _has_permission(user, "business:rm:projects:read")
+        or _has_permission(user, "business:construction:projects:write")
+        or _has_permission(user, "business:rm:projects:write")
+        or _has_permission(user, "business:projects:write")
+    )
+
+
+def has_customer_list_permission(user: User) -> bool:
+    """Access to /customers list and create/delete customer records."""
+    return _has_permission(user, "business:customers:read") or _has_permission(
+        user, "business:customers:write"
+    )
+
+
+def has_customer_detail_access(user: User) -> bool:
+    """Open a customer record (at least one tab or list permission)."""
+    if has_customer_list_permission(user):
+        return True
+    for tab in CUSTOMER_TAB_KEYS:
+        if has_customer_tab_permission(user, tab, "read"):
+            return True
+    return False
+
+
+def has_customer_tab_permission(
+    user: User,
+    tab: str,
+    action: Literal["read", "write"] = "read",
+) -> bool:
+    """
+    Tab-level access for Customer detail (Overview, General, Contacts, Files, etc.).
+
+    Read may use legacy fallbacks (main customer read, project line read).
+    Write requires the tab-specific business:customers:{tab}:write key.
+    """
+    if action not in ("read", "write"):
+        return False
+    t = (tab or "").strip().lower()
+    if t not in CUSTOMER_TAB_KEYS:
+        return False
+
+    read_key = f"business:customers:{t}:read"
+    write_key = f"business:customers:{t}:write"
+
+    if action == "write":
+        return _has_permission(user, write_key)
+
+    if _has_permission(user, read_key) or _has_permission(user, write_key):
+        return True
+
+    if t == "general" or t == "contacts":
+        if _has_permission(user, "business:customers:read") or _has_permission(
+            user, "business:customers:write"
+        ):
+            return True
+    if t == "files":
+        if _has_permission(user, "business:projects:files:read") or _has_permission(
+            user, "business:projects:files:write"
+        ):
+            return True
+        if _has_permission(user, "business:customers:read") or _has_permission(
+            user, "business:customers:write"
+        ):
+            return True
+    if t in ("overview", "sites", "opportunities", "projects"):
+        if _has_any_project_line_read_permission(user):
+            return True
+    return False
+
+
+def assert_customer_tab(
+    user: User,
+    tab: str,
+    action: Literal["read", "write"] = "read",
+) -> None:
+    if not has_customer_tab_permission(user, tab, action):
+        raise HTTPException(status_code=403, detail="Forbidden")
 
 
 def has_project_files_category_permission(

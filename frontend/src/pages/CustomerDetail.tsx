@@ -16,6 +16,13 @@ import { OpportunityListItem, CreateReportModal } from './Opportunities';
 import { ProjectListItem } from './Projects';
 import OverlayPortal from '@/components/OverlayPortal';
 import NewContactModal from '@/components/NewContactModal';
+import {
+  type CustomerTab,
+  canViewCustomerTab as canViewCustomerTabFn,
+  type CustomerTab as CustomerTabId,
+  canEditCustomerTab as canEditCustomerTabFn,
+  canEditCustomerRecord as canEditCustomerRecordFn,
+} from '@/lib/customerPermissions';
 
 type Client = { id:string, name?:string, display_name?:string, code?:string, city?:string, province?:string, postal_code?:string, country?:string, address_line1?:string, address_line2?:string, created_at?:string };
 type Site = { id:string, site_name?:string, site_address_line1?:string, site_city?:string, site_province?:string, site_country?:string };
@@ -666,11 +673,22 @@ export default function CustomerDetail(){
   const { data: me } = useQuery({ queryKey:['me'], queryFn: ()=>api<any>('GET','/auth/me') });
   const isAdmin = (me?.roles||[]).includes('admin');
   const permissions = new Set(me?.permissions || []);
-  const hasCustomersRead = isAdmin || permissions.has('business:customers:read');
-  const hasProjectsRead = isAdmin || permissions.has('business:projects:read');
-  const hasFilesRead = isAdmin || permissions.has('business:projects:files:read');
-  const hasFilesWrite = isAdmin || permissions.has('business:projects:files:write');
-  const hasEditPermission = isAdmin || permissions.has('business:customers:write');
+  const canViewCustomerTab = (t: CustomerTabId) => canViewCustomerTabFn(isAdmin, permissions, t);
+  const canEditCustomerTab = (t: CustomerTabId) => canEditCustomerTabFn(isAdmin, permissions, t);
+  const canDeleteCustomer = canEditCustomerRecordFn(isAdmin, permissions);
+  const hasEditGeneral = canEditCustomerTab('general');
+  const hasContactsEdit = canEditCustomerTab('contacts');
+  const hasFilesView = canViewCustomerTab('files');
+  const hasFilesEdit = canEditCustomerTab('files');
+  const hasSitesEdit = canEditCustomerTab('sites');
+  const hasProjectsTabView = canViewCustomerTab('projects');
+  const hasProjectsEdit = canEditCustomerTab('projects');
+  const hasOpportunitiesTabView = canViewCustomerTab('opportunities');
+  const hasOpportunitiesEdit = canEditCustomerTab('opportunities');
+  const hasOverviewView = canViewCustomerTab('overview');
+  const hasGeneralView = canViewCustomerTab('general');
+  const hasContactsView = canViewCustomerTab('contacts');
+  const hasSitesView = canViewCustomerTab('sites');
   const { data:sites } = useQuery({ queryKey:['clientSites', id], queryFn: ()=>api<Site[]>('GET', `/clients/${id}/sites`) });
   const { data:files, refetch: refetchFiles } = useQuery({ queryKey:['clientFiles', id], queryFn: ()=>api<ClientFile[]>('GET', `/clients/${id}/files`) });
   const { data:settings } = useQuery({ queryKey:['settings'], queryFn: ()=>api<any>('GET','/settings') });
@@ -678,7 +696,7 @@ export default function CustomerDetail(){
     queryKey: ['project-divisions'],
     queryFn: () => api<any[]>('GET', '/settings/project-divisions'),
     staleTime: 300_000,
-    enabled: hasProjectsRead,
+    enabled: hasOverviewView || hasProjectsTabView || hasOpportunitiesTabView,
   });
   const projectStatuses = (settings?.project_statuses || []) as any[];
   const reportCategories = (settings?.report_categories || []) as any[];
@@ -731,7 +749,7 @@ export default function CustomerDetail(){
         'GET',
         `/clients/${encodeURIComponent(String(id || ''))}/project-participations`
       ),
-    enabled: hasProjectsRead && !!id,
+    enabled: (hasProjectsTabView || hasOpportunitiesTabView || hasOverviewView) && !!id,
     staleTime: 60_000,
   });
   const projects = useMemo(
@@ -783,7 +801,7 @@ export default function CustomerDetail(){
       );
       return details.filter(Boolean);
     },
-    enabled: hasProjectsRead && projectsToFetch.length > 0,
+    enabled: hasProjectsTabView && projectsToFetch.length > 0,
     staleTime: 120_000,
   });
   
@@ -798,7 +816,7 @@ export default function CustomerDetail(){
       );
       return details.filter(Boolean);
     },
-    enabled: hasProjectsRead && opportunitiesToFetch.length > 0,
+    enabled: hasOpportunitiesTabView && opportunitiesToFetch.length > 0,
     staleTime: 120_000,
   });
   
@@ -946,7 +964,7 @@ export default function CustomerDetail(){
       );
       return results;
     },
-    enabled: hasProjectsRead && chartProjects.length > 0,
+    enabled: (hasProjectsTabView || hasOverviewView) && chartProjects.length > 0,
     staleTime: 120_000,
   });
 
@@ -985,7 +1003,7 @@ export default function CustomerDetail(){
       );
       return results;
     },
-    enabled: hasProjectsRead && chartOpportunities.length > 0,
+    enabled: (hasOpportunitiesTabView || hasOverviewView) && chartOpportunities.length > 0,
     staleTime: 120_000,
   });
 
@@ -1552,31 +1570,13 @@ export default function CustomerDetail(){
   
   // Determine available tabs based on permissions
   // Order: Overview → General → Contacts → Files → Sites → Opportunities → Projects
-  const availableTabs = useMemo(() => {
-    const tabs: string[] = [];
-    
-    // Overview (requires View Projects & Opportunities)
-    if (hasProjectsRead) {
-      tabs.push('overview');
-    }
-    
-    // General and Contacts (requires View Customers)
-    if (hasCustomersRead) {
-      tabs.push('general', 'contacts');
-    }
-    
-    // Files (requires View Files)
-    if (hasFilesRead) {
-      tabs.push('files');
-    }
-    
-    // Sites, Opportunities, Projects (requires View Projects & Opportunities)
-    if (hasProjectsRead) {
-      tabs.push('sites', 'opportunities', 'projects');
-    }
-    
-    return tabs;
-  }, [hasCustomersRead, hasProjectsRead, hasFilesRead]);
+  const availableTabs = useMemo(
+    () =>
+      (['overview', 'general', 'contacts', 'files', 'sites', 'opportunities', 'projects'] as const).filter(
+        (t) => canViewCustomerTab(t)
+      ),
+    [isAdmin, permissions]
+  );
   
   // Sync tab from URL when location.search changes
   useEffect(() => {
@@ -1591,10 +1591,19 @@ export default function CustomerDetail(){
 
   // Redirect to first available tab if current tab is not available
   useEffect(() => {
-    if (tab !== null && availableTabs.length > 0 && !availableTabs.includes(tab)) {
-      setTab(availableTabs[0] === 'overview' ? null : (availableTabs[0] as CustomerTab));
+    if (availableTabs.length === 0) return;
+    const currentKey = tab === null ? 'overview' : tab;
+    if (!availableTabs.includes(currentKey as (typeof availableTabs)[number])) {
+      const first = availableTabs[0];
+      const newTab = first === 'overview' ? null : (first as CustomerTab);
+      setTab(newTab);
+      if (newTab === null) {
+        navigate(location.pathname, { replace: true });
+      } else {
+        navigate(`${location.pathname}?tab=${newTab}`, { replace: true });
+      }
     }
-  }, [tab, availableTabs]);
+  }, [tab, availableTabs, location.pathname, navigate]);
 
   // Auto-collapse hero when a tab is selected (not overview), expand when on overview
   useEffect(() => {
@@ -1674,7 +1683,14 @@ export default function CustomerDetail(){
   };
   
   // Use unsaved changes guard - only when editing
-  useUnsavedChangesGuard(dirty && isEditingGeneral, handleSave);
+  useUnsavedChangesGuard(dirty && isEditingGeneral && hasEditGeneral, handleSave);
+
+  useEffect(() => {
+    if (isEditingGeneral && !hasEditGeneral) {
+      setIsEditingGeneral(false);
+      setDirty(false);
+    }
+  }, [isEditingGeneral, hasEditGeneral]);
   
   useEffect(()=>{ if(client){ setForm({
     display_name: client.display_name||'', legal_name: client.legal_name||'', code: client.id?.slice(0,8) || '',
@@ -1752,7 +1768,7 @@ export default function CustomerDetail(){
           <div className="flex items-center gap-3 flex-1">
             <button
               onClick={() => {
-                if (tab !== null) {
+                if (tab !== null && hasOverviewView) {
                   setTab(null);
                   navigate(location.pathname, { replace: true });
                 } else {
@@ -1760,7 +1776,7 @@ export default function CustomerDetail(){
                 }
               }}
               className="p-1.5 rounded hover:bg-gray-100 transition-colors flex items-center justify-center"
-              title={tab !== null ? 'Back to Overview' : 'Back to Customers'}
+              title={tab !== null && hasOverviewView ? 'Back to Overview' : 'Back to Customers'}
             >
               <svg className="w-4 h-4 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
@@ -1789,7 +1805,7 @@ export default function CustomerDetail(){
             transitionDuration: isHeroCollapsed ? '1200ms, 300ms' : '1800ms, 300ms',
             transitionTimingFunction: 'ease-in-out, ease-in-out'
           }}>
-            {isAdmin && (
+            {canDeleteCustomer && (
               <button
                 type="button"
                 onClick={async (e) => { e.stopPropagation(); const ok = await confirm({ title: 'Delete customer', message: 'Are you sure you want to delete this customer? This action cannot be undone.' }); if (!ok) return; try { await api('DELETE', `/clients/${encodeURIComponent(String(id||''))}`); toast.success('Customer deleted'); await queryClient.invalidateQueries({ queryKey: ['clients'] }); navigate('/customers'); } catch (_e) { toast.error('Failed to delete customer'); } }}
@@ -1804,7 +1820,9 @@ export default function CustomerDetail(){
                 <div className="w-48 flex-shrink-0">
                   <div className="w-48 h-36 rounded-xl border overflow-hidden group relative">
                     <img src={clientAvatarLarge} className="w-full h-full object-cover" alt="" />
+                    {hasFilesEdit && (
                     <button onClick={()=>setPickerOpen(true)} className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center text-white transition-opacity text-xs">✏️ Change</button>
+                    )}
                   </div>
                 </div>
                 <div className="flex-1 min-w-0">
@@ -1869,7 +1887,7 @@ export default function CustomerDetail(){
             transitionDuration: isHeroCollapsed ? '1200ms, 300ms' : '1800ms, 300ms',
             transitionTimingFunction: 'ease-in-out, ease-in-out'
           }}>
-            {isAdmin && (
+            {canDeleteCustomer && (
               <button
                 type="button"
                 onClick={async (e) => { e.stopPropagation(); const ok = await confirm({ title: 'Delete customer', message: 'Are you sure you want to delete this customer? This action cannot be undone.' }); if (!ok) return; try { await api('DELETE', `/clients/${encodeURIComponent(String(id||''))}`); toast.success('Customer deleted'); await queryClient.invalidateQueries({ queryKey: ['clients'] }); navigate('/customers'); } catch (_e) { toast.error('Failed to delete customer'); } }}
@@ -1906,10 +1924,11 @@ export default function CustomerDetail(){
       </div>
 
       {/* Tab Cards - ProjectDetail style */}
+      {availableTabs.length > 0 && (
       <div className={`mb-4 transition-all duration-[1200ms] ease-in-out ${isHeroCollapsed ? 'mt-16' : 'mt-0'}`}>
         <div className="rounded-xl border bg-white p-3">
           <div className="flex flex-wrap gap-2">
-            {(['overview', ...availableTabs.filter(t => t !== 'overview')]).map(tabKey => {
+            {availableTabs.map(tabKey => {
               const tabConfig: Record<string, { label: string; icon: string }> = {
                 overview: { label: 'Overview', icon: '📊' },
                 general: { label: 'General', icon: '📋' },
@@ -1938,12 +1957,16 @@ export default function CustomerDetail(){
           </div>
         </div>
       </div>
+      )}
 
       {/* Content area */}
       <div className="rounded-xl border bg-white p-5">
           {isLoading? <div className="h-24 animate-pulse bg-gray-100 rounded"/> : (
             <>
-              {tab === null && (
+              {availableTabs.length === 0 && (
+                <p className="text-sm text-gray-500">You do not have permission to view any section of this customer.</p>
+              )}
+              {tab === null && hasOverviewView && (
                   <div className="space-y-10">
                     {/* Overview Controls Bar */}
                     <div
@@ -2728,7 +2751,7 @@ export default function CustomerDetail(){
                     </div>
                   </div>
               )}
-              {tab==='general' && (
+              {tab==='general' && hasGeneralView && (
                 <div className="space-y-6 pb-24">
                   {/* Company — card style like Users > Personal */}
                   <div className="rounded-xl border bg-white p-4">
@@ -2741,7 +2764,7 @@ export default function CustomerDetail(){
                         </div>
                         <h5 className="text-sm font-semibold text-blue-900">Company</h5>
                       </div>
-                      {!isEditingGeneral && hasEditPermission && (
+                      {!isEditingGeneral && hasEditGeneral && (
                         <button
                           onClick={() => setIsEditingGeneral(true)}
                           className="p-1.5 rounded hover:bg-gray-100 text-gray-600 hover:text-brand-red transition-colors"
@@ -2832,7 +2855,7 @@ export default function CustomerDetail(){
                         </div>
                         <h5 className="text-sm font-semibold text-green-900">Address</h5>
                       </div>
-                      {!isEditingGeneral && hasEditPermission && (
+                      {!isEditingGeneral && hasEditGeneral && (
                         <button
                           onClick={() => setIsEditingGeneral(true)}
                           className="p-1.5 rounded hover:bg-gray-100 text-gray-600 hover:text-brand-red transition-colors"
@@ -2903,7 +2926,7 @@ export default function CustomerDetail(){
                         </div>
                         <h5 className="text-sm font-semibold text-amber-900">Billing</h5>
                       </div>
-                      {!isEditingGeneral && hasEditPermission && (
+                      {!isEditingGeneral && hasEditGeneral && (
                         <button
                           onClick={() => setIsEditingGeneral(true)}
                           className="p-1.5 rounded hover:bg-gray-100 text-gray-600 hover:text-brand-red transition-colors"
@@ -3002,7 +3025,7 @@ export default function CustomerDetail(){
                         </div>
                         <h5 className="text-sm font-semibold text-gray-900">Description</h5>
                       </div>
-                      {!isEditingGeneral && hasEditPermission && (
+                      {!isEditingGeneral && hasEditGeneral && (
                         <button
                           onClick={() => setIsEditingGeneral(true)}
                           className="p-1.5 rounded hover:bg-gray-100 text-gray-600 hover:text-brand-red transition-colors"
@@ -3038,7 +3061,7 @@ export default function CustomerDetail(){
                   </div>
                 </div>
               )}
-              {tab==='general' && isEditingGeneral && (
+              {tab==='general' && hasGeneralView && isEditingGeneral && (
                 <div className="fixed bottom-0 left-0 right-0 z-40">
                   <div className="max-w-[1400px] mx-auto px-4">
                     <div className="mb-3 rounded-xl border bg-white shadow-hero p-3 flex items-center gap-3">
@@ -3141,23 +3164,23 @@ export default function CustomerDetail(){
                   </div>
                 </div>
               )}
-              {tab==='files' && (
-                <CustomerFilesTabEnhanced clientId={String(id)} files={files||[]} onRefresh={refetchFiles} hasEditPermission={hasFilesWrite} />
+              {tab==='files' && hasFilesView && (
+                <CustomerFilesTabEnhanced clientId={String(id)} files={files||[]} onRefresh={refetchFiles} hasEditPermission={hasFilesEdit} />
               )}
-              {tab==='contacts' && (
+              {tab==='contacts' && hasContactsView && (
                 <ContactsCard
                   id={String(id)}
-                  hasEditPermission={hasEditPermission}
+                  hasEditPermission={hasContactsEdit}
                   clientDisplayName={client?.display_name || client?.name || ''}
                 />
               )}
-              {tab==='sites' && (
+              {tab==='sites' && hasSitesView && (
                 <div>
                   <div className="mb-2">
                     <h4 className="font-semibold">Construction Sites</h4>
                   </div>
                   <div className="grid md:grid-cols-2 gap-4">
-                    {hasEditPermission && (
+                    {hasSitesEdit && (
                       <Link
                         to={`/customers/${encodeURIComponent(String(id||''))}/sites/new`}
                         state={{ backgroundLocation: location }}
@@ -3187,7 +3210,7 @@ export default function CustomerDetail(){
                             ) : (
                               <div className="w-20 h-20 rounded bg-gray-200 grid place-items-center text-2xl text-gray-400" title="No image">📍</div>
                             )}
-                            {hasEditPermission && (
+                            {hasSitesEdit && (
                               <button onClick={(e)=>{ e.preventDefault(); e.stopPropagation(); setSitePicker({ open:true, siteId: String(s.id) }); }} className="hidden group-hover:block absolute right-1 bottom-1 text-[11px] px-2 py-0.5 rounded bg-black/70 text-white">Change cover</button>
                             )}
                           </div>
@@ -3205,13 +3228,13 @@ export default function CustomerDetail(){
                   </div>
                 </div>
               )}
-              {tab==='opportunities' && (
+              {tab==='opportunities' && hasOpportunitiesTabView && (
                 <div className="rounded-xl border bg-white p-4">
                   <div className="mb-4">
                     <h3 className="font-semibold text-gray-900">Opportunities</h3>
                   </div>
                   <div className="flex flex-col gap-2 overflow-x-auto">
-                    {hasEditPermission && (
+                    {hasOpportunitiesEdit && (
                       <Link
                         to={`/projects/new?client_id=${encodeURIComponent(String(id||''))}&is_bidding=true`}
                         state={{ backgroundLocation: location }}
@@ -3248,7 +3271,7 @@ export default function CustomerDetail(){
                   </div>
                 </div>
               )}
-              {tab==='projects' && (
+              {tab==='projects' && hasProjectsTabView && (
                 <div className="rounded-xl border bg-white p-4">
                   <div className="mb-4">
                     <h3 className="font-semibold text-gray-900">Projects</h3>
