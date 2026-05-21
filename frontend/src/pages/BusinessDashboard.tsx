@@ -2,12 +2,31 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import { useState, useMemo, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
+import { Calendar, LayoutDashboard } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
 import LoadingOverlay from '@/components/LoadingOverlay';
 import { DivisionIcon } from '@/components/DivisionIcon';
-import OverlayPortal from '@/components/OverlayPortal';
 import { useBusinessLine } from '@/context/BusinessLineContext';
 import { BUSINESS_LINE_REPAIRS_MAINTENANCE, filterProjectDivisionsForBusinessLine } from '@/lib/businessLine';
+import {
+  AppButton,
+  AppCard,
+  AppEmptyState,
+  AppFormModal,
+  AppInput,
+  AppPageHeader,
+  AppSelect,
+  AppTooltip,
+  type AppSelectOption,
+  uiBorders,
+  uiColors,
+  uiCx,
+  uiLayout,
+  uiRadius,
+  uiShadows,
+  uiSpacing,
+  uiTypography,
+} from '@/components/ui';
 
 // Hook for count-up animation
 function useCountUp(end: number, duration: number = 600, enabled: boolean = true): number {
@@ -109,46 +128,37 @@ function DateRangeModal({ open, onClose, onConfirm, initialStartDate = '', initi
   };
 
   return (
-    <OverlayPortal><div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={onClose}>
-      <div className="w-[400px] max-w-[95vw] bg-white rounded-lg shadow-lg overflow-hidden" onClick={(e) => e.stopPropagation()}>
-        <div className="px-4 py-3 border-b font-semibold">Custom Date Range</div>
-        <div className="p-4 space-y-4">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">Start Date</label>
-            <input
-              type="date"
-              value={startDate}
-              onChange={(e) => setStartDate(e.target.value)}
-              className="w-full border border-gray-300 rounded px-3 py-2 text-sm"
-            />
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">End Date</label>
-            <input
-              type="date"
-              value={endDate}
-              onChange={(e) => setEndDate(e.target.value)}
-              className="w-full border border-gray-300 rounded px-3 py-2 text-sm"
-            />
-          </div>
-        </div>
-        <div className="p-3 flex items-center justify-end gap-2 border-t">
-          <button 
-            className="px-4 py-2 rounded bg-gray-100 hover:bg-gray-200 text-gray-800" 
-            onClick={onClose}
-          >
+    <AppFormModal
+      open={open}
+      onClose={onClose}
+      title="Custom Date Range"
+      description="Choose start and end dates for the chart filter"
+      footer={
+        <div className={uiCx(uiLayout.actionsRow, 'w-full justify-end')}>
+          <AppButton type="button" variant="secondary" size="sm" onClick={onClose}>
             Cancel
-          </button>
-          <button 
-            className="px-4 py-2 rounded bg-[#7f1010] hover:bg-[#a31414] text-white disabled:opacity-50 disabled:cursor-not-allowed" 
-            onClick={handleConfirm}
-            disabled={!startDate || !endDate}
-          >
+          </AppButton>
+          <AppButton type="button" size="sm" disabled={!startDate || !endDate} onClick={handleConfirm}>
             Apply
-          </button>
+          </AppButton>
         </div>
+      }
+    >
+      <div className={uiSpacing.sectionStack}>
+        <AppInput
+          type="date"
+          label="Start Date"
+          value={startDate}
+          onChange={(e) => setStartDate(e.target.value)}
+        />
+        <AppInput
+          type="date"
+          label="End Date"
+          value={endDate}
+          onChange={(e) => setEndDate(e.target.value)}
+        />
       </div>
-    </div></OverlayPortal>
+    </AppFormModal>
   );
 }
 
@@ -188,7 +198,13 @@ type DashboardStats = {
 };
 
 // Division icons use images from @/icons via DivisionIcon component
-const getDivisionIcon = (label: string) => <DivisionIcon label={label} size={24} />;
+const DIVISION_ICON_SIZE = 24;
+const FILTER_DIVISION_ICON_SIZE = 32;
+
+const getDivisionIcon = (label: string) => <DivisionIcon label={label} size={DIVISION_ICON_SIZE} />;
+const getFilterDivisionIcon = (label: string) => (
+  <DivisionIcon label={label} size={FILTER_DIVISION_ICON_SIZE} suppressNativeTitle />
+);
 
 // Helper function to create pie chart path
 const createPieSlice = (startAngle: number, endAngle: number, radius: number, centerX: number, centerY: number): string => {
@@ -216,6 +232,20 @@ const greenPalette = ['#14532d', '#166534', '#15803d', '#16a34a', '#22c55e', '#4
 const coolPalette = ['#0b1739', '#0f2a5a', '#1d4ed8', '#2563eb', '#0284c7', '#0ea5e9', '#38bdf8', '#7dd3fc'];
 
 type DateFilterType = 'all' | 'last_year' | 'last_6_months' | 'last_3_months' | 'last_month' | 'custom';
+
+const DATE_FILTER_OPTIONS: AppSelectOption[] = [
+  { value: 'all', label: 'All time' },
+  { value: 'last_year', label: 'Last year' },
+  { value: 'last_6_months', label: 'Last 6 months' },
+  { value: 'last_3_months', label: 'Last 3 months' },
+  { value: 'last_month', label: 'Last month' },
+  { value: 'custom', label: 'Custom' },
+];
+
+const DISPLAY_MODE_OPTIONS: AppSelectOption[] = [
+  { value: 'quantity', label: 'Quantity' },
+  { value: 'value', label: 'Value' },
+];
 
 const BUSINESS_DASHBOARD_PREFS_KEY = 'business-dashboard-prefs';
 
@@ -335,6 +365,60 @@ const calculateDateRange = (dateFilter: DateFilterType, customDateStart: string,
   }
   return { date_from: dateFrom, date_to: dateTo };
 };
+
+type DashboardChartFiltersProps = {
+  dateFilter: DateFilterType;
+  setDateFilter: (value: DateFilterType) => void;
+  customStart: string;
+  customEnd: string;
+  openCustomModal: () => void;
+  displayMode: 'quantity' | 'value';
+  setDisplayMode: (value: 'quantity' | 'value') => void;
+};
+
+function DashboardChartFilters({
+  dateFilter,
+  setDateFilter,
+  customStart,
+  customEnd,
+  openCustomModal,
+  displayMode,
+  setDisplayMode,
+}: DashboardChartFiltersProps) {
+  return (
+    <div className={uiCx(uiLayout.actionsRow, 'shrink-0 flex-wrap gap-2')}>
+      <AppSelect
+        className="w-[8.5rem] shrink-0"
+        options={DATE_FILTER_OPTIONS}
+        value={dateFilter}
+        onChange={(e) => {
+          const value = e.target.value as DateFilterType;
+          setDateFilter(value);
+          if (value === 'custom') openCustomModal();
+        }}
+      />
+      {dateFilter === 'custom' && customStart && customEnd ? (
+        <AppButton
+          type="button"
+          variant="ghost"
+          size="sm"
+          className="px-2"
+          title={`${formatDateForDisplay(customStart)} - ${formatDateForDisplay(customEnd)}`}
+          onClick={openCustomModal}
+          aria-label="Edit custom date range"
+        >
+          <Calendar className="h-4 w-4" />
+        </AppButton>
+      ) : null}
+      <AppSelect
+        className="w-[6.5rem] shrink-0"
+        options={DISPLAY_MODE_OPTIONS}
+        value={displayMode}
+        onChange={(e) => setDisplayMode(e.target.value as 'quantity' | 'value')}
+      />
+    </div>
+  );
+}
 
 export default function BusinessDashboard() {
   const navigate = useNavigate();
@@ -684,98 +768,104 @@ export default function BusinessDashboard() {
     });
   }, []);
 
+  const chartCardAnimClass = animationComplete
+    ? uiShadows.card
+    : uiCx(
+        uiShadows.card,
+        'transition-[opacity,transform] duration-[400ms] ease-out',
+        hasAnimated ? 'opacity-100 translate-y-0 scale-100' : 'opacity-0 -translate-y-2 scale-[0.98]',
+      );
+
+  const divisionCardAnimClass = animationComplete
+    ? undefined
+    : uiCx(
+        'transition-[opacity,transform] duration-[400ms] ease-out',
+        hasAnimated ? 'opacity-100 translate-y-0' : 'opacity-0 -translate-y-2',
+      );
+
   return (
     <LoadingOverlay isLoading={isInitialLoading} text="Loading dashboard data...">
-      <div className="space-y-4">
-        {/* Title Bar - same layout and font sizes as Opportunities / ProjectDetail */}
-        <div className="rounded-xl border bg-white p-4 mb-4">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3 flex-1">
-              <div>
-                <div className="text-sm font-semibold text-gray-900">
-                  Business Dashboard{selectedDivision ? ` • ${selectedDivision.label}` : ''}
-                </div>
-                <div className="text-xs text-gray-500 mt-0.5">
-                  Opportunities and projects grouped by division
-                </div>
-              </div>
-            </div>
+      <main className={uiCx('min-h-full bg-gray-50', uiSpacing.pageY)}>
+        <div className={uiCx('w-full min-w-0', uiSpacing.pageStack)}>
+        <AppPageHeader
+          title={
+            <>
+              Business Dashboard
+              {selectedDivision ? ` • ${selectedDivision.label}` : ''}
+            </>
+          }
+          subtitle="Opportunities and projects grouped by division"
+          icon={<LayoutDashboard className="h-4 w-4" />}
+          actions={
             <div className="text-right">
-              <div className="text-[10px] font-medium text-gray-500 uppercase tracking-wide">Today</div>
-              <div className="text-xs font-semibold text-gray-700 mt-0.5">{todayLabel}</div>
+              <div className={uiTypography.overline}>Today</div>
+              <div className={uiCx(uiTypography.sectionTitle, 'mt-0.5')}>{todayLabel}</div>
             </div>
-          </div>
-        </div>
+          }
+        />
 
-        {/* Filter Bar - same rounded-xl area as Opportunities */}
-        <div className="rounded-xl border bg-white p-4 mb-4">
-          <div className="flex flex-wrap items-center gap-4">
-            <span className="text-[10px] font-medium text-gray-500 uppercase tracking-wide mr-2">Filter by:</span>
-            <div className="relative group">
-              <button
+        <AppCard bodyClassName={uiSpacing.cardPadding}>
+          <div className={uiCx(uiLayout.actionsRow, 'flex-wrap items-center gap-3')}>
+            <span className={uiTypography.overline}>Filter by:</span>
+            <AppTooltip content="Show All">
+              <AppButton
+                type="button"
+                variant={selectedDivisionId === null ? 'primary' : 'secondary'}
+                size="sm"
+                className="h-12 w-12 shrink-0 p-0"
                 onClick={() => setSelectedDivisionId(null)}
-                className={`flex items-center justify-center w-10 h-10 rounded-lg transition-all duration-200 ${
-                  selectedDivisionId === null
-                    ? 'bg-[#7f1010] text-white shadow-md'
-                    : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-                }`}
+                aria-label="Show all divisions"
               >
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <svg className="h-7 w-7" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z" />
                 </svg>
-              </button>
-              <div className="absolute left-1/2 -translate-x-1/2 bottom-full mb-2 px-2 py-1.5 bg-gray-900 text-white text-xs rounded opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-10 whitespace-nowrap">
-                Show All
-                <div className="absolute left-1/2 -translate-x-1/2 -bottom-1 w-2 h-2 bg-gray-900 rotate-45"></div>
-              </div>
-            </div>
+              </AppButton>
+            </AppTooltip>
             {divisions.map((division) => {
               const isActive = selectedDivisionId === division.id;
-              const icon = getDivisionIcon(division.label);
+              const icon = getFilterDivisionIcon(division.label);
               return (
-                <div key={division.id} className="relative group">
-                  <button
+                <AppTooltip key={division.id} content={division.label}>
+                  <AppButton
+                    type="button"
+                    variant={isActive ? 'primary' : 'secondary'}
+                    size="sm"
+                    className={uiCx('h-12 w-12 shrink-0 p-0', isActive && 'scale-105')}
                     onClick={() => setSelectedDivisionId(division.id)}
-                    className={`flex items-center justify-center w-10 h-10 rounded-lg transition-all duration-200 text-2xl ${
-                      isActive
-                        ? 'bg-[#7f1010] text-white shadow-md scale-105'
-                        : 'bg-gray-100 text-gray-600 hover:bg-gray-200 hover:scale-105'
-                    }`}
-                    title={division.label}
+                    aria-label={division.label}
+                    aria-pressed={isActive}
                   >
                     {icon}
-                  </button>
-                  <div className="absolute left-1/2 -translate-x-1/2 bottom-full mb-2 px-2 py-1.5 bg-gray-900 text-white text-xs rounded opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-10 whitespace-nowrap">
-                    {division.label}
-                    <div className="absolute left-1/2 -translate-x-1/2 -bottom-1 w-2 h-2 bg-gray-900 rotate-45"></div>
-                  </div>
-                </div>
+                  </AppButton>
+                </AppTooltip>
               );
             })}
             <label
-              className="flex items-center gap-2.5 cursor-pointer select-none shrink-0 ml-auto"
+              className={uiCx(uiLayout.actionsRow, 'ml-auto shrink-0 cursor-pointer select-none gap-2.5')}
               title="Only opportunities and projects where you are estimator, project admin, or onsite lead"
             >
-              <span className="text-xs text-gray-700">Show me</span>
+              <span className={uiTypography.body}>Show me</span>
               <button
                 type="button"
                 role="switch"
                 aria-checked={relatedToMe}
                 aria-label="Show only opportunities and projects related to me"
                 onClick={() => setRelatedToMe(!relatedToMe)}
-                className={`relative inline-flex h-6 w-11 shrink-0 rounded-full border transition-colors focus:outline-none focus:ring-2 focus:ring-gray-300 focus:ring-offset-1 ${
-                  relatedToMe ? 'bg-gray-900 border-gray-900' : 'bg-gray-200 border-gray-300'
-                }`}
+                className={uiCx(
+                  'relative inline-flex h-6 w-11 shrink-0 rounded-full border transition-colors focus:outline-none focus:ring-2 focus:ring-gray-300 focus:ring-offset-1',
+                  relatedToMe ? 'border-gray-900 bg-gray-900' : 'border-gray-300 bg-gray-200',
+                )}
               >
                 <span
-                  className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow transition-transform mt-0.5 ${
-                    relatedToMe ? 'translate-x-5 ml-0.5' : 'translate-x-0.5'
-                  }`}
+                  className={uiCx(
+                    'pointer-events-none mt-0.5 inline-block h-5 w-5 transform rounded-full bg-white shadow transition-transform',
+                    relatedToMe ? 'ml-0.5 translate-x-5' : 'translate-x-0.5',
+                  )}
                 />
               </button>
             </label>
           </div>
-        </div>
+        </AppCard>
 
         {/* Section 1: Charts */}
         <section>
@@ -784,67 +874,27 @@ export default function BusinessDashboard() {
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 min-w-0">
               {/* Opportunities by Division */}
               <LoadingOverlay isLoading={oppDivisionsLoading} minHeight="min-h-[200px]">
-              <div 
-                className="rounded-xl border border-gray-200 bg-white p-4 transition-all duration-200 ease-out hover:border-gray-300 hover:-translate-y-0.5 flex flex-col"
-                style={animationComplete ? {} : {
-                  opacity: hasAnimated ? 1 : 0,
-                  transform: hasAnimated ? 'translateY(0) scale(1)' : 'translateY(-8px) scale(0.98)',
-                  transition: 'opacity 400ms ease-out, transform 400ms ease-out'
-                }}
+              <AppCard
+                className={uiCx('flex flex-col transition-all duration-200 ease-out hover:-translate-y-0.5', chartCardAnimClass)}
+                bodyClassName={uiCx(uiSpacing.cardPadding, 'flex flex-1 flex-col min-h-0')}
               >
-                <div className="flex items-center justify-between mb-3 flex-shrink-0">
-                  <div className="text-[10px] font-medium text-gray-500 uppercase tracking-wide">
+                <div className="mb-3 flex flex-shrink-0 items-center justify-between gap-2">
+                  <div className={uiTypography.overline}>
                     Opportunities by Division{selectedDivision ? ` - ${selectedDivision.label}` : ''}
                   </div>
-                  <div className="flex items-center gap-2">
-                      <select
-                        value={oppDivisionDateFilter}
-                        onChange={(e) => {
-                          const value = e.target.value as DateFilterType;
-                          setOppDivisionDateFilter(value);
-                          if (value === 'custom') {
-                            setOppDivisionModalOpen(true);
-                          }
-                        }}
-                        className="border border-gray-300 rounded px-2 py-1 text-xs"
-                      >
-                        <option value="all">All time</option>
-                        <option value="last_year">Last year</option>
-                        <option value="last_6_months">Last 6 months</option>
-                        <option value="last_3_months">Last 3 months</option>
-                        <option value="last_month">Last month</option>
-                        <option value="custom">Custom</option>
-                      </select>
-                      {oppDivisionDateFilter === 'custom' && oppDivisionCustomStart && oppDivisionCustomEnd && (
-                        <div className="relative group">
-                          <button
-                            onClick={() => setOppDivisionModalOpen(true)}
-                            className="text-gray-500 hover:text-[#7f1010] transition-colors p-1"
-                            title={`${formatDateForDisplay(oppDivisionCustomStart)} - ${formatDateForDisplay(oppDivisionCustomEnd)}`}
-                          >
-                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                            </svg>
-                          </button>
-                          <div className="absolute right-0 bottom-full mb-2 px-2 py-1.5 bg-gray-900 text-white text-xs rounded opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-10 whitespace-nowrap">
-                            {formatDateForDisplay(oppDivisionCustomStart)} - {formatDateForDisplay(oppDivisionCustomEnd)}
-                            <div className="absolute -bottom-1 right-3 w-2 h-2 bg-gray-900 rotate-45"></div>
-                          </div>
-                        </div>
-                      )}
-                      <select
-                        value={oppDivisionDisplayMode}
-                        onChange={(e) => setOppDivisionDisplayMode(e.target.value as 'quantity' | 'value')}
-                        className="border border-gray-300 rounded px-2 py-1 text-xs"
-                      >
-                        <option value="quantity">Quantity</option>
-                        <option value="value">Value</option>
-                      </select>
-                  </div>
+                  <DashboardChartFilters
+                    dateFilter={oppDivisionDateFilter}
+                    setDateFilter={setOppDivisionDateFilter}
+                    customStart={oppDivisionCustomStart}
+                    customEnd={oppDivisionCustomEnd}
+                    openCustomModal={() => setOppDivisionModalOpen(true)}
+                    displayMode={oppDivisionDisplayMode}
+                    setDisplayMode={setOppDivisionDisplayMode}
+                  />
                 </div>
                 <div className="flex-1 flex items-center justify-center">
                   {oppStatsByDivision.length === 0 ? (
-                    <div className="text-xs text-gray-400 text-center">No data</div>
+                    <p className={uiCx(uiTypography.helper, 'text-center')}>No data</p>
                   ) : (() => {
                     const colors = greenPalette;
                     // Always start from divisions that have opportunities, regardless of value.
@@ -1005,72 +1055,32 @@ export default function BusinessDashboard() {
                     );
                   })()}
                 </div>
-                </div>
+              </AppCard>
               </LoadingOverlay>
 
                 {/* Projects by Division */}
                 <LoadingOverlay isLoading={projDivisionsLoading} minHeight="min-h-[200px]">
-                <div 
-                  className="rounded-xl border border-gray-200 bg-white p-4 transition-all duration-200 ease-out hover:border-gray-300 hover:-translate-y-0.5 flex flex-col"
-                  style={animationComplete ? {} : {
-                    opacity: hasAnimated ? 1 : 0,
-                    transform: hasAnimated ? 'translateY(0) scale(1)' : 'translateY(-8px) scale(0.98)',
-                    transition: `opacity 400ms ease-out 50ms, transform 400ms ease-out 50ms`
-                  }}
+                <AppCard
+                  className={uiCx('flex flex-col transition-all duration-200 ease-out hover:-translate-y-0.5', chartCardAnimClass)}
+                  bodyClassName={uiCx(uiSpacing.cardPadding, 'flex flex-1 flex-col min-h-0')}
                 >
-                  <div className="flex items-center justify-between mb-3 flex-shrink-0">
-                    <div className="text-[10px] font-medium text-gray-500 uppercase tracking-wide">
+                  <div className="mb-3 flex flex-shrink-0 items-center justify-between gap-2">
+                    <div className={uiTypography.overline}>
                       Projects by Division{selectedDivision ? ` - ${selectedDivision.label}` : ''}
                     </div>
-                      <div className="flex items-center gap-2">
-                        <select
-                          value={projDivisionDateFilter}
-                          onChange={(e) => {
-                            const value = e.target.value as DateFilterType;
-                            setProjDivisionDateFilter(value);
-                            if (value === 'custom') {
-                              setProjDivisionModalOpen(true);
-                            }
-                          }}
-                          className="border border-gray-300 rounded px-2 py-1 text-xs"
-                        >
-                          <option value="all">All time</option>
-                          <option value="last_year">Last year</option>
-                          <option value="last_6_months">Last 6 months</option>
-                          <option value="last_3_months">Last 3 months</option>
-                          <option value="last_month">Last month</option>
-                          <option value="custom">Custom</option>
-                        </select>
-                        {projDivisionDateFilter === 'custom' && projDivisionCustomStart && projDivisionCustomEnd && (
-                          <div className="relative group">
-                            <button
-                              onClick={() => setProjDivisionModalOpen(true)}
-                              className="text-gray-500 hover:text-[#7f1010] transition-colors p-1"
-                              title={`${formatDateForDisplay(projDivisionCustomStart)} - ${formatDateForDisplay(projDivisionCustomEnd)}`}
-                            >
-                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                              </svg>
-                            </button>
-                            <div className="absolute right-0 bottom-full mb-2 px-2 py-1.5 bg-gray-900 text-white text-xs rounded opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-10 whitespace-nowrap">
-                              {formatDateForDisplay(projDivisionCustomStart)} - {formatDateForDisplay(projDivisionCustomEnd)}
-                              <div className="absolute -bottom-1 right-3 w-2 h-2 bg-gray-900 rotate-45"></div>
-                            </div>
-                          </div>
-                        )}
-                        <select
-                          value={projDivisionDisplayMode}
-                          onChange={(e) => setProjDivisionDisplayMode(e.target.value as 'quantity' | 'value')}
-                          className="border border-gray-300 rounded px-2 py-1 text-xs"
-                        >
-                          <option value="quantity">Quantity</option>
-                          <option value="value">Value</option>
-                        </select>
-                      </div>
-                    </div>
+                    <DashboardChartFilters
+                      dateFilter={projDivisionDateFilter}
+                      setDateFilter={setProjDivisionDateFilter}
+                      customStart={projDivisionCustomStart}
+                      customEnd={projDivisionCustomEnd}
+                      openCustomModal={() => setProjDivisionModalOpen(true)}
+                      displayMode={projDivisionDisplayMode}
+                      setDisplayMode={setProjDivisionDisplayMode}
+                    />
+                  </div>
                   <div className="flex-1 flex items-center justify-center">
                     {projStatsByDivision.length === 0 ? (
-                      <div className="text-xs text-gray-400 text-center">No data</div>
+                      <p className={uiCx(uiTypography.helper, 'text-center')}>No data</p>
                     ) : (() => {
                     const colors = coolPalette;
                     const divisionsForList = projStatsByDivision
@@ -1229,7 +1239,7 @@ export default function BusinessDashboard() {
                     );
                   })()}
                 </div>
-                </div>
+              </AppCard>
               </LoadingOverlay>
             </div>
 
@@ -1237,63 +1247,23 @@ export default function BusinessDashboard() {
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 min-w-0">
               {/* Opportunities by Status (horizontal bars) */}
               <LoadingOverlay isLoading={oppStatusLoading} minHeight="min-h-[200px]">
-                  <div 
-                    className="rounded-xl border border-gray-200 bg-white p-4 min-w-0 transition-all duration-200 ease-out hover:border-gray-300 hover:-translate-y-0.5"
-                    style={animationComplete ? {} : {
-                      opacity: hasAnimated ? 1 : 0,
-                      transform: hasAnimated ? 'translateY(0) scale(1)' : 'translateY(-8px) scale(0.98)',
-                      transition: `opacity 400ms ease-out 100ms, transform 400ms ease-out 100ms`
-                    }}
+                  <AppCard
+                    className={uiCx('min-w-0 transition-all duration-200 ease-out hover:-translate-y-0.5', chartCardAnimClass)}
+                    bodyClassName={uiSpacing.cardPadding}
                   >
-                    <div className="flex items-center justify-between mb-3">
-                      <div className="text-[10px] font-medium text-gray-500 uppercase tracking-wide">
+                    <div className="mb-3 flex items-center justify-between gap-2">
+                      <div className={uiTypography.overline}>
                         Opportunities by Status{selectedDivision ? ` - ${selectedDivision.label}` : ''}
                       </div>
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <select
-                          value={oppStatusDateFilter}
-                          onChange={(e) => {
-                            const value = e.target.value as DateFilterType;
-                            setOppStatusDateFilter(value);
-                            if (value === 'custom') {
-                              setOppStatusModalOpen(true);
-                            }
-                          }}
-                          className="border border-gray-300 rounded px-2 py-1 text-xs"
-                        >
-                          <option value="all">All time</option>
-                          <option value="last_year">Last year</option>
-                          <option value="last_6_months">Last 6 months</option>
-                          <option value="last_3_months">Last 3 months</option>
-                          <option value="last_month">Last month</option>
-                          <option value="custom">Custom</option>
-                        </select>
-                        {oppStatusDateFilter === 'custom' && oppStatusCustomStart && oppStatusCustomEnd && (
-                          <div className="relative group">
-                            <button
-                              onClick={() => setOppStatusModalOpen(true)}
-                              className="text-gray-500 hover:text-[#7f1010] transition-colors p-1"
-                              title={`${formatDateForDisplay(oppStatusCustomStart)} - ${formatDateForDisplay(oppStatusCustomEnd)}`}
-                            >
-                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                              </svg>
-                            </button>
-                            <div className="absolute right-0 bottom-full mb-2 px-2 py-1.5 bg-gray-900 text-white text-xs rounded opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-10 whitespace-nowrap">
-                              {formatDateForDisplay(oppStatusCustomStart)} - {formatDateForDisplay(oppStatusCustomEnd)}
-                              <div className="absolute -bottom-1 right-3 w-2 h-2 bg-gray-900 rotate-45"></div>
-                            </div>
-                          </div>
-                        )}
-                        <select
-                          value={oppStatusDisplayMode}
-                          onChange={(e) => setOppStatusDisplayMode(e.target.value as 'quantity' | 'value')}
-                          className="border border-gray-300 rounded px-2 py-1 text-xs"
-                        >
-                          <option value="quantity">Quantity</option>
-                          <option value="value">Value</option>
-                        </select>
-                      </div>
+                      <DashboardChartFilters
+                        dateFilter={oppStatusDateFilter}
+                        setDateFilter={setOppStatusDateFilter}
+                        customStart={oppStatusCustomStart}
+                        customEnd={oppStatusCustomEnd}
+                        openCustomModal={() => setOppStatusModalOpen(true)}
+                        displayMode={oppStatusDisplayMode}
+                        setDisplayMode={setOppStatusDisplayMode}
+                      />
                     </div>
                     <div className="space-y-2">
                       {oppStatusStats && Object.entries(oppStatusStats.opportunities_by_status).length > 0 ? (
@@ -1308,7 +1278,7 @@ export default function BusinessDashboard() {
                               }
                             });
                           if (entries.length === 0) {
-                            return <div className="text-xs text-gray-400">No status data</div>;
+                            return <p className={uiTypography.helper}>No status data</p>;
                           }
                           const sorted = oppStatusDisplayMode === 'value'
                             ? entries.sort(([, a], [, b]) => {
@@ -1376,71 +1346,31 @@ export default function BusinessDashboard() {
                           });
                         })()
                       ) : (
-                        <div className="text-xs text-gray-400">No status data</div>
+                        <p className={uiTypography.helper}>No status data</p>
                       )}
                     </div>
-                  </div>
+                  </AppCard>
                   </LoadingOverlay>
 
                 {/* Projects by Status (horizontal bars) */}
                 <LoadingOverlay isLoading={projStatusLoading} minHeight="min-h-[200px]">
-                  <div 
-                    className="rounded-xl border border-gray-200 bg-white p-4 min-w-0 transition-all duration-200 ease-out hover:border-gray-300 hover:-translate-y-0.5"
-                    style={animationComplete ? {} : {
-                      opacity: hasAnimated ? 1 : 0,
-                      transform: hasAnimated ? 'translateY(0) scale(1)' : 'translateY(-8px) scale(0.98)',
-                      transition: `opacity 400ms ease-out 150ms, transform 400ms ease-out 150ms`
-                    }}
+                  <AppCard
+                    className={uiCx('min-w-0 transition-all duration-200 ease-out hover:-translate-y-0.5', chartCardAnimClass)}
+                    bodyClassName={uiSpacing.cardPadding}
                   >
-                    <div className="flex items-center justify-between mb-3">
-                      <div className="text-[10px] font-medium text-gray-500 uppercase tracking-wide">
+                    <div className="mb-3 flex items-center justify-between gap-2">
+                      <div className={uiTypography.overline}>
                         Projects by Status{selectedDivision ? ` - ${selectedDivision.label}` : ''}
                       </div>
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <select
-                          value={projStatusDateFilter}
-                          onChange={(e) => {
-                            const value = e.target.value as DateFilterType;
-                            setProjStatusDateFilter(value);
-                            if (value === 'custom') {
-                              setProjStatusModalOpen(true);
-                            }
-                          }}
-                          className="border border-gray-300 rounded px-2 py-1 text-xs"
-                        >
-                          <option value="all">All time</option>
-                          <option value="last_year">Last year</option>
-                          <option value="last_6_months">Last 6 months</option>
-                          <option value="last_3_months">Last 3 months</option>
-                          <option value="last_month">Last month</option>
-                          <option value="custom">Custom</option>
-                        </select>
-                        {projStatusDateFilter === 'custom' && projStatusCustomStart && projStatusCustomEnd && (
-                          <div className="relative group">
-                            <button
-                              onClick={() => setProjStatusModalOpen(true)}
-                              className="text-gray-500 hover:text-[#7f1010] transition-colors p-1"
-                              title={`${formatDateForDisplay(projStatusCustomStart)} - ${formatDateForDisplay(projStatusCustomEnd)}`}
-                            >
-                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                              </svg>
-                            </button>
-                            <div className="absolute right-0 bottom-full mb-2 px-2 py-1.5 bg-gray-900 text-white text-xs rounded opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-10 whitespace-nowrap">
-                              {formatDateForDisplay(projStatusCustomStart)} - {formatDateForDisplay(projStatusCustomEnd)}
-                              <div className="absolute -bottom-1 right-3 w-2 h-2 bg-gray-900 rotate-45"></div>
-                            </div>
-                          </div>
-                        )}
-                        <select
-                          value={projStatusDisplayMode}
-                          onChange={(e) => setProjStatusDisplayMode(e.target.value as 'quantity' | 'value')}
-                          className="border border-gray-300 rounded px-2 py-1 text-xs"
-                        >
-                          <option value="quantity">Quantity</option>
-                          <option value="value">Value</option>
-                        </select>
-                      </div>
+                      <DashboardChartFilters
+                        dateFilter={projStatusDateFilter}
+                        setDateFilter={setProjStatusDateFilter}
+                        customStart={projStatusCustomStart}
+                        customEnd={projStatusCustomEnd}
+                        openCustomModal={() => setProjStatusModalOpen(true)}
+                        displayMode={projStatusDisplayMode}
+                        setDisplayMode={setProjStatusDisplayMode}
+                      />
                     </div>
                     <div className="space-y-2">
                       {projStatusStats && Object.entries(projStatusStats.projects_by_status).length > 0 ? (
@@ -1455,7 +1385,7 @@ export default function BusinessDashboard() {
                               }
                             });
                           if (entries.length === 0) {
-                            return <div className="text-xs text-gray-400">No status data</div>;
+                            return <p className={uiTypography.helper}>No status data</p>;
                           }
                           const sorted = projStatusDisplayMode === 'value'
                             ? entries.sort(([, a], [, b]) => {
@@ -1523,10 +1453,10 @@ export default function BusinessDashboard() {
                           });
                         })()
                       ) : (
-                        <div className="text-xs text-gray-400">No status data</div>
+                        <p className={uiTypography.helper}>No status data</p>
                       )}
                     </div>
-                  </div>
+                  </AppCard>
                   </LoadingOverlay>
                 </div>
             </div>
@@ -1534,11 +1464,17 @@ export default function BusinessDashboard() {
 
         {/* Section 2: Division Cards Grid */}
         {divisionsError ? (
-          <div className="rounded-xl border border-gray-200 bg-red-50 p-6 text-center">
-            <div className="text-red-700 font-semibold mb-2">Error loading divisions</div>
-            <div className="text-sm text-red-600">{String(divisionsError)}</div>
-            <div className="text-xs text-gray-500 mt-2">Check console for details</div>
-          </div>
+          <AppCard className="border-red-200 bg-red-50" bodyClassName={uiSpacing.cardPadding}>
+            <AppEmptyState
+              title="Error loading divisions"
+              description={
+                <>
+                  <span className="text-red-700">{String(divisionsError)}</span>
+                  <span className="mt-2 block text-gray-500">Check console for details</span>
+                </>
+              }
+            />
+          </AppCard>
         ) : (selectedDivisionId ? oppStatsByDivision.length > 0 || projStatsByDivision.length > 0 : divisions.length > 0) ? (
           <section>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
@@ -1555,23 +1491,19 @@ export default function BusinessDashboard() {
                     : (selectedDivision ? getDivisionIcon(selectedDivision.label) : getDivisionIcon(subdivisionStat.label));
                   
                   return (
-                    <div
+                    <AppCard
                       key={subdivisionStat.id}
-                      className="rounded-xl border border-gray-200 bg-white p-4 flex flex-col h-full group transition-all duration-200 ease-out hover:border-gray-300 hover:-translate-y-0.5"
-                      style={animationComplete ? {} : {
-                        opacity: hasAnimated ? 1 : 0,
-                        transform: hasAnimated ? 'translateY(0)' : 'translateY(-8px)',
-                        transition: `opacity 400ms ease-out ${idx * 50}ms, transform 400ms ease-out ${idx * 50}ms`
-                      }}
+                      className={uiCx('group flex h-full flex-col transition-all duration-200 ease-out hover:-translate-y-0.5', divisionCardAnimClass)}
+                      bodyClassName={uiCx(uiSpacing.cardPadding, 'flex flex-1 flex-col')}
                     >
-                      <div className="flex items-center justify-between mb-3 gap-2">
-                        <div className="flex items-center gap-2 min-w-0 flex-1">
-                          <div className="text-2xl flex-shrink-0">{icon}</div>
-                          <div className="text-sm font-semibold text-gray-900">{subdivisionStat.label}</div>
+                      <div className="mb-3 flex items-center justify-between gap-2">
+                        <div className="flex min-w-0 flex-1 items-center gap-2">
+                          <div className="shrink-0 text-2xl">{icon}</div>
+                          <div className={uiTypography.sectionTitle}>{subdivisionStat.label}</div>
                         </div>
                       </div>
 
-                      <div className="mt-auto flex items-center text-sm pt-3 border-t">
+                      <div className={uiCx('mt-auto flex items-center border-t pt-3 text-sm', uiBorders.subtle)}>
                         <div 
                           onClick={(e) => {
                             e.stopPropagation();
@@ -1580,31 +1512,34 @@ export default function BusinessDashboard() {
                           className="cursor-pointer hover:bg-gray-50 rounded-lg p-2 transition-all group border border-transparent hover:border-gray-200 flex-1 flex items-center justify-center gap-1.5"
                           title="View Opportunities"
                         >
-                          <span className="text-sm font-bold text-[#7f1010] group-hover:text-[#a31414] group-hover:opacity-100 opacity-95 transition-all duration-150">
+                          <span className="text-sm font-bold text-brand-red opacity-95 transition-all duration-150 group-hover:opacity-100">
                             <CountUp value={oppCount} enabled={hasAnimated} />
                           </span>
-                          <span className="text-[10px] font-medium text-gray-500 group-hover:text-[#7f1010] transition-colors uppercase tracking-wide">
+                          <span className={uiCx(uiTypography.overline, 'group-hover:text-brand-red')}>
                             Opportunities
                           </span>
                         </div>
-                        <div className="h-8 w-px bg-gray-200"></div>
+                        <div className="h-8 w-px bg-gray-200" />
                         <div 
                           onClick={(e) => {
                             e.stopPropagation();
                             handleViewProjects(subdivisionStat.id);
                           }}
-                          className="cursor-pointer hover:bg-gray-50 rounded-lg p-2 transition-all group border border-transparent hover:border-gray-200 flex-1 flex items-center justify-center gap-1.5"
+                          className={uiCx(
+                            'group flex flex-1 cursor-pointer items-center justify-center gap-1.5 border border-transparent p-2 transition-all hover:border-gray-200 hover:bg-gray-50',
+                            uiRadius.control,
+                          )}
                           title="View Projects"
                         >
-                          <span className="text-sm font-bold text-[#7f1010] group-hover:text-[#a31414] group-hover:opacity-100 opacity-95 transition-all duration-150">
+                          <span className="text-sm font-bold text-brand-red opacity-95 transition-all duration-150 group-hover:opacity-100">
                             <CountUp value={projCount} enabled={hasAnimated} />
                           </span>
-                          <span className="text-[10px] font-medium text-gray-500 group-hover:text-[#7f1010] transition-colors uppercase tracking-wide">
+                          <span className={uiCx(uiTypography.overline, 'group-hover:text-brand-red')}>
                             Projects
                           </span>
                         </div>
                       </div>
-                    </div>
+                    </AppCard>
                   );
                 })
               ) : (
@@ -1617,23 +1552,19 @@ export default function BusinessDashboard() {
                   const hasSubdivisions = division.subdivisions && division.subdivisions.length > 0;
 
                 return (
-                  <div
+                  <AppCard
                     key={division.id}
-                    className="rounded-xl border border-gray-200 bg-white p-4 flex flex-col h-full group transition-all duration-200 ease-out hover:border-gray-300 hover:-translate-y-0.5"
-                    style={animationComplete ? {} : {
-                      opacity: hasAnimated ? 1 : 0,
-                      transform: hasAnimated ? 'translateY(0)' : 'translateY(-8px)',
-                      transition: `opacity 400ms ease-out ${idx * 50}ms, transform 400ms ease-out ${idx * 50}ms`
-                    }}
+                    className={uiCx('group flex h-full flex-col transition-all duration-200 ease-out hover:-translate-y-0.5', divisionCardAnimClass)}
+                    bodyClassName={uiCx(uiSpacing.cardPadding, 'flex flex-1 flex-col')}
                   >
-                    <div className="flex items-center justify-between mb-3 gap-2">
-                      <div className="flex items-center gap-2 min-w-0 flex-1">
-                        <div className="text-2xl flex-shrink-0">{getDivisionIcon(division.label)}</div>
-                        <div className="text-sm font-semibold text-gray-900">{division.label}</div>
+                    <div className="mb-3 flex items-center justify-between gap-2">
+                      <div className="flex min-w-0 flex-1 items-center gap-2">
+                        <div className="shrink-0 text-2xl">{getDivisionIcon(division.label)}</div>
+                        <div className={uiTypography.sectionTitle}>{division.label}</div>
                       </div>
                       {hasSubdivisions && (
-                        <div className="relative group/sub flex-shrink-0">
-                          <div className="text-[10px] font-medium text-gray-500 bg-gray-100 px-2 py-1 rounded-lg whitespace-nowrap cursor-pointer">
+                        <div className="group/sub relative shrink-0">
+                          <div className={uiCx(uiTypography.overline, 'cursor-pointer whitespace-nowrap bg-gray-100 px-2 py-1', uiRadius.control)}>
                             {division.subdivisions.length} sub
                           </div>
                           <div className="absolute right-0 bottom-full mb-1 px-2 py-1.5 bg-gray-900 text-white text-xs rounded opacity-0 group-hover/sub:opacity-100 transition-opacity pointer-events-none z-10 min-w-max">
@@ -1648,94 +1579,109 @@ export default function BusinessDashboard() {
                       )}
                     </div>
 
-                    <div className="mt-auto flex items-center text-sm pt-3 border-t">
+                    <div className={uiCx('mt-auto flex items-center border-t pt-3 text-sm', uiBorders.subtle)}>
                       <div 
                         onClick={(e) => {
                           e.stopPropagation();
                           handleViewOpportunities(division.id);
                         }}
-                        className="cursor-pointer hover:bg-gray-50 rounded-lg p-2 transition-all group border border-transparent hover:border-gray-200 flex-1 flex items-center justify-center gap-1.5"
+                        className={uiCx(
+                          'group flex flex-1 cursor-pointer items-center justify-center gap-1.5 border border-transparent p-2 transition-all hover:border-gray-200 hover:bg-gray-50',
+                          uiRadius.control,
+                        )}
                         title="View Opportunities"
                       >
-                        <span className="text-sm font-bold text-[#7f1010] group-hover:text-[#a31414] group-hover:opacity-100 opacity-95 transition-all duration-150">
+                        <span className="text-sm font-bold text-brand-red opacity-95 transition-all duration-150 group-hover:opacity-100">
                           <CountUp value={oppCount} enabled={hasAnimated} />
                         </span>
-                        <span className="text-[10px] font-medium text-gray-500 group-hover:text-[#7f1010] transition-colors uppercase tracking-wide">
+                        <span className={uiCx(uiTypography.overline, 'group-hover:text-brand-red')}>
                           Opportunities
                         </span>
                       </div>
-                      <div className="h-8 w-px bg-gray-200"></div>
+                      <div className="h-8 w-px bg-gray-200" />
                       <div 
                         onClick={(e) => {
                           e.stopPropagation();
                           handleViewProjects(division.id);
                         }}
-                        className="cursor-pointer hover:bg-gray-50 rounded-lg p-2 transition-all group border border-transparent hover:border-gray-200 flex-1 flex items-center justify-center gap-1.5"
+                        className={uiCx(
+                          'group flex flex-1 cursor-pointer items-center justify-center gap-1.5 border border-transparent p-2 transition-all hover:border-gray-200 hover:bg-gray-50',
+                          uiRadius.control,
+                        )}
                         title="View Projects"
                       >
-                        <span className="text-sm font-bold text-[#7f1010] group-hover:text-[#a31414] group-hover:opacity-100 opacity-95 transition-all duration-150">
+                        <span className="text-sm font-bold text-brand-red opacity-95 transition-all duration-150 group-hover:opacity-100">
                           <CountUp value={projCount} enabled={hasAnimated} />
                         </span>
-                        <span className="text-[10px] font-medium text-gray-500 group-hover:text-[#7f1010] transition-colors uppercase tracking-wide">
+                        <span className={uiCx(uiTypography.overline, 'group-hover:text-brand-red')}>
                           Projects
                         </span>
                       </div>
                     </div>
-                  </div>
+                  </AppCard>
                 );
               })
               )}
             </div>
           </section>
         ) : (
-          <div className="rounded-xl border border-gray-200 bg-white p-6 text-center">
-            <div className="text-gray-500 mb-3">No project divisions found.</div>
-            <div className="text-sm text-gray-400 mb-4">
-              {divisionsLoading ? 'Loading...' : 'Please run the seed script to create divisions.'}
-            </div>
-            <button
-              onClick={() => {
-                queryClient.invalidateQueries({ queryKey: ['project-divisions'] });
-                refetchDivisions();
-              }}
-              className="px-4 py-2 bg-[#7f1010] text-white rounded-lg hover:bg-[#a31414] transition-colors text-sm"
-            >
-              Retry
-            </button>
-          </div>
+          <AppCard bodyClassName={uiSpacing.cardPadding}>
+            <AppEmptyState
+              title="No project divisions found"
+              description={
+                divisionsLoading ? 'Loading...' : 'Please run the seed script to create divisions.'
+              }
+              action={
+                <AppButton
+                  type="button"
+                  size="sm"
+                  onClick={() => {
+                    queryClient.invalidateQueries({ queryKey: ['project-divisions'] });
+                    refetchDivisions();
+                  }}
+                >
+                  Retry
+                </AppButton>
+              }
+            />
+          </AppCard>
         )}
 
         {/* Section 3: Quick Actions */}
         <section>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
             <Link
               to={`/opportunities${selectedDivisionId ? `?division_id=${encodeURIComponent(selectedDivisionId)}` : ''}`}
-              className="rounded-xl border border-gray-200 bg-white p-4 transition-all duration-200 ease-out hover:border-gray-300 hover:-translate-y-0.5"
+              className="block"
             >
-              <div className="flex items-center justify-between">
-                <div>
-                  <div className="text-sm font-semibold text-gray-900">View All Opportunities</div>
-                  <div className="text-xs text-gray-500 mt-0.5">
-                    Browse and manage all bidding opportunities
+              <AppCard className="transition-all duration-200 ease-out hover:-translate-y-0.5" bodyClassName={uiSpacing.cardPadding}>
+                <div className="flex items-center justify-between">
+                  <div>
+                    <div className={uiTypography.sectionTitle}>View All Opportunities</div>
+                    <p className={uiTypography.sectionSubtitle}>
+                      Browse and manage all bidding opportunities
+                    </p>
                   </div>
+                  <div className="text-xl text-gray-400">→</div>
                 </div>
-                <div className="text-xl text-gray-400">→</div>
-              </div>
+              </AppCard>
             </Link>
 
             <Link
               to={`/projects${selectedDivisionId ? `?division_id=${encodeURIComponent(selectedDivisionId)}` : ''}`}
-              className="rounded-xl border border-gray-200 bg-white p-4 transition-all duration-200 ease-out hover:border-gray-300 hover:-translate-y-0.5"
+              className="block"
             >
-              <div className="flex items-center justify-between">
-                <div>
-                  <div className="text-sm font-semibold text-gray-900">View All Projects</div>
-                  <div className="text-xs text-gray-500 mt-0.5">
-                    Browse and manage all active projects
+              <AppCard className="transition-all duration-200 ease-out hover:-translate-y-0.5" bodyClassName={uiSpacing.cardPadding}>
+                <div className="flex items-center justify-between">
+                  <div>
+                    <div className={uiTypography.sectionTitle}>View All Projects</div>
+                    <p className={uiTypography.sectionSubtitle}>
+                      Browse and manage all active projects
+                    </p>
                   </div>
+                  <div className="text-xl text-gray-400">→</div>
                 </div>
-                <div className="text-xl text-gray-400">→</div>
-              </div>
+              </AppCard>
             </Link>
           </div>
         </section>
@@ -1812,7 +1758,8 @@ export default function BusinessDashboard() {
           initialStartDate={projStatusCustomStart}
           initialEndDate={projStatusCustomEnd}
         />
-      </div>
+        </div>
+      </main>
     </LoadingOverlay>
   );
 }

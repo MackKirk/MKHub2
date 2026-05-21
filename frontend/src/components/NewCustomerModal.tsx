@@ -564,8 +564,8 @@ export default function NewCustomerModal({ onClose, onSuccess }: NewCustomerModa
         open
         onClose={onClose}
         formWidth="wide"
-        dialogClassName="!max-w-[800px]"
-        dialogClassNameExpanded="!max-w-[calc(800px+1rem+16rem+2rem)]"
+        dialogClassName="!max-w-[720px]"
+        dialogClassNameExpanded="!max-w-[calc(720px+1rem+16rem+2rem)]"
         title="New Customer"
         description={stepSubtitle}
         headerExtra={stepIndicators}

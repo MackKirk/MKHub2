@@ -1,847 +1,100 @@
-import { useQuery } from '@tanstack/react-query';
-import { api, withFileAccessToken, withFileAccessTokenIfNeeded } from '@/lib/api';
+﻿import { useQueries, useQuery } from '@tanstack/react-query';
+import { api, withFileAccessTokenIfNeeded } from '@/lib/api';
 import { useMemo, useState, useEffect, useRef } from 'react';
-import { createPortal } from 'react-dom';
 import type { ReactNode } from 'react';
 import ImagePicker from '@/components/ImagePicker';
 import toast from 'react-hot-toast';
 import { Link, useLocation, useSearchParams, useNavigate } from 'react-router-dom';
+import { LayoutDashboard, LayoutGrid, List, Plus, Search, SlidersHorizontal } from 'lucide-react';
 import LoadingOverlay from '@/components/LoadingOverlay';
 import { DivisionIcon } from '@/components/DivisionIcon';
 import { ReportAttachmentAreaMultiple } from '@/components/ReportAttachmentArea';
-import OverlayPortal from '@/components/OverlayPortal';
+import FilterBuilderModal from '@/components/FilterBuilder/FilterBuilderModal';
+import FilterChip from '@/components/FilterBuilder/FilterChip';
+import { FilterRule, FieldConfig, FilterOperator } from '@/components/FilterBuilder/types';
 import { useBusinessLine } from '@/context/BusinessLineContext';
 import { BUSINESS_LINE_REPAIRS_MAINTENANCE, filterProjectDivisionsForBusinessLine } from '@/lib/businessLine';
+import {
+  buildOpportunityListSearchParams,
+  convertParamsToRules,
+  convertRulesToParams,
+  isRelatedToMeParamActive,
+  OPPORTUNITY_FIELD_LABELS,
+  setRelatedToMeParam,
+  statusIdByLabel,
+} from '@/lib/opportunityFilters';
+import { getProjectStatusBadgeVariant } from '@/lib/projectUi';
 import { filterStatusesForOpportunity } from '@/lib/projectStatusVisibility';
+import { getUserDisplayName } from '@/lib/userDisplay';
+import {
+  AppBadge,
+  AppButton,
+  AppCard,
+  AppEmptyState,
+  AppFormModal,
+  AppInput,
+  AppPageHeader,
+  AppSelect,
+  AppTextarea,
+  AppTooltip,
+  AppTabCountBadge,
+  getAppTabButtonClassName,
+  AppUserAvatar,
+  getListCreateItemClassName,
+  uiBorders,
+  uiColors,
+  uiCx,
+  uiLayout,
+  uiListCreateItem,
+  uiRadius,
+  uiShadows,
+  uiSpacing,
+  uiTypography,
+} from '@/components/ui';
 
-// Helper function to get user initials
-function getUserInitials(user: any): string {
-  const firstName = user?.first_name || user?.name || user?.username || '';
-  const lastName = user?.last_name || '';
-  const firstInitial = firstName ? firstName[0].toUpperCase() : '';
-  const lastInitial = lastName ? lastName[0].toUpperCase() : '';
-  if (firstInitial && lastInitial) {
-    return firstInitial + lastInitial;
-  }
-  return firstInitial || (user?.username ? user.username[0].toUpperCase() : '?');
-}
-
-// Helper function to get user display name
-function getUserDisplayName(user: any): string {
-  if (user?.first_name && user?.last_name) {
-    return `${user.first_name} ${user.last_name}`;
-  }
-  return user?.name || user?.username || 'Unknown';
-}
-
-// Component for user avatar with tooltip (portal so it's not clipped by card overflow)
-function UserAvatar({ user, size = 'w-6 h-6', showTooltip = true, tooltipText }: { 
-  user: any; 
-  size?: string; 
+/** Same avatar as AppUserSelect list rows (`AppUserAvatar` sm = 24px, gray placeholder). */
+function UserAvatar({
+  user,
+  size = 'sm',
+  showTooltip = true,
+  tooltipText,
+}: {
+  user: any;
+  size?: 'sm' | 'md';
   showTooltip?: boolean;
   tooltipText?: string;
 }) {
-  const photoFileId = user?.profile_photo_file_id;
-  const initials = getUserInitials(user);
-  const displayName = tooltipText || getUserDisplayName(user);
-  const [imageError, setImageError] = useState(false);
-  const [hover, setHover] = useState(false);
-  const [coords, setCoords] = useState<{ top: number; left: number } | null>(null);
-  const wrapRef = useRef<HTMLDivElement>(null);
+  const displayName = tooltipText || getUserDisplayName(user) || 'Unknown';
+  const avatar = <AppUserAvatar user={user} size={size} />;
 
-  const updateCoords = () => {
-    if (wrapRef.current) {
-      const rect = wrapRef.current.getBoundingClientRect();
-      setCoords({ left: rect.left, top: rect.top });
-    }
-  };
-
-  useEffect(() => {
-    if (hover && wrapRef.current) updateCoords();
-    else setCoords(null);
-  }, [hover]);
+  if (!showTooltip) {
+    return <span className="relative inline-flex shrink-0">{avatar}</span>;
+  }
 
   return (
-    <div
-      ref={wrapRef}
-      className="relative inline-flex group/avatar"
-      onMouseEnter={() => { setHover(true); updateCoords(); }}
-      onMouseLeave={() => setHover(false)}
-    >
-      {photoFileId && !imageError ? (
-        <img
-          src={withFileAccessToken(`/files/${photoFileId}/thumbnail?w=80`)}
-          alt={displayName}
-          className={`${size} rounded-full object-cover border border-gray-300`}
-          onError={() => setImageError(true)}
-        />
-      ) : (
-        <div className={`${size} rounded-full bg-indigo-600 flex items-center justify-center text-white font-semibold text-xs`}>
-          {initials}
-        </div>
-      )}
-
-      {showTooltip && hover && coords && typeof document !== 'undefined' && createPortal(
-        <div
-          className="fixed px-2 py-1 bg-gray-900 text-white text-xs rounded whitespace-nowrap pointer-events-none z-[9999] shadow-lg"
-          style={{ left: coords.left, top: coords.top, transform: 'translateY(-100%) translateY(-4px)' }}
-        >
-          {displayName}
-          <div className="absolute -bottom-1 left-2 w-2 h-2 bg-gray-900 rotate-45" />
-        </div>,
-        document.body
-      )}
-    </div>
+    <AppTooltip content={displayName} className="group/avatar shrink-0">
+      {avatar}
+    </AppTooltip>
   );
 }
 
 type Opportunity = { id:string, code?:string, name?:string, slug?:string, client_id?:string, created_at?:string, date_start?:string, date_eta?:string, date_end?:string, is_bidding?:boolean, project_division_ids?:string[], cover_image_url?:string, estimator_id?:string, estimator_name?:string, cost_estimated?:number };
 type ClientFile = { id:string, file_object_id:string, is_image?:boolean, content_type?:string };
+type OpportunityListResponse = { items: Opportunity[]; total: number; page: number; limit: number } | Opportunity[];
 
-// Filter Builder Types
-type FilterField = 
-  | 'status' 
-  | 'division' 
-  | 'client' 
-  | 'estimator' 
-  | 'start_date' 
-  | 'eta' 
-  | 'value';
-
-type FilterOperator = 
-  | 'is' 
-  | 'is_not' 
-  | 'is_before' 
-  | 'is_after' 
-  | 'is_between' 
-  | 'is_equal_to' 
-  | 'greater_than' 
-  | 'less_than' 
-  | 'between';
-
-type FilterRule = {
-  id: string;
-  field: FilterField;
-  operator: FilterOperator;
-  value: string | [string, string];
-};
-
-// Helper: Get operators for a field type
-function getOperatorsForField(field: FilterField): Array<{ value: FilterOperator; label: string }> {
-  const textSelectFields: FilterField[] = ['status', 'division', 'client', 'estimator'];
-  const dateFields: FilterField[] = ['start_date', 'eta'];
-  
-  if (textSelectFields.includes(field)) {
-    return [
-      { value: 'is', label: 'Is' },
-      { value: 'is_not', label: 'Is not' },
-    ];
-  }
-  
-  if (dateFields.includes(field)) {
-    return [
-      { value: 'is', label: 'Is' },
-      { value: 'is_before', label: 'Is before' },
-      { value: 'is_after', label: 'Is after' },
-      { value: 'is_between', label: 'Is between' },
-    ];
-  }
-  
-  if (field === 'value') {
-    return [
-      { value: 'is_equal_to', label: 'Is equal to' },
-      { value: 'greater_than', label: 'Greater than' },
-      { value: 'less_than', label: 'Less than' },
-      { value: 'between', label: 'Between' },
-    ];
-  }
-  
-  return [];
+function opportunityListTotal(data: OpportunityListResponse | undefined): number {
+  if (!data) return 0;
+  if (Array.isArray(data)) return data.length;
+  return typeof data.total === 'number' ? data.total : (data.items?.length ?? 0);
 }
 
-// Helper: Check if operator requires two values
-function isRangeOperator(operator: FilterOperator): boolean {
-  return operator === 'is_between' || operator === 'between';
-}
-
-// Helper: Convert filter rules to URL parameters
-function convertRulesToParams(rules: FilterRule[]): URLSearchParams {
-  const params = new URLSearchParams();
-  
-  // First, clear all potential conflicting parameters to avoid conflicts
-  // when switching between "is" and "is_not" operators
-  const fieldsToClear: Record<string, string[]> = {
-    'status': ['status', 'status_not'],
-    'division': ['division_id', 'division_id_not'],
-    'client': ['client_id', 'client_id_not'],
-    'estimator': ['estimator_id', 'estimator_id_not'],
-  };
-  
-  // Clear all conflicting parameters first
-  Object.values(fieldsToClear).flat().forEach(param => {
-    params.delete(param);
-  });
-  
-  // Now process rules - only the last rule for each field will be applied
-  // (though there should only be one rule per field)
-  for (const rule of rules) {
-    if (!rule.value || (Array.isArray(rule.value) && (!rule.value[0] || !rule.value[1]))) {
-      continue; // Skip empty rules
-    }
-    
-    switch (rule.field) {
-      case 'status':
-        if (typeof rule.value === 'string') {
-          if (rule.operator === 'is') {
-            params.set('status', rule.value);
-          } else if (rule.operator === 'is_not') {
-            params.set('status_not', rule.value);
-          }
-        }
-        break;
-      
-      case 'division':
-        if (typeof rule.value === 'string') {
-          if (rule.operator === 'is') {
-            params.set('division_id', rule.value);
-          } else if (rule.operator === 'is_not') {
-            params.set('division_id_not', rule.value);
-          }
-        }
-        break;
-      
-      case 'client':
-        if (typeof rule.value === 'string') {
-          if (rule.operator === 'is') {
-            params.set('client_id', rule.value);
-          } else if (rule.operator === 'is_not') {
-            params.set('client_id_not', rule.value);
-          }
-        }
-        break;
-      
-      case 'estimator':
-        if (typeof rule.value === 'string') {
-          if (rule.operator === 'is') {
-            params.set('estimator_id', rule.value);
-          } else if (rule.operator === 'is_not') {
-            params.set('estimator_id_not', rule.value);
-          }
-        }
-        break;
-      
-      case 'start_date':
-        if (typeof rule.value === 'string') {
-          if (rule.operator === 'is_before') {
-            params.set('date_end', rule.value);
-          } else if (rule.operator === 'is_after') {
-            params.set('date_start', rule.value);
-          } else if (rule.operator === 'is' && rule.value) {
-            params.set('date_start', rule.value);
-            params.set('date_end', rule.value);
-          }
-        } else if (Array.isArray(rule.value) && rule.operator === 'is_between') {
-          params.set('date_start', rule.value[0]);
-          params.set('date_end', rule.value[1]);
-        }
-        break;
-      
-      case 'eta':
-        if (typeof rule.value === 'string') {
-          if (rule.operator === 'is_before') {
-            params.set('eta_end', rule.value);
-          } else if (rule.operator === 'is_after') {
-            params.set('eta_start', rule.value);
-          } else if (rule.operator === 'is' && rule.value) {
-            params.set('eta_start', rule.value);
-            params.set('eta_end', rule.value);
-          }
-        } else if (Array.isArray(rule.value) && rule.operator === 'is_between') {
-          params.set('eta_start', rule.value[0]);
-          params.set('eta_end', rule.value[1]);
-        }
-        break;
-      
-      case 'value':
-        if (typeof rule.value === 'string') {
-          if (rule.operator === 'greater_than') {
-            params.set('value_min', rule.value);
-          } else if (rule.operator === 'less_than') {
-            params.set('value_max', rule.value);
-          } else if (rule.operator === 'is_equal_to') {
-            params.set('value_min', rule.value);
-            params.set('value_max', rule.value);
-          }
-        } else if (Array.isArray(rule.value) && rule.operator === 'between') {
-          params.set('value_min', rule.value[0]);
-          params.set('value_max', rule.value[1]);
-        }
-        break;
-    }
-  }
-  
-  return params;
-}
-
-// Helper: Convert URL parameters to filter rules
-function convertParamsToRules(params: URLSearchParams): FilterRule[] {
-  const rules: FilterRule[] = [];
-  let idCounter = 1;
-  
-  // Status
-  const status = params.get('status');
-  const statusNot = params.get('status_not');
-  if (status) {
-    rules.push({ id: `rule-${idCounter++}`, field: 'status', operator: 'is', value: status });
-  } else if (statusNot) {
-    rules.push({ id: `rule-${idCounter++}`, field: 'status', operator: 'is_not', value: statusNot });
-  }
-  
-  // Division
-  const division = params.get('division_id');
-  const divisionNot = params.get('division_id_not');
-  if (division) {
-    rules.push({ id: `rule-${idCounter++}`, field: 'division', operator: 'is', value: division });
-  } else if (divisionNot) {
-    rules.push({ id: `rule-${idCounter++}`, field: 'division', operator: 'is_not', value: divisionNot });
-  }
-  
-  // Client
-  const client = params.get('client_id');
-  const clientNot = params.get('client_id_not');
-  if (client) {
-    rules.push({ id: `rule-${idCounter++}`, field: 'client', operator: 'is', value: client });
-  } else if (clientNot) {
-    rules.push({ id: `rule-${idCounter++}`, field: 'client', operator: 'is_not', value: clientNot });
-  }
-  
-  // Estimator
-  const estimator = params.get('estimator_id');
-  const estimatorNot = params.get('estimator_id_not');
-  if (estimator) {
-    rules.push({ id: `rule-${idCounter++}`, field: 'estimator', operator: 'is', value: estimator });
-  } else if (estimatorNot) {
-    rules.push({ id: `rule-${idCounter++}`, field: 'estimator', operator: 'is_not', value: estimatorNot });
-  }
-  
-  // Date range
-  const dateStart = params.get('date_start');
-  const dateEnd = params.get('date_end');
-  if (dateStart && dateEnd) {
-    if (dateStart === dateEnd) {
-      rules.push({ id: `rule-${idCounter++}`, field: 'start_date', operator: 'is', value: dateStart });
-    } else {
-      rules.push({ id: `rule-${idCounter++}`, field: 'start_date', operator: 'is_between', value: [dateStart, dateEnd] });
-    }
-  } else if (dateStart) {
-    rules.push({ id: `rule-${idCounter++}`, field: 'start_date', operator: 'is_after', value: dateStart });
-  } else if (dateEnd) {
-    rules.push({ id: `rule-${idCounter++}`, field: 'start_date', operator: 'is_before', value: dateEnd });
-  }
-  
-  // End date range
-  const etaStart = params.get('eta_start');
-  const etaEnd = params.get('eta_end');
-  if (etaStart && etaEnd) {
-    if (etaStart === etaEnd) {
-      rules.push({ id: `rule-${idCounter++}`, field: 'eta', operator: 'is', value: etaStart });
-    } else {
-      rules.push({ id: `rule-${idCounter++}`, field: 'eta', operator: 'is_between', value: [etaStart, etaEnd] });
-    }
-  } else if (etaStart) {
-    rules.push({ id: `rule-${idCounter++}`, field: 'eta', operator: 'is_after', value: etaStart });
-  } else if (etaEnd) {
-    rules.push({ id: `rule-${idCounter++}`, field: 'eta', operator: 'is_before', value: etaEnd });
-  }
-  
-  // Value range
-  const valueMin = params.get('value_min');
-  const valueMax = params.get('value_max');
-  if (valueMin && valueMax) {
-    if (valueMin === valueMax) {
-      rules.push({ id: `rule-${idCounter++}`, field: 'value', operator: 'is_equal_to', value: valueMin });
-    } else {
-      rules.push({ id: `rule-${idCounter++}`, field: 'value', operator: 'between', value: [valueMin, valueMax] });
-    }
-  } else if (valueMin) {
-    rules.push({ id: `rule-${idCounter++}`, field: 'value', operator: 'greater_than', value: valueMin });
-  } else if (valueMax) {
-    rules.push({ id: `rule-${idCounter++}`, field: 'value', operator: 'less_than', value: valueMax });
-  }
-  
-  return rules;
-}
-
-function statusIdByLabel(statuses: unknown[] | undefined, label: string): string | undefined {
-  const t = label.toLowerCase().trim();
-  for (const s of statuses || []) {
-    const row = s as { id?: unknown; label?: unknown };
-    if (String(row.label || '').toLowerCase().trim() === t && row.id != null) {
-      return String(row.id);
-    }
-  }
-  return undefined;
-}
-
-// Filter Chip Component - same rounded-full / text-sm as employee tabs area
-function FilterChip({ label, value, onRemove }: { label: string; value: string; onRemove: () => void }) {
-  return (
-    <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-white border border-gray-200 text-sm text-gray-800 transition-all duration-200 ease-out">
-      <span className="font-medium text-gray-600">{label}:</span>
-      <span>{value}</span>
-      <button
-        onClick={onRemove}
-        className="w-5 h-5 rounded-full hover:bg-gray-100 flex items-center justify-center transition-colors duration-150"
-        aria-label={`Remove ${label} filter`}
-      >
-        <svg className="w-4 h-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-        </svg>
-      </button>
-    </div>
-  );
-}
-
-// Filter Rule Row Component
-function FilterRuleRow({ 
-  rule, 
-  onUpdate, 
-  onDelete,
-  projectStatuses,
-  projectDivisions,
-  clients,
-  employees,
-  estimatorOptions
-}: { 
-  rule: FilterRule;
-  onUpdate: (rule: FilterRule) => void;
-  onDelete: () => void;
-  projectStatuses: any[];
-  projectDivisions: any[];
-  clients: any[];
-  employees: any[];
-  estimatorOptions?: any[];
-}) {
-  const operators = getOperatorsForField(rule.field);
-  const isRange = isRangeOperator(rule.operator);
-  const currentValue = rule.value;
-  const value1 = Array.isArray(currentValue) ? currentValue[0] : currentValue;
-  const value2 = Array.isArray(currentValue) ? currentValue[1] : '';
-
-  const fieldOptions: Array<{ value: FilterField; label: string }> = [
-    { value: 'status', label: 'Status' },
-    { value: 'division', label: 'Division' },
-    { value: 'client', label: 'Client' },
-    { value: 'estimator', label: 'Estimator' },
-    { value: 'start_date', label: 'Start Date' },
-    { value: 'eta', label: 'End Date' },
-    { value: 'value', label: 'Value' },
-  ];
-
-  const handleFieldChange = (newField: FilterField) => {
-    const newOperators = getOperatorsForField(newField);
-    const newOperator = newOperators[0]?.value || 'is';
-    onUpdate({
-      ...rule,
-      field: newField,
-      operator: newOperator,
-      value: '',
-    });
-  };
-
-  const handleOperatorChange = (newOperator: FilterOperator) => {
-    const isNewRange = isRangeOperator(newOperator);
-    const isCurrentRange = isRangeOperator(rule.operator);
-    
-    // Preserve value if switching between compatible operators (both range or both non-range)
-    let newValue: string | string[];
-    if (isNewRange && isCurrentRange) {
-      // Both are range operators - preserve the array
-      newValue = Array.isArray(rule.value) ? rule.value : ['', ''];
-    } else if (!isNewRange && !isCurrentRange) {
-      // Both are non-range operators - preserve the string value
-      newValue = typeof rule.value === 'string' ? rule.value : '';
-    } else {
-      // Switching between range and non-range - reset to appropriate type
-      newValue = isNewRange ? ['', ''] : '';
-    }
-    
-    onUpdate({
-      ...rule,
-      operator: newOperator,
-      value: newValue,
-    });
-  };
-
-  const handleValueChange = (newValue: string, index?: number) => {
-    if (isRange) {
-      const current = Array.isArray(rule.value) ? rule.value : ['', ''];
-      const updated = [...current];
-      updated[index || 0] = newValue;
-      onUpdate({ ...rule, value: updated });
-    } else {
-      onUpdate({ ...rule, value: newValue });
-    }
-  };
-
-  const renderValueInput = () => {
-    const textSelectFields: FilterField[] = ['status', 'division', 'client', 'estimator'];
-    const dateFields: FilterField[] = ['start_date', 'eta'];
-
-    if (textSelectFields.includes(rule.field)) {
-      if (rule.field === 'status') {
-        const statusList = filterStatusesForOpportunity(projectStatuses)
-          .sort((a: any, b: any) => (a.label || '').localeCompare(b.label || '', undefined, { sensitivity: 'base' }));
-        return (
-          <select
-            className="w-full border border-gray-200 rounded-md px-3 py-2 text-sm bg-gray-50/50 text-gray-700 focus:outline-none focus:ring-1 focus:ring-gray-300 focus:border-gray-300 focus:bg-white"
-            value={value1}
-            onChange={(e) => handleValueChange(e.target.value)}
-          >
-            <option value="">Select status...</option>
-            {statusList.map((status: any) => (
-              <option key={status.id} value={status.id}>{status.label}</option>
-            ))}
-          </select>
-        );
-      }
-      if (rule.field === 'division') {
-        const sortedDivisions = [...(projectDivisions || [])].sort((a: any, b: any) => (a.label || '').localeCompare(b.label || '', undefined, { sensitivity: 'base' }));
-        return (
-          <select
-            className="w-full border border-gray-200 rounded-md px-3 py-2 text-sm bg-gray-50/50 text-gray-700 focus:outline-none focus:ring-1 focus:ring-gray-300 focus:border-gray-300 focus:bg-white"
-            value={value1}
-            onChange={(e) => handleValueChange(e.target.value)}
-          >
-            <option value="">Select division...</option>
-            {sortedDivisions.map((div: any) => (
-              <optgroup key={div.id} label={div.label}>
-                <option value={div.id}>{div.label}</option>
-                {[...(div.subdivisions || [])].sort((a: any, b: any) => (a.label || '').localeCompare(b.label || '', undefined, { sensitivity: 'base' })).map((sub: any) => (
-                  <option key={sub.id} value={sub.id}>{sub.label}</option>
-                ))}
-              </optgroup>
-            ))}
-          </select>
-        );
-      }
-      if (rule.field === 'client') {
-        const sortedClients = [...clients].sort((a: any, b: any) => {
-          const labelA = (a.display_name || a.name || a.code || a.id || '').toString();
-          const labelB = (b.display_name || b.name || b.code || b.id || '').toString();
-          return labelA.localeCompare(labelB, undefined, { sensitivity: 'base' });
-        });
-        return (
-          <select
-            className="w-full border border-gray-200 rounded-md px-3 py-2 text-sm bg-gray-50/50 text-gray-700 focus:outline-none focus:ring-1 focus:ring-gray-300 focus:border-gray-300 focus:bg-white"
-            value={value1}
-            onChange={(e) => handleValueChange(e.target.value)}
-          >
-            <option value="">Select client...</option>
-            {sortedClients.map((client: any) => (
-              <option key={client.id} value={client.id}>
-                {client.display_name || client.name || client.code || client.id}
-              </option>
-            ))}
-          </select>
-        );
-      }
-      if (rule.field === 'estimator') {
-        const list = estimatorOptions ?? employees;
-        const sortedEmployees = [...list].sort((a: any, b: any) => {
-          const labelA = (a.name || a.username || '').toString();
-          const labelB = (b.name || b.username || '').toString();
-          return labelA.localeCompare(labelB, undefined, { sensitivity: 'base' });
-        });
-        return (
-          <select
-            className="w-full border border-gray-200 rounded-md px-3 py-2 text-sm bg-gray-50/50 text-gray-700 focus:outline-none focus:ring-1 focus:ring-gray-300 focus:border-gray-300 focus:bg-white"
-            value={value1}
-            onChange={(e) => handleValueChange(e.target.value)}
-          >
-            <option value="">Select estimator...</option>
-            {sortedEmployees.map((emp: any) => (
-              <option key={emp.id} value={emp.id}>
-                {emp.name || emp.username}
-              </option>
-            ))}
-          </select>
-        );
-      }
-    }
-
-    if (dateFields.includes(rule.field)) {
-      if (isRange) {
-        return (
-          <div className="flex items-center gap-2">
-            <input
-              type="date"
-              className="flex-1 border border-gray-200 rounded-md px-3 py-2 text-sm bg-gray-50/50 text-gray-700 focus:outline-none focus:ring-1 focus:ring-gray-300 focus:border-gray-300 focus:bg-white"
-              value={value1}
-              onChange={(e) => handleValueChange(e.target.value, 0)}
-            />
-            <span className="text-xs text-gray-400">→</span>
-            <input
-              type="date"
-              className="flex-1 border border-gray-200 rounded-md px-3 py-2 text-sm bg-gray-50/50 text-gray-700 focus:outline-none focus:ring-1 focus:ring-gray-300 focus:border-gray-300 focus:bg-white"
-              value={value2}
-              onChange={(e) => handleValueChange(e.target.value, 1)}
-            />
-          </div>
-        );
-      }
-      return (
-        <input
-          type="date"
-          className="w-full border border-gray-200 rounded-md px-3 py-2 text-sm bg-gray-50/50 text-gray-700 focus:outline-none focus:ring-1 focus:ring-gray-300 focus:border-gray-300 focus:bg-white"
-          value={value1}
-          onChange={(e) => handleValueChange(e.target.value)}
-        />
-      );
-    }
-
-    if (rule.field === 'value') {
-      if (isRange) {
-        return (
-          <div className="flex items-center gap-2">
-            <input
-              type="number"
-              className="flex-1 border border-gray-200 rounded-md px-3 py-2 text-sm bg-gray-50/50 text-gray-700 placeholder:text-gray-400 focus:outline-none focus:ring-1 focus:ring-gray-300 focus:border-gray-300 focus:bg-white"
-              placeholder="Min"
-              value={value1}
-              onChange={(e) => handleValueChange(e.target.value, 0)}
-            />
-            <span className="text-xs text-gray-400">→</span>
-            <input
-              type="number"
-              className="flex-1 border border-gray-200 rounded-md px-3 py-2 text-sm bg-gray-50/50 text-gray-700 placeholder:text-gray-400 focus:outline-none focus:ring-1 focus:ring-gray-300 focus:border-gray-300 focus:bg-white"
-              placeholder="Max"
-              value={value2}
-              onChange={(e) => handleValueChange(e.target.value, 1)}
-            />
-          </div>
-        );
-      }
-      return (
-        <input
-          type="number"
-          className="w-full border border-gray-200 rounded-md px-3 py-2 text-sm bg-gray-50/50 text-gray-700 placeholder:text-gray-400 focus:outline-none focus:ring-1 focus:ring-gray-300 focus:border-gray-300 focus:bg-white"
-          placeholder="Enter value..."
-          value={value1}
-          onChange={(e) => handleValueChange(e.target.value)}
-        />
-      );
-    }
-
-    return null;
-  };
-
-  return (
-    <div className="flex items-center gap-3 transition-all duration-200 ease-out">
-      <select
-        className="w-40 border border-gray-200 rounded-md px-3 py-2 text-sm bg-gray-50/50 text-gray-700 focus:outline-none focus:ring-1 focus:ring-gray-300 focus:border-gray-300 focus:bg-white"
-        value={rule.field}
-        onChange={(e) => handleFieldChange(e.target.value as FilterField)}
-      >
-        {fieldOptions.map((opt) => (
-          <option key={opt.value} value={opt.value}>{opt.label}</option>
-        ))}
-      </select>
-
-      <select
-        className="w-36 border border-gray-200 rounded-md px-3 py-2 text-sm bg-gray-50/50 text-gray-700 focus:outline-none focus:ring-1 focus:ring-gray-300 focus:border-gray-300 focus:bg-white"
-        value={rule.operator}
-        onChange={(e) => handleOperatorChange(e.target.value as FilterOperator)}
-      >
-        {operators.map((op) => (
-          <option key={op.value} value={op.value}>{op.label}</option>
-        ))}
-      </select>
-
-      <div className="flex-1">
-        {renderValueInput()}
-      </div>
-
-      <button
-        onClick={onDelete}
-        className="w-8 h-8 flex items-center justify-center text-gray-400 hover:text-gray-600 transition-colors duration-150"
-        aria-label="Delete rule"
-      >
-        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-        </svg>
-      </button>
-    </div>
-  );
-}
-
-// Filter Builder Modal Component
-function FilterBuilderModal({
-  isOpen,
-  onClose,
-  onApply,
-  initialRules,
-  projectStatuses,
-  projectDivisions,
-  clients,
-  employees,
-  estimatorOptions
-}: {
-  isOpen: boolean;
-  onClose: () => void;
-  onApply: (rules: FilterRule[]) => void;
-  initialRules: FilterRule[];
-  projectStatuses: any[];
-  projectDivisions: any[];
-  clients: any[];
-  employees: any[];
-  estimatorOptions?: any[];
-}) {
-  const [rules, setRules] = useState<FilterRule[]>(initialRules);
-
-  // Update rules when modal opens with new initial rules
-  useEffect(() => {
-    if (isOpen) {
-      setRules(initialRules);
-    }
-  }, [isOpen, initialRules]);
-
-  // Handle ESC key
-  useEffect(() => {
-    if (!isOpen) return;
-    const handleEsc = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
-        onClose();
-      }
-    };
-    window.addEventListener('keydown', handleEsc);
-    return () => window.removeEventListener('keydown', handleEsc);
-  }, [isOpen, onClose]);
-
-  const handleAddRule = () => {
-    const newRule: FilterRule = {
-      id: `rule-${Date.now()}`,
-      field: 'status',
-      operator: 'is',
-      value: '',
-    };
-    setRules([...rules, newRule]);
-  };
-
-  const handleUpdateRule = (updatedRule: FilterRule) => {
-    setRules(rules.map(r => r.id === updatedRule.id ? updatedRule : r));
-  };
-
-  const handleDeleteRule = (ruleId: string) => {
-    setRules(rules.filter(r => r.id !== ruleId));
-  };
-
-  const handleClearAll = () => {
-    setRules([]);
-  };
-
-  const handleApply = () => {
-    onApply(rules);
-    onClose();
-  };
-
-  if (!isOpen) return null;
-
-  return (
-    <OverlayPortal><div 
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 transition-opacity duration-200 ease-out"
-      onClick={(e) => {
-        if (e.target === e.currentTarget) {
-          onClose();
-        }
-      }}
-    >
-      <div 
-        className="bg-white rounded-lg shadow-lg w-full max-w-[720px] max-h-[90vh] flex flex-col overflow-hidden"
-        style={{ 
-          animation: 'fadeInSlideUp 200ms ease-out forwards',
-        }}
-        onClick={(e) => e.stopPropagation()}
-      >
-        {/* Header */}
-        <div className="px-6 py-4 border-b border-gray-200 flex items-center justify-between">
-          <h2 className="text-lg font-semibold text-gray-900">Filters</h2>
-          <button
-            onClick={onClose}
-            className="w-8 h-8 flex items-center justify-center text-gray-400 hover:text-gray-600 transition-colors duration-150"
-            aria-label="Close"
-          >
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-            </svg>
-          </button>
-        </div>
-
-        {/* Content */}
-        <div className="flex-1 overflow-y-auto px-6 py-4">
-          {rules.length === 0 ? (
-            <div className="text-center py-8 text-gray-500 text-sm">
-              No filters applied. Add a filter to get started.
-            </div>
-          ) : (
-            <div className="space-y-3">
-              {rules.map((rule) => (
-                <div key={rule.id} className="transition-all duration-200 ease-out">
-                  <FilterRuleRow
-                    rule={rule}
-                    onUpdate={handleUpdateRule}
-                    onDelete={() => handleDeleteRule(rule.id)}
-                    projectStatuses={projectStatuses}
-                    projectDivisions={projectDivisions}
-                    clients={clients}
-                    employees={employees}
-                    estimatorOptions={estimatorOptions}
-                  />
-                </div>
-              ))}
-            </div>
-          )}
-
-          {/* Add Filter Button */}
-          <button
-            onClick={handleAddRule}
-            className="mt-4 w-full px-4 py-2 text-sm font-medium text-gray-600 hover:text-gray-900 border border-gray-200 rounded-md hover:bg-gray-50 transition-all duration-150"
-          >
-            + Add filter
-          </button>
-        </div>
-
-        {/* Footer */}
-        <div className="px-6 py-4 border-t border-gray-200 flex items-center justify-between gap-3">
-          <div>
-            {rules.length > 0 && (
-              <button
-                onClick={handleClearAll}
-                className="px-4 py-2 text-sm font-medium text-gray-600 hover:text-gray-900 transition-colors duration-150"
-              >
-                Clear All
-              </button>
-            )}
-          </div>
-          <div className="flex items-center gap-3">
-            <button
-              onClick={onClose}
-              className="px-4 py-2 text-sm font-medium text-gray-600 hover:text-gray-900 transition-colors duration-150"
-            >
-              Cancel
-            </button>
-            <button
-              onClick={handleApply}
-              className="px-4 py-2 text-sm font-medium text-white bg-brand-red hover:bg-brand-red700 rounded-md transition-colors duration-150"
-            >
-              Apply Filters
-            </button>
-          </div>
-        </div>
-      </div>
-    </div></OverlayPortal>
-  );
-}
+/** Same emoji tab icons as before DS migration (UTF-16 escapes avoid file encoding issues). */
+const OPPORTUNITY_TAB_ICON_BUTTONS = [
+  { key: 'files', icon: '\u{1F4C1}', label: 'Files', tab: 'files' },
+  { key: 'proposal', icon: '\u{1F4C4}', label: 'Proposal', tab: 'proposal' },
+  { key: 'pricing', icon: '\u{1F4B0}', label: 'Pricing', tab: 'pricing' },
+  { key: 'reports', icon: '\u{1F4CB}', label: 'Notes/History', tab: 'reports' },
+] as const;
 
 type OpportunitiesListKind = 'opportunity' | 'leak';
 
@@ -925,12 +178,13 @@ export default function Opportunities({ listKind = 'opportunity' }: { listKind?:
   }, [searchParams]);
   
   // Build query string from URL params (filters + pagination)
-  const qs = useMemo(()=> {
-    const params = new URLSearchParams(searchParams);
-    if (!params.has('page')) params.set('page', '1');
-    if (!params.has('limit')) params.set('limit', '25');
-    params.set('business_line', businessLine);
-    return params.toString() ? '?' + params.toString() : '';
+  const qs = useMemo(() => {
+    const params = buildOpportunityListSearchParams(searchParams, businessLine, {
+      page: Number(searchParams.get('page') || '1') || 1,
+      limit: Number(searchParams.get('limit') || '25') || 25,
+    });
+    const s = params.toString();
+    return s ? `?${s}` : '';
   }, [searchParams, businessLine]);
   
   const listEndpoint = isLeakMode ? '/projects/business/leak-investigations' : '/projects/business/opportunities';
@@ -1040,7 +294,7 @@ export default function Opportunities({ listKind = 'opportunity' }: { listKind?:
 
   const hasRuleFilters = currentRules.length > 0;
   const hasActiveFilters = useMemo(() => {
-    return hasRuleFilters || searchParams.get('related_to_me') === '1';
+    return hasRuleFilters || isRelatedToMeParamActive(searchParams);
   }, [hasRuleFilters, searchParams]);
 
   const quickStatusIds = useMemo(
@@ -1066,18 +320,208 @@ export default function Opportunities({ listKind = 'opportunity' }: { listKind?:
     setSearchParams(params, { replace: true });
   };
 
-  const quickFilterBtnClass = (active: boolean) =>
-    `px-2 py-0.5 rounded-full text-[11px] font-medium leading-tight transition-colors duration-150 whitespace-nowrap border ${
-      active
-        ? 'bg-gray-900 text-white border-gray-900'
-        : 'text-gray-600 hover:text-gray-900 bg-white border-gray-200 hover:border-gray-300'
-    }`;
+  const quickFilterSegments = useMemo(() => {
+    const segments: Array<{ key: string; label: string; active: boolean; onClick: () => void }> = [
+      {
+        key: 'related_to_me',
+        label: 'Related to Me',
+        active: isRelatedToMeParamActive(searchParams),
+        onClick: () => {
+          const params = new URLSearchParams(searchParams);
+          const enabling = !isRelatedToMeParamActive(searchParams);
+          setRelatedToMeParam(params, enabling);
+          if (enabling) {
+            params.delete('status');
+            params.delete('status_not');
+          }
+          params.set('page', '1');
+          setSearchParams(params, { replace: true });
+        },
+      },
+    ];
+    if (quickStatusIds.prospecting) {
+      segments.push({
+        key: 'prospecting',
+        label: 'Prospecting',
+        active: searchParams.get('status') === quickStatusIds.prospecting,
+        onClick: () => toggleStatusQuickFilter(quickStatusIds.prospecting),
+      });
+    }
+    if (quickStatusIds.refused) {
+      segments.push({
+        key: 'refused',
+        label: 'Refused',
+        active: searchParams.get('status') === quickStatusIds.refused,
+        onClick: () => toggleStatusQuickFilter(quickStatusIds.refused),
+      });
+    }
+    if (quickStatusIds.sentToCustomer) {
+      segments.push({
+        key: 'sent_to_customer',
+        label: 'Sent to Customer',
+        active: searchParams.get('status') === quickStatusIds.sentToCustomer,
+        onClick: () => toggleStatusQuickFilter(quickStatusIds.sentToCustomer),
+      });
+    }
+    return segments;
+  }, [searchParams, quickStatusIds, setSearchParams]);
+
+  const quickFilterCountBaseParams = useMemo(
+    () =>
+      buildOpportunityListSearchParams(searchParams, businessLine, {
+        omitQuickFilters: true,
+        page: 1,
+        limit: 1,
+      }),
+    [searchParams, businessLine],
+  );
+
+  const quickFilterCountTargets = useMemo(() => {
+    const targets: Array<{ key: string; qs: string }> = [
+      {
+        key: 'related_to_me',
+        qs: (() => {
+          const p = new URLSearchParams(quickFilterCountBaseParams);
+          setRelatedToMeParam(p, true);
+          return p.toString();
+        })(),
+      },
+    ];
+    if (quickStatusIds.prospecting) {
+      const p = new URLSearchParams(quickFilterCountBaseParams);
+      p.set('status', quickStatusIds.prospecting);
+      targets.push({ key: 'prospecting', qs: p.toString() });
+    }
+    if (quickStatusIds.refused) {
+      const p = new URLSearchParams(quickFilterCountBaseParams);
+      p.set('status', quickStatusIds.refused);
+      targets.push({ key: 'refused', qs: p.toString() });
+    }
+    if (quickStatusIds.sentToCustomer) {
+      const p = new URLSearchParams(quickFilterCountBaseParams);
+      p.set('status', quickStatusIds.sentToCustomer);
+      targets.push({ key: 'sent_to_customer', qs: p.toString() });
+    }
+    return targets;
+  }, [quickFilterCountBaseParams, quickStatusIds]);
+
+  const quickFilterCountQueries = useQueries({
+    queries: quickFilterCountTargets.map((target) => ({
+      queryKey: [isLeakMode ? 'leak-investigations' : 'opportunities', 'quick-filter-count', businessLine, target.key, target.qs],
+      queryFn: () =>
+        api<OpportunityListResponse>('GET', `${listEndpoint}?${target.qs}`).then(opportunityListTotal),
+      staleTime: 60_000,
+    })),
+  });
+
+  const quickFilterCountsByKey = useMemo(() => {
+    const counts: Record<string, number> = {};
+    quickFilterCountTargets.forEach((target, index) => {
+      const total = quickFilterCountQueries[index]?.data;
+      if (typeof total === 'number') counts[target.key] = total;
+    });
+    return counts;
+  }, [quickFilterCountTargets, quickFilterCountQueries]);
+
+  const filterFields: FieldConfig[] = useMemo(() => {
+    const statusOptions = filterStatusesForOpportunity(projectStatuses)
+      .map((s: { id?: unknown; label?: unknown }) => ({
+        value: String(s.id),
+        label: String(s.label || ''),
+      }))
+      .sort((a, b) => a.label.localeCompare(b.label, undefined, { sensitivity: 'base' }));
+
+    const divisionGrouped = [...(divisionsForLine || [])]
+      .sort((a: { label?: string }, b: { label?: string }) =>
+        (a.label || '').localeCompare(b.label || '', undefined, { sensitivity: 'base' }),
+      )
+      .map((div: { id: unknown; label: string; subdivisions?: { id: unknown; label: string }[] }) => ({
+        label: div.label,
+        options: [
+          { value: String(div.id), label: div.label },
+          ...[...(div.subdivisions || [])]
+            .sort((a, b) => a.label.localeCompare(b.label, undefined, { sensitivity: 'base' }))
+            .map((sub) => ({ value: String(sub.id), label: sub.label })),
+        ],
+      }));
+
+    const clientOptions = [...clients]
+      .sort((a: { display_name?: string; name?: string; code?: string; id?: string }, b) => {
+        const labelA = (a.display_name || a.name || a.code || a.id || '').toString();
+        const labelB = (b.display_name || b.name || b.code || b.id || '').toString();
+        return labelA.localeCompare(labelB, undefined, { sensitivity: 'base' });
+      })
+      .map((c) => ({
+        value: String(c.id),
+        label: (c.display_name || c.name || c.code || c.id) as string,
+      }));
+
+    const estimatorOptions = [...employeesInEstimatingDept]
+      .sort((a: { name?: string; username?: string }, b) => {
+        const labelA = (a.name || a.username || '').toString();
+        const labelB = (b.name || b.username || '').toString();
+        return labelA.localeCompare(labelB, undefined, { sensitivity: 'base' });
+      })
+      .map((e) => ({
+        value: String(e.id),
+        label: (e.name || e.username || e.id) as string,
+      }));
+
+    return [
+      {
+        id: 'status',
+        label: 'Status',
+        type: 'select' as const,
+        operators: ['is', 'is_not'] as FilterOperator[],
+        getOptions: () => statusOptions,
+      },
+      {
+        id: 'division',
+        label: 'Division',
+        type: 'select' as const,
+        operators: ['is', 'is_not'] as FilterOperator[],
+        getGroupedOptions: () => divisionGrouped,
+      },
+      {
+        id: 'client',
+        label: 'Client',
+        type: 'select' as const,
+        operators: ['is', 'is_not'] as FilterOperator[],
+        getOptions: () => clientOptions,
+      },
+      {
+        id: 'estimator',
+        label: 'Estimator',
+        type: 'select' as const,
+        operators: ['is', 'is_not'] as FilterOperator[],
+        getOptions: () => estimatorOptions,
+      },
+      {
+        id: 'start_date',
+        label: 'Start Date',
+        type: 'date' as const,
+        operators: ['is', 'is_before', 'is_after', 'is_between'] as FilterOperator[],
+      },
+      {
+        id: 'eta',
+        label: 'End Date',
+        type: 'date' as const,
+        operators: ['is', 'is_before', 'is_after', 'is_between'] as FilterOperator[],
+      },
+      {
+        id: 'value',
+        label: 'Value',
+        type: 'number' as const,
+        operators: ['is_equal_to', 'greater_than', 'less_than', 'between'] as FilterOperator[],
+      },
+    ];
+  }, [projectStatuses, divisionsForLine, clients, employeesInEstimatingDept]);
 
   // Handle applying filters from modal
   const handleApplyFilters = (rules: FilterRule[]) => {
     const params = convertRulesToParams(rules);
     if (q) params.set('q', q);
-    if (searchParams.get('related_to_me') === '1') params.set('related_to_me', '1');
+    if (isRelatedToMeParamActive(searchParams)) setRelatedToMeParam(params, true);
     params.set('page', '1');
     setSearchParams(params);
     refetch();
@@ -1093,7 +537,7 @@ export default function Opportunities({ listKind = 'opportunity' }: { listKind?:
       return status?.label || String(rule.value);
     }
     if (rule.field === 'division') {
-      for (const div of (projectDivisions || [])) {
+      for (const div of (divisionsForLine || [])) {
         if (String(div.id) === rule.value) return div.label;
         for (const sub of (div.subdivisions || [])) {
           if (String(sub.id) === rule.value) return `${div.label} - ${sub.label}`;
@@ -1106,7 +550,7 @@ export default function Opportunities({ listKind = 'opportunity' }: { listKind?:
       return client?.display_name || client?.name || String(rule.value);
     }
     if (rule.field === 'estimator') {
-      const employee = employees.find((e: any) => String(e.id) === rule.value);
+      const employee = employeesInEstimatingDept.find((e: any) => String(e.id) === rule.value);
       return employee?.name || employee?.username || String(rule.value);
     }
     if (rule.field === 'value') {
@@ -1115,244 +559,152 @@ export default function Opportunities({ listKind = 'opportunity' }: { listKind?:
     return String(rule.value);
   };
   
-  // Helper to get field label
-  const getFieldLabel = (field: FilterField): string => {
-    const labels: Record<FilterField, string> = {
-      status: 'Status',
-      division: 'Division',
-      client: 'Client',
-      estimator: 'Estimator',
-      start_date: 'Start Date',
-      eta: 'End Date',
-      value: 'Value',
-    };
-    return labels[field] || field;
-  };
+  const getFieldLabel = (fieldId: string): string => OPPORTUNITY_FIELD_LABELS[fieldId] || fieldId;
 
-  // Helper to get filter label for chips
-  const getFilterLabel = (type: string, value: string): string => {
-    if (type === 'status') {
-      const status = projectStatuses.find((s: any) => String(s.id) === value);
-      return status?.label || value;
-    }
-    if (type === 'division') {
-      for (const div of (projectDivisions || [])) {
-        if (String(div.id) === value) return div.label;
-        for (const sub of (div.subdivisions || [])) {
-          if (String(sub.id) === value) return `${div.label} - ${sub.label}`;
-        }
-      }
-      return value;
-    }
-    if (type === 'client') {
-      const client = clients.find((c: any) => String(c.id) === value);
-      return client?.display_name || client?.name || value;
-    }
-    if (type === 'estimator') {
-      const employee = employees.find((e: any) => String(e.id) === value);
-      return employee?.name || employee?.username || value;
-    }
-    return value;
-  };
+  const listCardAnimClass = animationComplete
+    ? undefined
+    : uiCx(
+        'transition-[opacity,transform] duration-[400ms] ease-out',
+        hasAnimated ? 'opacity-100 translate-y-0 scale-100' : 'opacity-0 -translate-y-2 scale-[0.98]',
+      );
+
+  const newItemLabel = isLeakMode ? 'New Leak Investigation' : 'New Opportunity';
 
   return (
-    <div>
-      {/* Title Bar - same layout and font sizes as ProjectDetail (/projects/:id) */}
-      <div className="rounded-xl border bg-white p-4 mb-4">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-3 flex-1">
-            <button
-              onClick={() => navigate(businessDashboardPath)}
-              className="p-1.5 rounded hover:bg-gray-100 transition-colors flex items-center justify-center"
-              title="Back to Business"
-            >
-              <svg className="w-4 h-4 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
-              </svg>
-            </button>
-            <div>
-              <div className="text-sm font-semibold text-gray-900">{isLeakMode ? 'Leak investigations' : 'Opportunities'}</div>
-              <div className="text-xs text-gray-500 mt-0.5">{isLeakMode ? 'Create, edit and track leak investigations' : 'Create, edit and track bids and quotes'}</div>
+    <main className={uiCx('min-h-full bg-gray-50', uiSpacing.pageY)}>
+      <div className={uiCx('w-full min-w-0', uiSpacing.pageStack)}>
+        <AppPageHeader
+          title={isLeakMode ? 'Leak investigations' : 'Opportunities'}
+          subtitle={isLeakMode ? 'Create, edit and track leak investigations' : 'Create, edit and track bids and quotes'}
+          onBack={() => navigate(businessDashboardPath)}
+          backLabel="Back to Business"
+          icon={<LayoutDashboard className="h-4 w-4" />}
+          actions={
+            <div className="text-right">
+              <div className={uiTypography.overline}>Today</div>
+              <div className={uiCx(uiTypography.sectionTitle, 'mt-0.5')}>{todayLabel}</div>
             </div>
-          </div>
-          <div className="text-right">
-            <div className="text-[10px] font-medium text-gray-500 uppercase tracking-wide">Today</div>
-            <div className="text-xs font-semibold text-gray-700 mt-0.5">{todayLabel}</div>
-          </div>
-        </div>
-      </div>
+          }
+        />
 
-      {/* Filter Bar - same rounded-xl area and mb-4 as ProjectDetail sections */}
-      <div className="rounded-xl border bg-white p-4 mb-4">
-        {/* Primary Row: Global Search + Status + Actions */}
-        <div>
-          <div className="flex items-center gap-4">
-            {/* View Toggle Button */}
-            <div className="flex items-center border border-gray-200 rounded-lg overflow-hidden">
-              <button
+        <AppCard bodyClassName={uiSpacing.cardPadding}>
+          <div className={uiCx(uiLayout.actionsRow, 'flex-wrap items-stretch gap-3')}>
+            <div className={uiCx('flex shrink-0 items-stretch overflow-hidden', uiRadius.control, uiBorders.subtle)}>
+              <AppButton
+                type="button"
+                variant={viewMode === 'list' ? 'primary' : 'secondary'}
+                size="sm"
+                className="!rounded-none !px-2.5"
                 onClick={() => setViewMode('list')}
-                className={`p-2.5 text-sm font-medium transition-colors duration-150 ${
-                  viewMode === 'list'
-                    ? 'bg-gray-900 text-white'
-                    : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50 bg-white'
-                }`}
                 title="List view"
+                aria-label="List view"
               >
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
-                </svg>
-              </button>
-              <button
+                <List className="h-4 w-4" />
+              </AppButton>
+              <AppButton
+                type="button"
+                variant={viewMode === 'cards' ? 'primary' : 'secondary'}
+                size="sm"
+                className="!rounded-none !border-l-0 !px-2.5"
                 onClick={() => setViewMode('cards')}
-                className={`p-2.5 text-sm font-medium transition-colors duration-150 border-l border-gray-200 ${
-                  viewMode === 'cards'
-                    ? 'bg-gray-900 text-white'
-                    : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50 bg-white'
-                }`}
                 title="Card view"
+                aria-label="Card view"
               >
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z" />
-                </svg>
-              </button>
+                <LayoutGrid className="h-4 w-4" />
+              </AppButton>
             </div>
-
-            {/* Global Search - Dominant, large */}
-            <div className="flex-1">
-              <div className="relative">
-                <input 
-                  className="w-full border border-gray-200 rounded-lg px-3 py-2 pl-9 text-sm bg-gray-50/50 text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-1 focus:ring-gray-300 focus:border-gray-300 focus:bg-white transition-all duration-150" 
-                  placeholder={isLeakMode ? 'Search by leak investigation name, code, or client name...' : 'Search by opportunity name, code, or client name...'} 
-                  value={q} 
-                  onChange={e=>setQ(e.target.value)} 
-                />
-                <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-                </svg>
-              </div>
+            <div className="min-w-0 flex-1">
+              <AppInput
+                placeholder={
+                  isLeakMode
+                    ? 'Search by leak investigation name, code, or client name...'
+                    : 'Search by opportunity name, code, or client name...'
+                }
+                value={q}
+                onChange={(e) => setQ(e.target.value)}
+                leftIcon={<Search className="h-4 w-4" />}
+                aria-label={isLeakMode ? 'Search leak investigations' : 'Search opportunities'}
+              />
             </div>
-
-            {/* + Filters Button - Opens Modal */}
-            <button 
-              onClick={()=>setIsFilterModalOpen(true)}
-              className="px-3 py-1.5 rounded-full text-sm font-medium text-gray-600 hover:text-gray-900 bg-white border border-gray-200 hover:border-gray-300 transition-colors duration-150 whitespace-nowrap inline-flex items-center gap-1.5"
+            <AppButton
+              type="button"
+              variant="secondary"
+              size="sm"
+              leftIcon={<SlidersHorizontal className="h-4 w-4" />}
+              onClick={() => setIsFilterModalOpen(true)}
             >
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z" />
-              </svg>
               Filters
-            </button>
-
-            {/* Clear Filters - Only when active */}
+            </AppButton>
             {hasActiveFilters && (
-              <button 
-                onClick={()=>{
+              <AppButton
+                type="button"
+                variant="ghost"
+                size="sm"
+                onClick={() => {
                   const params = new URLSearchParams();
                   if (q) params.set('q', q);
                   setSearchParams(params);
                   refetch();
-                }} 
-                className="px-3 py-1.5 rounded-full text-sm font-medium text-gray-500 hover:text-gray-700 border border-gray-200 hover:border-gray-300 transition-colors duration-150 whitespace-nowrap"
+                }}
               >
                 Clear
-              </button>
+              </AppButton>
             )}
           </div>
-
-          <div className="mt-3 pt-3 border-t border-gray-100">
-            <div className="flex flex-wrap items-center gap-2">
-              <span className="text-[10px] font-medium text-gray-500 uppercase tracking-wide shrink-0">Quick filters:</span>
-              <button
-                type="button"
-                onClick={() => {
-                  const params = new URLSearchParams(searchParams);
-                  if (params.get('related_to_me') === '1') params.delete('related_to_me');
-                  else params.set('related_to_me', '1');
-                  params.set('page', '1');
-                  setSearchParams(params, { replace: true });
-                }}
-                className={quickFilterBtnClass(searchParams.get('related_to_me') === '1')}
-              >
-                Related to Me
-              </button>
-              {quickStatusIds.prospecting && (
+          <div className={uiCx('mt-3 border-t border-gray-100 pt-3', uiLayout.actionsRow, 'flex-wrap items-center gap-2')}>
+            <span className={uiCx(uiTypography.overline, 'shrink-0')}>Quick filters:</span>
+            <div className="flex flex-wrap gap-2">
+              {quickFilterSegments.map((segment) => (
                 <button
+                  key={segment.key}
                   type="button"
-                  onClick={() => toggleStatusQuickFilter(quickStatusIds.prospecting)}
-                  className={quickFilterBtnClass(searchParams.get('status') === quickStatusIds.prospecting)}
+                  onClick={segment.onClick}
+                  className={getAppTabButtonClassName(segment.active)}
+                  aria-pressed={segment.active}
                 >
-                  Prospecting
+                  <span>{segment.label}</span>
+                  {typeof quickFilterCountsByKey[segment.key] === 'number' ? (
+                    <AppTabCountBadge count={quickFilterCountsByKey[segment.key]} isActive={segment.active} />
+                  ) : null}
                 </button>
-              )}
-              {quickStatusIds.refused && (
-                <button
-                  type="button"
-                  onClick={() => toggleStatusQuickFilter(quickStatusIds.refused)}
-                  className={quickFilterBtnClass(searchParams.get('status') === quickStatusIds.refused)}
-                >
-                  Refused
-                </button>
-              )}
-              {quickStatusIds.sentToCustomer && (
-                <button
-                  type="button"
-                  onClick={() => toggleStatusQuickFilter(quickStatusIds.sentToCustomer)}
-                  className={quickFilterBtnClass(searchParams.get('status') === quickStatusIds.sentToCustomer)}
-                >
-                  Sent to Customer
-                </button>
-              )}
+              ))}
             </div>
           </div>
-        </div>
-      </div>
+        </AppCard>
 
-      {/* Filter Chips */}
-      {hasRuleFilters && (
-        <div className="mb-4 flex items-center gap-2 flex-wrap">
-          {currentRules.map((rule) => {
-            const fieldLabel = getFieldLabel(rule.field);
-            const operatorLabel = rule.operator === 'is_not' ? 'Is not' : '';
-            const displayLabel = operatorLabel ? `${fieldLabel} ${operatorLabel}` : fieldLabel;
-            return (
+        {hasRuleFilters && (
+          <div className={uiCx(uiLayout.actionsRow, 'flex-wrap')}>
+            {currentRules.map((rule) => (
               <FilterChip
                 key={rule.id}
-                label={displayLabel}
-                value={formatRuleValue(rule)}
+                rule={rule}
                 onRemove={() => {
-                  const updatedRules = currentRules.filter(r => r.id !== rule.id);
+                  const updatedRules = currentRules.filter((r) => r.id !== rule.id);
                   const params = convertRulesToParams(updatedRules);
                   if (q) params.set('q', q);
-                  if (searchParams.get('related_to_me') === '1') params.set('related_to_me', '1');
+                  if (isRelatedToMeParamActive(searchParams)) setRelatedToMeParam(params, true);
                   setSearchParams(params);
                   refetch();
                 }}
+                getValueLabel={formatRuleValue}
+                getFieldLabel={getFieldLabel}
               />
-            );
-          })}
-        </div>
-      )}
-      
-      {/* List area - same rounded-xl border bg-white as employee sections */}
-      <div className="rounded-xl border bg-white p-4">
-      <LoadingOverlay isLoading={isInitialLoading} text={isLeakMode ? 'Loading leak investigations...' : 'Loading opportunities...'}>
+            ))}
+          </div>
+        )}
+
+        <LoadingOverlay isLoading={isInitialLoading} text={isLeakMode ? 'Loading leak investigations...' : 'Loading opportunities...'}>
+          <AppCard className={uiCx(uiShadows.card, listCardAnimClass)} bodyClassName={uiSpacing.cardPadding}>
         {viewMode === 'cards' ? (
-          <div 
-            className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-3 gap-4"
-            style={animationComplete ? {} : {
-              opacity: hasAnimated ? 1 : 0,
-              transform: hasAnimated ? 'translateY(0) scale(1)' : 'translateY(-8px) scale(0.98)',
-              transition: 'opacity 400ms ease-out, transform 400ms ease-out'
-            }}
-          >
+          <div className={uiCx('grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-3', listCardAnimClass)}>
             {hasEditPermission && (
               <Link
                 to={newOpportunityPath}
                 state={{ backgroundLocation: location }}
-                className="border-2 border-dashed border-gray-300 rounded-lg p-2.5 hover:border-brand-red hover:bg-gray-50 transition-all text-center bg-white flex items-center justify-center min-h-[200px]"
+                className={getListCreateItemClassName('card', 'min-h-[200px]')}
               >
-                <div className="text-lg text-gray-400 mr-2">+</div>
-                <div className="font-medium text-xs text-gray-700">{isLeakMode ? 'New Leak Investigation' : 'New Opportunity'}</div>
+                <Plus className="h-5 w-5 shrink-0 text-gray-400" aria-hidden />
+                <span className={uiListCreateItem.label}>{newItemLabel}</span>
               </Link>
             )}
             {arr.map(p => (
@@ -1366,32 +718,29 @@ export default function Opportunities({ listKind = 'opportunity' }: { listKind?:
             ))}
           </div>
         ) : (
-          <div
-            className="flex flex-col gap-2 overflow-x-auto"
-            style={animationComplete ? {} : {
-              opacity: hasAnimated ? 1 : 0,
-              transform: hasAnimated ? 'translateY(0) scale(1)' : 'translateY(-8px) scale(0.98)',
-              transition: 'opacity 400ms ease-out, transform 400ms ease-out'
-            }}
-          >
+          <div className={uiCx('flex flex-col gap-2 overflow-x-auto', listCardAnimClass)}>
             {hasEditPermission && (
               <Link
                 to={newOpportunityPath}
                 state={{ backgroundLocation: location }}
-                className="border-2 border-dashed border-gray-300 rounded-lg p-2.5 hover:border-brand-red hover:bg-gray-50 transition-all text-center bg-white flex items-center justify-center min-h-[60px] min-w-[680px]"
+                className={getListCreateItemClassName('row', 'min-h-[60px] min-w-[680px]')}
               >
-                <div className="text-lg text-gray-400 mr-2">+</div>
-                <div className="font-medium text-xs text-gray-700">{isLeakMode ? 'New Leak Investigation' : 'New Opportunity'}</div>
+                <Plus className="h-5 w-5 shrink-0 text-gray-400" aria-hidden />
+                <span className={uiListCreateItem.label}>{newItemLabel}</span>
               </Link>
             )}
             <div
-              className="grid grid-cols-[10fr_5fr_5fr_5fr_auto] gap-2 sm:gap-3 lg:gap-4 items-center px-4 py-2 bg-gray-50 border-b border-gray-200 rounded-t-lg min-w-[680px] text-[10px] font-semibold text-gray-700"
-              aria-hidden
+              className={uiCx(
+                'grid min-w-[680px] grid-cols-[10fr_5fr_5fr_5fr_auto] items-center gap-2 border-b border-gray-200 bg-gray-50 px-4 py-2 sm:gap-3 lg:gap-4',
+                uiTypography.overline,
+                'normal-case tracking-normal text-gray-700',
+              )}
+              role="row"
             >
-              <button type="button" onClick={() => setListSort('opportunity')} className="min-w-0 text-left flex items-center gap-1 hover:text-gray-900 rounded py-0.5 outline-none focus:outline-none" title={isLeakMode ? 'Sort by leak investigation name' : 'Sort by opportunity name'}>{isLeakMode ? 'Leak investigation' : 'Opportunity'}{sortBy === 'opportunity' ? (sortDir === 'asc' ? ' ↑' : ' ↓') : ''}</button>
-              <button type="button" onClick={() => setListSort('estimator')} className="min-w-0 text-left flex items-center gap-1 hover:text-gray-900 rounded py-0.5 outline-none focus:outline-none" title="Sort by estimator">Estimator{sortBy === 'estimator' ? (sortDir === 'asc' ? ' ↑' : ' ↓') : ''}</button>
-              <button type="button" onClick={() => setListSort('value')} className="min-w-0 text-left flex items-center gap-1 hover:text-gray-900 rounded py-0.5 outline-none focus:outline-none" title="Sort by estimated value">Est. value{sortBy === 'value' ? (sortDir === 'asc' ? ' ↑' : ' ↓') : ''}</button>
-              <button type="button" onClick={() => setListSort('status')} className="min-w-0 text-left flex items-center gap-1 hover:text-gray-900 rounded py-0.5 outline-none focus:outline-none" title="Sort by status">Status{sortBy === 'status' ? (sortDir === 'asc' ? ' ↑' : ' ↓') : ''}</button>
+              <button type="button" onClick={() => setListSort('opportunity')} className="min-w-0 flex items-center gap-1 rounded py-0.5 text-left outline-none hover:text-gray-900 focus:outline-none" title={isLeakMode ? 'Sort by leak investigation name' : 'Sort by opportunity name'}>{isLeakMode ? 'Leak investigation' : 'Opportunity'}{sortBy === 'opportunity' ? (sortDir === 'asc' ? ' ↑' : ' ↓') : ''}</button>
+              <button type="button" onClick={() => setListSort('estimator')} className="min-w-0 flex items-center gap-1 rounded py-0.5 text-left outline-none hover:text-gray-900 focus:outline-none" title="Sort by estimator">Estimator{sortBy === 'estimator' ? (sortDir === 'asc' ? ' ↑' : ' ↓') : ''}</button>
+              <button type="button" onClick={() => setListSort('value')} className="min-w-0 flex items-center gap-1 rounded py-0.5 text-left outline-none hover:text-gray-900 focus:outline-none" title="Sort by estimated value">Est. value{sortBy === 'value' ? (sortDir === 'asc' ? ' ↑' : ' ↓') : ''}</button>
+              <button type="button" onClick={() => setListSort('status')} className="min-w-0 flex items-center gap-1 rounded py-0.5 text-left outline-none hover:text-gray-900 focus:outline-none" title="Sort by status">Status{sortBy === 'status' ? (sortDir === 'asc' ? ' ↑' : ' ↓') : ''}</button>
               <div className="min-w-0 w-24" aria-hidden />
             </div>
             {arr.map(p => (
@@ -1406,21 +755,53 @@ export default function Opportunities({ listKind = 'opportunity' }: { listKind?:
           </div>
         )}
         {!isInitialLoading && arr.length === 0 && (
-          <div className="p-8 text-center text-sm text-gray-500">
-            {isLeakMode ? 'No leak investigations found matching your criteria.' : 'No opportunities found matching your criteria.'}
-          </div>
+          <AppEmptyState
+            className="py-8"
+            title={isLeakMode ? 'No leak investigations found' : 'No opportunities found'}
+            description={
+              isLeakMode
+                ? 'No leak investigations found matching your criteria.'
+                : 'No opportunities found matching your criteria.'
+            }
+          />
         )}
         {!isInitialLoading && totalCount > 0 && (
-          <div className="flex justify-between items-center px-4 py-3 border-t bg-gray-50 rounded-b-lg">
-            <span className="text-sm text-gray-600">Page {currentPage} of {totalPages} ({totalCount} total)</span>
-            <div className="flex gap-2">
-              <button type="button" onClick={() => { const p = new URLSearchParams(searchParams); p.set('page', String(Math.max(1, currentPage - 1))); setSearchParams(p); }} disabled={currentPage <= 1} className="px-3 py-1.5 text-sm border rounded disabled:opacity-50">Previous</button>
-              <button type="button" onClick={() => { const p = new URLSearchParams(searchParams); p.set('page', String(Math.min(totalPages, currentPage + 1))); setSearchParams(p); }} disabled={currentPage >= totalPages} className="px-3 py-1.5 text-sm border rounded disabled:opacity-50">Next</button>
+          <div className={uiCx(uiLayout.actionsRow, 'mt-4 flex-wrap justify-between gap-3 border-t border-gray-200 pt-4')}>
+            <p className={uiTypography.helper}>
+              Page {currentPage} of {totalPages} ({totalCount} total)
+            </p>
+            <div className={uiCx(uiLayout.actionsRow, 'items-center')}>
+              <AppButton
+                type="button"
+                variant="secondary"
+                size="sm"
+                disabled={currentPage <= 1}
+                onClick={() => {
+                  const p = new URLSearchParams(searchParams);
+                  p.set('page', String(Math.max(1, currentPage - 1)));
+                  setSearchParams(p);
+                }}
+              >
+                Previous
+              </AppButton>
+              <AppButton
+                type="button"
+                variant="secondary"
+                size="sm"
+                disabled={currentPage >= totalPages}
+                onClick={() => {
+                  const p = new URLSearchParams(searchParams);
+                  p.set('page', String(Math.min(totalPages, currentPage + 1)));
+                  setSearchParams(p);
+                }}
+              >
+                Next
+              </AppButton>
             </div>
           </div>
         )}
-      </LoadingOverlay>
-      </div>
+          </AppCard>
+        </LoadingOverlay>
       {pickerOpen?.open && (
         <ImagePicker isOpen={true} onClose={()=>setPickerOpen(null)} clientId={String(pickerOpen?.clientId||'')} targetWidth={800} targetHeight={300} allowEdit={true} onConfirm={async(blob)=>{
           try{
@@ -1446,19 +827,16 @@ export default function Opportunities({ listKind = 'opportunity' }: { listKind?:
         />
       )}
       
-      {/* Filter Builder Modal */}
-      <FilterBuilderModal
-        isOpen={isFilterModalOpen}
-        onClose={() => setIsFilterModalOpen(false)}
-        onApply={handleApplyFilters}
-        initialRules={currentRules}
-        projectStatuses={projectStatuses}
-        projectDivisions={divisionsForLine || []}
-        clients={clients}
-        employees={employees}
-        estimatorOptions={employeesInEstimatingDept}
-      />
-    </div>
+        <FilterBuilderModal
+          isOpen={isFilterModalOpen}
+          onClose={() => setIsFilterModalOpen(false)}
+          onApply={handleApplyFilters}
+          initialRules={currentRules}
+          fields={filterFields}
+          getFieldData={() => null}
+        />
+      </div>
+    </main>
   );
 }
 
@@ -1499,6 +877,24 @@ export function CreateReportModal({ projectId, reportCategories, onClose, onSucc
   
   // If it's an opportunity (is_bidding), show only commercial categories
   const isBidding = project?.is_bidding === true;
+
+  const categoryOptions = useMemo(() => {
+    const opts: { value: string; label: string }[] = [];
+    const addCats = (cats: typeof commercialCategories, prefix?: string) => {
+      cats.forEach((cat) => {
+        const value = String(cat.value || cat.label || '');
+        const label = prefix ? `${prefix} — ${cat.label}` : String(cat.label || value);
+        opts.push({ value, label });
+      });
+    };
+    if (!isBidding) {
+      addCats(commercialCategories, 'Commercial');
+      addCats(productionCategories, 'Production / Execution');
+    } else {
+      addCats(commercialCategories);
+    }
+    return opts;
+  }, [isBidding, commercialCategories, productionCategories]);
 
   const handleCreate = async () => {
     if (!title.trim()) {
@@ -1565,111 +961,65 @@ export function CreateReportModal({ projectId, reportCategories, onClose, onSucc
   };
 
   return (
-    <OverlayPortal><div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
-      onClick={onClose}
-    >
-      <div
-        className="max-w-3xl w-full max-h-[90vh] flex flex-col rounded-xl border border-gray-200 bg-gray-100 shadow-xl overflow-hidden"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="flex-shrink-0 rounded-t-xl border-b border-gray-200 bg-white p-4">
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={onClose}
-              className="p-1 rounded-lg hover:bg-gray-100 text-gray-600"
-            >
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-              </svg>
-            </button>
-            <div>
-              <h2 className="text-sm font-semibold text-gray-900">New Note</h2>
-              <p className="text-xs text-gray-500 mt-0.5">Add a note or report to this opportunity</p>
-            </div>
-          </div>
-        </div>
-        <div className="flex-1 overflow-y-auto p-4">
-          <form
-            id="create-note-form-opportunity"
-            onSubmit={(e) => { e.preventDefault(); handleCreate(); }}
-            className="rounded-xl border border-gray-200 bg-white p-4 space-y-4"
-          >
-            <div>
-              <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">Title *</label>
-              <input
-                type="text"
-                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm placeholder:text-gray-400 focus:outline-none focus:ring-1 focus:ring-gray-300 focus:border-gray-300"
-                placeholder="Enter note title..."
-                value={title}
-                onChange={e => setTitle(e.target.value)}
-              />
-            </div>
-            <div>
-              <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">Category</label>
-              <select
-                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm placeholder:text-gray-400 focus:outline-none focus:ring-1 focus:ring-gray-300 focus:border-gray-300"
-                value={category}
-                onChange={e => setCategory(e.target.value)}
-              >
-                <option value="">Select category...</option>
-                {!isBidding && commercialCategories.length > 0 && (
-                  <optgroup label="Commercial">
-                    {commercialCategories.map(cat => (
-                      <option key={cat.id || cat.value || cat.label} value={cat.value || cat.label}>{cat.label}</option>
-                    ))}
-                  </optgroup>
-                )}
-                {!isBidding && productionCategories.length > 0 && (
-                  <optgroup label="Production / Execution">
-                    {productionCategories.map(cat => (
-                      <option key={cat.id || cat.value || cat.label} value={cat.value || cat.label}>{cat.label}</option>
-                    ))}
-                  </optgroup>
-                )}
-                {isBidding && commercialCategories.length > 0 && (
-                  <>
-                    {commercialCategories.map(cat => (
-                      <option key={cat.id || cat.value || cat.label} value={cat.value || cat.label}>{cat.label}</option>
-                    ))}
-                  </>
-                )}
-              </select>
-            </div>
-            <div>
-              <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">Description *</label>
-              <textarea
-                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm placeholder:text-gray-400 focus:outline-none focus:ring-1 focus:ring-gray-300 focus:border-gray-300"
-                rows={6}
-                placeholder="Describe what happened, how the day went, or any events on site..."
-                value={desc}
-                onChange={e => setDesc(e.target.value)}
-              />
-            </div>
-            <ReportAttachmentAreaMultiple files={files} setFiles={setFiles} accept="image/*,.pdf,.doc,.docx" label="Attachments (optional – multiple allowed)" />
-          </form>
-        </div>
-        <div className="flex-shrink-0 px-4 py-4 border-t border-gray-200 bg-white flex items-center justify-end gap-3 rounded-b-xl">
-          <button
-            type="button"
-            onClick={onClose}
-            disabled={uploading}
-            className="px-3 py-1.5 rounded-lg text-sm font-medium text-gray-700 border border-gray-200 hover:bg-gray-50 disabled:opacity-50"
-          >
+    <AppFormModal
+      open
+      onClose={onClose}
+      title="New Note"
+      description="Add a note or report to this opportunity"
+      size="md"
+      footer={
+        <div className={uiCx(uiLayout.actionsRow, 'w-full justify-end')}>
+          <AppButton type="button" variant="secondary" size="sm" onClick={onClose} disabled={uploading}>
             Cancel
-          </button>
-          <button
+          </AppButton>
+          <AppButton
             type="submit"
             form="create-note-form-opportunity"
+            size="sm"
             disabled={uploading}
-            className="px-4 py-2 rounded-lg text-sm font-semibold text-white bg-brand-red hover:bg-[#aa1212] disabled:opacity-50 disabled:cursor-not-allowed"
+            loading={uploading}
           >
             {uploading ? 'Creating...' : 'Create Note'}
-          </button>
+          </AppButton>
         </div>
-      </div>
-    </div></OverlayPortal>
+      }
+    >
+      <form
+        id="create-note-form-opportunity"
+        onSubmit={(e) => {
+          e.preventDefault();
+          handleCreate();
+        }}
+        className={uiCx('space-y-4', uiSpacing.sectionStack)}
+      >
+        <AppInput
+          label="Title *"
+          placeholder="Enter note title..."
+          value={title}
+          onChange={(e) => setTitle(e.target.value)}
+        />
+        <AppSelect
+          label="Category"
+          placeholder="Select category..."
+          options={categoryOptions}
+          value={category}
+          onChange={(e) => setCategory(e.target.value)}
+        />
+        <AppTextarea
+          label="Description *"
+          rows={6}
+          placeholder="Describe what happened, how the day went, or any events on site..."
+          value={desc}
+          onChange={(e) => setDesc(e.target.value)}
+        />
+        <ReportAttachmentAreaMultiple
+          files={files}
+          setFiles={setFiles}
+          accept="image/*,.pdf,.doc,.docx"
+          label="Attachments (optional – multiple allowed)"
+        />
+      </form>
+    </AppFormModal>
   );
 }
 
@@ -1695,7 +1045,6 @@ export function OpportunityListItem({ opportunity, onOpenReportModal, projectSta
 
   const status = (opportunity as any).status_label || details?.status_label || '';
   const statusLabel = String(status || '').trim();
-  const statusColor = (projectStatuses || []).find((s: any) => String(s?.label || '').trim() === statusLabel)?.value || '#e5e7eb';
   const estimatedValue = (opportunity as any).cost_estimated || details?.cost_estimated || 0;
   const estimatorIds = (opportunity as any).estimator_ids || details?.estimator_ids || ((opportunity as any).estimator_id || details?.estimator_id ? [(opportunity as any).estimator_id || details?.estimator_id] : []);
   const clientName = client?.display_name || client?.name || '';
@@ -1721,13 +1070,6 @@ export function OpportunityListItem({ opportunity, onOpenReportModal, projectSta
     ? { name: listEstimatorName, profile_photo_file_id: listEstimatorAvatarFileId, first_name: listEstimatorName }
     : null);
 
-  const tabButtons = [
-    { key: 'files', icon: '📁', label: 'Files', tab: 'files' },
-    { key: 'proposal', icon: '📄', label: 'Proposal', tab: 'proposal' },
-    { key: 'pricing', icon: '💰', label: 'Pricing', tab: 'pricing' },
-    { key: 'reports', icon: '📋', label: 'Notes/History', tab: 'reports' },
-  ];
-
   const col1 = (
     <div className="min-w-0">
       <div className="text-sm font-bold text-gray-900 group-hover:text-[#7f1010] transition-colors truncate">
@@ -1750,19 +1092,19 @@ export function OpportunityListItem({ opportunity, onOpenReportModal, projectSta
         <span className="text-xs font-semibold text-gray-400">—</span>
       ) : estimators.length === 1 ? (
         <div className="flex items-center gap-2 min-w-0">
-          <UserAvatar user={estimators[0]} size="w-5 h-5" showTooltip={true} />
+          <UserAvatar user={estimators[0]} size="sm" showTooltip={true} />
           <span className="font-semibold text-gray-900 text-xs truncate min-w-0">{getUserDisplayName(estimators[0])}</span>
         </div>
       ) : estimators.length > 1 ? (
         <div className="flex items-center gap-1.5">
           {estimators.slice(0, 2).map((est: any) => (
-            <UserAvatar key={est.id} user={est} size="w-5 h-5" showTooltip={true} />
+            <UserAvatar key={est.id} user={est} size="sm" showTooltip={true} />
           ))}
           <span className="text-xs text-gray-500 ml-1">+{estimators.length - 2}</span>
         </div>
       ) : (
         <div className="flex items-center gap-2 min-w-0">
-          <UserAvatar user={userForAvatar} size="w-5 h-5" showTooltip={true} tooltipText={estimatorDisplayName} />
+          <UserAvatar user={userForAvatar} size="sm" showTooltip={true} tooltipText={estimatorDisplayName} />
           <span className="font-semibold text-gray-900 text-xs truncate min-w-0">{estimatorDisplayName}</span>
         </div>
       )}
@@ -1776,22 +1118,19 @@ export function OpportunityListItem({ opportunity, onOpenReportModal, projectSta
     </div>
   );
   const col4 = (
-    <div className="min-w-0">
-      <span
-        className={[
-          'inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium border border-gray-200',
-          'backdrop-blur-sm text-gray-800',
-        ].join(' ')}
-        title={status}
-        style={{ backgroundColor: statusColor, color: '#000' }}
-      >
-        <span className="truncate">{status || '—'}</span>
-      </span>
+    <div className="min-w-0 flex items-center">
+      {statusLabel ? (
+        <AppBadge variant={getProjectStatusBadgeVariant(statusLabel)} className="max-w-full truncate">
+          {statusLabel}
+        </AppBadge>
+      ) : (
+        <span className={uiTypography.helper}>—</span>
+      )}
     </div>
   );
   const col5 = (
     <div className="flex items-center gap-1.5 flex-shrink-0" onClick={(e) => e.stopPropagation()}>
-      {tabButtons.map((btn) => (
+      {OPPORTUNITY_TAB_ICON_BUTTONS.map((btn) => (
         <button
           key={btn.key}
           type="button"
@@ -1835,7 +1174,7 @@ export function OpportunityListItem({ opportunity, onOpenReportModal, projectSta
   return (
     <Link
       to={`${opportunityBasePath}/${encodeURIComponent(String(opportunity.id))}`}
-      className="group border border-gray-200 rounded-xl bg-white p-4 hover:shadow-md hover:border-gray-300 transition-all duration-200 min-w-[680px] block"
+      className={uiCx('group block min-w-[680px] p-4 transition-all duration-200 hover:border-gray-300', uiBorders.subtle, uiRadius.card, uiColors.surface, 'hover:shadow-md')}
     >
       <div className="grid grid-cols-[10fr_5fr_5fr_5fr_auto] gap-2 sm:gap-3 lg:gap-4 items-center overflow-hidden">
         {col1}
@@ -1862,7 +1201,6 @@ function OpportunityListCard({ opportunity, onOpenReportModal, projectStatuses, 
   const { data:projectDivisions } = useQuery({ queryKey:['project-divisions'], queryFn: ()=> api<any[]>('GET','/settings/project-divisions'), staleTime: 300_000 });
   const status = (opportunity as any).status_label || details?.status_label || '';
   const statusLabel = String(status || '').trim();
-  const statusColor = (projectStatuses || []).find((s: any) => String(s?.label || '').trim() === statusLabel)?.value || '#e5e7eb';
   const start = (opportunity.date_start || details?.date_start || opportunity.created_at || '').slice(0,10);
   const eta = (opportunity.date_eta || details?.date_eta || '').slice(0, 10);
   const estimatedValue = (opportunity as any).cost_estimated || details?.cost_estimated || 0;
@@ -1996,18 +1334,10 @@ function OpportunityListCard({ opportunity, onOpenReportModal, projectStatuses, 
     return icons;
   }, [projectDivIds, projectDivisions, calculatedPercentages]);
 
-  // Tab icons and navigation (for opportunities: files, proposal, pricing, notes/history)
-  const tabButtons = [
-    { key: 'files', icon: '📁', label: 'Files', tab: 'files' },
-    { key: 'proposal', icon: '📄', label: 'Proposal', tab: 'proposal' },
-    { key: 'pricing', icon: '💰', label: 'Pricing', tab: 'pricing' },
-    { key: 'reports', icon: '📋', label: 'Notes/History', tab: 'reports' },
-  ];
-
   return (
     <Link 
       to={`${opportunityBasePath}/${encodeURIComponent(String(opportunity.id))}`} 
-      className="group rounded-xl border border-gray-200 bg-white hover:border-gray-300 hover:shadow-md hover:-translate-y-0.5 block h-full transition-all duration-200 relative"
+      className={uiCx('group relative block h-full transition-all duration-200 hover:-translate-y-0.5 hover:border-gray-300', uiBorders.subtle, uiRadius.card, uiColors.surface, 'hover:shadow-md')}
     >
       {/* Pending data alert icon (separate, top-left) */}
       {hasPendingData && (
@@ -2066,7 +1396,7 @@ function OpportunityListCard({ opportunity, onOpenReportModal, projectStatuses, 
 
             {/* Icons row (right below code) - same icon size as employee area */}
             <div className="mt-2 flex items-center gap-2 flex-wrap">
-              {tabButtons.map((btn) => (
+              {OPPORTUNITY_TAB_ICON_BUTTONS.map((btn) => (
                 <button
                   key={btn.key}
                   onClick={(e) => {
@@ -2103,18 +1433,18 @@ function OpportunityListCard({ opportunity, onOpenReportModal, projectStatuses, 
               <div className="text-xs font-semibold text-gray-400">—</div>
             ) : estimators.length === 1 ? (
               <div className="flex items-center gap-2">
-                <UserAvatar user={estimators[0]} size="w-5 h-5" showTooltip={true} />
+                <UserAvatar user={estimators[0]} size="sm" showTooltip={true} />
                 <div className="font-semibold text-gray-900 text-xs truncate">{getUserDisplayName(estimators[0])}</div>
               </div>
             ) : estimators.length > 1 ? (
               <div className="flex items-center gap-1.5 flex-wrap">
                 {estimators.map((est: any) => (
-                  <UserAvatar key={est.id} user={est} size="w-5 h-5" showTooltip={true} />
+                  <UserAvatar key={est.id} user={est} size="sm" showTooltip={true} />
                 ))}
               </div>
             ) : (
               <div className="flex items-center gap-2">
-                <UserAvatar user={userForAvatarCard} size="w-5 h-5" showTooltip={true} tooltipText={estimatorDisplayNameCard} />
+                <UserAvatar user={userForAvatarCard} size="sm" showTooltip={true} tooltipText={estimatorDisplayNameCard} />
                 <div className="font-semibold text-gray-900 text-xs truncate">{estimatorDisplayNameCard}</div>
               </div>
             )}
@@ -2169,16 +1499,13 @@ function OpportunityListCard({ opportunity, onOpenReportModal, projectStatuses, 
           </div>
 
           <div className="relative flex-shrink-0">
-            <span
-              className={[
-                'inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium border border-gray-200',
-                'backdrop-blur-sm text-gray-800',
-              ].join(' ')}
-              title={status}
-              style={{ backgroundColor: statusColor, color: '#000' }}
-            >
-              <span className="truncate max-w-[10rem]">{status || '—'}</span>
-            </span>
+            {statusLabel ? (
+              <AppBadge variant={getProjectStatusBadgeVariant(statusLabel)} className="max-w-[10rem] truncate">
+                {statusLabel}
+              </AppBadge>
+            ) : (
+              <span className={uiTypography.helper}>—</span>
+            )}
           </div>
         </div>
       </div>

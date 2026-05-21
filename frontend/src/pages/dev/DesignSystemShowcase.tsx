@@ -14,6 +14,7 @@ import {
   AppInput,
   AppListCreateItem,
   AppModal,
+  AppPageBackButton,
   AppPageHeader,
   AppSectionHeader,
   AppMultiSelect,
@@ -22,6 +23,7 @@ import {
   AppTable,
   AppTabs,
   AppTextarea,
+  AppTooltip,
   uiBorders,
   uiCx,
   uiLayout,
@@ -137,6 +139,68 @@ export default function DesignSystemShowcase() {
             </>
           }
         />
+
+        <AppCard
+          title="Page header"
+          subtitle="AppPageHeader on gray page shells. Child pages: onBack + icon (back arrow, then blue tile, then title). Parent pages: icon only."
+        >
+          <div className="space-y-6">
+            <div>
+              <p className={uiCx(uiTypography.overline, 'mb-2')}>With back + decorative icon</p>
+              <AppPageHeader
+                title="Opportunities"
+                subtitle="Create, edit and track bids and quotes"
+                onBack={() => undefined}
+                backLabel="Back to Business"
+                icon={<LayoutGrid className="h-4 w-4" />}
+                actions={
+                  <div className="text-right">
+                    <div className={uiTypography.overline}>Today</div>
+                    <div className={uiCx(uiTypography.sectionTitle, 'mt-0.5')}>
+                      {new Date().toLocaleDateString('en-CA', {
+                        weekday: 'long',
+                        year: 'numeric',
+                        month: 'short',
+                        day: 'numeric',
+                      })}
+                    </div>
+                  </div>
+                }
+              />
+              <p className={uiCx(uiTypography.helper, 'mt-2')}>
+                Props: <code className="rounded bg-gray-100 px-1 py-0.5 text-[11px]">onBack</code>,{' '}
+                <code className="rounded bg-gray-100 px-1 py-0.5 text-[11px]">backLabel</code>,{' '}
+                <code className="rounded bg-gray-100 px-1 py-0.5 text-[11px]">icon</code> (Lucide inside blue tile),{' '}
+                <code className="rounded bg-gray-100 px-1 py-0.5 text-[11px]">actions</code> (e.g. Today).
+              </p>
+            </div>
+            <div>
+              <p className={uiCx(uiTypography.overline, 'mb-2')}>With decorative icon (no back)</p>
+              <AppPageHeader
+                title="Customers"
+                subtitle="Manage your customer list and sites"
+                icon={<LayoutGrid className="h-4 w-4" />}
+                actions={
+                  <div className="text-right">
+                    <div className={uiTypography.overline}>Today</div>
+                    <div className={uiCx(uiTypography.sectionTitle, 'mt-0.5')}>
+                      {new Date().toLocaleDateString('en-CA', {
+                        weekday: 'long',
+                        year: 'numeric',
+                        month: 'short',
+                        day: 'numeric',
+                      })}
+                    </div>
+                  </div>
+                }
+              />
+            </div>
+            <div>
+              <p className={uiCx(uiTypography.overline, 'mb-2')}>AppPageBackButton alone</p>
+              <AppPageBackButton onClick={() => undefined} label="Back to Business" />
+            </div>
+          </div>
+        </AppCard>
 
         <AppCard>
           <AppSectionHeader
@@ -254,6 +318,35 @@ export default function DesignSystemShowcase() {
           </AppCard>
         </div>
 
+        <AppCard
+          title="Hover tooltip"
+          subtitle="Dark label on hover/focus — Opportunities estimator avatars, Business filter icons. Portaled so overflow-hidden does not clip."
+        >
+          <p className={uiCx(uiTypography.helper, 'mb-4')}>
+            Wrap any trigger with <code className="rounded bg-gray-100 px-1 py-0.5 text-[11px]">AppTooltip</code>. Do
+            not use native <code className="text-[11px]">title</code> on the same element. For form help, use{' '}
+            <code className="text-[11px]">fieldHint</code> / <code className="text-[11px]">AppFieldHint</code> (light
+            panel).
+          </p>
+          <div className={uiCx(uiLayout.actionsRow, 'flex-wrap items-center gap-6')}>
+            <AppTooltip content="Callum">
+              <span className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-indigo-600 text-xs font-semibold text-white">
+                C
+              </span>
+            </AppTooltip>
+            <AppTooltip content="Show All">
+              <AppButton type="button" variant="secondary" size="sm" className="h-10 w-10 p-0" aria-label="Show all">
+                <LayoutGrid className="h-5 w-5" />
+              </AppButton>
+            </AppTooltip>
+            <AppTooltip content="Roofing" placement="bottom">
+              <AppButton type="button" variant="secondary" size="sm">
+                Bottom placement
+              </AppButton>
+            </AppTooltip>
+          </div>
+        </AppCard>
+
         <div className={uiLayout.sectionGrid2}>
           <AppCard
             title="Form Controls"
@@ -278,14 +371,15 @@ export default function DesignSystemShowcase() {
                 <code className="text-[11px]">FieldHint</code> next to custom labels when not using App* controls.
               </p>
               <p className={uiTypography.helper}>
-                Searchable lists: <code className="text-[11px]">AppCombobox</code> — trigger matches{' '}
-                <code className="text-[11px]">AppInput</code> (<code className="text-[11px]">rounded-lg</code>); portaled
-                menu uses <code className="text-[11px]">uiDropdown.menu</code> (
-                <code className="text-[11px]">rounded-xl</code>).                 <code className="text-[11px]">AppSelect</code> — single
-                value; <code className="text-[11px]">searchable</code> adds a fixed search header in the menu (
-                options scroll in <code className="text-[11px]">uiDropdown.menuOptionsList</code> only).{' '}
-                <code className="text-[11px]">AppMultiSelect</code> — multiple values (checkboxes + chips, same menu shell;
-                also supports <code className="text-[11px]">searchable</code>).
+                Search in the field: <code className="text-[11px]">AppCombobox</code> (single),{' '}
+                <code className="text-[11px]">AppMultiSelect searchable</code> (multiple),{' '}
+                <code className="text-[11px]">AppUserSelect</code> — same trigger as{' '}
+                <code className="text-[11px]">AppInput</code>; portaled menu is{' '}
+                <code className="text-[11px]">uiDropdown.menu</code> only (no search bar inside the list).{' '}
+                <code className="text-[11px]">AppSelect</code> — single value; optional{' '}
+                <code className="text-[11px]">searchable</code> keeps search in the menu header (chevron trigger).{' '}
+                <code className="text-[11px]">AppMultiSelect</code> without <code className="text-[11px]">searchable</code>{' '}
+                uses button + chevron.
               </p>
               <p className={uiTypography.helper}>
                 Dates: <code className="text-[11px]">AppDatePicker</code> — click the month label to pick month/year, then
@@ -370,14 +464,14 @@ export default function DesignSystemShowcase() {
                 onChange={setShowcaseUserIds}
                 fieldHint="Additional signers\n\nMultiple users who must sign a document (Safety / approvals pattern)."
               />
-              <AppSelect
+              <AppCombobox
                 id="showcase-department"
                 label="Department"
                 placeholder="Search or select department…"
-                searchable
                 value={showcaseDepartment}
-                onChange={(e) => setShowcaseDepartment(e.target.value)}
-                fieldHint="Department\n\nSingle choice with search in the menu — same pattern as AppUserSelect."
+                onChange={setShowcaseDepartment}
+                leftIcon={<Layers className="h-4 w-4" />}
+                fieldHint="Department\n\nSingle enum — search in the field (same pattern as Assign to user / AppCombobox)."
                 options={[
                   { value: 'hr', label: 'Human Resources' },
                   { value: 'operations', label: 'Operations' },
@@ -387,11 +481,11 @@ export default function DesignSystemShowcase() {
               <AppMultiSelect
                 id="showcase-departments-multi"
                 label="Departments (multi)"
-                placeholder="Search departments…"
+                placeholder="Search departments to add…"
                 searchable
                 value={showcaseDepartmentsMulti}
                 onChange={setShowcaseDepartmentsMulti}
-                fieldHint="Departments (multi)\n\nStatic options with search, checkboxes, chips, and portaled menu — use anywhere you need multiple enum values (not users)."
+                fieldHint="Departments (multi)\n\nMultiple enums — search in the field, checkboxes in menu, chips below (same as Additional signers / AppUserSelect multiple)."
                 options={[
                   { value: 'hr', label: 'Human Resources' },
                   { value: 'operations', label: 'Operations' },
@@ -436,11 +530,15 @@ export default function DesignSystemShowcase() {
             <ul className={uiCx(uiTypography.helper, 'mt-2 list-inside list-disc space-y-1')}>
               <li>
                 <strong className="font-semibold text-gray-800">AppFormModal</strong> — scrollable form body, optional{' '}
-                <code className="text-[11px]">quickInfo</code> panel toggled via ? next to close
+                <code className="text-[11px]">quickInfo</code> panel toggled via ? next to close. Wide wizards (New Customer,
+                New Opportunity): <code className="text-[11px]">formWidth=&quot;wide&quot;</code>,{' '}
+                <code className="text-[11px]">dialogClassName=&quot;!max-w-[720px]&quot;</code>,{' '}
+                <code className="text-[11px]">headerExtra</code> for step pills, white body (no gray shell / inner card).
               </li>
               <li>
-                <strong className="font-semibold text-gray-800">fieldHint</strong> — same ? tooltips as Form Controls;
-                use on modal fields and on any other form in the system
+                <strong className="font-semibold text-gray-800">fieldHint</strong> — light ? help on form fields;{' '}
+                <strong className="font-semibold text-gray-800">AppTooltip</strong> — dark hover label (lists, avatars,
+                icon filters)
               </li>
             </ul>
             <div className={uiCx('mt-4 flex flex-wrap gap-2', uiLayout.actionsRow)}>

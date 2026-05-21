@@ -59,6 +59,19 @@ export const uiTypography = {
   controlLabel: 'text-xs font-medium text-gray-600',
 } as const;
 
+/** Page shell header (AppPageHeader) — back control is separate from decorative icon tile. */
+export const uiPageHeader = {
+  backButton: uiCx(
+    'flex h-8 w-8 shrink-0 items-center justify-center text-gray-600 transition-colors',
+    'hover:bg-gray-100 hover:text-gray-900',
+    uiRadius.control,
+  ),
+  iconTile: uiCx(
+    'flex h-8 w-8 shrink-0 items-center justify-center bg-blue-100 text-blue-800',
+    uiRadius.control,
+  ),
+} as const;
+
 export const uiSpacing = {
   pageX: 'px-4 md:px-6',
   pageY: 'py-4 md:py-6',
@@ -170,6 +183,16 @@ export const uiDatePicker = {
   monthCell:
     'flex h-8 items-center justify-center rounded-md text-xs text-gray-900 transition-colors hover:bg-gray-50',
   monthCellActive: 'bg-brand-red/10 font-medium ring-1 ring-inset ring-brand-red/35',
+} as const;
+
+/** Dark label tooltip (Opportunities list / filter chips). Portaled via AppTooltip. */
+export const uiTooltip = {
+  /** Viewport-anchored shell only — do not add `relative` here (breaks `fixed`). */
+  shell: 'pointer-events-none fixed z-[9999]',
+  panel:
+    'relative inline-block whitespace-nowrap rounded px-2 py-1 text-xs text-white shadow-lg bg-gray-900',
+  arrowTop: 'absolute -bottom-1 left-1/2 h-2 w-2 -translate-x-1/2 rotate-45 bg-gray-900',
+  arrowBottom: 'absolute -top-1 left-1/2 h-2 w-2 -translate-x-1/2 rotate-45 bg-gray-900',
 } as const;
 
 export const uiLayout = {

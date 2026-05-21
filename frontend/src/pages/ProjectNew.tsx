@@ -6,11 +6,29 @@ import { sortByLabel } from '@/lib/sortOptions';
 import toast from 'react-hot-toast';
 import ImagePicker from '@/components/ImagePicker';
 import AddressAutocomplete from '@/components/AddressAutocomplete';
-import OverlayPortal from '@/components/OverlayPortal';
 import NewContactModal from '@/components/NewContactModal';
 import { DivisionIcon } from '@/components/DivisionIcon';
+import {
+  AppButton,
+  AppClientSelect,
+  AppControlLabelRow,
+  AppFieldHint,
+  AppFormModal,
+  AppInput,
+  AppSectionHeader,
+  AppSelect,
+  AppTextarea,
+  AppUserSelect,
+  uiBorders,
+  uiCx,
+  uiLayout,
+  uiRadius,
+  uiSpacing,
+  uiTypography,
+} from '@/components/ui';
 import { useBusinessLine } from '@/context/BusinessLineContext';
 import { BUSINESS_LINE_REPAIRS_MAINTENANCE, filterProjectDivisionsForBusinessLine } from '@/lib/businessLine';
+import { mapEmployeeToAppUserSelect } from '@/lib/clientUi';
 import { filterStatusesForProject } from '@/lib/projectStatusVisibility';
 
 type Client = { id:string, display_name?:string, name?:string, city?:string, province?:string, address_line1?:string };
@@ -48,65 +66,11 @@ export default function ProjectNew(){
   const [isLeakInvestigation] = useState<boolean>(initialIsLeakInvestigation);
   const [relatedLeakInvestigationId, setRelatedLeakInvestigationId] = useState<string>(initialRelatedLeakId);
   const [isBidding] = useState<boolean>(initialIsLeakInvestigation ? false : initialIsBidding);
-  const [clientSearch, setClientSearch] = useState<string>('');
-  const [clientModalOpen, setClientModalOpen] = useState<boolean>(false);
-  const [showClientDropdown, setShowClientDropdown] = useState<boolean>(false);
   const [relatedClientIds, setRelatedClientIds] = useState<string[]>([]);
-  const [relatedClientSearch, setRelatedClientSearch] = useState<string>('');
-  const [showRelatedClientDropdown, setShowRelatedClientDropdown] = useState<boolean>(false);
-  const [relatedClientModalOpen, setRelatedClientModalOpen] = useState<boolean>(false);
-  const [relatedClientDisplayNames, setRelatedClientDisplayNames] = useState<Record<string, string>>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [newContactModalOpen, setNewContactModalOpen] = useState(false);
   /** Step 2 division picker: expand parents that have subdivisions (same UX as Edit Project Divisions). */
   const [newOppExpandedDivisions, setNewOppExpandedDivisions] = useState<Set<string>>(new Set());
-  const nameValid = useMemo(()=> String(name||'').trim().length>0, [name]);
-  const clientValid = useMemo(()=> String(clientId||'').trim().length>0, [clientId]);
-  const siteValid = useMemo(()=>{
-    if(!clientValid) return false;
-    if(createSite){ return !!String(siteForm.site_name||siteForm.site_address_line1||'').trim(); }
-    return !!String(siteId||'').trim();
-  }, [clientValid, createSite, siteForm, siteId]);
-
-  const { data:clients } = useQuery({
-    queryKey:['clients-mini'],
-    queryFn: async () => {
-      const result = await api<any>('GET','/clients');
-      if (Array.isArray(result)) return result as Client[];
-      if (result && Array.isArray(result.items)) return result.items as Client[];
-      if (result && Array.isArray(result.data)) return result.data as Client[];
-      return [] as Client[];
-    },
-    staleTime: 60_000
-  });
-  const { data:clientSearchResults } = useQuery({ 
-    queryKey:['clients-search', clientSearch], 
-    queryFn: async()=>{
-      if (!clientSearch.trim()) return [];
-      const params = new URLSearchParams();
-      params.set('q', clientSearch);
-      const result = await api<any>('GET', `/clients?${params.toString()}`);
-      if (Array.isArray(result)) return result as Client[];
-      if (result && Array.isArray(result.items)) return result.items as Client[];
-      if (result && Array.isArray(result.data)) return result.data as Client[];
-      return [] as Client[];
-    },
-    enabled: !!clientSearch.trim()
-  });
-  const { data:relatedClientSearchResults } = useQuery({
-    queryKey: ['clients-search-related', relatedClientSearch],
-    queryFn: async () => {
-      if (!relatedClientSearch.trim()) return [];
-      const params = new URLSearchParams();
-      params.set('q', relatedClientSearch);
-      const result = await api<any>('GET', `/clients?${params.toString()}`);
-      if (Array.isArray(result)) return result as Client[];
-      if (result && Array.isArray(result.items)) return result.items as Client[];
-      if (result && Array.isArray(result.data)) return result.data as Client[];
-      return [] as Client[];
-    },
-    enabled: !!relatedClientSearch.trim(),
-  });
   const { data:sites } = useQuery({ queryKey:['clientSites', clientId], queryFn: ()=> clientId? api<Site[]>('GET', `/clients/${encodeURIComponent(clientId)}/sites`) : Promise.resolve([]), enabled: !!clientId });
   const { data:settings } = useQuery({ queryKey:['settings'], queryFn: ()=> api<any>('GET','/settings') });
   const { data:projectDivisions } = useQuery({ queryKey:['project-divisions'], queryFn: ()=> api<any[]>('GET','/settings/project-divisions'), staleTime: 300_000 });
@@ -138,6 +102,10 @@ export default function ProjectNew(){
   }, [limitEstimatorListToSalesDept, employees, employeesInEstimatingDept, estimatorId]);
 
   const employeesForEstimatorSelect = limitEstimatorListToSalesDept ? employeesInEstimatingDept : employees || [];
+  const estimatorUserOptions = useMemo(
+    () => employeesForEstimatorSelect.map((emp: any) => mapEmployeeToAppUserSelect(emp)),
+    [employeesForEstimatorSelect],
+  );
   const { data: leakPickData } = useQuery({
     queryKey: ['leak-investigations-pick', businessLine],
     queryFn: () =>
@@ -151,59 +119,63 @@ export default function ProjectNew(){
   const leakPickItems = Array.isArray((leakPickData as any)?.items) ? (leakPickData as any).items : [];
   const { data:contacts } = useQuery({ queryKey:['clientContacts-mini', clientId], queryFn: ()=> clientId? api<any[]>('GET', `/clients/${encodeURIComponent(clientId)}/contacts`) : Promise.resolve([]), enabled: !!clientId });
 
-  const clientInMiniList = useMemo(() => {
-    if (!clientId || !Array.isArray(clients)) return null;
-    return clients.find((c) => c.id === clientId) || null;
-  }, [clientId, clients]);
-
   const { data: clientById } = useQuery({
     queryKey: ['client-detail-project-new', clientId],
     queryFn: () => api<Client>('GET', `/clients/${encodeURIComponent(String(clientId || '').trim())}`),
-    enabled: !!String(clientId || '').trim() && !clientInMiniList,
+    enabled: !!String(clientId || '').trim(),
     staleTime: 60_000,
   });
 
   const selectedClient = useMemo(() => {
     if (!clientId) return null;
-    if (clientInMiniList) return clientInMiniList;
     const c = clientById as Client | undefined;
     if (c && String(c.id) === clientId) return c;
     return null;
-  }, [clientId, clientInMiniList, clientById]);
-  
-  const filteredClients = useMemo(() => {
-    if (!clientSearch.trim()) return [];
-    const list = clientSearchResults || [];
-    return sortByLabel(list, c => (c.display_name || c.name || c.id || '').toString());
-  }, [clientSearch, clientSearchResults]);
+  }, [clientId, clientById]);
 
-  const filteredRelatedClients = useMemo(() => {
-    if (!relatedClientSearch.trim()) return [];
-    const list = relatedClientSearchResults || [];
-    const mainId = clientId || '';
-    const selectedSet = new Set(relatedClientIds);
-    return sortByLabel(
-      list.filter(c => c.id !== mainId && !selectedSet.has(c.id)),
-      c => (c.display_name || c.name || c.id || '').toString()
-    );
-  }, [relatedClientSearch, relatedClientSearchResults, clientId, relatedClientIds]);
+  const controlInputClass = uiCx('w-full text-sm', uiRadius.control, uiBorders.input, uiSpacing.controlX, 'py-2');
+
+  const contactSelectOptions = useMemo(
+    () =>
+      sortByLabel(contacts || [], (c: any) => (c.name || c.email || c.phone || c.id || '').toString()).map((c: any) => ({
+        value: String(c.id),
+        label: (c.name || c.email || c.phone || c.id || '').toString(),
+      })),
+    [contacts],
+  );
+
+  const siteSelectOptions = useMemo(
+    () =>
+      sortByLabel(sites || [], (s) => (s.site_name || s.site_address_line1 || String(s.id)).toString()).map((s) => ({
+        value: String(s.id),
+        label: (s.site_name || s.site_address_line1 || String(s.id)).toString(),
+      })),
+    [sites],
+  );
+
+  const statusSelectOptions = useMemo(
+    () =>
+      sortByLabel(filterStatusesForProject(settings?.project_statuses || []), (s: any) => (s.label || '').toString()).map(
+        (s: any) => ({ value: s.label, label: s.label }),
+      ),
+    [settings?.project_statuses],
+  );
+
+  const leadUserOptions = useMemo(
+    () => sortByLabel(employees || [], (emp: any) => (emp.name || emp.username || '').toString()).map((emp: any) => mapEmployeeToAppUserSelect(emp)),
+    [employees],
+  );
 
   useEffect(() => {
     if (!initialClientId) return;
     setClientId(initialClientId);
-    if (!Array.isArray(clients)) return;
-    const client = clients.find((c) => c.id === initialClientId);
-    if (client) {
-      setClientSearch(client.display_name || client.name || client.id);
-    }
-  }, [initialClientId, clients]);
-  
+  }, [initialClientId]);
+
   useEffect(() => {
-    if (clientId && selectedClient) {
-      setClientSearch(selectedClient.display_name||selectedClient.name||selectedClient.id);
-      setShowClientDropdown(false);
-    }
-  }, [clientId, selectedClient]);
+    if (!clientId) return;
+    setRelatedClientIds((prev) => prev.filter((id) => id !== clientId));
+  }, [clientId]);
+
   useEffect(()=>{ if(!clientId){ setSiteId(''); setCreateSite(false); } }, [clientId]);
 
   // Prevent body scroll when modal is open
@@ -213,13 +185,6 @@ export default function ProjectNew(){
       document.body.style.overflow = '';
     };
   }, []);
-
-  // ESC to close
-  useEffect(()=>{
-    const onKey = (e: KeyboardEvent)=>{ if (e.key==='Escape'){ nav(-1); } };
-    window.addEventListener('keydown', onKey);
-    return ()=> window.removeEventListener('keydown', onKey);
-  }, [nav]);
 
   // Step 1 → Step 2: only basic details (name, client, site). Divisions are on step 2.
   const canGoToStep2 = useMemo(()=>{
@@ -311,308 +276,227 @@ export default function ProjectNew(){
     }
   };
 
+  const modalTitle = isLeakInvestigation
+    ? 'New Leak Investigation'
+    : isBidding
+      ? 'New Opportunity'
+      : 'New Project';
+  const stepSubtitle =
+    step === 1
+      ? 'Basic details and site'
+      : isBidding || isLeakInvestigation
+        ? 'Select divisions, then team and cover'
+        : 'Options and cover';
+
+  const stepPillClass = (n: number) =>
+    uiCx(
+      'rounded-full px-2 py-1 text-[10px] font-medium',
+      step === n ? 'bg-gray-900 text-white' : 'bg-gray-200 text-gray-600',
+    );
+
+  const stepIndicators = (
+    <div className={uiCx(uiLayout.actionsRow, uiTypography.helper, 'text-[10px] font-medium')}>
+      <span className={stepPillClass(1)}>Step 1</span>
+      <span className="text-gray-400">→</span>
+      <span className={stepPillClass(2)}>Step 2</span>
+    </div>
+  );
+
+  const modalFooter = (
+    <div className={uiCx(uiLayout.actionsRow, 'w-full flex-wrap justify-between gap-3')}>
+      <span className={uiTypography.helper}>{step === 1 ? 'Step 1 of 2' : 'Step 2 of 2'}</span>
+      <div className={uiCx(uiLayout.actionsRow, 'justify-end')}>
+        <AppButton type="button" variant="secondary" size="sm" onClick={() => nav(-1)}>
+          Cancel
+        </AppButton>
+        {step === 1 ? (
+          <AppButton type="button" size="sm" disabled={!canGoToStep2} onClick={() => setStep(2)}>
+            Next
+          </AppButton>
+        ) : (
+          <>
+            <AppButton type="button" variant="secondary" size="sm" disabled={isSubmitting} onClick={() => setStep(1)}>
+              Back
+            </AppButton>
+            <AppButton
+              type="button"
+              size="sm"
+              disabled={!canSubmit || isSubmitting}
+              loading={isSubmitting}
+              onClick={() => void submit()}
+            >
+              {isSubmitting ? 'Creating...' : 'Create'}
+            </AppButton>
+          </>
+        )}
+      </div>
+    </div>
+  );
+
+  const formQuickInfo =
+    isBidding || isLeakInvestigation ? (
+      <>
+        <p>Step 1: opportunity name, customer, and site. Step 2: pick at least one division, then estimator and optional cover.</p>
+        {isBidding ? <p>Status is set to Prospecting automatically when the opportunity is created.</p> : null}
+      </>
+    ) : (
+      <>
+        <p>Step 1: project name, customer, and site. Step 2: divisions, status, team, and cover.</p>
+      </>
+    );
+
   return (
     <>
-    <OverlayPortal><div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center overflow-y-auto p-4">
-      <div className="w-[900px] max-w-[95vw] max-h-[90vh] bg-gray-100 rounded-xl overflow-hidden flex flex-col border border-gray-200 shadow-xl">
-        {/* Title bar - same style as Opportunities / ProjectDetail */}
-        <div className="rounded-t-xl border-b border-gray-200 bg-white p-4 flex-shrink-0">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <button
-                onClick={()=> nav(-1)}
-                className="p-1.5 rounded hover:bg-gray-100 transition-colors flex items-center justify-center"
-                title="Close"
-              >
-                <svg className="w-4 h-4 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
-                </svg>
-              </button>
-              <div>
-                <div className="text-sm font-semibold text-gray-900">
-                  {isLeakInvestigation ? 'New Leak Investigation' : isBidding ? 'New Opportunity' : 'New Project'}
-                </div>
-                <div className="text-xs text-gray-500 mt-0.5">
-                  {step === 1
-                    ? 'Basic details and site'
-                    : isBidding || isLeakInvestigation
-                      ? 'Select divisions, then team and cover'
-                      : 'Options and cover'}
-                </div>
+      <AppFormModal
+        open
+        onClose={() => nav(-1)}
+        formWidth="wide"
+        dialogClassName="!max-w-[720px]"
+        dialogClassNameExpanded="!max-w-[calc(720px+1rem+16rem+2rem)]"
+        title={modalTitle}
+        description={stepSubtitle}
+        headerExtra={stepIndicators}
+        quickInfo={formQuickInfo}
+        footer={modalFooter}
+      >
+        {step === 1 ? (
+          <div className={uiSpacing.sectionStack}>
+            <AppSectionHeader
+              title="Details"
+              description="Name, customer, contacts, and site for this record."
+            />
+            <div className="grid gap-3 md:grid-cols-2">
+              <AppInput
+                className="md:col-span-2"
+                label="Name *"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                fieldHint="Name\n\nTitle shown in lists and on the project or opportunity card."
+              />
+              <div className="md:col-span-2">
+                <AppClientSelect
+                label="Project Owner / Source *"
+                value={clientId}
+                onChange={(id) => {
+                  setClientId(id);
+                  if (!id) setContactId('');
+                }}
+                placeholder="Search or select customer…"
+                emptyMessage="No customers found."
+                fieldHint="Project Owner / Source\n\nPrimary customer for this record."
+                />
               </div>
-            </div>
-            <div className="inline-flex items-center gap-2 text-[10px] font-medium text-gray-500">
-              <span className={step === 1 ? 'px-2 py-1 rounded-full bg-gray-900 text-white' : 'px-2 py-1 rounded-full bg-gray-200 text-gray-600'}>Step 1</span>
-              <span className="text-gray-400">→</span>
-              <span className={step === 2 ? 'px-2 py-1 rounded-full bg-gray-900 text-white' : 'px-2 py-1 rounded-full bg-gray-200 text-gray-600'}>Step 2</span>
-            </div>
-          </div>
-        </div>
-        <div className="overflow-y-auto flex-1 p-4 min-h-0">
-          <div
-            className={`rounded-xl border border-gray-200 bg-white p-4 ${
-              step === 1 ? 'grid md:grid-cols-2 gap-4 items-start' : 'space-y-6'
-            }`}
-          >
-            {step===1 ? ( <>
-            <div className="md:col-span-2">
-              <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">Name *</label>
-              <input className={`w-full border border-gray-200 rounded-lg px-3 py-2 text-sm ${!nameValid ? 'border-red-500 focus:ring-red-500' : 'focus:ring-gray-300 focus:border-gray-300'}`} value={name} onChange={e=>setName(e.target.value)} />
-              {!nameValid && <div className="text-[10px] text-red-600 mt-1">Required</div>}
-            </div>
-                
-            <div>
-              <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">Project Owner / Source *</label>
-              <div className="relative">
-                <div className="flex items-center gap-2">
-                  <div className="flex-1 relative">
-                    <input 
-                      className={`w-full border border-gray-200 rounded-lg px-3 py-2 text-sm ${!clientValid ? 'border-red-500' : ''}`} 
-                      placeholder="Search customer..." 
-                      value={clientSearch} 
-                      onChange={e=> {
-                        const value = e.target.value;
-                        setClientSearch(value);
-                        if (!value.trim()) {
-                          setClientId('');
-                          setShowClientDropdown(false);
-                        } else {
-                          // Se o valor não corresponde ao cliente selecionado, limpar seleção
-                          if (selectedClient && value !== (selectedClient.display_name||selectedClient.name||selectedClient.id)) {
-                            setClientId('');
-                            setShowClientDropdown(true);
-                          } else if (!selectedClient) {
-                            setShowClientDropdown(true);
-                          }
-                        }
-                      }}
-                      onFocus={() => {
-                        if (clientSearch.trim() && !selectedClient) {
-                          setShowClientDropdown(true);
-                        }
-                      }}
-                      onBlur={() => {
-                        // Pequeno delay para permitir o clique no dropdown antes de fechar
-                        setTimeout(() => {
-                          setShowClientDropdown(false);
-                          if (selectedClient) {
-                            setClientSearch(selectedClient.display_name||selectedClient.name||selectedClient.id);
-                          }
-                        }, 200);
-                      }}
-                    />
-                    {showClientDropdown && clientSearch.trim() && !selectedClient && filteredClients.length > 0 && (
-                      <div className="absolute z-10 w-full mt-1 bg-white border rounded-lg shadow-lg max-h-60 overflow-auto">
-                        {filteredClients.map(c => (
-                          <button
-                            key={c.id}
-                            type="button"
-                            onClick={() => {
-                              setClientId(c.id);
-                              setClientSearch(c.display_name||c.name||c.id);
-                              setShowClientDropdown(false);
-                            }}
-                            onMouseDown={(e) => {
-                              // Prevenir que o onBlur feche o dropdown antes do clique
-                              e.preventDefault();
-                            }}
-                            className="w-full text-left px-3 py-2 hover:bg-gray-50 border-b last:border-b-0"
-                          >
-                            <div className="font-medium">{c.display_name||c.name||c.id}</div>
-                            {c.city && <div className="text-xs text-gray-500">{c.city}{c.province ? `, ${c.province}` : ''}</div>}
-                          </button>
-                        ))}
-                      </div>
-                    )}
-                    {showClientDropdown && clientSearch.trim() && !selectedClient && filteredClients.length === 0 && clientSearchResults && (
-                      <div className="absolute z-10 w-full mt-1 bg-white border rounded-lg shadow-lg p-3 text-sm text-gray-500">
-                        No customers found
-                      </div>
-                    )}
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => setClientModalOpen(true)}
-                    className="px-3 py-2 rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50 flex-shrink-0"
-                    title="Browse all customers"
-                  >
-                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-                    </svg>
-                  </button>
-                </div>
+              <div className="md:col-span-2">
+                <AppClientSelect
+                  mode="multiple"
+                  label="Related Customers"
+                  value={relatedClientIds}
+                  onChange={setRelatedClientIds}
+                  excludeClientId={clientId}
+                  placeholder="Search or add related customers…"
+                  emptyMessage="No customers found."
+                  fieldHint="Related Customers\n\nOptional additional customers linked to this record."
+                />
               </div>
-              {!clientValid && <div className="text-[11px] text-red-600 mt-1">Required</div>}
-            </div>
-
-            {/* Related Customers - optional, multi-select; same row and size as Project Owner / Source */}
-            <div>
-              <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">Related Customers</label>
-              <div className="flex items-center gap-2">
-                <div className="flex-1 relative">
-                  <input
-                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:ring-1 focus:ring-gray-300 focus:border-gray-300"
-                    placeholder="Search to add..."
-                    value={relatedClientSearch}
-                    onChange={(e) => {
-                      setRelatedClientSearch(e.target.value);
-                      setShowRelatedClientDropdown(!!e.target.value.trim());
-                    }}
-                    onFocus={() => relatedClientSearch.trim() && setShowRelatedClientDropdown(true)}
-                    onBlur={() => setTimeout(() => setShowRelatedClientDropdown(false), 200)}
-                  />
-                  {showRelatedClientDropdown && relatedClientSearch.trim() && filteredRelatedClients.length > 0 && (
-                    <div className="absolute z-10 w-full mt-1 bg-white border rounded-lg shadow-lg max-h-60 overflow-auto">
-                      {filteredRelatedClients.map((c) => (
-                        <button
-                          key={c.id}
-                          type="button"
-                          onMouseDown={(e) => e.preventDefault()}
-                          onClick={() => {
-                            if (c.id !== clientId && !relatedClientIds.includes(c.id)) {
-                              setRelatedClientIds((prev) => [...prev, c.id]);
-                              setRelatedClientDisplayNames((prev) => ({
-                                ...prev,
-                                [c.id]: c.display_name || c.name || c.id || '',
-                              }));
-                              setRelatedClientSearch('');
-                              setShowRelatedClientDropdown(false);
-                            }
-                          }}
-                          className="w-full text-left px-3 py-2 hover:bg-gray-50 border-b last:border-b-0"
-                        >
-                          <div className="font-medium">{c.display_name || c.name || c.id}</div>
-                          {c.city && <div className="text-xs text-gray-500">{c.city}{c.province ? `, ${c.province}` : ''}</div>}
-                        </button>
-                      ))}
+              {!!clientId && (
+                <div className="md:col-span-2">
+                  <div className="flex items-end gap-2">
+                    <div className="min-w-0 flex-1">
+                      <AppSelect
+                        label="Customer contact"
+                        value={contactId}
+                        onChange={(e) => setContactId(e.target.value)}
+                        options={[{ value: '', label: 'Select contact…' }, ...contactSelectOptions]}
+                        searchable
+                        placeholder="Search or select contact…"
+                        fieldHint="Customer contact\n\nPrimary contact at the customer for this record."
+                      />
                     </div>
-                  )}
-                  {showRelatedClientDropdown && relatedClientSearch.trim() && filteredRelatedClients.length === 0 && (
-                    <div className="absolute z-10 w-full mt-1 bg-white border rounded-lg shadow-lg p-3 text-sm text-gray-500">
-                      No customers found
-                    </div>
-                  )}
-                </div>
-                <button
-                  type="button"
-                  onClick={() => setRelatedClientModalOpen(true)}
-                  className="px-3 py-2 rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50 flex-shrink-0"
-                  title="Browse all customers"
-                >
-                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-                  </svg>
-                </button>
-              </div>
-              {relatedClientIds.length > 0 && (
-                <div className="flex flex-wrap gap-2 mt-2">
-                  {relatedClientIds.map((rid) => (
-                    <span
-                      key={rid}
-                      className="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-gray-100 border border-gray-200 text-sm"
+                    <AppButton
+                      type="button"
+                      variant="secondary"
+                      size="sm"
+                      className="shrink-0 whitespace-nowrap"
+                      onClick={() => setNewContactModalOpen(true)}
                     >
-                      {relatedClientDisplayNames[rid] || rid}
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setRelatedClientIds((prev) => prev.filter((id) => id !== rid));
-                          setRelatedClientDisplayNames((prev) => {
-                            const next = { ...prev };
-                            delete next[rid];
-                            return next;
-                          });
-                        }}
-                        className="p-0.5 rounded hover:bg-gray-200 text-gray-500 hover:text-gray-700"
-                        title="Remove"
-                      >
-                        <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                        </svg>
-                      </button>
-                    </span>
-                  ))}
+                      Add contact
+                    </AppButton>
+                  </div>
                 </div>
               )}
-            </div>
-
-            {!!clientId && (
-              <div className="md:col-span-2">
-                <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">Customer contact</label>
-                <div className="flex items-center gap-2">
-                  <select
-                    className="flex-1 min-w-0 border border-gray-200 rounded-lg px-3 py-2 text-sm"
-                    value={contactId}
-                    onChange={e => setContactId(e.target.value)}
-                  >
-                    <option value="">Select...</option>
-                    {sortByLabel(contacts || [], (c: any) => (c.name || c.email || c.phone || c.id || '').toString()).map((c: any) => (
-                      <option key={c.id} value={c.id}>
-                        {c.name || c.email || c.phone || c.id}
-                      </option>
-                    ))}
-                  </select>
-                  <button
-                    type="button"
-                    onClick={() => setNewContactModalOpen(true)}
-                    className="px-3 py-2 rounded-lg border border-gray-200 text-sm text-gray-600 hover:bg-gray-50 flex-shrink-0 whitespace-nowrap"
-                    title="Add a new contact for this customer"
-                  >
-                    Add new contact
-                  </button>
-                </div>
-              </div>
-            )}
-            <div className="md:col-span-2">
-              <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">Description</label>
-              <textarea className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" rows={3} value={desc} onChange={e=>setDesc(e.target.value)} />
-            </div>
-
-            {!isLeakInvestigation && businessLine === BUSINESS_LINE_REPAIRS_MAINTENANCE && (
-              <div className="md:col-span-2">
-                <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">
-                  Related Leak Investigation (optional)
-                </label>
-                <select
-                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"
+              <AppTextarea
+                className="md:col-span-2"
+                label="Description"
+                rows={3}
+                value={desc}
+                onChange={(e) => setDesc(e.target.value)}
+                fieldHint="Description\n\nOptional notes about scope or context."
+              />
+              {!isLeakInvestigation && businessLine === BUSINESS_LINE_REPAIRS_MAINTENANCE && (
+                <AppSelect
+                  className="md:col-span-2"
+                  label="Related Leak Investigation (optional)"
                   value={relatedLeakInvestigationId}
                   onChange={(e) => setRelatedLeakInvestigationId(e.target.value)}
-                >
-                  <option value="">None</option>
-                  {leakPickItems.map((row: { id: string; name?: string; code?: string }) => (
-                    <option key={row.id} value={row.id}>
-                      {(row.code ? `${row.code} — ` : '') + (row.name || row.id)}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            )}
-
+                  searchable
+                  placeholder="Search or select leak investigation…"
+                  options={[
+                    { value: '', label: 'None' },
+                    ...leakPickItems.map((row: { id: string; name?: string; code?: string }) => ({
+                      value: row.id,
+                      label: (row.code ? `${row.code} — ` : '') + (row.name || row.id),
+                    })),
+                  ]}
+                  fieldHint="Related Leak Investigation\n\nLink to an existing leak investigation when applicable."
+                />
+              )}
+            </div>
             {!!clientId && (
-              <div className="md:col-span-2">
-                <div className="flex items-center justify-between mb-2">
-                  <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide">Site</label>
-                  <label className="text-xs text-gray-600 flex items-center gap-2 cursor-pointer"><input type="checkbox" checked={createSite} onChange={e=> setCreateSite(e.target.checked)} className="rounded border-gray-300" /> Create new site</label>
+              <div className={uiSpacing.sectionStack}>
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <AppSectionHeader
+                    title="Site"
+                    description="Pick an existing site or create a new one for this customer."
+                    className="min-w-0 flex-1"
+                  />
+                  <label className={uiCx(uiTypography.helper, 'flex shrink-0 cursor-pointer items-center gap-2')}>
+                    <input
+                      type="checkbox"
+                      checked={createSite}
+                      onChange={(e) => setCreateSite(e.target.checked)}
+                      className="rounded border-gray-300"
+                    />
+                    Create new site
+                  </label>
                 </div>
                 {!createSite ? (
-                  <select className={`w-full border rounded-lg px-3 py-2 text-sm ${clientValid && !siteValid ? 'border-red-500' : 'border-gray-200'}`} value={siteId} onChange={e=> setSiteId(e.target.value)}>
-                    <option value="">Select site...</option>
-                    {sortByLabel(sites||[], s=> (s.site_name||s.site_address_line1||String(s.id)).toString()).map(s=> <option key={String(s.id)} value={String(s.id)}>{s.site_name||s.site_address_line1||String(s.id)}</option>)}
-                  </select>
-                  ) : (
-                  <div className="grid md:grid-cols-2 gap-3">
-                    <div className="md:col-span-2">
-                      <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">Site name</label>
-                      <input className={`w-full border rounded-lg px-3 py-2 text-sm ${clientValid && !siteValid ? 'border-red-500' : 'border-gray-200'}`} value={siteForm.site_name||''} onChange={e=>setSiteField('site_name', e.target.value)} />
-                      {clientValid && !siteValid && <div className="text-[11px] text-red-600 mt-1">Provide at least a name or address</div>}
-                    </div>
-                    <div>
-                      <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">Address 1</label>
+                  <AppSelect
+                    label="Site *"
+                    value={siteId}
+                    onChange={(e) => setSiteId(e.target.value)}
+                    options={[{ value: '', label: 'Select site…' }, ...siteSelectOptions]}
+                    searchable
+                    placeholder="Search or select site…"
+                    fieldHint="Site\n\nJob location for this record."
+                  />
+                ) : (
+                  <div className="grid gap-3 md:grid-cols-2">
+                    <AppInput
+                      className="md:col-span-2"
+                      label="Site name"
+                      value={siteForm.site_name || ''}
+                      onChange={(e) => setSiteField('site_name', e.target.value)}
+                      fieldHint="Site name\n\nDisplay name for the new site."
+                    />
+                    <div className="space-y-1.5">
+                      <AppControlLabelRow
+                        label="Address line 1"
+                        fieldHint={<AppFieldHint hint="Address line 1\n\nStreet address. Suggestions appear as you type." />}
+                      />
                       <AddressAutocomplete
-                        value={siteForm.site_address_line1||''}
+                        value={siteForm.site_address_line1 || ''}
                         onChange={(value) => setSiteField('site_address_line1', value)}
                         onAddressSelect={(address) => {
-                          console.log('onAddressSelect called with:', address);
-                          // Update all address fields at once
                           setSiteForm((prev: any) => ({
                             ...prev,
                             site_address_line1: address.address_line1 || prev.site_address_line1,
@@ -625,79 +509,98 @@ export default function ProjectNew(){
                             site_lng: address.lng !== undefined ? address.lng : prev.site_lng,
                           }));
                         }}
-                        placeholder="Start typing an address..."
-                        className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"
+                        placeholder="Start typing an address…"
+                        className={controlInputClass}
                       />
                     </div>
-                    <div>
-                      <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">Address 2</label>
-                      <input
-                        className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"
-                        value={siteForm.site_address_line2||''}
-                        onChange={e=>setSiteField('site_address_line2', e.target.value)}
-                        placeholder="Apartment, suite, unit, etc. (optional)"
-                      />
-                    </div>
-                    <div>
-                      <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">Country</label>
-                      <input 
-                        className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm bg-gray-50 cursor-not-allowed" 
-                        value={siteForm.site_country||''} 
-                        readOnly
-                        placeholder="Auto-filled from address"
-                      />
-                    </div>
-                    <div>
-                      <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">Province/State</label>
-                      <input 
-                        className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm bg-gray-50 cursor-not-allowed" 
-                        value={siteForm.site_province||''} 
-                        readOnly
-                        placeholder="Auto-filled from address"
-                      />
-                    </div>
-                    <div>
-                      <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">City</label>
-                      <input 
-                        className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm bg-gray-50 cursor-not-allowed" 
-                        value={siteForm.site_city||''} 
-                        readOnly
-                        placeholder="Auto-filled from address"
-                      />
-                    </div>
-                    <div>
-                      <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">Postal code</label>
-                      <input 
-                        className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm bg-gray-50 cursor-not-allowed" 
-                        value={siteForm.site_postal_code||''} 
-                        readOnly
-                        placeholder="Auto-filled from address"
-                      />
-                    </div>
-                    <div className="md:col-span-2">
-                      <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">Notes</label>
-                      <textarea rows={3} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" value={siteForm.site_notes||''} onChange={e=>setSiteField('site_notes', e.target.value)} />
-                    </div>
+                    <AppInput
+                      label="Address line 2"
+                      value={siteForm.site_address_line2 || ''}
+                      onChange={(e) => setSiteField('site_address_line2', e.target.value)}
+                      placeholder="Suite, unit, etc. (optional)"
+                      fieldHint="Address line 2\n\nSuite, unit, or building (optional)."
+                    />
+                    <AppInput
+                      label="Country"
+                      value={siteForm.site_country || ''}
+                      readOnly
+                      disabled
+                      placeholder="Auto-filled from address"
+                      fieldHint="Country\n\nFilled automatically from address search."
+                    />
+                    <AppInput
+                      label="Province/State"
+                      value={siteForm.site_province || ''}
+                      readOnly
+                      disabled
+                      placeholder="Auto-filled from address"
+                      fieldHint="Province/State\n\nFilled automatically from address search."
+                    />
+                    <AppInput
+                      label="City"
+                      value={siteForm.site_city || ''}
+                      readOnly
+                      disabled
+                      placeholder="Auto-filled from address"
+                      fieldHint="City\n\nFilled automatically from address search."
+                    />
+                    <AppInput
+                      label="Postal code"
+                      value={siteForm.site_postal_code || ''}
+                      readOnly
+                      disabled
+                      placeholder="Auto-filled from address"
+                      fieldHint="Postal code\n\nFilled automatically from address search."
+                    />
+                    <AppTextarea
+                      className="md:col-span-2"
+                      label="Site notes"
+                      rows={3}
+                      value={siteForm.site_notes || ''}
+                      onChange={(e) => setSiteField('site_notes', e.target.value)}
+                      fieldHint="Site notes\n\nOptional notes for this site."
+                    />
                   </div>
                 )}
               </div>
             )}
-            </>
-            ) : (
-              <>
-                <div className="space-y-4">
-                  <div>
-                    <label className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide block mb-1">
-                      Project Divisions {(isBidding || isLeakInvestigation) ? <span className="text-red-600">*</span> : null}
-                    </label>
-                    {(isBidding || isLeakInvestigation) && projectDivisionIds.length === 0 && (
-                      <div className="text-[11px] text-red-600 mb-2">
-                        {isLeakInvestigation
-                          ? 'Select at least one division for this leak investigation'
-                          : 'Select at least one division for this opportunity'}
-                      </div>
-                    )}
-                  </div>
+          </div>
+        ) : (
+          <div className={uiSpacing.sectionStack}>
+            <AppSectionHeader
+              title="Divisions & team"
+              description={
+                isBidding || isLeakInvestigation
+                  ? 'Select at least one division, then assign team and optional cover.'
+                  : 'Divisions, status, team, and optional cover.'
+              }
+            />
+            <div className="space-y-3">
+              <AppControlLabelRow
+                label={
+                  <>
+                    Project divisions {(isBidding || isLeakInvestigation) ? <span className="text-red-600">*</span> : null}
+                  </>
+                }
+                fieldHint={
+                  <AppFieldHint
+                    hint={
+                      isLeakInvestigation
+                        ? 'Project divisions\n\nSelect at least one division for this leak investigation.'
+                        : isBidding
+                          ? 'Project divisions\n\nSelect at least one division for this opportunity.'
+                          : 'Project divisions\n\nOptional divisions for this project.'
+                    }
+                  />
+                }
+              />
+              {(isBidding || isLeakInvestigation) && projectDivisionIds.length === 0 && (
+                <p className="text-xs text-red-600">
+                  {isLeakInvestigation
+                    ? 'Select at least one division for this leak investigation'
+                    : 'Select at least one division for this opportunity'}
+                </p>
+              )}
                   <div className="rounded-lg border border-gray-200 bg-white overflow-hidden">
                     {divisionsForPicker && divisionsForPicker.length > 0 ? (
                       <div className="divide-y divide-gray-100">
@@ -813,146 +716,82 @@ export default function ProjectNew(){
                   )}
                   </div>
 
-                  <div className="grid md:grid-cols-2 gap-4 pt-2 border-t border-gray-200">
-                    {!(isBidding || isLeakInvestigation) && (
-                      <div>
-                        <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">Status</label>
-                        <select
-                          className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"
-                          value={statusLabel}
-                          onChange={(e) => setStatusLabel(e.target.value)}
-                        >
-                          <option value="">Select...</option>
-                          {sortByLabel(filterStatusesForProject(settings?.project_statuses || []), (s: any) => (s.label || '').toString()).map((s: any) => (
-                            <option key={s.label} value={s.label}>
-                              {s.label}
-                            </option>
-                          ))}
-                        </select>
-                      </div>
-                    )}
-                    <div>
-                      <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">Estimator</label>
-                      <select
-                        className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"
-                        value={estimatorId}
-                        onChange={(e) => setEstimatorId(e.target.value)}
-                      >
-                        <option value="">Select...</option>
-                        {sortByLabel(employeesForEstimatorSelect, (emp: any) => (emp.name || emp.username || '').toString()).map((emp: any) => (
-                          <option key={emp.id} value={emp.id}>
-                            {emp.name || emp.username}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-                    {!(isBidding || isLeakInvestigation) && (
-                      <div>
-                        <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">On-site lead</label>
-                        <select
-                          className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"
-                          value={leadId}
-                          onChange={(e) => setLeadId(e.target.value)}
-                        >
-                          <option value="">Select...</option>
-                          {sortByLabel(employees || [], (emp: any) => (emp.name || emp.username || '').toString()).map((emp: any) => (
-                            <option key={emp.id} value={emp.id}>
-                              {emp.name || emp.username}
-                            </option>
-                          ))}
-                        </select>
-                      </div>
-                    )}
-                    <div className="md:col-span-2">
-                      <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">
-                        Cover <span className="opacity-60">(optional)</span>
-                      </label>
-                      <div className="mt-1 flex items-center gap-3 flex-wrap">
-                        <button
-                          type="button"
-                          onClick={() => setHiddenPickerOpen(true)}
-                          className="px-3 py-1.5 rounded-lg text-sm font-medium bg-gray-900 text-white hover:bg-gray-800"
-                        >
-                          Select Cover
-                        </button>
-                        {coverPreview && (
-                          <img
-                            src={coverPreview}
-                            className="w-20 h-20 rounded-lg border border-gray-200 object-cover"
-                            alt=""
-                          />
-                        )}
-                        {coverPreview && (
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setCoverBlob(null);
-                              setCoverPreview('');
-                            }}
-                            className="px-3 py-1.5 rounded-lg text-sm font-medium border border-gray-200 hover:bg-gray-50"
-                          >
-                            Skip cover
-                          </button>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-              </>
-            )}
+            <div className="grid gap-3 border-t border-gray-200 pt-4 md:grid-cols-2">
+              {!(isBidding || isLeakInvestigation) && (
+                <AppSelect
+                  label="Status"
+                  value={statusLabel}
+                  onChange={(e) => setStatusLabel(e.target.value)}
+                  options={[{ value: '', label: 'Select status…' }, ...statusSelectOptions]}
+                  searchable
+                  placeholder="Search or select status…"
+                  fieldHint="Status\n\nInitial project status after creation."
+                />
+              )}
+              <AppUserSelect
+                label="Estimator"
+                value={estimatorId}
+                onChange={setEstimatorId}
+                users={estimatorUserOptions}
+                placeholder="Search or select user…"
+                showSelectedChip={false}
+                emptyMessage={
+                  limitEstimatorListToSalesDept ? 'No users in Sales / Estimating.' : 'No estimators found'
+                }
+                fieldHint={
+                  limitEstimatorListToSalesDept
+                    ? 'Estimator\n\nUsers from Sales / Estimating department.'
+                    : 'Estimator\n\nOptional estimator assigned to this record.'
+                }
+              />
+              {!(isBidding || isLeakInvestigation) && (
+                <AppUserSelect
+                  label="On-site lead"
+                  value={leadId}
+                  onChange={setLeadId}
+                  users={leadUserOptions}
+                  placeholder="Search or select user…"
+                  showSelectedChip={false}
+                  emptyMessage="No employees found"
+                  fieldHint="On-site lead\n\nEmployee leading work on site."
+                />
+              )}
+              <div className="md:col-span-2">
+                <AppSectionHeader title="Cover" description="Optional image for cards and headers." />
+                <div className={uiCx(uiLayout.actionsRow, 'mt-2 flex-wrap items-center')}>
+                  <AppButton type="button" size="sm" onClick={() => setHiddenPickerOpen(true)}>
+                    Select cover
+                  </AppButton>
+                  {coverPreview ? (
+                    <img
+                      src={coverPreview}
+                      className="h-20 w-20 rounded-lg border border-gray-200 object-cover"
+                      alt=""
+                    />
+                  ) : null}
+                  {coverPreview ? (
+                    <AppButton
+                      type="button"
+                      variant="secondary"
+                      size="sm"
+                      onClick={() => {
+                        setCoverBlob(null);
+                        setCoverPreview('');
+                      }}
+                    >
+                      Remove cover
+                    </AppButton>
+                  ) : null}
+                </div>
+              </div>
+            </div>
           </div>
-        </div>
-        <div className="flex-shrink-0 px-4 py-4 border-t border-gray-200 bg-white flex items-center justify-between gap-3 rounded-b-xl relative z-0">
-          <div className="text-xs text-gray-500">{step === 1 ? 'Step 1 of 2' : 'Step 2 of 2'}</div>
-          <div className="flex items-center gap-3">
-            <button type="button" onClick={() => nav(-1)} className="px-3 py-1.5 rounded-lg text-sm font-medium text-gray-700 border border-gray-200 hover:bg-gray-50">Cancel</button>
-            {step === 1 ? (
-              <button type="button" disabled={!canGoToStep2} onClick={() => setStep(2)} className="px-4 py-2 rounded-lg text-sm font-semibold bg-brand-red text-white hover:bg-[#aa1212] disabled:opacity-50 disabled:cursor-not-allowed">Next</button>
-            ) : (
-              <>
-                <button type="button" onClick={() => setStep(1)} disabled={isSubmitting} className="px-3 py-1.5 rounded-lg text-sm font-medium text-gray-700 border border-gray-200 hover:bg-gray-50 disabled:opacity-50">Back</button>
-                <button type="button" onClick={submit} disabled={!canSubmit || isSubmitting} className="px-4 py-2 rounded-lg text-sm font-semibold text-white bg-brand-red hover:bg-[#aa1212] disabled:opacity-50 disabled:cursor-not-allowed">
-                  {isSubmitting ? 'Creating...' : 'Create'}
-                </button>
-              </>
-            )}
-          </div>
-        </div>
-      </div>
-    </div></OverlayPortal>
+        )}
+      </AppFormModal>
     {hiddenPickerOpen && (
       <ImagePicker isOpen={true} onClose={()=> setHiddenPickerOpen(false)} clientId={String(clientId||'')} targetWidth={800} targetHeight={800} allowEdit={true} onConfirm={async(blob)=>{
         try{ setCoverBlob(blob); setCoverPreview(URL.createObjectURL(blob)); }catch(_e){} finally{ setHiddenPickerOpen(false); }
       }} />
-    )}
-    {clientModalOpen && (
-      <ClientSelectModal
-        open={clientModalOpen}
-        onClose={() => setClientModalOpen(false)}
-        onSelect={(client) => {
-          setClientId(client.id);
-          setClientSearch(client.display_name||client.name||client.id);
-          setClientModalOpen(false);
-        }}
-      />
-    )}
-    {relatedClientModalOpen && (
-      <RelatedClientSelectModal
-        open={relatedClientModalOpen}
-        onClose={() => setRelatedClientModalOpen(false)}
-        excludeClientId={clientId}
-        initialSelectedIds={relatedClientIds}
-        initialDisplayNames={relatedClientDisplayNames}
-        onApply={(clients) => {
-          const ids = clients.map((c) => c.id);
-          const names: Record<string, string> = {};
-          clients.forEach((c) => {
-            names[c.id] = c.display_name || c.name || c.id || '';
-          });
-          setRelatedClientIds(ids);
-          setRelatedClientDisplayNames((prev) => ({ ...prev, ...names }));
-          setRelatedClientModalOpen(false);
-        }}
-      />
     )}
     <NewContactModal
       open={newContactModalOpen}
@@ -968,317 +807,4 @@ export default function ProjectNew(){
     </>
   );
 }
-
-function ClientSelectModal({ open, onClose, onSelect }: { open: boolean, onClose: ()=>void, onSelect: (client: Client)=>void }){
-  const [q, setQ] = useState('');
-  const [displayedCount, setDisplayedCount] = useState(20);
-  const { data: allClients = [] } = useQuery<Client[]>({
-    queryKey: ['clients-all', q],
-    queryFn: async () => {
-      const params = new URLSearchParams();
-      if (q.trim()) {
-        params.set('q', q);
-      }
-      const result = await api<any>('GET', `/clients?${params.toString()}`);
-      if (Array.isArray(result)) return result as Client[];
-      if (result && Array.isArray(result.items)) return result.items as Client[];
-      if (result && Array.isArray(result.data)) return result.data as Client[];
-      return [] as Client[];
-    },
-    enabled: open,
-    staleTime: 30_000
-  });
-
-  const sortedAllClients = useMemo(() =>
-    sortByLabel(allClients, c => (c.display_name || c.name || c.id || '').toString()),
-    [allClients]
-  );
-
-  const filteredClients = useMemo(() => {
-    if (!q.trim()) return sortedAllClients;
-    const searchLower = q.toLowerCase();
-    return sortedAllClients.filter(c =>
-      (c.display_name||c.name||'').toLowerCase().includes(searchLower) ||
-      (c.city||'').toLowerCase().includes(searchLower) ||
-      (c.address_line1||'').toLowerCase().includes(searchLower)
-    );
-  }, [sortedAllClients, q]);
-
-  const list = filteredClients.slice(0, displayedCount);
-  const hasMore = filteredClients.length > displayedCount;
-
-  useEffect(() => {
-    if (!open) return;
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [open, onClose]);
-
-  useEffect(() => {
-    if (!open) {
-      setQ('');
-      setDisplayedCount(20);
-    }
-  }, [open]);
-
-  if (!open) return null;
-
-  return (
-    <OverlayPortal><div className="fixed inset-0 z-[60] bg-black/50 flex items-center justify-center p-4">
-      <div className="w-[720px] max-w-[95vw] bg-gray-100 rounded-xl overflow-hidden max-h-[90vh] flex flex-col border border-gray-200 shadow-xl">
-        <div className="rounded-t-xl border-b border-gray-200 bg-white p-4 flex items-center justify-between flex-shrink-0">
-          <div>
-            <div className="text-sm font-semibold text-gray-900">Select Project Owner / Source</div>
-            <div className="text-xs text-gray-500 mt-0.5">Search by name, city, or address</div>
-          </div>
-          <button onClick={onClose} className="p-1.5 rounded hover:bg-gray-100" title="Close">
-            <svg className="w-5 h-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-            </svg>
-          </button>
-        </div>
-        <div className="p-4 space-y-3 overflow-y-auto flex-1 bg-white rounded-b-xl">
-          <div>
-            <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">Search</label>
-            <input 
-              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:ring-1 focus:ring-gray-300 focus:border-gray-300" 
-              placeholder="Type customer name, city, or address..." 
-              value={q} 
-              onChange={e => setQ(e.target.value)}
-              autoFocus
-            />
-          </div>
-          {list.length > 0 && (
-            <div className="max-h-96 overflow-auto rounded-xl border border-gray-200 divide-y divide-gray-100">
-              {list.map(c => (
-                <button 
-                  key={c.id} 
-                  onClick={() => onSelect(c)} 
-                  className="w-full text-left px-3 py-2.5 bg-white hover:bg-gray-50 transition-colors text-sm"
-                >
-                  <div className="font-semibold text-gray-900">{c.display_name||c.name||c.id}</div>
-                  <div className="text-xs text-gray-500 mt-0.5">
-                    {[c.address_line1, c.city, c.province].filter(Boolean).join(', ') || 'No address'}
-                  </div>
-                </button>
-              ))}
-              {hasMore && (
-                <button
-                  onClick={() => setDisplayedCount(prev => prev + 20)}
-                  className="w-full text-center px-3 py-2 bg-gray-50 hover:bg-gray-100 text-xs font-medium text-gray-600 border-t border-gray-100">
-                  Load more ({filteredClients.length - displayedCount} remaining)
-                </button>
-              )}
-            </div>
-          )}
-          {q.trim() && list.length === 0 && (
-            <div className="text-center py-8 text-sm text-gray-500">
-              No customers found matching "{q}"
-            </div>
-          )}
-          {!q.trim() && list.length === 0 && (
-            <div className="text-center py-8 text-sm text-gray-500">
-              No customers available
-            </div>
-          )}
-        </div>
-      </div>
-    </div></OverlayPortal>
-  );
-}
-
-function RelatedClientSelectModal({
-  open,
-  onClose,
-  excludeClientId,
-  initialSelectedIds,
-  initialDisplayNames = {},
-  onApply,
-}: {
-  open: boolean;
-  onClose: () => void;
-  excludeClientId: string;
-  initialSelectedIds: string[];
-  initialDisplayNames?: Record<string, string>;
-  onApply: (clients: Client[]) => void;
-}) {
-  const [q, setQ] = useState('');
-  const [displayedCount, setDisplayedCount] = useState(20);
-  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set(initialSelectedIds));
-  const [selectedClients, setSelectedClients] = useState<Client[]>([]);
-
-  const { data: allClients = [] } = useQuery<Client[]>({
-    queryKey: ['clients-all-related', q],
-    queryFn: async () => {
-      const params = new URLSearchParams();
-      if (q.trim()) params.set('q', q);
-      const result = await api<any>('GET', `/clients?${params.toString()}`);
-      if (Array.isArray(result)) return result as Client[];
-      if (result?.items) return result.items as Client[];
-      if (result?.data) return result.data as Client[];
-      return [];
-    },
-    enabled: open,
-    staleTime: 30_000,
-  });
-
-  const sortedAllClients = useMemo(
-    () => sortByLabel(allClients, (c) => (c.display_name || c.name || c.id || '').toString()),
-    [allClients]
-  );
-
-  const filteredClients = useMemo(() => {
-    const list = !q.trim() ? sortedAllClients : sortedAllClients.filter((c) => {
-      const lower = q.toLowerCase();
-      return (
-        (c.display_name || c.name || '').toLowerCase().includes(lower) ||
-        (c.city || '').toLowerCase().includes(lower) ||
-        (c.address_line1 || '').toLowerCase().includes(lower)
-      );
-    });
-    return list.filter((c) => c.id !== excludeClientId);
-  }, [sortedAllClients, q, excludeClientId]);
-
-  const list = filteredClients.slice(0, displayedCount);
-  const hasMore = filteredClients.length > displayedCount;
-
-  useEffect(() => {
-    if (!open) return;
-    setSelectedIds(new Set(initialSelectedIds));
-    setSelectedClients([]);
-  }, [open, initialSelectedIds.join(',')]);
-
-  useEffect(() => {
-    if (!open) {
-      setQ('');
-      setDisplayedCount(20);
-    }
-  }, [open]);
-
-  useEffect(() => {
-    if (!open) return;
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose();
-    };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [open, onClose]);
-
-  const toggleClient = (c: Client) => {
-    setSelectedIds((prev) => {
-      const next = new Set(prev);
-      if (next.has(c.id)) next.delete(c.id);
-      else next.add(c.id);
-      return next;
-    });
-    setSelectedClients((prev) => {
-      const exists = prev.find((x) => x.id === c.id);
-      if (exists) return prev.filter((x) => x.id !== c.id);
-      return [...prev, c];
-    });
-  };
-
-  const handleApply = () => {
-    const combined = new Map<string, Client>();
-    selectedClients.forEach((c) => combined.set(c.id, c));
-    list.forEach((c) => {
-      if (selectedIds.has(c.id)) combined.set(c.id, c);
-    });
-    allClients.forEach((c) => {
-      if (selectedIds.has(c.id) && c.id !== excludeClientId) combined.set(c.id, c);
-    });
-    // For any selected id without a full Client (e.g. from initial selection), use minimal object
-    selectedIds.forEach((id) => {
-      if (id !== excludeClientId && !combined.has(id) && initialDisplayNames[id]) {
-        combined.set(id, { id, display_name: initialDisplayNames[id], name: initialDisplayNames[id] });
-      }
-    });
-    onApply(Array.from(combined.values()));
-  };
-
-  if (!open) return null;
-
-  return (
-    <OverlayPortal><div className="fixed inset-0 z-[60] bg-black/50 flex items-center justify-center p-4">
-      <div className="w-[720px] max-w-[95vw] bg-gray-100 rounded-xl overflow-hidden max-h-[90vh] flex flex-col border border-gray-200 shadow-xl">
-        <div className="rounded-t-xl border-b border-gray-200 bg-white p-4 flex items-center justify-between flex-shrink-0">
-          <div>
-            <div className="text-sm font-semibold text-gray-900">Select Related Customers</div>
-            <div className="text-xs text-gray-500 mt-0.5">Search and select multiple; main customer is excluded</div>
-          </div>
-          <button onClick={onClose} className="p-1.5 rounded hover:bg-gray-100" title="Close">
-            <svg className="w-5 h-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-            </svg>
-          </button>
-        </div>
-        <div className="p-4 space-y-3 overflow-y-auto flex-1 bg-white rounded-b-xl">
-          <div>
-            <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">Search</label>
-            <input
-              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:ring-1 focus:ring-gray-300 focus:border-gray-300"
-              placeholder="Type customer name, city, or address..."
-              value={q}
-              onChange={(e) => setQ(e.target.value)}
-              autoFocus
-            />
-          </div>
-          {list.length > 0 && (
-            <div className="max-h-96 overflow-auto rounded-xl border border-gray-200 divide-y divide-gray-100">
-              {list.map((c) => (
-                <button
-                  key={c.id}
-                  type="button"
-                  onClick={() => toggleClient(c)}
-                  className={`w-full text-left px-3 py-2.5 transition-colors text-sm flex items-center gap-2 ${selectedIds.has(c.id) ? 'bg-brand-red/10 hover:bg-brand-red/20' : 'bg-white hover:bg-gray-50'}`}
-                >
-                  <span className={`flex-shrink-0 w-4 h-4 border rounded flex items-center justify-center ${selectedIds.has(c.id) ? 'bg-brand-red border-brand-red' : 'border-gray-300'}`}>
-                    {selectedIds.has(c.id) && (
-                      <svg className="w-3 h-3 text-white" fill="currentColor" viewBox="0 0 20 20">
-                        <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
-                      </svg>
-                    )}
-                  </span>
-                  <div>
-                    <div className="font-semibold text-gray-900">{c.display_name || c.name || c.id}</div>
-                    <div className="text-xs text-gray-500 mt-0.5">
-                      {[c.address_line1, c.city, c.province].filter(Boolean).join(', ') || 'No address'}
-                    </div>
-                  </div>
-                </button>
-              ))}
-              {hasMore && (
-                <button
-                  type="button"
-                  onClick={() => setDisplayedCount((prev) => prev + 20)}
-                  className="w-full text-center px-3 py-2 bg-gray-50 hover:bg-gray-100 text-xs font-medium text-gray-600 border-t border-gray-100"
-                >
-                  Load more ({filteredClients.length - displayedCount} remaining)
-                </button>
-              )}
-            </div>
-          )}
-          {q.trim() && list.length === 0 && (
-            <div className="text-center py-8 text-sm text-gray-500">No customers found matching "{q}"</div>
-          )}
-          {!q.trim() && list.length === 0 && excludeClientId && (
-            <div className="text-center py-8 text-sm text-gray-500">No other customers available (main customer excluded)</div>
-          )}
-          {!q.trim() && list.length === 0 && !excludeClientId && (
-            <div className="text-center py-8 text-sm text-gray-500">No customers available</div>
-          )}
-        </div>
-        <div className="rounded-b-xl border-t border-gray-200 bg-white p-4 flex justify-end gap-2 flex-shrink-0">
-          <button type="button" onClick={onClose} className="px-3 py-1.5 rounded-lg text-sm font-medium border border-gray-200 hover:bg-gray-50">
-            Cancel
-          </button>
-          <button type="button" onClick={handleApply} className="px-3 py-1.5 rounded-lg text-sm font-medium bg-brand-red text-white hover:bg-[#aa1212]">
-            Apply ({selectedIds.size} selected)
-          </button>
-        </div>
-      </div>
-    </div></OverlayPortal>
-  );
-}
-
 

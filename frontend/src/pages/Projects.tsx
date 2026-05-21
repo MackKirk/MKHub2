@@ -15,6 +15,7 @@ import { isRangeOperator } from '@/components/FilterBuilder/utils';
 import { useBusinessLine } from '@/context/BusinessLineContext';
 import { BUSINESS_LINE_REPAIRS_MAINTENANCE, filterProjectDivisionsForBusinessLine } from '@/lib/businessLine';
 import { effectiveShowInProject } from '@/lib/projectStatusVisibility';
+import { AppTooltip } from '@/components/ui';
 
 // Helper function to get user initials
 function getUserInitials(user: any): string {
@@ -47,53 +48,28 @@ function UserAvatar({ user, size = 'w-6 h-6', showTooltip = true, tooltipText }:
   const initials = getUserInitials(user);
   const displayName = tooltipText || getUserDisplayName(user);
   const [imageError, setImageError] = useState(false);
-  const [hover, setHover] = useState(false);
-  const [coords, setCoords] = useState<{ top: number; left: number } | null>(null);
-  const wrapRef = useRef<HTMLDivElement>(null);
 
-  const updateCoords = () => {
-    if (wrapRef.current) {
-      const rect = wrapRef.current.getBoundingClientRect();
-      setCoords({ left: rect.left, top: rect.top });
-    }
-  };
+  const avatar = photoFileId && !imageError ? (
+    <img
+      src={withFileAccessToken(`/files/${photoFileId}/thumbnail?w=80`)}
+      alt={displayName}
+      className={`${size} rounded-full object-cover border border-gray-300`}
+      onError={() => setImageError(true)}
+    />
+  ) : (
+    <div className={`${size} rounded-full bg-indigo-600 flex items-center justify-center text-white font-semibold text-xs`}>
+      {initials}
+    </div>
+  );
 
-  useEffect(() => {
-    if (hover && wrapRef.current) updateCoords();
-    else setCoords(null);
-  }, [hover]);
+  if (!showTooltip) {
+    return <span className="relative inline-flex group/avatar">{avatar}</span>;
+  }
 
   return (
-    <div
-      ref={wrapRef}
-      className="relative inline-flex group/avatar"
-      onMouseEnter={() => { setHover(true); updateCoords(); }}
-      onMouseLeave={() => setHover(false)}
-    >
-      {photoFileId && !imageError ? (
-        <img
-          src={withFileAccessToken(`/files/${photoFileId}/thumbnail?w=80`)}
-          alt={displayName}
-          className={`${size} rounded-full object-cover border border-gray-300`}
-          onError={() => setImageError(true)}
-        />
-      ) : (
-        <div className={`${size} rounded-full bg-indigo-600 flex items-center justify-center text-white font-semibold text-xs`}>
-          {initials}
-        </div>
-      )}
-
-      {showTooltip && hover && coords && typeof document !== 'undefined' && createPortal(
-        <div
-          className="fixed px-2 py-1 bg-gray-900 text-white text-xs rounded whitespace-nowrap pointer-events-none z-[9999] shadow-lg"
-          style={{ left: coords.left, top: coords.top, transform: 'translateY(-100%) translateY(-4px)' }}
-        >
-          {displayName}
-          <div className="absolute -bottom-1 left-2 w-2 h-2 bg-gray-900 rotate-45" />
-        </div>,
-        document.body
-      )}
-    </div>
+    <AppTooltip content={displayName} className="group/avatar">
+      {avatar}
+    </AppTooltip>
   );
 }
 
