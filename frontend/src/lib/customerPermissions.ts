@@ -1,3 +1,10 @@
+import { applyPermissionUncheckCascade } from '@/lib/permissionDependencies';
+import {
+  formatPermissionLabel,
+  getPermissionAccessLevel,
+  type PermissionAccessLevel,
+} from '@/lib/permissionAccessLevel';
+
 /** Customer list + tab permissions (mirrors backend `has_customer_tab_permission`). */
 
 export const CUSTOMER_MAIN_READ = 'business:customers:read';
@@ -135,4 +142,116 @@ export function splitCustomerAreaPermissions(areaPerms: { key: string }[]) {
     (p) => p.key.includes(':write') && p.key !== CUSTOMER_MAIN_WRITE && isCustomerTabWriteKey(p.key)
   );
   return { mainViewPerm, mainEditPerm, subViewPerms, subEditPerms };
+}
+
+export type CustomerAccessLevel = PermissionAccessLevel;
+
+export type CustomerPermissionRow = {
+  id: string;
+  label: string;
+  description?: string;
+  readKey: string;
+  writeKey?: string;
+  indent?: boolean;
+};
+
+export function formatCustomerPermissionLabel(label: string): string {
+  return formatPermissionLabel(label);
+}
+
+export function buildCustomerPermissionRows(
+  areaPerms: { id: string; key: string; label: string; description?: string }[]
+): CustomerPermissionRow[] {
+  const { mainViewPerm, mainEditPerm, subViewPerms } = splitCustomerAreaPermissions(areaPerms);
+  const rows: CustomerPermissionRow[] = [];
+
+  if (mainViewPerm) {
+    rows.push({
+      id: mainViewPerm.id,
+      label: formatCustomerPermissionLabel(mainViewPerm.label),
+      description: mainViewPerm.description,
+      readKey: CUSTOMER_MAIN_READ,
+      writeKey: mainEditPerm ? CUSTOMER_MAIN_WRITE : undefined,
+    });
+  }
+
+  for (const viewPerm of subViewPerms) {
+    const tab = CUSTOMER_TABS.find((t) => viewPerm.key === `business:customers:${t}:read`);
+    const writeKey = tab ? `business:customers:${tab}:write` : undefined;
+    const hasWriteDef = writeKey && areaPerms.some((p) => p.key === writeKey);
+    rows.push({
+      id: viewPerm.id,
+      label: formatCustomerPermissionLabel(viewPerm.label),
+      description: viewPerm.description,
+      readKey: viewPerm.key,
+      writeKey: hasWriteDef ? writeKey : undefined,
+      indent: true,
+    });
+  }
+
+  return rows;
+}
+
+export function getCustomerAccessLevel(
+  permissions: Record<string, boolean>,
+  readKey: string,
+  writeKey?: string
+): CustomerAccessLevel {
+  return getPermissionAccessLevel(permissions, readKey, writeKey);
+}
+
+/** Apply blocked / view only / view+edit for one customer scope (list or tab). */
+export function applyCustomerAccessLevel(
+  permissions: Record<string, boolean>,
+  readKey: string,
+  writeKey: string | undefined,
+  level: CustomerAccessLevel
+): Record<string, boolean> {
+  const next = { ...permissions };
+
+  if (level === 'blocked') {
+    next[readKey] = false;
+    if (writeKey) next[writeKey] = false;
+    if (readKey === CUSTOMER_MAIN_READ) {
+      return applyPermissionUncheckCascade(CUSTOMER_MAIN_READ, next);
+    }
+    if (readKey.endsWith(':read') && readKey !== CUSTOMER_MAIN_READ) {
+      return applyPermissionUncheckCascade(readKey, next);
+    }
+    return next;
+  }
+
+  if (readKey !== CUSTOMER_MAIN_READ && !next[CUSTOMER_MAIN_READ]) {
+    next[CUSTOMER_MAIN_READ] = true;
+  }
+
+  if (level === 'view') {
+    next[readKey] = true;
+    if (writeKey) next[writeKey] = false;
+    return next;
+  }
+
+  next[readKey] = true;
+  if (writeKey) next[writeKey] = true;
+  return next;
+}
+
+export function applyCustomerAccessLevelToKeySet(
+  selectedKeys: Set<string>,
+  customerKeys: string[],
+  readKey: string,
+  writeKey: string | undefined,
+  level: CustomerAccessLevel
+): Set<string> {
+  const perms: Record<string, boolean> = {};
+  customerKeys.forEach((k) => {
+    perms[k] = selectedKeys.has(k);
+  });
+  const next = applyCustomerAccessLevel(perms, readKey, writeKey, level);
+  const out = new Set(selectedKeys);
+  customerKeys.forEach((k) => {
+    if (next[k]) out.add(k);
+    else out.delete(k);
+  });
+  return out;
 }

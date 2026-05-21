@@ -19,6 +19,16 @@ import {
   canEnablePermissionSet,
 } from '@/lib/permissionDependencies';
 import { CustomerPermissionsGrid } from '@/components/CustomerPermissionsGrid';
+import { ProjectLinePermissionsGrid } from '@/components/ProjectLinePermissionsGrid';
+import {
+  applyCustomerAccessLevelToKeySet,
+  type CustomerAccessLevel,
+} from '@/lib/customerPermissions';
+import {
+  applyProjectLineAccessLevelToKeySet,
+  type ProjectLinePermissionRow,
+} from '@/lib/projectLinePermissions';
+import type { PermissionAccessLevel } from '@/lib/permissionAccessLevel';
 
 type Item = { id:string, label:string, value?:string, sort_index?:number, meta?: any };
 
@@ -1108,7 +1118,7 @@ function PermissionTemplatesSection() {
             ...cat,
             id: 'construction',
             name: 'construction',
-            label: 'Construction (Sales)',
+            label: 'Production (Sales)',
             description: cat.description || 'Permissions for Business area. Blocking access blocks all sub-permissions.',
             permissions: [...constructionPerms, ...legacyPerms],
           });
@@ -1336,87 +1346,60 @@ function PermissionTemplatesSection() {
               {isExpanded && subPermissions.length > 0 && (
                 <div className="px-4 pb-4 border-t border-gray-200 pt-3 mt-0">
                   {cat.name === 'construction' ? (
-                    /* Construction Projects & Opportunities */
                     (() => {
-                      const all = subPermissions.filter(
-                        (p) => p.key.includes('business:projects') || p.key.includes('business:construction:projects')
-                      );
-                      if (all.length === 0) return null;
-                      const mainView =
-                        all.find((p) => p.key === 'business:construction:projects:read') ||
-                        all.find((p) => p.key === 'business:projects:read');
-                      const mainEdit =
-                        all.find((p) => p.key === 'business:construction:projects:write') ||
-                        all.find((p) => p.key === 'business:projects:write');
-                      const viewAll = all.find(
-                        (p) => p.key === 'business:construction:projects:read:all'
-                      );
-                      const membersWrite = all.find(
-                        (p) => p.key === 'business:projects:members:write'
-                      );
-                      const subView = all.filter(
+                      const areaPerms = subPermissions.filter(
                         (p) =>
-                          p.key.includes(':read') &&
-                          p.key !== 'business:projects:read' &&
-                          p.key !== 'business:construction:projects:read' &&
-                          p.key !== 'business:construction:projects:read:all' &&
-                          (p.key.includes(':reports:') ||
-                            p.key.includes(':workload:') ||
-                            p.key.includes(':timesheet:') ||
-                            p.key.includes(':files:') ||
-                            p.key.includes(':documents:') ||
-                            p.key.includes(':proposal:') ||
-                            p.key.includes(':estimate:') ||
-                            p.key.includes(':orders:') ||
-                            p.key.includes(':safety:'))
+                          p.key.includes('business:projects') || p.key.includes('business:construction:projects')
                       );
-                      const subEdit = all.filter(
-                        (p) =>
-                          p.key.includes(':write') &&
-                          p.key !== 'business:projects:write' &&
-                          p.key !== 'business:construction:projects:write' &&
-                          p.key !== 'business:projects:members:write' &&
-                          (p.key.includes(':reports:') ||
-                            p.key.includes(':workload:') ||
-                            p.key.includes(':timesheet:') ||
-                            p.key.includes(':files:') ||
-                            p.key.includes(':documents:') ||
-                            p.key.includes(':proposal:') ||
-                            p.key.includes(':estimate:') ||
-                            p.key.includes(':orders:') ||
-                            p.key.includes(':safety:'))
-                      );
+                      if (areaPerms.length === 0) return null;
+                      const scopeKeys = areaPerms.map((p) => p.key);
+                      const permRecord = Object.fromEntries([...selectedKeys].map((k) => [k, true]));
                       return (
-                        <div className="border rounded-lg p-2.5 bg-gray-50">
-                          <div className="text-xs font-semibold text-gray-700 mb-2">Projects & Opportunities</div>
-                          <div className="grid md:grid-cols-2 gap-2.5">
-                            <div className="space-y-1.5">
-                              <div className="text-[10px] font-semibold text-gray-600 mb-1.5 uppercase tracking-wide">View</div>
-                              {mainView && permRow(mainView)}
-                              {subView.map((p) => permRow(p, true))}
-                              {viewAll && permRow(viewAll, true)}
-                            </div>
-                            <div className="space-y-1.5">
-                              <div className="text-[10px] font-semibold text-gray-600 mb-1.5 uppercase tracking-wide">Edit</div>
-                              {mainEdit && permRow(mainEdit)}
-                              {subEdit.map((p) => permRow(p, true))}
-                              {membersWrite && permRow(membersWrite, true)}
-                            </div>
-                          </div>
-                        </div>
+                        <ProjectLinePermissionsGrid
+                          line="construction"
+                          areaPerms={areaPerms}
+                          permissions={permRecord}
+                          canEdit={!disabled}
+                          onAccessLevelChange={(row, level) => {
+                            onChange(
+                              applyProjectLineAccessLevelToKeySet(
+                                selectedKeys,
+                                scopeKeys,
+                                'construction',
+                                areaPerms,
+                                row,
+                                level
+                              )
+                            );
+                          }}
+                        />
                       );
                     })()
                   ) : cat.name === 'repairs_maintenance' ? (
                     (() => {
-                      const rm = subPermissions.filter((p) => p.key.includes('business:rm:projects'));
-                      if (rm.length === 0) return null;
-                      const viewPerms = rm.filter((p) => p.key.includes(':read'));
-                      const editPerms = rm.filter((p) => p.key.includes(':write'));
+                      const areaPerms = subPermissions.filter((p) => p.key.includes('business:rm:projects'));
+                      if (areaPerms.length === 0) return null;
+                      const scopeKeys = areaPerms.map((p) => p.key);
+                      const permRecord = Object.fromEntries([...selectedKeys].map((k) => [k, true]));
                       return (
-                        <div className="border rounded-lg p-2.5 bg-gray-50">
-                          <div className="text-xs font-semibold text-gray-700 mb-2">Projects & Opportunities</div>
-                          {viewEditBlock(viewPerms, editPerms)}
-                        </div>
+                        <ProjectLinePermissionsGrid
+                          line="repairs"
+                          areaPerms={areaPerms}
+                          permissions={permRecord}
+                          canEdit={!disabled}
+                          onAccessLevelChange={(row, level) => {
+                            onChange(
+                              applyProjectLineAccessLevelToKeySet(
+                                selectedKeys,
+                                scopeKeys,
+                                'repairs',
+                                areaPerms,
+                                row,
+                                level
+                              )
+                            );
+                          }}
+                        />
                       );
                     })()
                   ) : cat.name === 'business' ? (
@@ -1429,13 +1412,23 @@ function PermissionTemplatesSection() {
                         const permRecord = Object.fromEntries(
                           [...selectedKeys].map((k) => [k, true])
                         );
+                        const customerKeys = areaPerms.map((p) => p.key);
                         return (
                           <CustomerPermissionsGrid
                             areaPerms={areaPerms}
                             permissions={permRecord}
                             canEdit={!disabled}
-                            canEnable={(key) => canEnableEditPermission(key, permRecord)}
-                            onToggle={(key) => handlePermToggle(key)}
+                            onAccessLevelChange={(readKey, writeKey, level: CustomerAccessLevel) => {
+                              onChange(
+                                applyCustomerAccessLevelToKeySet(
+                                  selectedKeys,
+                                  customerKeys,
+                                  readKey,
+                                  writeKey,
+                                  level
+                                )
+                              );
+                            }}
                           />
                         );
                       })()}

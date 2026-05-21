@@ -438,7 +438,7 @@ export default function AppShell({ children }: PropsWithChildren){
     },
     {
       id: 'services',
-      label: 'Construction (Sales)',
+      label: 'Production (Sales)',
       icon: <IconSales />,
       items: [
         { id: 'business-dashboard', label: 'Dashboard', path: '/business', icon: <IconDashboard />, requiredPermission: 'business:construction:projects:read' },

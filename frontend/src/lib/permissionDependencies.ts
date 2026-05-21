@@ -107,16 +107,16 @@ export function canEnablePermission(
 /** Human-readable message when enabling a permission is blocked. */
 export function permissionEnableBlockedMessage(permKey: string): string | null {
   if (permKey === 'business:construction:projects:read:all') {
-    return 'Requires "View Projects & Opportunities (Construction)" first';
+    return 'Requires "View Projects & Opportunities (Production)" first';
   }
   if (permKey === 'business:rm:projects:read:all') {
     return 'Requires "View Projects & Opportunities (Repairs & Maintenance)" first';
   }
   if (permKey === 'business:projects:members:write') {
-    return 'Requires at least one project view permission (legacy, Construction, or R&M)';
+    return 'Requires at least one project view permission (legacy, Production, or R&M)';
   }
   if (permKey === 'business:construction:projects:write') {
-    return 'Requires "View Projects & Opportunities (Construction)" first';
+    return 'Requires "View Projects & Opportunities (Production)" first';
   }
   if (permKey === 'business:rm:projects:write') {
     return 'Requires "View Projects & Opportunities (Repairs & Maintenance)" first';
