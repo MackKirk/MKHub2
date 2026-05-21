@@ -20,6 +20,7 @@ import UserEmployeeReviewsTab from '@/components/UserEmployeeReviewsTab';
 import ProjectReportCategoriesModal, {
   type ProjectReportCategoriesMode,
 } from '@/components/ProjectReportCategoriesModal';
+import { CustomerPermissionsGrid } from '@/components/CustomerPermissionsGrid';
 import {
   IMPLEMENTED_PERMISSIONS,
   isConstructionProjectPermissionKey,
@@ -778,15 +779,22 @@ const UserPermissions = forwardRef<UserPermissionsRef, { userId: string; onDirty
           await refetchUser();
         }
       }
-      // Save permissions
-      const payload: any = {
-        ...permissions,
-        // Config keys: null means "all categories" => send [] to clear override
-        'business:projects:files:categories:read': projectFilesReadCategories ?? [],
-        'business:projects:files:categories:write': projectFilesWriteCategories ?? [],
-        'business:projects:reports:categories:read': projectReportsReadCategories ?? [],
-        'business:projects:reports:categories:write': projectReportsWriteCategories ?? [],
-      };
+      // Save permissions (only keys defined in DB — avoids invalid key errors after seed/migrations)
+      const validPermKeys = new Set<string>();
+      (permissionsData?.permissions_by_category || []).forEach((cat: any) => {
+        (cat.permissions || []).forEach((p: any) => {
+          if (p.key) validPermKeys.add(p.key);
+        });
+      });
+      const payload: Record<string, boolean | string[]> = {};
+      validPermKeys.forEach((key) => {
+        payload[key] = !!permissions[key];
+      });
+      // Config keys: null means "all categories" => send [] to clear override
+      payload['business:projects:files:categories:read'] = projectFilesReadCategories ?? [];
+      payload['business:projects:files:categories:write'] = projectFilesWriteCategories ?? [];
+      payload['business:projects:reports:categories:read'] = projectReportsReadCategories ?? [];
+      payload['business:projects:reports:categories:write'] = projectReportsWriteCategories ?? [];
       await api('PUT', `/permissions/users/${userId}`, payload);
       toast.success('Permissions saved');
       await refetch();
@@ -1015,7 +1023,6 @@ const UserPermissions = forwardRef<UserPermissionsRef, { userId: string; onDirty
             let businessCategory: any = null;
             let inventoryCategory: any = null;
             let quotationsCategory: any = null;
-
             permissionsData.permissions_by_category?.forEach((cat: any) => {
               if (cat.category.name === 'business') {
                 const constructionPerms = cat.permissions.filter((p: any) => isConstructionProjectPermissionKey(p.key));
@@ -1069,7 +1076,7 @@ const UserPermissions = forwardRef<UserPermissionsRef, { userId: string; onDirty
               const combinedPermissions = [
                 ...(businessCategory?.permissions || []),
                 ...(inventoryCategory?.permissions || []),
-              ];
+              ].filter((p: any) => p.key !== 'business:access');
               if (combinedPermissions.length > 0) {
                 processedCategories.push({
                   category: {
@@ -1078,7 +1085,7 @@ const UserPermissions = forwardRef<UserPermissionsRef, { userId: string; onDirty
                     label: 'Business',
                     description:
                       inventoryCategory?.category?.description ||
-                      'Permissions for Business area. Blocking access blocks all sub-permissions.',
+                      'Customers, suppliers, and products permissions.',
                   },
                   permissions: combinedPermissions,
                 });
@@ -1107,9 +1114,13 @@ const UserPermissions = forwardRef<UserPermissionsRef, { userId: string; onDirty
             const finalCategories = [...primaryCategories, ...remainingCategories];
 
             return finalCategories.map((cat: any) => {
-              // Find area access permission (first permission, ends with :access)
-              const areaAccessPerm = cat.permissions.find((p: any) => p.key.endsWith(':access'));
-              const subPermissions = cat.permissions.filter((p: any) => !p.key.endsWith(':access'));
+              // Area access checkbox (deprecated for business:access — granular perms only)
+              const areaAccessPerm = cat.permissions.find(
+                (p: any) => p.key.endsWith(':access') && p.key !== 'business:access'
+              );
+              const subPermissions = cat.permissions.filter(
+                (p: any) => p.key !== 'business:access' && !p.key.endsWith(':access')
+              );
               const hasAreaAccess = areaAccessPerm && permissions[areaAccessPerm.key];
               const categoryId = cat.category.id;
               const isExpanded = expandedCategories.has(categoryId);
@@ -1347,89 +1358,37 @@ const UserPermissions = forwardRef<UserPermissionsRef, { userId: string; onDirty
                     ) : cat.category.name === 'business' ? (
                       /* Special handling for Business category - Customers, Suppliers and Products */
                       <div className="space-y-4">
+                        {areaAccessPerm && (
+                          <label className="flex items-start gap-1.5 p-2 rounded-lg bg-white border border-gray-200 hover:bg-gray-50 cursor-pointer">
+                            <input
+                              type="checkbox"
+                              checked={permissions[areaAccessPerm.key] || false}
+                              onChange={() => canEdit && handleToggle(areaAccessPerm.key)}
+                              disabled={!canEdit}
+                              className="mt-0.5 w-3.5 h-3.5 rounded border-gray-300 text-brand-red focus:ring-brand-red flex-shrink-0 disabled:opacity-50 disabled:cursor-not-allowed"
+                            />
+                            <div className="flex-1 min-w-0">
+                              <div className="text-xs font-semibold text-gray-900">{areaAccessPerm.label}</div>
+                              {areaAccessPerm.description && (
+                                <div className="text-[10px] text-gray-500 mt-0.5">{areaAccessPerm.description}</div>
+                              )}
+                            </div>
+                          </label>
+                        )}
                         {/* Customers */}
                         {(() => {
-                          const areaPerms = subPermissions.filter((p: any) => p.key.includes('business:customers'));
-                          if (areaPerms.length > 0) {
-                            const viewPerms = areaPerms.filter((p: any) => p.key.includes(':read'));
-                            const editPerms = areaPerms.filter((p: any) => p.key.includes(':write'));
-                            
-                            return (
-                              <div className="border rounded-lg p-2.5 bg-gray-50">
-                                <div className="text-xs font-semibold text-gray-700 mb-2">Customers</div>
-                                <div className="grid md:grid-cols-2 gap-2.5">
-                                  {viewPerms.length > 0 && (
-                                    <div className="space-y-1.5">
-                                      <div className="text-[10px] font-semibold text-gray-600 mb-1.5 uppercase tracking-wide">View</div>
-                                      {viewPerms.map((perm: any) => (
-                                        <label
-                                          key={perm.id}
-                                          className="flex items-start gap-1.5 p-1.5 rounded bg-white hover:bg-gray-50 cursor-pointer"
-                                        >
-                                          <input
-                                            type="checkbox"
-                                            checked={permissions[perm.key] || false}
-                                            onChange={() => canEdit && handleToggle(perm.key)}
-                                            disabled={!canEdit}
-                                            className="mt-0.5 w-3.5 h-3.5 rounded border-gray-300 text-brand-red focus:ring-brand-red flex-shrink-0 disabled:opacity-50 disabled:cursor-not-allowed"
-                                          />
-                                          <div className="flex-1 min-w-0">
-                                            <div className="text-xs font-medium text-gray-900 flex items-center gap-1.5">
-                                              <span className="truncate">{perm.label}</span>
-                                              {!IMPLEMENTED_PERMISSIONS.has(perm.key) && (
-                                                <span className="text-[10px] px-1 py-0.5 bg-yellow-100 text-yellow-800 rounded border border-yellow-300 flex-shrink-0">
-                                                  [WIP]
-                                                </span>
-                                              )}
-                                            </div>
-                                            {perm.description && (
-                                              <div className="text-[10px] text-gray-500 mt-0.5 line-clamp-1">{perm.description}</div>
-                                            )}
-                                          </div>
-                                        </label>
-                                      ))}
-                                    </div>
-                                  )}
-                                  {editPerms.length > 0 && (
-                                    <div className="space-y-1.5">
-                                      <div className="text-[10px] font-semibold text-gray-600 mb-1.5 uppercase tracking-wide">Edit</div>
-                                      {editPerms.map((perm: any) => {
-                                        const canEnable = canEdit && canEnableEditPermission(perm.key, permissions);
-                                        return (
-                                        <label
-                                          key={perm.id}
-                                          className={`flex items-start gap-1.5 p-1.5 rounded bg-white ${canEnable ? 'hover:bg-gray-50 cursor-pointer' : 'cursor-default'}`}
-                                        >
-                                          <input
-                                            type="checkbox"
-                                            checked={permissions[perm.key] || false}
-                                            onChange={() => canEnable && handleToggle(perm.key)}
-                                            disabled={!canEnable}
-                                            className="mt-0.5 w-3.5 h-3.5 rounded border-gray-300 text-brand-red focus:ring-brand-red flex-shrink-0 disabled:opacity-50 disabled:cursor-not-allowed"
-                                          />
-                                          <div className="flex-1 min-w-0">
-                                            <div className="text-xs font-medium text-gray-900 flex items-center gap-1.5">
-                                              <span className="truncate">{perm.label}</span>
-                                              {!IMPLEMENTED_PERMISSIONS.has(perm.key) && (
-                                                <span className="text-[10px] px-1 py-0.5 bg-yellow-100 text-yellow-800 rounded border border-yellow-300 flex-shrink-0">
-                                                  [WIP]
-                                                </span>
-                                              )}
-                                            </div>
-                                            {perm.description && (
-                                              <div className="text-[10px] text-gray-500 mt-0.5 line-clamp-1">{perm.description}</div>
-                                            )}
-                                          </div>
-                                        </label>
-                                        );
-                                      })}
-                                    </div>
-                                  )}
-                                </div>
-                              </div>
-                            );
-                          }
-                          return null;
+                          const areaPerms = subPermissions.filter((p: any) =>
+                            p.key.startsWith('business:customers:')
+                          );
+                          return (
+                            <CustomerPermissionsGrid
+                              areaPerms={areaPerms}
+                              permissions={permissions}
+                              canEdit={canEdit}
+                              canEnable={(key) => canEnableEditPermission(key, permissions)}
+                              onToggle={handleToggle}
+                            />
+                          );
                         })()}
                         
                         {/* Suppliers and Products */}
@@ -1934,178 +1893,6 @@ const UserPermissions = forwardRef<UserPermissionsRef, { userId: string; onDirty
                             </div>
                           );
                         })()}
-                      </div>
-                    ) : cat.category.name === 'business' ? (
-                      /* Special handling for Business category - Customers, Suppliers and Products */
-                      <div className="space-y-4">
-                        {/* Customers */}
-                        {(() => {
-                          const areaPerms = subPermissions.filter((p: any) => p.key.includes('business:customers'));
-                          if (areaPerms.length > 0) {
-                            const viewPerms = areaPerms.filter((p: any) => p.key.includes(':read'));
-                            const editPerms = areaPerms.filter((p: any) => p.key.includes(':write'));
-                            
-                            return (
-                              <div className="border rounded-lg p-2.5 bg-gray-50">
-                                <div className="text-xs font-semibold text-gray-700 mb-2">Customers</div>
-                                <div className="grid md:grid-cols-2 gap-2.5">
-                                  {viewPerms.length > 0 && (
-                                    <div className="space-y-1.5">
-                                      <div className="text-[10px] font-semibold text-gray-600 mb-1.5 uppercase tracking-wide">View</div>
-                                      {viewPerms.map((perm: any) => (
-                                        <label
-                                          key={perm.id}
-                                          className="flex items-start gap-1.5 p-1.5 rounded bg-white hover:bg-gray-50 cursor-pointer"
-                                        >
-                                          <input
-                                            type="checkbox"
-                                            checked={permissions[perm.key] || false}
-                                            onChange={() => canEdit && handleToggle(perm.key)}
-                                            disabled={!canEdit}
-                                            className="mt-0.5 w-3.5 h-3.5 rounded border-gray-300 text-brand-red focus:ring-brand-red flex-shrink-0 disabled:opacity-50 disabled:cursor-not-allowed"
-                                          />
-                                          <div className="flex-1 min-w-0">
-                                            <div className="text-xs font-medium text-gray-900 flex items-center gap-1.5">
-                                              <span className="truncate">{perm.label}</span>
-                                              {!IMPLEMENTED_PERMISSIONS.has(perm.key) && (
-                                                <span className="text-[10px] px-1 py-0.5 bg-yellow-100 text-yellow-800 rounded border border-yellow-300 flex-shrink-0">
-                                                  [WIP]
-                                                </span>
-                                              )}
-                                            </div>
-                                            {perm.description && (
-                                              <div className="text-[10px] text-gray-500 mt-0.5 line-clamp-1">{perm.description}</div>
-                                            )}
-                                          </div>
-                                        </label>
-                                      ))}
-                                    </div>
-                                  )}
-                                  {editPerms.length > 0 && (
-                                    <div className="space-y-1.5">
-                                      <div className="text-[10px] font-semibold text-gray-600 mb-1.5 uppercase tracking-wide">Edit</div>
-                                      {editPerms.map((perm: any) => {
-                                        const canEnable = canEdit && canEnableEditPermission(perm.key, permissions);
-                                        return (
-                                        <label
-                                          key={perm.id}
-                                          className={`flex items-start gap-1.5 p-1.5 rounded bg-white ${canEnable ? 'hover:bg-gray-50 cursor-pointer' : 'cursor-default'}`}
-                                        >
-                                          <input
-                                            type="checkbox"
-                                            checked={permissions[perm.key] || false}
-                                            onChange={() => canEnable && handleToggle(perm.key)}
-                                            disabled={!canEnable}
-                                            className="mt-0.5 w-3.5 h-3.5 rounded border-gray-300 text-brand-red focus:ring-brand-red flex-shrink-0 disabled:opacity-50 disabled:cursor-not-allowed"
-                                          />
-                                          <div className="flex-1 min-w-0">
-                                            <div className="text-xs font-medium text-gray-900 flex items-center gap-1.5">
-                                              <span className="truncate">{perm.label}</span>
-                                              {!IMPLEMENTED_PERMISSIONS.has(perm.key) && (
-                                                <span className="text-[10px] px-1 py-0.5 bg-yellow-100 text-yellow-800 rounded border border-yellow-300 flex-shrink-0">
-                                                  [WIP]
-                                                </span>
-                                              )}
-                                            </div>
-                                            {perm.description && (
-                                              <div className="text-[10px] text-gray-500 mt-0.5 line-clamp-1">{perm.description}</div>
-                                            )}
-                                          </div>
-                                        </label>
-                                        );
-                                      })}
-                                    </div>
-                                  )}
-                                </div>
-                              </div>
-                            );
-                          }
-                          return null;
-                        })()}
-                        
-                        {/* Suppliers and Products */}
-                        {['suppliers', 'products'].map((area: string) => {
-                          const areaPerms = subPermissions.filter((p: any) => p.key.includes(`inventory:${area}`));
-                          if (areaPerms.length === 0) return null;
-                          
-                          const areaLabel = area.charAt(0).toUpperCase() + area.slice(1);
-                          const viewPerms = areaPerms.filter((p: any) => p.key.includes(':read'));
-                          const editPerms = areaPerms.filter((p: any) => p.key.includes(':write'));
-                          
-                          return (
-                            <div key={area} className="border rounded-lg p-2.5 bg-gray-50">
-                              <div className="text-xs font-semibold text-gray-700 mb-2">{areaLabel}</div>
-                              <div className="grid md:grid-cols-2 gap-2.5">
-                                {/* View Permissions Column */}
-                                {viewPerms.length > 0 && (
-                                  <div className="space-y-1.5">
-                                    <div className="text-[10px] font-semibold text-gray-600 mb-1.5 uppercase tracking-wide">View</div>
-                                    {viewPerms.map((perm: any) => (
-                                      <label
-                                        key={perm.id}
-                                        className="flex items-start gap-1.5 p-1.5 rounded bg-white hover:bg-gray-50 cursor-pointer"
-                                      >
-                                        <input
-                                          type="checkbox"
-                                          checked={permissions[perm.key] || false}
-                                          onChange={() => canEdit && handleToggle(perm.key)}
-                                          disabled={!canEdit}
-                                          className="mt-0.5 w-3.5 h-3.5 rounded border-gray-300 text-brand-red focus:ring-brand-red flex-shrink-0 disabled:opacity-50 disabled:cursor-not-allowed"
-                                        />
-                                        <div className="flex-1 min-w-0">
-                                          <div className="text-xs font-medium text-gray-900 flex items-center gap-1.5">
-                                            <span className="truncate">{perm.label}</span>
-                                            {!IMPLEMENTED_PERMISSIONS.has(perm.key) && (
-                                              <span className="text-[10px] px-1 py-0.5 bg-yellow-100 text-yellow-800 rounded border border-yellow-300 flex-shrink-0">
-                                                [WIP]
-                                              </span>
-                                            )}
-                                          </div>
-                                          {perm.description && (
-                                            <div className="text-[10px] text-gray-500 mt-0.5 line-clamp-1">{perm.description}</div>
-                                          )}
-                                        </div>
-                                      </label>
-                                    ))}
-                                  </div>
-                                )}
-                                {/* Edit Permissions Column */}
-                                {editPerms.length > 0 && (
-                                  <div className="space-y-1.5">
-                                    <div className="text-[10px] font-semibold text-gray-600 mb-1.5 uppercase tracking-wide">Edit</div>
-                                    {editPerms.map((perm: any) => (
-                                      <label
-                                        key={perm.id}
-                                        className="flex items-start gap-1.5 p-1.5 rounded bg-white hover:bg-gray-50 cursor-pointer"
-                                      >
-                                        <input
-                                          type="checkbox"
-                                          checked={permissions[perm.key] || false}
-                                          onChange={() => canEdit && handleToggle(perm.key)}
-                                          disabled={!canEdit}
-                                          className="mt-0.5 w-3.5 h-3.5 rounded border-gray-300 text-brand-red focus:ring-brand-red flex-shrink-0 disabled:opacity-50 disabled:cursor-not-allowed"
-                                        />
-                                        <div className="flex-1 min-w-0">
-                                          <div className="text-xs font-medium text-gray-900 flex items-center gap-1.5">
-                                            <span className="truncate">{perm.label}</span>
-                                            {!IMPLEMENTED_PERMISSIONS.has(perm.key) && (
-                                              <span className="text-[10px] px-1 py-0.5 bg-yellow-100 text-yellow-800 rounded border border-yellow-300 flex-shrink-0">
-                                                [WIP]
-                                              </span>
-                                            )}
-                                          </div>
-                                          {perm.description && (
-                                            <div className="text-[10px] text-gray-500 mt-0.5 line-clamp-1">{perm.description}</div>
-                                          )}
-                                        </div>
-                                      </label>
-                                    ))}
-                                  </div>
-                                )}
-                              </div>
-                            </div>
-                          );
-                        })}
                       </div>
                     ) : cat.category.name === 'quotations' ? (
                       /* Special handling for Quotations category */

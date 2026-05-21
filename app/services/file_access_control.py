@@ -14,6 +14,7 @@ from ..auth.security import (
     User,
     _has_permission,
     has_project_files_category_permission,
+    has_customer_tab_permission,
     can_access_business_line,
     can_write_business_line,
 )
@@ -193,7 +194,7 @@ def assert_can_initiate_upload(
         cl = db.query(Client).filter(Client.id == cid).first()
         if not cl:
             raise HTTPException(status_code=404, detail="Client not found")
-        if not _has_permission(user, "business:customers:write"):
+        if not has_customer_tab_permission(user, "files", "write"):
             raise HTTPException(status_code=403, detail="Forbidden")
         return
 
@@ -253,7 +254,7 @@ def assert_can_read_storage_key(user: User, db: Session, storage_key: str) -> No
             return
         raise HTTPException(status_code=403, detail="Forbidden")
     if c:
-        if not _has_permission(user, "business:customers:read"):
+        if not has_customer_tab_permission(user, "files", "read"):
             raise HTTPException(status_code=403, detail="Forbidden")
         return
     if e:
@@ -646,7 +647,7 @@ def assert_can_read_file_object(user: User, db: Session, fo: FileObject) -> None
         cl = db.query(Client).filter(Client.id == cid).first()
         if not cl:
             raise HTTPException(status_code=404, detail="Client not found")
-        if _has_permission(user, "business:customers:read"):
+        if has_customer_tab_permission(user, "files", "read"):
             return
         if _can_read_client_scoped_file_via_proposal(user, db, fo, cid):
             return

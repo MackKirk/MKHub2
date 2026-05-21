@@ -39,6 +39,20 @@ export function canEnablePermission(
   if (permKey === 'business:customers:write') {
     return has('business:customers:read');
   }
+  if (
+    permKey.startsWith('business:customers:') &&
+    permKey.endsWith(':read') &&
+    permKey !== 'business:customers:read'
+  ) {
+    return has('business:customers:read');
+  }
+  if (
+    permKey.startsWith('business:customers:') &&
+    permKey.endsWith(':write') &&
+    permKey !== 'business:customers:write'
+  ) {
+    return has(permKey.replace(':write', ':read'));
+  }
   if (permKey === 'sales:quotations:write') {
     return has('sales:quotations:read');
   }
@@ -121,6 +135,20 @@ export function permissionEnableBlockedMessage(permKey: string): string | null {
     return 'Requires "View Notes/History" first';
   }
   if (
+    permKey.startsWith('business:customers:') &&
+    permKey.endsWith(':write') &&
+    permKey !== 'business:customers:write'
+  ) {
+    return 'Requires the corresponding customer view permission first';
+  }
+  if (
+    permKey.startsWith('business:customers:') &&
+    permKey.endsWith(':read') &&
+    permKey !== 'business:customers:read'
+  ) {
+    return 'Requires "View Customers" first';
+  }
+  if (
     permKey.startsWith('business:projects:') &&
     permKey.endsWith(':write') &&
     permKey !== 'business:projects:write'
@@ -164,6 +192,17 @@ export function applyPermissionUncheckCascade(
     newPerms['hr:users:edit:permissions'] = false;
   } else if (uncheckedKey === 'business:customers:read') {
     newPerms['business:customers:write'] = false;
+    Object.keys(newPerms).forEach((k) => {
+      if (k.startsWith('business:customers:') && k !== 'business:customers:read') {
+        newPerms[k] = false;
+      }
+    });
+  } else if (
+    uncheckedKey.startsWith('business:customers:') &&
+    uncheckedKey.endsWith(':read') &&
+    uncheckedKey !== 'business:customers:read'
+  ) {
+    newPerms[uncheckedKey.replace(':read', ':write')] = false;
   } else if (uncheckedKey === 'sales:quotations:read') {
     newPerms['sales:quotations:write'] = false;
   } else if (uncheckedKey === 'business:construction:projects:read') {

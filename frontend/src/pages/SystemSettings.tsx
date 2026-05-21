@@ -18,6 +18,7 @@ import {
   applyPermissionUncheckCascadeSet,
   canEnablePermissionSet,
 } from '@/lib/permissionDependencies';
+import { CustomerPermissionsGrid } from '@/components/CustomerPermissionsGrid';
 
 type Item = { id:string, label:string, value?:string, sort_index?:number, meta?: any };
 
@@ -1137,13 +1138,13 @@ function PermissionTemplatesSection() {
       const combined = [
         ...(businessCat?.permissions || []),
         ...(inventoryCat?.permissions || []),
-      ];
+      ].filter((p) => p.key !== 'business:access');
       if (combined.length > 0) {
         const insert = {
           id: 'business',
           name: 'business',
           label: 'Business',
-          description: inventoryCat?.description || 'Permissions for Business area. Blocking access blocks all sub-permissions.',
+          description: inventoryCat?.description || 'Customers, suppliers, and products permissions.',
           permissions: combined,
         };
         processed.push(insert);
@@ -1301,8 +1302,10 @@ function PermissionTemplatesSection() {
     return (
       <div className="space-y-6">
         {processedDefinitions.map((cat) => {
-          const areaAccessPerm = (cat.permissions || []).find((p) => p.key.endsWith(':access'));
-          const subPermissions = (cat.permissions || []).filter((p) => !p.key.endsWith(':access'));
+          const areaAccessPerm = (cat.permissions || []).find(
+            (p) => p.key.endsWith(':access') && p.key !== 'business:access'
+          );
+          const subPermissions = (cat.permissions || []).filter((p) => p.key !== 'business:access' && !p.key.endsWith(':access'));
           const isExpanded = expandedCategories.has(cat.id);
 
           return (
@@ -1418,16 +1421,22 @@ function PermissionTemplatesSection() {
                     })()
                   ) : cat.name === 'business' ? (
                     <div className="space-y-4">
+                      {areaAccessPerm && permRow(areaAccessPerm)}
                       {(() => {
-                        const areaPerms = subPermissions.filter((p) => p.key.includes('business:customers'));
-                        if (areaPerms.length === 0) return null;
-                        const v = areaPerms.filter((p) => p.key.includes(':read'));
-                        const e = areaPerms.filter((p) => p.key.includes(':write'));
+                        const areaPerms = subPermissions.filter((p) =>
+                          p.key.startsWith('business:customers:')
+                        );
+                        const permRecord = Object.fromEntries(
+                          [...selectedKeys].map((k) => [k, true])
+                        );
                         return (
-                          <div className="border rounded-lg p-2.5 bg-gray-50">
-                            <div className="text-xs font-semibold text-gray-700 mb-2">Customers</div>
-                            {viewEditBlock(v, e)}
-                          </div>
+                          <CustomerPermissionsGrid
+                            areaPerms={areaPerms}
+                            permissions={permRecord}
+                            canEdit={!disabled}
+                            canEnable={(key) => canEnableEditPermission(key, permRecord)}
+                            onToggle={(key) => handlePermToggle(key)}
+                          />
                         );
                       })()}
                       {['suppliers', 'products'].map((area) => {
