@@ -5,11 +5,14 @@ import FilterRuleRow from './FilterRuleRow';
 import {
   AppButton,
   AppEmptyState,
-  AppModal,
+  AppFormModal,
+  FORM_MODAL_WIDE_DIALOG_COLLAPSED,
+  FORM_MODAL_WIDE_DIALOG_EXPANDED,
   uiCx,
   uiLayout,
   uiSpacing,
 } from '@/components/ui';
+import { filtersModalQuickInfo } from '@/lib/formModalQuickInfo';
 
 interface FilterBuilderModalProps {
   isOpen: boolean;
@@ -37,11 +40,10 @@ export default function FilterBuilderModal({
   }, [isOpen, initialRules]);
 
   const handleAddRule = () => {
-    const firstField = fields[0];
     const newRule: FilterRule = {
       id: `rule-${Date.now()}`,
-      field: firstField?.id || '',
-      operator: firstField?.operators[0] || 'is',
+      field: '',
+      operator: '',
       value: '',
     };
     setRules([...rules, newRule]);
@@ -60,19 +62,27 @@ export default function FilterBuilderModal({
   };
 
   const handleApply = () => {
-    onApply(rules);
+    const completeRules = rules.filter((rule) => {
+      if (!rule.field || !rule.operator) return false;
+      if (!rule.value) return false;
+      if (Array.isArray(rule.value) && (!rule.value[0] || !rule.value[1])) return false;
+      return true;
+    });
+    onApply(completeRules);
     onClose();
   };
 
   return (
-    <AppModal
+    <AppFormModal
       open={isOpen}
       onClose={onClose}
       title="Filters"
-      description="Build rules to narrow the list."
-      size="md"
-      dialogClassName="!max-w-[720px]"
-      bodyClassName={uiCx('!max-h-[min(60vh,32rem)] overflow-y-auto', uiSpacing.cardPadding)}
+      description="Show only the items that match what you need."
+      formWidth="wide"
+      scrollBody={false}
+      dialogClassName={FORM_MODAL_WIDE_DIALOG_COLLAPSED}
+      dialogClassNameExpanded={FORM_MODAL_WIDE_DIALOG_EXPANDED}
+      quickInfo={filtersModalQuickInfo}
       footer={
         <div className={uiCx(uiLayout.actionsRow, 'w-full flex-wrap justify-between gap-3')}>
           <div>
@@ -93,37 +103,44 @@ export default function FilterBuilderModal({
         </div>
       }
     >
-      {rules.length === 0 ? (
-        <AppEmptyState
-          title="No filters applied"
-          description="Add a filter to get started."
-          className="border-0 bg-transparent py-6 shadow-none"
-        />
-      ) : (
-        <div className={uiSpacing.sectionStack}>
-          {rules.map((rule) => (
-            <FilterRuleRow
-              key={rule.id}
-              rule={rule}
-              onUpdate={handleUpdateRule}
-              onDelete={() => handleDeleteRule(rule.id)}
-              fields={fields}
-              getFieldData={getFieldData}
+      <div className="flex min-h-0 w-full min-w-0 flex-1 flex-col gap-3">
+        <div
+          className={uiCx(
+            'min-h-0 min-w-0 flex-1 overflow-y-auto',
+            rules.length > 0 && uiSpacing.sectionStack,
+          )}
+        >
+          {rules.length === 0 ? (
+            <AppEmptyState
+              title="No filters applied"
+              description="Add a filter to get started."
+              className="border-0 bg-transparent py-6 shadow-none"
             />
-          ))}
+          ) : (
+            rules.map((rule) => (
+              <FilterRuleRow
+                key={rule.id}
+                rule={rule}
+                onUpdate={handleUpdateRule}
+                onDelete={() => handleDeleteRule(rule.id)}
+                fields={fields}
+                getFieldData={getFieldData}
+              />
+            ))
+          )}
         </div>
-      )}
 
-      <AppButton
-        type="button"
-        variant="secondary"
-        size="sm"
-        className="mt-4 w-full"
-        leftIcon={<Plus className="h-4 w-4" />}
-        onClick={handleAddRule}
-      >
-        Add filter
-      </AppButton>
-    </AppModal>
+        <AppButton
+          type="button"
+          variant="secondary"
+          size="sm"
+          className="shrink-0 w-full"
+          leftIcon={<Plus className="h-4 w-4" />}
+          onClick={handleAddRule}
+        >
+          Add filter
+        </AppButton>
+      </div>
+    </AppFormModal>
   );
 }

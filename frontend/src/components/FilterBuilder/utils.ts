@@ -3,12 +3,14 @@
 import { FilterOperator, FilterRule } from './types';
 
 // Helper: Check if operator requires two values
-export function isRangeOperator(operator: FilterOperator): boolean {
+export function isRangeOperator(operator: FilterOperator | ''): boolean {
+  if (!operator) return false;
   return operator === 'is_between' || operator === 'between';
 }
 
 // Helper: Get operator label
-export function getOperatorLabel(operator: FilterOperator): string {
+export function getOperatorLabel(operator: FilterOperator | ''): string {
+  if (!operator) return '';
   const labels: Record<FilterOperator, string> = {
     'is': 'Is',
     'is_not': 'Is not',

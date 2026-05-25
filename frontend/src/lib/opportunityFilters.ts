@@ -50,6 +50,54 @@ export function statusIdByLabel(statuses: unknown[] | undefined, label: string):
   return undefined;
 }
 
+/** First matching status id among candidate labels (settings may vary by casing/spelling). */
+export function statusIdByLabels(statuses: unknown[] | undefined, ...labels: string[]): string | undefined {
+  for (const label of labels) {
+    const id = statusIdByLabel(statuses, label);
+    if (id) return id;
+  }
+  return undefined;
+}
+
+export type ListQuickStatusFilter = { key: string; label: string; statusId: string };
+
+function resolveQuickStatusFilters(
+  statuses: unknown[] | undefined,
+  specs: Array<{ key: string; label: string; labels: string[] }>,
+): ListQuickStatusFilter[] {
+  const out: ListQuickStatusFilter[] = [];
+  for (const spec of specs) {
+    const statusId = statusIdByLabels(statuses, ...spec.labels);
+    if (statusId) out.push({ key: spec.key, label: spec.label, statusId });
+  }
+  return out;
+}
+
+/** Projects list quick filters (not opportunity pipeline statuses). */
+export function resolveProjectQuickStatusFilters(statuses: unknown[] | undefined): ListQuickStatusFilter[] {
+  return resolveQuickStatusFilters(statuses, [
+    { key: 'in_progress', label: 'In Progress', labels: ['in progress', 'on progress'] },
+    { key: 'on_hold', label: 'On Hold', labels: ['on hold'] },
+    { key: 'finished', label: 'Finished', labels: ['finished'] },
+    { key: 'conflict', label: 'Conflict', labels: ['conflict', 'schedule conflict'] },
+  ]);
+}
+
+/** Opportunities / leak investigations list quick filters. */
+export function resolveOpportunityQuickStatusFilters(statuses: unknown[] | undefined): ListQuickStatusFilter[] {
+  return resolveQuickStatusFilters(statuses, [
+    { key: 'prospecting', label: 'Prospecting', labels: ['prospecting'] },
+    { key: 'refused', label: 'Refused', labels: ['refused'] },
+    { key: 'sent_to_customer', label: 'Sent to Customer', labels: ['sent to customer'] },
+    { key: 'conflict', label: 'Conflict', labels: ['conflict', 'schedule conflict'] },
+    {
+      key: 'low_and_awarded',
+      label: 'Low & Awarded',
+      labels: ['low & awarded', 'lost & awarded', 'lost and awarded'],
+    },
+  ]);
+}
+
 export function convertRulesToParams(rules: FilterRule[]): URLSearchParams {
   const params = new URLSearchParams();
 

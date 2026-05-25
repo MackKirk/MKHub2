@@ -17,9 +17,9 @@ import {
   AppBadge,
   AppButton,
   AppEmptyState,
+  AppCombobox,
   AppInput,
   AppModal,
-  AppSelect,
   AppTabs,
   uiBorders,
   uiColors,
@@ -592,17 +592,20 @@ export default function EmployeeCommunity({
     setConfirmedOnly(false);
   };
 
-  const areaSelectOptions = useMemo(
-    () =>
-      sortByLabel(
+  const areaComboboxOptions = useMemo(
+    () => [
+      { value: '', label: 'All areas' },
+      ...sortByLabel(
         Object.entries(AREA_LABELS).map(([k, lab]) => ({ value: k, label: lab })),
         (o) => o.label,
       ),
+    ],
     [],
   );
-  const prioritySelectOptions = useMemo(
-    () =>
-      sortByLabel(
+  const priorityComboboxOptions = useMemo(
+    () => [
+      { value: '', label: 'All priorities' },
+      ...sortByLabel(
         [
           { value: 'normal', label: 'Normal' },
           { value: 'important', label: 'Important' },
@@ -611,6 +614,7 @@ export default function EmployeeCommunity({
         ],
         (o) => o.label,
       ),
+    ],
     [],
   );
 
@@ -645,50 +649,72 @@ export default function EmployeeCommunity({
           uiSpacing.sectionStack,
         )}
       >
-        <div className="flex flex-col gap-3 lg:flex-row lg:items-end">
+        <div className="grid grid-cols-1 gap-3 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-end">
           <AppInput
+            id={feedMode ? 'overview-community-search' : 'community-search'}
             type="search"
+            label="Search"
             placeholder="Search title or content..."
             value={searchQ}
             onChange={(e) => setSearchQ(e.target.value)}
             leftIcon={<Search className="h-4 w-4" />}
-            className="min-w-[200px] flex-1"
+            className="min-w-0"
+            aria-label="Search community posts"
           />
           <AppTabs
-            className="shrink-0"
+            className="shrink-0 lg:justify-end"
             tabs={communityTabs}
             value={filter}
             onChange={(key) => setFilter(key as typeof filter)}
           />
         </div>
 
-        <div className="flex flex-col gap-2 md:flex-row md:flex-wrap md:items-end">
-          <AppSelect
+        <div
+          className={uiCx(
+            'grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto_auto] lg:items-end',
+          )}
+        >
+          <AppCombobox
+            id={feedMode ? 'overview-community-area-filter' : 'community-area-filter'}
+            label="Area"
             value={relatedAreaFilter}
-            onChange={(e) => setRelatedAreaFilter(e.target.value)}
-            options={areaSelectOptions}
-            placeholder="All areas"
-            className="min-w-[170px] flex-1"
+            onChange={setRelatedAreaFilter}
+            options={areaComboboxOptions}
+            placeholder="Search or select area…"
+            emptyMessage="No areas match your search."
           />
-          <AppSelect
+          <AppCombobox
+            id={feedMode ? 'overview-community-priority-filter' : 'community-priority-filter'}
+            label="Priority"
             value={priorityFilter}
-            onChange={(e) => setPriorityFilter(e.target.value)}
-            options={prioritySelectOptions}
-            placeholder="All priorities"
-            className="min-w-[170px] flex-1"
+            onChange={setPriorityFilter}
+            options={priorityComboboxOptions}
+            placeholder="Search or select priority…"
+            emptyMessage="No priorities match your search."
           />
-          <AppButton
-            type="button"
-            size="sm"
-            variant={confirmedOnly ? 'primary' : 'secondary'}
-            onClick={() => setConfirmedOnly((v) => !v)}
-          >
-            Confirmed by me
-          </AppButton>
-          {hasActiveRefinements ? (
-            <AppButton type="button" size="sm" variant="ghost" className="md:ml-auto" onClick={clearRefinements}>
-              Clear filters
+          <div className="space-y-1.5 sm:col-span-2 lg:col-span-1">
+            <span className={uiCx(uiTypography.overline, 'invisible block select-none')} aria-hidden>
+              Filter
+            </span>
+            <AppButton
+              type="button"
+              size="sm"
+              variant={confirmedOnly ? 'primary' : 'secondary'}
+              className="w-full sm:w-auto"
+              onClick={() => setConfirmedOnly((v) => !v)}
+            >
+              Confirmed by me
             </AppButton>
+          </div>
+          {hasActiveRefinements ? (
+            <div className="space-y-1.5 sm:col-span-2 lg:col-span-1">
+              <span className={uiCx(uiTypography.overline, 'invisible block select-none')} aria-hidden>
+                Actions
+              </span>
+              <AppButton type="button" size="sm" variant="ghost" className="w-full sm:w-auto" onClick={clearRefinements}>
+                Clear filters
+              </AppButton>
+            </div>
           ) : null}
         </div>
       </div>

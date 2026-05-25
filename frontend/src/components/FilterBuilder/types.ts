@@ -1,5 +1,7 @@
 // Filter Builder Types - Shared across all pages
 
+import type { AppUserSelectUser } from '@/components/ui';
+
 export type FilterOperator = 
   | 'is' 
   | 'is_not' 
@@ -14,17 +16,19 @@ export type FilterOperator =
 export type FilterRule = {
   id: string;
   field: string; // Field identifier (e.g., 'status', 'client_id', 'city')
-  operator: FilterOperator;
+  operator: FilterOperator | '';
   value: string | [string, string];
 };
 
 export type FieldConfig = {
   id: string;
   label: string;
-  type: 'select' | 'date' | 'number' | 'text';
+  type: 'select' | 'date' | 'number' | 'text' | 'user';
   operators: FilterOperator[];
   getOptions?: () => Array<{ value: string; label: string }>;
   getGroupedOptions?: () => Array<{ label: string; options: Array<{ value: string; label: string }> }>; // For optgroup support
+  /** User picker with avatars (design-system AppUserSelect / Assign to user). */
+  getUsers?: () => AppUserSelectUser[];
   getValueLabel?: (value: string) => string;
 };
 

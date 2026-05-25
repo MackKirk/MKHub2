@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
 import { api, withFileAccessToken } from '@/lib/api';
+import { sortByLabel } from '@/lib/sortOptions';
 import OverlayPortal from '@/components/OverlayPortal';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { FileText } from 'lucide-react';
@@ -16,9 +17,9 @@ import {
   AppControlLabelRow,
   AppFieldHint,
   AppFormModal,
+  AppSelect,
   AppModal,
   AppPageHeader,
-  AppSelect,
   AppProjectSelect,
   AppUserSelect,
   AppTabs,
@@ -1039,7 +1040,7 @@ function CreateRequestModal({
   const [description, setDescription] = useState('');
   const [projectId, setProjectId] = useState('');
   const [dueDate, setDueDate] = useState('');
-  const [priority, setPriority] = useState('normal');
+  const [priority, setPriority] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const { data: settings } = useQuery({
@@ -1047,6 +1048,15 @@ function CreateRequestModal({
     queryFn: () => api<any>('GET', '/settings'),
   });
   const divisions: DivisionOption[] = (settings?.divisions || []) as DivisionOption[];
+
+  const divisionSelectOptions = useMemo(
+    () =>
+      sortByLabel(
+        divisions.map((division) => ({ value: division.id, label: division.label })),
+        (o) => o.label,
+      ),
+    [divisions],
+  );
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -1060,6 +1070,10 @@ function CreateRequestModal({
     }
     if (targetType === 'division' && !targetDivisionId) {
       toast.error('Select a division');
+      return;
+    }
+    if (!priority) {
+      toast.error('Select a priority');
       return;
     }
     setIsSubmitting(true);
@@ -1155,11 +1169,13 @@ function CreateRequestModal({
             </div>
           </div>
           <AppSelect
-            label="Priority"
+            id="create-request-priority"
+            label="Priority *"
             value={priority}
             onChange={(e) => setPriority(e.target.value)}
             options={priorityOptions}
-            fieldHint="Priority\n\nHow urgent this request is for the recipient."
+            placeholder="Select priority…"
+            fieldHint="Priority\n\nHow urgent this request is for the recipient. Required before submitting."
           />
         </div>
 
@@ -1175,12 +1191,13 @@ function CreateRequestModal({
           />
         ) : (
           <AppSelect
+            id="create-request-division"
             label="Select division *"
             value={targetDivisionId}
             onChange={(e) => setTargetDivisionId(e.target.value)}
-            placeholder="Choose division..."
+            options={divisionSelectOptions}
+            placeholder="Select division…"
             fieldHint="Select division\n\nEveryone in this division will see the request until someone accepts it."
-            options={divisions.map((division) => ({ value: division.id, label: division.label }))}
           />
         )}
 

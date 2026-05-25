@@ -2,7 +2,21 @@ import { useState, useEffect, useCallback } from 'react';
 import { api } from '@/lib/api';
 import toast from 'react-hot-toast';
 import ImagePicker from '@/components/ImagePicker';
-import OverlayPortal from '@/components/OverlayPortal';
+import {
+  AppButton,
+  AppControlLabelRow,
+  AppFieldHint,
+  AppFormModal,
+  AppInput,
+  AppSelect,
+  uiBorders,
+  uiCx,
+  uiLayout,
+  uiRadius,
+  uiSpacing,
+  uiModalLayer,
+  uiTypography,
+} from '@/components/ui';
 
 type Props = {
   open: boolean;
@@ -15,6 +29,42 @@ type Props = {
   stackOnTop?: boolean;
 };
 
+function formatPhone(v: string) {
+  const d = String(v || '')
+    .replace(/\D+/g, '')
+    .slice(0, 11);
+  if (d.length <= 3) return d;
+  if (d.length <= 6) return `(${d.slice(0, 3)}) ${d.slice(3)}`;
+  if (d.length <= 10) return `(${d.slice(0, 3)}) ${d.slice(3, 6)}-${d.slice(6)}`;
+  return `+${d.slice(0, 1)} (${d.slice(1, 4)}) ${d.slice(4, 7)}-${d.slice(7, 11)}`;
+}
+
+async function uploadContactPhoto(clientId: string, contactId: string, blob: Blob) {
+  const up: any = await api('POST', '/files/upload', {
+    project_id: null,
+    client_id: clientId,
+    employee_id: null,
+    category_id: 'contact-photo',
+    original_name: `contact-${contactId}.jpg`,
+    content_type: 'image/jpeg',
+  });
+  await fetch(up.upload_url, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'image/jpeg', 'x-ms-blob-type': 'BlockBlob' },
+    body: blob,
+  });
+  const conf: any = await api('POST', '/files/confirm', {
+    key: up.key,
+    size_bytes: blob.size,
+    checksum_sha256: 'na',
+    content_type: 'image/jpeg',
+  });
+  await api(
+    'POST',
+    `/clients/${clientId}/files?file_object_id=${encodeURIComponent(conf.id)}&category=${encodeURIComponent('contact-photo-' + contactId)}&original_name=${encodeURIComponent('contact-' + contactId + '.jpg')}`,
+  );
+}
+
 export default function NewContactModal({
   open,
   onClose,
@@ -26,280 +76,200 @@ export default function NewContactModal({
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [phone, setPhone] = useState('');
-  const [primary, setPrimary] = useState('false');
+  const [primary, setPrimary] = useState<'true' | 'false'>('false');
   const [role, setRole] = useState('');
   const [dept, setDept] = useState('');
-  const [pickerForContact, setPickerForContact] = useState<string | null>(null);
+  const [photoBlob, setPhotoBlob] = useState<Blob | null>(null);
+  const [photoPreview, setPhotoPreview] = useState('');
+  const [pickerOpen, setPickerOpen] = useState(false);
   const [isCreatingContact, setIsCreatingContact] = useState(false);
-  const [nameError, setNameError] = useState(false);
 
   const handleClose = useCallback(() => {
     setIsCreatingContact(false);
-    setNameError(false);
     onClose();
   }, [onClose]);
 
   useEffect(() => {
     if (!open) return;
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
-        handleClose();
-      }
-    };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [open, handleClose]);
-
-  useEffect(() => {
-    if (open) {
-      setName('');
-      setEmail('');
-      setPhone('');
-      setPrimary('false');
-      setRole('');
-      setDept('');
-      setNameError(false);
-      setPickerForContact(null);
-    }
+    setName('');
+    setEmail('');
+    setPhone('');
+    setPrimary('false');
+    setRole('');
+    setDept('');
+    setPhotoBlob(null);
+    setPhotoPreview('');
+    setPickerOpen(false);
   }, [open, clientId]);
 
-  const formatPhone = (v: string) => {
-    const d = String(v || '')
-      .replace(/\D+/g, '')
-      .slice(0, 11);
-    if (d.length <= 3) return d;
-    if (d.length <= 6) return `(${d.slice(0, 3)}) ${d.slice(3)}`;
-    if (d.length <= 10) return `(${d.slice(0, 3)}) ${d.slice(3, 6)}-${d.slice(6)}`;
-    return `+${d.slice(0, 1)} (${d.slice(1, 4)}) ${d.slice(4, 7)}-${d.slice(7, 11)}`;
+  const title = clientDisplayName?.trim()
+    ? `New contact — ${clientDisplayName.trim()}`
+    : 'New contact';
+
+  const handleCreate = async () => {
+    if (isCreatingContact) return;
+    if (!name.trim()) {
+      toast.error('Name is required');
+      return;
+    }
+    try {
+      setIsCreatingContact(true);
+      const created = await api<{ id: string; name?: string }>('POST', `/clients/${clientId}/contacts`, {
+        name: name.trim(),
+        email,
+        phone,
+        role_title: role,
+        department: dept,
+        is_primary: primary === 'true',
+      });
+      if (photoBlob && created?.id) {
+        try {
+          await uploadContactPhoto(clientId, String(created.id), photoBlob);
+        } catch {
+          toast.error('Contact created, but photo upload failed');
+        }
+      }
+      toast.success('Contact created');
+      onCreated?.({ id: String(created.id), name: created.name });
+      handleClose();
+    } catch {
+      toast.error('Failed to create contact');
+    } finally {
+      setIsCreatingContact(false);
+    }
   };
 
-  const zBase = stackOnTop ? 'z-[200]' : 'z-50';
-
-  if (!open || !clientId) return null;
+  if (!clientId) return null;
 
   return (
     <>
-      <OverlayPortal>
-        <div
-          className={`fixed inset-0 ${zBase} bg-black/50 flex items-center justify-center overflow-y-auto p-4`}
-          role="presentation"
-          onClick={handleClose}
-        >
-          <div
-            className="w-[900px] max-w-[95vw] max-h-[90vh] bg-gray-100 rounded-xl overflow-hidden flex flex-col border border-gray-200 shadow-xl"
-            role="dialog"
-            aria-labelledby="new-contact-modal-title"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="rounded-t-xl border-b border-gray-200 bg-white p-4 flex-shrink-0">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <button
-                    type="button"
-                    onClick={handleClose}
-                    className="p-1.5 rounded hover:bg-gray-100 transition-colors flex items-center justify-center"
-                    title="Close"
-                  >
-                    <svg className="w-4 h-4 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
-                    </svg>
-                  </button>
-                  <div>
-                    <div id="new-contact-modal-title" className="text-sm font-semibold text-gray-900">
-                      {clientDisplayName?.trim()
-                        ? `New contact — ${clientDisplayName.trim()}`
-                        : 'New contact'}
-                    </div>
-                    <div className="text-xs text-gray-500 mt-0.5">Name, role and contact details</div>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <div className="overflow-y-auto flex-1 p-4">
-              <div className="rounded-xl border bg-white p-4 grid md:grid-cols-5 gap-4 items-start">
-                <div className="md:col-span-2">
-                  <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">
-                    Contact photo <span className="opacity-60">(optional)</span>
-                  </label>
-                  <button
-                    type="button"
-                    onClick={() => setPickerForContact('__new__')}
-                    className="w-full h-40 border border-gray-200 rounded-lg grid place-items-center bg-gray-50 hover:bg-gray-100 text-sm text-gray-600"
-                  >
-                    Select photo
-                  </button>
-                </div>
-                <div className="md:col-span-3 grid grid-cols-2 gap-4">
-                  <div className="col-span-2">
-                    <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">
-                      Name <span className="text-red-600">*</span>
-                    </label>
-                    <input
-                      className={`w-full border rounded-lg px-3 py-2 text-sm ${
-                        nameError && !name.trim()
-                          ? 'border-red-500 focus:ring-red-500'
-                          : 'border-gray-200 focus:ring-gray-300 focus:border-gray-300'
-                      }`}
-                      value={name}
-                      onChange={(e) => {
-                        setName(e.target.value);
-                        if (nameError) setNameError(false);
-                      }}
-                    />
-                    {nameError && !name.trim() && (
-                      <div className="text-[11px] text-red-600 mt-1">This field is required</div>
-                    )}
-                  </div>
-                  <div>
-                    <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">
-                      Role/title
-                    </label>
-                    <input
-                      className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"
-                      value={role}
-                      onChange={(e) => setRole(e.target.value)}
-                    />
-                  </div>
-                  <div>
-                    <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">
-                      Department
-                    </label>
-                    <input
-                      className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"
-                      value={dept}
-                      onChange={(e) => setDept(e.target.value)}
-                    />
-                  </div>
-                  <div>
-                    <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">
-                      Email
-                    </label>
-                    <input
-                      className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"
-                      value={email}
-                      onChange={(e) => setEmail(e.target.value)}
-                    />
-                  </div>
-                  <div>
-                    <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">
-                      Phone
-                    </label>
-                    <input
-                      className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"
-                      value={phone}
-                      onChange={(e) => setPhone(formatPhone(e.target.value))}
-                    />
-                  </div>
-                  <div>
-                    <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide block mb-1">
-                      Primary
-                    </label>
-                    <select
-                      className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"
-                      value={primary}
-                      onChange={(e) => setPrimary(e.target.value)}
-                    >
-                      <option value="false">No</option>
-                      <option value="true">Yes</option>
-                    </select>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <div className="flex-shrink-0 px-4 py-4 border-t border-gray-200 bg-white flex items-center justify-end gap-3 rounded-b-xl">
-              <button
-                type="button"
-                onClick={handleClose}
-                className="px-3 py-1.5 rounded-lg text-sm font-medium border border-gray-200 hover:bg-gray-50 text-gray-700"
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                onClick={async () => {
-                  if (isCreatingContact) return;
-                  if (!name.trim()) {
-                    setNameError(true);
-                    toast.error('Name is required');
-                    return;
-                  }
-                  try {
-                    setIsCreatingContact(true);
-                    const payload: Record<string, unknown> = {
-                      name,
-                      email,
-                      phone,
-                      role_title: role,
-                      department: dept,
-                      is_primary: primary === 'true',
-                    };
-                    const created = await api<{
-                      id: string;
-                      name?: string;
-                    }>('POST', `/clients/${clientId}/contacts`, payload);
-                    setIsCreatingContact(false);
-                    toast.success('Contact created');
-                    onCreated?.({ id: String(created.id), name: created.name });
-                    handleClose();
-                  } catch {
-                    toast.error('Failed to create contact');
-                    setIsCreatingContact(false);
-                  }
-                }}
-                disabled={isCreatingContact}
-                className="px-4 py-2 rounded-lg text-sm font-semibold bg-brand-red text-white hover:bg-[#c41e1e] disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                {isCreatingContact ? 'Creating…' : 'Create'}
-              </button>
-            </div>
+      <AppFormModal
+        open={open}
+        onClose={handleClose}
+        title={title}
+        description="Name, role, and contact details"
+        overlayClassName={stackOnTop ? 'z-[200]' : undefined}
+        quickInfo={
+          <>
+            <p>Add a contact for this customer. Name is required.</p>
+            <p>Mark one contact as primary for default communication.</p>
+            <p>Photo is optional and can be added before saving.</p>
+          </>
+        }
+        footer={
+          <div className={uiCx(uiLayout.actionsRow, 'w-full justify-end')}>
+            <AppButton
+              type="button"
+              variant="secondary"
+              size="sm"
+              onClick={handleClose}
+              disabled={isCreatingContact}
+            >
+              Cancel
+            </AppButton>
+            <AppButton
+              type="button"
+              size="sm"
+              disabled={isCreatingContact}
+              loading={isCreatingContact}
+              onClick={handleCreate}
+            >
+              {isCreatingContact ? 'Creating…' : 'Create'}
+            </AppButton>
+          </div>
+        }
+      >
+        <div className="grid items-start gap-3 md:grid-cols-5">
+          <div className="space-y-1.5 md:col-span-2">
+            <AppControlLabelRow
+              label="Contact photo"
+              fieldHint={<AppFieldHint hint="Contact photo\n\nOptional profile image for this contact." />}
+            />
+            <button
+              type="button"
+              onClick={() => setPickerOpen(true)}
+              disabled={isCreatingContact}
+              className={uiCx(
+                'relative grid h-40 w-full place-items-center overflow-hidden bg-gray-50',
+                uiRadius.control,
+                uiBorders.input,
+                isCreatingContact && 'cursor-not-allowed opacity-60',
+              )}
+            >
+              {photoPreview ? (
+                <img src={photoPreview} className="h-full w-full object-cover" alt="Contact preview" />
+              ) : (
+                <span className={uiTypography.helper}>Select photo</span>
+              )}
+            </button>
+          </div>
+          <div className="grid grid-cols-2 gap-3 md:col-span-3">
+            <AppInput
+              className="col-span-2"
+              label="Name *"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              disabled={isCreatingContact}
+              fieldHint="Name\n\nFull name shown in contact lists."
+            />
+            <AppInput
+              label="Role/title"
+              value={role}
+              onChange={(e) => setRole(e.target.value)}
+              disabled={isCreatingContact}
+              fieldHint="Role/title\n\nJob title or role at the company."
+            />
+            <AppInput
+              label="Department"
+              value={dept}
+              onChange={(e) => setDept(e.target.value)}
+              disabled={isCreatingContact}
+              fieldHint="Department\n\nDepartment or team (optional)."
+            />
+            <AppInput
+              label="Email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              disabled={isCreatingContact}
+              fieldHint="Email\n\nWork email for this contact."
+            />
+            <AppInput
+              label="Phone"
+              value={phone}
+              onChange={(e) => setPhone(formatPhone(e.target.value))}
+              disabled={isCreatingContact}
+              fieldHint="Phone\n\nDirect phone number for this contact."
+            />
+            <AppSelect
+              label="Primary"
+              value={primary}
+              onChange={(e) => setPrimary(e.target.value as 'true' | 'false')}
+              options={[
+                { value: 'false', label: 'No' },
+                { value: 'true', label: 'Yes' },
+              ]}
+              disabled={isCreatingContact}
+              fieldHint="Primary\n\nPrimary contact receives default communication for this customer."
+            />
           </div>
         </div>
-      </OverlayPortal>
+      </AppFormModal>
 
-      {pickerForContact && (
+      {pickerOpen && (
         <ImagePicker
           isOpen
-          onClose={() => setPickerForContact(null)}
+          onClose={() => setPickerOpen(false)}
           clientId={String(clientId)}
           targetWidth={400}
           targetHeight={400}
           allowEdit
+          overlayClassName={uiModalLayer.nestedPicker}
           onConfirm={async (blob) => {
             try {
-              if (pickerForContact === '__new__') {
-                // No contact id yet; add a photo after the contact is created from the customer page if needed.
-              } else if (pickerForContact) {
-                const up: any = await api('POST', '/files/upload', {
-                  project_id: null,
-                  client_id: clientId,
-                  employee_id: null,
-                  category_id: 'contact-photo',
-                  original_name: `contact-${pickerForContact}.jpg`,
-                  content_type: 'image/jpeg',
-                });
-                await fetch(up.upload_url, {
-                  method: 'PUT',
-                  headers: { 'Content-Type': 'image/jpeg', 'x-ms-blob-type': 'BlockBlob' },
-                  body: blob,
-                });
-                const conf: any = await api('POST', '/files/confirm', {
-                  key: up.key,
-                  size_bytes: blob.size,
-                  checksum_sha256: 'na',
-                  content_type: 'image/jpeg',
-                });
-                await api(
-                  'POST',
-                  `/clients/${clientId}/files?file_object_id=${encodeURIComponent(conf.id)}&category=${encodeURIComponent('contact-photo-' + pickerForContact)}&original_name=${encodeURIComponent('contact-' + pickerForContact + '.jpg')}`
-                );
-                toast.success('Contact photo updated');
-              }
-            } catch {
-              toast.error('Failed to update contact photo');
+              setPhotoBlob(blob);
+              setPhotoPreview(URL.createObjectURL(blob));
             } finally {
-              setPickerForContact(null);
+              setPickerOpen(false);
             }
           }}
         />

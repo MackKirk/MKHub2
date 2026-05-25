@@ -12,6 +12,7 @@ import { ReportAttachmentAreaMultiple } from '@/components/ReportAttachmentArea'
 import FilterBuilderModal from '@/components/FilterBuilder/FilterBuilderModal';
 import FilterChip from '@/components/FilterBuilder/FilterChip';
 import { FilterRule, FieldConfig, FilterOperator } from '@/components/FilterBuilder/types';
+import { mapEmployeeToAppUserSelect } from '@/lib/clientUi';
 import { useBusinessLine } from '@/context/BusinessLineContext';
 import { BUSINESS_LINE_REPAIRS_MAINTENANCE, filterProjectDivisionsForBusinessLine } from '@/lib/businessLine';
 import {
@@ -20,8 +21,8 @@ import {
   convertRulesToParams,
   isRelatedToMeParamActive,
   OPPORTUNITY_FIELD_LABELS,
+  resolveOpportunityQuickStatusFilters,
   setRelatedToMeParam,
-  statusIdByLabel,
 } from '@/lib/opportunityFilters';
 import { getProjectStatusBadgeVariant } from '@/lib/projectUi';
 import { filterStatusesForOpportunity } from '@/lib/projectStatusVisibility';
@@ -297,13 +298,9 @@ export default function Opportunities({ listKind = 'opportunity' }: { listKind?:
     return hasRuleFilters || isRelatedToMeParamActive(searchParams);
   }, [hasRuleFilters, searchParams]);
 
-  const quickStatusIds = useMemo(
-    () => ({
-      prospecting: statusIdByLabel(projectStatuses, 'prospecting'),
-      refused: statusIdByLabel(projectStatuses, 'refused'),
-      sentToCustomer: statusIdByLabel(projectStatuses, 'sent to customer'),
-    }),
-    [projectStatuses]
+  const opportunityQuickStatusFilters = useMemo(
+    () => resolveOpportunityQuickStatusFilters(projectStatuses),
+    [projectStatuses],
   );
 
   const toggleStatusQuickFilter = (statusId: string | undefined) => {
@@ -339,32 +336,16 @@ export default function Opportunities({ listKind = 'opportunity' }: { listKind?:
         },
       },
     ];
-    if (quickStatusIds.prospecting) {
+    for (const filter of opportunityQuickStatusFilters) {
       segments.push({
-        key: 'prospecting',
-        label: 'Prospecting',
-        active: searchParams.get('status') === quickStatusIds.prospecting,
-        onClick: () => toggleStatusQuickFilter(quickStatusIds.prospecting),
-      });
-    }
-    if (quickStatusIds.refused) {
-      segments.push({
-        key: 'refused',
-        label: 'Refused',
-        active: searchParams.get('status') === quickStatusIds.refused,
-        onClick: () => toggleStatusQuickFilter(quickStatusIds.refused),
-      });
-    }
-    if (quickStatusIds.sentToCustomer) {
-      segments.push({
-        key: 'sent_to_customer',
-        label: 'Sent to Customer',
-        active: searchParams.get('status') === quickStatusIds.sentToCustomer,
-        onClick: () => toggleStatusQuickFilter(quickStatusIds.sentToCustomer),
+        key: filter.key,
+        label: filter.label,
+        active: searchParams.get('status') === filter.statusId,
+        onClick: () => toggleStatusQuickFilter(filter.statusId),
       });
     }
     return segments;
-  }, [searchParams, quickStatusIds, setSearchParams]);
+  }, [searchParams, opportunityQuickStatusFilters, setSearchParams]);
 
   const quickFilterCountBaseParams = useMemo(
     () =>
@@ -387,23 +368,13 @@ export default function Opportunities({ listKind = 'opportunity' }: { listKind?:
         })(),
       },
     ];
-    if (quickStatusIds.prospecting) {
+    for (const filter of opportunityQuickStatusFilters) {
       const p = new URLSearchParams(quickFilterCountBaseParams);
-      p.set('status', quickStatusIds.prospecting);
-      targets.push({ key: 'prospecting', qs: p.toString() });
-    }
-    if (quickStatusIds.refused) {
-      const p = new URLSearchParams(quickFilterCountBaseParams);
-      p.set('status', quickStatusIds.refused);
-      targets.push({ key: 'refused', qs: p.toString() });
-    }
-    if (quickStatusIds.sentToCustomer) {
-      const p = new URLSearchParams(quickFilterCountBaseParams);
-      p.set('status', quickStatusIds.sentToCustomer);
-      targets.push({ key: 'sent_to_customer', qs: p.toString() });
+      p.set('status', filter.statusId);
+      targets.push({ key: filter.key, qs: p.toString() });
     }
     return targets;
-  }, [quickFilterCountBaseParams, quickStatusIds]);
+  }, [quickFilterCountBaseParams, opportunityQuickStatusFilters]);
 
   const quickFilterCountQueries = useQueries({
     queries: quickFilterCountTargets.map((target) => ({
@@ -456,17 +427,6 @@ export default function Opportunities({ listKind = 'opportunity' }: { listKind?:
         label: (c.display_name || c.name || c.code || c.id) as string,
       }));
 
-    const estimatorOptions = [...employeesInEstimatingDept]
-      .sort((a: { name?: string; username?: string }, b) => {
-        const labelA = (a.name || a.username || '').toString();
-        const labelB = (b.name || b.username || '').toString();
-        return labelA.localeCompare(labelB, undefined, { sensitivity: 'base' });
-      })
-      .map((e) => ({
-        value: String(e.id),
-        label: (e.name || e.username || e.id) as string,
-      }));
-
     return [
       {
         id: 'status',
@@ -492,9 +452,9 @@ export default function Opportunities({ listKind = 'opportunity' }: { listKind?:
       {
         id: 'estimator',
         label: 'Estimator',
-        type: 'select' as const,
+        type: 'user' as const,
         operators: ['is', 'is_not'] as FilterOperator[],
-        getOptions: () => estimatorOptions,
+        getUsers: () => employeesInEstimatingDept.map((e: any) => mapEmployeeToAppUserSelect(e)),
       },
       {
         id: 'start_date',
@@ -551,7 +511,7 @@ export default function Opportunities({ listKind = 'opportunity' }: { listKind?:
     }
     if (rule.field === 'estimator') {
       const employee = employeesInEstimatingDept.find((e: any) => String(e.id) === rule.value);
-      return employee?.name || employee?.username || String(rule.value);
+      return employee ? getUserDisplayName(mapEmployeeToAppUserSelect(employee)) : String(rule.value);
     }
     if (rule.field === 'value') {
       return `$${rule.value}`;

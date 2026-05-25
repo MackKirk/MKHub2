@@ -7,9 +7,9 @@ import {
   AppControlLabelRow,
   AppFieldHint,
   AppFormModal,
+  AppSelect,
   AppInput,
   AppMultiSelect,
-  AppSelect,
   AppTextarea,
   AppUserSelect,
   uiCx,
@@ -45,8 +45,8 @@ export default function CreateTaskModal({ open, onClose, onCreated }: Props) {
   const queryClient = useQueryClient();
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
-  const [status, setStatus] = useState<TaskStatus>('accepted');
-  const [priority, setPriority] = useState('normal');
+  const [status, setStatus] = useState<TaskStatus | ''>('');
+  const [priority, setPriority] = useState('');
   const [assignType, setAssignType] = useState<'user' | 'division'>('user');
   const [selectedUserIds, setSelectedUserIds] = useState<string[]>([]);
   const [selectedDivisionIds, setSelectedDivisionIds] = useState<string[]>([]);
@@ -86,8 +86,8 @@ export default function CreateTaskModal({ open, onClose, onCreated }: Props) {
       queryClient.invalidateQueries({ queryKey: ['tasks'] });
       setTitle('');
       setDescription('');
-      setStatus('accepted');
-      setPriority('normal');
+      setStatus('');
+      setPriority('');
       setSelectedUserIds([]);
       setSelectedDivisionIds([]);
       setAssignType('user');
@@ -96,7 +96,24 @@ export default function CreateTaskModal({ open, onClose, onCreated }: Props) {
     onError: (err: any) => toast.error(err.message || 'Failed to create task'),
   });
 
-  const canSubmit = title.trim().length > 0 && !createMutation.isPending;
+  const handleCreate = () => {
+    if (!title.trim()) {
+      toast.error('Title is required');
+      return;
+    }
+    if (!status) {
+      toast.error('Select a status');
+      return;
+    }
+    if (!priority) {
+      toast.error('Select a priority');
+      return;
+    }
+    createMutation.mutate();
+  };
+
+  const canSubmit =
+    title.trim().length > 0 && !!status && !!priority && !createMutation.isPending;
 
   return (
     <AppFormModal
@@ -121,7 +138,7 @@ export default function CreateTaskModal({ open, onClose, onCreated }: Props) {
             type="button"
             disabled={!canSubmit}
             loading={createMutation.isPending}
-            onClick={() => createMutation.mutate()}
+            onClick={handleCreate}
           >
             {createMutation.isPending ? 'Creating…' : 'Create task'}
           </AppButton>
@@ -131,20 +148,24 @@ export default function CreateTaskModal({ open, onClose, onCreated }: Props) {
       <div className={uiCx(uiSpacing.sectionStack, 'space-y-4')}>
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <AppSelect
-            label="Status"
+            id="create-task-status"
+            label="Status *"
             value={status}
             onChange={(e) => setStatus(e.target.value as TaskStatus)}
             options={statusOptions}
+            placeholder="Select status…"
             disabled={createMutation.isPending}
-            fieldHint="Status\n\nWhere this task sits in your workflow (to do, in progress, blocked, or done)."
+            fieldHint="Status\n\nWhere this task sits in your workflow (to do, in progress, blocked, or done). Required before submitting."
           />
           <AppSelect
-            label="Priority"
+            id="create-task-priority"
+            label="Priority *"
             value={priority}
             onChange={(e) => setPriority(e.target.value)}
             options={priorityOptions}
+            placeholder="Select priority…"
             disabled={createMutation.isPending}
-            fieldHint="Priority\n\nHow urgent this task is relative to others in your queue."
+            fieldHint="Priority\n\nHow urgent this task is relative to others in your queue. Required before submitting."
           />
         </div>
 

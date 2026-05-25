@@ -14,6 +14,8 @@ import {
   AppControlLabelRow,
   AppFieldHint,
   AppFormModal,
+  FORM_MODAL_WIDE_DIALOG_COLLAPSED,
+  FORM_MODAL_WIDE_DIALOG_EXPANDED,
   AppInput,
   AppSectionHeader,
   AppSelect,
@@ -146,10 +148,14 @@ export default function ProjectNew(){
 
   const siteSelectOptions = useMemo(
     () =>
-      sortByLabel(sites || [], (s) => (s.site_name || s.site_address_line1 || String(s.id)).toString()).map((s) => ({
-        value: String(s.id),
-        label: (s.site_name || s.site_address_line1 || String(s.id)).toString(),
-      })),
+      sortByLabel(sites || [], (s) => (s.site_name || s.site_address_line1 || String(s.id)).toString()).map((s) => {
+        const label = (s.site_name || s.site_address_line1 || String(s.id)).toString();
+        const address = [s.site_address_line1, s.site_city, s.site_province].filter(Boolean).join(', ');
+        return {
+          value: String(s.id),
+          label: address && address !== label ? `${label} — ${address}` : label,
+        };
+      }),
     [sites],
   );
 
@@ -351,8 +357,8 @@ export default function ProjectNew(){
         open
         onClose={() => nav(-1)}
         formWidth="wide"
-        dialogClassName="!max-w-[720px]"
-        dialogClassNameExpanded="!max-w-[calc(720px+1rem+16rem+2rem)]"
+        dialogClassName={FORM_MODAL_WIDE_DIALOG_COLLAPSED}
+        dialogClassNameExpanded={FORM_MODAL_WIDE_DIALOG_EXPANDED}
         title={modalTitle}
         description={stepSubtitle}
         headerExtra={stepIndicators}
@@ -406,9 +412,8 @@ export default function ProjectNew(){
                         label="Customer contact"
                         value={contactId}
                         onChange={(e) => setContactId(e.target.value)}
-                        options={[{ value: '', label: 'Select contact…' }, ...contactSelectOptions]}
-                        searchable
-                        placeholder="Search or select contact…"
+                        options={contactSelectOptions}
+                        placeholder="Select contact…"
                         fieldHint="Customer contact\n\nPrimary contact at the customer for this record."
                       />
                     </div>
@@ -471,12 +476,12 @@ export default function ProjectNew(){
                 </div>
                 {!createSite ? (
                   <AppSelect
+                    id="project-new-site"
                     label="Site *"
                     value={siteId}
                     onChange={(e) => setSiteId(e.target.value)}
-                    options={[{ value: '', label: 'Select site…' }, ...siteSelectOptions]}
-                    searchable
-                    placeholder="Search or select site…"
+                    options={siteSelectOptions}
+                    placeholder="Select site…"
                     fieldHint="Site\n\nJob location for this record."
                   />
                 ) : (

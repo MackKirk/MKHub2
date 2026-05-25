@@ -185,6 +185,22 @@ export const uiDatePicker = {
   monthCellActive: 'bg-brand-red/10 font-medium ring-1 ring-inset ring-brand-red/35',
 } as const;
 
+/** Stacked modals (e.g. picker opened from a form modal on z-[200]). */
+export const uiModalLayer = {
+  default: 'z-50',
+  stacked: 'z-[200]',
+  nestedPicker: 'z-[210]',
+  nestedPickerBusy: 'z-[220]',
+  nestedEditor: 'z-[215]',
+} as const;
+
+/** Field-label “?” help tooltips (AppFieldHint). Above modal overlays and dropdown menus. */
+export const uiFieldHint = {
+  shell: uiCx(
+    'pointer-events-none fixed z-[100060] rounded-lg border border-slate-200/90 bg-white px-3 py-2 text-left shadow-xl ring-1 ring-slate-900/5',
+  ),
+} as const;
+
 /** Dark label tooltip (Opportunities list / filter chips). Portaled via AppTooltip. */
 export const uiTooltip = {
   /** Viewport-anchored shell only — do not add `relative` here (breaks `fixed`). */
