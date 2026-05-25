@@ -165,7 +165,7 @@ def require_permissions(*required_permissions: str):
 
     def _dep(user: User = Depends(get_current_user)):
         # Admin role bypass
-        if any((getattr(r, 'name', None) or '').lower() == 'admin' for r in user.roles):
+        if _user_is_admin(user):
             return user
 
         # Check if user has at least one of the required permissions
@@ -215,12 +215,29 @@ def is_granted_perm_value(value: Any) -> bool:
     return False
 
 
+def _legacy_project_sub_feature_key(key: str) -> bool:
+    """Legacy business:projects:<feature>:* — UI uses line-scoped keys; omit from /me."""
+    if not key.startswith("business:projects:"):
+        return False
+    if key in (
+        "business:projects:read",
+        "business:projects:write",
+        "business:projects:members:write",
+    ):
+        return False
+    if ":categories:" in key:
+        return False
+    return True
+
+
 def granted_permission_keys_from_map(perm_map: dict) -> List[str]:
     """Keys granted for /auth/me and frontend permission sets."""
     config_keys = _permission_config_keys()
     granted: List[str] = []
     for key, value in (perm_map or {}).items():
         if key in config_keys:
+            continue
+        if _legacy_project_sub_feature_key(key):
             continue
         if is_granted_perm_value(value):
             granted.append(key)
@@ -321,9 +338,13 @@ def _perm_matches_map(perm_map: dict, perm: str) -> bool:
     return False
 
 
+def _user_is_admin(user: User) -> bool:
+    return any((getattr(r, "name", None) or "").lower() == "admin" for r in user.roles)
+
+
 def _has_permission(user: User, perm: str) -> bool:
     # Admin role bypass
-    if any((getattr(r, 'name', None) or '').lower() == 'admin' for r in user.roles):
+    if _user_is_admin(user):
         return True
     
     perm_map = _get_user_permission_map(user)
@@ -380,7 +401,7 @@ def _has_permission(user: User, perm: str) -> bool:
 
 def can_access_business_line(user: User, line: Optional[str]) -> bool:
     """Whether user may view resources for this business line (Construction vs R&M)."""
-    if any((getattr(r, "name", None) or "").lower() == "admin" for r in user.roles):
+    if _user_is_admin(user):
         return True
     pm = _get_user_permission_map(user)
     return _line_has_any_project_access(pm, line)
@@ -388,7 +409,7 @@ def can_access_business_line(user: User, line: Optional[str]) -> bool:
 
 def can_write_business_line(user: User, line: Optional[str]) -> bool:
     """Whether user may create/update/delete resources for this business line."""
-    if any((getattr(r, "name", None) or "").lower() == "admin" for r in user.roles):
+    if _user_is_admin(user):
         return True
     pm = _get_user_permission_map(user)
     return _line_has_project_write(pm, line)
@@ -505,6 +526,25 @@ def assert_customer_tab(
         raise HTTPException(status_code=403, detail="Forbidden")
 
 
+def assert_project_workload_permission(
+    user: User,
+    project: Any,
+    action: Literal["read", "write"],
+    db: Optional[Any] = None,
+) -> None:
+    """Project > Workload tab: line-scoped read/write (admin bypasses)."""
+    if db is not None:
+        from ..services.project_visibility import is_project_visible_to_user
+
+        if not is_project_visible_to_user(db, user, project):
+            raise HTTPException(status_code=403, detail="Forbidden")
+    line = getattr(project, "business_line", None)
+    if not can_access_business_line(user, line):
+        raise HTTPException(status_code=403, detail="Forbidden")
+    if not _has_project_feature_permission(user, line, "workload", action):
+        raise HTTPException(status_code=403, detail="Forbidden")
+
+
 def _has_project_feature_permission(
     user: User,
     line: Optional[str],
@@ -512,6 +552,8 @@ def _has_project_feature_permission(
     action: Literal["read", "write"],
 ) -> bool:
     """Line-scoped feature permission (no legacy business:projects:* fallback)."""
+    if _user_is_admin(user):
+        return True
     prefix = _project_line_perm_prefix(line)
     read_k = f"{prefix}:{feature}:read"
     write_k = f"{prefix}:{feature}:write"
@@ -527,13 +569,10 @@ def _project_category_allow_list(
     action: Literal["read", "write"],
 ):
     prefix = _project_line_perm_prefix(line)
-    for cfg_key in (
-        f"{prefix}:{feature}:categories:{action}",
-        f"business:projects:{feature}:categories:{action}",
-    ):
-        allow_list = perm_map.get(cfg_key, None)
-        if isinstance(allow_list, list):
-            return allow_list
+    cfg_key = f"{prefix}:{feature}:categories:{action}"
+    allow_list = perm_map.get(cfg_key, None)
+    if isinstance(allow_list, list):
+        return allow_list
     return None
 
 
@@ -555,6 +594,8 @@ def has_project_files_category_permission(
     - Uncategorized files use `None` category; we treat it as "uncategorized" when comparing.
     - If `project` is passed, business-line access is checked.
     """
+    if _user_is_admin(user):
+        return True
     line = getattr(project, "business_line", None) if project is not None else None
     if project is not None and not can_access_business_line(user, line):
         return False
@@ -598,6 +639,8 @@ def has_project_reports_category_permission(
     - write: business:projects:reports:write
     - Missing allow-list config => all categories allowed (default).
     """
+    if _user_is_admin(user):
+        return True
     line = getattr(project, "business_line", None) if project is not None else None
     if project is not None and not can_access_business_line(user, line):
         return False

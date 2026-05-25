@@ -1,6 +1,7 @@
 import { applyPermissionUncheckCascade } from '@/lib/permissionDependencies';
 import {
   PROJECT_LINE_PREFIX,
+  clearLegacyProjectSubPermissions,
   type ProjectLineCategoryConfigKeys,
 } from '@/lib/projectLinePermissionKeys';
 import {
@@ -184,29 +185,35 @@ export function applyProjectLineAccessLevel(
     if (level === 'view') {
       next[row.readKey] = true;
       next[row.writeKey] = false;
+      clearLegacyProjectSubPermissions(next);
       return next;
     }
     next[row.readKey] = true;
     next[row.writeKey] = true;
+    clearLegacyProjectSubPermissions(next);
     return next;
   }
 
   if (row.kind === 'readOnly') {
     if (level === 'blocked') {
       next[row.readKey] = false;
+      clearLegacyProjectSubPermissions(next);
       return next;
     }
     ensureMainLineRead(line, next, mainReadKey);
     next[row.readKey] = true;
+    clearLegacyProjectSubPermissions(next);
     return next;
   }
 
   if (level === 'blocked') {
     next[row.writeKey] = false;
+    clearLegacyProjectSubPermissions(next);
     return next;
   }
   ensureMainLineRead(line, next, mainReadKey);
   next[row.writeKey] = true;
+  clearLegacyProjectSubPermissions(next);
   return next;
 }
 

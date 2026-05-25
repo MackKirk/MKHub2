@@ -38,6 +38,11 @@ import {
   lineMacroFilesWriteKey,
   lineMacroReportsWriteKey,
   type LineCategoryConfigState,
+  clearLegacyProjectSubPermissions,
+  clearLegacyCategoryConfigKeys,
+  cloneLineCategoryConfigs,
+  syncLineCategoryConfigAfterFilesMacroChange,
+  syncLineCategoryConfigAfterReportsMacroChange,
 } from '@/lib/projectLinePermissionKeys';
 import type { PermissionAccessLevel } from '@/lib/permissionAccessLevel';
 import {
@@ -294,18 +299,26 @@ const UserPermissions = forwardRef<UserPermissionsRef, { userId: string; onDirty
     feature: 'files' | 'reports';
   } | null>(null);
 
-  // Initialize permissions from API data
+  const permissionsHydratedForUser = useRef<string | null>(null);
+
+  // Reset hydration when switching users
   useEffect(() => {
-    if (permissionsData?.permissions_by_category) {
-      const perms: Record<string, boolean> = {};
-      permissionsData.permissions_by_category.forEach((cat: any) => {
-        cat.permissions.forEach((perm: any) => {
-          perms[perm.key] = perm.is_granted;
-        });
+    permissionsHydratedForUser.current = null;
+  }, [userId]);
+
+  // Initialize permissions from API (once per user load — do not wipe modal edits on refetch)
+  useEffect(() => {
+    if (!permissionsData?.permissions_by_category) return;
+    if (permissionsHydratedForUser.current === userId) return;
+
+    const perms: Record<string, boolean> = {};
+    permissionsData.permissions_by_category.forEach((cat: any) => {
+      cat.permissions.forEach((perm: any) => {
+        perms[perm.key] = perm.is_granted;
       });
-      setPermissions(perms);
-      setInitialPermissions({ ...perms });
-    }
+    });
+    setPermissions(perms);
+    setInitialPermissions({ ...perms });
 
     const cfg = permissionsData?.configs || {};
     const nextConfigs: LineCategoryConfigs = {
@@ -313,8 +326,9 @@ const UserPermissions = forwardRef<UserPermissionsRef, { userId: string; onDirty
       repairs: resolveCategoryConfigFromApi(cfg, 'repairs'),
     };
     setLineCategoryConfigs(nextConfigs);
-    setInitialLineCategoryConfigs(nextConfigs);
-  }, [permissionsData]);
+    setInitialLineCategoryConfigs(cloneLineCategoryConfigs(nextConfigs));
+    permissionsHydratedForUser.current = userId;
+  }, [permissionsData, userId]);
 
   // Initialize admin state from user data
   useEffect(() => {
@@ -600,6 +614,18 @@ const UserPermissions = forwardRef<UserPermissionsRef, { userId: string; onDirty
       level: PermissionAccessLevel
     ) => {
       setPermissions((prev) => applyProjectLineAccessLevel(line, areaPerms, prev, row, level));
+      if (row.kind === 'pair' && row.configKind?.endsWith('-files')) {
+        setLineCategoryConfigs((prev) => ({
+          ...prev,
+          [line]: syncLineCategoryConfigAfterFilesMacroChange(prev[line], level),
+        }));
+      }
+      if (row.kind === 'pair' && row.configKind?.endsWith('-reports')) {
+        setLineCategoryConfigs((prev) => ({
+          ...prev,
+          [line]: syncLineCategoryConfigAfterReportsMacroChange(prev[line], level),
+        }));
+      }
     },
     []
   );
@@ -675,6 +701,8 @@ const UserPermissions = forwardRef<UserPermissionsRef, { userId: string; onDirty
       });
       applyLineCategoryConfigToPayload(payload, 'construction', lineCategoryConfigs.construction);
       applyLineCategoryConfigToPayload(payload, 'repairs', lineCategoryConfigs.repairs);
+      clearLegacyProjectSubPermissions(payload);
+      clearLegacyCategoryConfigKeys(payload);
       await api('PUT', `/permissions/users/${userId}`, payload);
       toast.success('Permissions saved');
       await refetch();
@@ -682,10 +710,7 @@ const UserPermissions = forwardRef<UserPermissionsRef, { userId: string; onDirty
       // Update initial state to reflect saved state
       setInitialPermissions({ ...permissions });
       setInitialIsAdmin(isAdminLocal);
-      setInitialLineCategoryConfigs({
-        construction: { ...lineCategoryConfigs.construction },
-        repairs: { ...lineCategoryConfigs.repairs },
-      });
+      setInitialLineCategoryConfigs(cloneLineCategoryConfigs(lineCategoryConfigs));
       
       // If editing own permissions, invalidate /auth/me cache to refresh permissions
       if (currentUser && currentUser.id === userId) {
@@ -733,7 +758,11 @@ const UserPermissions = forwardRef<UserPermissionsRef, { userId: string; onDirty
             const line = categoryModal.line;
             setLineCategoryConfigs((prev) => ({
               ...prev,
-              [line]: { ...prev[line], filesRead: read, filesWrite: write },
+              [line]: {
+                ...prev[line],
+                filesRead: read ? [...read] : null,
+                filesWrite: write ? [...write] : null,
+              },
             }));
             setCategoryModal(null);
           }}
@@ -750,7 +779,11 @@ const UserPermissions = forwardRef<UserPermissionsRef, { userId: string; onDirty
             const line = categoryModal.line;
             setLineCategoryConfigs((prev) => ({
               ...prev,
-              [line]: { ...prev[line], reportsRead: read, reportsWrite: write },
+              [line]: {
+                ...prev[line],
+                reportsRead: read ? [...read] : null,
+                reportsWrite: write ? [...write] : null,
+              },
             }));
             setCategoryModal(null);
           }}

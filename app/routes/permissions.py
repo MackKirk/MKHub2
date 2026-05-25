@@ -182,11 +182,10 @@ def get_user_permissions(
                 "permissions": cat_permissions,
             })
     
-    # Expose supported configs separately so the UI can drive modals without treating them as booleans
-    overrides = getattr(user, "permissions_override", None) or {}
+    # Effective category allow-lists (roles + overrides) for gear modals
     configs: Dict[str, Any] = {}
     for k in PERMISSION_CONFIG_KEYS:
-        v = overrides.get(k, None)
+        v = perm_map.get(k, None)
         if isinstance(v, list):
             configs[k] = v
     

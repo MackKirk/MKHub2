@@ -1121,22 +1121,14 @@ def me(user: User = Depends(get_current_user)):
     )
 
 
-def _category_config_for_line(overrides: dict, business_line: Optional[str], feature: str):
+def _category_config_for_line(perm_map: dict, business_line: Optional[str], feature: str):
     from ..auth.security import _project_line_perm_prefix
 
     prefix = _project_line_perm_prefix(business_line)
-    read_val = None
-    write_val = None
-    for rk, wk in (
-        (f"{prefix}:{feature}:categories:read", f"{prefix}:{feature}:categories:write"),
-        (f"business:projects:{feature}:categories:read", f"business:projects:{feature}:categories:write"),
-    ):
-        rv = overrides.get(rk, None)
-        wv = overrides.get(wk, None)
-        if isinstance(rv, list) and read_val is None:
-            read_val = rv
-        if isinstance(wv, list) and write_val is None:
-            write_val = wv
+    read_val = perm_map.get(f"{prefix}:{feature}:categories:read", None)
+    write_val = perm_map.get(f"{prefix}:{feature}:categories:write", None)
+    read_val = read_val if isinstance(read_val, list) else None
+    write_val = write_val if isinstance(write_val, list) else None
     return read_val, write_val
 
 
@@ -1153,8 +1145,10 @@ def my_project_files_category_permissions(
     - If present, it is an allow-list of category IDs.
     - Pass business_line (construction | repairs_maintenance) for line-specific config.
     """
-    overrides = getattr(user, "permissions_override", None) or {}
-    read_val, write_val = _category_config_for_line(overrides, business_line, "files")
+    from ..auth.security import _get_user_permission_map
+
+    perm_map = _get_user_permission_map(user)
+    read_val, write_val = _category_config_for_line(perm_map, business_line, "files")
 
     return {
         "read_categories": read_val if isinstance(read_val, list) else None,
@@ -1175,8 +1169,10 @@ def my_project_reports_category_permissions(
     - Present list => allow-list of category values (SettingItem.value).
     - Pass business_line for line-specific config.
     """
-    overrides = getattr(user, "permissions_override", None) or {}
-    read_val, write_val = _category_config_for_line(overrides, business_line, "reports")
+    from ..auth.security import _get_user_permission_map
+
+    perm_map = _get_user_permission_map(user)
+    read_val, write_val = _category_config_for_line(perm_map, business_line, "reports")
 
     return {
         "read_categories": read_val if isinstance(read_val, list) else None,

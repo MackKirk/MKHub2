@@ -30,6 +30,8 @@ import { BUSINESS_LINE_REPAIRS_MAINTENANCE } from '@/lib/businessLine';
 import {
   hasProjectFeaturePermission,
   hasProjectFeatureWritePermission,
+  isAdminRole,
+  resolveProjectBusinessLine,
 } from '@/lib/projectLinePermissionKeys';
 import { filterStatusesForOpportunity, filterStatusesForProject } from '@/lib/projectStatusVisibility';
 import { isHiddenReportCategory, isHiddenReportNote } from '@/lib/reportCategories';
@@ -864,15 +866,19 @@ export default function ProjectDetail(){
   
   // Check user permissions (moved before useEffect that uses them)
   const { data: me } = useQuery({ queryKey:['me'], queryFn: ()=>api<any>('GET','/auth/me') });
-  const isAdmin = (me?.roles||[]).includes('admin');
-  const permissions = new Set(me?.permissions || []);
+  const isAdmin = isAdminRole(me?.roles);
+  const permissions = useMemo(() => new Set(me?.permissions || []), [me?.permissions]);
+  const projectBusinessLine = useMemo(
+    () => resolveProjectBusinessLine(proj?.business_line, location.pathname),
+    [proj?.business_line, location.pathname]
+  );
   const hasEditPermission = isAdmin || permissions.has('business:projects:write');
   const canEditEstimate = isAdmin || permissions.has('business:projects:estimate:write');
   const hasAdministratorAccess = isAdmin || permissions.has('users:write');
   
   // Helper to check if user has permission for a tab
   const hasTabPermission = useMemo(() => {
-    const bl = proj?.business_line;
+    const bl = projectBusinessLine;
     const featureByTab: Record<string, string> = {
       reports: 'reports',
       dispatch: 'workload',
@@ -887,12 +893,11 @@ export default function ProjectDetail(){
       safety: 'safety',
     };
     return (tabKey: string): boolean => {
-      if (isAdmin) return true;
       const feature = featureByTab[tabKey];
       if (!feature) return true;
-      return hasProjectFeaturePermission(permissions, bl, feature);
+      return hasProjectFeaturePermission(permissions, bl, feature, isAdmin, location.pathname);
     };
-  }, [isAdmin, permissions, proj?.business_line]);
+  }, [isAdmin, permissions, projectBusinessLine, location.pathname]);
   
   // Update tab when URL search params change
   useEffect(() => {
@@ -1015,7 +1020,7 @@ export default function ProjectDetail(){
 
   // Base available tabs (leak investigations use the same strip as opportunities)
   const baseAvailableTabs = isOpportunityStyleTabs
-    ? (['overview','reports','files','documents','proposal','pricing'] as const)
+    ? (['overview','reports','dispatch','timesheet','files','documents','proposal','pricing'] as const)
     : (['overview','reports','dispatch','timesheet','files','documents','proposal','pricing','orders','safety'] as const);
   
   // Filter tabs based on permissions (only when user data is loaded)
@@ -1023,9 +1028,9 @@ export default function ProjectDetail(){
     if (signOnlySafetySession) {
       return [] as unknown as typeof baseAvailableTabs;
     }
-    // If user data is still loading, return all base tabs to avoid permission errors
+    // Until /auth/me loads, only Overview (avoid flashing all tabs)
     if (me === undefined) {
-      return baseAvailableTabs;
+      return ['overview'] as unknown as typeof baseAvailableTabs;
     }
     return baseAvailableTabs.filter(tab => {
       if (tab === 'overview') return true; // Overview is always available
@@ -2526,7 +2531,11 @@ export default function ProjectDetail(){
               )}
 
               {tab==='dispatch' && (
-                <DispatchTab projectId={String(id)} statusLabel={proj?.status_label||''} />
+                <DispatchTab
+                  projectId={String(id)}
+                  statusLabel={proj?.status_label || ''}
+                  businessLine={proj?.business_line}
+                />
               )}
 
               {tab==='timesheet' && (
@@ -4630,6 +4639,7 @@ function ReportsTabEnhanced({
   items: Report[];
   onRefresh: () => any;
 }) {
+  const location = useLocation();
   const confirm = useConfirm();
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [selectedReportId, setSelectedReportId] = useState<string | null>(null);
@@ -4641,20 +4651,29 @@ function ReportsTabEnhanced({
   
   // Check permissions for reports (using local scope variables)
   const { data: meReports } = useQuery({ queryKey:['me'], queryFn: ()=>api<any>('GET','/auth/me') });
-  const isAdminReports = (meReports?.roles||[]).includes('admin');
+  const isAdminReports = isAdminRole(meReports?.roles);
   const permissionsReports = new Set(meReports?.permissions || []);
-  const canWriteReports =
-    isAdminReports || hasProjectFeatureWritePermission(permissionsReports, businessLine, 'reports');
+  const resolvedBusinessLine = useMemo(
+    () => resolveProjectBusinessLine(businessLine, location.pathname),
+    [businessLine, location.pathname]
+  );
+
+  const canWriteReports = hasProjectFeatureWritePermission(
+    permissionsReports,
+    resolvedBusinessLine,
+    'reports',
+    isAdminReports
+  );
 
   const { data: reportCategoryPerms } = useQuery({
-    queryKey: ['project-reports-category-perms', businessLine],
+    queryKey: ['project-reports-category-perms', resolvedBusinessLine],
     queryFn: () =>
       api<any>(
         'GET',
-        `/auth/me/project-reports-category-permissions${
-          businessLine ? `?business_line=${encodeURIComponent(businessLine)}` : ''
-        }`
+        `/auth/me/project-reports-category-permissions?business_line=${encodeURIComponent(resolvedBusinessLine)}`
       ),
+    staleTime: 0,
+    refetchOnMount: 'always',
   });
   const readAllowList: string[] | null = Array.isArray(reportCategoryPerms?.read_categories)
     ? reportCategoryPerms.read_categories
@@ -4665,19 +4684,21 @@ function ReportsTabEnhanced({
 
   const isReadCategoryAllowed = useCallback(
     (categoryId?: string | null) => {
+      if (isAdminReports) return true;
       const key = normalizeReportCategoryId(categoryId);
       return readAllowList === null ? true : readAllowList.includes(key);
     },
-    [readAllowList]
+    [readAllowList, isAdminReports]
   );
 
   const isWriteCategoryAllowed = useCallback(
     (categoryId?: string | null) => {
+      if (isAdminReports) return true;
       if (!canWriteReports) return false;
       const key = normalizeReportCategoryId(categoryId);
       return writeAllowList === null ? true : writeAllowList.includes(key);
     },
-    [writeAllowList, canWriteReports]
+    [writeAllowList, canWriteReports, isAdminReports]
   );
 
   const visibleItems = useMemo(
@@ -5727,25 +5748,34 @@ function ProjectFilesTabEnhanced({
   
   // Check permissions for files
   const { data: me } = useQuery({ queryKey:['me'], queryFn: ()=>api<any>('GET','/auth/me') });
-  const isAdmin = (me?.roles||[]).includes('admin');
+  const isAdmin = isAdminRole(me?.roles);
   const permissions = new Set(me?.permissions || []);
-  const canWriteFiles =
-    isAdmin || hasProjectFeatureWritePermission(permissions, businessLine, 'files');
-  
+  const resolvedBusinessLine = useMemo(
+    () => resolveProjectBusinessLine(businessLine, location.pathname),
+    [businessLine, location.pathname]
+  );
+
+  const canWriteFiles = hasProjectFeatureWritePermission(
+    permissions,
+    resolvedBusinessLine,
+    'files',
+    isAdmin
+  );
+
   const { data: categories } = useQuery({
     queryKey: ['file-categories'],
     queryFn: ()=>api<any[]>('GET', '/clients/file-categories')
   });
 
   const { data: categoryPerms } = useQuery({
-    queryKey: ['project-files-category-perms', businessLine],
+    queryKey: ['project-files-category-perms', resolvedBusinessLine],
     queryFn: () =>
       api<any>(
         'GET',
-        `/auth/me/project-files-category-permissions${
-          businessLine ? `?business_line=${encodeURIComponent(businessLine)}` : ''
-        }`
+        `/auth/me/project-files-category-permissions?business_line=${encodeURIComponent(resolvedBusinessLine)}`
       ),
+    staleTime: 0,
+    refetchOnMount: 'always',
   });
 
   type ProjectDeletedFile = ProjectFile & { deleted_at?: string | null; deleted_by_id?: string | null };
@@ -5762,16 +5792,21 @@ function ProjectFilesTabEnhanced({
   const readAllowList: string[] | null = Array.isArray(categoryPerms?.read_categories) ? categoryPerms.read_categories : null;
   const writeAllowList: string[] | null = Array.isArray(categoryPerms?.write_categories) ? categoryPerms.write_categories : null;
 
-  const isReadCategoryAllowed = useCallback((categoryId: string) => {
-    return readAllowList === null ? true : readAllowList.includes(categoryId);
-  }, [readAllowList]);
+  const isReadCategoryAllowed = useCallback(
+    (categoryId: string) => {
+      if (isAdmin) return true;
+      return readAllowList === null ? true : readAllowList.includes(categoryId);
+    },
+    [readAllowList, isAdmin]
+  );
 
   const isWriteCategoryAllowed = useCallback(
     (categoryId: string) => {
+      if (isAdmin) return true;
       if (!canWriteFiles) return false;
       return writeAllowList === null ? true : writeAllowList.includes(categoryId);
     },
-    [writeAllowList, canWriteFiles]
+    [writeAllowList, canWriteFiles, isAdmin]
   );
 
   // Hide legacy/duplicate category "photos" (Pictures already covers this use-case)

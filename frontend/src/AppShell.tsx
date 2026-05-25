@@ -15,7 +15,7 @@ import FixedBugReportButton from '@/components/FixedBugReportButton';
 import InstallPrompt from '@/components/InstallPrompt';
 import GlobalSearch, { GlobalSearchSection, GlobalSearchItem } from '@/components/GlobalSearch';
 import HubChatLauncher from '@/components/HubChatLauncher';
-import { canAccessProjectLineMenu } from '@/lib/projectLinePermissionKeys';
+import { canAccessProjectLineMenu, isAdminRole } from '@/lib/projectLinePermissionKeys';
 
 type MenuItem = {
   id: string;
@@ -329,7 +329,7 @@ export default function AppShell({ children }: PropsWithChildren){
   const { hasUnsavedChanges } = useUnsavedChanges();
   const confirm = useConfirm();
 
-  const isAdmin = (me?.roles || []).includes('admin');
+  const isAdmin = isAdminRole(me?.roles);
   const permissionsSet = useMemo(() => new Set((me?.permissions || []).map((p: any) => String(p))), [me]);
 
   const hasPermission = (requiredPermission?: string) => {
@@ -339,13 +339,13 @@ export default function AppShell({ children }: PropsWithChildren){
     const legacyBizRead = permissionsSet.has('business:projects:read');
     const legacyBizWrite = permissionsSet.has('business:projects:write');
     if (requiredPermission === 'business:construction:projects:read') {
-      return canAccessProjectLineMenu(permissionsSet, 'construction');
+      return canAccessProjectLineMenu(permissionsSet, 'construction', isAdmin);
     }
     if (requiredPermission === 'business:rm:projects:read') {
-      return canAccessProjectLineMenu(permissionsSet, 'repairs');
+      return canAccessProjectLineMenu(permissionsSet, 'repairs', isAdmin);
     }
     if (requiredPermission === 'business:projects:read') {
-      return has || legacyBizRead || canAccessProjectLineMenu(permissionsSet, 'construction');
+      return has || legacyBizRead || canAccessProjectLineMenu(permissionsSet, 'construction', isAdmin);
     }
     if (requiredPermission === 'business:construction:projects:write' || requiredPermission === 'business:projects:write') {
       return has || legacyBizWrite || permissionsSet.has('business:construction:projects:write');
@@ -643,8 +643,8 @@ export default function AppShell({ children }: PropsWithChildren){
       if (item.type === 'page') return true;
       if (item.type === 'project' || item.type === 'opportunity') {
         return (
-          canAccessProjectLineMenu(permissionsSet, 'construction') ||
-          canAccessProjectLineMenu(permissionsSet, 'repairs')
+          canAccessProjectLineMenu(permissionsSet, 'construction', isAdmin) ||
+          canAccessProjectLineMenu(permissionsSet, 'repairs', isAdmin)
         );
       }
       if (item.type === 'customer') return hasPermission('business:customers:read');
@@ -947,10 +947,10 @@ export default function AppShell({ children }: PropsWithChildren){
             .filter(category => {
               // Sales (construction): requires construction projects access
               if (category.id === 'services') {
-                if (!canAccessProjectLineMenu(permissionsSet, 'construction')) return false;
+                if (!canAccessProjectLineMenu(permissionsSet, 'construction', isAdmin)) return false;
               }
               if (category.id === 'repairs_maintenance') {
-                if (!canAccessProjectLineMenu(permissionsSet, 'repairs')) return false;
+                if (!canAccessProjectLineMenu(permissionsSet, 'repairs', isAdmin)) return false;
               }
               // Special handling for Business category: requires customers or inventory access
               if (category.id === 'business') {

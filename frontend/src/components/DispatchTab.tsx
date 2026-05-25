@@ -8,6 +8,10 @@ import EditShiftModal from '@/components/EditShiftModal';
 import { JOB_TYPES } from '@/constants/jobTypes';
 import { formatDateLocal, getTodayLocal } from '@/lib/dateUtils';
 import OverlayPortal from '@/components/OverlayPortal';
+import {
+  hasProjectFeatureWritePermission,
+  isAdminRole,
+} from '@/lib/projectLinePermissionKeys';
 
 // Helper function to convert 24h time (HH:MM:SS or HH:MM) to 12h format (h:mm AM/PM)
 function formatTime12h(timeStr: string | null | undefined): string {
@@ -23,7 +27,15 @@ function formatTime12h(timeStr: string | null | undefined): string {
 }
 
 
-export default function DispatchTab({ projectId, statusLabel }: { projectId: string; statusLabel?: string }) {
+export default function DispatchTab({
+  projectId,
+  statusLabel,
+  businessLine,
+}: {
+  projectId: string;
+  statusLabel?: string;
+  businessLine?: string | null;
+}) {
   const confirm = useConfirm();
   const queryClient = useQueryClient();
   const location = useLocation();
@@ -34,20 +46,25 @@ export default function DispatchTab({ projectId, statusLabel }: { projectId: str
   const initialView = (searchParams.get('subtab') === 'pending' ? 'pending' : 'calendar') as 'calendar' | 'pending';
   const [view, setView] = useState<'calendar' | 'pending'>(initialView);
   
-  // Check permissions for workload
+  // Check permissions for workload (line-scoped; admin bypasses)
   const { data: me } = useQuery({ queryKey:['me'], queryFn: ()=>api<any>('GET','/auth/me') });
-  const isAdmin = (me?.roles||[]).includes('admin');
+  const isAdmin = isAdminRole(me?.roles);
   const permissions = new Set(me?.permissions || []);
-  const hasEditPermission = isAdmin || permissions.has('business:projects:workload:write');
-  
+  const canWriteWorkload = hasProjectFeatureWritePermission(
+    permissions,
+    businessLine,
+    'workload',
+    isAdmin
+  );
+
   // Check if editing is restricted based on status (only Finished restricts editing for workload)
   const isEditingRestricted = useMemo(() => {
     if (!statusLabel) return false;
     const statusLower = String(statusLabel).trim().toLowerCase();
     return statusLower === 'finished';
   }, [statusLabel]);
-  
-  const canEditWorkload = hasEditPermission && !isEditingRestricted;
+
+  const canEditWorkload = canWriteWorkload && !isEditingRestricted;
 
   // Update view when URL search params change
   useEffect(() => {
@@ -175,6 +192,11 @@ export default function DispatchTab({ projectId, statusLabel }: { projectId: str
       {isEditingRestricted && statusLabel && (
         <div className="mb-4 p-3 bg-yellow-50 border border-yellow-200 rounded text-xs text-yellow-800">
           <strong>Editing Restricted:</strong> This project has status "{statusLabel}" which does not allow editing workload.
+        </div>
+      )}
+      {!canWriteWorkload && !isEditingRestricted && (
+        <div className="mb-4 p-3 bg-gray-50 border border-gray-200 rounded text-xs text-gray-700">
+          <strong>View only:</strong> You can view the workload calendar but cannot create or edit shifts.
         </div>
       )}
       

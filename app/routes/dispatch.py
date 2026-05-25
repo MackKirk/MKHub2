@@ -16,7 +16,7 @@ from ..models.models import (
     UserNotificationPreference, ProjectTimeEntry, ProjectTimeEntryLog,
     EmployeeProfile
 )
-from ..auth.security import get_current_user
+from ..auth.security import get_current_user, assert_project_workload_permission
 from ..config import settings
 from ..services.dispatch_conflict import has_overlap, get_conflicting_shifts
 from ..services.geofence import inside_geofence
@@ -89,31 +89,7 @@ def create_shift(
     if not worker_id:
         raise HTTPException(status_code=400, detail="worker_id is required")
     
-    # Check permissions:
-    # - Admins can create shifts for any worker
-    # - Supervisors of the worker can create shifts for that worker
-    # - On-site leads of the project can create shifts for any worker
-    # Check if user is on-site lead of the project (only for divisions that exist in the project)
-    is_onsite_lead = False
-    dol = sanitize_division_onsite_leads(project.division_onsite_leads or {}, project.project_division_ids or [])
-    if dol:
-        for division_id, lead_id in dol.items():
-            if str(lead_id) == str(user.id):
-                is_onsite_lead = True
-                break
-    # Also check legacy onsite_lead_id field
-    if not is_onsite_lead and project.onsite_lead_id and str(project.onsite_lead_id) == str(user.id):
-        is_onsite_lead = True
-    
-    # Check if user is supervisor of the worker
-    worker_profile = db.query(EmployeeProfile).filter(EmployeeProfile.user_id == worker_id).first()
-    is_worker_supervisor = worker_profile and worker_profile.manager_user_id and str(worker_profile.manager_user_id) == str(user.id)
-    
-    if not (is_admin(user, db) or is_worker_supervisor or is_onsite_lead):
-        raise HTTPException(
-            status_code=403, 
-            detail="Only admins, supervisors of the worker, or on-site leads of the project can create shifts"
-        )
+    assert_project_workload_permission(user, project, "write", db)
     
     # Validate worker exists
     worker = db.query(User).filter(User.id == worker_id).first()
@@ -429,6 +405,8 @@ def list_shifts(
     project = db.query(Project).filter(Project.id == project_id).first()
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")
+
+    assert_project_workload_permission(user, project, "read", db)
     
     # Build query - only show scheduled shifts (exclude cancelled)
     query = db.query(Shift).filter(
@@ -623,13 +601,11 @@ def update_shift(
     shift = db.query(Shift).filter(Shift.id == shift_id).first()
     if not shift:
         raise HTTPException(status_code=404, detail="Shift not found")
-    
-    # Check permissions
-    if not can_modify_shift(user, shift, db):
-        raise HTTPException(
-            status_code=403, 
-            detail="Only admins, supervisors of the worker, or on-site leads of the project can modify shifts"
-        )
+
+    project = db.query(Project).filter(Project.id == shift.project_id).first()
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+    assert_project_workload_permission(user, project, "write", db)
     
     # Store before state for audit
     before_state = {
@@ -817,13 +793,11 @@ def delete_shift(
     shift = db.query(Shift).filter(Shift.id == shift_id).first()
     if not shift:
         raise HTTPException(status_code=404, detail="Shift not found")
-    
-    # Check permissions
-    if not can_modify_shift(user, shift, db):
-        raise HTTPException(
-            status_code=403, 
-            detail="Only admins, supervisors of the worker, or on-site leads of the project can modify shifts"
-        )
+
+    project = db.query(Project).filter(Project.id == shift.project_id).first()
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+    assert_project_workload_permission(user, project, "write", db)
     
     # NOTE: During testing phase, past date validation is disabled
     # TODO: Re-enable past date validation for production
@@ -2719,6 +2693,12 @@ def approve_attendance(
     # Check permissions
     if not can_approve_attendance(user, attendance, db):
         raise HTTPException(status_code=403, detail="Access denied")
+
+    shift = db.query(Shift).filter(Shift.id == attendance.shift_id).first()
+    if shift and shift.project_id:
+        project = db.query(Project).filter(Project.id == shift.project_id).first()
+        if project:
+            assert_project_workload_permission(user, project, "write", db)
     
     if attendance.status != "pending":
         raise HTTPException(status_code=400, detail="Attendance is not pending")
@@ -3017,6 +2997,12 @@ def reject_attendance(
     # Check permissions
     if not can_approve_attendance(user, attendance, db):
         raise HTTPException(status_code=403, detail="Access denied")
+
+    shift = db.query(Shift).filter(Shift.id == attendance.shift_id).first()
+    if shift and shift.project_id:
+        project = db.query(Project).filter(Project.id == shift.project_id).first()
+        if project:
+            assert_project_workload_permission(user, project, "write", db)
     
     if attendance.status != "pending":
         raise HTTPException(status_code=400, detail="Attendance is not pending")
@@ -3220,9 +3206,16 @@ def list_pending_attendance(
     List pending attendance records for approval.
     Supports filtering by project, date range, worker.
     """
-    # Check permissions
-    if not (is_admin(user, db) or is_supervisor(user, db)):
-        raise HTTPException(status_code=403, detail="Only supervisors and admins can view pending attendance")
+    if project_id:
+        project = db.query(Project).filter(Project.id == project_id).first()
+        if not project:
+            raise HTTPException(status_code=404, detail="Project not found")
+        assert_project_workload_permission(user, project, "write", db)
+    elif not (is_admin(user, db) or is_supervisor(user, db)):
+        raise HTTPException(
+            status_code=403,
+            detail="Only supervisors and admins can view pending attendance",
+        )
     
     # Build query
     query = db.query(Attendance).filter(Attendance.status == "pending")
@@ -3235,9 +3228,6 @@ def list_pending_attendance(
         # Join with shifts to filter by project
         query = query.join(Shift).filter(Shift.project_id == project_id)
         has_shift_join = True
-        # Check supervisor has access to this project
-        if not is_admin(user, db) and not is_supervisor(user, db, project_id):
-            raise HTTPException(status_code=403, detail="Access denied to this project")
     else:
         # Filter by projects supervisor has access to
         if not is_admin(user, db):

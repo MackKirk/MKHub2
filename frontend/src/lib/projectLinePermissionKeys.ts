@@ -1,5 +1,11 @@
-import { BUSINESS_LINE_REPAIRS_MAINTENANCE } from '@/lib/businessLine';
+import { BUSINESS_LINE_CONSTRUCTION, BUSINESS_LINE_REPAIRS_MAINTENANCE } from '@/lib/businessLine';
+import type { PermissionAccessLevel } from '@/lib/permissionAccessLevel';
 import type { ProjectLine } from '@/lib/projectLinePermissions';
+
+/** Admin role bypasses all line-scoped project permission checks. */
+export function isAdminRole(roles: readonly unknown[] | null | undefined): boolean {
+  return (roles ?? []).some((r) => String(r ?? '').toLowerCase() === 'admin');
+}
 
 export function projectLineFromBusinessLine(businessLine?: string | null): ProjectLine {
   return businessLine === BUSINESS_LINE_REPAIRS_MAINTENANCE ? 'repairs' : 'construction';
@@ -20,33 +26,56 @@ function hasPerm(permissions: Set<string> | Record<string, boolean>, key: string
     : !!(permissions as Record<string, boolean>)[key];
 }
 
+/** Resolve business line for permission checks (API field or URL). */
+export function resolveProjectBusinessLine(
+  businessLine: string | undefined | null,
+  pathname?: string
+): string {
+  if (businessLine) return businessLine;
+  if (pathname && /(^|\/)rm-(projects|opportunities|leak-investigations)/.test(pathname)) {
+    return BUSINESS_LINE_REPAIRS_MAINTENANCE;
+  }
+  return BUSINESS_LINE_CONSTRUCTION;
+}
+
 /** View tab/section: line read or line write (write implies read). */
 export function hasProjectFeaturePermission(
   permissions: Set<string> | Record<string, boolean>,
   businessLine: string | undefined | null,
-  feature: string
+  feature: string,
+  isAdmin = false,
+  pathname?: string
 ): boolean {
+  if (isAdmin) return true;
   return (
-    hasProjectFeatureReadPermission(permissions, businessLine, feature) ||
-    hasProjectFeatureWritePermission(permissions, businessLine, feature)
+    hasProjectFeatureReadPermission(permissions, businessLine, feature, false, pathname) ||
+    hasProjectFeatureWritePermission(permissions, businessLine, feature, false, pathname)
   );
 }
 
 export function hasProjectFeatureReadPermission(
   permissions: Set<string> | Record<string, boolean>,
   businessLine: string | undefined | null,
-  feature: string
+  feature: string,
+  isAdmin = false,
+  pathname?: string
 ): boolean {
-  return hasPerm(permissions, projectFeaturePermKey(businessLine, feature, 'read'));
+  if (isAdmin) return true;
+  const line = resolveProjectBusinessLine(businessLine, pathname);
+  return hasPerm(permissions, projectFeaturePermKey(line, feature, 'read'));
 }
 
 /** Create/edit/upload: line write only (view-only must not pass). */
 export function hasProjectFeatureWritePermission(
   permissions: Set<string> | Record<string, boolean>,
   businessLine: string | undefined | null,
-  feature: string
+  feature: string,
+  isAdmin = false,
+  pathname?: string
 ): boolean {
-  return hasPerm(permissions, projectFeaturePermKey(businessLine, feature, 'write'));
+  if (isAdmin) return true;
+  const line = resolveProjectBusinessLine(businessLine, pathname);
+  return hasPerm(permissions, projectFeaturePermKey(line, feature, 'write'));
 }
 
 /** Legacy shared project permissions (hidden in UI; backend fallback). */
@@ -82,32 +111,54 @@ export const LEGACY_CATEGORY_CONFIG_KEYS: ProjectLineCategoryConfigKeys = {
   reportsWrite: 'business:projects:reports:categories:write',
 };
 
+/** Line-only: never fall back to shared business:projects:*:categories:* (would mix Production and Repairs). */
 export function resolveCategoryConfigFromApi(
   cfg: Record<string, unknown>,
   line: ProjectLine
-): {
-  filesRead: string[] | null;
-  filesWrite: string[] | null;
-  reportsRead: string[] | null;
-  reportsWrite: string[] | null;
-} {
+): LineCategoryConfigState {
   const keys = getProjectLineCategoryConfigKeys(line);
-  const legacy = LEGACY_CATEGORY_CONFIG_KEYS;
-  const pick = (k: string, legacyK: string): string[] | null => {
-    if (Array.isArray(cfg[k])) return cfg[k] as string[];
-    if (Array.isArray(cfg[legacyK])) return cfg[legacyK] as string[];
-    return null;
+  const pick = (k: string): string[] | null => {
+    const v = cfg[k];
+    return Array.isArray(v) ? (v as string[]) : null;
   };
   return {
-    filesRead: pick(keys.filesRead, legacy.filesRead),
-    filesWrite: pick(keys.filesWrite, legacy.filesWrite),
-    reportsRead: pick(keys.reportsRead, legacy.reportsRead),
-    reportsWrite: pick(keys.reportsWrite, legacy.reportsWrite),
+    filesRead: pick(keys.filesRead),
+    filesWrite: pick(keys.filesWrite),
+    reportsRead: pick(keys.reportsRead),
+    reportsWrite: pick(keys.reportsWrite),
   };
+}
+
+/** Remove shared legacy category keys on save so lines stay independent. */
+export function clearLegacyCategoryConfigKeys(payload: Record<string, boolean | string[]>): void {
+  applyCategoryListToPayload(payload, LEGACY_CATEGORY_CONFIG_KEYS.filesRead, null);
+  applyCategoryListToPayload(payload, LEGACY_CATEGORY_CONFIG_KEYS.filesWrite, null);
+  applyCategoryListToPayload(payload, LEGACY_CATEGORY_CONFIG_KEYS.reportsRead, null);
+  applyCategoryListToPayload(payload, LEGACY_CATEGORY_CONFIG_KEYS.reportsWrite, null);
 }
 
 export function isLineScopedProjectPermissionKey(key: string, line: ProjectLine): boolean {
   return key.startsWith(`${PROJECT_LINE_PREFIX[line]}:`);
+}
+
+const LEGACY_PROJECT_SUB_FEATURES = [
+  'reports',
+  'workload',
+  'timesheet',
+  'files',
+  'documents',
+  'proposal',
+  'estimate',
+  'orders',
+  'safety',
+] as const;
+
+/** Clear legacy business:projects:<feature>:* so line-scoped overrides are authoritative. */
+export function clearLegacyProjectSubPermissions(perms: Record<string, boolean | string[]>): void {
+  for (const feat of LEGACY_PROJECT_SUB_FEATURES) {
+    perms[`${LEGACY_PROJECT_PREFIX}:${feat}:read`] = false;
+    perms[`${LEGACY_PROJECT_PREFIX}:${feat}:write`] = false;
+  }
 }
 
 export function isLegacySharedProjectPermissionKey(key: string): boolean {
@@ -154,16 +205,80 @@ export const EMPTY_LINE_CATEGORY_CONFIG: LineCategoryConfigState = {
   reportsWrite: null,
 };
 
+export function cloneLineCategoryConfigState(cfg: LineCategoryConfigState): LineCategoryConfigState {
+  return {
+    filesRead: cfg.filesRead ? [...cfg.filesRead] : null,
+    filesWrite: cfg.filesWrite ? [...cfg.filesWrite] : null,
+    reportsRead: cfg.reportsRead ? [...cfg.reportsRead] : null,
+    reportsWrite: cfg.reportsWrite ? [...cfg.reportsWrite] : null,
+  };
+}
+
+export type LineCategoryConfigsByLine = Record<ProjectLine, LineCategoryConfigState>;
+
+export function cloneLineCategoryConfigs(cfg: LineCategoryConfigsByLine): LineCategoryConfigsByLine {
+  return {
+    construction: cloneLineCategoryConfigState(cfg.construction),
+    repairs: cloneLineCategoryConfigState(cfg.repairs),
+  };
+}
+
+/** Push category allow-lists: null/empty => remove override (all categories allowed). */
+function applyCategoryListToPayload(
+  payload: Record<string, boolean | string[]>,
+  key: string,
+  list: string[] | null
+): void {
+  if (list === null || list.length === 0) {
+    payload[key] = [];
+    return;
+  }
+  payload[key] = list;
+}
+
 export function applyLineCategoryConfigToPayload(
   payload: Record<string, boolean | string[]>,
   line: ProjectLine,
   cfg: LineCategoryConfigState
 ): void {
   const keys = getProjectLineCategoryConfigKeys(line);
-  payload[keys.filesRead] = cfg.filesRead ?? [];
-  payload[keys.filesWrite] = cfg.filesWrite ?? [];
-  payload[keys.reportsRead] = cfg.reportsRead ?? [];
-  payload[keys.reportsWrite] = cfg.reportsWrite ?? [];
+  applyCategoryListToPayload(payload, keys.filesRead, cfg.filesRead);
+  applyCategoryListToPayload(payload, keys.filesWrite, cfg.filesWrite);
+  applyCategoryListToPayload(payload, keys.reportsRead, cfg.reportsRead);
+  applyCategoryListToPayload(payload, keys.reportsWrite, cfg.reportsWrite);
+}
+
+/** Keep folder submenu in sync when Files macro dropdown changes. */
+export function syncLineCategoryConfigAfterFilesMacroChange(
+  cfg: LineCategoryConfigState,
+  filesAccess: PermissionAccessLevel
+): LineCategoryConfigState {
+  if (filesAccess === 'blocked') {
+    return { ...cfg, filesRead: null, filesWrite: null };
+  }
+  if (filesAccess === 'view') {
+    return { ...cfg, filesWrite: [] };
+  }
+  if (filesAccess === 'edit' && cfg.filesWrite?.length === 0) {
+    return { ...cfg, filesWrite: null };
+  }
+  return cfg;
+}
+
+export function syncLineCategoryConfigAfterReportsMacroChange(
+  cfg: LineCategoryConfigState,
+  reportsAccess: PermissionAccessLevel
+): LineCategoryConfigState {
+  if (reportsAccess === 'blocked') {
+    return { ...cfg, reportsRead: null, reportsWrite: null };
+  }
+  if (reportsAccess === 'view') {
+    return { ...cfg, reportsWrite: [] };
+  }
+  if (reportsAccess === 'edit' && cfg.reportsWrite?.length === 0) {
+    return { ...cfg, reportsWrite: null };
+  }
+  return cfg;
 }
 
 /** Keys that grant sidebar access for a business line (not category config blobs). */
@@ -180,8 +295,10 @@ export function isLineMenuPermissionKey(key: string, line: ProjectLine): boolean
 /** Whether the user should see this business line in the sidebar (any line-scoped grant). */
 export function canAccessProjectLineMenu(
   permissions: Set<string> | string[],
-  line: ProjectLine
+  line: ProjectLine,
+  isAdmin = false
 ): boolean {
+  if (isAdmin) return true;
   const iter = permissions instanceof Set ? permissions : permissions;
   for (const perm of iter) {
     if (isLineMenuPermissionKey(String(perm), line)) return true;
@@ -189,12 +306,17 @@ export function canAccessProjectLineMenu(
   return false;
 }
 
+function normCategoryList(v: string[] | null | undefined): string[] | null {
+  if (v === null || v === undefined) return null;
+  if (v.length === 0) return [];
+  return Array.from(new Set(v.map(String))).sort();
+}
+
 export function configsEqual(a: LineCategoryConfigState, b: LineCategoryConfigState): boolean {
-  const norm = (v: string[] | null) => (v === null ? null : Array.from(new Set(v.map(String))).sort());
   return (
-    JSON.stringify(norm(a.filesRead)) === JSON.stringify(norm(b.filesRead)) &&
-    JSON.stringify(norm(a.filesWrite)) === JSON.stringify(norm(b.filesWrite)) &&
-    JSON.stringify(norm(a.reportsRead)) === JSON.stringify(norm(b.reportsRead)) &&
-    JSON.stringify(norm(a.reportsWrite)) === JSON.stringify(norm(b.reportsWrite))
+    JSON.stringify(normCategoryList(a.filesRead)) === JSON.stringify(normCategoryList(b.filesRead)) &&
+    JSON.stringify(normCategoryList(a.filesWrite)) === JSON.stringify(normCategoryList(b.filesWrite)) &&
+    JSON.stringify(normCategoryList(a.reportsRead)) === JSON.stringify(normCategoryList(b.reportsRead)) &&
+    JSON.stringify(normCategoryList(a.reportsWrite)) === JSON.stringify(normCategoryList(b.reportsWrite))
   );
 }

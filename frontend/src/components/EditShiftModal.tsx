@@ -127,8 +127,10 @@ export default function EditShiftModal({
               </svg>
             </button>
             <div>
-              <h2 className="text-sm font-semibold text-gray-900">Edit Shift</h2>
-              <p className="text-xs text-gray-500 mt-0.5">Update shift time and job type</p>
+              <h2 className="text-sm font-semibold text-gray-900">{canEdit ? 'Edit Shift' : 'View Shift'}</h2>
+              <p className="text-xs text-gray-500 mt-0.5">
+                {canEdit ? 'Update shift time and job type' : 'Read-only — you do not have permission to edit shifts'}
+              </p>
             </div>
           </div>
         </div>

@@ -13,10 +13,13 @@ export function isProjectCategoryAllowAll(lists: ProjectCategoryAllowLists): boo
 export function getProjectCategoryAccessLevel(
   categoryId: string,
   readCategories: string[] | null,
-  writeCategories: string[] | null
+  writeCategories: string[] | null,
+  macroCanEdit: boolean
 ): PermissionAccessLevel {
   const inRead = readCategories === null || readCategories.includes(categoryId);
-  const inWrite = writeCategories === null || writeCategories.includes(categoryId);
+  const inWrite =
+    macroCanEdit &&
+    (writeCategories === null || writeCategories.includes(categoryId));
   if (!inRead) return 'blocked';
   if (!inWrite) return 'view';
   return 'edit';
@@ -42,11 +45,17 @@ function materializeLists(
 export function buildProjectCategoryLevels(
   readCategories: string[] | null,
   writeCategories: string[] | null,
-  allCategoryIds: string[]
+  allCategoryIds: string[],
+  macroCanEdit: boolean
 ): Record<string, PermissionAccessLevel> {
   const levels: Record<string, PermissionAccessLevel> = {};
   for (const id of allCategoryIds) {
-    levels[id] = getProjectCategoryAccessLevel(id, readCategories, writeCategories);
+    levels[id] = getProjectCategoryAccessLevel(
+      id,
+      readCategories,
+      writeCategories,
+      macroCanEdit
+    );
   }
   return levels;
 }

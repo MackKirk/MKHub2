@@ -49,8 +49,8 @@ export default function ProjectCategoryPermissionsModal({
   const [allowAll, setAllowAll] = useState(true);
   const [lists, setLists] = useState<ProjectCategoryAllowLists>({ read: null, write: null });
   const levels = useMemo(
-    () => buildProjectCategoryLevels(lists.read, lists.write, allIds),
-    [lists, allIds]
+    () => buildProjectCategoryLevels(lists.read, lists.write, allIds, macroCanEdit),
+    [lists, allIds, macroCanEdit]
   );
 
   useEffect(() => {
@@ -58,7 +58,7 @@ export default function ProjectCategoryPermissionsModal({
     const initial = { read: readCategories, write: writeCategories };
     setAllowAll(isProjectCategoryAllowAll(initial));
     setLists(initial);
-  }, [open, readCategories, writeCategories]);
+  }, [open, readCategories, writeCategories, macroCanEdit, categories.length]);
 
   const grouped = useMemo(() => {
     const hasGroups = categories.some((c) => c.group);
@@ -102,7 +102,7 @@ export default function ProjectCategoryPermissionsModal({
         <span className="text-sm text-gray-900 truncate">{cat.label}</span>
       </div>
       <select
-        value={levels[cat.id] ?? 'edit'}
+        value={levels[cat.id] ?? (macroCanEdit ? 'edit' : 'view')}
         disabled={allowAll}
         onChange={(e) => {
           const level = e.target.value as PermissionAccessLevel;
