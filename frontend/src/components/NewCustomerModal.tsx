@@ -16,6 +16,8 @@ import {
   AppControlLabelRow,
   AppFieldHint,
   AppFormModal,
+  FORM_MODAL_WIDE_DIALOG_COLLAPSED,
+  FORM_MODAL_WIDE_DIALOG_EXPANDED,
   AppInput,
   AppSectionHeader,
   AppSelect,
@@ -23,6 +25,7 @@ import {
   uiBorders,
   uiCx,
   uiLayout,
+  uiModalLayer,
   uiRadius,
   uiSpacing,
   uiTypography,
@@ -564,8 +567,8 @@ export default function NewCustomerModal({ onClose, onSuccess }: NewCustomerModa
         open
         onClose={onClose}
         formWidth="wide"
-        dialogClassName="!max-w-[800px]"
-        dialogClassNameExpanded="!max-w-[calc(800px+1rem+16rem+2rem)]"
+        dialogClassName={FORM_MODAL_WIDE_DIALOG_COLLAPSED}
+        dialogClassNameExpanded={FORM_MODAL_WIDE_DIALOG_EXPANDED}
         title="New Customer"
         description={stepSubtitle}
         headerExtra={stepIndicators}
@@ -955,6 +958,7 @@ export default function NewCustomerModal({ onClose, onSuccess }: NewCustomerModa
           targetWidth={400}
           targetHeight={400}
           allowEdit
+          overlayClassName={uiModalLayer.nestedPicker}
           onConfirm={async (blob) => {
             try {
               setCPhotoBlob(blob);

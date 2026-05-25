@@ -1,24 +1,44 @@
 ﻿import type { ReactNode } from 'react';
-import { uiBorders, uiColors, uiCx, uiLayout, uiRadius, uiSpacing, uiTypography } from './tokens';
+import { AppPageBackButton } from './AppPageBackButton';
+import { uiBorders, uiColors, uiCx, uiLayout, uiRadius, uiSpacing, uiTypography, uiPageHeader } from './tokens';
 
 type AppPageHeaderProps = {
   title: ReactNode;
   subtitle?: ReactNode;
+  /** Decorative/context icon inside the blue tile (not navigation). Combine with `onBack` on child pages. */
   icon?: ReactNode;
+  /** Back arrow before the icon tile (e.g. Business → Opportunities). */
+  onBack?: () => void;
+  /** `title` / `aria-label` for the back control. Default: "Back". */
+  backLabel?: string;
   actions?: ReactNode;
   className?: string;
 };
 
-export function AppPageHeader({ title, subtitle, icon, actions, className }: AppPageHeaderProps) {
+export function AppPageHeader({
+  title,
+  subtitle,
+  icon,
+  onBack,
+  backLabel,
+  actions,
+  className,
+}: AppPageHeaderProps) {
   return (
     <header className={className}>
-      <div className={uiCx('flex flex-wrap items-center justify-between gap-3', uiRadius.card, uiBorders.subtle, uiColors.surface, uiSpacing.cardPadding)}>
-        <div className="flex min-w-0 items-center gap-3">
-          {icon ? (
-            <div className={uiCx('flex h-8 w-8 shrink-0 items-center justify-center bg-blue-100 text-blue-800', uiRadius.control)}>
-              {icon}
-            </div>
-          ) : null}
+      <div
+        className={uiCx(
+          'flex flex-wrap items-center justify-between',
+          uiSpacing.headerGap,
+          uiRadius.card,
+          uiBorders.subtle,
+          uiColors.surface,
+          uiSpacing.cardPadding,
+        )}
+      >
+        <div className={uiCx('flex min-w-0 items-center', uiSpacing.headerGap)}>
+          {onBack ? <AppPageBackButton onClick={onBack} label={backLabel} /> : null}
+          {icon ? <div className={uiPageHeader.iconTile}>{icon}</div> : null}
           <div className="min-w-0">
             <h1 className={uiTypography.pageTitle}>{title}</h1>
             {subtitle ? <p className={uiTypography.pageSubtitle}>{subtitle}</p> : null}
@@ -29,4 +49,3 @@ export function AppPageHeader({ title, subtitle, icon, actions, className }: App
     </header>
   );
 }
-

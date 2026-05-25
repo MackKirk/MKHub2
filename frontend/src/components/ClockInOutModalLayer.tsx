@@ -17,7 +17,6 @@ import {
   uiDropdown,
   uiLayout,
   uiRadius,
-  uiShadows,
   uiSpacing,
   uiTypography,
 } from '@/components/ui';
@@ -978,16 +977,7 @@ export function ClockInOutModalLayer({
           </div>
         }
       >
-        <ul
-          className={uiCx(
-            uiSpacing.sectionStack,
-            uiRadius.dropdownMenu,
-            uiBorders.subtle,
-            uiShadows.elevated,
-            'max-h-[60vh] overflow-y-auto py-1.5',
-          )}
-          role="listbox"
-        >
+        <ul className={uiCx(uiDropdown.menuOptionsList, 'max-h-[60vh]')} role="listbox">
           {shiftPickOptions.map((s) => (
             <li key={s.id} role="option" aria-selected={shiftPickSelectedId === s.id}>
               <button

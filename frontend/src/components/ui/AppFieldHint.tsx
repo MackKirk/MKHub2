@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useId, useRef, useState, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { getOverlayRoot } from '@/lib/overlayRoot';
+import { uiFieldHint } from './tokens';
 
 export type AppFieldHintProps = {
   hint: ReactNode;
@@ -85,7 +86,7 @@ export function AppFieldHint({ hint, className }: AppFieldHintProps) {
       <span
         id={tipId}
         role="tooltip"
-        className="pointer-events-none fixed z-[120] rounded-lg border border-slate-200/90 bg-white px-3 py-2 text-left shadow-xl ring-1 ring-slate-900/5"
+        className={uiFieldHint.shell}
         style={{ top: coords.top, left: coords.left, width: 'max-content', maxWidth: TOOLTIP_MAX_WIDTH }}
       >
         <span className="field-hint-content block text-[11px] leading-snug text-slate-700 [&_strong]:font-semibold [&_strong]:text-slate-900 [&_p+p]:mt-1.5 [&_br]:block">

@@ -14,6 +14,11 @@ const LEGACY_OPPORTUNITY_ALLOWED = new Set([
   'refused',
   'conflict',
   'schedule conflict',
+  'low & awarded',
+  'lost & awarded',
+  'lost and awarded',
+  'lost',
+  'awarded',
 ]);
 
 function normLabel(label: unknown): string {

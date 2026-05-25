@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, useCallback, useMemo } from 'react';
 import { api, withFileAccessToken } from '@/lib/api';
 import OverlayPortal from '@/components/OverlayPortal';
+import { uiCx, uiModalLayer } from '@/components/ui/tokens';
 import DocumentEditorFontColorPicker from '@/components/document-editor/DocumentEditorFontColorPicker';
 import {
   editorCaptionClass,
@@ -131,9 +132,21 @@ type ImageEditorProps = {
   targetWidth?: number;
   targetHeight?: number;
   editorScaleFactor?: number;
+  overlayClassName?: string;
 };
 
-export default function ImageEditor({ isOpen, onClose, imageUrl, imageName = 'image', fileObjectId, onSave, targetWidth, targetHeight, editorScaleFactor = 2.5 }: ImageEditorProps) {
+export default function ImageEditor({
+  isOpen,
+  onClose,
+  imageUrl,
+  imageName = 'image',
+  fileObjectId,
+  onSave,
+  targetWidth,
+  targetHeight,
+  editorScaleFactor = 2.5,
+  overlayClassName,
+}: ImageEditorProps) {
   const [mode, setMode] = useState<'pan' | 'rect' | 'arrow' | 'text' | 'circle' | 'draw' | 'select' | 'delete'>('select');
   const [img, setImg] = useState<HTMLImageElement | null>(null);
   const [isLoading, setIsLoading] = useState(false);
@@ -2636,7 +2649,12 @@ export default function ImageEditor({ isOpen, onClose, imageUrl, imageName = 'im
     <>
       <style>{sliderStyle}</style>
       <OverlayPortal>
-      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/45 p-4">
+      <div
+        className={uiCx(
+          'fixed inset-0 flex items-center justify-center bg-black/45 p-4',
+          overlayClassName ?? uiModalLayer.default,
+        )}
+      >
         <div
           role="dialog"
           aria-modal="true"

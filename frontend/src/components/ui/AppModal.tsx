@@ -17,10 +17,14 @@ type AppModalProps = {
   headerContent?: ReactNode;
   /** When false, only the dialog shell and body render (no title row). */
   showHeader?: boolean;
+  /** Extra classes on the backdrop (e.g. `z-[200]` when stacked on another modal). */
+  overlayClassName?: string;
   /** Extra classes on the dialog panel (e.g. width transitions). */
   dialogClassName?: string;
   /** Body wrapper classes; when set, default body padding is omitted. */
   bodyClassName?: string;
+  /** When false with a footer, body height follows content instead of filling the dialog. */
+  bodyFill?: boolean;
 };
 
 const sizeClasses = {
@@ -40,8 +44,10 @@ export function AppModal({
   headerActions,
   headerContent,
   showHeader = true,
+  overlayClassName,
   dialogClassName,
   bodyClassName,
+  bodyFill = true,
 }: AppModalProps) {
   useEffect(() => {
     if (!open) return;
@@ -57,7 +63,10 @@ export function AppModal({
   return (
     <OverlayPortal>
       <div
-        className="fixed inset-0 z-50 flex items-center justify-center bg-black/35 p-4 backdrop-blur-sm"
+        className={uiCx(
+          'fixed inset-0 z-50 flex items-center justify-center bg-black/35 p-4 backdrop-blur-sm',
+          overlayClassName,
+        )}
         onMouseDown={onClose}
         role="presentation"
       >
@@ -99,7 +108,20 @@ export function AppModal({
               </div>
             </header>
           ) : null}
-          <div className={uiCx(bodyClassName === undefined ? uiSpacing.cardPadding : '', bodyClassName)}>{children}</div>
+          <div
+            className={uiCx(
+              bodyClassName === undefined ? uiSpacing.cardPadding : '',
+              bodyClassName,
+              footer
+                ? uiCx(
+                    'flex min-h-0 flex-col overflow-hidden',
+                    bodyFill && 'flex-1',
+                  )
+                : '',
+            )}
+          >
+            {children}
+          </div>
           {footer ? (
             <footer className={uiCx('shrink-0', uiSpacing.cardPadding, uiBorders.subtle)}>{footer}</footer>
           ) : null}

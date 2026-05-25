@@ -3,6 +3,7 @@ import { api, withFileAccessToken } from '@/lib/api';
 import toast from 'react-hot-toast';
 import ImageEditor from '@/components/ImageEditor';
 import OverlayPortal from '@/components/OverlayPortal';
+import { uiCx, uiModalLayer } from '@/components/ui/tokens';
 import {
   editorCaptionClass,
   editorPanelAsideClass,
@@ -119,6 +120,8 @@ export default function ImagePicker({
   openEditorOnOpen = false,
   /** If set, scales export down so max(width,height) does not exceed this (px). */
   maxExportLongSide,
+  /** Backdrop z-index when opened above another modal (e.g. `uiModalLayer.nestedPicker`). */
+  overlayClassName,
 }:{
   isOpen:boolean,
   onClose:()=>void,
@@ -134,7 +137,16 @@ export default function ImagePicker({
   hideEditButton?: boolean,
   openEditorOnOpen?: boolean,
   maxExportLongSide?: number,
+  overlayClassName?: string,
 }){
+  const progressOverlayClassName =
+    overlayClassName === uiModalLayer.nestedPicker
+      ? uiModalLayer.nestedPickerBusy
+      : 'z-[60]';
+  const editorOverlayClassName =
+    overlayClassName === uiModalLayer.nestedPicker
+      ? uiModalLayer.nestedEditor
+      : overlayClassName;
   const exportDimensions = useMemo(
     () => computeExportDimensions(targetWidth, targetHeight, exportScale, maxExportLongSide),
     [targetWidth, targetHeight, exportScale, maxExportLongSide],
@@ -906,7 +918,12 @@ export default function ImagePicker({
         }
       `}</style>
     <OverlayPortal>
-      <div className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-black/45 p-4">
+      <div
+        className={uiCx(
+          'fixed inset-0 flex items-center justify-center overflow-y-auto bg-black/45 p-4',
+          overlayClassName ?? uiModalLayer.default,
+        )}
+      >
         <div
           role="dialog"
           aria-modal="true"
@@ -1339,7 +1356,12 @@ export default function ImagePicker({
     </OverlayPortal>
       {showProgress && (
         <OverlayPortal>
-        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/45 p-4">
+        <div
+          className={uiCx(
+            'fixed inset-0 flex items-center justify-center bg-black/45 p-4',
+            progressOverlayClassName,
+          )}
+        >
           <div className="w-[360px] max-w-[90vw] rounded-xl border border-slate-200/90 bg-white px-6 py-5 text-center shadow-2xl ring-1 ring-slate-900/[0.06]">
             <div className="mx-auto mb-4 h-10 w-10 animate-spin rounded-full border-4 border-slate-200 border-t-brand-red" />
             <div className="text-sm text-slate-600">{progressMessage || 'Processing…'}</div>
@@ -1358,6 +1380,7 @@ export default function ImagePicker({
           targetHeight={targetHeight}
           editorScaleFactor={editorScaleFactor}
           onSave={handleImageEditorSave}
+          overlayClassName={editorOverlayClassName}
         />
       )}
     </>

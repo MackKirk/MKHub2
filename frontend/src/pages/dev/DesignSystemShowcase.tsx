@@ -14,6 +14,7 @@ import {
   AppInput,
   AppListCreateItem,
   AppModal,
+  AppPageBackButton,
   AppPageHeader,
   AppSectionHeader,
   AppMultiSelect,
@@ -22,6 +23,7 @@ import {
   AppTable,
   AppTabs,
   AppTextarea,
+  AppTooltip,
   uiBorders,
   uiCx,
   uiLayout,
@@ -38,8 +40,10 @@ import {
   Plus,
   Search,
   Settings,
+  SlidersHorizontal,
   UserRound,
 } from 'lucide-react';
+import { createRequestQuickInfo, filtersModalQuickInfo, uiLabel } from '@/lib/formModalQuickInfo';
 
 const sampleDays = [
   { dateLabel: '28', isMuted: true },
@@ -103,9 +107,12 @@ export default function DesignSystemShowcase() {
   const [activeTab, setActiveTab] = useState('overview');
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isFormModalOpen, setIsFormModalOpen] = useState(false);
+  const [isFiltersQuickInfoModalOpen, setIsFiltersQuickInfoModalOpen] = useState(false);
   const [showcaseJob, setShowcaseJob] = useState('');
   const [showcaseProjectId, setShowcaseProjectId] = useState('');
   const [showcaseDepartment, setShowcaseDepartment] = useState('');
+  const [showcasePriority, setShowcasePriority] = useState('');
+  const [showcaseOperator, setShowcaseOperator] = useState('');
   const [showcaseDepartmentsMulti, setShowcaseDepartmentsMulti] = useState<string[]>([]);
   const [showcaseDueDate, setShowcaseDueDate] = useState('');
   const [showcaseUserId, setShowcaseUserId] = useState('');
@@ -137,6 +144,68 @@ export default function DesignSystemShowcase() {
             </>
           }
         />
+
+        <AppCard
+          title="Page header"
+          subtitle="AppPageHeader on gray page shells. Child pages: onBack + icon (back arrow, then blue tile, then title). Parent pages: icon only."
+        >
+          <div className="space-y-6">
+            <div>
+              <p className={uiCx(uiTypography.overline, 'mb-2')}>With back + decorative icon</p>
+              <AppPageHeader
+                title="Opportunities"
+                subtitle="Create, edit and track bids and quotes"
+                onBack={() => undefined}
+                backLabel="Back to Business"
+                icon={<LayoutGrid className="h-4 w-4" />}
+                actions={
+                  <div className="text-right">
+                    <div className={uiTypography.overline}>Today</div>
+                    <div className={uiCx(uiTypography.sectionTitle, 'mt-0.5')}>
+                      {new Date().toLocaleDateString('en-CA', {
+                        weekday: 'long',
+                        year: 'numeric',
+                        month: 'short',
+                        day: 'numeric',
+                      })}
+                    </div>
+                  </div>
+                }
+              />
+              <p className={uiCx(uiTypography.helper, 'mt-2')}>
+                Props: <code className="rounded bg-gray-100 px-1 py-0.5 text-[11px]">onBack</code>,{' '}
+                <code className="rounded bg-gray-100 px-1 py-0.5 text-[11px]">backLabel</code>,{' '}
+                <code className="rounded bg-gray-100 px-1 py-0.5 text-[11px]">icon</code> (Lucide inside blue tile),{' '}
+                <code className="rounded bg-gray-100 px-1 py-0.5 text-[11px]">actions</code> (e.g. Today).
+              </p>
+            </div>
+            <div>
+              <p className={uiCx(uiTypography.overline, 'mb-2')}>With decorative icon (no back)</p>
+              <AppPageHeader
+                title="Customers"
+                subtitle="Manage your customer list and sites"
+                icon={<LayoutGrid className="h-4 w-4" />}
+                actions={
+                  <div className="text-right">
+                    <div className={uiTypography.overline}>Today</div>
+                    <div className={uiCx(uiTypography.sectionTitle, 'mt-0.5')}>
+                      {new Date().toLocaleDateString('en-CA', {
+                        weekday: 'long',
+                        year: 'numeric',
+                        month: 'short',
+                        day: 'numeric',
+                      })}
+                    </div>
+                  </div>
+                }
+              />
+            </div>
+            <div>
+              <p className={uiCx(uiTypography.overline, 'mb-2')}>AppPageBackButton alone</p>
+              <AppPageBackButton onClick={() => undefined} label="Back to Business" />
+            </div>
+          </div>
+        </AppCard>
 
         <AppCard>
           <AppSectionHeader
@@ -254,6 +323,35 @@ export default function DesignSystemShowcase() {
           </AppCard>
         </div>
 
+        <AppCard
+          title="Hover tooltip"
+          subtitle="Dark label on hover/focus — Opportunities estimator avatars, Business filter icons. Portaled so overflow-hidden does not clip."
+        >
+          <p className={uiCx(uiTypography.helper, 'mb-4')}>
+            Wrap any trigger with <code className="rounded bg-gray-100 px-1 py-0.5 text-[11px]">AppTooltip</code>. Do
+            not use native <code className="text-[11px]">title</code> on the same element. For form help, use{' '}
+            <code className="text-[11px]">fieldHint</code> / <code className="text-[11px]">AppFieldHint</code> (light
+            panel).
+          </p>
+          <div className={uiCx(uiLayout.actionsRow, 'flex-wrap items-center gap-6')}>
+            <AppTooltip content="Callum">
+              <span className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-indigo-600 text-xs font-semibold text-white">
+                C
+              </span>
+            </AppTooltip>
+            <AppTooltip content="Show All">
+              <AppButton type="button" variant="secondary" size="sm" className="h-10 w-10 p-0" aria-label="Show all">
+                <LayoutGrid className="h-5 w-5" />
+              </AppButton>
+            </AppTooltip>
+            <AppTooltip content="Roofing" placement="bottom">
+              <AppButton type="button" variant="secondary" size="sm">
+                Bottom placement
+              </AppButton>
+            </AppTooltip>
+          </div>
+        </AppCard>
+
         <div className={uiLayout.sectionGrid2}>
           <AppCard
             title="Form Controls"
@@ -278,14 +376,19 @@ export default function DesignSystemShowcase() {
                 <code className="text-[11px]">FieldHint</code> next to custom labels when not using App* controls.
               </p>
               <p className={uiTypography.helper}>
-                Searchable lists: <code className="text-[11px]">AppCombobox</code> — trigger matches{' '}
-                <code className="text-[11px]">AppInput</code> (<code className="text-[11px]">rounded-lg</code>); portaled
-                menu uses <code className="text-[11px]">uiDropdown.menu</code> (
-                <code className="text-[11px]">rounded-xl</code>).                 <code className="text-[11px]">AppSelect</code> — single
-                value; <code className="text-[11px]">searchable</code> adds a fixed search header in the menu (
-                options scroll in <code className="text-[11px]">uiDropdown.menuOptionsList</code> only).{' '}
-                <code className="text-[11px]">AppMultiSelect</code> — multiple values (checkboxes + chips, same menu shell;
-                also supports <code className="text-[11px]">searchable</code>).
+                <strong className="font-semibold text-gray-800">Dropdown — with search</strong> —{' '}
+                <code className="text-[11px]">AppCombobox</code> (single), searchable{' '}
+                <code className="text-[11px]">AppMultiSelect</code>, <code className="text-[11px]">AppUserSelect</code>,{' '}
+                <code className="text-[11px]">AppProjectSelect</code>, <code className="text-[11px]">AppClientSelect</code>.
+                Type in the field (optional left icon); portaled list is <code className="text-[11px]">uiDropdown.menu</code>{' '}
+                with no search bar inside the panel. Use when the list is long or users need to find by name/code/address.
+              </p>
+              <p className={uiTypography.helper}>
+                <strong className="font-semibold text-gray-800">Dropdown — without search</strong> —{' '}
+                <code className="text-[11px]">AppSelect</code> (default; do not pass <code className="text-[11px]">searchable</code>).
+                Button + chevron trigger; open the list and pick. Use for short enums (priority, operator, a few statuses).
+                Avoid <code className="text-[11px]">AppSelect searchable</code> on new screens — prefer{' '}
+                <code className="text-[11px]">AppCombobox</code> when search is required.
               </p>
               <p className={uiTypography.helper}>
                 Dates: <code className="text-[11px]">AppDatePicker</code> — click the month label to pick month/year, then
@@ -370,28 +473,69 @@ export default function DesignSystemShowcase() {
                 onChange={setShowcaseUserIds}
                 fieldHint="Additional signers\n\nMultiple users who must sign a document (Safety / approvals pattern)."
               />
-              <AppSelect
+              <AppSectionHeader
+                title="Dropdown with search"
+                description="AppCombobox — long lists, type to filter."
+                className="pt-2"
+              />
+              <AppCombobox
                 id="showcase-department"
                 label="Department"
                 placeholder="Search or select department…"
-                searchable
                 value={showcaseDepartment}
-                onChange={(e) => setShowcaseDepartment(e.target.value)}
-                fieldHint="Department\n\nSingle choice with search in the menu — same pattern as AppUserSelect."
+                onChange={setShowcaseDepartment}
+                leftIcon={<Layers className="h-4 w-4" />}
+                fieldHint="Department\n\nUse AppCombobox when the user should search in the field."
                 options={[
                   { value: 'hr', label: 'Human Resources' },
                   { value: 'operations', label: 'Operations' },
                   { value: 'fleet', label: 'Fleet' },
+                  { value: 'estimating', label: 'Estimating' },
+                  { value: 'safety', label: 'Safety' },
+                  { value: 'sales', label: 'Sales' },
+                ]}
+              />
+              <AppSectionHeader
+                title="Dropdown without search"
+                description="AppSelect — short lists, chevron only (no typing)."
+                className="pt-2"
+              />
+              <AppSelect
+                id="showcase-priority"
+                label="Priority *"
+                value={showcasePriority}
+                onChange={(e) => setShowcasePriority(e.target.value)}
+                placeholder="Select priority…"
+                fieldHint="Priority\n\nShort enum — AppSelect (default). Same as Create Request modal below."
+                options={[
+                  { value: 'low', label: 'Low' },
+                  { value: 'normal', label: 'Normal' },
+                  { value: 'high', label: 'High' },
+                  { value: 'urgent', label: 'Urgent' },
+                ]}
+              />
+              <AppSelect
+                id="showcase-operator"
+                label="Operator"
+                value={showcaseOperator}
+                onChange={(e) => setShowcaseOperator(e.target.value)}
+                placeholder="Select operator…"
+                fieldHint="Operator\n\nFilter-style rule operator (Is / Is not) — no search needed."
+                options={[
+                  { value: 'is', label: 'Is' },
+                  { value: 'is_not', label: 'Is not' },
+                  { value: 'is_before', label: 'Is before' },
+                  { value: 'is_after', label: 'Is after' },
                 ]}
               />
               <AppMultiSelect
                 id="showcase-departments-multi"
                 label="Departments (multi)"
-                placeholder="Search departments…"
+                placeholder="Search departments to add…"
                 searchable
                 value={showcaseDepartmentsMulti}
                 onChange={setShowcaseDepartmentsMulti}
-                fieldHint="Departments (multi)\n\nStatic options with search, checkboxes, chips, and portaled menu — use anywhere you need multiple enum values (not users)."
+                fieldHint="Departments (multi)\n\nMultiple enums — search in the field, checkboxes in menu, chips below (same as Additional signers / AppUserSelect multiple)."
                 options={[
                   { value: 'hr', label: 'Human Resources' },
                   { value: 'operations', label: 'Operations' },
@@ -436,11 +580,15 @@ export default function DesignSystemShowcase() {
             <ul className={uiCx(uiTypography.helper, 'mt-2 list-inside list-disc space-y-1')}>
               <li>
                 <strong className="font-semibold text-gray-800">AppFormModal</strong> — scrollable form body, optional{' '}
-                <code className="text-[11px]">quickInfo</code> panel toggled via ? next to close
+                <code className="text-[11px]">quickInfo</code> panel toggled via ? next to close. See{' '}
+                <strong className="font-semibold text-gray-800">Quick Info</strong> below for copy structure. Wide wizards
+                (New Customer, New Opportunity): <code className="text-[11px]">formWidth=&quot;wide&quot;</code>,{' '}
+                <code className="text-[11px]">headerExtra</code> for step pills.
               </li>
               <li>
-                <strong className="font-semibold text-gray-800">fieldHint</strong> — same ? tooltips as Form Controls;
-                use on modal fields and on any other form in the system
+                <strong className="font-semibold text-gray-800">fieldHint</strong> — light ? on a single field;{' '}
+                <strong className="font-semibold text-gray-800">Quick Info</strong> — whole-modal help in the side panel;{' '}
+                <strong className="font-semibold text-gray-800">AppTooltip</strong> — dark hover on lists and icons
               </li>
             </ul>
             <div className={uiCx('mt-4 flex flex-wrap gap-2', uiLayout.actionsRow)}>
@@ -448,9 +596,81 @@ export default function DesignSystemShowcase() {
                 Simple modal
               </AppButton>
               <AppButton onClick={() => setIsFormModalOpen(true)} leftIcon={<Plus className="h-4 w-4" />}>
-                Form modal (standard)
+                Form modal — Create Request
+              </AppButton>
+              <AppButton
+                onClick={() => setIsFiltersQuickInfoModalOpen(true)}
+                variant="secondary"
+                leftIcon={<SlidersHorizontal className="h-4 w-4" />}
+              >
+                Form modal — Filters
               </AppButton>
             </div>
+          </AppCard>
+
+          <AppCard
+            title="Quick Info (AppFormModal)"
+            subtitle="Standard help copy for the ? panel — user-facing only, four short paragraphs."
+          >
+            <p className={uiTypography.body}>
+              Build copy with{' '}
+              <code className="rounded bg-gray-100 px-1 py-0.5 text-[11px]">formModalQuickInfo()</code> from{' '}
+              <code className="rounded bg-gray-100 px-1 py-0.5 text-[11px]">@/lib/formModalQuickInfo</code>. Highlight
+              visible labels with <code className="rounded bg-gray-100 px-1 py-0.5 text-[11px]">uiLabel()</code>.
+            </p>
+            <ol className={uiCx(uiTypography.helper, 'mt-3 list-decimal space-y-2 pl-5')}>
+              <li>
+                <strong className="font-semibold text-gray-800">Purpose</strong> — What this window is for, with one or two
+                real examples (e.g. “only projects in progress”).
+              </li>
+              <li>
+                <strong className="font-semibold text-gray-800">How to use</strong> — Steps the user takes; name buttons and
+                sections exactly as they appear in the UI.
+              </li>
+              <li>
+                <strong className="font-semibold text-gray-800">Behavior</strong> <span className="text-gray-500">(optional)</span>{' '}
+                — Multiple filters, combined rules, what happens after submit, etc.
+              </li>
+              <li>
+                <strong className="font-semibold text-gray-800">Actions</strong> — What {uiLabel('Cancel')}, the primary
+                button, and any extras ({uiLabel('Clear All')}, etc.) do.
+              </li>
+            </ol>
+            <div className={uiCx('mt-4 rounded-lg border border-gray-200 bg-gray-50 p-3', uiRadius.control)}>
+              <div className={uiTypography.overline}>Do</div>
+              <ul className={uiCx(uiTypography.helper, 'mt-1 list-inside list-disc space-y-0.5')}>
+                <li>Plain language, short sentences, concrete examples</li>
+                <li>Match button and field labels shown in the modal</li>
+                <li>
+                  Reuse shared copy when the flow is identical (e.g.{' '}
+                  <code className="text-[11px]">filtersModalQuickInfo</code>)
+                </li>
+              </ul>
+              <div className={uiCx(uiTypography.overline, 'mt-3')}>Avoid</div>
+              <ul className={uiCx(uiTypography.helper, 'mt-1 list-inside list-disc space-y-0.5')}>
+                <li>Component names (AppSelect, AppUserSelect, props, tokens)</li>
+                <li>Developer jargon (“rules”, “operators”) without explaining them in user terms</li>
+                <li>One long paragraph — split into the four blocks above</li>
+              </ul>
+            </div>
+            <pre
+              className={uiCx(
+                'mt-4 overflow-x-auto rounded-lg border border-gray-200 bg-gray-900 p-3 text-[11px] leading-relaxed text-gray-100',
+                uiRadius.control,
+              )}
+            >{`import { formModalQuickInfo, uiLabel } from '@/lib/formModalQuickInfo';
+
+quickInfo={formModalQuickInfo({
+  purpose: <>Use this window to …</>,
+  howToUse: <>Tap {uiLabel('Add filter')} to …</>,
+  behavior: <>Optional: combined rules, multiple items, …</>,
+  actions: <>{uiLabel('Apply')} saves … {uiLabel('Cancel')} closes …</>,
+})}`}</pre>
+            <p className={uiCx(uiTypography.helper, 'mt-3')}>
+              Exported references: <code className="text-[11px]">filtersModalQuickInfo</code>,{' '}
+              <code className="text-[11px]">createRequestQuickInfo</code>. Open the demo modals above and toggle ? to
+              preview.
+            </p>
           </AppCard>
         </div>
 
@@ -566,12 +786,7 @@ export default function DesignSystemShowcase() {
         onClose={() => setIsFormModalOpen(false)}
         title="Create Request"
         description="Start a conversation that may become a task"
-        quickInfo={
-          <>
-            <p>Requests allow you to start conversations before creating tasks.</p>
-            <p>You can exchange information and clarify requirements before accepting.</p>
-          </>
-        }
+        quickInfo={createRequestQuickInfo}
         footer={
           <div className={uiCx(uiLayout.actionsRow, 'w-full justify-end')}>
             <AppButton variant="secondary" size="sm" onClick={() => setIsFormModalOpen(false)}>
@@ -589,8 +804,9 @@ export default function DesignSystemShowcase() {
           fieldHint="Title\n\nA short summary shown in lists and notifications."
         />
         <AppSelect
-          label="Priority"
-          fieldHint={'Priority\n\nHow urgent this request is for the recipient.'}
+          label="Priority *"
+          placeholder="Select priority…"
+          fieldHint={'Priority\n\nShort enum — AppSelect without search (design system default).'}
           options={[
             { value: 'low', label: 'Low' },
             { value: 'normal', label: 'Normal' },
@@ -603,6 +819,30 @@ export default function DesignSystemShowcase() {
           placeholder="Explain what needs to be done..."
           fieldHint="Description\n\nOptional detail for the recipient before the request becomes a task."
         />
+      </AppFormModal>
+
+      <AppFormModal
+        open={isFiltersQuickInfoModalOpen}
+        onClose={() => setIsFiltersQuickInfoModalOpen(false)}
+        title="Filters"
+        description="Show only the items that match what you need."
+        formWidth="wide"
+        quickInfo={filtersModalQuickInfo}
+        footer={
+          <div className={uiCx(uiLayout.actionsRow, 'w-full justify-end')}>
+            <AppButton variant="secondary" size="sm" onClick={() => setIsFiltersQuickInfoModalOpen(false)}>
+              Cancel
+            </AppButton>
+            <AppButton size="sm" onClick={() => setIsFiltersQuickInfoModalOpen(false)}>
+              Apply Filters
+            </AppButton>
+          </div>
+        }
+      >
+        <p className={uiTypography.helper}>
+          Demo shell only — full filter UI lives on Projects / Opportunities. Toggle ? to preview standard Quick Info
+          copy.
+        </p>
       </AppFormModal>
     </main>
   );

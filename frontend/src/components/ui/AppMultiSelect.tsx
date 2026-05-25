@@ -1,6 +1,6 @@
 import { useMemo, useState, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
-import { ChevronDown, X } from 'lucide-react';
+import { ChevronDown, Search, X } from 'lucide-react';
 import { sortByLabel } from '@/lib/sortOptions';
 import { AppControlLabelRow } from './AppControlLabel';
 import { AppFieldHint } from './AppFieldHint';
@@ -26,9 +26,10 @@ export type AppMultiSelectProps = {
   disabled?: boolean;
   id?: string;
   emptyMessage?: string;
-  /** Filter options by label/description while the menu is open. */
+  /** Search in the trigger field (AppUserSelect multiple pattern). Default false uses button + chevron. */
   searchable?: boolean;
-  /** Chips for each selected value (default true). */
+  /** Icon in searchable mode (default Search). Pass null to hide. */
+  leftIcon?: ReactNode;
   showSelectedChips?: boolean;
   triggerClassName?: string;
   className?: string;
@@ -83,6 +84,7 @@ export function AppMultiSelect({
   id,
   emptyMessage = 'No options found.',
   searchable = false,
+  leftIcon,
   showSelectedChips = true,
   triggerClassName,
   className,
@@ -93,7 +95,7 @@ export function AppMultiSelect({
 
   const sortedOptions = useMemo(() => sortByLabel(options, (o) => o.label), [options]);
   const filteredOptions = useMemo(() => {
-    const list = searchable && open ? filterOptions(sortedOptions, search) : sortedOptions;
+    const list = searchable ? filterOptions(sortedOptions, open ? search : '') : sortedOptions;
     return sortByLabel(list, (o) => o.label);
   }, [sortedOptions, searchable, open, search]);
 
@@ -171,40 +173,106 @@ export function AppMultiSelect({
 
   const dropdown =
     open && menuPosition ? (
-      searchable ? (
-        <div className={uiDropdown.menuSearchable} style={menuPosition}>
-          <div className={uiDropdown.menuSearchHeader}>
-            <input
-              type="text"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder="Search…"
-              autoComplete="off"
-              className={uiCx(uiDropdown.trigger, 'text-xs')}
-              onMouseDown={(e) => e.stopPropagation()}
-            />
-          </div>
-          <ul
-            id={portalListId}
-            role="listbox"
-            aria-multiselectable
-            className={uiDropdown.menuOptionsList}
-          >
-            {optionListContent}
-          </ul>
-        </div>
-      ) : (
-        <ul
-          id={portalListId}
-          role="listbox"
-          aria-multiselectable
-          className={uiDropdown.menu}
-          style={menuPosition}
-        >
-          {optionListContent}
-        </ul>
-      )
+      <ul
+        id={portalListId}
+        role="listbox"
+        aria-multiselectable
+        className={uiDropdown.menu}
+        style={menuPosition}
+      >
+        {optionListContent}
+      </ul>
     ) : null;
+
+  const closedPlaceholder = value.length === 0 ? placeholder : `${value.length} selected`;
+  const comboboxPlaceholder = open ? placeholder : closedPlaceholder;
+  const showLeftIcon = leftIcon !== undefined ? leftIcon : searchable ? <Search className="h-4 w-4" /> : null;
+
+  const labelRow = label ? (
+    <AppControlLabelRow
+      label={
+        <>
+          {label}
+          {value.length > 0 ? (
+            <span className="ml-1 font-normal normal-case text-gray-500">({value.length} selected)</span>
+          ) : null}
+        </>
+      }
+      fieldHint={fieldHint ? <AppFieldHint hint={fieldHint} /> : undefined}
+    />
+  ) : null;
+
+  const chipsRow =
+    showSelectedChips && selectedOptions.length > 0 ? (
+      <div className={uiUserSelect.chipRow}>
+        {selectedOptions.map((option) => (
+          <MultiSelectChip
+            key={option.value}
+            label={option.label}
+            disabled={disabled}
+            onRemove={() => toggle(option.value)}
+          />
+        ))}
+      </div>
+    ) : null;
+
+  if (searchable) {
+    return (
+      <div className={uiCx('block space-y-1.5', className)}>
+        {labelRow}
+        <div ref={anchorRef} className="relative">
+          {showLeftIcon ? <span className={uiDropdown.leftIcon}>{showLeftIcon}</span> : null}
+          <input
+            id={id}
+            type="text"
+            role="combobox"
+            aria-expanded={open}
+            aria-autocomplete="list"
+            aria-controls={open ? portalListId : undefined}
+            disabled={disabled}
+            value={open ? search : ''}
+            placeholder={comboboxPlaceholder}
+            autoComplete="off"
+            onChange={(e) => {
+              setSearch(e.target.value);
+              setOpen(true);
+            }}
+            onFocus={() => setOpen(true)}
+            onBlur={() => {
+              window.setTimeout(() => {
+                const active = document.activeElement;
+                if (anchorRef.current?.contains(active)) return;
+                const portal = document.getElementById(portalListId);
+                if (portal?.contains(active)) return;
+                closeDropdown();
+                setSearch('');
+              }, 0);
+            }}
+            onKeyDown={(e) => {
+              if (e.key === 'Escape') {
+                e.stopPropagation();
+                closeDropdown();
+                setSearch('');
+              }
+            }}
+            className={uiCx(
+              uiDropdown.trigger,
+              showLeftIcon && uiDropdown.triggerWithLeftIcon,
+              open && !disabled && 'border-gray-400 ring-1 ring-inset ring-gray-400/35',
+              triggerClassName,
+            )}
+          />
+        </div>
+        {chipsRow}
+        {error ? (
+          <span className="block text-xs text-red-600">{error}</span>
+        ) : helperText ? (
+          <span className={uiTypography.helper}>{helperText}</span>
+        ) : null}
+        {typeof document !== 'undefined' && dropdown ? createPortal(dropdown, document.body) : null}
+      </div>
+    );
+  }
 
   const triggerClasses = uiCx(
     uiDropdown.trigger,
@@ -216,19 +284,7 @@ export function AppMultiSelect({
 
   return (
     <div className={uiCx('block space-y-1.5', className)}>
-      {label ? (
-        <AppControlLabelRow
-          label={
-            <>
-              {label}
-              {value.length > 0 ? (
-                <span className="ml-1 font-normal normal-case text-gray-500">({value.length} selected)</span>
-              ) : null}
-            </>
-          }
-          fieldHint={fieldHint ? <AppFieldHint hint={fieldHint} /> : undefined}
-        />
-      ) : null}
+      {labelRow}
       <div ref={anchorRef} className="relative">
         <button
           id={id}
@@ -242,7 +298,7 @@ export function AppMultiSelect({
           onClick={() => {
             if (!disabled) {
               setOpen((o) => !o);
-              if (!open) setSearch('');
+              setSearch('');
             }
           }}
           onKeyDown={(e) => {
@@ -264,18 +320,7 @@ export function AppMultiSelect({
           aria-hidden
         />
       </div>
-      {showSelectedChips && selectedOptions.length > 0 ? (
-        <div className={uiUserSelect.chipRow}>
-          {selectedOptions.map((option) => (
-            <MultiSelectChip
-              key={option.value}
-              label={option.label}
-              disabled={disabled}
-              onRemove={() => toggle(option.value)}
-            />
-          ))}
-        </div>
-      ) : null}
+      {chipsRow}
       {error ? (
         <span className="block text-xs text-red-600">{error}</span>
       ) : helperText ? (
