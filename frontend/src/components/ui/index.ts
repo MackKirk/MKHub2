@@ -11,6 +11,7 @@ export * from './AppFormModal';
 export * from './AppFieldHint';
 export * from './AppTooltip';
 export * from './AppControlLabel';
+export * from './AppCheckbox';
 export * from './AppInput';
 export * from './AppSelect';
 export * from './AppMultiSelect';

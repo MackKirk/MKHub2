@@ -10,7 +10,6 @@ import toast from 'react-hot-toast';
 import ImagePicker from '@/components/ImagePicker';
 import ImageEditor from '@/components/ImageEditor';
 import { useConfirm } from '@/components/ConfirmProvider';
-import { useUnsavedChangesGuard } from '@/hooks/useUnsavedChangesGuard';
 import LoadingOverlay from '@/components/LoadingOverlay';
 import { CustomerFilesTabEnhanced } from './CustomerFilesTabEnhanced';
 import { OpportunityListItem, CreateReportModal } from './Opportunities';
@@ -18,10 +17,14 @@ import { ProjectListItem } from './Projects';
 import NewContactModal from '@/components/NewContactModal';
 import EditContactModal, { type ClientContactRecord } from '@/components/EditContactModal';
 import SiteFormModal, { type ClientSiteRecord } from '@/components/SiteFormModal';
+import EditCustomerGeneralModal, {
+  type CustomerGeneralEditSection,
+} from '@/components/EditCustomerGeneralModal';
 import { SITE_CARD_COVER_CROP, uploadSiteCover } from '@/lib/siteCover';
 import {
   AppBadge,
   AppButton,
+  AppCheckbox,
   AppCard,
   AppDatePicker,
   AppEmptyState,
@@ -36,7 +39,6 @@ import {
   appSectionPresetProps,
   AppSelect,
   AppTabs,
-  AppTextarea,
   AppTooltip,
   uiBorders,
   uiColors,
@@ -134,13 +136,6 @@ const HERO_PANEL_EASE = 'ease-[cubic-bezier(0.22,1,0.36,1)]';
 const HERO_PANEL_TRANSITION_BASE = 'overflow-hidden transition-[max-height,opacity]';
 const HERO_EXPAND_DURATION = 'duration-[1400ms]';
 const HERO_COLLAPSE_DURATION = 'duration-[650ms]';
-
-type GeneralEditSection = 'company' | 'address' | 'billing' | 'description';
-
-const YES_NO_OPTIONS = [
-  { value: 'false', label: 'No' },
-  { value: 'true', label: 'Yes' },
-] as const;
 
 const OVERVIEW_DATE_FILTER_OPTIONS = [
   { value: 'all', label: 'All time' },
@@ -658,7 +653,6 @@ export default function CustomerDetail(){
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [newProjectOpen]);
-  const leadSources = (settings?.lead_sources||[]) as any[];
   const { data: participationData, isLoading: participationLoading } = useQuery({
     queryKey: ['clientProjectParticipations', id],
     queryFn: () =>
@@ -1552,102 +1546,18 @@ export default function CustomerDetail(){
     }
     return '/ui/assets/placeholders/customer.png';
   }, [client, clientLogoRec?.file_object_id]);
-  const [form, setForm] = useState<any>({});
-  const [dirty, setDirty] = useState(false);
-  const [isSaving, setIsSaving] = useState(false);
-  const [editingGeneralSection, setEditingGeneralSection] = useState<GeneralEditSection | null>(null);
+  const [generalEditSection, setGeneralEditSection] = useState<CustomerGeneralEditSection | null>(null);
   const [pickerOpen, setPickerOpen] = useState(false);
   const [projectPicker, setProjectPicker] = useState<{ open:boolean, projectId?:string }|null>(null);
   
-  // Save function for unsaved changes guard
-  const handleSave = async () => {
-    if (!dirty || !id || isSaving) return;
-    const toList = (s:string)=> (String(s||'').split(',').map(x=>x.trim()).filter(Boolean));
-    const payload:any = {
-      display_name: form.display_name||null,
-      legal_name: form.legal_name||null,
-      client_type: form.client_type||null,
-      client_status: form.client_status||null,
-      lead_source: form.lead_source||null,
-      billing_email: form.billing_email||null,
-      po_required: form.po_required==='true',
-      tax_number: form.tax_number||null,
-      address_line1: form.address_line1||null,
-      address_line2: form.address_line2||null,
-      country: form.country||null,
-      province: form.province||null,
-      city: form.city||null,
-      postal_code: form.postal_code||null,
-      billing_same_as_address: !!form.billing_same_as_address,
-      billing_address_line1: form.billing_same_as_address? (form.address_line1||null) : (form.billing_address_line1||null),
-      billing_address_line2: form.billing_same_as_address? (form.address_line2||null) : (form.billing_address_line2||null),
-      billing_country: form.billing_same_as_address? (form.country||null) : (form.billing_country||null),
-      billing_province: form.billing_same_as_address? (form.province||null) : (form.billing_province||null),
-      billing_city: form.billing_same_as_address? (form.city||null) : (form.billing_city||null),
-      billing_postal_code: form.billing_same_as_address? (form.postal_code||null) : (form.billing_postal_code||null),
-      preferred_language: form.preferred_language||null,
-      preferred_channels: toList(form.preferred_channels||''),
-      marketing_opt_in: form.marketing_opt_in==='true',
-      invoice_delivery_method: form.invoice_delivery_method||null,
-      statement_delivery_method: form.statement_delivery_method||null,
-      cc_emails_for_invoices: toList(form.cc_emails_for_invoices||''),
-      cc_emails_for_estimates: toList(form.cc_emails_for_estimates||''),
-      do_not_contact: form.do_not_contact==='true',
-      do_not_contact_reason: form.do_not_contact_reason||null,
-      description: form.description||null,
-    };
-    const reqOk = String(form.display_name||'').trim().length>0 && String(form.legal_name||'').trim().length>0;
-    if(!reqOk){ toast.error('Display name and Legal name are required'); return; }
-    try{ 
-      setIsSaving(true);
-      await api('PATCH', `/clients/${id}`, payload); 
-      setDirty(false);
-      setEditingGeneralSection(null);
-    }catch(e: any){ 
-      const msg = e?.message || 'Save failed';
-      if(msg.includes('HTTP 4') && !msg.includes('HTTP 40')) {
-        toast.error(msg);
-      } else {
-        setDirty(false);
-        setEditingGeneralSection(null);
-      }
-    } finally {
-      setIsSaving(false);
-    }
-  };
-  
-  // Use unsaved changes guard - only when editing
-  useUnsavedChangesGuard(dirty && editingGeneralSection !== null && hasEditGeneral, handleSave);
+  const billingUsesDifferentAddress = (client as any)?.billing_same_as_address === false;
 
-  useEffect(() => {
-    if (editingGeneralSection && !hasEditGeneral) {
-      setEditingGeneralSection(null);
-      setDirty(false);
-    }
-  }, [editingGeneralSection, hasEditGeneral]);
-  
-  useEffect(()=>{ if(client){ setForm({
-    display_name: client.display_name||'', legal_name: client.legal_name||'', code: client.id?.slice(0,8) || '',
-    client_type: (client as any).client_type||'', client_status: (client as any).client_status||'', lead_source:(client as any).lead_source||'',
-    billing_email:(client as any).billing_email||'', po_required: (client as any).po_required? 'true':'false', tax_number:(client as any).tax_number||'', description:(client as any).description||'',
-    address_line1: client.address_line1||'', address_line2: client.address_line2||'', country:(client as any).country||'', province:(client as any).province||'', city:(client as any).city||'', postal_code: client.postal_code||'',
-    billing_same_as_address: ((client as any).billing_same_as_address === false) ? false : true,
-    billing_address_line1: (client as any).billing_address_line1||'', billing_address_line2:(client as any).billing_address_line2||'', billing_country:(client as any).billing_country||'', billing_province:(client as any).billing_province||'', billing_city:(client as any).billing_city||'', billing_postal_code:(client as any).billing_postal_code||'',
-    preferred_language:(client as any).preferred_language||'', preferred_channels: ((client as any).preferred_channels||[]).join(', '),
-    marketing_opt_in: (client as any).marketing_opt_in? 'true':'false', invoice_delivery_method:(client as any).invoice_delivery_method||'', statement_delivery_method:(client as any).statement_delivery_method||'',
-    cc_emails_for_invoices: ((client as any).cc_emails_for_invoices||[]).join(', '), cc_emails_for_estimates: ((client as any).cc_emails_for_estimates||[]).join(', '),
-    do_not_contact:(client as any).do_not_contact? 'true':'false', do_not_contact_reason:(client as any).do_not_contact_reason||'',
-    estimator_id: (client as any).estimator_id||''
-  }); setDirty(false); } }, [client]);
-  const set = (k:string, v:any)=> setForm((s:any)=>{ setDirty(true); return { ...s, [k]: v }; });
   const fileBySite = useMemo(()=>{
     const m: Record<string, ClientFile[]> = {};
     (files||[]).forEach(f=>{ const sid = (f.site_id||'') as string; m[sid] = m[sid]||[]; m[sid].push(f); });
     return m;
   }, [files]);
   const c = client || {} as Client;
-  const isDisplayValid = useMemo(()=> String(form.display_name||'').trim().length>0, [form.display_name]);
-  const isLegalValid = useMemo(()=> String(form.legal_name||'').trim().length>0, [form.legal_name]);
 
   const todayLabel = useMemo(() => {
     return new Date().toLocaleDateString('en-CA', {
@@ -1712,38 +1622,6 @@ export default function CustomerDetail(){
     [availableTabs],
   );
 
-  const clientTypeOptions = useMemo(
-    () => [
-      { value: '', label: 'Select...' },
-      ...sortByLabel(settings?.client_types || [], (t: any) => (t.label || '').toString()).map((t: any) => ({
-        value: t.label,
-        label: t.label,
-      })),
-    ],
-    [settings?.client_types],
-  );
-  const clientStatusOptions = useMemo(
-    () => [
-      { value: '', label: 'Select...' },
-      ...sortByLabel(settings?.client_statuses || [], (t: any) => (t.label || '').toString()).map((t: any) => ({
-        value: t.label,
-        label: t.label,
-      })),
-    ],
-    [settings?.client_statuses],
-  );
-  const leadSourceOptions = useMemo(
-    () => [
-      { value: '', label: 'Select...' },
-      ...sortByLabel(leadSources, (ls: any) => (ls?.label ?? ls?.name ?? '').toString()).map((ls: any) => {
-        const val = ls?.value ?? ls?.id ?? ls?.label ?? ls?.name ?? String(ls);
-        const label = ls?.label ?? ls?.name ?? String(ls);
-        return { value: String(val), label: String(label) };
-      }),
-    ],
-    [leadSources],
-  );
-
   const handlePageBack = () => {
     if (tab !== null && hasOverviewView) {
       setTab(null);
@@ -1759,6 +1637,12 @@ export default function CustomerDetail(){
   return (
     <main className={uiCx('min-h-full bg-gray-50', uiSpacing.pageY)}>
       <div className={uiCx('w-full', uiSpacing.pageStack)}>
+      <div
+        className={uiCx(
+          'flex flex-col',
+          isHeroCollapsed ? 'gap-1.5' : 'gap-2',
+        )}
+      >
       <AppPageHeader
         title={getPageTitle(c, tab)}
         subtitle={getPageDescription(c, tab)}
@@ -1774,11 +1658,7 @@ export default function CustomerDetail(){
       />
 
       <AppCard
-        className={uiCx(
-          'transition-[margin]',
-          HERO_PANEL_EASE,
-          isHeroCollapsed ? uiCx(HERO_COLLAPSE_DURATION, 'mb-2') : uiCx(HERO_EXPAND_DURATION, 'mb-4'),
-        )}
+        className={uiCx('transition-[margin]', HERO_PANEL_EASE)}
         bodyClassName="relative overflow-hidden p-0"
       >
         {canDeleteCustomer && (
@@ -1898,42 +1778,60 @@ export default function CustomerDetail(){
             HERO_PANEL_TRANSITION_BASE,
             HERO_PANEL_EASE,
             isHeroCollapsed
-              ? uiCx(HERO_EXPAND_DURATION, 'max-h-[72px] opacity-100')
+              ? uiCx(HERO_EXPAND_DURATION, 'max-h-[32px] opacity-100')
               : uiCx(HERO_COLLAPSE_DURATION, 'max-h-0 opacity-0'),
           )}
           aria-hidden={!isHeroCollapsed}
         >
-          <div className="flex min-h-[60px] items-center justify-between gap-4 px-3 py-3 pr-10">
-            <h3 className={uiCx(uiTypography.sectionTitle, 'min-w-0 flex-1 truncate')}>
+          <div className="flex h-8 items-center justify-between gap-2 px-2.5 py-0">
+            <h3 className={uiCx(uiTypography.sectionTitle, 'min-w-0 flex-1 truncate leading-none')}>
               {c.display_name || c.name || id}
             </h3>
-            <div className="flex shrink-0 items-center gap-2">
-              <span className={uiCx(uiTypography.helper, 'font-medium')}>{c.code || id?.slice(0, 8) || '—'}</span>
-              {clientStatusLabel ? <AppBadge variant={clientStatusVariant}>{clientStatusLabel}</AppBadge> : null}
+            <div className="flex shrink-0 items-center gap-1">
+              <span className="text-[10px] font-medium leading-none text-gray-500">{c.code || id?.slice(0, 8) || '—'}</span>
+              {clientStatusLabel ? (
+                <AppBadge variant={clientStatusVariant} className="!px-1.5 !py-0 !text-[9px] !leading-none">
+                  {clientStatusLabel}
+                </AppBadge>
+              ) : null}
+              <AppButton
+                type="button"
+                variant="ghost"
+                size="sm"
+                className="ml-0.5 shrink-0 p-0.5"
+                onClick={() => setIsHeroCollapsed(false)}
+                title="Expand"
+                aria-label="Expand"
+              >
+                <ChevronDown className="h-3 w-3" />
+              </AppButton>
             </div>
           </div>
         </div>
 
-        <AppButton
-          type="button"
-          variant="ghost"
-          size="sm"
-          className="absolute bottom-2 right-2 z-20 p-1"
-          onClick={() => setIsHeroCollapsed(!isHeroCollapsed)}
-          title={isHeroCollapsed ? 'Expand' : 'Collapse'}
-          aria-label={isHeroCollapsed ? 'Expand' : 'Collapse'}
-        >
-          {isHeroCollapsed ? <ChevronDown className="h-3 w-3" /> : <ChevronUp className="h-3 w-3" />}
-        </AppButton>
+        {!isHeroCollapsed ? (
+          <AppButton
+            type="button"
+            variant="ghost"
+            size="sm"
+            className="absolute bottom-2 right-2 z-20 p-1"
+            onClick={() => setIsHeroCollapsed(true)}
+            title="Collapse"
+            aria-label="Collapse"
+          >
+            <ChevronUp className="h-3 w-3" />
+          </AppButton>
+        ) : null}
       </AppCard>
 
       {availableTabs.length > 0 && (
-        <div>
-          <AppCard bodyClassName="p-3">
+        <div className={!isHeroCollapsed ? '-mt-0.5' : undefined}>
+          <AppCard bodyClassName={isHeroCollapsed ? 'p-2.5' : 'p-3'}>
             <AppTabs tabs={appTabItems} value={activeTabKey} onChange={(key) => handleTabClick(key === 'overview' ? null : (key as CustomerTab))} />
           </AppCard>
         </div>
       )}
+      </div>
 
       <AppCard bodyClassName="p-5">
           {isLoading? <div className="h-24 animate-pulse bg-gray-100 rounded"/> : (
@@ -2718,73 +2616,25 @@ export default function CustomerDetail(){
                   </div>
               )}
               {tab==='general' && hasGeneralView && (
-                <div className="space-y-6 pb-24">
+                <div className="space-y-6">
                   <AppCard>
                     <AppSectionHeader
                       title="Company"
                       description="Core company identity details."
                       {...appSectionPresetProps('company')}
                       action={
-                        editingGeneralSection !== 'company' && hasEditGeneral ? (
-                          <AppHeroEditButton onClick={() => setEditingGeneralSection('company')} title="Edit Company" />
+                        hasEditGeneral ? (
+                          <AppHeroEditButton onClick={() => setGeneralEditSection('company')} title="Edit Company" />
                         ) : null
                       }
                     />
                     <div className={uiCx('mt-4 grid gap-4 md:grid-cols-2')}>
-                      {editingGeneralSection === 'company' ? (
-                        <>
-                          <AppInput
-                            label="Display name *"
-                            value={form.display_name || ''}
-                            onChange={(e) => set('display_name', e.target.value)}
-                            error={!isDisplayValid ? 'Required' : undefined}
-                            fieldHint="Display name\n\nPublic name shown across the app."
-                          />
-                          <AppInput
-                            label="Legal name *"
-                            value={form.legal_name || ''}
-                            onChange={(e) => set('legal_name', e.target.value)}
-                            error={!isLegalValid ? 'Required' : undefined}
-                            fieldHint="Legal name\n\nRegistered legal entity name."
-                          />
-                          <AppSelect
-                            label="Type"
-                            value={form.client_type || ''}
-                            onChange={(e) => set('client_type', e.target.value)}
-                            options={clientTypeOptions}
-                            fieldHint="Type\n\nCustomer classification."
-                          />
-                          <AppSelect
-                            label="Status"
-                            value={form.client_status || ''}
-                            onChange={(e) => set('client_status', e.target.value)}
-                            options={clientStatusOptions}
-                            fieldHint="Status\n\nRelationship status."
-                          />
-                          <AppSelect
-                            label="Lead source"
-                            value={form.lead_source || ''}
-                            onChange={(e) => set('lead_source', e.target.value)}
-                            options={leadSourceOptions}
-                            fieldHint="Lead source\n\nWhere did this lead originate?"
-                          />
-                          <AppInput
-                            label="Tax number"
-                            value={form.tax_number || ''}
-                            onChange={(e) => set('tax_number', e.target.value)}
-                            fieldHint="Tax number\n\nTax/VAT identifier used for invoicing."
-                          />
-                        </>
-                      ) : (
-                        <>
-                          <ReadOnlyField label="Display name *" value={form.display_name} />
-                          <ReadOnlyField label="Legal name *" value={form.legal_name} />
-                          <ReadOnlyField label="Type" value={form.client_type} />
-                          <ReadOnlyField label="Status" value={form.client_status} />
-                          <ReadOnlyField label="Lead source" value={form.lead_source} />
-                          <ReadOnlyField label="Tax number" value={form.tax_number} />
-                        </>
-                      )}
+                      <ReadOnlyField label="Display name *" value={client?.display_name} />
+                      <ReadOnlyField label="Legal name *" value={(client as any)?.legal_name} />
+                      <ReadOnlyField label="Type" value={(client as any)?.client_type} />
+                      <ReadOnlyField label="Status" value={(client as any)?.client_status} />
+                      <ReadOnlyField label="Lead source" value={(client as any)?.lead_source} />
+                      <ReadOnlyField label="Tax number" value={(client as any)?.tax_number} />
                     </div>
                   </AppCard>
                   <AppCard>
@@ -2793,31 +2643,18 @@ export default function CustomerDetail(){
                       description="Primary mailing and location address."
                       {...appSectionPresetProps('address')}
                       action={
-                        editingGeneralSection !== 'address' && hasEditGeneral ? (
-                          <AppHeroEditButton onClick={() => setEditingGeneralSection('address')} title="Edit Address" />
+                        hasEditGeneral ? (
+                          <AppHeroEditButton onClick={() => setGeneralEditSection('address')} title="Edit Address" />
                         ) : null
                       }
                     />
                     <div className={uiCx('mt-4 grid gap-4 md:grid-cols-2')}>
-                      {editingGeneralSection === 'address' ? (
-                        <>
-                          <AppInput label="Address 1" value={form.address_line1 || ''} onChange={(e) => set('address_line1', e.target.value)} />
-                          <AppInput label="Address 2" value={form.address_line2 || ''} onChange={(e) => set('address_line2', e.target.value)} />
-                          <AppInput label="Country" value={form.country || ''} onChange={(e) => set('country', e.target.value)} />
-                          <AppInput label="Province/State" value={form.province || ''} onChange={(e) => set('province', e.target.value)} />
-                          <AppInput label="City" value={form.city || ''} onChange={(e) => set('city', e.target.value)} />
-                          <AppInput label="Postal code" value={form.postal_code || ''} onChange={(e) => set('postal_code', e.target.value)} />
-                        </>
-                      ) : (
-                        <>
-                          <ReadOnlyField label="Address 1" value={form.address_line1} />
-                          <ReadOnlyField label="Address 2" value={form.address_line2} />
-                          <ReadOnlyField label="Country" value={form.country} />
-                          <ReadOnlyField label="Province/State" value={form.province} />
-                          <ReadOnlyField label="City" value={form.city} />
-                          <ReadOnlyField label="Postal code" value={form.postal_code} />
-                        </>
-                      )}
+                      <ReadOnlyField label="Address 1" value={client?.address_line1} />
+                      <ReadOnlyField label="Address 2" value={client?.address_line2} />
+                      <ReadOnlyField label="Country" value={(client as any)?.country} />
+                      <ReadOnlyField label="Province/State" value={(client as any)?.province} />
+                      <ReadOnlyField label="City" value={(client as any)?.city} />
+                      <ReadOnlyField label="Postal code" value={client?.postal_code} />
                     </div>
                   </AppCard>
                   <AppCard>
@@ -2826,102 +2663,35 @@ export default function CustomerDetail(){
                       description="Preferences used for invoices and payments."
                       {...appSectionPresetProps('billing')}
                       action={
-                        editingGeneralSection !== 'billing' && hasEditGeneral ? (
-                          <AppHeroEditButton onClick={() => setEditingGeneralSection('billing')} title="Edit Billing" />
+                        hasEditGeneral ? (
+                          <AppHeroEditButton onClick={() => setGeneralEditSection('billing')} title="Edit Billing" />
                         ) : null
                       }
                     />
                     <div className={uiCx('mt-4 space-y-4')}>
                       <div className="grid gap-4 md:grid-cols-2">
-                        {editingGeneralSection === 'billing' ? (
-                          <>
-                            <AppInput
-                              label="Billing email"
-                              value={form.billing_email || ''}
-                              onChange={(e) => set('billing_email', e.target.value)}
-                              fieldHint="Billing email\n\nEmail used for invoice delivery."
-                            />
-                            <AppSelect
-                              label="PO required"
-                              value={form.po_required || 'false'}
-                              onChange={(e) => set('po_required', e.target.value)}
-                              options={[...YES_NO_OPTIONS]}
-                              fieldHint="PO required\n\nWhether a purchase order is required before invoicing."
-                            />
-                          </>
-                        ) : (
-                          <>
-                            <ReadOnlyField label="Billing email" value={form.billing_email} />
-                            <ReadOnlyField label="PO required" value={form.po_required === 'true' ? 'Yes' : 'No'} />
-                          </>
-                        )}
-                      </div>
-                      <label
-                        className={uiCx(
-                          'inline-flex items-center gap-2 text-sm',
-                          editingGeneralSection !== 'billing' && 'cursor-not-allowed opacity-50',
-                        )}
-                      >
-                        <input
-                          type="checkbox"
-                          checked={!!(!form.billing_same_as_address)}
-                          onChange={(e) => set('billing_same_as_address', !e.target.checked)}
-                          disabled={editingGeneralSection !== 'billing'}
+                        <ReadOnlyField label="Billing email" value={(client as any)?.billing_email} />
+                        <ReadOnlyField
+                          label="PO required"
+                          value={(client as any)?.po_required ? 'Yes' : 'No'}
                         />
-                        Use different address for Billing address
-                      </label>
-                      {!form.billing_same_as_address && (
+                      </div>
+                      <AppCheckbox
+                        label="Use different address for Billing address"
+                        checked={billingUsesDifferentAddress}
+                        disabled
+                      />
+                      {billingUsesDifferentAddress ? (
                         <div className="grid gap-4 md:grid-cols-2">
-                          {editingGeneralSection === 'billing' ? (
-                            <>
-                              <AppInput
-                                label="Billing Address 1"
-                                value={form.billing_address_line1 || ''}
-                                onChange={(e) => set('billing_address_line1', e.target.value)}
-                                fieldHint="Billing Address 1\n\nStreet address for billing."
-                              />
-                              <AppInput
-                                label="Billing Address 2"
-                                value={form.billing_address_line2 || ''}
-                                onChange={(e) => set('billing_address_line2', e.target.value)}
-                                fieldHint="Billing Address 2\n\nApartment, suite, unit, building, floor, etc."
-                              />
-                              <AppInput
-                                label="Billing Country"
-                                value={form.billing_country || ''}
-                                onChange={(e) => set('billing_country', e.target.value)}
-                                fieldHint="Billing Country\n\nCountry or region for billing."
-                              />
-                              <AppInput
-                                label="Billing Province/State"
-                                value={form.billing_province || ''}
-                                onChange={(e) => set('billing_province', e.target.value)}
-                                fieldHint="Billing Province/State\n\nState, province, or region."
-                              />
-                              <AppInput
-                                label="Billing City"
-                                value={form.billing_city || ''}
-                                onChange={(e) => set('billing_city', e.target.value)}
-                                fieldHint="Billing City\n\nCity or locality for billing."
-                              />
-                              <AppInput
-                                label="Billing Postal code"
-                                value={form.billing_postal_code || ''}
-                                onChange={(e) => set('billing_postal_code', e.target.value)}
-                                fieldHint="Billing Postal code\n\nZIP or postal code for billing."
-                              />
-                            </>
-                          ) : (
-                            <>
-                              <ReadOnlyField label="Billing Address 1" value={form.billing_address_line1} />
-                              <ReadOnlyField label="Billing Address 2" value={form.billing_address_line2} />
-                              <ReadOnlyField label="Billing Country" value={form.billing_country} />
-                              <ReadOnlyField label="Billing Province/State" value={form.billing_province} />
-                              <ReadOnlyField label="Billing City" value={form.billing_city} />
-                              <ReadOnlyField label="Billing Postal code" value={form.billing_postal_code} />
-                            </>
-                          )}
+                          <ReadOnlyField label="Billing Address 1" value={(client as any)?.billing_address_line1} />
+                          <ReadOnlyField label="Billing Address 2" value={(client as any)?.billing_address_line2} />
+                          <ReadOnlyField label="Billing Country" value={(client as any)?.billing_country} />
+                          <ReadOnlyField label="Billing Province/State" value={(client as any)?.billing_province} />
+                          <ReadOnlyField label="Billing City" value={(client as any)?.billing_city} />
+                          <ReadOnlyField label="Billing Postal code" value={(client as any)?.billing_postal_code} />
                         </div>
+                      ) : (
+                        <p className={uiTypography.helper}>Billing address matches the primary address.</p>
                       )}
                     </div>
                   </AppCard>
@@ -2931,150 +2701,17 @@ export default function CustomerDetail(){
                       description="Additional notes about this customer."
                       {...appSectionPresetProps('description')}
                       action={
-                        editingGeneralSection !== 'description' && hasEditGeneral ? (
-                          <AppHeroEditButton onClick={() => setEditingGeneralSection('description')} title="Edit Description" />
+                        hasEditGeneral ? (
+                          <AppHeroEditButton onClick={() => setGeneralEditSection('description')} title="Edit Description" />
                         ) : null
                       }
                     />
                     <div className="mt-4">
-                      {editingGeneralSection === 'description' ? (
-                        <AppTextarea
-                          label="Description"
-                          rows={6}
-                          value={form.description || ''}
-                          onChange={(e) => set('description', e.target.value)}
-                        />
-                      ) : (
-                        <div className={uiCx(uiTypography.helper, 'whitespace-pre-wrap break-words font-medium text-gray-900')}>
-                          {String(form.description || '') || '—'}
-                        </div>
-                      )}
+                      <div className={uiCx(uiTypography.helper, 'whitespace-pre-wrap break-words font-medium text-gray-900')}>
+                        {String((client as any)?.description || '') || '—'}
+                      </div>
                     </div>
                   </AppCard>
-
-                  {/* Communications and Preferences (hidden per request) */}
-                  <div className="grid md:grid-cols-2 gap-4 hidden">
-                    <Field label="Language"><input className="w-full border rounded px-3 py-2" value={form.preferred_language||''} onChange={e=>set('preferred_language', e.target.value)} /></Field>
-                    <Field label="Preferred channels (comma-separated)"><input className="w-full border rounded px-3 py-2" value={form.preferred_channels||''} onChange={e=>set('preferred_channels', e.target.value)} /></Field>
-                    <Field label="Marketing opt-in"><select className="w-full border rounded px-3 py-2" value={form.marketing_opt_in||'false'} onChange={e=>set('marketing_opt_in', e.target.value)}><option value="false">No</option><option value="true">Yes</option></select></Field>
-                    <Field label="Invoice delivery"><input className="w-full border rounded px-3 py-2" value={form.invoice_delivery_method||''} onChange={e=>set('invoice_delivery_method', e.target.value)} /></Field>
-                    <Field label="Statement delivery"><input className="w-full border rounded px-3 py-2" value={form.statement_delivery_method||''} onChange={e=>set('statement_delivery_method', e.target.value)} /></Field>
-                    <Field label="CC emails for invoices"><input className="w-full border rounded px-3 py-2" value={form.cc_emails_for_invoices||''} onChange={e=>set('cc_emails_for_invoices', e.target.value)} /></Field>
-                    <Field label="CC emails for estimates"><input className="w-full border rounded px-3 py-2" value={form.cc_emails_for_estimates||''} onChange={e=>set('cc_emails_for_estimates', e.target.value)} /></Field>
-                    <Field label="Do not contact"><select className="w-full border rounded px-3 py-2" value={form.do_not_contact||'false'} onChange={e=>set('do_not_contact', e.target.value)}><option value="false">No</option><option value="true">Yes</option></select></Field>
-                    <div className="md:col-span-2"><Field label="Reason"><input className="w-full border rounded px-3 py-2" value={form.do_not_contact_reason||''} onChange={e=>set('do_not_contact_reason', e.target.value)} /></Field></div>
-                  </div>
-                </div>
-              )}
-              {tab==='general' && hasGeneralView && editingGeneralSection && (
-                <div className="fixed bottom-0 left-0 right-0 z-40">
-                  <div className="mx-auto max-w-[1400px] px-4">
-                    <AppCard
-                      className="mb-3"
-                      bodyClassName={uiCx('flex items-center gap-3', uiSpacing.cardPadding)}
-                    >
-                      <div className={uiCx('text-sm', dirty ? 'text-amber-700' : 'text-green-700')}>
-                        {dirty ? 'You have unsaved changes' : 'All changes saved'}
-                      </div>
-                      <div className={uiCx(uiLayout.actionsRow, 'ml-auto')}>
-                        <AppButton
-                          variant="secondary"
-                          onClick={() => {
-                            setEditingGeneralSection(null);
-                            // Reset form to original client data
-                            if (client) {
-                              setForm({
-                                display_name: client.display_name||'', legal_name: client.legal_name||'', code: client.id?.slice(0,8) || '',
-                                client_type: (client as any).client_type||'', client_status: (client as any).client_status||'', lead_source:(client as any).lead_source||'',
-                                billing_email:(client as any).billing_email||'', po_required: (client as any).po_required? 'true':'false', tax_number:(client as any).tax_number||'', description:(client as any).description||'',
-                                address_line1: client.address_line1||'', address_line2: client.address_line2||'', country:(client as any).country||'', province:(client as any).province||'', city:(client as any).city||'', postal_code: client.postal_code||'',
-                                billing_same_as_address: ((client as any).billing_same_as_address === false) ? false : true,
-                                billing_address_line1: (client as any).billing_address_line1||'', billing_address_line2:(client as any).billing_address_line2||'', billing_country:(client as any).billing_country||'', billing_province:(client as any).billing_province||'', billing_city:(client as any).billing_city||'', billing_postal_code:(client as any).billing_postal_code||'',
-                                preferred_language:(client as any).preferred_language||'', preferred_channels: ((client as any).preferred_channels||[]).join(', '),
-                                marketing_opt_in: (client as any).marketing_opt_in? 'true':'false', invoice_delivery_method:(client as any).invoice_delivery_method||'', statement_delivery_method:(client as any).statement_delivery_method||'',
-                                cc_emails_for_invoices: ((client as any).cc_emails_for_invoices||[]).join(', '), cc_emails_for_estimates: ((client as any).cc_emails_for_estimates||[]).join(', '),
-                                do_not_contact:(client as any).do_not_contact? 'true':'false', do_not_contact_reason:(client as any).do_not_contact_reason||'',
-                                estimator_id: (client as any).estimator_id||''
-                              });
-                              setDirty(false);
-                            }
-                          }}
-                        >
-                          Cancel
-                        </AppButton>
-                        <AppButton
-                          loading={isSaving}
-                          disabled={isSaving}
-                          onClick={async () => {
-                            if (isSaving) return;
-                      const toList = (s:string)=> (String(s||'').split(',').map(x=>x.trim()).filter(Boolean));
-                      const payload:any = {
-                        // identity
-                        display_name: form.display_name||null,
-                        legal_name: form.legal_name||null,
-                        client_type: form.client_type||null,
-                        client_status: form.client_status||null,
-                        lead_source: form.lead_source||null,
-                        billing_email: form.billing_email||null,
-                        po_required: form.po_required==='true',
-                        tax_number: form.tax_number||null,
-                        // address
-                        address_line1: form.address_line1||null,
-                        address_line2: form.address_line2||null,
-                        country: form.country||null,
-                        province: form.province||null,
-                        city: form.city||null,
-                        postal_code: form.postal_code||null,
-                        billing_same_as_address: !!form.billing_same_as_address,
-                        billing_address_line1: form.billing_same_as_address? (form.address_line1||null) : (form.billing_address_line1||null),
-                        billing_address_line2: form.billing_same_as_address? (form.address_line2||null) : (form.billing_address_line2||null),
-                        billing_country: form.billing_same_as_address? (form.country||null) : (form.billing_country||null),
-                        billing_province: form.billing_same_as_address? (form.province||null) : (form.billing_province||null),
-                        billing_city: form.billing_same_as_address? (form.city||null) : (form.billing_city||null),
-                        billing_postal_code: form.billing_same_as_address? (form.postal_code||null) : (form.billing_postal_code||null),
-                        // comms
-                        preferred_language: form.preferred_language||null,
-                        preferred_channels: toList(form.preferred_channels||''),
-                        marketing_opt_in: form.marketing_opt_in==='true',
-                        invoice_delivery_method: form.invoice_delivery_method||null,
-                        statement_delivery_method: form.statement_delivery_method||null,
-                        cc_emails_for_invoices: toList(form.cc_emails_for_invoices||''),
-                        cc_emails_for_estimates: toList(form.cc_emails_for_estimates||''),
-                        do_not_contact: form.do_not_contact==='true',
-                        do_not_contact_reason: form.do_not_contact_reason||null,
-                        // final
-                        description: form.description||null,
-                      };
-                        const reqOk = String(form.display_name||'').trim().length>0 && String(form.legal_name||'').trim().length>0;
-                        if(!reqOk){ toast.error('Display name and Legal name are required'); return; }
-                        try{ 
-                        setIsSaving(true);
-                        await api('PATCH', `/clients/${id}`, payload); 
-                        toast.success('Saved'); 
-                        setDirty(false);
-                        setEditingGeneralSection(null);
-                      }catch(e: any){ 
-                        // Only show error if it's a clear client error (4xx), not if it might have saved anyway
-                        const msg = e?.message || 'Save failed';
-                        if(msg.includes('HTTP 4') && !msg.includes('HTTP 40')) {
-                          // 4xx errors except 400 might be validation issues, show error
-                          toast.error(msg);
-                        } else {
-                          // For other errors, assume it might have saved - show success
-                          toast.success('Saved'); 
-                          setDirty(false);
-                          setEditingGeneralSection(null);
-                        }
-                      } finally {
-                        setIsSaving(false);
-                      }
-                          }}
-                        >
-                          Save
-                        </AppButton>
-                      </div>
-                    </AppCard>
-                  </div>
                 </div>
               )}
               {tab==='files' && hasFilesView && (
@@ -3187,6 +2824,18 @@ export default function CustomerDetail(){
             </>
           )}
       </AppCard>
+      <EditCustomerGeneralModal
+        open={generalEditSection !== null}
+        section={generalEditSection}
+        onClose={() => setGeneralEditSection(null)}
+        clientId={String(id || '')}
+        client={client}
+        clientDisplayName={client?.display_name || client?.name || ''}
+        onSaved={() => {
+          queryClient.invalidateQueries({ queryKey: ['client', id] });
+          queryClient.invalidateQueries({ queryKey: ['clients'] });
+        }}
+      />
       <ImagePicker isOpen={pickerOpen} onClose={()=>setPickerOpen(false)} clientId={String(id)} targetWidth={800} targetHeight={600} allowEdit={true} onConfirm={async(blob, original)=>{
         try{
           const up:any = await api('POST','/files/upload',{ project_id:null, client_id:id, employee_id:null, category_id:'client-logo-derived', original_name: 'client-logo.jpg', content_type: 'image/jpeg' });

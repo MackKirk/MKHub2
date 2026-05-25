@@ -465,42 +465,44 @@ export default function SiteFormModal({
               placeholder="Auto-filled from address"
               fieldHint="Postal code\n\nFilled automatically when you pick an address."
             />
-            <div className="md:col-span-2">
-              <AppTextarea
-                label="Notes"
-                rows={4}
-                value={form.site_notes || ''}
-                onChange={(e) => setField('site_notes', e.target.value)}
-                disabled={readOnly || isSaving}
-                fieldHint="Notes\n\nInternal notes about access, hazards, or site-specific details."
-              />
-            </div>
           </div>
 
-          <div className="max-w-xs space-y-1.5">
-            <AppControlLabelRow
-              label="Site cover"
-              fieldHint={
-                <AppFieldHint hint="Site cover\n\nOptional. Click to select and frame the banner (drag/zoom in the picker)." />
-              }
-            />
-            <button
-              type="button"
-              onClick={() => !readOnly && setPickerOpen(true)}
+          <div className="grid items-start gap-3 md:grid-cols-5">
+            <AppTextarea
+              className="md:col-span-3"
+              label="Notes"
+              rows={3}
+              textareaClassName="h-32 min-h-32 resize-y"
+              value={form.site_notes || ''}
+              onChange={(e) => setField('site_notes', e.target.value)}
               disabled={readOnly || isSaving}
-              className={uiCx(
-                'relative grid h-32 w-full place-items-center overflow-hidden bg-gray-50',
-                uiRadius.control,
-                uiBorders.input,
-                (readOnly || isSaving) && 'cursor-not-allowed opacity-60',
-              )}
-            >
-              {coverPreview ? (
-                <img src={coverPreview} className="h-full w-full object-cover" alt="Site cover preview" />
-              ) : (
-                <span className={uiTypography.helper}>Select cover</span>
-              )}
-            </button>
+              fieldHint="Notes\n\nInternal notes about access, hazards, or site-specific details."
+            />
+            <div className="space-y-1.5 md:col-span-2">
+              <AppControlLabelRow
+                label="Site cover"
+                fieldHint={
+                  <AppFieldHint hint="Site cover\n\nOptional. Click to select and frame the banner (drag/zoom in the picker)." />
+                }
+              />
+              <button
+                type="button"
+                onClick={() => !readOnly && setPickerOpen(true)}
+                disabled={readOnly || isSaving}
+                className={uiCx(
+                  'relative grid h-32 w-full place-items-center overflow-hidden bg-gray-50',
+                  uiRadius.control,
+                  uiBorders.input,
+                  (readOnly || isSaving) && 'cursor-not-allowed opacity-60',
+                )}
+              >
+                {coverPreview ? (
+                  <img src={coverPreview} className="h-full w-full object-cover" alt="Site cover preview" />
+                ) : (
+                  <span className={uiTypography.helper}>Select cover</span>
+                )}
+              </button>
+            </div>
           </div>
         </div>
       </AppFormModal>

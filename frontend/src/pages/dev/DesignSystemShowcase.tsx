@@ -328,7 +328,7 @@ export default function DesignSystemShowcase() {
         </AppCard>
 
         <AppCard
-          title="Entity form modals (contacts, sites)"
+          title="Entity form modals (contacts, sites, customer general)"
           subtitle="AppFormModal + field hints (?) — narrow comfortable for contacts, wide for address-heavy forms."
         >
           <p className={uiCx(uiTypography.helper, 'mb-4')}>
@@ -345,6 +345,14 @@ export default function DesignSystemShowcase() {
               <code className="rounded bg-gray-100 px-1 py-0.5 text-[11px]">formWidth=&quot;wide&quot;</code> +{' '}
               <code className="rounded bg-gray-100 px-1 py-0.5 text-[11px]">AddressAutocomplete</code> via{' '}
               <code className="rounded bg-gray-100 px-1 py-0.5 text-[11px]">AppControlLabelRow</code>
+            </li>
+            <li>
+              <code className="rounded bg-gray-100 px-1 py-0.5 text-[11px]">EditCustomerGeneralModal</code> — Customer General
+              tab: one modal per section (<code className="rounded bg-gray-100 px-1 py-0.5 text-[11px]">company</code>,{' '}
+              <code className="rounded bg-gray-100 px-1 py-0.5 text-[11px]">address</code>,{' '}
+              <code className="rounded bg-gray-100 px-1 py-0.5 text-[11px]">billing</code>,{' '}
+              <code className="rounded bg-gray-100 px-1 py-0.5 text-[11px]">description</code>); PATCH only that section&apos;s
+              fields
             </li>
           </ul>
           <p className={uiTypography.helper}>
