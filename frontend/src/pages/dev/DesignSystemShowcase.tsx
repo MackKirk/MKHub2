@@ -17,6 +17,8 @@ import {
   AppPageBackButton,
   AppPageHeader,
   AppSectionHeader,
+  APP_SECTION_PRESET_KEYS,
+  appSectionPresetProps,
   AppMultiSelect,
   AppProjectSelect,
   AppSelect,
@@ -269,6 +271,95 @@ export default function DesignSystemShowcase() {
               </p>
             </div>
           </div>
+        </AppCard>
+
+        <AppCard
+          title="Form section cards (detail tabs)"
+          subtitle="AppCard + AppSectionHeader with semantic icons — User Details, Customer General, and similar edit tabs."
+        >
+          <p className={uiCx(uiTypography.helper, 'mb-4')}>
+            Use{' '}
+            <code className="rounded bg-gray-100 px-1 py-0.5 text-[11px]">appSectionPresetProps(&apos;company&apos;)</code>{' '}
+            from <code className="rounded bg-gray-100 px-1 py-0.5 text-[11px]">@/components/ui</code> on{' '}
+            <code className="rounded bg-gray-100 px-1 py-0.5 text-[11px]">AppSectionHeader</code>. Pair with{' '}
+            <code className="rounded bg-gray-100 px-1 py-0.5 text-[11px]">AppHeroEditButton</code> in{' '}
+            <code className="rounded bg-gray-100 px-1 py-0.5 text-[11px]">action</code> when the section is read-only until edit.
+            Stack sections with <code className="rounded bg-gray-100 px-1 py-0.5 text-[11px]">space-y-6</code> inside the tab body.
+          </p>
+          <div className={uiSpacing.sectionStack}>
+            <AppCard>
+              <AppSectionHeader
+                title="Company"
+                description="Core company identity details."
+                {...appSectionPresetProps('company')}
+                action={<AppHeroEditButton title="Edit Company" onClick={() => undefined} />}
+              />
+              <div className={uiCx('mt-4 grid gap-4 md:grid-cols-2')}>
+                <AppInput label="Display name *" placeholder="Public name" />
+                <AppInput label="Legal name *" placeholder="Registered name" />
+              </div>
+            </AppCard>
+            <AppCard>
+              <AppSectionHeader
+                title="Address"
+                description="Primary mailing and location address."
+                {...appSectionPresetProps('address')}
+                action={<AppHeroEditButton title="Edit Address" onClick={() => undefined} />}
+              />
+              <div className={uiCx('mt-4 grid gap-4 md:grid-cols-2')}>
+                <AppInput label="City" placeholder="City" />
+                <AppInput label="Postal code" placeholder="Postal code" />
+              </div>
+            </AppCard>
+          </div>
+          <div className={uiCx('mt-6 border-t border-gray-100 pt-4')}>
+            <p className={uiCx(uiTypography.overline, 'mb-3')}>Preset keys</p>
+            <div className="flex flex-wrap gap-2">
+              {APP_SECTION_PRESET_KEYS.map((key) => (
+                <AppSectionHeader
+                  key={key}
+                  title={key}
+                  className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2"
+                  {...appSectionPresetProps(key)}
+                />
+              ))}
+            </div>
+          </div>
+        </AppCard>
+
+        <AppCard
+          title="Entity form modals (contacts, sites, customer general)"
+          subtitle="AppFormModal + field hints (?) — narrow comfortable for contacts, wide for address-heavy forms."
+        >
+          <p className={uiCx(uiTypography.helper, 'mb-4')}>
+            Customer tab grids open encapsulated modals on card click (no inline edit). Reuse these components:
+          </p>
+          <ul className={uiCx(uiTypography.helper, 'mb-4 list-disc space-y-1 pl-5')}>
+            <li>
+              <code className="rounded bg-gray-100 px-1 py-0.5 text-[11px]">NewContactModal</code> /{' '}
+              <code className="rounded bg-gray-100 px-1 py-0.5 text-[11px]">EditContactModal</code> —{' '}
+              <code className="rounded bg-gray-100 px-1 py-0.5 text-[11px]">formWidth=&quot;comfortable&quot;</code>
+            </li>
+            <li>
+              <code className="rounded bg-gray-100 px-1 py-0.5 text-[11px]">SiteFormModal</code> —{' '}
+              <code className="rounded bg-gray-100 px-1 py-0.5 text-[11px]">formWidth=&quot;wide&quot;</code> +{' '}
+              <code className="rounded bg-gray-100 px-1 py-0.5 text-[11px]">AddressAutocomplete</code> via{' '}
+              <code className="rounded bg-gray-100 px-1 py-0.5 text-[11px]">AppControlLabelRow</code>
+            </li>
+            <li>
+              <code className="rounded bg-gray-100 px-1 py-0.5 text-[11px]">EditCustomerGeneralModal</code> — Customer General
+              tab: one modal per section (<code className="rounded bg-gray-100 px-1 py-0.5 text-[11px]">company</code>,{' '}
+              <code className="rounded bg-gray-100 px-1 py-0.5 text-[11px]">address</code>,{' '}
+              <code className="rounded bg-gray-100 px-1 py-0.5 text-[11px]">billing</code>,{' '}
+              <code className="rounded bg-gray-100 px-1 py-0.5 text-[11px]">description</code>); PATCH only that section&apos;s
+              fields
+            </li>
+          </ul>
+          <p className={uiTypography.helper}>
+            Cover/photo: left column + <code className="rounded bg-gray-100 px-1 py-0.5 text-[11px]">ImagePicker</code> nested
+            with <code className="rounded bg-gray-100 px-1 py-0.5 text-[11px]">uiModalLayer.nestedPicker</code>. Footer: Delete
+            (edit only, left), Cancel + Save/Create (right).
+          </p>
         </AppCard>
 
         <AppCard

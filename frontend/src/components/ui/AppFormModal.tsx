@@ -7,6 +7,11 @@ import { uiBorders, uiCx, uiLayout, uiRadius, uiSpacing, uiTypography } from './
 const FORM_MODAL_COLLAPSED_MAX = '!max-w-md';
 const FORM_MODAL_EXPANDED_MAX = '!w-[calc(28rem+1.5rem+16rem)] !max-w-[calc(28rem+1.5rem+16rem)]';
 const FORM_MODAL_FORM_INNER = 'w-full md:w-[26rem] md:max-w-[26rem]';
+/** Slightly wider than default — contact new/edit modals (photo + 2-column fields). */
+export const FORM_MODAL_COMFORTABLE_DIALOG_COLLAPSED = '!max-w-lg';
+export const FORM_MODAL_COMFORTABLE_DIALOG_EXPANDED =
+  '!w-[calc(32rem+1.5rem+16rem)] !max-w-[calc(32rem+1.5rem+16rem)]';
+const FORM_MODAL_COMFORTABLE_FORM_INNER = 'w-full md:w-[30rem] md:max-w-[30rem]';
 /** Wide shell: form column + padding; expands with gap + quick-info column when ? is open. */
 export const FORM_MODAL_WIDE_DIALOG_COLLAPSED =
   '!w-[calc(720px+2rem)] !max-w-[calc(720px+2rem)]';
@@ -67,8 +72,8 @@ export type AppFormModalProps = {
   dialogClassName?: string;
   /** When set with `dialogClassName`, used while quick info is open (modal expands outward). */
   dialogClassNameExpanded?: string;
-  /** `wide` = 720px dialog + quick-info aside pattern (default constants above). */
-  formWidth?: 'default' | 'wide';
+  /** `wide` = 720px dialog + quick-info aside. `comfortable` = between default and wide (contacts). */
+  formWidth?: 'default' | 'wide' | 'comfortable';
   /** Overrides default body wrapper classes on AppModal. */
   bodyClassName?: string;
   /** Backdrop z-index / layout when stacked on another modal (e.g. `z-[200]`). */
@@ -104,6 +109,7 @@ export function AppFormModal({
 }: AppFormModalProps) {
   const isDetailLayout = layout === 'detail';
   const isWideForm = formWidth === 'wide';
+  const isComfortableForm = formWidth === 'comfortable';
   const quickInfoPanelId = useId();
   const [quickInfoOpenInternal, setQuickInfoOpenInternal] = useState(false);
   const isControlled = quickInfoOpenProp !== undefined;
@@ -162,7 +168,11 @@ export function AppFormModal({
       ? isExpanded
         ? FORM_MODAL_WIDE_DIALOG_EXPANDED
         : FORM_MODAL_WIDE_DIALOG_COLLAPSED
-      : defaultDialogClassName;
+      : isComfortableForm
+        ? isExpanded
+          ? FORM_MODAL_COMFORTABLE_DIALOG_EXPANDED
+          : FORM_MODAL_COMFORTABLE_DIALOG_COLLAPSED
+        : defaultDialogClassName;
 
   const quickInfoPanelInner = (
     <>
@@ -206,7 +216,11 @@ export function AppFormModal({
       </aside>
     ) : null;
 
-  const formInnerWidthClass = isWideForm ? FORM_MODAL_WIDE_FORM_COLUMN : FORM_MODAL_FORM_INNER;
+  const formInnerWidthClass = isWideForm
+    ? FORM_MODAL_WIDE_FORM_COLUMN
+    : isComfortableForm
+      ? FORM_MODAL_COMFORTABLE_FORM_INNER
+      : FORM_MODAL_FORM_INNER;
 
   const useFormBodySplit = !isDetailLayout && !!footer && scrollBody;
   const useFormBodyFill = !isDetailLayout && !!footer && !scrollBody;

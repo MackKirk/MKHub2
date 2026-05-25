@@ -1,10 +1,11 @@
 import { useMemo } from 'react';
-import { Trash2 } from 'lucide-react';
+import { Search, Trash2 } from 'lucide-react';
 import { FilterRule, FieldConfig } from './types';
 import { isRangeOperator, getOperatorLabel } from './utils';
 import { sortByLabel } from '@/lib/sortOptions';
 import {
   AppButton,
+  AppCombobox,
   AppDatePicker,
   AppInput,
   AppSelect,
@@ -74,7 +75,10 @@ export default function FilterRuleRow({
   );
 
   const valueSelectOptions = useMemo(
-    () => (fieldConfig?.type === 'select' ? buildValueSelectOptions(fieldConfig) : []),
+    () =>
+      fieldConfig?.type === 'select' || fieldConfig?.type === 'select_search'
+        ? buildValueSelectOptions(fieldConfig)
+        : [],
     [fieldConfig],
   );
 
@@ -146,6 +150,22 @@ export default function FilterRuleRow({
             placeholder="Search or select user…"
             showSelectedChip={false}
             emptyMessage="No users found."
+            triggerClassName="w-full"
+          />
+        </div>
+      );
+    }
+
+    if (fieldConfig!.type === 'select_search') {
+      return (
+        <div className="min-w-0 flex-1">
+          <AppCombobox
+            options={valueSelectOptions}
+            value={String(value1 || '')}
+            onChange={(v) => handleValueChange(v)}
+            placeholder={`Search ${fieldConfig!.label.toLowerCase()}…`}
+            leftIcon={<Search className="h-4 w-4" />}
+            emptyMessage={`No ${fieldConfig!.label.toLowerCase()} found.`}
             triggerClassName="w-full"
           />
         </div>
