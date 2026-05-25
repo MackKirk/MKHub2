@@ -49,6 +49,7 @@ from ..auth.security import (
     has_project_permission,
     has_any_project_permission,
     has_project_reports_category_permission,
+    _has_project_feature_permission,
     _has_permission,
 )
 from ..services.safety_sign_request_access import (
@@ -172,18 +173,15 @@ def _assert_project_visible(user: User, proj: Project) -> None:
 
 def _assert_project_reports_read(user: User, proj: Project) -> None:
     _assert_project_visible(user, proj)
-    if not has_any_project_permission(
-        user,
-        proj,
-        "business:projects:reports:read",
-        "business:projects:reports:write",
-    ):
+    line = getattr(proj, "business_line", None)
+    if not _has_project_feature_permission(user, line, "reports", "read"):
         raise HTTPException(status_code=403, detail="Forbidden")
 
 
 def _assert_project_reports_write(user: User, proj: Project) -> None:
     _assert_project_visible(user, proj)
-    if not has_project_permission(user, proj, "business:projects:reports:write"):
+    line = getattr(proj, "business_line", None)
+    if not _has_project_feature_permission(user, line, "reports", "write"):
         raise HTTPException(status_code=403, detail="Forbidden")
 
 
@@ -2146,7 +2144,7 @@ def add_project_member(
     if not proj:
         raise HTTPException(status_code=404, detail="Project not found")
     _assert_project_line_read(user, proj)
-    if not can_manage_project_members(user):
+    if not can_manage_project_members(user, getattr(proj, "business_line", None)):
         raise HTTPException(status_code=403, detail="Forbidden")
 
     raw_user_id = payload.get("user_id")
@@ -2192,7 +2190,7 @@ def remove_project_member(
     if not proj:
         raise HTTPException(status_code=404, detail="Project not found")
     _assert_project_line_read(user, proj)
-    if not can_manage_project_members(user):
+    if not can_manage_project_members(user, getattr(proj, "business_line", None)):
         raise HTTPException(status_code=403, detail="Forbidden")
     try:
         member_uid = uuid.UUID(str(member_user_id))

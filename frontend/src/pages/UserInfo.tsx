@@ -30,11 +30,19 @@ import {
   type ProjectLine,
   type ProjectLinePermissionRow,
 } from '@/lib/projectLinePermissions';
+import {
+  EMPTY_LINE_CATEGORY_CONFIG,
+  applyLineCategoryConfigToPayload,
+  configsEqual,
+  resolveCategoryConfigFromApi,
+  lineMacroFilesWriteKey,
+  lineMacroReportsWriteKey,
+  type LineCategoryConfigState,
+} from '@/lib/projectLinePermissionKeys';
 import type { PermissionAccessLevel } from '@/lib/permissionAccessLevel';
 import {
   IMPLEMENTED_PERMISSIONS,
   isConstructionProjectPermissionKey,
-  isLegacyProjectPermissionKey,
   isRepairsProjectPermissionKey,
 } from '@/lib/implementedPermissions';
 import {
@@ -272,18 +280,19 @@ const UserPermissions = forwardRef<UserPermissionsRef, { userId: string; onDirty
   const [selectedTemplateId, setSelectedTemplateId] = useState<string>('');
   const [showApplyTemplateModal, setShowApplyTemplateModal] = useState(false);
 
-  // Project > Files per-category config (null means "all categories")
-  const [projectFilesReadCategories, setProjectFilesReadCategories] = useState<string[] | null>(null);
-  const [projectFilesWriteCategories, setProjectFilesWriteCategories] = useState<string[] | null>(null);
-  const [initialProjectFilesReadCategories, setInitialProjectFilesReadCategories] = useState<string[] | null>(null);
-  const [initialProjectFilesWriteCategories, setInitialProjectFilesWriteCategories] = useState<string[] | null>(null);
-  const [projectFilesCategoriesModalOpen, setProjectFilesCategoriesModalOpen] = useState(false);
-
-  const [projectReportsReadCategories, setProjectReportsReadCategories] = useState<string[] | null>(null);
-  const [projectReportsWriteCategories, setProjectReportsWriteCategories] = useState<string[] | null>(null);
-  const [initialProjectReportsReadCategories, setInitialProjectReportsReadCategories] = useState<string[] | null>(null);
-  const [initialProjectReportsWriteCategories, setInitialProjectReportsWriteCategories] = useState<string[] | null>(null);
-  const [projectReportsCategoriesModalOpen, setProjectReportsCategoriesModalOpen] = useState(false);
+  type LineCategoryConfigs = Record<ProjectLine, LineCategoryConfigState>;
+  const [lineCategoryConfigs, setLineCategoryConfigs] = useState<LineCategoryConfigs>({
+    construction: { ...EMPTY_LINE_CATEGORY_CONFIG },
+    repairs: { ...EMPTY_LINE_CATEGORY_CONFIG },
+  });
+  const [initialLineCategoryConfigs, setInitialLineCategoryConfigs] = useState<LineCategoryConfigs>({
+    construction: { ...EMPTY_LINE_CATEGORY_CONFIG },
+    repairs: { ...EMPTY_LINE_CATEGORY_CONFIG },
+  });
+  const [categoryModal, setCategoryModal] = useState<{
+    line: ProjectLine;
+    feature: 'files' | 'reports';
+  } | null>(null);
 
   // Initialize permissions from API data
   useEffect(() => {
@@ -298,25 +307,13 @@ const UserPermissions = forwardRef<UserPermissionsRef, { userId: string; onDirty
       setInitialPermissions({ ...perms });
     }
 
-    // Initialize configs from API data (null => allow all)
     const cfg = permissionsData?.configs || {};
-    const readCfg = Array.isArray(cfg['business:projects:files:categories:read']) ? cfg['business:projects:files:categories:read'] : null;
-    const writeCfg = Array.isArray(cfg['business:projects:files:categories:write']) ? cfg['business:projects:files:categories:write'] : null;
-    setProjectFilesReadCategories(readCfg);
-    setProjectFilesWriteCategories(writeCfg);
-    setInitialProjectFilesReadCategories(readCfg);
-    setInitialProjectFilesWriteCategories(writeCfg);
-
-    const reportsReadCfg = Array.isArray(cfg['business:projects:reports:categories:read'])
-      ? cfg['business:projects:reports:categories:read']
-      : null;
-    const reportsWriteCfg = Array.isArray(cfg['business:projects:reports:categories:write'])
-      ? cfg['business:projects:reports:categories:write']
-      : null;
-    setProjectReportsReadCategories(reportsReadCfg);
-    setProjectReportsWriteCategories(reportsWriteCfg);
-    setInitialProjectReportsReadCategories(reportsReadCfg);
-    setInitialProjectReportsWriteCategories(reportsWriteCfg);
+    const nextConfigs: LineCategoryConfigs = {
+      construction: resolveCategoryConfigFromApi(cfg, 'construction'),
+      repairs: resolveCategoryConfigFromApi(cfg, 'repairs'),
+    };
+    setLineCategoryConfigs(nextConfigs);
+    setInitialLineCategoryConfigs(nextConfigs);
   }, [permissionsData]);
 
   // Initialize admin state from user data
@@ -347,23 +344,12 @@ const UserPermissions = forwardRef<UserPermissionsRef, { userId: string; onDirty
       if (permissions[key] !== initialPermissions[key]) return true;
     }
     
-    const norm = (v: string[] | null) => {
-      if (v === null) return null;
-      return Array.from(new Set(v.map(String))).sort();
-    };
-    const aRead = norm(projectFilesReadCategories);
-    const bRead = norm(initialProjectFilesReadCategories);
-    const aWrite = norm(projectFilesWriteCategories);
-    const bWrite = norm(initialProjectFilesWriteCategories);
-    if (JSON.stringify(aRead) !== JSON.stringify(bRead)) return true;
-    if (JSON.stringify(aWrite) !== JSON.stringify(bWrite)) return true;
-
-    const aReportsRead = norm(projectReportsReadCategories);
-    const bReportsRead = norm(initialProjectReportsReadCategories);
-    const aReportsWrite = norm(projectReportsWriteCategories);
-    const bReportsWrite = norm(initialProjectReportsWriteCategories);
-    if (JSON.stringify(aReportsRead) !== JSON.stringify(bReportsRead)) return true;
-    if (JSON.stringify(aReportsWrite) !== JSON.stringify(bReportsWrite)) return true;
+    if (!configsEqual(lineCategoryConfigs.construction, initialLineCategoryConfigs.construction)) {
+      return true;
+    }
+    if (!configsEqual(lineCategoryConfigs.repairs, initialLineCategoryConfigs.repairs)) {
+      return true;
+    }
 
     return false;
   }, [
@@ -371,26 +357,17 @@ const UserPermissions = forwardRef<UserPermissionsRef, { userId: string; onDirty
     initialPermissions,
     isAdminLocal,
     initialIsAdmin,
-    projectFilesReadCategories,
-    initialProjectFilesReadCategories,
-    projectFilesWriteCategories,
-    initialProjectFilesWriteCategories,
-    projectReportsReadCategories,
-    initialProjectReportsReadCategories,
-    projectReportsWriteCategories,
-    initialProjectReportsWriteCategories,
+    lineCategoryConfigs,
+    initialLineCategoryConfigs,
   ]);
 
-  const openProjectFilesCategoriesModal = () => {
-    setProjectFilesCategoriesModalOpen(true);
+  const openProjectFilesCategoriesModal = (line: ProjectLine) => {
+    setCategoryModal({ line, feature: 'files' });
   };
 
-  const openProjectReportsCategoriesModal = () => {
-    setProjectReportsCategoriesModalOpen(true);
+  const openProjectReportsCategoriesModal = (line: ProjectLine) => {
+    setCategoryModal({ line, feature: 'reports' });
   };
-
-  const projectFilesMacroCanEdit = permissions['business:projects:files:write'] === true;
-  const projectReportsMacroCanEdit = permissions['business:projects:reports:write'] === true;
 
   // Notify parent of dirty state changes
   useEffect(() => {
@@ -696,11 +673,8 @@ const UserPermissions = forwardRef<UserPermissionsRef, { userId: string; onDirty
       validPermKeys.forEach((key) => {
         payload[key] = !!permissions[key];
       });
-      // Config keys: null means "all categories" => send [] to clear override
-      payload['business:projects:files:categories:read'] = projectFilesReadCategories ?? [];
-      payload['business:projects:files:categories:write'] = projectFilesWriteCategories ?? [];
-      payload['business:projects:reports:categories:read'] = projectReportsReadCategories ?? [];
-      payload['business:projects:reports:categories:write'] = projectReportsWriteCategories ?? [];
+      applyLineCategoryConfigToPayload(payload, 'construction', lineCategoryConfigs.construction);
+      applyLineCategoryConfigToPayload(payload, 'repairs', lineCategoryConfigs.repairs);
       await api('PUT', `/permissions/users/${userId}`, payload);
       toast.success('Permissions saved');
       await refetch();
@@ -708,10 +682,10 @@ const UserPermissions = forwardRef<UserPermissionsRef, { userId: string; onDirty
       // Update initial state to reflect saved state
       setInitialPermissions({ ...permissions });
       setInitialIsAdmin(isAdminLocal);
-      setInitialProjectFilesReadCategories(projectFilesReadCategories);
-      setInitialProjectFilesWriteCategories(projectFilesWriteCategories);
-      setInitialProjectReportsReadCategories(projectReportsReadCategories);
-      setInitialProjectReportsWriteCategories(projectReportsWriteCategories);
+      setInitialLineCategoryConfigs({
+        construction: { ...lineCategoryConfigs.construction },
+        repairs: { ...lineCategoryConfigs.repairs },
+      });
       
       // If editing own permissions, invalidate /auth/me cache to refresh permissions
       if (currentUser && currentUser.id === userId) {
@@ -728,10 +702,7 @@ const UserPermissions = forwardRef<UserPermissionsRef, { userId: string; onDirty
     isAdminLocal,
     userId,
     permissions,
-    projectFilesReadCategories,
-    projectFilesWriteCategories,
-    projectReportsReadCategories,
-    projectReportsWriteCategories,
+    lineCategoryConfigs,
     currentUser,
     queryClient,
     refetchUser,
@@ -751,28 +722,40 @@ const UserPermissions = forwardRef<UserPermissionsRef, { userId: string; onDirty
 
   return (
     <div className="space-y-6 pb-24">
-      <ProjectFilesCategoriesModal
-        open={projectFilesCategoriesModalOpen}
-        readCategories={projectFilesReadCategories}
-        writeCategories={projectFilesWriteCategories}
-        macroCanEdit={projectFilesMacroCanEdit}
-        onClose={() => setProjectFilesCategoriesModalOpen(false)}
-        onSave={({ read, write }) => {
-          setProjectFilesReadCategories(read);
-          setProjectFilesWriteCategories(write);
-        }}
-      />
-      <ProjectReportCategoriesModal
-        open={projectReportsCategoriesModalOpen}
-        readCategories={projectReportsReadCategories}
-        writeCategories={projectReportsWriteCategories}
-        macroCanEdit={projectReportsMacroCanEdit}
-        onClose={() => setProjectReportsCategoriesModalOpen(false)}
-        onSave={({ read, write }) => {
-          setProjectReportsReadCategories(read);
-          setProjectReportsWriteCategories(write);
-        }}
-      />
+      {categoryModal?.feature === 'files' && (
+        <ProjectFilesCategoriesModal
+          open
+          readCategories={lineCategoryConfigs[categoryModal.line].filesRead}
+          writeCategories={lineCategoryConfigs[categoryModal.line].filesWrite}
+          macroCanEdit={permissions[lineMacroFilesWriteKey(categoryModal.line)] === true}
+          onClose={() => setCategoryModal(null)}
+          onSave={({ read, write }) => {
+            const line = categoryModal.line;
+            setLineCategoryConfigs((prev) => ({
+              ...prev,
+              [line]: { ...prev[line], filesRead: read, filesWrite: write },
+            }));
+            setCategoryModal(null);
+          }}
+        />
+      )}
+      {categoryModal?.feature === 'reports' && (
+        <ProjectReportCategoriesModal
+          open
+          readCategories={lineCategoryConfigs[categoryModal.line].reportsRead}
+          writeCategories={lineCategoryConfigs[categoryModal.line].reportsWrite}
+          macroCanEdit={permissions[lineMacroReportsWriteKey(categoryModal.line)] === true}
+          onClose={() => setCategoryModal(null)}
+          onSave={({ read, write }) => {
+            const line = categoryModal.line;
+            setLineCategoryConfigs((prev) => ({
+              ...prev,
+              [line]: { ...prev[line], reportsRead: read, reportsWrite: write },
+            }));
+            setCategoryModal(null);
+          }}
+        />
+      )}
       <div className="rounded-xl border bg-white p-4">
         {/* Header */}
         <div className="mb-4 flex items-center gap-2">
@@ -931,11 +914,9 @@ const UserPermissions = forwardRef<UserPermissionsRef, { userId: string; onDirty
               if (cat.category.name === 'business') {
                 const constructionPerms = cat.permissions.filter((p: any) => isConstructionProjectPermissionKey(p.key));
                 const repairsPerms = cat.permissions.filter((p: any) => isRepairsProjectPermissionKey(p.key));
-                const legacyProjectPerms = cat.permissions.filter((p: any) => isLegacyProjectPermissionKey(p.key));
                 const hasCustomers = cat.permissions.some((p: any) => p.key.includes('business:customers'));
 
-                const constructionWithShared = [...constructionPerms, ...legacyProjectPerms];
-                if (constructionWithShared.length > 0) {
+                if (constructionPerms.length > 0) {
                   processedCategories.push({
                     ...cat,
                     category: {
@@ -944,7 +925,7 @@ const UserPermissions = forwardRef<UserPermissionsRef, { userId: string; onDirty
                       label: 'Production (Sales)',
                       id: 'construction',
                     },
-                    permissions: constructionWithShared,
+                    permissions: constructionPerms,
                   });
                 }
 
@@ -1174,7 +1155,9 @@ const UserPermissions = forwardRef<UserPermissionsRef, { userId: string; onDirty
                     ) : cat.category.name === 'repairs_maintenance' ? (
                       <div className="space-y-4">
                         {(() => {
-                          const areaPerms = subPermissions.filter((p: any) => p.key.includes('business:rm:projects'));
+                          const areaPerms = subPermissions.filter((p: any) =>
+                            p.key.startsWith('business:rm:projects')
+                          );
                           if (areaPerms.length === 0) return null;
                           return (
                             <ProjectLinePermissionsGrid
@@ -1185,6 +1168,8 @@ const UserPermissions = forwardRef<UserPermissionsRef, { userId: string; onDirty
                               onAccessLevelChange={(row, level) =>
                                 handleProjectLineAccessLevel('repairs', areaPerms, row, level)
                               }
+                              onConfigureProjectFiles={openProjectFilesCategoriesModal}
+                              onConfigureProjectReports={openProjectReportsCategoriesModal}
                             />
                           );
                         })()}
@@ -1418,7 +1403,7 @@ const UserPermissions = forwardRef<UserPermissionsRef, { userId: string; onDirty
                       <div className="space-y-4">
                         {(() => {
                           const areaPerms = subPermissions.filter((p: any) =>
-                            p.key.includes('business:projects') || p.key.includes('business:construction:projects')
+                            p.key.startsWith('business:construction:projects')
                           );
                           if (areaPerms.length === 0) return null;
                           return (

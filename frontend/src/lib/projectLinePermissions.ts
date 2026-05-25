@@ -1,5 +1,9 @@
 import { applyPermissionUncheckCascade } from '@/lib/permissionDependencies';
 import {
+  PROJECT_LINE_PREFIX,
+  type ProjectLineCategoryConfigKeys,
+} from '@/lib/projectLinePermissionKeys';
+import {
   formatPermissionLabel,
   getPermissionAccessLevel,
   type PermissionAccessLevel,
@@ -21,6 +25,12 @@ const SUB_READ_MARKERS = [
   ':safety:',
 ] as const;
 
+export type ProjectLineConfigKind =
+  | 'construction-files'
+  | 'construction-reports'
+  | 'repairs-files'
+  | 'repairs-reports';
+
 export type ProjectLinePermissionRow =
   | {
       kind: 'pair';
@@ -30,7 +40,7 @@ export type ProjectLinePermissionRow =
       readKey: string;
       writeKey: string;
       indent?: boolean;
-      configKind?: 'project-files-read' | 'project-files-write' | 'project-reports-read' | 'project-reports-write';
+      configKind?: ProjectLineConfigKind;
     }
   | {
       kind: 'readOnly';
@@ -57,31 +67,35 @@ function findFirst(areaPerms: PermDef[], keys: string[]): PermDef | undefined {
   return undefined;
 }
 
-function isSubReadKey(key: string): boolean {
+function linePrefix(line: ProjectLine): string {
+  return PROJECT_LINE_PREFIX[line];
+}
+
+function isLineSubReadKey(key: string, line: ProjectLine): boolean {
+  const prefix = linePrefix(line);
   return (
+    key.startsWith(`${prefix}:`) &&
     key.includes(':read') &&
-    key !== 'business:projects:read' &&
-    key !== 'business:construction:projects:read' &&
-    key !== 'business:construction:projects:read:all' &&
-    key !== 'business:rm:projects:read' &&
-    key !== 'business:rm:projects:read:all' &&
+    key !== `${prefix}:read` &&
+    key !== `${prefix}:read:all` &&
     SUB_READ_MARKERS.some((m) => key.includes(m))
   );
 }
 
-function configKindForKey(key: string): ProjectLinePermissionRow['configKind'] {
-  if (key === 'business:projects:files:read') return 'project-files-read';
-  if (key === 'business:projects:files:write') return 'project-files-write';
-  if (key === 'business:projects:reports:read') return 'project-reports-read';
-  if (key === 'business:projects:reports:write') return 'project-reports-write';
+function configKindForKey(key: string, line: ProjectLine): ProjectLineConfigKind | undefined {
+  const prefix = linePrefix(line);
+  if (key === `${prefix}:files:read` || key === `${prefix}:files:write`) {
+    return line === 'construction' ? 'construction-files' : 'repairs-files';
+  }
+  if (key === `${prefix}:reports:read` || key === `${prefix}:reports:write`) {
+    return line === 'construction' ? 'construction-reports' : 'repairs-reports';
+  }
   return undefined;
 }
 
 export function resolveProjectLineMainReadKey(line: ProjectLine, areaPerms: PermDef[]): string | undefined {
   if (line === 'construction') {
-    return (
-      findFirst(areaPerms, ['business:construction:projects:read', 'business:projects:read'])?.key
-    );
+    return findFirst(areaPerms, ['business:construction:projects:read'])?.key;
   }
   return findFirst(areaPerms, ['business:rm:projects:read'])?.key;
 }
@@ -91,64 +105,24 @@ export function buildProjectLinePermissionRows(
   areaPerms: PermDef[]
 ): ProjectLinePermissionRow[] {
   const rows: ProjectLinePermissionRow[] = [];
+  const prefix = linePrefix(line);
 
-  if (line === 'construction') {
-    // Main construction projects read/write is not shown — it only cascades when blocked;
-    // access is controlled via the sub-permissions below.
-
-    const subViews = areaPerms.filter((p) => isSubReadKey(p.key));
-    for (const viewPerm of subViews) {
-      const writeKey = viewPerm.key.replace(':read', ':write');
-      if (!areaPerms.some((p) => p.key === writeKey)) continue;
-      rows.push({
-        kind: 'pair',
-        id: viewPerm.id,
-        label: formatPermissionLabel(viewPerm.label),
-        description: viewPerm.description,
-        readKey: viewPerm.key,
-        writeKey,
-        configKind: configKindForKey(viewPerm.key) ?? configKindForKey(writeKey),
-      });
-    }
-
-    const viewAll = findFirst(areaPerms, ['business:construction:projects:read:all']);
-    if (viewAll) {
-      rows.push({
-        kind: 'readOnly',
-        id: viewAll.id,
-        label: formatPermissionLabel(viewAll.label),
-        description: viewAll.description,
-        readKey: viewAll.key,
-      });
-    }
-
-    const members = areaPerms.find((p) => p.key === 'business:projects:members:write');
-    if (members) {
-      rows.push({
-        kind: 'writeOnly',
-        id: members.id,
-        label: formatPermissionLabel(members.label),
-        description: members.description,
-        writeKey: members.key,
-      });
-    }
-    return rows;
-  }
-
-  const mainView = findFirst(areaPerms, ['business:rm:projects:read']);
-  const mainEdit = findFirst(areaPerms, ['business:rm:projects:write']);
-  if (mainView) {
+  const subViews = areaPerms.filter((p) => isLineSubReadKey(p.key, line));
+  for (const viewPerm of subViews) {
+    const writeKey = viewPerm.key.replace(':read', ':write');
+    if (!areaPerms.some((p) => p.key === writeKey)) continue;
     rows.push({
       kind: 'pair',
-      id: mainView.id,
-      label: formatPermissionLabel(mainView.label),
-      description: mainView.description,
-      readKey: mainView.key,
-      writeKey: mainEdit?.key ?? 'business:rm:projects:write',
+      id: viewPerm.id,
+      label: formatPermissionLabel(viewPerm.label),
+      description: viewPerm.description,
+      readKey: viewPerm.key,
+      writeKey,
+      configKind: configKindForKey(viewPerm.key, line) ?? configKindForKey(writeKey, line),
     });
   }
 
-  const viewAll = findFirst(areaPerms, ['business:rm:projects:read:all']);
+  const viewAll = findFirst(areaPerms, [`${prefix}:read:all`]);
   if (viewAll) {
     rows.push({
       kind: 'readOnly',
@@ -156,7 +130,17 @@ export function buildProjectLinePermissionRows(
       label: formatPermissionLabel(viewAll.label),
       description: viewAll.description,
       readKey: viewAll.key,
-      indent: true,
+    });
+  }
+
+  const members = areaPerms.find((p) => p.key === `${prefix}:members:write`);
+  if (members) {
+    rows.push({
+      kind: 'writeOnly',
+      id: members.id,
+      label: formatPermissionLabel(members.label),
+      description: members.description,
+      writeKey: members.key,
     });
   }
 
@@ -168,8 +152,9 @@ function ensureMainLineRead(
   next: Record<string, boolean>,
   mainReadKey: string | undefined
 ): void {
-  if (!mainReadKey) return;
-  if (!next[mainReadKey]) next[mainReadKey] = true;
+  const readKey =
+    mainReadKey ?? (line === 'construction' ? 'business:construction:projects:read' : 'business:rm:projects:read');
+  if (!next[readKey]) next[readKey] = true;
 }
 
 export function applyProjectLineAccessLevel(
@@ -181,6 +166,7 @@ export function applyProjectLineAccessLevel(
 ): Record<string, boolean> {
   const mainReadKey = resolveProjectLineMainReadKey(line, areaPerms);
   const next = { ...permissions };
+  const prefix = linePrefix(line);
 
   if (row.kind === 'pair') {
     if (level === 'blocked') {
@@ -189,7 +175,7 @@ export function applyProjectLineAccessLevel(
       if (row.readKey === mainReadKey) {
         return applyPermissionUncheckCascade(row.readKey, next);
       }
-      if (row.readKey.startsWith('business:projects:') && row.readKey.endsWith(':read')) {
+      if (row.readKey.startsWith(`${prefix}:`) && row.readKey.endsWith(':read')) {
         return applyPermissionUncheckCascade(row.readKey, next);
       }
       return next;
@@ -257,3 +243,5 @@ export function applyProjectLineAccessLevelToKeySet(
   });
   return out;
 }
+
+export type { ProjectLineCategoryConfigKeys };

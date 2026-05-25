@@ -30,10 +30,15 @@ def can_view_all_projects_in_line(user: User, line: Optional[str]) -> bool:
     return False
 
 
-def can_manage_project_members(user: User) -> bool:
+def can_manage_project_members(user: User, line: Optional[str] = None) -> bool:
     if _is_admin(user):
         return True
-    return _has_permission(user, "business:projects:members:write")
+    if _has_permission(user, "business:projects:members:write"):
+        return True
+    ln = normalize_business_line(line)
+    if ln == BUSINESS_LINE_REPAIRS_MAINTENANCE:
+        return _has_permission(user, "business:rm:projects:members:write")
+    return _has_permission(user, "business:construction:projects:members:write")
 
 
 def _legacy_related_clause(user_id: uuid.UUID):

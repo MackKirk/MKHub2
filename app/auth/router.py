@@ -1095,6 +1095,8 @@ def logout(req: RefreshTokenRequest, db: Session = Depends(get_db)):
 
 @router.get("/me", response_model=MeResponse)
 def me(user: User = Depends(get_current_user)):
+    from ..auth.security import granted_permission_keys_from_map
+
     # Resolve permissions from roles + user overrides (keys indicate granted perms)
     perm_map = {}
     for r in user.roles:
@@ -1108,7 +1110,7 @@ def me(user: User = Depends(get_current_user)):
             perm_map.update(user.permissions_override)
         except Exception:
             pass
-    granted = sorted([k for k,v in perm_map.items() if v])
+    granted = granted_permission_keys_from_map(perm_map)
     return MeResponse(
         id=str(user.id),
         username=user.username,
@@ -1119,18 +1121,40 @@ def me(user: User = Depends(get_current_user)):
     )
 
 
+def _category_config_for_line(overrides: dict, business_line: Optional[str], feature: str):
+    from ..auth.security import _project_line_perm_prefix
+
+    prefix = _project_line_perm_prefix(business_line)
+    read_val = None
+    write_val = None
+    for rk, wk in (
+        (f"{prefix}:{feature}:categories:read", f"{prefix}:{feature}:categories:write"),
+        (f"business:projects:{feature}:categories:read", f"business:projects:{feature}:categories:write"),
+    ):
+        rv = overrides.get(rk, None)
+        wv = overrides.get(wk, None)
+        if isinstance(rv, list) and read_val is None:
+            read_val = rv
+        if isinstance(wv, list) and write_val is None:
+            write_val = wv
+    return read_val, write_val
+
+
 @router.get("/me/project-files-category-permissions")
-def my_project_files_category_permissions(user: User = Depends(get_current_user)):
+def my_project_files_category_permissions(
+    business_line: Optional[str] = Query(None),
+    user: User = Depends(get_current_user),
+):
     """
     Returns the configured per-category permissions for Project > Files.
 
     Semantics:
     - If a list is missing, it means "all categories allowed" (compatibility / default behavior).
     - If present, it is an allow-list of category IDs.
+    - Pass business_line (construction | repairs_maintenance) for line-specific config.
     """
     overrides = getattr(user, "permissions_override", None) or {}
-    read_val = overrides.get("business:projects:files:categories:read", None)
-    write_val = overrides.get("business:projects:files:categories:write", None)
+    read_val, write_val = _category_config_for_line(overrides, business_line, "files")
 
     return {
         "read_categories": read_val if isinstance(read_val, list) else None,
@@ -1139,17 +1163,20 @@ def my_project_files_category_permissions(user: User = Depends(get_current_user)
 
 
 @router.get("/me/project-reports-category-permissions")
-def my_project_reports_category_permissions(user: User = Depends(get_current_user)):
+def my_project_reports_category_permissions(
+    business_line: Optional[str] = Query(None),
+    user: User = Depends(get_current_user),
+):
     """
     Per-category allow-lists for Project > Notes/History.
 
     Semantics match Project > Files:
     - Missing list => all report categories allowed (default).
     - Present list => allow-list of category values (SettingItem.value).
+    - Pass business_line for line-specific config.
     """
     overrides = getattr(user, "permissions_override", None) or {}
-    read_val = overrides.get("business:projects:reports:categories:read", None)
-    write_val = overrides.get("business:projects:reports:categories:write", None)
+    read_val, write_val = _category_config_for_line(overrides, business_line, "reports")
 
     return {
         "read_categories": read_val if isinstance(read_val, list) else None,

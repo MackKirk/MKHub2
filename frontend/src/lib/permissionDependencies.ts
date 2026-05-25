@@ -6,9 +6,30 @@ export function hasAnyProjectLineRead(permissions: Record<string, boolean>): boo
   );
 }
 
+function hasConstructionLineRead(permissions: Record<string, boolean>): boolean {
+  return !!(
+    permissions['business:construction:projects:read'] ||
+    permissions['business:construction:projects:write'] ||
+    permissions['business:projects:read'] ||
+    permissions['business:projects:write']
+  );
+}
+
+function hasRepairsLineRead(permissions: Record<string, boolean>): boolean {
+  return !!(
+    permissions['business:rm:projects:read'] || permissions['business:rm:projects:write']
+  );
+}
+
 function clearMembersWriteIfNoLineRead(perms: Record<string, boolean>): void {
   if (!hasAnyProjectLineRead(perms)) {
     perms['business:projects:members:write'] = false;
+  }
+  if (!hasConstructionLineRead(perms)) {
+    perms['business:construction:projects:members:write'] = false;
+  }
+  if (!hasRepairsLineRead(perms)) {
+    perms['business:rm:projects:members:write'] = false;
   }
 }
 
@@ -79,6 +100,42 @@ export function canEnablePermission(
   }
   if (permKey === 'business:projects:members:write') {
     return hasAnyProjectLineRead(permissions);
+  }
+  if (permKey === 'business:construction:projects:members:write') {
+    return hasConstructionLineRead(permissions);
+  }
+  if (permKey === 'business:rm:projects:members:write') {
+    return hasRepairsLineRead(permissions);
+  }
+  if (
+    permKey.startsWith('business:construction:projects:') &&
+    permKey.endsWith(':read') &&
+    permKey !== 'business:construction:projects:read' &&
+    !permKey.endsWith(':read:all')
+  ) {
+    return hasConstructionLineRead(permissions);
+  }
+  if (
+    permKey.startsWith('business:rm:projects:') &&
+    permKey.endsWith(':read') &&
+    permKey !== 'business:rm:projects:read' &&
+    !permKey.endsWith(':read:all')
+  ) {
+    return hasRepairsLineRead(permissions);
+  }
+  if (
+    permKey.startsWith('business:construction:projects:') &&
+    permKey.endsWith(':write') &&
+    permKey !== 'business:construction:projects:write'
+  ) {
+    return has(permKey.replace(':write', ':read'));
+  }
+  if (
+    permKey.startsWith('business:rm:projects:') &&
+    permKey.endsWith(':write') &&
+    permKey !== 'business:rm:projects:write'
+  ) {
+    return has(permKey.replace(':write', ':read'));
   }
   if (
     permKey.startsWith('business:projects:') &&
@@ -208,10 +265,20 @@ export function applyPermissionUncheckCascade(
   } else if (uncheckedKey === 'business:construction:projects:read') {
     newPerms['business:construction:projects:write'] = false;
     newPerms['business:construction:projects:read:all'] = false;
+    Object.keys(newPerms).forEach((k) => {
+      if (k.startsWith('business:construction:projects:') && k !== 'business:construction:projects:read') {
+        newPerms[k] = false;
+      }
+    });
     clearMembersWriteIfNoLineRead(newPerms);
   } else if (uncheckedKey === 'business:rm:projects:read') {
     newPerms['business:rm:projects:write'] = false;
     newPerms['business:rm:projects:read:all'] = false;
+    Object.keys(newPerms).forEach((k) => {
+      if (k.startsWith('business:rm:projects:') && k !== 'business:rm:projects:read') {
+        newPerms[k] = false;
+      }
+    });
     clearMembersWriteIfNoLineRead(newPerms);
   } else if (uncheckedKey === 'business:projects:read') {
     newPerms['business:projects:write'] = false;
@@ -240,6 +307,13 @@ export function applyPermissionUncheckCascade(
     uncheckedKey.startsWith('business:projects:') &&
     uncheckedKey.endsWith(':read') &&
     uncheckedKey !== 'business:projects:read'
+  ) {
+    newPerms[uncheckedKey.replace(':read', ':write')] = false;
+  } else if (
+    (uncheckedKey.startsWith('business:construction:projects:') ||
+      uncheckedKey.startsWith('business:rm:projects:')) &&
+    uncheckedKey.endsWith(':read') &&
+    !uncheckedKey.endsWith(':read:all')
   ) {
     newPerms[uncheckedKey.replace(':read', ':write')] = false;
   }

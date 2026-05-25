@@ -135,18 +135,41 @@ def require_roles(*required_roles: str):
     return _dep
 
 
+def expand_project_permission_aliases(perm: str) -> List[str]:
+    """Map legacy business:projects:* to line-specific keys for route guards."""
+    if not perm.startswith("business:projects:"):
+        return [perm]
+    suffix = perm[len("business:projects:") :]
+    return [
+        f"business:construction:projects:{suffix}",
+        f"business:rm:projects:{suffix}",
+        perm,
+    ]
+
+
+def _project_line_perm_prefix(line: Optional[str]) -> str:
+    ln = normalize_business_line(line)
+    if ln == BUSINESS_LINE_REPAIRS_MAINTENANCE:
+        return "business:rm:projects"
+    return "business:construction:projects"
+
+
 def require_permissions(*required_permissions: str):
     """
     Require at least one of the specified permissions (OR logic).
     If multiple permissions are provided, user needs at least one.
     """
+    expanded: List[str] = []
+    for perm in required_permissions:
+        expanded.extend(expand_project_permission_aliases(perm))
+
     def _dep(user: User = Depends(get_current_user)):
         # Admin role bypass
         if any((getattr(r, 'name', None) or '').lower() == 'admin' for r in user.roles):
             return user
-        
+
         # Check if user has at least one of the required permissions
-        has_any = any(_has_permission(user, perm) for perm in required_permissions)
+        has_any = any(_has_permission(user, perm) for perm in expanded)
         if not has_any:
             raise HTTPException(status_code=403, detail="Forbidden")
         return user
@@ -171,6 +194,72 @@ def _get_user_permission_map(user: User) -> dict:
     return perm_map
 
 
+def _permission_config_keys() -> frozenset:
+    from ..routes.permissions import PERMISSION_CONFIG_KEYS
+
+    return PERMISSION_CONFIG_KEYS
+
+
+def is_granted_perm_value(value: Any) -> bool:
+    """True only for boolean grants — not category config arrays or other JSON blobs."""
+    if isinstance(value, list):
+        return False
+    if value is True:
+        return True
+    if value is False or value is None:
+        return False
+    if isinstance(value, (int, float)) and not isinstance(value, bool):
+        return value != 0
+    if isinstance(value, str):
+        return value.strip().lower() in ("true", "1", "yes")
+    return False
+
+
+def granted_permission_keys_from_map(perm_map: dict) -> List[str]:
+    """Keys granted for /auth/me and frontend permission sets."""
+    config_keys = _permission_config_keys()
+    granted: List[str] = []
+    for key, value in (perm_map or {}).items():
+        if key in config_keys:
+            continue
+        if is_granted_perm_value(value):
+            granted.append(key)
+    return sorted(granted)
+
+
+def _line_has_any_project_access(perm_map: dict, line: Optional[str]) -> bool:
+    """Line access from main read/write or any sub-permission (e.g. files:read only)."""
+    if is_granted_perm_value(perm_map.get("business:projects:read")) or is_granted_perm_value(
+        perm_map.get("business:projects:write")
+    ):
+        return True
+    prefix = _project_line_perm_prefix(line)
+    if is_granted_perm_value(perm_map.get(f"{prefix}:read")) or is_granted_perm_value(
+        perm_map.get(f"{prefix}:write")
+    ):
+        return True
+    for key, value in perm_map.items():
+        if not key.startswith(f"{prefix}:") or ":categories:" in key:
+            continue
+        if is_granted_perm_value(value):
+            return True
+    return False
+
+
+def _line_has_project_write(perm_map: dict, line: Optional[str]) -> bool:
+    if is_granted_perm_value(perm_map.get("business:projects:write")):
+        return True
+    prefix = _project_line_perm_prefix(line)
+    if is_granted_perm_value(perm_map.get(f"{prefix}:write")):
+        return True
+    for key, value in perm_map.items():
+        if not key.startswith(f"{prefix}:") or ":categories:" in key:
+            continue
+        if key.endswith(":write") and is_granted_perm_value(value):
+            return True
+    return False
+
+
 def _fleet_area_unlocked(perm_map: dict) -> bool:
     """True if user may use Fleet & Equipment scoped permissions (UI + legacy keys)."""
     if perm_map.get("fleet:access") or perm_map.get("fleet:read"):
@@ -185,7 +274,7 @@ def _fleet_area_unlocked(perm_map: dict) -> bool:
 
 def _perm_matches_map(perm_map: dict, perm: str) -> bool:
     """Whether perm_map grants `perm`, including granular Fleet & Equipment aliases."""
-    if perm_map.get(perm):
+    if is_granted_perm_value(perm_map.get(perm)):
         return True
     if perm == "fleet:access":
         return _fleet_area_unlocked(perm_map)
@@ -293,41 +382,29 @@ def can_access_business_line(user: User, line: Optional[str]) -> bool:
     """Whether user may view resources for this business line (Construction vs R&M)."""
     if any((getattr(r, "name", None) or "").lower() == "admin" for r in user.roles):
         return True
-    ln = normalize_business_line(line)
     pm = _get_user_permission_map(user)
-    if pm.get("business:projects:read"):
-        return True
-    if ln == BUSINESS_LINE_CONSTRUCTION:
-        return bool(pm.get("business:construction:projects:read") or pm.get("business:construction:projects:write"))
-    if ln == BUSINESS_LINE_REPAIRS_MAINTENANCE:
-        return bool(pm.get("business:rm:projects:read") or pm.get("business:rm:projects:write"))
-    return False
+    return _line_has_any_project_access(pm, line)
 
 
 def can_write_business_line(user: User, line: Optional[str]) -> bool:
     """Whether user may create/update/delete resources for this business line."""
     if any((getattr(r, "name", None) or "").lower() == "admin" for r in user.roles):
         return True
-    ln = normalize_business_line(line)
     pm = _get_user_permission_map(user)
-    if pm.get("business:projects:write"):
-        return True
-    if ln == BUSINESS_LINE_CONSTRUCTION:
-        return bool(pm.get("business:construction:projects:write"))
-    if ln == BUSINESS_LINE_REPAIRS_MAINTENANCE:
-        return bool(pm.get("business:rm:projects:write"))
-    return False
+    return _line_has_project_write(pm, line)
 
 
 def has_project_permission(user: User, project: Any, perm: str) -> bool:
     """
     Granular project permission AND business-line access.
     `project` must have .business_line (Construction vs R&M).
+    Checks line-scoped keys first, then legacy business:projects:* fallback.
     """
-    if not _has_permission(user, perm):
-        return False
     line = getattr(project, "business_line", None)
-    return can_access_business_line(user, line)
+    for key in expand_project_permission_aliases(perm):
+        if _has_permission(user, key) and can_access_business_line(user, line):
+            return True
+    return False
 
 
 def has_any_project_permission(user: User, project: Any, *perms: str) -> bool:
@@ -428,6 +505,38 @@ def assert_customer_tab(
         raise HTTPException(status_code=403, detail="Forbidden")
 
 
+def _has_project_feature_permission(
+    user: User,
+    line: Optional[str],
+    feature: str,
+    action: Literal["read", "write"],
+) -> bool:
+    """Line-scoped feature permission (no legacy business:projects:* fallback)."""
+    prefix = _project_line_perm_prefix(line)
+    read_k = f"{prefix}:{feature}:read"
+    write_k = f"{prefix}:{feature}:write"
+    if action == "write":
+        return _has_permission(user, write_k)
+    return _has_permission(user, read_k) or _has_permission(user, write_k)
+
+
+def _project_category_allow_list(
+    perm_map: dict,
+    line: Optional[str],
+    feature: str,
+    action: Literal["read", "write"],
+):
+    prefix = _project_line_perm_prefix(line)
+    for cfg_key in (
+        f"{prefix}:{feature}:categories:{action}",
+        f"business:projects:{feature}:categories:{action}",
+    ):
+        allow_list = perm_map.get(cfg_key, None)
+        if isinstance(allow_list, list):
+            return allow_list
+    return None
+
+
 def has_project_files_category_permission(
     user: User,
     category_id: Optional[str],
@@ -438,9 +547,7 @@ def has_project_files_category_permission(
     Category-level access control for Project > Files.
 
     Rules:
-    - Requires macro permission:
-      - read: business:projects:files:read OR business:projects:files:write
-      - write: business:projects:files:write
+    - Requires line-scoped (or legacy) files read/write for the project's business line.
     - If allow-list config exists in permissions_override, category must be included.
     - If allow-list config is missing, it means "all categories allowed" (default / compatibility).
 
@@ -448,21 +555,17 @@ def has_project_files_category_permission(
     - Uncategorized files use `None` category; we treat it as "uncategorized" when comparing.
     - If `project` is passed, business-line access is checked.
     """
-    if project is not None and not can_access_business_line(user, getattr(project, "business_line", None)):
+    line = getattr(project, "business_line", None) if project is not None else None
+    if project is not None and not can_access_business_line(user, line):
         return False
     if action not in ("read", "write"):
         return False
 
-    if action == "write":
-        if not _has_permission(user, "business:projects:files:write"):
-            return False
-    else:
-        if not (_has_permission(user, "business:projects:files:read") or _has_permission(user, "business:projects:files:write")):
-            return False
+    if not _has_project_feature_permission(user, line, "files", action):
+        return False
 
     perm_map = _get_user_permission_map(user)
-    cfg_key = f"business:projects:files:categories:{action}"
-    allow_list = perm_map.get(cfg_key, None)
+    allow_list = _project_category_allow_list(perm_map, line, "files", action)
 
     # Missing config => allow all categories
     if not isinstance(allow_list, list):
@@ -495,24 +598,17 @@ def has_project_reports_category_permission(
     - write: business:projects:reports:write
     - Missing allow-list config => all categories allowed (default).
     """
-    if project is not None and not can_access_business_line(user, getattr(project, "business_line", None)):
+    line = getattr(project, "business_line", None) if project is not None else None
+    if project is not None and not can_access_business_line(user, line):
         return False
     if action not in ("read", "write"):
         return False
 
-    if action == "write":
-        if not _has_permission(user, "business:projects:reports:write"):
-            return False
-    else:
-        if not (
-            _has_permission(user, "business:projects:reports:read")
-            or _has_permission(user, "business:projects:reports:write")
-        ):
-            return False
+    if not _has_project_feature_permission(user, line, "reports", action):
+        return False
 
     perm_map = _get_user_permission_map(user)
-    cfg_key = f"business:projects:reports:categories:{action}"
-    allow_list = perm_map.get(cfg_key, None)
+    allow_list = _project_category_allow_list(perm_map, line, "reports", action)
 
     if not isinstance(allow_list, list):
         return True

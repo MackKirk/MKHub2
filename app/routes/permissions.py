@@ -7,7 +7,7 @@ from ..db import get_db
 from ..models.models import (
     User, PermissionCategory, PermissionDefinition, PermissionTemplate
 )
-from ..auth.security import require_permissions, get_current_user
+from ..auth.security import require_permissions, get_current_user, is_granted_perm_value
 
 
 router = APIRouter(prefix="/permissions", tags=["permissions"])
@@ -17,11 +17,19 @@ router = APIRouter(prefix="/permissions", tags=["permissions"])
 FILE_CATEGORY_CONFIG_KEYS = {
     "business:projects:files:categories:read",
     "business:projects:files:categories:write",
+    "business:construction:projects:files:categories:read",
+    "business:construction:projects:files:categories:write",
+    "business:rm:projects:files:categories:read",
+    "business:rm:projects:files:categories:write",
 }
 
 REPORT_CATEGORY_CONFIG_KEYS = {
     "business:projects:reports:categories:read",
     "business:projects:reports:categories:write",
+    "business:construction:projects:reports:categories:read",
+    "business:construction:projects:reports:categories:write",
+    "business:rm:projects:reports:categories:read",
+    "business:rm:projects:reports:categories:write",
 }
 
 PERMISSION_CONFIG_KEYS = FILE_CATEGORY_CONFIG_KEYS | REPORT_CATEGORY_CONFIG_KEYS
@@ -153,8 +161,7 @@ def get_user_permissions(
         
         cat_permissions = []
         for perm in permissions:
-            # Check if permission is granted (truthy value in perm_map)
-            is_granted = bool(perm_map.get(perm.key, False))
+            is_granted = is_granted_perm_value(perm_map.get(perm.key))
             
             cat_permissions.append({
                 "id": str(perm.id),
@@ -187,7 +194,7 @@ def get_user_permissions(
         "user_id": str(user.id),
         "username": user.username,
         "permissions_by_category": result,
-        "permissions_map": {k: bool(v) for k, v in perm_map.items()},  # Simplified map for reference
+        "permissions_map": {k: is_granted_perm_value(v) for k, v in perm_map.items()},
         "configs": configs,
     }
 
@@ -307,7 +314,7 @@ def check_user_permission(
         except Exception:
             pass
     
-    has_perm = bool(perm_map.get(permission_key, False))
+    has_perm = is_granted_perm_value(perm_map.get(permission_key))
     
     return {
         "user_id": str(user.id),

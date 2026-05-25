@@ -326,6 +326,46 @@ def seed_business_permissions():
                 "sort_index": 23,
             },
         ]
+
+        # Per business line (Production / R&M): same sub-permissions as legacy business:projects:* 
+        line_sub_features = [
+            ("reports", "Notes/History", "Notes/History tab in project and opportunity details"),
+            ("workload", "Workload", "Workload tab in project details"),
+            ("timesheet", "Timesheet", "Timesheet tab in project details"),
+            ("files", "Files", "Files tab in project details"),
+            ("documents", "Documents", "Documents tab in project and opportunity details"),
+            ("proposal", "Proposal", "Proposal tab in project details"),
+            ("estimate", "Estimate", "Estimate tab in project details"),
+            ("orders", "Orders", "Orders tab in project details"),
+            ("safety", "Safety", "Safety tab in project details (awarded projects only)"),
+        ]
+        line_defs = [
+            ("business:construction:projects", 50),
+            ("business:rm:projects", 70),
+        ]
+        sort = 80
+        for prefix, base_sort in line_defs:
+            for feat, label, desc in line_sub_features:
+                business_permissions.append({
+                    "key": f"{prefix}:{feat}:read",
+                    "label": f"View {label}",
+                    "description": f"Allows viewing the {desc}",
+                    "sort_index": sort,
+                })
+                sort += 1
+                business_permissions.append({
+                    "key": f"{prefix}:{feat}:write",
+                    "label": f"Edit {label}",
+                    "description": f"Allows editing the {desc}",
+                    "sort_index": sort,
+                })
+                sort += 1
+            business_permissions.append({
+                "key": f"{prefix}:members:write",
+                "label": "Manage Project Members",
+                "description": "Allows adding and removing project members from project detail",
+                "sort_index": base_sort + 19,
+            })
         
         for perm_data in business_permissions:
             # Find or create permission

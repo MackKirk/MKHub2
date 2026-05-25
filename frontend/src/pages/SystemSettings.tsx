@@ -11,7 +11,6 @@ import DocumentTypesTab from '@/components/DocumentTypesTab';
 import {
   IMPLEMENTED_PERMISSIONS,
   isConstructionProjectPermissionKey,
-  isLegacyProjectPermissionKey,
   isRepairsProjectPermissionKey,
 } from '@/lib/implementedPermissions';
 import {
@@ -1111,16 +1110,15 @@ function PermissionTemplatesSection() {
       if (cat.name === 'business') {
         const constructionPerms = (cat.permissions || []).filter((p) => isConstructionProjectPermissionKey(p.key));
         const repairsPerms = (cat.permissions || []).filter((p) => isRepairsProjectPermissionKey(p.key));
-        const legacyPerms = (cat.permissions || []).filter((p) => isLegacyProjectPermissionKey(p.key));
         const hasCustomers = (cat.permissions || []).some((p) => p.key.includes('business:customers'));
-        if (constructionPerms.length > 0 || legacyPerms.length > 0) {
+        if (constructionPerms.length > 0) {
           processed.push({
             ...cat,
             id: 'construction',
             name: 'construction',
             label: 'Production (Sales)',
             description: cat.description || 'Permissions for Business area. Blocking access blocks all sub-permissions.',
-            permissions: [...constructionPerms, ...legacyPerms],
+            permissions: constructionPerms,
           });
         }
         if (repairsPerms.length > 0) {
@@ -1347,9 +1345,8 @@ function PermissionTemplatesSection() {
                 <div className="px-4 pb-4 border-t border-gray-200 pt-3 mt-0">
                   {cat.name === 'construction' ? (
                     (() => {
-                      const areaPerms = subPermissions.filter(
-                        (p) =>
-                          p.key.includes('business:projects') || p.key.includes('business:construction:projects')
+                      const areaPerms = subPermissions.filter((p) =>
+                        p.key.startsWith('business:construction:projects')
                       );
                       if (areaPerms.length === 0) return null;
                       const scopeKeys = areaPerms.map((p) => p.key);
@@ -1377,7 +1374,9 @@ function PermissionTemplatesSection() {
                     })()
                   ) : cat.name === 'repairs_maintenance' ? (
                     (() => {
-                      const areaPerms = subPermissions.filter((p) => p.key.includes('business:rm:projects'));
+                      const areaPerms = subPermissions.filter((p) =>
+                        p.key.startsWith('business:rm:projects')
+                      );
                       if (areaPerms.length === 0) return null;
                       const scopeKeys = areaPerms.map((p) => p.key);
                       const permRecord = Object.fromEntries([...selectedKeys].map((k) => [k, true]));

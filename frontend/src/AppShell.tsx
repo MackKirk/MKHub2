@@ -15,6 +15,7 @@ import FixedBugReportButton from '@/components/FixedBugReportButton';
 import InstallPrompt from '@/components/InstallPrompt';
 import GlobalSearch, { GlobalSearchSection, GlobalSearchItem } from '@/components/GlobalSearch';
 import HubChatLauncher from '@/components/HubChatLauncher';
+import { canAccessProjectLineMenu } from '@/lib/projectLinePermissionKeys';
 
 type MenuItem = {
   id: string;
@@ -337,11 +338,14 @@ export default function AppShell({ children }: PropsWithChildren){
     const has = permissionsSet.has(requiredPermission);
     const legacyBizRead = permissionsSet.has('business:projects:read');
     const legacyBizWrite = permissionsSet.has('business:projects:write');
-    if (requiredPermission === 'business:construction:projects:read' || requiredPermission === 'business:projects:read') {
-      return has || legacyBizRead || permissionsSet.has('business:construction:projects:read');
+    if (requiredPermission === 'business:construction:projects:read') {
+      return canAccessProjectLineMenu(permissionsSet, 'construction');
     }
     if (requiredPermission === 'business:rm:projects:read') {
-      return has || legacyBizRead || permissionsSet.has('business:rm:projects:read');
+      return canAccessProjectLineMenu(permissionsSet, 'repairs');
+    }
+    if (requiredPermission === 'business:projects:read') {
+      return has || legacyBizRead || canAccessProjectLineMenu(permissionsSet, 'construction');
     }
     if (requiredPermission === 'business:construction:projects:write' || requiredPermission === 'business:projects:write') {
       return has || legacyBizWrite || permissionsSet.has('business:construction:projects:write');
@@ -638,7 +642,10 @@ export default function AppShell({ children }: PropsWithChildren){
       // Pages already filtered, but keep it safe.
       if (item.type === 'page') return true;
       if (item.type === 'project' || item.type === 'opportunity') {
-        return hasPermission('business:construction:projects:read') || hasPermission('business:rm:projects:read');
+        return (
+          canAccessProjectLineMenu(permissionsSet, 'construction') ||
+          canAccessProjectLineMenu(permissionsSet, 'repairs')
+        );
       }
       if (item.type === 'customer') return hasPermission('business:customers:read');
       if (item.type === 'quote') return hasPermission('sales:quotations:read');
@@ -940,11 +947,10 @@ export default function AppShell({ children }: PropsWithChildren){
             .filter(category => {
               // Sales (construction): requires construction projects access
               if (category.id === 'services') {
-                if (!hasPermission('business:construction:projects:read')) return false;
+                if (!canAccessProjectLineMenu(permissionsSet, 'construction')) return false;
               }
-              // Repairs & Maintenance: requires R&M projects access
               if (category.id === 'repairs_maintenance') {
-                if (!hasPermission('business:rm:projects:read')) return false;
+                if (!canAccessProjectLineMenu(permissionsSet, 'repairs')) return false;
               }
               // Special handling for Business category: requires customers or inventory access
               if (category.id === 'business') {

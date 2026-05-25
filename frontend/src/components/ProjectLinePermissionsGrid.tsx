@@ -35,8 +35,8 @@ export function ProjectLinePermissionsGrid({
   permissions: Record<string, boolean>;
   canEdit: boolean;
   onAccessLevelChange: (row: ProjectLinePermissionRow, level: PermissionAccessLevel) => void;
-  onConfigureProjectFiles?: () => void;
-  onConfigureProjectReports?: () => void;
+  onConfigureProjectFiles?: (line: ProjectLine) => void;
+  onConfigureProjectReports?: (line: ProjectLine) => void;
 }) {
   const rows = buildProjectLinePermissionRows(line, areaPerms);
   if (rows.length === 0) return null;
@@ -57,10 +57,10 @@ export function ProjectLinePermissionsGrid({
     if (!canEdit || row.kind !== 'pair' || !row.configKind) return false;
     const level = getProjectLineRowAccessLevel(permissions, row);
     if (level === 'blocked') return false;
-    if (row.configKind === 'project-files-read' || row.configKind === 'project-files-write') {
+    if (row.configKind?.endsWith('-files')) {
       return !!onConfigureProjectFiles;
     }
-    if (row.configKind === 'project-reports-read' || row.configKind === 'project-reports-write') {
+    if (row.configKind?.endsWith('-reports')) {
       return !!onConfigureProjectReports;
     }
     return false;
@@ -68,8 +68,8 @@ export function ProjectLinePermissionsGrid({
 
   const onGearClick = (row: ProjectLinePermissionRow) => {
     if (row.kind !== 'pair' || !row.configKind) return;
-    if (row.configKind.startsWith('project-files')) onConfigureProjectFiles?.();
-    if (row.configKind.startsWith('project-reports')) onConfigureProjectReports?.();
+    if (row.configKind?.endsWith('-files')) onConfigureProjectFiles?.(line);
+    if (row.configKind?.endsWith('-reports')) onConfigureProjectReports?.(line);
   };
 
   return (

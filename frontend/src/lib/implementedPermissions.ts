@@ -1,3 +1,25 @@
+const LINE_PROJECT_SUB_FEATURES = [
+  'reports',
+  'workload',
+  'timesheet',
+  'files',
+  'documents',
+  'proposal',
+  'estimate',
+  'orders',
+  'safety',
+] as const;
+
+const LINE_PROJECT_PREFIXES = ['business:construction:projects', 'business:rm:projects'] as const;
+
+const LINE_PROJECT_SUB_KEYS = LINE_PROJECT_PREFIXES.flatMap((prefix) => [
+  ...LINE_PROJECT_SUB_FEATURES.flatMap((feat) => [
+    `${prefix}:${feat}:read`,
+    `${prefix}:${feat}:write`,
+  ]),
+  `${prefix}:members:write`,
+]);
+
 /** Permissions that are enforced in the app (not [WIP] in the UI). */
 export const IMPLEMENTED_PERMISSIONS = new Set([
   'users:read',
@@ -95,11 +117,12 @@ export const IMPLEMENTED_PERMISSIONS = new Set([
   'sales:access',
   'sales:quotations:read',
   'sales:quotations:write',
+  ...LINE_PROJECT_SUB_KEYS,
 ]);
 
-/** Legacy/shared project permissions used across project lines. */
+/** Legacy/shared project permissions (hidden in line UIs; backend fallback). */
 export function isLegacyProjectPermissionKey(key: string): boolean {
-  return key.startsWith('business:projects:');
+  return isLegacySharedProjectPermissionKey(key);
 }
 
 /** Construction line permissions (Production (Sales) in sidebar). */
