@@ -4,6 +4,7 @@ export * from './AppCard';
 export * from './AppPageBackButton';
 export * from './AppPageHeader';
 export * from './AppSectionHeader';
+export * from './AppSectionPresets';
 export * from './AppTabs';
 export * from './AppModal';
 export * from './AppFormModal';

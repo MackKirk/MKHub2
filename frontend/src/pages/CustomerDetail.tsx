@@ -1,8 +1,9 @@
 import { useParams, Link, useLocation, useNavigate } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { api, withFileAccessToken } from '@/lib/api';
+import { api, withFileAccessToken, withFileAccessTokenIfNeeded } from '@/lib/api';
 import { sortByLabel } from '@/lib/sortOptions';
 import { formatAddressDisplay } from '@/lib/addressUtils';
+import { getClientStatusBadgeVariant } from '@/lib/clientUi';
 import { useEffect, useMemo, useState, ReactNode, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import toast from 'react-hot-toast';
@@ -14,10 +15,40 @@ import LoadingOverlay from '@/components/LoadingOverlay';
 import { CustomerFilesTabEnhanced } from './CustomerFilesTabEnhanced';
 import { OpportunityListItem, CreateReportModal } from './Opportunities';
 import { ProjectListItem } from './Projects';
-import OverlayPortal from '@/components/OverlayPortal';
 import NewContactModal from '@/components/NewContactModal';
+import EditContactModal, { type ClientContactRecord } from '@/components/EditContactModal';
+import SiteFormModal, { type ClientSiteRecord } from '@/components/SiteFormModal';
+import { SITE_CARD_COVER_CROP, uploadSiteCover } from '@/lib/siteCover';
 import {
-  type CustomerTab,
+  AppBadge,
+  AppButton,
+  AppCard,
+  AppDatePicker,
+  AppEmptyState,
+  AppFileUpload,
+  AppFormModal,
+  AppHeroEditButton,
+  AppInput,
+  AppListCreateItem,
+  AppModal,
+  AppPageHeader,
+  AppSectionHeader,
+  appSectionPresetProps,
+  AppSelect,
+  AppTabs,
+  AppTextarea,
+  AppTooltip,
+  uiBorders,
+  uiColors,
+  uiCx,
+  uiLayout,
+  uiModalLayer,
+  uiRadius,
+  uiSpacing,
+  uiTypography,
+} from '@/components/ui';
+import { Users, ChevronDown, ChevronUp, CalendarDays, GripVertical, Mail, Phone, MapPin, Camera } from 'lucide-react';
+import {
   canViewCustomerTab as canViewCustomerTabFn,
   type CustomerTab as CustomerTabId,
   canEditCustomerTab as canEditCustomerTabFn,
@@ -98,6 +129,33 @@ type DateRangeModalProps = {
   initialEndDate?: string;
 };
 
+/** Hero collapse/expand — expand slower than collapse (same easing as quick info). */
+const HERO_PANEL_EASE = 'ease-[cubic-bezier(0.22,1,0.36,1)]';
+const HERO_PANEL_TRANSITION_BASE = 'overflow-hidden transition-[max-height,opacity]';
+const HERO_EXPAND_DURATION = 'duration-[1400ms]';
+const HERO_COLLAPSE_DURATION = 'duration-[650ms]';
+
+type GeneralEditSection = 'company' | 'address' | 'billing' | 'description';
+
+const YES_NO_OPTIONS = [
+  { value: 'false', label: 'No' },
+  { value: 'true', label: 'Yes' },
+] as const;
+
+const OVERVIEW_DATE_FILTER_OPTIONS = [
+  { value: 'all', label: 'All time' },
+  { value: 'last_year', label: 'Last 12 months' },
+  { value: 'last_6_months', label: 'Last 6 months' },
+  { value: 'last_3_months', label: 'Last 3 months' },
+  { value: 'last_month', label: 'Last month' },
+  { value: 'custom', label: 'Custom' },
+] as const;
+
+const OVERVIEW_DISPLAY_MODE_OPTIONS = [
+  { value: 'quantity', label: 'Quantity' },
+  { value: 'value', label: 'Value' },
+] as const;
+
 function DateRangeModal({ open, onClose, onConfirm, initialStartDate = '', initialEndDate = '' }: DateRangeModalProps) {
   const [startDate, setStartDate] = useState(initialStartDate);
   const [endDate, setEndDate] = useState(initialEndDate);
@@ -109,20 +167,6 @@ function DateRangeModal({ open, onClose, onConfirm, initialStartDate = '', initi
     }
   }, [open, initialStartDate, initialEndDate]);
 
-  useEffect(() => {
-    if (!open) return;
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose();
-      if (e.key === 'Enter' && startDate && endDate) {
-        onConfirm(startDate, endDate);
-      }
-    };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [open, startDate, endDate, onClose, onConfirm]);
-
-  if (!open) return null;
-
   const handleConfirm = () => {
     if (startDate && endDate) {
       onConfirm(startDate, endDate);
@@ -130,46 +174,26 @@ function DateRangeModal({ open, onClose, onConfirm, initialStartDate = '', initi
   };
 
   return (
-    <OverlayPortal><div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={onClose}>
-      <div className="w-[400px] max-w-[95vw] bg-white rounded-lg shadow-lg overflow-hidden" onClick={(e) => e.stopPropagation()}>
-        <div className="px-4 py-3 border-b font-semibold">Custom Date Range</div>
-        <div className="p-4 space-y-4">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">Start Date</label>
-            <input
-              type="date"
-              value={startDate}
-              onChange={(e) => setStartDate(e.target.value)}
-              className="w-full border border-gray-300 rounded px-3 py-2 text-sm"
-            />
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">End Date</label>
-            <input
-              type="date"
-              value={endDate}
-              onChange={(e) => setEndDate(e.target.value)}
-              className="w-full border border-gray-300 rounded px-3 py-2 text-sm"
-            />
-          </div>
-        </div>
-        <div className="p-3 flex items-center justify-end gap-2 border-t">
-          <button 
-            className="px-4 py-2 rounded bg-gray-100 hover:bg-gray-200 text-gray-800" 
-            onClick={onClose}
-          >
+    <AppFormModal
+      open={open}
+      onClose={onClose}
+      title="Custom Date Range"
+      footer={
+        <div className={uiCx(uiLayout.actionsRow, 'justify-end')}>
+          <AppButton variant="secondary" onClick={onClose}>
             Cancel
-          </button>
-          <button 
-            className="px-4 py-2 rounded bg-[#7f1010] hover:bg-[#a31414] text-white disabled:opacity-50 disabled:cursor-not-allowed" 
-            onClick={handleConfirm}
-            disabled={!startDate || !endDate}
-          >
+          </AppButton>
+          <AppButton disabled={!startDate || !endDate} onClick={handleConfirm}>
             Apply
-          </button>
+          </AppButton>
         </div>
+      }
+    >
+      <div className={uiSpacing.sectionStack}>
+        <AppDatePicker label="Start Date" value={startDate} onChange={(e) => setStartDate(e.target.value)} />
+        <AppDatePicker label="End Date" value={endDate} onChange={(e) => setEndDate(e.target.value)} />
       </div>
-    </div></OverlayPortal>
+    </AppFormModal>
   );
 }
 
@@ -190,86 +214,40 @@ function CustomerOverviewProjectListModal({
   items: ProjectLinkRow[];
   emptyMessage?: string;
 }) {
-  useEffect(() => {
-    if (!open) return;
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose();
-    };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [open, onClose]);
-
-  if (!open) return null;
-
   return (
-    <OverlayPortal>
-      <div
-        className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center overflow-y-auto p-4"
-        onClick={onClose}
-        role="presentation"
-      >
-        <div
-          className="w-full max-w-lg max-h-[90vh] bg-gray-100 rounded-xl overflow-hidden flex flex-col border border-gray-200 shadow-xl"
-          onClick={(e) => e.stopPropagation()}
-        >
-          <div className="rounded-t-xl border-b border-gray-200 bg-white p-4 flex-shrink-0">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-3 min-w-0">
-                <button
-                  type="button"
-                  onClick={onClose}
-                  className="p-1.5 rounded hover:bg-gray-100 transition-colors flex items-center justify-center shrink-0"
-                  title="Close"
-                >
-                  <svg className="w-4 h-4 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
-                  </svg>
-                </button>
-                <div className="min-w-0">
-                  <div className="text-sm font-semibold text-gray-900 truncate">{title}</div>
-                  {subtitle ? (
-                    <div className="text-xs text-gray-500 mt-0.5">{subtitle}</div>
-                  ) : null}
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <div className="overflow-y-auto flex-1 p-4 min-h-0">
-            <div className="rounded-xl border border-gray-200 bg-white p-3 min-h-[120px]">
-              <ul className="space-y-0 divide-y divide-gray-100">
-                {items.length === 0 ? (
-                  <li className="text-sm text-gray-500 py-8 text-center">{emptyMessage}</li>
-                ) : (
-                  items.map((p) => (
-                    <li key={p.id}>
-                      <Link
-                        to={`/projects/${encodeURIComponent(p.id)}`}
-                        className="block px-3 py-2.5 text-sm text-[#7f1010] hover:bg-red-50 font-medium"
-                        onClick={onClose}
-                      >
-                        {p.name || p.code || p.id}
-                        {p.code && p.name ? <span className="text-gray-500 font-normal ml-1">({p.code})</span> : null}
-                      </Link>
-                    </li>
-                  ))
-                )}
-              </ul>
-            </div>
-          </div>
-
-          <div className="flex-shrink-0 px-4 py-4 border-t border-gray-200 bg-white flex items-center justify-end gap-3 rounded-b-xl">
-            <button
-              type="button"
-              onClick={onClose}
-              className="px-3 py-1.5 rounded-lg text-sm font-medium border border-gray-200 hover:bg-gray-50 text-gray-700"
-            >
-              Close
-            </button>
-          </div>
+    <AppModal
+      open={open}
+      onClose={onClose}
+      title={title}
+      description={subtitle}
+      size="md"
+      footer={
+        <div className={uiCx(uiLayout.actionsRow, 'justify-end')}>
+          <AppButton variant="secondary" onClick={onClose}>
+            Close
+          </AppButton>
         </div>
-      </div>
-    </OverlayPortal>
+      }
+    >
+      {items.length === 0 ? (
+        <AppEmptyState title={emptyMessage} />
+      ) : (
+        <ul className={uiCx(uiBorders.subtle, uiRadius.control, 'divide-y divide-gray-100 overflow-hidden')}>
+          {items.map((p) => (
+            <li key={p.id}>
+              <Link
+                to={`/projects/${encodeURIComponent(p.id)}`}
+                className={uiCx('block px-3 py-2.5 text-sm font-medium text-brand-red hover:bg-red-50')}
+                onClick={onClose}
+              >
+                {p.name || p.code || p.id}
+                {p.code && p.name ? <span className="ml-1 font-normal text-gray-500">({p.code})</span> : null}
+              </Link>
+            </li>
+          ))}
+        </ul>
+      )}
+    </AppModal>
   );
 }
 
@@ -289,125 +267,71 @@ function CustomerOverviewRelatedModal({
   onClose: () => void;
   memberships: RelatedMembershipRow[];
 }) {
-  useEffect(() => {
-    if (!open) return;
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose();
-    };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [open, onClose]);
-
-  if (!open) return null;
-
   const projAll = memberships.filter((m) => !m.is_bidding);
   const oppAll = memberships.filter((m) => m.is_bidding);
 
   return (
-    <OverlayPortal>
-      <div
-        className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center overflow-y-auto p-4"
-        onClick={onClose}
-        role="presentation"
-      >
-        <div
-          className="w-full max-w-lg max-h-[90vh] bg-gray-100 rounded-xl overflow-hidden flex flex-col border border-gray-200 shadow-xl"
-          onClick={(e) => e.stopPropagation()}
-        >
-          <div className="rounded-t-xl border-b border-gray-200 bg-white p-4 flex-shrink-0">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-3 min-w-0">
-                <button
-                  type="button"
-                  onClick={onClose}
-                  className="p-1.5 rounded hover:bg-gray-100 transition-colors flex items-center justify-center shrink-0"
-                  title="Close"
-                >
-                  <svg className="w-4 h-4 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
-                  </svg>
-                </button>
-                <div className="min-w-0">
-                  <div className="text-sm font-semibold text-gray-900 truncate">Related customer</div>
-                  <div className="text-xs text-gray-500 mt-0.5">Projects and opportunities where this customer is related (not owner)</div>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <div className="overflow-y-auto flex-1 p-4 min-h-0 space-y-4">
-            <div className="rounded-xl border border-gray-200 bg-white p-4">
-              <div className="text-[10px] font-medium text-gray-500 uppercase tracking-wide mb-3">Projects</div>
-              {projAll.length === 0 ? (
-                <p className="text-sm text-gray-500 py-2">None</p>
-              ) : (
-                <ul className="border border-gray-100 rounded-lg divide-y divide-gray-100">
-                  {projAll.map((m) => (
-                    <li key={m.id} className="flex items-center gap-2 px-3 py-2 hover:bg-gray-50">
-                      <Link
-                        to={`/projects/${encodeURIComponent(m.id)}`}
-                        className="flex-1 min-w-0 text-sm text-[#7f1010] font-medium truncate"
-                        onClick={onClose}
-                      >
-                        {m.name || m.code || m.id}
-                      </Link>
-                      {m.is_awarded_related ? (
-                        <span className="text-[10px] uppercase font-bold text-green-800 bg-green-50 px-1.5 py-0.5 rounded shrink-0">
-                          Awarded
-                        </span>
-                      ) : (
-                        <span className="text-[10px] uppercase font-bold text-gray-500 bg-gray-100 px-1.5 py-0.5 rounded shrink-0">
-                          Not awarded
-                        </span>
-                      )}
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </div>
-            <div className="rounded-xl border border-gray-200 bg-white p-4">
-              <div className="text-[10px] font-medium text-gray-500 uppercase tracking-wide mb-3">Opportunities</div>
-              {oppAll.length === 0 ? (
-                <p className="text-sm text-gray-500 py-2">None</p>
-              ) : (
-                <ul className="border border-gray-100 rounded-lg divide-y divide-gray-100">
-                  {oppAll.map((m) => (
-                    <li key={m.id} className="flex items-center gap-2 px-3 py-2 hover:bg-gray-50">
-                      <Link
-                        to={`/projects/${encodeURIComponent(m.id)}`}
-                        className="flex-1 min-w-0 text-sm text-[#7f1010] font-medium truncate"
-                        onClick={onClose}
-                      >
-                        {m.name || m.code || m.id}
-                      </Link>
-                      {m.is_awarded_related ? (
-                        <span className="text-[10px] uppercase font-bold text-green-800 bg-green-50 px-1.5 py-0.5 rounded shrink-0">
-                          Awarded
-                        </span>
-                      ) : (
-                        <span className="text-[10px] uppercase font-bold text-gray-500 bg-gray-100 px-1.5 py-0.5 rounded shrink-0">
-                          Not awarded
-                        </span>
-                      )}
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </div>
-          </div>
-
-          <div className="flex-shrink-0 px-4 py-4 border-t border-gray-200 bg-white flex items-center justify-end gap-3 rounded-b-xl">
-            <button
-              type="button"
-              onClick={onClose}
-              className="px-3 py-1.5 rounded-lg text-sm font-medium border border-gray-200 hover:bg-gray-50 text-gray-700"
-            >
-              Close
-            </button>
-          </div>
+    <AppModal
+      open={open}
+      onClose={onClose}
+      title="Related customer"
+      description="Projects and opportunities where this customer is related (not owner)"
+      size="md"
+      footer={
+        <div className={uiCx(uiLayout.actionsRow, 'justify-end')}>
+          <AppButton variant="secondary" onClick={onClose}>
+            Close
+          </AppButton>
         </div>
+      }
+    >
+      <div className={uiSpacing.sectionStack}>
+        <AppCard title="Projects" bodyClassName="p-0">
+          {projAll.length === 0 ? (
+            <p className={uiCx(uiTypography.helper, uiSpacing.cardPadding)}>None</p>
+          ) : (
+            <ul className="divide-y divide-gray-100">
+              {projAll.map((m) => (
+                <li key={m.id} className={uiCx('flex items-center gap-2 px-3 py-2 hover:bg-gray-50')}>
+                  <Link
+                    to={`/projects/${encodeURIComponent(m.id)}`}
+                    className="min-w-0 flex-1 truncate text-sm font-medium text-brand-red"
+                    onClick={onClose}
+                  >
+                    {m.name || m.code || m.id}
+                  </Link>
+                  <AppBadge variant={m.is_awarded_related ? 'success' : 'neutral'}>
+                    {m.is_awarded_related ? 'Awarded' : 'Not awarded'}
+                  </AppBadge>
+                </li>
+              ))}
+            </ul>
+          )}
+        </AppCard>
+        <AppCard title="Opportunities" bodyClassName="p-0">
+          {oppAll.length === 0 ? (
+            <p className={uiCx(uiTypography.helper, uiSpacing.cardPadding)}>None</p>
+          ) : (
+            <ul className="divide-y divide-gray-100">
+              {oppAll.map((m) => (
+                <li key={m.id} className={uiCx('flex items-center gap-2 px-3 py-2 hover:bg-gray-50')}>
+                  <Link
+                    to={`/projects/${encodeURIComponent(m.id)}`}
+                    className="min-w-0 flex-1 truncate text-sm font-medium text-brand-red"
+                    onClick={onClose}
+                  >
+                    {m.name || m.code || m.id}
+                  </Link>
+                  <AppBadge variant={m.is_awarded_related ? 'success' : 'neutral'}>
+                    {m.is_awarded_related ? 'Awarded' : 'Not awarded'}
+                  </AppBadge>
+                </li>
+              ))}
+            </ul>
+          )}
+        </AppCard>
       </div>
-    </OverlayPortal>
+    </AppModal>
   );
 }
 
@@ -700,13 +624,6 @@ export default function CustomerDetail(){
   });
   const projectStatuses = (settings?.project_statuses || []) as any[];
   const reportCategories = (settings?.report_categories || []) as any[];
-  const statusColorMap: Record<string,string> = useMemo(()=>{
-    const list = (settings||{}).client_statuses as {label?:string, value?:string}[]|undefined;
-    const m: Record<string,string> = {};
-    (list||[]).forEach(it=>{ const k = String(it.label||'').trim(); const v = String(it.value||'').trim(); if(k){ m[k] = v || ''; } });
-    return m;
-  }, [settings]);
-
   const handleCreateProject = async () => {
     if (!newProjectName.trim()) {
       toast.error('Project name is required');
@@ -1615,15 +1532,31 @@ export default function CustomerDetail(){
   }, [tab]);
   const { data:employees } = useQuery({ queryKey:['employees'], queryFn: ()=> api<any[]>('GET','/employees') });
   const primaryContact = (contacts||[]).find(c=>c.is_primary) || (contacts||[])[0];
-  const clientLogoRec = (files||[]).find(f=> !f.site_id && String(f.category||'').toLowerCase()==='client-logo-derived');
-  const clientAvatar = clientLogoRec? withFileAccessToken(`/files/${clientLogoRec.file_object_id}/thumbnail?w=96`) : '/ui/assets/placeholders/customer.png';
-  const clientAvatarLarge = clientLogoRec? withFileAccessToken(`/files/${clientLogoRec.file_object_id}/thumbnail?w=800`) : '/ui/assets/placeholders/customer.png';
+  const clientLogoRec = useMemo(() => {
+    const logos = (files || []).filter(
+      (f) => !f.site_id && String(f.category || '').toLowerCase() === 'client-logo-derived',
+    );
+    if (logos.length === 0) return undefined;
+    return [...logos].sort((a, b) =>
+      String(b.uploaded_at || '').localeCompare(String(a.uploaded_at || '')),
+    )[0];
+  }, [files]);
+
+  const heroAvatarSrc = useMemo(() => {
+    const logoUrl = (client as { logo_url?: string | null } | undefined)?.logo_url;
+    if (logoUrl) {
+      return withFileAccessTokenIfNeeded(logoUrl) || '/ui/assets/placeholders/customer.png';
+    }
+    if (clientLogoRec?.file_object_id) {
+      return withFileAccessToken(`/files/${clientLogoRec.file_object_id}/thumbnail?w=800`);
+    }
+    return '/ui/assets/placeholders/customer.png';
+  }, [client, clientLogoRec?.file_object_id]);
   const [form, setForm] = useState<any>({});
   const [dirty, setDirty] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
-  const [isEditingGeneral, setIsEditingGeneral] = useState(false);
+  const [editingGeneralSection, setEditingGeneralSection] = useState<GeneralEditSection | null>(null);
   const [pickerOpen, setPickerOpen] = useState(false);
-  const [sitePicker, setSitePicker] = useState<{ open:boolean, siteId?:string }|null>(null);
   const [projectPicker, setProjectPicker] = useState<{ open:boolean, projectId?:string }|null>(null);
   
   // Save function for unsaved changes guard
@@ -1669,13 +1602,14 @@ export default function CustomerDetail(){
       setIsSaving(true);
       await api('PATCH', `/clients/${id}`, payload); 
       setDirty(false);
-      setIsEditingGeneral(false);
+      setEditingGeneralSection(null);
     }catch(e: any){ 
       const msg = e?.message || 'Save failed';
       if(msg.includes('HTTP 4') && !msg.includes('HTTP 40')) {
         toast.error(msg);
       } else {
         setDirty(false);
+        setEditingGeneralSection(null);
       }
     } finally {
       setIsSaving(false);
@@ -1683,14 +1617,14 @@ export default function CustomerDetail(){
   };
   
   // Use unsaved changes guard - only when editing
-  useUnsavedChangesGuard(dirty && isEditingGeneral && hasEditGeneral, handleSave);
+  useUnsavedChangesGuard(dirty && editingGeneralSection !== null && hasEditGeneral, handleSave);
 
   useEffect(() => {
-    if (isEditingGeneral && !hasEditGeneral) {
-      setIsEditingGeneral(false);
+    if (editingGeneralSection && !hasEditGeneral) {
+      setEditingGeneralSection(null);
       setDirty(false);
     }
-  }, [isEditingGeneral, hasEditGeneral]);
+  }, [editingGeneralSection, hasEditGeneral]);
   
   useEffect(()=>{ if(client){ setForm({
     display_name: client.display_name||'', legal_name: client.legal_name||'', code: client.id?.slice(0,8) || '',
@@ -1760,207 +1694,248 @@ export default function CustomerDetail(){
     navigate(`${location.pathname}?tab=${newTab}`, { replace: true });
   };
 
+  const activeTabKey = tab === null ? 'overview' : tab;
+  const appTabItems = useMemo(
+    () =>
+      availableTabs.map((tabKey) => {
+        const labels: Record<string, string> = {
+          overview: 'Overview',
+          general: 'General',
+          contacts: 'Contacts',
+          files: 'Files',
+          sites: 'Sites',
+          opportunities: 'Opportunities',
+          projects: 'Projects',
+        };
+        return { key: tabKey, label: labels[tabKey] || tabKey };
+      }),
+    [availableTabs],
+  );
+
+  const clientTypeOptions = useMemo(
+    () => [
+      { value: '', label: 'Select...' },
+      ...sortByLabel(settings?.client_types || [], (t: any) => (t.label || '').toString()).map((t: any) => ({
+        value: t.label,
+        label: t.label,
+      })),
+    ],
+    [settings?.client_types],
+  );
+  const clientStatusOptions = useMemo(
+    () => [
+      { value: '', label: 'Select...' },
+      ...sortByLabel(settings?.client_statuses || [], (t: any) => (t.label || '').toString()).map((t: any) => ({
+        value: t.label,
+        label: t.label,
+      })),
+    ],
+    [settings?.client_statuses],
+  );
+  const leadSourceOptions = useMemo(
+    () => [
+      { value: '', label: 'Select...' },
+      ...sortByLabel(leadSources, (ls: any) => (ls?.label ?? ls?.name ?? '').toString()).map((ls: any) => {
+        const val = ls?.value ?? ls?.id ?? ls?.label ?? ls?.name ?? String(ls);
+        const label = ls?.label ?? ls?.name ?? String(ls);
+        return { value: String(val), label: String(label) };
+      }),
+    ],
+    [leadSources],
+  );
+
+  const handlePageBack = () => {
+    if (tab !== null && hasOverviewView) {
+      setTab(null);
+      navigate(location.pathname, { replace: true });
+    } else {
+      navigate('/customers');
+    }
+  };
+
+  const clientStatusLabel = String((c as any).client_status || '');
+  const clientStatusVariant = getClientStatusBadgeVariant(clientStatusLabel);
+
   return (
-    <div>
-      {/* Title Bar - ProjectDetail style */}
-      <div className="rounded-xl border bg-white p-4 mb-4">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-3 flex-1">
-            <button
-              onClick={() => {
-                if (tab !== null && hasOverviewView) {
-                  setTab(null);
-                  navigate(location.pathname, { replace: true });
-                } else {
-                  navigate('/customers');
-                }
-              }}
-              className="p-1.5 rounded hover:bg-gray-100 transition-colors flex items-center justify-center"
-              title={tab !== null && hasOverviewView ? 'Back to Overview' : 'Back to Customers'}
-            >
-              <svg className="w-4 h-4 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
-              </svg>
-            </button>
-            <div>
-              <div className="text-sm font-semibold text-gray-900">{getPageTitle(c, tab)}</div>
-              <div className="text-xs text-gray-500 mt-0.5">{getPageDescription(c, tab)}</div>
-            </div>
-          </div>
+    <main className={uiCx('min-h-full bg-gray-50', uiSpacing.pageY)}>
+      <div className={uiCx('w-full', uiSpacing.pageStack)}>
+      <AppPageHeader
+        title={getPageTitle(c, tab)}
+        subtitle={getPageDescription(c, tab)}
+        icon={<Users className="h-4 w-4" />}
+        onBack={handlePageBack}
+        backLabel={tab !== null && hasOverviewView ? 'Back to Overview' : 'Back to Customers'}
+        actions={
           <div className="text-right">
-            <div className="text-[10px] font-bold text-gray-500 uppercase tracking-wide">Today</div>
-            <div className="text-xs font-semibold text-gray-700 mt-0.5">{todayLabel}</div>
+            <div className={uiTypography.overline}>Today</div>
+            <div className={uiCx(uiTypography.sectionTitle, 'mt-0.5')}>{todayLabel}</div>
           </div>
-        </div>
-      </div>
+        }
+      />
 
-      {/* Hero Section - white, compact, collapsible (ProjectDetail style) */}
-      <div className={`transition-all ${isHeroCollapsed ? 'duration-[1200ms]' : 'duration-[1800ms]'} ease-in-out ${isHeroCollapsed ? 'mb-2' : 'mb-4'}`}>
-        <div className="relative" style={{ minHeight: isHeroCollapsed ? 'auto' : 'auto' }}>
-          {/* Expanded View */}
-          <div className={`rounded-xl border bg-white overflow-hidden transition-all ${isHeroCollapsed ? 'duration-[1200ms]' : 'duration-[1800ms]'} ease-in-out ${
-            isHeroCollapsed ? 'opacity-0 max-h-0 pointer-events-none relative' : 'opacity-100 max-h-[2000px] pointer-events-auto relative'
-          }`} style={{
-            transitionProperty: 'max-height, opacity',
-            transitionDuration: isHeroCollapsed ? '1200ms, 300ms' : '1800ms, 300ms',
-            transitionTimingFunction: 'ease-in-out, ease-in-out'
-          }}>
-            {canDeleteCustomer && (
-              <button
-                type="button"
-                onClick={async (e) => { e.stopPropagation(); const ok = await confirm({ title: 'Delete customer', message: 'Are you sure you want to delete this customer? This action cannot be undone.' }); if (!ok) return; try { await api('DELETE', `/clients/${encodeURIComponent(String(id||''))}`); toast.success('Customer deleted'); await queryClient.invalidateQueries({ queryKey: ['clients'] }); navigate('/customers'); } catch (_e) { toast.error('Failed to delete customer'); } }}
-                className="absolute top-2 right-2 z-10 px-2 py-1 rounded text-[11px] font-medium border border-red-200 text-red-600 hover:bg-red-50 transition-colors"
-                title="Delete Customer"
-              >
-                Delete Customer
-              </button>
-            )}
-            <div className="p-3 overflow-visible">
-              <div className="flex gap-3 items-start">
-                <div className="w-48 flex-shrink-0">
-                  <div className="w-48 h-36 rounded-xl border overflow-hidden group relative">
-                    <img src={clientAvatarLarge} className="w-full h-full object-cover" alt="" />
-                    {hasFilesEdit && (
-                    <button onClick={()=>setPickerOpen(true)} className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center text-white transition-opacity text-xs">✏️ Change</button>
-                    )}
-                  </div>
+      <AppCard
+        className={uiCx(
+          'transition-[margin]',
+          HERO_PANEL_EASE,
+          isHeroCollapsed ? uiCx(HERO_COLLAPSE_DURATION, 'mb-2') : uiCx(HERO_EXPAND_DURATION, 'mb-4'),
+        )}
+        bodyClassName="relative overflow-hidden p-0"
+      >
+        {canDeleteCustomer && (
+          <AppButton
+            type="button"
+            variant="danger"
+            size="sm"
+            className="absolute top-2 right-2 z-20"
+            onClick={async (e) => {
+              e.stopPropagation();
+              const ok = await confirm({
+                title: 'Delete customer',
+                message: 'Are you sure you want to delete this customer? This action cannot be undone.',
+              });
+              if (!ok) return;
+              try {
+                await api('DELETE', `/clients/${encodeURIComponent(String(id || ''))}`);
+                toast.success('Customer deleted');
+                await queryClient.invalidateQueries({ queryKey: ['clients'] });
+                navigate('/customers');
+              } catch (_e) {
+                toast.error('Failed to delete customer');
+              }
+            }}
+          >
+            Delete Customer
+          </AppButton>
+        )}
+
+        <div
+          className={uiCx(
+            HERO_PANEL_TRANSITION_BASE,
+            HERO_PANEL_EASE,
+            isHeroCollapsed
+              ? uiCx(HERO_COLLAPSE_DURATION, 'max-h-0 opacity-0')
+              : uiCx(HERO_EXPAND_DURATION, 'max-h-[320px] opacity-100'),
+          )}
+          aria-hidden={isHeroCollapsed}
+        >
+          <div className="relative p-3 pr-10">
+            <div className="flex items-start gap-3">
+              <div className="w-48 shrink-0">
+                <div className={uiCx('group relative h-36 w-48 overflow-hidden', uiRadius.control, uiBorders.subtle)}>
+                  <img
+                    key={clientLogoRec?.file_object_id ?? (client as { logo_url?: string })?.logo_url ?? 'placeholder'}
+                    src={heroAvatarSrc}
+                    className="h-full w-full object-cover"
+                    alt=""
+                  />
+                  {hasFilesEdit && (
+                    <button
+                      type="button"
+                      onClick={() => setPickerOpen(true)}
+                      className="absolute inset-0 flex items-center justify-center bg-black/40 text-xs text-white opacity-0 transition-opacity group-hover:opacity-100"
+                    >
+                      Change
+                    </button>
+                  )}
                 </div>
-                <div className="flex-1 min-w-0">
-                  <div className="mb-2">
-                    <h3 className="text-sm font-bold text-gray-900 truncate">{c.display_name||c.name||id}</h3>
+              </div>
+              <div className="min-w-0 flex-1">
+                <h3 className={uiCx(uiTypography.sectionTitle, 'mb-2 truncate')}>{c.display_name || c.name || id}</h3>
+                <div className="grid grid-cols-[minmax(5rem,auto)_1fr] gap-x-2 gap-y-1.5">
+                  <div className="min-w-0">
+                    <div className={uiTypography.overline}>Code</div>
+                    <div className={uiCx(uiTypography.helper, 'mt-0.5 font-semibold text-gray-900')}>
+                      {c.code || id?.slice(0, 8) || '—'}
+                    </div>
                   </div>
-                  <div className="grid grid-cols-[minmax(5rem,auto)_1fr] gap-x-2 gap-y-1.5">
-                    <div className="min-w-0">
-                      <div>
-                        <span className="text-[10px] font-bold text-gray-500 uppercase tracking-wide">Code</span>
-                        <div className="text-xs font-semibold text-gray-900 mt-0.5">{c.code || id?.slice(0, 8) || '—'}</div>
-                      </div>
+                  <div className="min-w-0">
+                    <div className={uiTypography.overline}>Address</div>
+                    <div
+                      className={uiCx(uiTypography.helper, 'mt-0.5 truncate font-semibold text-gray-900')}
+                      title={formatAddressDisplay({
+                        address_line1: c.address_line1,
+                        address_line2: (c as any).address_line2,
+                        city: c.city,
+                        province: c.province,
+                        postal_code: c.postal_code,
+                        country: c.country,
+                      })}
+                    >
+                      {formatAddressDisplay({
+                        address_line1: c.address_line1,
+                        address_line2: (c as any).address_line2,
+                        city: c.city,
+                        province: c.province,
+                        postal_code: c.postal_code,
+                        country: c.country,
+                      })}
                     </div>
-                    <div className="min-w-0">
-                      <div>
-                        <span className="text-[10px] font-bold text-gray-500 uppercase tracking-wide">Address</span>
-                        <div className="text-xs font-semibold text-gray-900 mt-0.5 truncate" title={formatAddressDisplay({ address_line1: c.address_line1, address_line2: (c as any).address_line2, city: c.city, province: c.province, postal_code: c.postal_code, country: c.country })}>
-                          {formatAddressDisplay({ address_line1: c.address_line1, address_line2: (c as any).address_line2, city: c.city, province: c.province, postal_code: c.postal_code, country: c.country })}
-                        </div>
-                      </div>
+                  </div>
+                  <div className="min-w-0">
+                    <div className={uiTypography.overline}>Status</div>
+                    <div className="mt-0.5">
+                      {clientStatusLabel ? (
+                        <AppBadge variant={clientStatusVariant}>{clientStatusLabel}</AppBadge>
+                      ) : (
+                        <span className={uiCx(uiTypography.helper, 'font-semibold text-gray-400')}>—</span>
+                      )}
                     </div>
-                    <div className="min-w-0">
-                      <div>
-                        <span className="text-[10px] font-bold text-gray-500 uppercase tracking-wide">Status</span>
-                        <div className="mt-0.5">
-                          {((c as any).client_status) ? (
-                            <span className="px-2 py-0.5 rounded text-[10px] font-medium inline-block" style={{ backgroundColor: statusColorMap[String((c as any).client_status)] || '#eeeeee', color: '#000' }}>
-                              {String((c as any).client_status)}
-                            </span>
-                          ) : (
-                            <span className="text-xs font-semibold text-gray-400">—</span>
-                          )}
-                        </div>
-                      </div>
-                    </div>
-                    <div className="min-w-0">
-                      <div>
-                        <span className="text-[10px] font-bold text-gray-500 uppercase tracking-wide">Type</span>
-                        <div className="text-xs font-semibold text-gray-900 mt-0.5">{(c as any).client_type ? String((c as any).client_type) : '—'}</div>
-                      </div>
+                  </div>
+                  <div className="min-w-0">
+                    <div className={uiTypography.overline}>Type</div>
+                    <div className={uiCx(uiTypography.helper, 'mt-0.5 font-semibold text-gray-900')}>
+                      {(c as any).client_type ? String((c as any).client_type) : '—'}
                     </div>
                   </div>
                 </div>
               </div>
             </div>
-            <button
-              onClick={() => setIsHeroCollapsed(!isHeroCollapsed)}
-              className="absolute bottom-2 right-2 p-1 rounded hover:bg-gray-100 transition-colors text-gray-500 hover:text-gray-700"
-              title="Collapse"
-            >
-              <svg className="w-3 h-3 transition-transform rotate-180" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-              </svg>
-            </button>
-          </div>
-
-          {/* Collapsed View */}
-          <div className={`rounded-xl border bg-white overflow-hidden transition-all ${isHeroCollapsed ? 'duration-[1200ms]' : 'duration-[1800ms]'} ease-in-out absolute top-0 left-0 right-0 ${
-            isHeroCollapsed ? 'opacity-100 min-h-[60px] max-h-[200px] pointer-events-auto z-10' : 'opacity-0 max-h-0 pointer-events-none z-0'
-          }`} style={{
-            transitionProperty: 'max-height, opacity',
-            transitionDuration: isHeroCollapsed ? '1200ms, 300ms' : '1800ms, 300ms',
-            transitionTimingFunction: 'ease-in-out, ease-in-out'
-          }}>
-            {canDeleteCustomer && (
-              <button
-                type="button"
-                onClick={async (e) => { e.stopPropagation(); const ok = await confirm({ title: 'Delete customer', message: 'Are you sure you want to delete this customer? This action cannot be undone.' }); if (!ok) return; try { await api('DELETE', `/clients/${encodeURIComponent(String(id||''))}`); toast.success('Customer deleted'); await queryClient.invalidateQueries({ queryKey: ['clients'] }); navigate('/customers'); } catch (_e) { toast.error('Failed to delete customer'); } }}
-                className="absolute top-2 right-2 z-10 px-2 py-1 rounded text-[11px] font-medium border border-red-200 text-red-600 hover:bg-red-50 transition-colors"
-                title="Delete Customer"
-              >
-                Delete Customer
-              </button>
-            )}
-            <div className="px-3 py-3 pr-10 min-h-[60px] flex items-center justify-between gap-4">
-              <div className="min-w-0 flex items-center flex-1">
-                <h3 className="text-sm font-bold text-gray-900 truncate">{c.display_name||c.name||id}</h3>
-              </div>
-              <div className="flex items-center gap-2 flex-shrink-0">
-                <span className="text-xs text-gray-500 font-medium">{c.code || id?.slice(0, 8) || '—'}</span>
-                {(c as any).client_status ? (
-                  <span className="px-2 py-0.5 rounded text-[10px] font-medium" style={{ backgroundColor: statusColorMap[String((c as any).client_status)] || '#eeeeee', color: '#000' }}>
-                    {String((c as any).client_status)}
-                  </span>
-                ) : null}
-              </div>
-            </div>
-            <button
-              onClick={() => setIsHeroCollapsed(!isHeroCollapsed)}
-              className="absolute bottom-2 right-2 p-1 rounded hover:bg-gray-100 transition-colors text-gray-500 hover:text-gray-700"
-              title="Expand"
-            >
-              <svg className="w-3 h-3 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-              </svg>
-            </button>
           </div>
         </div>
-      </div>
 
-      {/* Tab Cards - ProjectDetail style */}
+        <div
+          className={uiCx(
+            HERO_PANEL_TRANSITION_BASE,
+            HERO_PANEL_EASE,
+            isHeroCollapsed
+              ? uiCx(HERO_EXPAND_DURATION, 'max-h-[72px] opacity-100')
+              : uiCx(HERO_COLLAPSE_DURATION, 'max-h-0 opacity-0'),
+          )}
+          aria-hidden={!isHeroCollapsed}
+        >
+          <div className="flex min-h-[60px] items-center justify-between gap-4 px-3 py-3 pr-10">
+            <h3 className={uiCx(uiTypography.sectionTitle, 'min-w-0 flex-1 truncate')}>
+              {c.display_name || c.name || id}
+            </h3>
+            <div className="flex shrink-0 items-center gap-2">
+              <span className={uiCx(uiTypography.helper, 'font-medium')}>{c.code || id?.slice(0, 8) || '—'}</span>
+              {clientStatusLabel ? <AppBadge variant={clientStatusVariant}>{clientStatusLabel}</AppBadge> : null}
+            </div>
+          </div>
+        </div>
+
+        <AppButton
+          type="button"
+          variant="ghost"
+          size="sm"
+          className="absolute bottom-2 right-2 z-20 p-1"
+          onClick={() => setIsHeroCollapsed(!isHeroCollapsed)}
+          title={isHeroCollapsed ? 'Expand' : 'Collapse'}
+          aria-label={isHeroCollapsed ? 'Expand' : 'Collapse'}
+        >
+          {isHeroCollapsed ? <ChevronDown className="h-3 w-3" /> : <ChevronUp className="h-3 w-3" />}
+        </AppButton>
+      </AppCard>
+
       {availableTabs.length > 0 && (
-      <div className={`mb-4 transition-all duration-[1200ms] ease-in-out ${isHeroCollapsed ? 'mt-16' : 'mt-0'}`}>
-        <div className="rounded-xl border bg-white p-3">
-          <div className="flex flex-wrap gap-2">
-            {availableTabs.map(tabKey => {
-              const tabConfig: Record<string, { label: string; icon: string }> = {
-                overview: { label: 'Overview', icon: '📊' },
-                general: { label: 'General', icon: '📋' },
-                contacts: { label: 'Contacts', icon: '👤' },
-                files: { label: 'Files', icon: '📁' },
-                sites: { label: 'Sites', icon: '📍' },
-                opportunities: { label: 'Opportunities', icon: '💼' },
-                projects: { label: 'Projects', icon: '🏗️' },
-              };
-              const config = tabConfig[tabKey];
-              if (!config) return null;
-              const isActive = (tab === null && tabKey === 'overview') || tab === tabKey;
-              return (
-                <button
-                  key={tabKey}
-                  onClick={() => handleTabClick(tabKey === 'overview' ? null : (tabKey as CustomerTab))}
-                  className={`flex-1 min-w-[120px] px-3 py-1.5 text-sm font-bold rounded-lg border transition-colors flex items-center justify-center gap-1.5 ${
-                    isActive ? 'bg-red-50 text-red-700 border-red-300 hover:bg-red-100 hover:border-red-400' : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50 hover:border-gray-400'
-                  }`}
-                >
-                  <span className="text-xs leading-none">{config.icon}</span>
-                  {config.label}
-                </button>
-              );
-            })}
-          </div>
+        <div>
+          <AppCard bodyClassName="p-3">
+            <AppTabs tabs={appTabItems} value={activeTabKey} onChange={(key) => handleTabClick(key === 'overview' ? null : (key as CustomerTab))} />
+          </AppCard>
         </div>
-      </div>
       )}
 
-      {/* Content area */}
-      <div className="rounded-xl border bg-white p-5">
+      <AppCard bodyClassName="p-5">
           {isLoading? <div className="h-24 animate-pulse bg-gray-100 rounded"/> : (
             <>
               {availableTabs.length === 0 && (
@@ -1977,49 +1952,40 @@ export default function CustomerDetail(){
                         transition: 'opacity 400ms ease-out, transform 400ms ease-out',
                       }}
                     >
-                        <select
+                        <AppSelect
                           value={globalDateFilter}
                           onChange={(e) => {
-                            const value = e.target.value as DateFilterType;
-                            setGlobalDateFilter(value);
-                            if (value === 'custom') {
+                            const v = e.target.value as DateFilterType;
+                            setGlobalDateFilter(v);
+                            if (v === 'custom') {
                               setGlobalDateModalOpen(true);
                             }
                           }}
-                          className="border border-gray-300 rounded px-2 py-1.5 text-xs"
-                        >
-                          <option value="all">All time</option>
-                          <option value="last_year">Last 12 months</option>
-                          <option value="last_6_months">Last 6 months</option>
-                          <option value="last_3_months">Last 3 months</option>
-                          <option value="last_month">Last month</option>
-                          <option value="custom">Custom</option>
-                        </select>
+                          options={[...OVERVIEW_DATE_FILTER_OPTIONS]}
+                          className="w-auto min-w-[140px]"
+                        />
                         {globalDateFilter === 'custom' && globalDateCustomStart && globalDateCustomEnd && (
-                          <div className="relative group">
-                            <button
+                          <AppTooltip
+                            content={`${formatDateForDisplay(globalDateCustomStart)} - ${formatDateForDisplay(globalDateCustomEnd)}`}
+                          >
+                            <AppButton
+                              type="button"
+                              variant="ghost"
+                              size="sm"
+                              className="p-1"
                               onClick={() => setGlobalDateModalOpen(true)}
-                              className="text-gray-500 hover:text-[#7f1010] transition-colors p-1"
-                              title={`${formatDateForDisplay(globalDateCustomStart)} - ${formatDateForDisplay(globalDateCustomEnd)}`}
+                              aria-label="Edit custom date range"
                             >
-                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                              </svg>
-                            </button>
-                            <div className="absolute right-0 bottom-full mb-2 px-2 py-1.5 bg-gray-900 text-white text-xs rounded opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-10 whitespace-nowrap">
-                              {formatDateForDisplay(globalDateCustomStart)} - {formatDateForDisplay(globalDateCustomEnd)}
-                              <div className="absolute -bottom-1 right-3 w-2 h-2 bg-gray-900 rotate-45"></div>
-                            </div>
-                          </div>
+                              <CalendarDays className="h-4 w-4" />
+                            </AppButton>
+                          </AppTooltip>
                         )}
-                        <select
+                        <AppSelect
                           value={globalDisplayMode}
                           onChange={(e) => setGlobalDisplayMode(e.target.value as 'quantity' | 'value')}
-                          className="border border-gray-300 rounded px-2 py-1.5 text-xs"
-                        >
-                          <option value="quantity">Quantity</option>
-                          <option value="value">Value</option>
-                        </select>
+                          options={[...OVERVIEW_DISPLAY_MODE_OPTIONS]}
+                          className="w-auto min-w-[120px]"
+                        />
                     </div>
 
                     {/* KPI Snapshot — 4 metrics + related card; Quantity/Value toggle */}
@@ -2753,299 +2719,238 @@ export default function CustomerDetail(){
               )}
               {tab==='general' && hasGeneralView && (
                 <div className="space-y-6 pb-24">
-                  {/* Company — card style like Users > Personal */}
-                  <div className="rounded-xl border bg-white p-4">
-                    <div className="mb-4 flex items-center justify-between">
-                      <div className="flex items-center gap-2">
-                        <div className="w-8 h-8 rounded bg-blue-100 flex items-center justify-center">
-                          <svg className="w-5 h-5 text-blue-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
-                          </svg>
-                        </div>
-                        <h5 className="text-sm font-semibold text-blue-900">Company</h5>
-                      </div>
-                      {!isEditingGeneral && hasEditGeneral && (
-                        <button
-                          onClick={() => setIsEditingGeneral(true)}
-                          className="p-1.5 rounded hover:bg-gray-100 text-gray-600 hover:text-brand-red transition-colors"
-                          title="Edit Company"
-                        >
-                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                          </svg>
-                        </button>
+                  <AppCard>
+                    <AppSectionHeader
+                      title="Company"
+                      description="Core company identity details."
+                      {...appSectionPresetProps('company')}
+                      action={
+                        editingGeneralSection !== 'company' && hasEditGeneral ? (
+                          <AppHeroEditButton onClick={() => setEditingGeneralSection('company')} title="Edit Company" />
+                        ) : null
+                      }
+                    />
+                    <div className={uiCx('mt-4 grid gap-4 md:grid-cols-2')}>
+                      {editingGeneralSection === 'company' ? (
+                        <>
+                          <AppInput
+                            label="Display name *"
+                            value={form.display_name || ''}
+                            onChange={(e) => set('display_name', e.target.value)}
+                            error={!isDisplayValid ? 'Required' : undefined}
+                            fieldHint="Display name\n\nPublic name shown across the app."
+                          />
+                          <AppInput
+                            label="Legal name *"
+                            value={form.legal_name || ''}
+                            onChange={(e) => set('legal_name', e.target.value)}
+                            error={!isLegalValid ? 'Required' : undefined}
+                            fieldHint="Legal name\n\nRegistered legal entity name."
+                          />
+                          <AppSelect
+                            label="Type"
+                            value={form.client_type || ''}
+                            onChange={(e) => set('client_type', e.target.value)}
+                            options={clientTypeOptions}
+                            fieldHint="Type\n\nCustomer classification."
+                          />
+                          <AppSelect
+                            label="Status"
+                            value={form.client_status || ''}
+                            onChange={(e) => set('client_status', e.target.value)}
+                            options={clientStatusOptions}
+                            fieldHint="Status\n\nRelationship status."
+                          />
+                          <AppSelect
+                            label="Lead source"
+                            value={form.lead_source || ''}
+                            onChange={(e) => set('lead_source', e.target.value)}
+                            options={leadSourceOptions}
+                            fieldHint="Lead source\n\nWhere did this lead originate?"
+                          />
+                          <AppInput
+                            label="Tax number"
+                            value={form.tax_number || ''}
+                            onChange={(e) => set('tax_number', e.target.value)}
+                            fieldHint="Tax number\n\nTax/VAT identifier used for invoicing."
+                          />
+                        </>
+                      ) : (
+                        <>
+                          <ReadOnlyField label="Display name *" value={form.display_name} />
+                          <ReadOnlyField label="Legal name *" value={form.legal_name} />
+                          <ReadOnlyField label="Type" value={form.client_type} />
+                          <ReadOnlyField label="Status" value={form.client_status} />
+                          <ReadOnlyField label="Lead source" value={form.lead_source} />
+                          <ReadOnlyField label="Tax number" value={form.tax_number} />
+                        </>
                       )}
                     </div>
-                    <div className="space-y-4">
-                      <div className="text-xs text-gray-500 mb-2">Core company identity details.</div>
-                      <div className="grid md:grid-cols-2 gap-4">
-                        <Field label={<><span>Display name</span> <span className="text-red-600">*</span></>} tooltip="Public name shown across the app.">
+                  </AppCard>
+                  <AppCard>
+                    <AppSectionHeader
+                      title="Address"
+                      description="Primary mailing and location address."
+                      {...appSectionPresetProps('address')}
+                      action={
+                        editingGeneralSection !== 'address' && hasEditGeneral ? (
+                          <AppHeroEditButton onClick={() => setEditingGeneralSection('address')} title="Edit Address" />
+                        ) : null
+                      }
+                    />
+                    <div className={uiCx('mt-4 grid gap-4 md:grid-cols-2')}>
+                      {editingGeneralSection === 'address' ? (
+                        <>
+                          <AppInput label="Address 1" value={form.address_line1 || ''} onChange={(e) => set('address_line1', e.target.value)} />
+                          <AppInput label="Address 2" value={form.address_line2 || ''} onChange={(e) => set('address_line2', e.target.value)} />
+                          <AppInput label="Country" value={form.country || ''} onChange={(e) => set('country', e.target.value)} />
+                          <AppInput label="Province/State" value={form.province || ''} onChange={(e) => set('province', e.target.value)} />
+                          <AppInput label="City" value={form.city || ''} onChange={(e) => set('city', e.target.value)} />
+                          <AppInput label="Postal code" value={form.postal_code || ''} onChange={(e) => set('postal_code', e.target.value)} />
+                        </>
+                      ) : (
+                        <>
+                          <ReadOnlyField label="Address 1" value={form.address_line1} />
+                          <ReadOnlyField label="Address 2" value={form.address_line2} />
+                          <ReadOnlyField label="Country" value={form.country} />
+                          <ReadOnlyField label="Province/State" value={form.province} />
+                          <ReadOnlyField label="City" value={form.city} />
+                          <ReadOnlyField label="Postal code" value={form.postal_code} />
+                        </>
+                      )}
+                    </div>
+                  </AppCard>
+                  <AppCard>
+                    <AppSectionHeader
+                      title="Billing"
+                      description="Preferences used for invoices and payments."
+                      {...appSectionPresetProps('billing')}
+                      action={
+                        editingGeneralSection !== 'billing' && hasEditGeneral ? (
+                          <AppHeroEditButton onClick={() => setEditingGeneralSection('billing')} title="Edit Billing" />
+                        ) : null
+                      }
+                    />
+                    <div className={uiCx('mt-4 space-y-4')}>
+                      <div className="grid gap-4 md:grid-cols-2">
+                        {editingGeneralSection === 'billing' ? (
                           <>
-                            {isEditingGeneral ? (
-                              <input className={`w-full border rounded px-3 py-2 ${!isDisplayValid? 'border-red-500' : ''}`} value={form.display_name||''} onChange={e=>set('display_name', e.target.value)} />
-                            ) : (
-                              <div className="text-gray-900 font-medium py-1 break-words">{String(form.display_name||'') || '—'}</div>
-                            )}
-                            {!isDisplayValid && isEditingGeneral && <div className="text-[11px] text-red-600 mt-1">Required</div>}
+                            <AppInput
+                              label="Billing email"
+                              value={form.billing_email || ''}
+                              onChange={(e) => set('billing_email', e.target.value)}
+                              fieldHint="Billing email\n\nEmail used for invoice delivery."
+                            />
+                            <AppSelect
+                              label="PO required"
+                              value={form.po_required || 'false'}
+                              onChange={(e) => set('po_required', e.target.value)}
+                              options={[...YES_NO_OPTIONS]}
+                              fieldHint="PO required\n\nWhether a purchase order is required before invoicing."
+                            />
                           </>
-                        </Field>
-                        <Field label={<><span>Legal name</span> <span className="text-red-600">*</span></>} tooltip="Registered legal entity name.">
+                        ) : (
                           <>
-                            {isEditingGeneral ? (
-                              <input className={`w-full border rounded px-3 py-2 ${!isLegalValid? 'border-red-500' : ''}`} value={form.legal_name||''} onChange={e=>set('legal_name', e.target.value)} />
-                            ) : (
-                              <div className="text-gray-900 font-medium py-1 break-words">{String(form.legal_name||'') || '—'}</div>
-                            )}
-                            {!isLegalValid && isEditingGeneral && <div className="text-[11px] text-red-600 mt-1">Required</div>}
-                          </>
-                        </Field>
-                        <Field label="Type" tooltip="Customer classification.">
-                          {isEditingGeneral ? (
-                            <select className="w-full border rounded px-3 py-2" value={form.client_type||''} onChange={e=>set('client_type', e.target.value)}>
-                              <option value="">Select...</option>
-                              {sortByLabel(settings?.client_types||[], (t:any)=> (t.label||'').toString()).map((t:any)=> <option key={t.value||t.label} value={t.label}>{t.label}</option>)}
-                            </select>
-                          ) : (
-                            <div className="text-gray-900 font-medium py-1 break-words">{String(form.client_type||'') || '—'}</div>
-                          )}
-                        </Field>
-                        <Field label="Status" tooltip="Relationship status.">
-                          {isEditingGeneral ? (
-                            <select className="w-full border rounded px-3 py-2" value={form.client_status||''} onChange={e=>set('client_status', e.target.value)}>
-                              <option value="">Select...</option>
-                              {sortByLabel(settings?.client_statuses||[], (t:any)=> (t.label||'').toString()).map((t:any)=> <option key={t.value||t.label} value={t.label}>{t.label}</option>)}
-                            </select>
-                          ) : (
-                            <div className="text-gray-900 font-medium py-1 break-words">{String(form.client_status||'') || '—'}</div>
-                          )}
-                        </Field>
-                        <Field label="Lead source" tooltip="Where did this lead originate?">
-                          {isEditingGeneral ? (
-                            <select className="w-full border rounded px-3 py-2" value={form.lead_source||''} onChange={e=>set('lead_source', e.target.value)}>
-                              <option value="">Select...</option>
-                              {sortByLabel(leadSources, (ls:any)=> (ls?.label ?? ls?.name ?? '').toString()).map((ls:any)=>{
-                                const val = ls?.value ?? ls?.id ?? ls?.label ?? ls?.name ?? String(ls);
-                                const label = ls?.label ?? ls?.name ?? String(ls);
-                                return <option key={String(val)} value={String(val)}>{label}</option>;
-                              })}
-                            </select>
-                          ) : (
-                            <div className="text-gray-900 font-medium py-1 break-words">{String(form.lead_source||'') || '—'}</div>
-                          )}
-                        </Field>
-                        <Field label="Tax number" tooltip="Tax/VAT identifier used for invoicing.">
-                          {isEditingGeneral ? (
-                            <input className="w-full border rounded px-3 py-2" value={form.tax_number||''} onChange={e=>set('tax_number', e.target.value)} />
-                          ) : (
-                            <div className="text-gray-900 font-medium py-1 break-words">{String(form.tax_number||'') || '—'}</div>
-                          )}
-                        </Field>
-                      </div>
-                    </div>
-                  </div>
-                  {/* Address */}
-                  <div className="rounded-xl border bg-white p-4">
-                    <div className="mb-4 flex items-center justify-between">
-                      <div className="flex items-center gap-2">
-                        <div className="w-8 h-8 rounded bg-green-100 flex items-center justify-center">
-                          <svg className="w-5 h-5 text-green-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
-                          </svg>
-                        </div>
-                        <h5 className="text-sm font-semibold text-green-900">Address</h5>
-                      </div>
-                      {!isEditingGeneral && hasEditGeneral && (
-                        <button
-                          onClick={() => setIsEditingGeneral(true)}
-                          className="p-1.5 rounded hover:bg-gray-100 text-gray-600 hover:text-brand-red transition-colors"
-                          title="Edit Address"
-                        >
-                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                          </svg>
-                        </button>
-                      )}
-                    </div>
-                    <div className="space-y-4">
-                      <div className="text-xs text-gray-500 mb-2">Primary mailing and location address.</div>
-                      <div className="grid md:grid-cols-2 gap-4">
-                        <Field label="Address 1">
-                          {isEditingGeneral ? (
-                            <input className="w-full border rounded px-3 py-2" value={form.address_line1||''} onChange={e=>set('address_line1', e.target.value)} />
-                          ) : (
-                            <div className="text-gray-900 font-medium py-1 break-words">{String(form.address_line1||'') || '—'}</div>
-                          )}
-                        </Field>
-                        <Field label="Address 2">
-                          {isEditingGeneral ? (
-                            <input className="w-full border rounded px-3 py-2" value={form.address_line2||''} onChange={e=>set('address_line2', e.target.value)} />
-                          ) : (
-                            <div className="text-gray-900 font-medium py-1 break-words">{String(form.address_line2||'') || '—'}</div>
-                          )}
-                        </Field>
-                        <Field label="Country">
-                          {isEditingGeneral ? (
-                            <input className="w-full border rounded px-3 py-2" value={form.country||''} onChange={e=>set('country', e.target.value)} />
-                          ) : (
-                            <div className="text-gray-900 font-medium py-1 break-words">{String(form.country||'') || '—'}</div>
-                          )}
-                        </Field>
-                        <Field label="Province/State">
-                          {isEditingGeneral ? (
-                            <input className="w-full border rounded px-3 py-2" value={form.province||''} onChange={e=>set('province', e.target.value)} />
-                          ) : (
-                            <div className="text-gray-900 font-medium py-1 break-words">{String(form.province||'') || '—'}</div>
-                          )}
-                        </Field>
-                        <Field label="City">
-                          {isEditingGeneral ? (
-                            <input className="w-full border rounded px-3 py-2" value={form.city||''} onChange={e=>set('city', e.target.value)} />
-                          ) : (
-                            <div className="text-gray-900 font-medium py-1 break-words">{String(form.city||'') || '—'}</div>
-                          )}
-                        </Field>
-                        <Field label="Postal code">
-                          {isEditingGeneral ? (
-                            <input className="w-full border rounded px-3 py-2" value={form.postal_code||''} onChange={e=>set('postal_code', e.target.value)} />
-                          ) : (
-                            <div className="text-gray-900 font-medium py-1 break-words">{String(form.postal_code||'') || '—'}</div>
-                          )}
-                        </Field>
-                      </div>
-                    </div>
-                  </div>
-                  {/* Billing */}
-                  <div className="rounded-xl border bg-white p-4">
-                    <div className="mb-4 flex items-center justify-between">
-                      <div className="flex items-center gap-2">
-                        <div className="w-8 h-8 rounded bg-amber-100 flex items-center justify-center">
-                          <svg className="w-5 h-5 text-amber-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 14l6-6m-5 5l6-6M2 17h.546c.501 0 .905-.405.905-.904 0-.715.211-1.413.608-2.008L17.658 5.604c.272-.417.87-.417 1.142 0l2.312 3.542c.272.417.272 1.096 0 1.513l-8.405 12.848c-.397.595-.608 1.293-.608 2.008 0 .499-.404.904-.905.904H2" />
-                          </svg>
-                        </div>
-                        <h5 className="text-sm font-semibold text-amber-900">Billing</h5>
-                      </div>
-                      {!isEditingGeneral && hasEditGeneral && (
-                        <button
-                          onClick={() => setIsEditingGeneral(true)}
-                          className="p-1.5 rounded hover:bg-gray-100 text-gray-600 hover:text-brand-red transition-colors"
-                          title="Edit Billing"
-                        >
-                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                          </svg>
-                        </button>
-                      )}
-                    </div>
-                    <div className="space-y-4">
-                      <div className="text-xs text-gray-500 mb-2">Preferences used for invoices and payments.</div>
-                      <div className="grid md:grid-cols-2 gap-4">
-                        <Field label="Billing email" tooltip="Email used for invoice delivery.">
-                          {isEditingGeneral ? (
-                            <input className="w-full border rounded px-3 py-2" value={form.billing_email||''} onChange={e=>set('billing_email', e.target.value)} />
-                          ) : (
-                            <div className="text-gray-900 font-medium py-1 break-words">{String(form.billing_email||'') || '—'}</div>
-                          )}
-                        </Field>
-                        <Field label="PO required" tooltip="Whether a purchase order is required before invoicing.">
-                          {isEditingGeneral ? (
-                            <select className="w-full border rounded px-3 py-2" value={form.po_required||'false'} onChange={e=>set('po_required', e.target.value)}>
-                              <option value="false">No</option>
-                              <option value="true">Yes</option>
-                            </select>
-                          ) : (
-                            <div className="text-gray-900 font-medium py-1 break-words">{form.po_required === 'true' ? 'Yes' : 'No'}</div>
-                          )}
-                        </Field>
-                      </div>
-                      <div className="grid md:grid-cols-2 gap-4 mt-2">
-                        <div className="md:col-span-2 text-sm">
-                          <label className={`inline-flex items-center gap-2 ${!isEditingGeneral ? 'opacity-50 cursor-not-allowed' : ''}`}>
-                            <input type="checkbox" checked={!!(!form.billing_same_as_address)} onChange={e=>set('billing_same_as_address', !e.target.checked)} disabled={!isEditingGeneral} /> Use different address for Billing address
-                          </label>
-                        </div>
-                        {(!form.billing_same_as_address) && (
-                          <>
-                            <Field label="Billing Address 1" tooltip="Street address for billing.">
-                              {isEditingGeneral ? (
-                                <input className="w-full border rounded px-3 py-2" value={form.billing_address_line1||''} onChange={e=>set('billing_address_line1', e.target.value)} />
-                              ) : (
-                                <div className="text-gray-900 font-medium py-1 break-words">{String(form.billing_address_line1||'') || '—'}</div>
-                              )}
-                            </Field>
-                            <Field label="Billing Address 2" tooltip="Apartment, suite, unit, building, floor, etc.">
-                              {isEditingGeneral ? (
-                                <input className="w-full border rounded px-3 py-2" value={form.billing_address_line2||''} onChange={e=>set('billing_address_line2', e.target.value)} />
-                              ) : (
-                                <div className="text-gray-900 font-medium py-1 break-words">{String(form.billing_address_line2||'') || '—'}</div>
-                              )}
-                            </Field>
-                            <Field label="Billing Country" tooltip="Country or region for billing.">
-                              {isEditingGeneral ? (
-                                <input className="w-full border rounded px-3 py-2" value={form.billing_country||''} onChange={e=>set('billing_country', e.target.value)} />
-                              ) : (
-                                <div className="text-gray-900 font-medium py-1 break-words">{String(form.billing_country||'') || '—'}</div>
-                              )}
-                            </Field>
-                            <Field label="Billing Province/State" tooltip="State, province, or region.">
-                              {isEditingGeneral ? (
-                                <input className="w-full border rounded px-3 py-2" value={form.billing_province||''} onChange={e=>set('billing_province', e.target.value)} />
-                              ) : (
-                                <div className="text-gray-900 font-medium py-1 break-words">{String(form.billing_province||'') || '—'}</div>
-                              )}
-                            </Field>
-                            <Field label="Billing City" tooltip="City or locality for billing.">
-                              {isEditingGeneral ? (
-                                <input className="w-full border rounded px-3 py-2" value={form.billing_city||''} onChange={e=>set('billing_city', e.target.value)} />
-                              ) : (
-                                <div className="text-gray-900 font-medium py-1 break-words">{String(form.billing_city||'') || '—'}</div>
-                              )}
-                            </Field>
-                            <Field label="Billing Postal code" tooltip="ZIP or postal code for billing.">
-                              {isEditingGeneral ? (
-                                <input className="w-full border rounded px-3 py-2" value={form.billing_postal_code||''} onChange={e=>set('billing_postal_code', e.target.value)} />
-                              ) : (
-                                <div className="text-gray-900 font-medium py-1 break-words">{String(form.billing_postal_code||'') || '—'}</div>
-                              )}
-                            </Field>
+                            <ReadOnlyField label="Billing email" value={form.billing_email} />
+                            <ReadOnlyField label="PO required" value={form.po_required === 'true' ? 'Yes' : 'No'} />
                           </>
                         )}
                       </div>
-                    </div>
-                  </div>
-                  {/* Description / Notes */}
-                  <div className="rounded-xl border bg-white p-4">
-                    <div className="mb-4 flex items-center justify-between">
-                      <div className="flex items-center gap-2">
-                        <div className="w-8 h-8 rounded bg-gray-100 flex items-center justify-center">
-                          <svg className="w-5 h-5 text-gray-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                          </svg>
+                      <label
+                        className={uiCx(
+                          'inline-flex items-center gap-2 text-sm',
+                          editingGeneralSection !== 'billing' && 'cursor-not-allowed opacity-50',
+                        )}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={!!(!form.billing_same_as_address)}
+                          onChange={(e) => set('billing_same_as_address', !e.target.checked)}
+                          disabled={editingGeneralSection !== 'billing'}
+                        />
+                        Use different address for Billing address
+                      </label>
+                      {!form.billing_same_as_address && (
+                        <div className="grid gap-4 md:grid-cols-2">
+                          {editingGeneralSection === 'billing' ? (
+                            <>
+                              <AppInput
+                                label="Billing Address 1"
+                                value={form.billing_address_line1 || ''}
+                                onChange={(e) => set('billing_address_line1', e.target.value)}
+                                fieldHint="Billing Address 1\n\nStreet address for billing."
+                              />
+                              <AppInput
+                                label="Billing Address 2"
+                                value={form.billing_address_line2 || ''}
+                                onChange={(e) => set('billing_address_line2', e.target.value)}
+                                fieldHint="Billing Address 2\n\nApartment, suite, unit, building, floor, etc."
+                              />
+                              <AppInput
+                                label="Billing Country"
+                                value={form.billing_country || ''}
+                                onChange={(e) => set('billing_country', e.target.value)}
+                                fieldHint="Billing Country\n\nCountry or region for billing."
+                              />
+                              <AppInput
+                                label="Billing Province/State"
+                                value={form.billing_province || ''}
+                                onChange={(e) => set('billing_province', e.target.value)}
+                                fieldHint="Billing Province/State\n\nState, province, or region."
+                              />
+                              <AppInput
+                                label="Billing City"
+                                value={form.billing_city || ''}
+                                onChange={(e) => set('billing_city', e.target.value)}
+                                fieldHint="Billing City\n\nCity or locality for billing."
+                              />
+                              <AppInput
+                                label="Billing Postal code"
+                                value={form.billing_postal_code || ''}
+                                onChange={(e) => set('billing_postal_code', e.target.value)}
+                                fieldHint="Billing Postal code\n\nZIP or postal code for billing."
+                              />
+                            </>
+                          ) : (
+                            <>
+                              <ReadOnlyField label="Billing Address 1" value={form.billing_address_line1} />
+                              <ReadOnlyField label="Billing Address 2" value={form.billing_address_line2} />
+                              <ReadOnlyField label="Billing Country" value={form.billing_country} />
+                              <ReadOnlyField label="Billing Province/State" value={form.billing_province} />
+                              <ReadOnlyField label="Billing City" value={form.billing_city} />
+                              <ReadOnlyField label="Billing Postal code" value={form.billing_postal_code} />
+                            </>
+                          )}
                         </div>
-                        <h5 className="text-sm font-semibold text-gray-900">Description</h5>
-                      </div>
-                      {!isEditingGeneral && hasEditGeneral && (
-                        <button
-                          onClick={() => setIsEditingGeneral(true)}
-                          className="p-1.5 rounded hover:bg-gray-100 text-gray-600 hover:text-brand-red transition-colors"
-                          title="Edit Description"
-                        >
-                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                          </svg>
-                        </button>
                       )}
                     </div>
-                    <div className="space-y-4">
-                      <div className="text-xs text-gray-500 mb-2">Additional notes about this customer.</div>
-                      {isEditingGeneral ? (
-                        <textarea rows={6} className="w-full border rounded px-3 py-2 resize-y" value={form.description||''} onChange={e=>set('description', e.target.value)} />
+                  </AppCard>
+                  <AppCard>
+                    <AppSectionHeader
+                      title="Description"
+                      description="Additional notes about this customer."
+                      {...appSectionPresetProps('description')}
+                      action={
+                        editingGeneralSection !== 'description' && hasEditGeneral ? (
+                          <AppHeroEditButton onClick={() => setEditingGeneralSection('description')} title="Edit Description" />
+                        ) : null
+                      }
+                    />
+                    <div className="mt-4">
+                      {editingGeneralSection === 'description' ? (
+                        <AppTextarea
+                          label="Description"
+                          rows={6}
+                          value={form.description || ''}
+                          onChange={(e) => set('description', e.target.value)}
+                        />
                       ) : (
-                        <div className="text-gray-900 font-medium py-1 break-words whitespace-pre-wrap">{String(form.description||'') || '—'}</div>
+                        <div className={uiCx(uiTypography.helper, 'whitespace-pre-wrap break-words font-medium text-gray-900')}>
+                          {String(form.description || '') || '—'}
+                        </div>
                       )}
                     </div>
-                  </div>
+                  </AppCard>
 
                   {/* Communications and Preferences (hidden per request) */}
                   <div className="grid md:grid-cols-2 gap-4 hidden">
@@ -3061,15 +2966,21 @@ export default function CustomerDetail(){
                   </div>
                 </div>
               )}
-              {tab==='general' && hasGeneralView && isEditingGeneral && (
+              {tab==='general' && hasGeneralView && editingGeneralSection && (
                 <div className="fixed bottom-0 left-0 right-0 z-40">
-                  <div className="max-w-[1400px] mx-auto px-4">
-                    <div className="mb-3 rounded-xl border bg-white shadow-hero p-3 flex items-center gap-3">
-                      <div className={`text-sm ${dirty ? 'text-amber-700' : 'text-green-700'}`}>{dirty ? 'You have unsaved changes' : 'All changes saved'}</div>
-                      <div className="flex gap-3 ml-auto">
-                        <button 
+                  <div className="mx-auto max-w-[1400px] px-4">
+                    <AppCard
+                      className="mb-3"
+                      bodyClassName={uiCx('flex items-center gap-3', uiSpacing.cardPadding)}
+                    >
+                      <div className={uiCx('text-sm', dirty ? 'text-amber-700' : 'text-green-700')}>
+                        {dirty ? 'You have unsaved changes' : 'All changes saved'}
+                      </div>
+                      <div className={uiCx(uiLayout.actionsRow, 'ml-auto')}>
+                        <AppButton
+                          variant="secondary"
                           onClick={() => {
-                            setIsEditingGeneral(false);
+                            setEditingGeneralSection(null);
                             // Reset form to original client data
                             if (client) {
                               setForm({
@@ -3088,12 +2999,13 @@ export default function CustomerDetail(){
                               setDirty(false);
                             }
                           }}
-                          className="px-4 py-2 rounded border bg-white text-gray-700 hover:bg-gray-50"
                         >
                           Cancel
-                        </button>
-                        <button 
-                          onClick={async()=>{
+                        </AppButton>
+                        <AppButton
+                          loading={isSaving}
+                          disabled={isSaving}
+                          onClick={async () => {
                             if (isSaving) return;
                       const toList = (s:string)=> (String(s||'').split(',').map(x=>x.trim()).filter(Boolean));
                       const payload:any = {
@@ -3140,7 +3052,7 @@ export default function CustomerDetail(){
                         await api('PATCH', `/clients/${id}`, payload); 
                         toast.success('Saved'); 
                         setDirty(false);
-                        setIsEditingGeneral(false);
+                        setEditingGeneralSection(null);
                       }catch(e: any){ 
                         // Only show error if it's a clear client error (4xx), not if it might have saved anyway
                         const msg = e?.message || 'Save failed';
@@ -3151,16 +3063,17 @@ export default function CustomerDetail(){
                           // For other errors, assume it might have saved - show success
                           toast.success('Saved'); 
                           setDirty(false);
-                          setIsEditingGeneral(false);
+                          setEditingGeneralSection(null);
                         }
                       } finally {
                         setIsSaving(false);
                       }
-                        }} className="px-5 py-2 rounded-xl bg-gradient-to-r from-brand-red to-[#ee2b2b] text-white font-semibold disabled:opacity-50 disabled:cursor-not-allowed">
-                          {isSaving ? 'Saving...' : 'Save'}
-                        </button>
+                          }}
+                        >
+                          Save
+                        </AppButton>
                       </div>
-                    </div>
+                    </AppCard>
                   </div>
                 </div>
               )}
@@ -3175,74 +3088,37 @@ export default function CustomerDetail(){
                 />
               )}
               {tab==='sites' && hasSitesView && (
-                <div>
-                  <div className="mb-2">
-                    <h4 className="font-semibold">Construction Sites</h4>
-                  </div>
-                  <div className="grid md:grid-cols-2 gap-4">
-                    {hasSitesEdit && (
-                      <Link
-                        to={`/customers/${encodeURIComponent(String(id||''))}/sites/new`}
-                        state={{ backgroundLocation: location }}
-                        className="rounded-xl border-2 border-dashed border-gray-300 p-4 hover:border-brand-red hover:bg-gray-50 transition-all bg-white flex items-center justify-center min-h-[100px]"
-                      >
-                        <div className="text-lg text-gray-400 mr-2">+</div>
-                        <div className="font-medium text-xs text-gray-700">New Site</div>
-                      </Link>
-                    )}
-                    {(sites||[]).map(s=>{
-                      const filesForSite = (fileBySite[s.id||'']||[]);
-                      const cover = filesForSite.find(f=> String(f.category||'')==='site-cover-derived');
-                      const img = cover || filesForSite.find(f=> (f.is_image===true) || String(f.content_type||'').startsWith('image/'));
-                      const src = img? withFileAccessToken(`/files/${img.file_object_id}/thumbnail?w=600`) : '/ui/assets/login/logo-light.svg';
-                      const addressLine = formatAddressDisplay({
-                        address_line1: s.site_address_line1,
-                        city: s.site_city,
-                        province: s.site_province,
-                        postal_code: (s as any).site_postal_code,
-                        country: s.site_country,
-                      });
-                      return (
-                        <Link to={`/customers/${encodeURIComponent(String(id||''))}/sites/${encodeURIComponent(String(s.id))}`} state={{ backgroundLocation: location }} key={String(s.id)} className="group rounded-xl border bg-white overflow-hidden flex">
-                          <div className="w-28 bg-gray-100 flex-shrink-0 flex items-center justify-center relative min-h-[100px]">
-                            {img ? (
-                              <img className="w-full h-full min-h-[100px] object-cover" src={src} alt={s.site_name||'Site'} />
-                            ) : (
-                              <div className="w-20 h-20 rounded bg-gray-200 grid place-items-center text-2xl text-gray-400" title="No image">📍</div>
-                            )}
-                            {hasSitesEdit && (
-                              <button onClick={(e)=>{ e.preventDefault(); e.stopPropagation(); setSitePicker({ open:true, siteId: String(s.id) }); }} className="hidden group-hover:block absolute right-1 bottom-1 text-[11px] px-2 py-0.5 rounded bg-black/70 text-white">Change cover</button>
-                            )}
-                          </div>
-                          <div className="flex-1 p-3 text-sm min-w-0">
-                            <div className="font-semibold text-gray-900 group-hover:text-brand-red transition-colors truncate">{s.site_name||'Site'}</div>
-                            <div className="mt-2">
-                              <div className="text-[11px] uppercase text-gray-500">Address</div>
-                              <div className="text-gray-700 text-xs leading-snug break-words">{addressLine}</div>
-                            </div>
-                          </div>
-                        </Link>
-                      );
-                    })}
-                    {(!sites||!sites.length) && <div className="text-sm text-gray-600">No sites</div>}
-                  </div>
-                </div>
+                <SitesCard
+                  clientId={String(id || '')}
+                  sites={sites || []}
+                  hasEditPermission={hasSitesEdit}
+                  fileBySite={fileBySite}
+                  clientDisplayName={client?.display_name || client?.name || ''}
+                  onSitesRefresh={() => {
+                    queryClient.invalidateQueries({ queryKey: ['clientSites', id] });
+                  }}
+                  onFilesRefresh={refetchFiles}
+                />
               )}
               {tab==='opportunities' && hasOpportunitiesTabView && (
-                <div className="rounded-xl border bg-white p-4">
-                  <div className="mb-4">
-                    <h3 className="font-semibold text-gray-900">Opportunities</h3>
-                  </div>
+                <div className={uiSpacing.sectionStack}>
+                  <AppSectionHeader
+                    title="Opportunities"
+                    description="Bidding and sales opportunities linked to this customer."
+                    {...appSectionPresetProps('opportunities')}
+                  />
                   <div className="flex flex-col gap-2 overflow-x-auto">
                     {hasOpportunitiesEdit && (
-                      <Link
-                        to={`/projects/new?client_id=${encodeURIComponent(String(id||''))}&is_bidding=true`}
-                        state={{ backgroundLocation: location }}
-                        className="border-2 border-dashed border-gray-300 rounded-lg p-2.5 hover:border-brand-red hover:bg-gray-50 transition-all text-center bg-white flex items-center justify-center min-h-[60px] min-w-[680px]"
-                      >
-                        <div className="text-lg text-gray-400 mr-2">+</div>
-                        <div className="font-medium text-xs text-gray-700">New Opportunity</div>
-                      </Link>
+                      <AppListCreateItem
+                        label="New Opportunity"
+                        layout="row"
+                        className="min-h-[60px] min-w-[680px]"
+                        onClick={() =>
+                          navigate(`/projects/new?client_id=${encodeURIComponent(String(id || ''))}&is_bidding=true`, {
+                            state: { backgroundLocation: location },
+                          })
+                        }
+                      />
                     )}
                     {(opportunitiesWithDetails||[]).length > 0 ? (
                       <>
@@ -3266,16 +3142,18 @@ export default function CustomerDetail(){
                         ))}
                       </>
                     ) : (
-                      <div className="p-8 text-center text-sm text-gray-500">No opportunities for this customer.</div>
+                      <AppEmptyState title="No opportunities for this customer." />
                     )}
                   </div>
                 </div>
               )}
               {tab==='projects' && hasProjectsTabView && (
-                <div className="rounded-xl border bg-white p-4">
-                  <div className="mb-4">
-                    <h3 className="font-semibold text-gray-900">Projects</h3>
-                  </div>
+                <div className={uiSpacing.sectionStack}>
+                  <AppSectionHeader
+                    title="Projects"
+                    description="Active and completed projects for this customer."
+                    {...appSectionPresetProps('projects')}
+                  />
                   <div className="flex flex-col gap-2 overflow-x-auto">
                     {(projectsWithDetails||[]).length > 0 ? (
                       <>
@@ -3301,14 +3179,14 @@ export default function CustomerDetail(){
                         ))}
                       </>
                     ) : (
-                      <div className="p-8 text-center text-sm text-gray-500">No projects for this customer.</div>
+                      <AppEmptyState title="No projects for this customer." />
                     )}
                   </div>
                 </div>
               )}
             </>
           )}
-      </div>
+      </AppCard>
       <ImagePicker isOpen={pickerOpen} onClose={()=>setPickerOpen(false)} clientId={String(id)} targetWidth={800} targetHeight={600} allowEdit={true} onConfirm={async(blob, original)=>{
         try{
           const up:any = await api('POST','/files/upload',{ project_id:null, client_id:id, employee_id:null, category_id:'client-logo-derived', original_name: 'client-logo.jpg', content_type: 'image/jpeg' });
@@ -3320,19 +3198,6 @@ export default function CustomerDetail(){
         }catch(e){ toast.error('Failed to update logo'); }
         finally{ setPickerOpen(false); }
       }} />
-      {sitePicker?.open && (
-        <ImagePicker isOpen={true} onClose={()=>setSitePicker(null)} clientId={String(id)} targetWidth={800} targetHeight={800} allowEdit={true} onConfirm={async(blob)=>{
-          try{
-            const up:any = await api('POST','/files/upload',{ project_id:null, client_id:id, employee_id:null, category_id:'site-cover-derived', original_name:'site-cover.jpg', content_type:'image/jpeg' });
-            await fetch(up.upload_url, { method:'PUT', headers:{ 'Content-Type':'image/jpeg', 'x-ms-blob-type':'BlockBlob' }, body: blob });
-            const conf:any = await api('POST','/files/confirm',{ key: up.key, size_bytes: blob.size, checksum_sha256:'na', content_type:'image/jpeg' });
-            await api('POST', `/clients/${id}/files?file_object_id=${encodeURIComponent(conf.id)}&category=site-cover-derived&original_name=site-cover.jpg&site_id=${encodeURIComponent(String(sitePicker?.siteId||''))}`);
-            toast.success('Site cover updated');
-            location.reload();
-          }catch(e){ toast.error('Failed to update site cover'); }
-          finally{ setSitePicker(null); }
-        }} />
-      )}
       {projectPicker?.open && (
         <ImagePicker isOpen={true} onClose={()=>setProjectPicker(null)} clientId={String(id)} targetWidth={800} targetHeight={300} allowEdit={true} onConfirm={async(blob)=>{
           try{
@@ -3373,7 +3238,8 @@ export default function CustomerDetail(){
         initialStartDate={globalDateCustomStart}
         initialEndDate={globalDateCustomEnd}
       />
-    </div>
+      </div>
+    </main>
   );
 }
 
@@ -3416,19 +3282,24 @@ function ProjectRow({ project, files, onCoverClick, hasEditPermission }: { proje
   );
 }
 
-function Field({label, tooltip, children}:{label:ReactNode, tooltip?:string, children:any}){
+function ReadOnlyField({ label, value }: { label: ReactNode; value?: string | null }) {
+  return (
+    <div className="space-y-1">
+      <div className={uiTypography.controlLabel}>{label}</div>
+      <div className={uiCx(uiTypography.helper, 'break-words font-medium text-gray-900')}>
+        {String(value || '') || '—'}
+      </div>
+    </div>
+  );
+}
+
+/** @deprecated Legacy wrapper — prefer App* controls with built-in labels. */
+function Field({ label, tooltip, children }: { label: ReactNode; tooltip?: string; children: any }) {
   return (
     <div className="space-y-2">
-      <label className="text-sm text-gray-600 flex items-center gap-1">
+      <label className={uiCx(uiTypography.controlLabel, 'flex items-center gap-1')}>
         <span>{label}</span>
-        {tooltip && (
-          <span className="relative group inline-block ml-0.5">
-            <svg className="w-4 h-4 text-gray-400 cursor-help" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-            </svg>
-            <span className="absolute left-1/2 -translate-x-1/2 mt-2 hidden group-hover:block whitespace-nowrap bg-black text-white text-xs px-2 py-1 rounded shadow z-20">{tooltip}</span>
-          </span>
-        )}
+        {tooltip ? <AppTooltip content={tooltip}><span className="inline-flex text-gray-400">?</span></AppTooltip> : null}
       </label>
       {children}
     </div>
@@ -3503,6 +3374,7 @@ function CustomerDocuments({ id, files, sites, onRefresh, hasEditPermission }: {
   const [renameFolder, setRenameFolder] = useState<{id:string, name:string}|null>(null);
   const [renameDoc, setRenameDoc] = useState<{id:string, title:string}|null>(null);
   const [moveDoc, setMoveDoc] = useState<{id:string}|null>(null);
+  const [moveDocFolderId, setMoveDocFolderId] = useState('');
   const [previewPdf, setPreviewPdf] = useState<{ url:string, name:string }|null>(null);
   const [selectMode, setSelectMode] = useState<boolean>(false);
   const [selectedDocIds, setSelectedDocIds] = useState<Set<string>>(new Set());
@@ -3526,17 +3398,31 @@ function CustomerDocuments({ id, files, sites, onRefresh, hasEditPermission }: {
 
   return (
     <div>
-      <div className="mb-3 flex items-center gap-2 flex-wrap">
-        <select className="border rounded px-3 py-2" value={which} onChange={e=>setWhich(e.target.value as any)}>
-          <option value="all">All Files</option>
-          <option value="client">Client</option>
-          <option value="site">Site</option>
-        </select>
-        {which==='site' && (
-          <select className="border rounded px-3 py-2" value={siteId} onChange={e=>setSiteId(e.target.value)}>
-            <option value="">Select site...</option>
-            {sortByLabel(sites, s=> (s.site_name||s.site_address_line1||String(s.id)).toString()).map(s=> <option key={String(s.id)} value={String(s.id)}>{s.site_name||s.site_address_line1||s.id}</option>)}
-          </select>
+      <div className={uiCx(uiLayout.actionsRow, 'mb-3 flex-wrap')}>
+        <AppSelect
+          value={which}
+          onChange={(e) => setWhich(e.target.value as 'all' | 'client' | 'site')}
+          options={[
+            { value: 'all', label: 'All Files' },
+            { value: 'client', label: 'Client' },
+            { value: 'site', label: 'Site' },
+          ]}
+          className="w-auto min-w-[140px]"
+        />
+        {which === 'site' && (
+          <AppSelect
+            value={siteId}
+            onChange={(e) => setSiteId(e.target.value)}
+            placeholder="Select site..."
+            options={[
+              { value: '', label: 'Select site...' },
+              ...sortByLabel(sites, (s) => (s.site_name || s.site_address_line1 || String(s.id)).toString()).map((s) => ({
+                value: String(s.id),
+                label: String(s.site_name || s.site_address_line1 || s.id),
+              })),
+            ]}
+            className="w-auto min-w-[180px]"
+          />
         )}
       </div>
 
@@ -3675,116 +3561,230 @@ function CustomerDocuments({ id, files, sites, onRefresh, hasEditPermission }: {
         ); })}
       </div>
 
-      {showUpload && (
-        <OverlayPortal><div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
-          <div className="bg-white rounded-xl w-full max-w-md p-4">
-            <div className="text-lg font-semibold mb-2">Add file</div>
-            <div className="space-y-3">
-              <div>
-                <div className="text-xs text-gray-600">Folder</div>
-                <select className="border rounded px-3 py-2 w-full" value={activeFolderId==='all'? '': activeFolderId} onChange={e=> setActiveFolderId(e.target.value||'all')}>
-                  <option value="">Select a folder</option>
-                  {sortByLabel(folders||[], (f:any)=> (f.name||'').toString()).map((f:any)=> <option key={f.id} value={f.id}>{f.name}</option>)}
-                </select>
-              </div>
-              <div>
-                <div className="text-xs text-gray-600">Title</div>
-                <input className="border rounded px-3 py-2 w-full" value={title} onChange={e=> setTitle(e.target.value)} placeholder="Optional title" />
-              </div>
-              <div>
-                <div className="text-xs text-gray-600">File</div>
-                <input type="file" onChange={e=> setFileObj(e.target.files?.[0]||null)} />
-              </div>
-            </div>
-            <div className="mt-4 flex justify-end gap-2">
-              <button onClick={()=>setShowUpload(false)} className="px-3 py-2 rounded border">Cancel</button>
-              <button onClick={upload} className="px-3 py-2 rounded bg-brand-red text-white">Upload</button>
-            </div>
+      <AppFormModal
+        open={showUpload}
+        onClose={() => setShowUpload(false)}
+        title="Add file"
+        footer={
+          <div className={uiCx(uiLayout.actionsRow, 'justify-end')}>
+            <AppButton variant="secondary" onClick={() => setShowUpload(false)}>
+              Cancel
+            </AppButton>
+            <AppButton onClick={upload}>Upload</AppButton>
           </div>
-        </div></OverlayPortal>
-      )}
+        }
+      >
+        <div className={uiSpacing.sectionStack}>
+          <AppSelect
+            label="Folder"
+            value={activeFolderId === 'all' ? '' : activeFolderId}
+            onChange={(e) => setActiveFolderId(e.target.value || 'all')}
+            placeholder="Select a folder"
+            options={sortByLabel(folders || [], (f: any) => (f.name || '').toString()).map((f: any) => ({
+              value: f.id,
+              label: f.name,
+            }))}
+          />
+          <AppInput label="Title" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Optional title" />
+          <AppFileUpload label="File" value={fileObj} onChange={setFileObj} />
+        </div>
+      </AppFormModal>
 
-      {newFolderOpen && (
-        <OverlayPortal><div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
-          <div className="bg-white rounded-xl w-full max-w-sm p-4">
-            <div className="text-lg font-semibold mb-2">{newFolderParentId? 'New subfolder':'New folder'}</div>
-            <div>
-              <div className="text-xs text-gray-600">Folder name</div>
-              <input className="border rounded px-3 py-2 w-full" value={newFolderName} onChange={e=> setNewFolderName(e.target.value)} placeholder="e.g., Hiring pack" />
-            </div>
-            <div className="mt-4 flex justify-end gap-2">
-              <button onClick={()=>setNewFolderOpen(false)} className="px-3 py-2 rounded border">Cancel</button>
-              <button onClick={async()=>{ try{ const body:any = { name: (newFolderName||'').trim() }; if(newFolderParentId) body.parent_id = newFolderParentId; if(!body.name){ toast.error('Folder name required'); return; } await api('POST', `/clients/${encodeURIComponent(id)}/folders`, body); toast.success('Folder created'); setNewFolderOpen(false); setNewFolderName(''); setNewFolderParentId(null); await refetchFolders(); }catch(_e){ toast.error('Failed to create folder'); } }} className="px-3 py-2 rounded bg-brand-red text-white">Create</button>
-            </div>
+      <AppFormModal
+        open={newFolderOpen}
+        onClose={() => setNewFolderOpen(false)}
+        title={newFolderParentId ? 'New subfolder' : 'New folder'}
+        footer={
+          <div className={uiCx(uiLayout.actionsRow, 'justify-end')}>
+            <AppButton variant="secondary" onClick={() => setNewFolderOpen(false)}>
+              Cancel
+            </AppButton>
+            <AppButton
+              onClick={async () => {
+                try {
+                  const body: any = { name: (newFolderName || '').trim() };
+                  if (newFolderParentId) body.parent_id = newFolderParentId;
+                  if (!body.name) {
+                    toast.error('Folder name required');
+                    return;
+                  }
+                  await api('POST', `/clients/${encodeURIComponent(id)}/folders`, body);
+                  toast.success('Folder created');
+                  setNewFolderOpen(false);
+                  setNewFolderName('');
+                  setNewFolderParentId(null);
+                  await refetchFolders();
+                } catch (_e) {
+                  toast.error('Failed to create folder');
+                }
+              }}
+            >
+              Create
+            </AppButton>
           </div>
-        </div></OverlayPortal>
-      )}
+        }
+      >
+        <AppInput
+          label="Folder name"
+          value={newFolderName}
+          onChange={(e) => setNewFolderName(e.target.value)}
+          placeholder="e.g., Hiring pack"
+        />
+      </AppFormModal>
 
-      {renameFolder && (
-        <OverlayPortal><div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
-          <div className="bg-white rounded-xl w-full max-w-sm p-4">
-            <div className="text-lg font-semibold mb-2">Rename folder</div>
-            <div>
-              <div className="text-xs text-gray-600">Folder name</div>
-              <input className="border rounded px-3 py-2 w-full" value={renameFolder.name} onChange={e=> setRenameFolder({ id: renameFolder.id, name: e.target.value })} />
-            </div>
-            <div className="mt-4 flex justify-end gap-2">
-              <button onClick={()=>setRenameFolder(null)} className="px-3 py-2 rounded border">Cancel</button>
-              <button onClick={async()=>{ try{ await api('PUT', `/clients/${encodeURIComponent(id)}/folders/${encodeURIComponent(renameFolder.id)}`, { name: (renameFolder.name||'').trim() }); toast.success('Renamed'); setRenameFolder(null); await refetchFolders(); }catch(_e){ toast.error('Failed to rename'); } }} className="px-3 py-2 rounded bg-brand-red text-white">Save</button>
-            </div>
+      <AppFormModal
+        open={!!renameFolder}
+        onClose={() => setRenameFolder(null)}
+        title="Rename folder"
+        footer={
+          <div className={uiCx(uiLayout.actionsRow, 'justify-end')}>
+            <AppButton variant="secondary" onClick={() => setRenameFolder(null)}>
+              Cancel
+            </AppButton>
+            <AppButton
+              onClick={async () => {
+                if (!renameFolder) return;
+                try {
+                  await api('PUT', `/clients/${encodeURIComponent(id)}/folders/${encodeURIComponent(renameFolder.id)}`, {
+                    name: (renameFolder.name || '').trim(),
+                  });
+                  toast.success('Renamed');
+                  setRenameFolder(null);
+                  await refetchFolders();
+                } catch (_e) {
+                  toast.error('Failed to rename');
+                }
+              }}
+            >
+              Save
+            </AppButton>
           </div>
-        </div></OverlayPortal>
-      )}
+        }
+      >
+        {renameFolder ? (
+          <AppInput
+            label="Folder name"
+            value={renameFolder.name}
+            onChange={(e) => setRenameFolder({ id: renameFolder.id, name: e.target.value })}
+          />
+        ) : null}
+      </AppFormModal>
 
-      {renameDoc && (
-        <OverlayPortal><div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
-          <div className="bg-white rounded-xl w-full max-w-sm p-4">
-            <div className="text-lg font-semibold mb-2">Rename file</div>
-            <div>
-              <div className="text-xs text-gray-600">Title</div>
-              <input className="border rounded px-3 py-2 w-full" value={renameDoc.title} onChange={e=> setRenameDoc({ id: renameDoc.id, title: e.target.value })} />
-            </div>
-            <div className="mt-4 flex justify-end gap-2">
-              <button onClick={()=>setRenameDoc(null)} className="px-3 py-2 rounded border">Cancel</button>
-              <button onClick={async()=>{ try{ await api('PUT', `/clients/${encodeURIComponent(id)}/documents/${encodeURIComponent(renameDoc.id)}`, { title: (renameDoc.title||'').trim() }); toast.success('Renamed'); setRenameDoc(null); await refetchDocs(); }catch(_e){ toast.error('Failed to rename'); } }} className="px-3 py-2 rounded bg-brand-red text-white">Save</button>
-            </div>
+      <AppFormModal
+        open={!!renameDoc}
+        onClose={() => setRenameDoc(null)}
+        title="Rename file"
+        footer={
+          <div className={uiCx(uiLayout.actionsRow, 'justify-end')}>
+            <AppButton variant="secondary" onClick={() => setRenameDoc(null)}>
+              Cancel
+            </AppButton>
+            <AppButton
+              onClick={async () => {
+                if (!renameDoc) return;
+                try {
+                  await api('PUT', `/clients/${encodeURIComponent(id)}/documents/${encodeURIComponent(renameDoc.id)}`, {
+                    title: (renameDoc.title || '').trim(),
+                  });
+                  toast.success('Renamed');
+                  setRenameDoc(null);
+                  await refetchDocs();
+                } catch (_e) {
+                  toast.error('Failed to rename');
+                }
+              }}
+            >
+              Save
+            </AppButton>
           </div>
-        </div></OverlayPortal>
-      )}
+        }
+      >
+        {renameDoc ? (
+          <AppInput
+            label="Title"
+            value={renameDoc.title}
+            onChange={(e) => setRenameDoc({ id: renameDoc.id, title: e.target.value })}
+          />
+        ) : null}
+      </AppFormModal>
 
-      {moveDoc && (
-        <OverlayPortal><div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
-          <div className="bg-white rounded-xl w-full max-w-sm p-4">
-            <div className="text-lg font-semibold mb-2">Move file</div>
-            <div>
-              <div className="text-xs text-gray-600">Destination folder</div>
-              <select id="move-target-client" className="border rounded px-3 py-2 w-full" defaultValue="">
-                <option value="" disabled>Select...</option>
-                {sortByLabel(folders||[], (f:any)=> (f.name||'').toString()).map((f:any)=> <option key={f.id} value={f.id}>{f.name}</option>)}
-              </select>
-            </div>
-            <div className="mt-4 flex justify-end gap-2">
-              <button onClick={()=>setMoveDoc(null)} className="px-3 py-2 rounded border">Cancel</button>
-              <button onClick={async()=>{ try{ const sel = document.getElementById('move-target-client') as HTMLSelectElement; const dest = sel?.value||''; if(!dest){ toast.error('Select destination'); return; } await api('PUT', `/clients/${encodeURIComponent(id)}/documents/${encodeURIComponent(moveDoc.id)}`, { folder_id: dest }); toast.success('Moved'); setMoveDoc(null); await refetchDocs(); }catch(_e){ toast.error('Failed to move'); } }} className="px-3 py-2 rounded bg-brand-red text-white">Move</button>
-            </div>
+      <AppFormModal
+        open={!!moveDoc}
+        onClose={() => {
+          setMoveDoc(null);
+          setMoveDocFolderId('');
+        }}
+        title="Move file"
+        footer={
+          <div className={uiCx(uiLayout.actionsRow, 'justify-end')}>
+            <AppButton
+              variant="secondary"
+              onClick={() => {
+                setMoveDoc(null);
+                setMoveDocFolderId('');
+              }}
+            >
+              Cancel
+            </AppButton>
+            <AppButton
+              onClick={async () => {
+                if (!moveDoc) return;
+                if (!moveDocFolderId) {
+                  toast.error('Select destination');
+                  return;
+                }
+                try {
+                  await api('PUT', `/clients/${encodeURIComponent(id)}/documents/${encodeURIComponent(moveDoc.id)}`, {
+                    folder_id: moveDocFolderId,
+                  });
+                  toast.success('Moved');
+                  setMoveDoc(null);
+                  setMoveDocFolderId('');
+                  await refetchDocs();
+                } catch (_e) {
+                  toast.error('Failed to move');
+                }
+              }}
+            >
+              Move
+            </AppButton>
           </div>
-        </div></OverlayPortal>
-      )}
+        }
+      >
+        <AppSelect
+          label="Destination folder"
+          value={moveDocFolderId}
+          onChange={(e) => setMoveDocFolderId(e.target.value)}
+          placeholder="Select..."
+          options={sortByLabel(folders || [], (f: any) => (f.name || '').toString()).map((f: any) => ({
+            value: f.id,
+            label: f.name,
+          }))}
+        />
+      </AppFormModal>
 
-      {previewPdf && (
-        <OverlayPortal><div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50">
-          <div className="w-[1000px] max-w-[95vw] h-[85vh] bg-white rounded-xl overflow-hidden shadow-2xl flex flex-col">
-            <div className="px-3 py-2 border-b flex items-center justify-between">
-              <div className="font-semibold text-sm truncate pr-2">{previewPdf.name}</div>
-              <div className="flex items-center gap-2">
-                <a className="px-2 py-1 rounded bg-gray-100 text-sm" href={previewPdf.url} target="_blank">Download</a>
-                <button onClick={()=>setPreviewPdf(null)} className="text-gray-500 hover:text-gray-700 text-2xl font-bold w-8 h-8 flex items-center justify-center rounded hover:bg-gray-100" title="Close">×</button>
-              </div>
+      <AppModal
+        open={!!previewPdf}
+        onClose={() => setPreviewPdf(null)}
+        title={previewPdf?.name}
+        size="lg"
+        dialogClassName="!max-w-[1000px] !h-[85vh]"
+        bodyClassName="flex min-h-0 flex-1 flex-col p-0"
+        footer={
+          previewPdf ? (
+            <div className={uiCx(uiLayout.actionsRow, 'justify-end')}>
+              <AppButton variant="secondary" onClick={() => window.open(previewPdf.url, '_blank')}>
+                Download
+              </AppButton>
+              <AppButton variant="secondary" onClick={() => setPreviewPdf(null)}>
+                Close
+              </AppButton>
             </div>
-            <iframe className="flex-1" src={previewPdf.url} title="PDF Preview"></iframe>
-          </div>
-        </div></OverlayPortal>
-      )}
+          ) : undefined
+        }
+      >
+        {previewPdf ? <iframe className="min-h-0 flex-1 w-full" src={previewPdf.url} title="PDF Preview" /> : null}
+      </AppModal>
       
       {editingImage && (
         <ImageEditor
@@ -3845,43 +3845,229 @@ function CustomerDocuments({ id, files, sites, onRefresh, hasEditPermission }: {
   );
 }
 
+function SitesCard({
+  clientId,
+  sites,
+  hasEditPermission,
+  fileBySite,
+  clientDisplayName,
+  onSitesRefresh,
+  onFilesRefresh,
+}: {
+  clientId: string;
+  sites: Site[];
+  hasEditPermission?: boolean;
+  fileBySite: Record<string, ClientFile[]>;
+  clientDisplayName?: string;
+  onSitesRefresh: () => void;
+  onFilesRefresh: () => void;
+}) {
+  const [coverPickerSiteId, setCoverPickerSiteId] = useState<string | null>(null);
+  const [createOpen, setCreateOpen] = useState(false);
+  const [editSite, setEditSite] = useState<ClientSiteRecord | null>(null);
+
+  const coverBySiteId = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const s of sites) {
+      const filesForSite = fileBySite[s.id || ''] || [];
+      const cover = filesForSite.find((f) => String(f.category || '') === 'site-cover-derived');
+      const img =
+        cover ||
+        filesForSite.find((f) => f.is_image === true || String(f.content_type || '').startsWith('image/'));
+      if (img) {
+        map.set(String(s.id), withFileAccessToken(`/files/${img.file_object_id}/thumbnail?w=480`));
+      }
+    }
+    return map;
+  }, [sites, fileBySite]);
+
+  const openSite = (s: Site) => {
+    setEditSite({
+      id: String(s.id),
+      site_name: s.site_name,
+      site_address_line1: s.site_address_line1,
+      site_address_line1_complement: (s as ClientSiteRecord).site_address_line1_complement,
+      site_address_line2: (s as ClientSiteRecord).site_address_line2,
+      site_address_line2_complement: (s as ClientSiteRecord).site_address_line2_complement,
+      site_address_line3: (s as ClientSiteRecord).site_address_line3,
+      site_address_line3_complement: (s as ClientSiteRecord).site_address_line3_complement,
+      site_city: s.site_city,
+      site_province: s.site_province,
+      site_postal_code: (s as { site_postal_code?: string }).site_postal_code,
+      site_country: s.site_country,
+      site_notes: (s as ClientSiteRecord).site_notes,
+    });
+  };
+
+  const refreshSites = () => {
+    onSitesRefresh();
+    onFilesRefresh();
+  };
+
+  return (
+    <div className={uiSpacing.sectionStack}>
+      <AppSectionHeader
+        title="Construction Sites"
+        description={
+          hasEditPermission
+            ? 'Click a row to edit. Use the camera control to change the cover without opening the form.'
+            : 'Click a row to view site details.'
+        }
+        {...appSectionPresetProps('address')}
+      />
+      <div className="flex flex-col gap-2">
+        {hasEditPermission && (
+          <AppListCreateItem label="New Site" layout="row" onClick={() => setCreateOpen(true)} />
+        )}
+        {sites.map((s) => {
+          const coverSrc = coverBySiteId.get(String(s.id)) || '';
+          const addressLine = formatAddressDisplay({
+            address_line1: s.site_address_line1,
+            city: s.site_city,
+            province: s.site_province,
+            postal_code: (s as { site_postal_code?: string }).site_postal_code,
+            country: s.site_country,
+          });
+
+          return (
+            <div
+              key={String(s.id)}
+              role="button"
+              tabIndex={0}
+              onClick={() => openSite(s)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                  e.preventDefault();
+                  openSite(s);
+                }
+              }}
+              className={uiCx(
+                'group flex items-center gap-3 text-left',
+                uiRadius.control,
+                uiBorders.subtle,
+                uiColors.surface,
+                'px-2 py-2 sm:px-3 sm:py-2.5',
+                'cursor-pointer transition-shadow hover:border-gray-300 hover:shadow-sm',
+              )}
+            >
+              <div
+                className={uiCx(
+                  'relative h-12 w-36 shrink-0 overflow-hidden bg-gray-100 sm:h-14 sm:w-40',
+                  uiRadius.control,
+                )}
+              >
+                {coverSrc ? (
+                  <img src={coverSrc} alt="" className="h-full w-full object-cover" />
+                ) : (
+                  <div className="flex h-full w-full items-center justify-center text-gray-300">
+                    <MapPin className="h-6 w-6 opacity-50" aria-hidden />
+                  </div>
+                )}
+                {hasEditPermission ? (
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setCoverPickerSiteId(String(s.id));
+                    }}
+                    className={uiCx(
+                      'absolute bottom-1 right-1 flex h-6 w-6 items-center justify-center rounded-full border border-gray-200 bg-white text-gray-500 shadow-sm',
+                      'opacity-0 transition-opacity group-hover:opacity-100 hover:text-gray-800',
+                    )}
+                    title="Change cover"
+                  >
+                    <Camera className="h-3 w-3" aria-hidden />
+                  </button>
+                ) : null}
+              </div>
+              <div className="min-w-0 flex-1">
+                <p className={uiCx(uiTypography.sectionTitle, 'truncate')}>{s.site_name || 'Site'}</p>
+                <p className={uiCx(uiTypography.helper, 'mt-0.5 flex items-start gap-1 truncate')}>
+                  <MapPin className="mt-0.5 h-3.5 w-3.5 shrink-0 text-gray-400" aria-hidden />
+                  <span className="truncate">{addressLine || '—'}</span>
+                </p>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+      {!sites.length && !hasEditPermission && <AppEmptyState title="No sites" />}
+      <SiteFormModal
+        open={createOpen}
+        onClose={() => setCreateOpen(false)}
+        clientId={clientId}
+        clientDisplayName={clientDisplayName}
+        onSaved={refreshSites}
+      />
+      <SiteFormModal
+        open={!!editSite}
+        onClose={() => setEditSite(null)}
+        clientId={clientId}
+        clientDisplayName={clientDisplayName}
+        site={editSite}
+        coverUrl={editSite ? coverBySiteId.get(String(editSite.id)) || '' : ''}
+        readOnly={!hasEditPermission}
+        onSaved={refreshSites}
+        onDeleted={refreshSites}
+      />
+      {coverPickerSiteId && (
+        <ImagePicker
+          isOpen
+          onClose={() => setCoverPickerSiteId(null)}
+          clientId={clientId}
+          targetWidth={SITE_CARD_COVER_CROP.width}
+          targetHeight={SITE_CARD_COVER_CROP.height}
+          allowEdit
+          overlayClassName={uiModalLayer.nestedPicker}
+          onConfirm={async (blob) => {
+            try {
+              await uploadSiteCover(clientId, coverPickerSiteId, blob);
+              toast.success('Site cover updated');
+              onFilesRefresh();
+            } catch {
+              toast.error('Failed to update site cover');
+            } finally {
+              setCoverPickerSiteId(null);
+            }
+          }}
+        />
+      )}
+    </div>
+  );
+}
+
 function ContactsCard({ id, hasEditPermission, clientDisplayName }: { id: string, hasEditPermission?: boolean, clientDisplayName?: string }){
-  const confirm = useConfirm();
+  const queryClient = useQueryClient();
   const { data, refetch } = useQuery({ queryKey:['clientContacts', id], queryFn: ()=>api<any[]>('GET', `/clients/${id}/contacts`) });
   const { data:files } = useQuery({ queryKey:['clientFilesForContacts', id], queryFn: ()=>api<any[]>('GET', `/clients/${id}/files`) });
   const [list, setList] = useState<any[]>([]);
   useEffect(()=>{ setList(data||[]); }, [data]);
-  const [editId, setEditId] = useState<string|null>(null);
-  const [eName, setEName] = useState('');
-  const [eEmail, setEEmail] = useState('');
-  const [ePhone, setEPhone] = useState('');
-  const [eRole, setERole] = useState('');
-  const [eDept, setEDept] = useState('');
-  const [ePrimary, setEPrimary] = useState<'true'|'false'>('false');
-  const [pickerForContact, setPickerForContact] = useState<string|null>(null);
+  const [editContact, setEditContact] = useState<ClientContactRecord | null>(null);
   const [createOpen, setCreateOpen] = useState(false);
 
-  useEffect(() => {
-    if (!createOpen) return;
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') { setCreateOpen(false); } };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [createOpen]);
+  const avatarByContactId = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const c of list) {
+      const rec = (files || []).find(
+        (f: any) => String(f.category || '').toLowerCase() === `contact-photo-${String(c.id)}`,
+      );
+      if (rec) {
+        map.set(String(c.id), withFileAccessToken(`/files/${rec.file_object_id}/thumbnail?w=160`));
+      }
+    }
+    return map;
+  }, [files, list]);
 
-  const formatPhone = (v:string)=>{
-    const d = String(v||'').replace(/\D+/g,'').slice(0,11);
-    if (d.length<=3) return d;
-    if (d.length<=6) return `(${d.slice(0,3)}) ${d.slice(3)}`;
-    if (d.length<=10) return `(${d.slice(0,3)}) ${d.slice(3,6)}-${d.slice(6)}`;
-    return `+${d.slice(0,1)} (${d.slice(1,4)}) ${d.slice(4,7)}-${d.slice(7,11)}`;
+  const contactMetaLine = (c: any) => {
+    const parts = [c.role_title, c.department].filter(Boolean);
+    return parts.length ? parts.join(' · ') : null;
   };
-  const avatarFor = (contactId:string)=>{
-    const rec = (files||[]).find((f:any)=> String(f.category||'').toLowerCase()==='contact-photo-'+String(contactId));
-    return rec? withFileAccessToken(`/files/${rec.file_object_id}/thumbnail?w=160`) : '';
+
+  const refreshContacts = () => {
+    refetch();
+    queryClient.invalidateQueries({ queryKey: ['clientFilesForContacts', id] });
   };
-  const beginEdit = (c:any)=>{ setEditId(c.id); setEName(c.name||''); setEEmail(c.email||''); setEPhone(c.phone||''); setERole(c.role_title||''); setEDept(c.department||''); setEPrimary(c.is_primary? 'true':'false'); };
-  const cancelEdit = ()=>{ setEditId(null); };
-  // Drag and drop reorder
+
   const [dragId, setDragId] = useState<string|null>(null);
   const onDragStart = (cid:string)=> setDragId(cid);
   const onDragOver = (e:React.DragEvent)=> { e.preventDefault(); };
@@ -3894,7 +4080,6 @@ function ContactsCard({ id, hasEditPermission, clientDisplayName }: { id: string
     const [moved] = curr.splice(from,1);
     curr.splice(to,0,moved);
     setList(curr);
-    // Auto-save order
     try{ 
       await api('POST', `/clients/${id}/contacts/reorder`, curr.map(c=> String(c.id))); 
       toast.success('Order saved'); 
@@ -3903,128 +4088,164 @@ function ContactsCard({ id, hasEditPermission, clientDisplayName }: { id: string
       toast.error('Failed to save order'); 
     }
   };
+
+  const openEdit = (c: any) => {
+    if (!hasEditPermission) return;
+    setEditContact({
+      id: String(c.id),
+      name: c.name,
+      email: c.email,
+      phone: c.phone,
+      role_title: c.role_title,
+      department: c.department,
+      is_primary: c.is_primary,
+    });
+  };
+
   return (
-    <div>
-      <div className="mb-2">
-        <h4 className="font-semibold">Contacts</h4>
-      </div>
-      <div className="grid md:grid-cols-2 gap-4">
+    <div className={uiSpacing.sectionStack}>
+      <AppSectionHeader
+        title="Contacts"
+        description={
+          hasEditPermission
+            ? 'Click a row to edit. Drag rows to reorder. Primary contact is highlighted.'
+            : undefined
+        }
+        {...appSectionPresetProps('contact')}
+      />
+      <div className="flex flex-col gap-2">
         {hasEditPermission && (
-          <button
-            type="button"
-            onClick={()=>setCreateOpen(true)}
-            className="rounded-xl border-2 border-dashed border-gray-300 p-4 hover:border-brand-red hover:bg-gray-50 transition-all bg-white flex items-center justify-center min-h-[100px]"
-          >
-            <div className="text-lg text-gray-400 mr-2">+</div>
-            <div className="font-medium text-xs text-gray-700">New Contact</div>
-          </button>
+          <AppListCreateItem label="New Contact" layout="row" onClick={() => setCreateOpen(true)} />
         )}
-        {(list||[]).map(c=> (
-          <div key={c.id} className="rounded-xl border bg-white overflow-hidden flex" draggable onDragStart={()=>onDragStart(String(c.id))} onDragOver={onDragOver} onDrop={()=>onDropOver(String(c.id))}>
-            <div className="w-28 bg-gray-100 flex items-center justify-center relative group">
-              {avatarFor(c.id)? (
-                <img className="w-20 h-20 object-cover rounded border" src={avatarFor(c.id)} />
-              ): (
-                <div className="w-20 h-20 rounded bg-gray-200 grid place-items-center text-lg font-bold text-gray-600">{(c.name||'?').slice(0,2).toUpperCase()}</div>
+        {(list||[]).map(c=> {
+          const avatarSrc = avatarByContactId.get(String(c.id)) || '';
+          const meta = contactMetaLine(c);
+
+          return (
+            <div
+              key={c.id}
+              role={hasEditPermission ? 'button' : undefined}
+              tabIndex={hasEditPermission ? 0 : undefined}
+              draggable={hasEditPermission}
+              onDragStart={(e) => {
+                e.stopPropagation();
+                onDragStart(String(c.id));
+              }}
+              onDragOver={onDragOver}
+              onDrop={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                onDropOver(String(c.id));
+              }}
+              onClick={() => openEdit(c)}
+              onKeyDown={(e) => {
+                if (hasEditPermission && (e.key === 'Enter' || e.key === ' ')) {
+                  e.preventDefault();
+                  openEdit(c);
+                }
+              }}
+              className={uiCx(
+                'group flex items-center gap-2 sm:gap-3 text-left',
+                uiRadius.control,
+                uiBorders.subtle,
+                uiColors.surface,
+                'px-2 py-2 sm:px-3 sm:py-2.5',
+                hasEditPermission && 'cursor-pointer transition-shadow hover:border-gray-300 hover:shadow-sm',
+                c.is_primary && 'ring-1 ring-emerald-200/80',
               )}
-              <button onClick={()=>setPickerForContact(String(c.id))} className="hidden group-hover:block absolute right-1 bottom-1 text-[11px] px-2 py-0.5 rounded bg-black/70 text-white">Photo</button>
-              <div className="absolute left-1 top-1 text-[10px] text-gray-600">⋮⋮</div>
-            </div>
-            <div className="flex-1 p-3 text-sm">
-              {editId===c.id ? (
-                <div className="space-y-2">
-                  <div className="flex items-center justify-between">
-                    <div className="font-semibold">Edit contact</div>
-                    <div className="flex items-center gap-2">
-                      <label className="text-xs text-gray-600">Primary</label>
-                      <select className="border rounded px-2 py-1 text-xs" value={ePrimary} onChange={e=>setEPrimary(e.target.value as any)}>
-                        <option value="false">No</option>
-                        <option value="true">Yes</option>
-                      </select>
-                      {hasEditPermission && (
-                        <button onClick={async()=>{ const ok = await confirm({ title: 'Delete contact', message: 'Are you sure you want to delete this contact?' }); if(!ok) return; try { await api('DELETE', `/clients/${id}/contacts/${c.id}`); toast.success('Contact deleted'); setEditId(null); refetch(); } catch(e) { toast.error('Failed to delete contact'); } }} className="px-2 py-1 rounded bg-red-50 text-red-600 hover:bg-red-100" title="Delete">Delete</button>
-                      )}
-                    </div>
+            >
+              {hasEditPermission ? (
+                <span
+                  className="flex h-9 w-5 shrink-0 cursor-grab items-center justify-center text-gray-300 active:cursor-grabbing group-hover:text-gray-400"
+                  title="Drag to reorder"
+                  onClick={(e) => e.stopPropagation()}
+                  onMouseDown={(e) => e.stopPropagation()}
+                  aria-hidden
+                >
+                  <GripVertical className="h-4 w-4" />
+                </span>
+              ) : null}
+              <div className="relative shrink-0">
+                {avatarSrc ? (
+                  <img
+                    src={avatarSrc}
+                    alt=""
+                    className={uiCx('h-11 w-11 object-cover', uiRadius.control, 'ring-2 ring-white')}
+                  />
+                ) : (
+                  <div
+                    className={uiCx(
+                      'flex h-11 w-11 items-center justify-center text-sm font-semibold text-gray-600',
+                      uiRadius.control,
+                      'bg-gradient-to-br from-gray-100 to-gray-200',
+                    )}
+                  >
+                    {(c.name || '?').slice(0, 2).toUpperCase()}
                   </div>
-                  <div className="grid grid-cols-2 gap-2">
-                    <div className="col-span-2">
-                      <label className="text-xs text-gray-600">Name</label>
-                      <input className="border rounded px-2 py-1 w-full" value={eName} onChange={e=>setEName(e.target.value)} />
-                    </div>
-                    <div>
-                      <label className="text-xs text-gray-600">Role/Title</label>
-                      <input className="border rounded px-2 py-1 w-full" value={eRole} onChange={e=>setERole(e.target.value)} />
-                    </div>
-                    <div>
-                      <label className="text-xs text-gray-600">Department</label>
-                      <input className="border rounded px-2 py-1 w-full" value={eDept} onChange={e=>setEDept(e.target.value)} />
-                    </div>
-                    <div>
-                      <label className="text-xs text-gray-600">Email</label>
-                      <input className="border rounded px-2 py-1 w-full" value={eEmail} onChange={e=>setEEmail(e.target.value)} />
-                    </div>
-                    <div>
-                      <label className="text-xs text-gray-600">Phone</label>
-                      <input className="border rounded px-2 py-1 w-full" value={ePhone} onChange={e=>setEPhone(formatPhone(e.target.value))} />
-                    </div>
-                  </div>
-                  <div className="text-right space-x-2">
-                    <button onClick={cancelEdit} className="px-2 py-1 rounded bg-gray-100">Cancel</button>
-                    <button onClick={async()=>{ await api('PATCH', `/clients/${id}/contacts/${c.id}`, { name: eName, role_title: eRole, department: eDept, email: eEmail, phone: ePhone, is_primary: ePrimary==='true' }); setEditId(null); refetch(); }} className="px-2 py-1 rounded bg-brand-red text-white">Save</button>
-                  </div>
+                )}
+              </div>
+              <div className="min-w-0 flex-1">
+                <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
+                  <span className={uiCx(uiTypography.sectionTitle, 'truncate')}>{c.name || '—'}</span>
+                  {c.is_primary ? <AppBadge variant="success">Primary</AppBadge> : null}
                 </div>
-              ) : (
-                <>
-                  <div className="flex items-center justify-between">
-                    <div className="font-semibold">{c.name}</div>
-                    <div className="flex items-center gap-2">
-                      {c.is_primary && <span className="text-[11px] bg-green-50 text-green-700 border border-green-200 rounded-full px-2">Primary</span>}
-                      {!c.is_primary && hasEditPermission && <button onClick={async()=>{ await api('PATCH', `/clients/${id}/contacts/${c.id}`, { is_primary: true }); refetch(); }} className="px-2 py-1 rounded bg-gray-100">Set Primary</button>}
-                      {hasEditPermission && (
-                        <button onClick={()=>beginEdit(c)} className="p-1.5 rounded hover:bg-gray-100 text-gray-600 hover:text-brand-red transition-colors" title="Edit contact">
-                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                          </svg>
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                  <div className="text-gray-600">{c.role_title||''} {c.department? `· ${c.department}`:''}</div>
-                  <div className="mt-2">
-                    <div className="text-[11px] uppercase text-gray-500">Email</div>
-                    <div className="text-gray-700">{c.email||'-'}</div>
-                  </div>
-                  <div className="mt-2">
-                    <div className="text-[11px] uppercase text-gray-500">Phone</div>
-                    <div className="text-gray-700">{c.phone||'-'}</div>
-                  </div>
-                </>
-              )}
+                {meta ? <p className={uiCx(uiTypography.helper, 'truncate')}>{meta}</p> : null}
+                <div
+                  className={uiCx('mt-1 flex flex-wrap items-center gap-x-4 gap-y-0.5', uiTypography.helper)}
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  {c.email ? (
+                    <a
+                      href={`mailto:${c.email}`}
+                      className="inline-flex min-w-0 max-w-full items-center gap-1 truncate text-gray-600 hover:text-brand-red"
+                    >
+                      <Mail className="h-3.5 w-3.5 shrink-0 text-gray-400" aria-hidden />
+                      <span className="truncate">{c.email}</span>
+                    </a>
+                  ) : (
+                    <span className="inline-flex items-center gap-1 text-gray-400">
+                      <Mail className="h-3.5 w-3.5 shrink-0" aria-hidden />
+                      —
+                    </span>
+                  )}
+                  {c.phone ? (
+                    <a
+                      href={`tel:${c.phone}`}
+                      className="inline-flex min-w-0 items-center gap-1 text-gray-600 hover:text-brand-red"
+                    >
+                      <Phone className="h-3.5 w-3.5 shrink-0 text-gray-400" aria-hidden />
+                      <span>{c.phone}</span>
+                    </a>
+                  ) : (
+                    <span className="inline-flex items-center gap-1 text-gray-400">
+                      <Phone className="h-3.5 w-3.5 shrink-0" aria-hidden />
+                      —
+                    </span>
+                  )}
+                </div>
+              </div>
             </div>
-          </div>
-        ))}
-        {(!data || !data.length) && <div className="text-sm text-gray-600">No contacts</div>}
+          );
+        })}
       </div>
+      {(!data || !data.length) && !hasEditPermission && <AppEmptyState title="No contacts" />}
       <NewContactModal
         open={createOpen}
         onClose={() => setCreateOpen(false)}
         clientId={id}
         clientDisplayName={clientDisplayName}
-        onCreated={() => refetch()}
+        onCreated={() => refreshContacts()}
       />
-      {pickerForContact && (
-        <ImagePicker isOpen={true} onClose={()=>setPickerForContact(null)} clientId={String(id)} targetWidth={400} targetHeight={400} allowEdit={true} onConfirm={async(blob)=>{
-          try{
-            const up:any = await api('POST','/files/upload',{ project_id:null, client_id:id, employee_id:null, category_id:'contact-photo', original_name:`contact-${pickerForContact}.jpg`, content_type:'image/jpeg' });
-            await fetch(up.upload_url, { method:'PUT', headers:{ 'Content-Type':'image/jpeg', 'x-ms-blob-type':'BlockBlob' }, body: blob });
-            const conf:any = await api('POST','/files/confirm',{ key: up.key, size_bytes: blob.size, checksum_sha256:'na', content_type:'image/jpeg' });
-            await api('POST', `/clients/${id}/files?file_object_id=${encodeURIComponent(conf.id)}&category=${encodeURIComponent('contact-photo-'+pickerForContact)}&original_name=${encodeURIComponent('contact-'+pickerForContact+'.jpg')}`);
-            toast.success('Contact photo updated');
-            refetch();
-          }catch(e){ toast.error('Failed to update contact photo'); }
-          finally{ setPickerForContact(null); }
-        }} />
-      )}
+      <EditContactModal
+        open={!!editContact}
+        onClose={() => setEditContact(null)}
+        clientId={id}
+        clientDisplayName={clientDisplayName}
+        contact={editContact}
+        photoUrl={editContact ? avatarByContactId.get(String(editContact.id)) || '' : ''}
+        onSaved={() => refreshContacts()}
+        onDeleted={() => refreshContacts()}
+      />
     </div>
   );
 }
