@@ -308,7 +308,7 @@ export default function Customers(){
     {
       id: 'city',
       label: 'City',
-      type: 'select',
+      type: 'select_search',
       operators: ['is', 'is_not'],
       getOptions: () => allCities.map(city => ({ value: city, label: city })),
     },

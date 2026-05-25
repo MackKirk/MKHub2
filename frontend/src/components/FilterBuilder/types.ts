@@ -23,7 +23,7 @@ export type FilterRule = {
 export type FieldConfig = {
   id: string;
   label: string;
-  type: 'select' | 'date' | 'number' | 'text' | 'user';
+  type: 'select' | 'select_search' | 'date' | 'number' | 'text' | 'user';
   operators: FilterOperator[];
   getOptions?: () => Array<{ value: string; label: string }>;
   getGroupedOptions?: () => Array<{ label: string; options: Array<{ value: string; label: string }> }>; // For optgroup support
