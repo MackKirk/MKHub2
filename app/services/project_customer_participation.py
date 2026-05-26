@@ -82,6 +82,8 @@ def serialize_list_row(p: Project, participation: Participation) -> Dict[str, An
         "date_awarded": getattr(p, "date_awarded", None).isoformat() if getattr(p, "date_awarded", None) else None,
         "date_end": p.date_end.isoformat() if getattr(p, "date_end", None) else None,
         "progress": getattr(p, "progress", None),
+        "cost_estimated": getattr(p, "cost_estimated", None),
+        "service_value": getattr(p, "service_value", None),
         "status_label": getattr(p, "status_label", None),
         "status_changed_at": getattr(p, "status_changed_at", None).isoformat()
         if getattr(p, "status_changed_at", None)

@@ -550,6 +550,50 @@ def get_client_project_participations(
     return {"rollup": rollup, "related_memberships": related_memberships}
 
 
+@router.get("/{client_id}/insights")
+def get_client_insights(
+    client_id: str,
+    from_: str = Query(..., alias="from"),
+    to: str = Query(...),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """
+    Aggregated customer overview metrics (KPIs, timeline, funnel, signals).
+    Requires business:customers:overview:read via assert_customer_tab overview read.
+    """
+    assert_customer_tab(user, "overview", "read")
+    try:
+        client_uuid = uuid.UUID(str(client_id))
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid client_id")
+
+    try:
+        c = db.query(Client).filter(Client.id == client_id, Client.deleted_at.is_(None)).first()
+    except ProgrammingError as e:
+        error_msg = str(e.orig) if hasattr(e, "orig") else str(e)
+        if "is_system" in error_msg and "does not exist" in error_msg:
+            db.rollback()
+            c = (
+                db.query(Client)
+                .options(defer(Client.is_system))
+                .filter(Client.id == client_id, Client.deleted_at.is_(None))
+                .first()
+            )
+        else:
+            raise
+    if not c:
+        raise HTTPException(status_code=404, detail="Not found")
+
+    from ..services.customer_insights import build_customer_insights_payload
+
+    try:
+        client_created = c.created_at.isoformat() if getattr(c, "created_at", None) else None
+        return build_customer_insights_payload(db, client_uuid, user, from_, to, client_created)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
 @router.get("/{client_id}", response_model=ClientResponse)
 def get_client(client_id: str, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
     if not has_customer_detail_access(user):

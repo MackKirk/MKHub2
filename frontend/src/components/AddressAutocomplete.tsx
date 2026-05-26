@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { api } from '@/lib/api';
 import { parseGooglePlaceResult } from '@/lib/placesFromDetails';
+import { uiBorders, uiCx, uiRadius, uiShadows } from '@/components/ui/tokens';
 
 interface AddressAutocompleteProps {
   value: string;
@@ -119,7 +120,14 @@ export default function AddressAutocomplete({
         </div>
       )}
       {open && predictions.length > 0 && (
-        <ul className="absolute z-50 mt-1 max-h-56 w-full overflow-auto rounded-md border border-gray-200 bg-white py-1 text-sm shadow-lg">
+        <ul
+          className={uiCx(
+            'absolute z-[100050] mt-1 max-h-56 w-full overflow-auto bg-white py-1 text-sm',
+            uiRadius.dropdownMenu,
+            uiBorders.subtle,
+            uiShadows.elevated,
+          )}
+        >
           {predictions.map((p, i) => (
             <li key={p.place_id || i}>
               <button

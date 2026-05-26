@@ -3,15 +3,21 @@ import { useQuery } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import { sortByLabel } from '@/lib/sortOptions';
 import toast from 'react-hot-toast';
+import AddressAutocomplete from '@/components/AddressAutocomplete';
 import {
   AppButton,
   AppCheckbox,
+  AppControlLabelRow,
+  AppFieldHint,
   AppFormModal,
   AppInput,
   AppSelect,
   AppTextarea,
+  uiBorders,
   uiCx,
   uiLayout,
+  uiRadius,
+  uiSpacing,
 } from '@/components/ui';
 
 export type CustomerGeneralEditSection = 'company' | 'address' | 'billing' | 'description';
@@ -146,6 +152,8 @@ export default function EditCustomerGeneralModal({
   const [billingPostalCode, setBillingPostalCode] = useState('');
   const [description, setDescription] = useState('');
   const [isSaving, setIsSaving] = useState(false);
+
+  const controlInputClass = uiCx('w-full text-sm', uiRadius.control, uiBorders.input, uiSpacing.controlX, 'py-2');
 
   const leadSources = (settings?.lead_sources || []) as any[];
 
@@ -378,12 +386,72 @@ export default function EditCustomerGeneralModal({
 
       {activeSection === 'address' && (
         <div className="grid gap-4 md:grid-cols-2">
-          <AppInput label="Address 1" value={addressLine1} onChange={(e) => setAddressLine1(e.target.value)} disabled={isSaving} />
-          <AppInput label="Address 2" value={addressLine2} onChange={(e) => setAddressLine2(e.target.value)} disabled={isSaving} />
-          <AppInput label="Country" value={country} onChange={(e) => setCountry(e.target.value)} disabled={isSaving} />
-          <AppInput label="Province/State" value={province} onChange={(e) => setProvince(e.target.value)} disabled={isSaving} />
-          <AppInput label="City" value={city} onChange={(e) => setCity(e.target.value)} disabled={isSaving} />
-          <AppInput label="Postal code" value={postalCode} onChange={(e) => setPostalCode(e.target.value)} disabled={isSaving} />
+          <div className="space-y-1.5 md:col-span-2">
+            <AppControlLabelRow
+              label="Address 1"
+              fieldHint={
+                <AppFieldHint hint="Address 1\n\nStreet address. Suggestions appear as you type." />
+              }
+            />
+            <AddressAutocomplete
+              value={addressLine1}
+              onChange={setAddressLine1}
+              disabled={isSaving}
+              placeholder="Enter address"
+              className={controlInputClass}
+              onAddressSelect={(address) => {
+                if (address.address_line1) setAddressLine1(address.address_line1);
+                if (address.address_line2 !== undefined) setAddressLine2(address.address_line2);
+                if (address.city !== undefined) setCity(address.city);
+                if (address.province !== undefined) setProvince(address.province);
+                if (address.country !== undefined) setCountry(address.country);
+                if (address.postal_code !== undefined) setPostalCode(address.postal_code);
+              }}
+            />
+          </div>
+          <div className="space-y-1.5 md:col-span-2">
+            <AppControlLabelRow
+              label="Address 2"
+              fieldHint={
+                <AppFieldHint hint="Address 2\n\nSuite, unit, or building (optional). Suggestions appear as you type." />
+              }
+            />
+            <AddressAutocomplete
+              value={addressLine2}
+              onChange={setAddressLine2}
+              disabled={isSaving}
+              placeholder="Enter a second address"
+              className={controlInputClass}
+            />
+          </div>
+          <AppInput
+            label="Country"
+            value={country}
+            onChange={(e) => setCountry(e.target.value)}
+            disabled={isSaving}
+            fieldHint="Country\n\nFilled automatically when you pick an address."
+          />
+          <AppInput
+            label="Province/State"
+            value={province}
+            onChange={(e) => setProvince(e.target.value)}
+            disabled={isSaving}
+            fieldHint="Province/State\n\nFilled automatically when you pick an address."
+          />
+          <AppInput
+            label="City"
+            value={city}
+            onChange={(e) => setCity(e.target.value)}
+            disabled={isSaving}
+            fieldHint="City\n\nFilled automatically when you pick an address."
+          />
+          <AppInput
+            label="Postal code"
+            value={postalCode}
+            onChange={(e) => setPostalCode(e.target.value)}
+            disabled={isSaving}
+            fieldHint="Postal code\n\nFilled automatically when you pick an address."
+          />
         </div>
       )}
 
@@ -415,47 +483,71 @@ export default function EditCustomerGeneralModal({
           />
           {useDifferentBillingAddress && (
             <div className="grid gap-4 md:grid-cols-2">
-              <AppInput
-                label="Billing Address 1"
-                value={billingAddressLine1}
-                onChange={(e) => setBillingAddressLine1(e.target.value)}
-                disabled={isSaving}
-                fieldHint="Billing Address 1\n\nStreet address for billing."
-              />
-              <AppInput
-                label="Billing Address 2"
-                value={billingAddressLine2}
-                onChange={(e) => setBillingAddressLine2(e.target.value)}
-                disabled={isSaving}
-                fieldHint="Billing Address 2\n\nApartment, suite, unit, building, floor, etc."
-              />
+              <div className="space-y-1.5 md:col-span-2">
+                <AppControlLabelRow
+                  label="Billing Address 1"
+                  fieldHint={
+                    <AppFieldHint hint="Billing Address 1\n\nStreet address for billing. Suggestions appear as you type." />
+                  }
+                />
+                <AddressAutocomplete
+                  value={billingAddressLine1}
+                  onChange={setBillingAddressLine1}
+                  disabled={isSaving}
+                  placeholder="Enter billing address"
+                  className={controlInputClass}
+                  onAddressSelect={(address) => {
+                    if (address.address_line1) setBillingAddressLine1(address.address_line1);
+                    if (address.address_line2 !== undefined) setBillingAddressLine2(address.address_line2);
+                    if (address.country !== undefined) setBillingCountry(address.country);
+                    if (address.province !== undefined) setBillingProvince(address.province);
+                    if (address.city !== undefined) setBillingCity(address.city);
+                    if (address.postal_code !== undefined) setBillingPostalCode(address.postal_code);
+                  }}
+                />
+              </div>
+              <div className="space-y-1.5 md:col-span-2">
+                <AppControlLabelRow
+                  label="Billing Address 2"
+                  fieldHint={
+                    <AppFieldHint hint="Billing Address 2\n\nApartment, suite, unit, building, floor, etc. Suggestions appear as you type." />
+                  }
+                />
+                <AddressAutocomplete
+                  value={billingAddressLine2}
+                  onChange={setBillingAddressLine2}
+                  disabled={isSaving}
+                  placeholder="Enter a second billing address"
+                  className={controlInputClass}
+                />
+              </div>
               <AppInput
                 label="Billing Country"
                 value={billingCountry}
                 onChange={(e) => setBillingCountry(e.target.value)}
                 disabled={isSaving}
-                fieldHint="Billing Country\n\nCountry or region for billing."
+                fieldHint="Billing Country\n\nFilled automatically when you pick an address."
               />
               <AppInput
                 label="Billing Province/State"
                 value={billingProvince}
                 onChange={(e) => setBillingProvince(e.target.value)}
                 disabled={isSaving}
-                fieldHint="Billing Province/State\n\nState, province, or region."
+                fieldHint="Billing Province/State\n\nFilled automatically when you pick an address."
               />
               <AppInput
                 label="Billing City"
                 value={billingCity}
                 onChange={(e) => setBillingCity(e.target.value)}
                 disabled={isSaving}
-                fieldHint="Billing City\n\nCity or locality for billing."
+                fieldHint="Billing City\n\nFilled automatically when you pick an address."
               />
               <AppInput
                 label="Billing Postal code"
                 value={billingPostalCode}
                 onChange={(e) => setBillingPostalCode(e.target.value)}
                 disabled={isSaving}
-                fieldHint="Billing Postal code\n\nZIP or postal code for billing."
+                fieldHint="Billing Postal code\n\nFilled automatically when you pick an address."
               />
             </div>
           )}

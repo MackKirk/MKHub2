@@ -97,10 +97,12 @@ export function InsightsKpiCard({
   formatter,
   deltaPct,
   deltaTone = 'auto',
+  showDelta = true,
   sparkline,
   sparklineColor = '#d11616',
   sparklineFill = 'rgba(209, 22, 22, 0.12)',
   hint,
+  className = '',
 }: {
   label: string;
   value: number;
@@ -108,36 +110,44 @@ export function InsightsKpiCard({
   formatter?: (v: number) => React.ReactNode;
   deltaPct: number | null;
   deltaTone?: DeltaTone;
+  /** When false, hides the vs-previous chip entirely (no placeholder). */
+  showDelta?: boolean;
   sparkline?: SparklinePoint[];
   sparklineColor?: string;
   sparklineFill?: string;
   hint?: string;
+  className?: string;
 }) {
   const isInteger = Number.isInteger(value);
   return (
-    <div className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm flex flex-col gap-2 min-w-0 w-full">
+    <div
+      className={`rounded-xl border border-gray-200 bg-white p-4 shadow-sm flex flex-col gap-2 min-w-0 w-full h-full min-h-[148px] ${className}`.trim()}
+    >
       {/* Stack label + delta so narrow columns never squeeze them side-by-side */}
-      <div className="flex flex-col gap-1.5 min-w-0">
+      <div className="flex flex-col gap-1.5 min-w-0 shrink-0">
         <div className="text-[11px] font-medium uppercase tracking-wide text-gray-500 leading-snug break-words">
           {label}
         </div>
-        <div className="min-w-0">
-          <DeltaChip pct={deltaPct} tone={deltaTone} />
-        </div>
+        {showDelta ? (
+          <div className="min-w-0">
+            <DeltaChip pct={deltaPct} tone={deltaTone} />
+          </div>
+        ) : null}
       </div>
-      <div className="flex items-baseline gap-1 flex-wrap min-w-0">
+      <div className="flex items-baseline gap-1 flex-wrap min-w-0 shrink-0">
         <span className="text-2xl font-semibold text-gray-900 tabular-nums tracking-tight min-w-0">
           {formatter ? formatter(value) : isInteger ? <CountUpInt value={value} /> : value.toLocaleString(undefined, { maximumFractionDigits: 1 })}
         </span>
         {unit ? <span className="text-sm font-medium text-gray-500 shrink-0">{unit}</span> : null}
       </div>
-      {sparkline ? (
-        <div className="w-full min-w-0 min-h-[32px]">
-          <Sparkline data={sparkline} stroke={sparklineColor} fill={sparklineFill} height={32} />
-        </div>
-      ) : null}
+      {/* Fixed sparkline slot keeps card heights aligned when some KPIs have charts */}
+      <div className="w-full min-w-0 min-h-[32px] flex-1 flex items-end">
+        {sparkline ? (
+          <Sparkline data={sparkline} stroke={sparklineColor} fill={sparklineFill} height={32} className="w-full" />
+        ) : null}
+      </div>
       {hint ? (
-        <div className="text-[11px] text-gray-500 leading-snug break-words [overflow-wrap:anywhere]">
+        <div className="text-[11px] text-gray-500 leading-snug break-words [overflow-wrap:anywhere] shrink-0 mt-auto">
           {hint}
         </div>
       ) : null}
